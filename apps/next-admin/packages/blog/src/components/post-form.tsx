@@ -1,6 +1,12 @@
 'use client';
 
-import { FormInput, FormTextarea, FormSwitch, FormSelect, type FormOption } from '@/shared/ui/forms';
+import {
+  FormInput,
+  FormTextarea,
+  FormSwitch,
+  FormSelect,
+  type FormOption
+} from '@/shared/ui/forms';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RichTextEditor } from '@/shared/ui/rich-text-editor';
@@ -265,7 +271,7 @@ export default function PostForm({
               placeholder='https://...'
             />
             {featuredImageUrl && (
-              <div className='relative mt-2 h-44 max-w-sm overflow-hidden rounded-md border bg-muted'>
+              <div className='bg-muted relative mt-2 h-44 max-w-sm overflow-hidden rounded-md border'>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={featuredImageUrl}

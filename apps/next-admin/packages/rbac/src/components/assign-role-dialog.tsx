@@ -115,9 +115,7 @@ export function AssignRoleDialog({
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{t('assign.dialog.title')}</DialogTitle>
-            <DialogDescription>
-              {t('assign.dialog.desc')}
-            </DialogDescription>
+            <DialogDescription>{t('assign.dialog.desc')}</DialogDescription>
           </DialogHeader>
 
           <div className='grid gap-4 py-4'>
@@ -141,13 +139,15 @@ export function AssignRoleDialog({
                 disabled={isSubmitting}
               >
                 <SelectTrigger id='role-select'>
-                  <SelectValue placeholder={t('assign.field.role.placeholder')} />
+                  <SelectValue
+                    placeholder={t('assign.field.role.placeholder')}
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {roles.map((role) => (
                     <SelectItem key={role.slug} value={role.slug}>
                       <span className='font-medium'>{role.displayName}</span>
-                      <span className='ml-2 text-xs text-muted-foreground font-mono'>
+                      <span className='text-muted-foreground ml-2 font-mono text-xs'>
                         ({role.slug})
                       </span>
                     </SelectItem>
@@ -167,7 +167,9 @@ export function AssignRoleDialog({
               {t('btn.cancel')}
             </Button>
             <Button type='submit' disabled={isSubmitting}>
-              {isSubmitting ? t('assign.btn.submitting') : t('assign.btn.submit')}
+              {isSubmitting
+                ? t('assign.btn.submitting')
+                : t('assign.btn.submit')}
             </Button>
           </DialogFooter>
         </form>
@@ -175,4 +177,3 @@ export function AssignRoleDialog({
     </Dialog>
   );
 }
-

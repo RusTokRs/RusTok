@@ -25,8 +25,7 @@ use rustok_tax::{
 
 use crate::dto::{
     CartAdjustmentResponse, CartDeliveryGroupResponse, CartLineFulfillmentRequirement,
-    CartLineItemResponse, CartResponse,
-    CartTaxLineResponse, UpdateCartContextInput,
+    CartLineItemResponse, CartResponse, CartTaxLineResponse, UpdateCartContextInput,
 };
 use crate::entities;
 use crate::error::{CartError, CartResult};
@@ -788,14 +787,17 @@ where
                     line_item_fulfillment_requirement(&item.fulfillment_requirement)?;
                 let shipping_profile_slug = match fulfillment_requirement {
                     CartLineFulfillmentRequirement::Digital => None,
-                    CartLineFulfillmentRequirement::Physical => {
-                        Some(normalize_optional_shipping_profile_slug(
-                            Some(item.shipping_profile_slug.as_str()),
-                        ).ok_or_else(|| CartError::Validation(format!(
-                            "physical cart line {} has no shipping profile",
-                            item.id
-                        )))?)
-                    }
+                    CartLineFulfillmentRequirement::Physical => Some(
+                        normalize_optional_shipping_profile_slug(Some(
+                            item.shipping_profile_slug.as_str(),
+                        ))
+                        .ok_or_else(|| {
+                            CartError::Validation(format!(
+                                "physical cart line {} has no shipping profile",
+                                item.id
+                            ))
+                        })?,
+                    ),
                 };
                 let seller_id = seller_id_from_metadata(&item.metadata);
                 projected.push(CartLineItemResponse {
@@ -1540,18 +1542,17 @@ mod tests {
     #[test]
     fn digital_line_never_receives_shipping_profile() {
         assert_eq!(
-            normalize_line_item_shipping_profile(
-                CartLineFulfillmentRequirement::Digital,
-                None,
-            )
-            .expect("digital line without profile is valid"),
+            normalize_line_item_shipping_profile(CartLineFulfillmentRequirement::Digital, None,)
+                .expect("digital line without profile is valid"),
             None
         );
-        assert!(normalize_line_item_shipping_profile(
-            CartLineFulfillmentRequirement::Digital,
-            Some("default"),
-        )
-        .is_err());
+        assert!(
+            normalize_line_item_shipping_profile(
+                CartLineFulfillmentRequirement::Digital,
+                Some("default"),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1566,19 +1567,18 @@ mod tests {
             Some("express")
         );
         assert_eq!(
-            normalize_line_item_shipping_profile(
-                CartLineFulfillmentRequirement::Physical,
-                None,
-            )
-            .expect("physical line defaults to default profile")
-            .as_deref(),
+            normalize_line_item_shipping_profile(CartLineFulfillmentRequirement::Physical, None,)
+                .expect("physical line defaults to default profile")
+                .as_deref(),
             Some(DEFAULT_SHIPPING_PROFILE_SLUG)
         );
-        assert!(normalize_line_item_shipping_profile(
-            CartLineFulfillmentRequirement::Physical,
-            Some("   "),
-        )
-        .is_err());
+        assert!(
+            normalize_line_item_shipping_profile(
+                CartLineFulfillmentRequirement::Physical,
+                Some("   "),
+            )
+            .is_err()
+        );
     }
 
     #[test]

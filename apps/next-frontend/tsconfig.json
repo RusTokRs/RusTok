@@ -83,6 +83,12 @@
       ],
       "@rustok/notifications-frontend": [
         "./packages/rustok-notifications/src/index.tsx"
+      ],
+      "@rustok/seo-frontend": [
+        "./packages/rustok-seo/src/index.ts"
+      ],
+      "@/*": [
+        "./src/*"
       ]
     }
   },

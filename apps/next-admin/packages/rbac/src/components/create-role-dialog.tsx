@@ -13,7 +13,11 @@ import {
 import { Input } from '@/shared/ui/shadcn/input';
 import { Button } from '@/shared/ui/shadcn/button';
 import { toast } from 'sonner';
-import { createRole, type PlatformPermissionItem, type RoleInfo } from '../api/roles';
+import {
+  createRole,
+  type PlatformPermissionItem,
+  type RoleInfo
+} from '../api/roles';
 import { PermissionMatrix } from './permission-matrix';
 
 interface CreateRoleDialogProps {
@@ -38,7 +42,9 @@ export function CreateRoleDialog({
   const [slug, setSlug] = React.useState('');
   const [slugManuallyEdited, setSlugManuallyEdited] = React.useState(false);
   const [description, setDescription] = React.useState('');
-  const [selectedPermissions, setSelectedPermissions] = React.useState<string[]>([]);
+  const [selectedPermissions, setSelectedPermissions] = React.useState<
+    string[]
+  >([]);
   const [submitting, setSubmitting] = React.useState(false);
 
   // Auto-slug from name
@@ -129,17 +135,20 @@ export function CreateRoleDialog({
         onOpenChange(next);
       }}
     >
-      <DialogContent className='max-w-4xl max-h-[90vh] flex flex-col p-6 overflow-hidden'>
+      <DialogContent className='flex max-h-[90vh] max-w-4xl flex-col overflow-hidden p-6'>
         <DialogHeader>
           <DialogTitle>{t('create-dialog-title')}</DialogTitle>
           <DialogDescription>{t('create-dialog-desc')}</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className='flex-1 flex flex-col min-h-0 space-y-4'>
+        <form
+          onSubmit={handleSubmit}
+          className='flex min-h-0 flex-1 flex-col space-y-4'
+        >
           {/* Metadata Fields */}
-          <div className='grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2'>
+          <div className='grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2'>
             <div className='space-y-1.5'>
-              <label className='text-xs font-medium text-foreground'>
+              <label className='text-foreground text-xs font-medium'>
                 {t('field-name')} *
               </label>
               <Input
@@ -152,7 +161,7 @@ export function CreateRoleDialog({
             </div>
 
             <div className='space-y-1.5'>
-              <label className='text-xs font-medium text-foreground'>
+              <label className='text-foreground text-xs font-medium'>
                 {t('field-slug')} *
               </label>
               <Input
@@ -160,15 +169,15 @@ export function CreateRoleDialog({
                 value={slug}
                 onChange={handleSlugChange}
                 required
-                className='h-9 text-xs font-mono'
+                className='h-9 font-mono text-xs'
               />
-              <p className='text-[10px] text-muted-foreground'>
+              <p className='text-muted-foreground text-[10px]'>
                 {t('field-slug-help')}
               </p>
             </div>
 
-            <div className='sm:col-span-2 space-y-1.5'>
-              <label className='text-xs font-medium text-foreground'>
+            <div className='space-y-1.5 sm:col-span-2'>
+              <label className='text-foreground text-xs font-medium'>
                 {t('field-description')}
               </label>
               <Input
@@ -181,8 +190,8 @@ export function CreateRoleDialog({
           </div>
 
           {/* Matrix Section */}
-          <div className='flex-1 min-h-0 border-t pt-3'>
-            <div className='mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+          <div className='min-h-0 flex-1 border-t pt-3'>
+            <div className='text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase'>
               {t('matrix-title')}
             </div>
             <PermissionMatrix

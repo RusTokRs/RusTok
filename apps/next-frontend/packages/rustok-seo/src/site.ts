@@ -19,7 +19,7 @@ export function localizedPath(locale: string, path = "/"): string {
   // Backend SEO contexts may already return a locale-prefixed canonical path. Strip one
   // existing supported locale before applying the requested locale so fallback hreflang and
   // canonical generation never produce `/en/en/...` and can switch `/en/...` to `/de/...`.
-  const pathWithoutLocale = locales.reduce((candidate, supportedLocale) => {
+  const pathWithoutLocale = locales.reduce((candidate: string, supportedLocale: string) => {
     const prefix = `/${supportedLocale}`;
     if (candidate === prefix) {
       return "/";

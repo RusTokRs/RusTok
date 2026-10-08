@@ -54,22 +54,30 @@ const SelectCell: React.FC<{ row: any }> = ({ row }) => {
 
 const EmailHeader: React.FC<{ column: any }> = ({ column }) => {
   const t = useTranslations('users');
-  return <DataTableColumnHeader column={column} title={t('table.email.header')} />;
+  return (
+    <DataTableColumnHeader column={column} title={t('table.email.header')} />
+  );
 };
 
 const RoleHeader: React.FC<{ column: any }> = ({ column }) => {
   const t = useTranslations('users');
-  return <DataTableColumnHeader column={column} title={t('table.role.header')} />;
+  return (
+    <DataTableColumnHeader column={column} title={t('table.role.header')} />
+  );
 };
 
 const StatusHeader: React.FC<{ column: any }> = ({ column }) => {
   const t = useTranslations('users');
-  return <DataTableColumnHeader column={column} title={t('table.status.header')} />;
+  return (
+    <DataTableColumnHeader column={column} title={t('table.status.header')} />
+  );
 };
 
 const CreatedHeader: React.FC<{ column: any }> = ({ column }) => {
   const t = useTranslations('users');
-  return <DataTableColumnHeader column={column} title={t('table.created.header')} />;
+  return (
+    <DataTableColumnHeader column={column} title={t('table.created.header')} />
+  );
 };
 
 export const columns: ColumnDef<StockFeatures, User, any>[] = [
@@ -91,7 +99,7 @@ export const columns: ColumnDef<StockFeatures, User, any>[] = [
         <div className='flex flex-col'>
           <Link
             href={`/dashboard/users/${user.id}`}
-            className='hover:text-primary max-w-[280px] truncate font-medium text-foreground transition hover:underline'
+            className='hover:text-primary text-foreground max-w-[280px] truncate font-medium transition hover:underline'
           >
             {user.email}
           </Link>
@@ -179,7 +187,7 @@ export const columns: ColumnDef<StockFeatures, User, any>[] = [
       const raw = getValue() as string | null;
       if (!raw) return <span className='text-muted-foreground text-xs'>—</span>;
       return (
-        <span className='text-muted-foreground whitespace-nowrap text-xs'>
+        <span className='text-muted-foreground text-xs whitespace-nowrap'>
           {new Date(raw).toLocaleDateString()}
         </span>
       );
@@ -191,4 +199,3 @@ export const columns: ColumnDef<StockFeatures, User, any>[] = [
     size: 50
   }
 ];
-

@@ -132,7 +132,10 @@ impl CosignTrustVerifier {
                 }
             }
         }
-        Err("no configured Cosign signer identity and OIDC issuer verified the artifact".to_string())
+        Err(
+            "no configured Cosign signer identity and OIDC issuer verified the artifact"
+                .to_string(),
+        )
     }
 
     async fn verify_trust_root(

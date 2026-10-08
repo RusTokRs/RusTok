@@ -328,7 +328,6 @@ fn log_cart_checkout_service_error(
     }
 }
 
-
 /// Immutable, transport-neutral checkout snapshot owned by the cart module.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreparedCartCheckoutSnapshot {
@@ -436,7 +435,6 @@ fn log_cart_checkout_admission_rejection(
 ) {
     log_cart_checkout_port_error(context, owner_operation, admission_phase, error);
 }
-
 
 #[async_trait]
 impl CartCheckoutPort for InProcessCartCheckoutPort {
@@ -635,7 +633,6 @@ fn map_cart_checkout_local_port_error(
     error
 }
 
-
 fn map_cart_checkout_service_error(
     context: &PortContext,
     owner_operation: &'static str,
@@ -681,7 +678,6 @@ fn map_cart_checkout_service_error(
     );
     cart_error_to_port_error(error)
 }
-
 
 fn validate_prepare_input(input: &UpdateCartContextInput) -> Result<(), CartError> {
     input.validate().map_err(|error| {
@@ -733,7 +729,6 @@ fn parse_tenant_id(
         error
     })
 }
-
 
 fn snapshot_from_cart(cart: CartResponse) -> Result<PreparedCartCheckoutSnapshot, PortError> {
     let subtotal = cart.subtotal_amount;
@@ -955,7 +950,6 @@ fn cart_error_to_port_error(error: CartError) -> PortError {
         } => PortError::new(kind, code, message, retryable),
     }
 }
-
 
 #[cfg(test)]
 mod tests {

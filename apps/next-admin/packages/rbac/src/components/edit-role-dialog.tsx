@@ -14,7 +14,11 @@ import { Input } from '@/shared/ui/shadcn/input';
 import { Button } from '@/shared/ui/shadcn/button';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { toast } from 'sonner';
-import { updateRole, type PlatformPermissionItem, type RoleInfo } from '../api/roles';
+import {
+  updateRole,
+  type PlatformPermissionItem,
+  type RoleInfo
+} from '../api/roles';
 import { PermissionMatrix } from './permission-matrix';
 
 interface EditRoleDialogProps {
@@ -39,7 +43,9 @@ export function EditRoleDialog({
   const t = useTranslations('rbac');
   const [name, setName] = React.useState('');
   const [description, setDescription] = React.useState('');
-  const [selectedPermissions, setSelectedPermissions] = React.useState<string[]>([]);
+  const [selectedPermissions, setSelectedPermissions] = React.useState<
+    string[]
+  >([]);
   const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
@@ -93,22 +99,30 @@ export function EditRoleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-w-4xl max-h-[90vh] flex flex-col p-6 overflow-hidden'>
+      <DialogContent className='flex max-h-[90vh] max-w-4xl flex-col overflow-hidden p-6'>
         <DialogHeader>
           <div className='flex items-center gap-2'>
-            <DialogTitle>{t('edit-dialog-title', { name: role.displayName })}</DialogTitle>
-            <Badge variant={isSystem ? 'secondary' : 'outline'} className='text-xs'>
+            <DialogTitle>
+              {t('edit-dialog-title', { name: role.displayName })}
+            </DialogTitle>
+            <Badge
+              variant={isSystem ? 'secondary' : 'outline'}
+              className='text-xs'
+            >
               {isSystem ? t('badge-system') : t('badge-custom')}
             </Badge>
           </div>
           <DialogDescription>{t('edit-dialog-desc')}</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className='flex-1 flex flex-col min-h-0 space-y-4'>
+        <form
+          onSubmit={handleSubmit}
+          className='flex min-h-0 flex-1 flex-col space-y-4'
+        >
           {/* Metadata Fields */}
-          <div className='grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2'>
+          <div className='grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2'>
             <div className='space-y-1.5'>
-              <label className='text-xs font-medium text-foreground'>
+              <label className='text-foreground text-xs font-medium'>
                 {t('field-name')} *
               </label>
               <Input
@@ -121,18 +135,18 @@ export function EditRoleDialog({
             </div>
 
             <div className='space-y-1.5'>
-              <label className='text-xs font-medium text-foreground'>
+              <label className='text-foreground text-xs font-medium'>
                 {t('field-slug')}
               </label>
               <Input
                 value={role.slug}
                 disabled
-                className='h-9 text-xs font-mono bg-muted/50 cursor-not-allowed'
+                className='bg-muted/50 h-9 cursor-not-allowed font-mono text-xs'
               />
             </div>
 
-            <div className='sm:col-span-2 space-y-1.5'>
-              <label className='text-xs font-medium text-foreground'>
+            <div className='space-y-1.5 sm:col-span-2'>
+              <label className='text-foreground text-xs font-medium'>
                 {t('field-description')}
               </label>
               <Input
@@ -145,8 +159,8 @@ export function EditRoleDialog({
           </div>
 
           {/* Matrix Section */}
-          <div className='flex-1 min-h-0 border-t pt-3'>
-            <div className='mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+          <div className='min-h-0 flex-1 border-t pt-3'>
+            <div className='text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase'>
               {t('matrix-title')}
             </div>
             <PermissionMatrix

@@ -1,4 +1,8 @@
-import { getCacheHealth, type GqlOpts, type CacheHealthPayload } from '../api/cache';
+import {
+  getCacheHealth,
+  type GqlOpts,
+  type CacheHealthPayload
+} from '../api/cache';
 import { CacheStatus } from '../components/cache-status';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/shadcn/alert';
 
@@ -31,4 +35,3 @@ export default async function CachePage({ token, tenantSlug }: CachePageProps) {
 
   return <CacheStatus health={health} />;
 }
-

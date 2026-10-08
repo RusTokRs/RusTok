@@ -42,6 +42,15 @@ nav_label = "Overview"
 
 [provides.storefront_ui]
 leptos_crate = "rustok-seo-storefront"
+slot = "home_after_hero"
+route_segment = "seo"
+page_title = "SEO"
+next_package = "@rustok/seo-frontend"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"
 
 [settings]
 # Submodule Feature Enablement (Suite submodules)

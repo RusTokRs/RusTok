@@ -147,7 +147,9 @@ export function BundleCreateDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value='fixed'>Fixed Composition</SelectItem>
-                    <SelectItem value='flexible'>Flexible / Configurable</SelectItem>
+                    <SelectItem value='flexible'>
+                      Flexible / Configurable
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -218,7 +220,9 @@ export function BundleCreateDialog({
             </Button>
             <Button
               type='submit'
-              disabled={!name.trim() || !slug.trim() || isSubmitting || disabled}
+              disabled={
+                !name.trim() || !slug.trim() || isSubmitting || disabled
+              }
             >
               {isSubmitting ? (
                 <>

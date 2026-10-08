@@ -7,7 +7,8 @@ export interface PermissionRecord {
   roles: string[];
 }
 
-export type RoleBadgeVariant = 'default' | 'secondary' | 'outline' | 'destructive';
+export type RoleBadgeVariant =
+  'default' | 'secondary' | 'outline' | 'destructive';
 
 export interface RbacStats {
   totalRoles: number;

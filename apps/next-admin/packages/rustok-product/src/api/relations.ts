@@ -104,12 +104,7 @@ export async function addProductRelation(
   const data = await executor<
     { input: AddProductRelationInput },
     { addProductRelation: ProductRelation }
-  >(
-    ADD_RELATION_MUTATION,
-    { input },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(ADD_RELATION_MUTATION, { input }, opts.token, opts.tenantSlug);
 
   return data.addProductRelation;
 }
@@ -126,12 +121,7 @@ export async function removeProductRelation(
   const data = await executor<
     { id: string },
     { removeProductRelation: boolean }
-  >(
-    REMOVE_RELATION_MUTATION,
-    { id },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(REMOVE_RELATION_MUTATION, { id }, opts.token, opts.tenantSlug);
 
   return data.removeProductRelation;
 }

@@ -11,7 +11,11 @@ impl MigrationTrait for Migration {
             DatabaseBackend::Postgres => install_postgres(manager).await?,
             DatabaseBackend::MySql => install_mysql(manager).await?,
             DatabaseBackend::Sqlite => install_sqlite(manager).await?,
-            backend => return Err(DbErr::Custom(format!("unsupported database backend: {backend:?}"))),
+            backend => {
+                return Err(DbErr::Custom(format!(
+                    "unsupported database backend: {backend:?}"
+                )));
+            }
         }
         Ok(())
     }
@@ -33,7 +37,11 @@ impl MigrationTrait for Migration {
                     "SELECT CASE WHEN EXISTS (SELECT 1 FROM cart_line_items WHERE fulfillment_requirement = 'digital') THEN RAISE(ABORT, 'cannot roll back cart fulfillment requirement while digital lines exist') END; DROP TRIGGER IF EXISTS cart_line_items_fulfillment_update_guard; DROP TRIGGER IF EXISTS cart_line_items_fulfillment_insert_guard; ALTER TABLE cart_line_items DROP COLUMN fulfillment_requirement;",
                 ).await?;
             }
-            backend => return Err(DbErr::Custom(format!("unsupported database backend: {backend:?}"))),
+            backend => {
+                return Err(DbErr::Custom(format!(
+                    "unsupported database backend: {backend:?}"
+                )));
+            }
         }
         Ok(())
     }
@@ -57,7 +65,10 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
 }
 
 async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager.get_connection().execute_unprepared(r#"
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
         ALTER TABLE cart_line_items
             ADD COLUMN fulfillment_requirement VARCHAR(16) NOT NULL DEFAULT 'physical';
         ALTER TABLE cart_line_items
@@ -69,7 +80,9 @@ async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     OR
                     (fulfillment_requirement = 'physical' AND TRIM(shipping_profile_slug) <> '')
                 );
-    "#).await?;
+    "#,
+        )
+        .await?;
     Ok(())
 }
 

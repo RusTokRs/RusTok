@@ -938,7 +938,7 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
           </button>
         </div>
         {auditEvents.length ? (
-          <div className='divide-border border-border overflow-hidden rounded-xl border divide-y'>
+          <div className='divide-border border-border divide-y overflow-hidden rounded-xl border'>
             <div className='bg-muted/50 text-muted-foreground grid grid-cols-6 px-4 py-2.5 text-xs font-semibold uppercase'>
               <span>Time</span>
               <span>Action</span>
@@ -952,10 +952,12 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
                 key={event.id}
                 className='hover:bg-muted/30 grid grid-cols-6 items-center px-4 py-3 text-sm transition-colors'
               >
-                <span className='text-muted-foreground whitespace-nowrap text-xs'>
+                <span className='text-muted-foreground text-xs whitespace-nowrap'>
                   {event.createdAt}
                 </span>
-                <span className='text-foreground font-medium'>{event.action}</span>
+                <span className='text-foreground font-medium'>
+                  {event.action}
+                </span>
                 <span>
                   <span
                     className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${

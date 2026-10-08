@@ -37,7 +37,9 @@ export function DeleteRoleDialog({
 
   if (!role) return null;
 
-  const isSystem = Boolean(role.isSystem) || ['super_admin', 'admin', 'manager', 'customer'].includes(role.slug);
+  const isSystem =
+    Boolean(role.isSystem) ||
+    ['super_admin', 'admin', 'manager', 'customer'].includes(role.slug);
 
   const handleDelete = async () => {
     if (isSystem) {
@@ -68,8 +70,14 @@ export function DeleteRoleDialog({
       <DialogContent className='max-w-md p-6'>
         <DialogHeader>
           <div className='flex items-center gap-3'>
-            <div className={`p-2 rounded-full ${isSystem ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive'}`}>
-              {isSystem ? <IconLock className='h-5 w-5' /> : <IconAlertTriangle className='h-5 w-5' />}
+            <div
+              className={`rounded-full p-2 ${isSystem ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive'}`}
+            >
+              {isSystem ? (
+                <IconLock className='h-5 w-5' />
+              ) : (
+                <IconAlertTriangle className='h-5 w-5' />
+              )}
             </div>
             <div>
               <DialogTitle>
@@ -83,11 +91,11 @@ export function DeleteRoleDialog({
         </DialogHeader>
 
         {isSystem ? (
-          <div className='rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200 mt-2'>
+          <div className='mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200'>
             {t('system-protected-tooltip')}
           </div>
         ) : (
-          <div className='rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground mt-2'>
+          <div className='border-border bg-muted/40 text-muted-foreground mt-2 rounded-lg border p-3 text-xs'>
             {t('delete-dialog-warning')}
           </div>
         )}

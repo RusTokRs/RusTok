@@ -40,6 +40,8 @@ ssr = [
   "dep:rustok-outbox",
   "dep:rustok-seo",
   "dep:rustok-seo-render",
+  "dep:rustok-seo-storefront",
+  "rustok-seo-storefront/ssr",
   "dep:rustok-tenant",
   "dep:rustok-web",
   "dep:sea-orm",
@@ -110,6 +112,7 @@ rustok-outbox = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-seo = { workspace = true, optional = true }
 rustok-seo-render = { workspace = true, optional = true }
+rustok-seo-storefront = { path = "../../crates/modules/rustok-seo/storefront", default-features = false, optional = true }
 rustok-tenant = { workspace = true, optional = true }
 rustok-web = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }

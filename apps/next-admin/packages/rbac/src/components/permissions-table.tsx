@@ -66,7 +66,9 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
       }
     }
 
-    return Array.from(map.values()).sort((a, b) => a.slug.localeCompare(b.slug));
+    return Array.from(map.values()).sort((a, b) =>
+      a.slug.localeCompare(b.slug)
+    );
   }, [roles]);
 
   const modules = React.useMemo(() => {
@@ -93,9 +95,9 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
   return (
     <div className='space-y-4'>
       {/* Filters row */}
-      <div className='flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3'>
-        <div className='relative flex-1 max-w-sm'>
-          <IconSearch className='absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground' />
+      <div className='flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center'>
+        <div className='relative max-w-sm flex-1'>
+          <IconSearch className='text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4' />
           <Input
             placeholder='Search permissions or roles...'
             value={search}
@@ -105,13 +107,15 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
         </div>
 
         <div className='flex items-center gap-2'>
-          <IconFilter className='h-4 w-4 text-muted-foreground' />
+          <IconFilter className='text-muted-foreground h-4 w-4' />
           <Select value={selectedModule} onValueChange={setSelectedModule}>
             <SelectTrigger className='w-[180px]'>
               <SelectValue placeholder='All modules' />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value='all'>All Modules ({modules.length})</SelectItem>
+              <SelectItem value='all'>
+                All Modules ({modules.length})
+              </SelectItem>
               {modules.map((mod) => (
                 <SelectItem key={mod} value={mod}>
                   {mod}
@@ -123,7 +127,7 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
       </div>
 
       {/* Table view */}
-      <div className='rounded-xl border bg-card shadow-sm overflow-hidden'>
+      <div className='bg-card overflow-hidden rounded-xl border shadow-sm'>
         <Table>
           <TableHeader>
             <TableRow className='bg-muted/50'>
@@ -138,20 +142,23 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
               filteredPermissions.map((perm) => (
                 <TableRow key={perm.slug} className='hover:bg-muted/40'>
                   <TableCell>
-                    <Badge variant='outline' className='font-mono text-xs capitalize'>
+                    <Badge
+                      variant='outline'
+                      className='font-mono text-xs capitalize'
+                    >
                       {perm.module}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     <div className='flex items-center gap-2'>
-                      <IconKey className='h-3.5 w-3.5 text-muted-foreground flex-shrink-0' />
-                      <span className='font-mono text-xs font-semibold text-foreground'>
+                      <IconKey className='text-muted-foreground h-3.5 w-3.5 flex-shrink-0' />
+                      <span className='text-foreground font-mono text-xs font-semibold'>
                         {perm.slug}
                       </span>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant='secondary' className='text-xs font-mono'>
+                    <Badge variant='secondary' className='font-mono text-xs'>
                       {perm.action}
                     </Badge>
                   </TableCell>
@@ -176,7 +183,10 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={4} className='h-32 text-center text-muted-foreground'>
+                <TableCell
+                  colSpan={4}
+                  className='text-muted-foreground h-32 text-center'
+                >
                   No permissions found matching the filter.
                 </TableCell>
               </TableRow>
@@ -185,9 +195,10 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
         </Table>
       </div>
 
-      <div className='flex items-center justify-between text-xs text-muted-foreground px-1'>
+      <div className='text-muted-foreground flex items-center justify-between px-1 text-xs'>
         <span>
-          Showing {filteredPermissions.length} of {permissions.length} total permissions
+          Showing {filteredPermissions.length} of {permissions.length} total
+          permissions
         </span>
         <span>{modules.length} active modules</span>
       </div>

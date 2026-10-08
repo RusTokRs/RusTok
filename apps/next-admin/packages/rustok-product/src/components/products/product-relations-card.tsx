@@ -165,16 +165,17 @@ export function ProductRelationsCard({
 
   return (
     <>
-      <Card className='rounded-2xl border-border shadow-sm'>
+      <Card className='border-border rounded-2xl shadow-sm'>
         <CardHeader className='pb-3'>
           <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
             <div>
-              <CardTitle className='text-sm font-semibold flex items-center gap-2'>
-                <GitFork className='h-4 w-4 text-primary' />
+              <CardTitle className='flex items-center gap-2 text-sm font-semibold'>
+                <GitFork className='text-primary h-4 w-4' />
                 Связанные товары (Cross-sell, Up-sell, Комплекты)
               </CardTitle>
               <CardDescription className='text-xs'>
-                Управление мерчандайзинговыми связями: сопутствующие товары, аксессуары, апселл и замены
+                Управление мерчандайзинговыми связями: сопутствующие товары,
+                аксессуары, апселл и замены
               </CardDescription>
             </div>
             {onAddRelation && (
@@ -184,7 +185,7 @@ export function ProductRelationsCard({
                 variant='outline'
                 onClick={() => setIsAddOpen(true)}
                 disabled={disabled}
-                className='h-8 rounded-xl text-xs gap-1.5 self-start sm:self-auto'
+                className='h-8 gap-1.5 self-start rounded-xl text-xs sm:self-auto'
               >
                 <Plus className='h-3.5 w-3.5' />
                 Добавить связь
@@ -209,14 +210,15 @@ export function ProductRelationsCard({
               const label =
                 ft === 'ALL'
                   ? 'Все'
-                  : RELATION_TYPE_BADGES[ft as ProductRelationType]?.label || ft;
+                  : RELATION_TYPE_BADGES[ft as ProductRelationType]?.label ||
+                    ft;
 
               return (
                 <button
                   key={ft}
                   type='button'
                   onClick={() => setActiveFilter(ft)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-medium transition ${
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-medium transition ${
                     isActive
                       ? 'bg-primary text-primary-foreground shadow-sm'
                       : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -224,7 +226,7 @@ export function ProductRelationsCard({
                 >
                   <span>{label}</span>
                   <span
-                    className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+                    className={`py-0.2 rounded-full px-1.5 text-[10px] ${
                       isActive
                         ? 'bg-primary-foreground/20 text-primary-foreground'
                         : 'bg-background text-muted-foreground'
@@ -240,15 +242,16 @@ export function ProductRelationsCard({
 
         <CardContent className='pt-0'>
           {filteredRelations.length === 0 ? (
-            <div className='rounded-xl border border-dashed border-border/70 p-8 text-center'>
-              <div className='mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-muted-foreground mb-3'>
+            <div className='border-border/70 rounded-xl border border-dashed p-8 text-center'>
+              <div className='bg-muted text-muted-foreground mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl'>
                 <GitFork className='h-5 w-5' />
               </div>
-              <p className='text-xs font-medium text-foreground'>
+              <p className='text-foreground text-xs font-medium'>
                 Нет связанных товаров
               </p>
-              <p className='text-[11px] text-muted-foreground mt-0.5 max-w-sm mx-auto'>
-                Добавьте кросс-селл или аксессуары, чтобы повысить средний чек и помочь покупателям найти нужный комплект.
+              <p className='text-muted-foreground mx-auto mt-0.5 max-w-sm text-[11px]'>
+                Добавьте кросс-селл или аксессуары, чтобы повысить средний чек и
+                помочь покупателям найти нужный комплект.
               </p>
               {onAddRelation && (
                 <Button
@@ -257,7 +260,7 @@ export function ProductRelationsCard({
                   variant='secondary'
                   onClick={() => setIsAddOpen(true)}
                   disabled={disabled}
-                  className='mt-3.5 h-8 rounded-xl text-xs gap-1.5'
+                  className='mt-3.5 h-8 gap-1.5 rounded-xl text-xs'
                 >
                   <Plus className='h-3.5 w-3.5' />
                   Связать товар
@@ -265,7 +268,7 @@ export function ProductRelationsCard({
               )}
             </div>
           ) : (
-            <div className='overflow-x-auto rounded-xl border border-border'>
+            <div className='border-border overflow-x-auto rounded-xl border'>
               <Table>
                 <TableHeader>
                   <TableRow className='bg-muted/30 text-[11px]'>
@@ -285,16 +288,14 @@ export function ProductRelationsCard({
                     return (
                       <TableRow key={rel.id} className='text-xs'>
                         {/* Position / Reorder Controls */}
-                        <TableCell className='text-center py-2'>
+                        <TableCell className='py-2 text-center'>
                           <div className='flex items-center justify-center gap-0.5'>
                             <Button
                               type='button'
                               variant='ghost'
                               size='icon'
-                              className='h-6 w-6 rounded-md text-muted-foreground hover:text-foreground'
-                              disabled={
-                                disabled || isReordering || idx === 0
-                              }
+                              className='text-muted-foreground hover:text-foreground h-6 w-6 rounded-md'
+                              disabled={disabled || isReordering || idx === 0}
                               onClick={() =>
                                 handleMove(idx, 'up', rel.relationType)
                               }
@@ -302,14 +303,14 @@ export function ProductRelationsCard({
                             >
                               <ArrowUp className='h-3 w-3' />
                             </Button>
-                            <span className='font-mono text-[11px] w-4 text-center text-muted-foreground'>
+                            <span className='text-muted-foreground w-4 text-center font-mono text-[11px]'>
                               {rel.position}
                             </span>
                             <Button
                               type='button'
                               variant='ghost'
                               size='icon'
-                              className='h-6 w-6 rounded-md text-muted-foreground hover:text-foreground'
+                              className='text-muted-foreground hover:text-foreground h-6 w-6 rounded-md'
                               disabled={
                                 disabled ||
                                 isReordering ||
@@ -332,10 +333,10 @@ export function ProductRelationsCard({
                               <img
                                 src={relProduct.thumbnail}
                                 alt={relProduct.title}
-                                className='h-9 w-9 rounded-lg object-cover border border-border shrink-0'
+                                className='border-border h-9 w-9 shrink-0 rounded-lg border object-cover'
                               />
                             ) : (
-                              <div className='flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-muted-foreground border border-border shrink-0'>
+                              <div className='bg-muted text-muted-foreground border-border flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border'>
                                 <Package className='h-4 w-4' />
                               </div>
                             )}
@@ -343,14 +344,17 @@ export function ProductRelationsCard({
                               <div className='flex items-center gap-1.5'>
                                 <Link
                                   href={`/dashboard/product/${rel.relatedProductId}`}
-                                  className='font-semibold text-foreground hover:text-primary transition truncate'
+                                  className='text-foreground hover:text-primary truncate font-semibold transition'
                                 >
-                                  {relProduct?.title || `Товар #${rel.relatedProductId.slice(0, 8)}...`}
+                                  {relProduct?.title ||
+                                    `Товар #${rel.relatedProductId.slice(0, 8)}...`}
                                 </Link>
-                                <ExternalLink className='h-3 w-3 text-muted-foreground shrink-0' />
+                                <ExternalLink className='text-muted-foreground h-3 w-3 shrink-0' />
                               </div>
-                              <div className='text-[10px] text-muted-foreground font-mono truncate'>
-                                {relProduct?.sku ? `SKU: ${relProduct.sku} • ` : ''}
+                              <div className='text-muted-foreground truncate font-mono text-[10px]'>
+                                {relProduct?.sku
+                                  ? `SKU: ${relProduct.sku} • `
+                                  : ''}
                                 ID: {rel.relatedProductId}
                               </div>
                             </div>
@@ -361,26 +365,26 @@ export function ProductRelationsCard({
                         <TableCell className='py-2'>
                           <Badge
                             variant='outline'
-                            className={`text-[10px] font-medium uppercase px-2 py-0.5 ${badge?.className || ''}`}
+                            className={`px-2 py-0.5 text-[10px] font-medium uppercase ${badge?.className || ''}`}
                           >
                             {badge?.label || rel.relationType}
                           </Badge>
                         </TableCell>
 
                         {/* Date Added */}
-                        <TableCell className='py-2 text-[11px] text-muted-foreground'>
+                        <TableCell className='text-muted-foreground py-2 text-[11px]'>
                           {rel.createdAt
                             ? new Date(rel.createdAt).toLocaleDateString()
                             : '—'}
                         </TableCell>
 
                         {/* Actions */}
-                        <TableCell className='text-right py-2'>
+                        <TableCell className='py-2 text-right'>
                           <Button
                             type='button'
                             variant='ghost'
                             size='icon'
-                            className='h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+                            className='h-7 w-7 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30'
                             disabled={disabled || isDeleting}
                             onClick={() => handleDelete(rel.id)}
                             title='Удалить связь'

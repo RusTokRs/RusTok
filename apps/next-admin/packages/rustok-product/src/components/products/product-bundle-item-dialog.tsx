@@ -53,9 +53,12 @@ export function ProductBundleItemDialog({
   disabled
 }: ProductBundleItemDialogProps) {
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [searchResults, setSearchResults] = React.useState<SearchProductResult[]>([]);
+  const [searchResults, setSearchResults] = React.useState<
+    SearchProductResult[]
+  >([]);
   const [isSearching, setIsSearching] = React.useState(false);
-  const [selectedProduct, setSelectedProduct] = React.useState<SearchProductResult | null>(null);
+  const [selectedProduct, setSelectedProduct] =
+    React.useState<SearchProductResult | null>(null);
 
   const [quantity, setQuantity] = React.useState(1);
   const [isOptional, setIsOptional] = React.useState(false);
@@ -140,7 +143,7 @@ export function ProductBundleItemDialog({
             <div className='space-y-2'>
               <Label>Search Product</Label>
               <div className='relative'>
-                <Search className='absolute left-3 top-2.5 h-4 w-4 text-muted-foreground' />
+                <Search className='text-muted-foreground absolute top-2.5 left-3 h-4 w-4' />
                 <Input
                   placeholder='Search by title, SKU, or handle...'
                   value={searchQuery}
@@ -151,20 +154,20 @@ export function ProductBundleItemDialog({
                   disabled={isSubmitting || disabled}
                 />
                 {isSearching && (
-                  <Loader2 className='absolute right-3 top-2.5 h-4 w-4 animate-spin text-muted-foreground' />
+                  <Loader2 className='text-muted-foreground absolute top-2.5 right-3 h-4 w-4 animate-spin' />
                 )}
               </div>
 
               {searchResults.length > 0 && !selectedProduct && (
-                <div className='max-h-48 overflow-y-auto rounded-md border bg-popover p-1 shadow-md'>
+                <div className='bg-popover max-h-48 overflow-y-auto rounded-md border p-1 shadow-md'>
                   {searchResults.map((product) => (
                     <div
                       key={product.id}
                       onClick={() => setSelectedProduct(product)}
-                      className='flex cursor-pointer items-center justify-between rounded px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground'
+                      className='hover:bg-accent hover:text-accent-foreground flex cursor-pointer items-center justify-between rounded px-3 py-2 text-sm'
                     >
                       <div className='flex items-center gap-2'>
-                        <div className='flex h-8 w-8 items-center justify-center rounded bg-muted'>
+                        <div className='bg-muted flex h-8 w-8 items-center justify-center rounded'>
                           {product.thumbnail ? (
                             <img
                               src={product.thumbnail}
@@ -172,20 +175,22 @@ export function ProductBundleItemDialog({
                               className='h-full w-full rounded object-cover'
                             />
                           ) : (
-                            <Package className='h-4 w-4 text-muted-foreground' />
+                            <Package className='text-muted-foreground h-4 w-4' />
                           )}
                         </div>
                         <div>
                           <p className='font-medium'>{product.title}</p>
                           {product.sku && (
-                            <p className='text-xs text-muted-foreground'>
+                            <p className='text-muted-foreground text-xs'>
                               SKU: {product.sku}
                             </p>
                           )}
                         </div>
                       </div>
                       {product.price && (
-                        <span className='font-mono text-xs'>{product.price}</span>
+                        <span className='font-mono text-xs'>
+                          {product.price}
+                        </span>
                       )}
                     </div>
                   ))}
@@ -193,9 +198,9 @@ export function ProductBundleItemDialog({
               )}
 
               {selectedProduct && (
-                <div className='flex items-center justify-between rounded-lg border border-primary/40 bg-primary/5 p-3 text-sm'>
+                <div className='border-primary/40 bg-primary/5 flex items-center justify-between rounded-lg border p-3 text-sm'>
                   <div className='flex items-center gap-3'>
-                    <div className='flex h-10 w-10 items-center justify-center rounded bg-background shadow-xs'>
+                    <div className='bg-background flex h-10 w-10 items-center justify-center rounded shadow-xs'>
                       {selectedProduct.thumbnail ? (
                         <img
                           src={selectedProduct.thumbnail}
@@ -203,13 +208,15 @@ export function ProductBundleItemDialog({
                           className='h-full w-full rounded object-cover'
                         />
                       ) : (
-                        <Package className='h-5 w-5 text-muted-foreground' />
+                        <Package className='text-muted-foreground h-5 w-5' />
                       )}
                     </div>
                     <div>
                       <p className='font-semibold'>{selectedProduct.title}</p>
-                      <p className='text-xs text-muted-foreground'>
-                        {selectedProduct.sku ? `SKU: ${selectedProduct.sku}` : selectedProduct.id}
+                      <p className='text-muted-foreground text-xs'>
+                        {selectedProduct.sku
+                          ? `SKU: ${selectedProduct.sku}`
+                          : selectedProduct.id}
                       </p>
                     </div>
                   </div>
@@ -228,7 +235,7 @@ export function ProductBundleItemDialog({
 
             {/* Step 2: Configuration */}
             {selectedProduct && (
-              <div className='space-y-4 rounded-md border p-3 bg-muted/20'>
+              <div className='bg-muted/20 space-y-4 rounded-md border p-3'>
                 <div className='grid grid-cols-2 gap-4'>
                   <div className='space-y-1'>
                     <Label htmlFor='bundle-item-qty'>Quantity</Label>
@@ -245,7 +252,9 @@ export function ProductBundleItemDialog({
                   </div>
 
                   <div className='space-y-1'>
-                    <Label htmlFor='bundle-item-discount'>Item Discount (%)</Label>
+                    <Label htmlFor='bundle-item-discount'>
+                      Item Discount (%)
+                    </Label>
                     <Input
                       id='bundle-item-discount'
                       type='number'
@@ -265,8 +274,9 @@ export function ProductBundleItemDialog({
                 <div className='flex items-center justify-between pt-2'>
                   <div className='space-y-0.5'>
                     <Label className='text-sm'>Optional Item</Label>
-                    <p className='text-xs text-muted-foreground'>
-                      Allow customers to deselect or swap this item in flexible kits.
+                    <p className='text-muted-foreground text-xs'>
+                      Allow customers to deselect or swap this item in flexible
+                      kits.
                     </p>
                   </div>
                   <Switch

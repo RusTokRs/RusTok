@@ -24,7 +24,7 @@ export function VersionHistory({
   }
 
   return (
-    <div className='divide-border border-border overflow-hidden rounded-xl border divide-y'>
+    <div className='divide-border border-border divide-y overflow-hidden rounded-xl border'>
       {versions.map((v) => (
         <VersionRow
           key={v.version}
@@ -67,7 +67,7 @@ function VersionRow({
   return (
     <div className='hover:bg-muted/30 flex items-center justify-between px-4 py-3 transition-colors'>
       <div className='flex items-center gap-3'>
-        <span className='font-mono text-xs font-semibold text-foreground'>
+        <span className='text-foreground font-mono text-xs font-semibold'>
           v{version.version}
         </span>
         <span className='text-muted-foreground text-xs'>
@@ -79,7 +79,7 @@ function VersionRow({
         <button
           onClick={handleRestore}
           disabled={pending}
-          className='hover:bg-muted rounded border border-border px-2.5 py-1 text-xs font-medium text-foreground transition disabled:opacity-50'
+          className='hover:bg-muted border-border text-foreground rounded border px-2.5 py-1 text-xs font-medium transition disabled:opacity-50'
         >
           {pending ? '…' : 'Restore'}
         </button>

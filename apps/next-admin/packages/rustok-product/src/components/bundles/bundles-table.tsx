@@ -91,14 +91,14 @@ export function BundlesTable({
     <div className='space-y-4'>
       {/* Search & Filters Bar */}
       <div className='flex flex-wrap items-center justify-between gap-3'>
-        <div className='flex flex-1 items-center gap-2 min-w-[280px] max-w-md'>
+        <div className='flex max-w-md min-w-[280px] flex-1 items-center gap-2'>
           <div className='relative w-full'>
-            <Search className='absolute left-3 top-2.5 h-4 w-4 text-muted-foreground' />
+            <Search className='text-muted-foreground absolute top-2.5 left-3 h-4 w-4' />
             <Input
               placeholder='Search bundles by name or slug...'
               value={search}
               onChange={handleSearchChange}
-              className='pl-9 h-9 text-xs'
+              className='h-9 pl-9 text-xs'
               disabled={disabled}
             />
           </div>
@@ -140,7 +140,7 @@ export function BundlesTable({
             <Button
               size='sm'
               onClick={onCreateClick}
-              className='gap-1.5 h-9 text-xs'
+              className='h-9 gap-1.5 text-xs'
               disabled={disabled}
             >
               <Plus className='h-3.5 w-3.5' />
@@ -151,7 +151,7 @@ export function BundlesTable({
       </div>
 
       {/* Bundles Table */}
-      <div className='rounded-md border bg-card'>
+      <div className='bg-card rounded-md border'>
         <Table>
           <TableHeader>
             <TableRow>
@@ -168,13 +168,14 @@ export function BundlesTable({
               <TableRow>
                 <TableCell
                   colSpan={6}
-                  className='h-36 text-center text-sm text-muted-foreground'
+                  className='text-muted-foreground h-36 text-center text-sm'
                 >
                   <div className='flex flex-col items-center justify-center gap-2'>
-                    <Boxes className='h-8 w-8 text-muted-foreground/60' />
+                    <Boxes className='text-muted-foreground/60 h-8 w-8' />
                     <p className='font-medium'>No bundles found</p>
-                    <p className='text-xs text-muted-foreground'>
-                      Create the first product bundle or kit for your store catalog.
+                    <p className='text-muted-foreground text-xs'>
+                      Create the first product bundle or kit for your store
+                      catalog.
                     </p>
                     {onCreateClick && (
                       <Button
@@ -198,12 +199,14 @@ export function BundlesTable({
                   <TableRow key={bundle.id}>
                     <TableCell>
                       <div className='flex items-center gap-3'>
-                        <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded bg-primary/10 text-primary'>
+                        <div className='bg-primary/10 text-primary flex h-9 w-9 shrink-0 items-center justify-center rounded'>
                           <Boxes className='h-4 w-4' />
                         </div>
                         <div className='min-w-0'>
-                          <p className='font-medium text-sm truncate'>{bundle.name}</p>
-                          <p className='text-xs text-muted-foreground font-mono truncate'>
+                          <p className='truncate text-sm font-medium'>
+                            {bundle.name}
+                          </p>
+                          <p className='text-muted-foreground truncate font-mono text-xs'>
                             /{bundle.slug}
                           </p>
                         </div>
@@ -224,8 +227,8 @@ export function BundlesTable({
                           bundle.status === 'active'
                             ? 'default'
                             : bundle.status === 'draft'
-                            ? 'secondary'
-                            : 'outline'
+                              ? 'secondary'
+                              : 'outline'
                         }
                         className='text-xs font-normal capitalize'
                       >
@@ -234,8 +237,8 @@ export function BundlesTable({
                     </TableCell>
 
                     <TableCell className='text-center font-mono text-xs'>
-                      <span className='inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 font-semibold'>
-                        <Layers className='h-3 w-3 text-muted-foreground' />
+                      <span className='bg-muted inline-flex items-center gap-1 rounded px-2 py-0.5 font-semibold'>
+                        <Layers className='text-muted-foreground h-3 w-3' />
                         {itemsCount}
                       </span>
                     </TableCell>
@@ -252,7 +255,9 @@ export function BundlesTable({
                           -{bundle.discountValue}
                         </span>
                       ) : (
-                        <span className='text-xs text-muted-foreground'>None</span>
+                        <span className='text-muted-foreground text-xs'>
+                          None
+                        </span>
                       )}
                     </TableCell>
 
@@ -263,9 +268,11 @@ export function BundlesTable({
                             asChild
                             variant='ghost'
                             size='icon'
-                            className='h-8 w-8 text-muted-foreground hover:text-foreground'
+                            className='text-muted-foreground hover:text-foreground h-8 w-8'
                           >
-                            <Link href={`/dashboard/product/${bundle.bundleProductId}`}>
+                            <Link
+                              href={`/dashboard/product/${bundle.bundleProductId}`}
+                            >
                               <ExternalLink className='h-4 w-4' />
                             </Link>
                           </Button>
@@ -274,7 +281,7 @@ export function BundlesTable({
                           <Button
                             variant='ghost'
                             size='icon'
-                            className='h-8 w-8 text-destructive hover:bg-destructive/10'
+                            className='text-destructive hover:bg-destructive/10 h-8 w-8'
                             onClick={() => onDeleteBundle(bundle.id)}
                             disabled={disabled}
                           >
@@ -293,7 +300,7 @@ export function BundlesTable({
 
       {/* Pagination Bar */}
       {totalPages > 1 && onPageChange && (
-        <div className='flex items-center justify-between text-xs text-muted-foreground'>
+        <div className='text-muted-foreground flex items-center justify-between text-xs'>
           <span>
             Showing {(page - 1) * perPage + 1} to{' '}
             {Math.min(page * perPage, total)} of {total} bundles

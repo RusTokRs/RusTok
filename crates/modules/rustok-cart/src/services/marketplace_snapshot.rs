@@ -3,9 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use rust_decimal::Decimal;
 use rustok_core::{generate_id, money};
-use rustok_fulfillment::{
-    ShippingOptionReadPort, in_process_shipping_option_read_port,
-};
+use rustok_fulfillment::{ShippingOptionReadPort, in_process_shipping_option_read_port};
 use rustok_tax::{TaxCalculationPort, in_process_tax_calculation_port};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
@@ -115,7 +113,11 @@ impl CartMarketplaceSnapshotService {
             cart_id: Set(cart_id),
             product_id: Set(input.line_item.product_id),
             variant_id: Set(input.line_item.variant_id),
-            fulfillment_requirement: Set(input.line_item.fulfillment_requirement.as_str().to_string()),
+            fulfillment_requirement: Set(input
+                .line_item
+                .fulfillment_requirement
+                .as_str()
+                .to_string()),
             shipping_profile_slug: Set(shipping_profile_slug.clone().unwrap_or_default()),
             sku: Set(input.line_item.sku),
             quantity: Set(input.line_item.quantity),
@@ -143,7 +145,13 @@ impl CartMarketplaceSnapshotService {
         .await?;
         let snapshot_model = insert_snapshot(&transaction, line_item_id, snapshot).await?;
 
-        recalculate_totals(&transaction, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
+        recalculate_totals(
+            &transaction,
+            self.tax_calculation_port.as_ref(),
+            self.shipping_option_read_port.as_ref(),
+            cart,
+        )
+        .await?;
         reconcile_cart_shipping_state(&transaction, cart_id).await?;
         transaction.commit().await?;
 
@@ -400,15 +408,15 @@ fn validate_line_binding(
     if line.product_id != Some(input.master_product_id)
         || line.variant_id != Some(input.master_variant_id)
     {
-        let requirement = super::cart::helpers::line_item_fulfillment_requirement(
-            &line.fulfillment_requirement,
-        )?;
+        let requirement =
+            super::cart::helpers::line_item_fulfillment_requirement(&line.fulfillment_requirement)?;
         match requirement {
             crate::dto::CartLineFulfillmentRequirement::Digital
                 if input.fulfillment_profile_slug.is_some() =>
             {
                 return Err(CartError::Validation(
-                    "digital marketplace cart lines must not have a fulfillment profile".to_string(),
+                    "digital marketplace cart lines must not have a fulfillment profile"
+                        .to_string(),
                 ));
             }
             crate::dto::CartLineFulfillmentRequirement::Physical
@@ -430,9 +438,9 @@ fn validate_line_binding(
     let expected_profile = if line.fulfillment_requirement.eq_ignore_ascii_case("digital") {
         None
     } else {
-        super::cart::helpers::normalize_optional_shipping_profile_slug(
-            Some(line.shipping_profile_slug.as_str()),
-        )
+        super::cart::helpers::normalize_optional_shipping_profile_slug(Some(
+            line.shipping_profile_slug.as_str(),
+        ))
     };
     if input.fulfillment_profile_slug != expected_profile {
         return Err(CartError::Validation(format!(

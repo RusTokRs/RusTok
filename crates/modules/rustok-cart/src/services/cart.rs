@@ -23,9 +23,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use rustok_core::{generate_id, money};
-use rustok_fulfillment::{
-    ShippingOptionReadPort, in_process_shipping_option_read_port,
-};
+use rustok_fulfillment::{ShippingOptionReadPort, in_process_shipping_option_read_port};
 use rustok_tax::{TaxCalculationPort, in_process_tax_calculation_port};
 
 use crate::dto::{
@@ -231,8 +229,8 @@ impl CartService {
             if let Some(seller_id) = seller_id {
                 let exponent = money::currency_exponent(&cart.currency_code)
                     .map_err(|error| CartError::Validation(error.to_string()))?;
-                let unit_amount = money::to_fixed_point_units(input.unit_price, exponent)
-                    .map_err(|error| {
+                let unit_amount =
+                    money::to_fixed_point_units(input.unit_price, exponent).map_err(|error| {
                         CartError::Validation(format!(
                             "marketplace unit price {} is not convertible to minor units: {error}",
                             input.unit_price
@@ -244,16 +242,14 @@ impl CartService {
                         CartError::Validation("marketplace subtotal overflow".to_string())
                     })?;
                 let discount_amount = match pricing_adjustment.as_ref() {
-                    Some(adjustment) => {
-                        money::to_fixed_point_units(adjustment.amount, exponent)
-                            .map_err(|error| {
-                                CartError::Validation(format!(
-                                    "marketplace discount {} is not convertible to minors: {error}",
-                                    adjustment.amount
-                                ))
-                            })?
-                            .min(subtotal_amount)
-                    }
+                    Some(adjustment) => money::to_fixed_point_units(adjustment.amount, exponent)
+                        .map_err(|error| {
+                            CartError::Validation(format!(
+                                "marketplace discount {} is not convertible to minors: {error}",
+                                adjustment.amount
+                            ))
+                        })?
+                        .min(subtotal_amount),
                     None => 0,
                 };
                 let total_amount = subtotal_amount.saturating_sub(discount_amount);
@@ -265,7 +261,7 @@ impl CartService {
                     master_variant_id: Set(variant_id),
                     listing_terms_version: Set(1),
                     currency_code: Set(cart.currency_code.clone().to_uppercase()),
-                    currency_exponent: Set(exponent),
+                    currency_exponent: Set(i16::from(exponent)),
                     unit_amount: Set(unit_amount),
                     subtotal_amount: Set(subtotal_amount),
                     discount_amount: Set(discount_amount),
@@ -289,7 +285,13 @@ impl CartService {
         )
         .await?;
 
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
+        recalculate_totals(
+            &txn,
+            self.tax_calculation_port.as_ref(),
+            self.shipping_option_read_port.as_ref(),
+            cart,
+        )
+        .await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
@@ -415,7 +417,13 @@ impl CartService {
             .await?;
         }
 
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
+        recalculate_totals(
+            &txn,
+            self.tax_calculation_port.as_ref(),
+            self.shipping_option_read_port.as_ref(),
+            cart,
+        )
+        .await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
     }
@@ -452,9 +460,16 @@ impl CartService {
         active.total_price = Set(unit_price * Decimal::from(quantity));
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
-        update_line_item_marketplace_snapshot_in_tx(&txn, line_item_id, quantity, unit_price, None).await?;
+        update_line_item_marketplace_snapshot_in_tx(&txn, line_item_id, quantity, unit_price, None)
+            .await?;
 
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
+        recalculate_totals(
+            &txn,
+            self.tax_calculation_port.as_ref(),
+            self.shipping_option_read_port.as_ref(),
+            cart,
+        )
+        .await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
@@ -508,7 +523,13 @@ impl CartService {
         )
         .await?;
 
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
+        recalculate_totals(
+            &txn,
+            self.tax_calculation_port.as_ref(),
+            self.shipping_option_read_port.as_ref(),
+            cart,
+        )
+        .await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
@@ -567,7 +588,13 @@ impl CartService {
         )
         .await?;
 
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
+        recalculate_totals(
+            &txn,
+            self.tax_calculation_port.as_ref(),
+            self.shipping_option_read_port.as_ref(),
+            cart,
+        )
+        .await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
@@ -603,7 +630,13 @@ impl CartService {
         let active: entities::cart_line_item::ActiveModel = line_item.into();
         active.delete(&txn).await?;
 
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
+        recalculate_totals(
+            &txn,
+            self.tax_calculation_port.as_ref(),
+            self.shipping_option_read_port.as_ref(),
+            cart,
+        )
+        .await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await

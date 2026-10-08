@@ -10,7 +10,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/shared/ui/shadcn/dropdown-menu';
-import { MoreHorizontal, ExternalLink, UserCheck, Copy, Shield } from 'lucide-react';
+import {
+  MoreHorizontal,
+  ExternalLink,
+  UserCheck,
+  Copy,
+  Shield
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -25,7 +31,12 @@ interface CellActionProps {
 }
 
 const FALLBACK_ROLES: RoleInfo[] = [
-  { slug: 'super_admin', displayName: 'Super Admin', permissions: [], isSystem: true },
+  {
+    slug: 'super_admin',
+    displayName: 'Super Admin',
+    permissions: [],
+    isSystem: true
+  },
   { slug: 'admin', displayName: 'Admin', permissions: [], isSystem: true },
   { slug: 'manager', displayName: 'Manager', permissions: [], isSystem: true },
   { slug: 'customer', displayName: 'Customer', permissions: [], isSystem: true }
@@ -91,7 +102,8 @@ export const CellAction: React.FC<CellActionProps> = ({ data, roles }) => {
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link href={`/dashboard/users/${data.id}`} target='_blank'>
-              <ExternalLink className='mr-2 h-4 w-4' /> {t('action.open.new.tab')}
+              <ExternalLink className='mr-2 h-4 w-4' />{' '}
+              {t('action.open.new.tab')}
             </Link>
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -110,5 +122,3 @@ export const CellAction: React.FC<CellActionProps> = ({ data, roles }) => {
     </>
   );
 };
-
-

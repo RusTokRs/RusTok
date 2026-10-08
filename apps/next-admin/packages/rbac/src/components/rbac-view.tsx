@@ -9,7 +9,12 @@ import {
   TabsTrigger
 } from '@/shared/ui/shadcn/tabs';
 import { Button } from '@/shared/ui/shadcn/button';
-import { IconShieldCheck, IconKey, IconUserPlus, IconPlus } from '@tabler/icons-react';
+import {
+  IconShieldCheck,
+  IconKey,
+  IconUserPlus,
+  IconPlus
+} from '@tabler/icons-react';
 import {
   listPlatformPermissions,
   type PlatformPermissionItem,
@@ -28,7 +33,11 @@ interface RbacViewProps {
   tenantSlug?: string | null;
 }
 
-export function RbacView({ roles: initialRoles, token, tenantSlug }: RbacViewProps) {
+export function RbacView({
+  roles: initialRoles,
+  token,
+  tenantSlug
+}: RbacViewProps) {
   const t = useTranslations('rbac');
   const [roles, setRoles] = React.useState<RoleInfo[]>(initialRoles);
   const [platformPermissions, setPlatformPermissions] = React.useState<
@@ -42,7 +51,9 @@ export function RbacView({ roles: initialRoles, token, tenantSlug }: RbacViewPro
   const [assignDialogOpen, setAssignDialogOpen] = React.useState(false);
 
   const [selectedRole, setSelectedRole] = React.useState<RoleInfo | null>(null);
-  const [assignRoleSlug, setAssignRoleSlug] = React.useState<string | undefined>();
+  const [assignRoleSlug, setAssignRoleSlug] = React.useState<
+    string | undefined
+  >();
 
   // Fetch all platform permissions on mount
   React.useEffect(() => {
@@ -93,13 +104,16 @@ export function RbacView({ roles: initialRoles, token, tenantSlug }: RbacViewPro
   return (
     <div className='space-y-6'>
       <Tabs defaultValue='roles' className='w-full'>
-        <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2'>
+        <div className='flex flex-col justify-between gap-4 pb-2 sm:flex-row sm:items-center'>
           <TabsList>
             <TabsTrigger value='roles' className='flex items-center gap-2'>
               <IconShieldCheck className='h-4 w-4' />
               <span>{t('tab-roles', { count: roles.length })}</span>
             </TabsTrigger>
-            <TabsTrigger value='permissions' className='flex items-center gap-2'>
+            <TabsTrigger
+              value='permissions'
+              className='flex items-center gap-2'
+            >
               <IconKey className='h-4 w-4' />
               <span>{t('tab-permissions')}</span>
             </TabsTrigger>

@@ -453,11 +453,12 @@ export function ProductVariantsCard({
                   const additionalPrices = v.prices.slice(1);
                   const isOnSale = Boolean(
                     primaryPrice?.compareAtAmount &&
-                      primaryPrice.compareAtAmount > primaryPrice.amount
+                    primaryPrice.compareAtAmount > primaryPrice.amount
                   );
                   const discountPct = isOnSale
                     ? Math.round(
-                        ((primaryPrice!.compareAtAmount! - primaryPrice!.amount) /
+                        ((primaryPrice!.compareAtAmount! -
+                          primaryPrice!.amount) /
                           primaryPrice!.compareAtAmount!) *
                           100
                       )
@@ -490,7 +491,7 @@ export function ProductVariantsCard({
                               {isOnSale && (
                                 <Badge
                                   variant='outline'
-                                  className='bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 text-[9px] px-1 py-0'
+                                  className='border-rose-200 bg-rose-50 px-1 py-0 text-[9px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
                                 >
                                   -{discountPct}%
                                 </Badge>
@@ -518,7 +519,7 @@ export function ProductVariantsCard({
                               <Badge
                                 key={pIdx}
                                 variant='secondary'
-                                className='text-[10px] font-mono font-normal'
+                                className='font-mono text-[10px] font-normal'
                               >
                                 {formatPrice(p.amount, p.currencyCode)}
                               </Badge>
@@ -536,12 +537,12 @@ export function ProductVariantsCard({
                         <div className='flex items-center gap-1.5'>
                           <Badge
                             variant='outline'
-                            className={`text-[10px] font-mono font-medium ${
+                            className={`font-mono text-[10px] font-medium ${
                               v.inventoryQuantity <= 0
-                                ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300'
+                                ? 'border-rose-200 bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
                                 : v.inventoryQuantity <= 5
-                                  ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300'
-                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                  ? 'border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
                             }`}
                           >
                             {v.inventoryQuantity} шт.
@@ -552,7 +553,7 @@ export function ProductVariantsCard({
                                 : ''}
                           </Badge>
                           {onUpdateVariant && (
-                            <div className='flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity'>
+                            <div className='flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100'>
                               <button
                                 type='button'
                                 onClick={() =>
@@ -564,7 +565,7 @@ export function ProductVariantsCard({
                                   })
                                 }
                                 disabled={disabled || v.inventoryQuantity <= 0}
-                                className='h-5 w-5 rounded bg-muted hover:bg-muted/80 text-[11px] flex items-center justify-center font-bold text-muted-foreground hover:text-foreground'
+                                className='bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold'
                                 title='Уменьшить остаток на 1'
                               >
                                 -
@@ -577,7 +578,7 @@ export function ProductVariantsCard({
                                   })
                                 }
                                 disabled={disabled}
-                                className='h-5 w-5 rounded bg-muted hover:bg-muted/80 text-[11px] flex items-center justify-center font-bold text-muted-foreground hover:text-foreground'
+                                className='bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold'
                                 title='Увеличить остаток на 1'
                               >
                                 +
@@ -588,7 +589,7 @@ export function ProductVariantsCard({
                       </TableCell>
 
                       {/* Policy */}
-                      <TableCell className='text-muted-foreground text-[11px] font-mono'>
+                      <TableCell className='text-muted-foreground font-mono text-[11px]'>
                         {v.inventoryPolicy}
                       </TableCell>
 
@@ -601,7 +602,7 @@ export function ProductVariantsCard({
                               variant='ghost'
                               size='icon'
                               onClick={() => openEditDialog(v)}
-                              className='h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground'
+                              className='text-muted-foreground hover:text-foreground h-7 w-7 rounded-lg'
                               disabled={disabled}
                               title='Редактировать вариант и цены'
                             >
@@ -634,13 +635,16 @@ export function ProductVariantsCard({
 
       {/* Add / Edit Variant Dialog with Multi-Currency & Discount Tools */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className='rounded-2xl sm:max-w-lg max-h-[90vh] overflow-y-auto'>
+        <DialogContent className='max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-lg'>
           <DialogHeader>
             <DialogTitle className='text-sm font-semibold'>
-              {editingVariant ? 'Редактировать вариант' : 'Новый вариант товара'}
+              {editingVariant
+                ? 'Редактировать вариант'
+                : 'Новый вариант товара'}
             </DialogTitle>
             <DialogDescription className='text-xs'>
-              Настройте SKU, штрихкод, мультивалютную сетку цен и правила скидок.
+              Настройте SKU, штрихкод, мультивалютную сетку цен и правила
+              скидок.
             </DialogDescription>
           </DialogHeader>
 
@@ -670,10 +674,10 @@ export function ProductVariantsCard({
             </div>
 
             {/* Pricing Section - Multi-Currency Grid */}
-            <div className='space-y-3 rounded-xl border border-border p-3.5 bg-muted/10'>
+            <div className='border-border bg-muted/10 space-y-3 rounded-xl border p-3.5'>
               <div className='flex items-center justify-between'>
-                <div className='flex items-center gap-1.5 font-semibold text-foreground text-xs'>
-                  <Coins className='h-3.5 w-3.5 text-primary' />
+                <div className='text-foreground flex items-center gap-1.5 text-xs font-semibold'>
+                  <Coins className='text-primary h-3.5 w-3.5' />
                   <span>Валютная сетка и цены</span>
                 </div>
                 <Button
@@ -681,7 +685,7 @@ export function ProductVariantsCard({
                   variant='outline'
                   size='sm'
                   onClick={handleAddPriceRow}
-                  className='h-7 rounded-lg text-[11px] gap-1 px-2'
+                  className='h-7 gap-1 rounded-lg px-2 text-[11px]'
                 >
                   <Plus className='h-3 w-3' />
                   Добавить валюту
@@ -701,12 +705,12 @@ export function ProductVariantsCard({
                   return (
                     <div
                       key={idx}
-                      className='p-2.5 rounded-xl border border-border/80 bg-background space-y-2'
+                      className='border-border/80 bg-background space-y-2 rounded-xl border p-2.5'
                     >
-                      <div className='grid grid-cols-3 gap-2.5 items-end'>
+                      <div className='grid grid-cols-3 items-end gap-2.5'>
                         {/* Currency */}
                         <div className='space-y-1'>
-                          <Label className='text-[10px] text-muted-foreground'>
+                          <Label className='text-muted-foreground text-[10px]'>
                             Валюта
                           </Label>
                           <Select
@@ -734,7 +738,7 @@ export function ProductVariantsCard({
 
                         {/* Price */}
                         <div className='space-y-1'>
-                          <Label className='text-[10px] text-muted-foreground'>
+                          <Label className='text-muted-foreground text-[10px]'>
                             Цена продажи *
                           </Label>
                           <Input
@@ -751,14 +755,14 @@ export function ProductVariantsCard({
                         {/* Compare-at Price */}
                         <div className='space-y-1'>
                           <div className='flex items-center justify-between'>
-                            <Label className='text-[10px] text-muted-foreground'>
+                            <Label className='text-muted-foreground text-[10px]'>
                               Старая цена
                             </Label>
                             {formPrices.length > 1 && (
                               <button
                                 type='button'
                                 onClick={() => handleRemovePriceRow(idx)}
-                                className='text-rose-500 hover:text-rose-700 text-[10px]'
+                                className='text-[10px] text-rose-500 hover:text-rose-700'
                                 title='Удалить цену в этой валюте'
                               >
                                 ✕
@@ -783,7 +787,7 @@ export function ProductVariantsCard({
                       </div>
 
                       {/* Quick Discount Buttons & Sale Indicator */}
-                      <div className='flex items-center justify-between pt-1 border-t border-border/40 text-[10px]'>
+                      <div className='border-border/40 flex items-center justify-between border-t pt-1 text-[10px]'>
                         <div className='flex items-center gap-1'>
                           <span className='text-muted-foreground'>Скидка:</span>
                           {[10, 15, 20, 30].map((pct) => (
@@ -793,7 +797,7 @@ export function ProductVariantsCard({
                               onClick={() =>
                                 handleApplyDiscountPercent(idx, pct)
                               }
-                              className='px-1.5 py-0.5 rounded bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition'
+                              className='bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground rounded px-1.5 py-0.5 transition'
                             >
                               -{pct}%
                             </button>
@@ -802,7 +806,7 @@ export function ProductVariantsCard({
                         {hasDiscount && (
                           <Badge
                             variant='outline'
-                            className='bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 text-[9px] px-1.5 py-0'
+                            className='border-rose-200 bg-rose-50 px-1.5 py-0 text-[9px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
                           >
                             Скидка {discountPct}% (ON SALE)
                           </Badge>
@@ -858,10 +862,13 @@ export function ProductVariantsCard({
                       type='button'
                       onClick={() =>
                         setFormStock(
-                          Math.max(0, (parseInt(formStock, 10) || 0) - 1).toString()
+                          Math.max(
+                            0,
+                            (parseInt(formStock, 10) || 0) - 1
+                          ).toString()
                         )
                       }
-                      className='h-5 w-5 rounded bg-muted hover:bg-muted/80 text-[10px] font-bold'
+                      className='bg-muted hover:bg-muted/80 h-5 w-5 rounded text-[10px] font-bold'
                       title='-1 шт.'
                     >
                       -1
@@ -869,9 +876,11 @@ export function ProductVariantsCard({
                     <button
                       type='button'
                       onClick={() =>
-                        setFormStock(((parseInt(formStock, 10) || 0) + 1).toString())
+                        setFormStock(
+                          ((parseInt(formStock, 10) || 0) + 1).toString()
+                        )
                       }
-                      className='h-5 w-5 rounded bg-muted hover:bg-muted/80 text-[10px] font-bold'
+                      className='bg-muted hover:bg-muted/80 h-5 w-5 rounded text-[10px] font-bold'
                       title='+1 шт.'
                     >
                       +1
@@ -879,9 +888,11 @@ export function ProductVariantsCard({
                     <button
                       type='button'
                       onClick={() =>
-                        setFormStock(((parseInt(formStock, 10) || 0) + 10).toString())
+                        setFormStock(
+                          ((parseInt(formStock, 10) || 0) + 10).toString()
+                        )
                       }
-                      className='h-5 px-1 rounded bg-muted hover:bg-muted/80 text-[10px] font-medium'
+                      className='bg-muted hover:bg-muted/80 h-5 rounded px-1 text-[10px] font-medium'
                       title='+10 шт.'
                     >
                       +10
@@ -899,7 +910,10 @@ export function ProductVariantsCard({
               <div className='space-y-1.5'>
                 <Label htmlFor='var-policy'>Политика списания</Label>
                 <Select value={formPolicy} onValueChange={setFormPolicy}>
-                  <SelectTrigger id='var-policy' className='h-9 rounded-xl text-xs'>
+                  <SelectTrigger
+                    id='var-policy'
+                    className='h-9 rounded-xl text-xs'
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -915,7 +929,7 @@ export function ProductVariantsCard({
             </div>
           </div>
 
-          <DialogFooter className='gap-2 sm:gap-0 pt-2'>
+          <DialogFooter className='gap-2 pt-2 sm:gap-0'>
             <Button
               type='button'
               variant='outline'

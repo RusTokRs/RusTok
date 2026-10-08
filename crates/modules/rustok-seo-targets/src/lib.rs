@@ -836,13 +836,11 @@ pub struct SeoAiVerticalDescriptor {
     pub sensitive: bool,
 }
 
-pub const SEO_AI_VERTICALS: &[SeoAiVerticalDescriptor] = &[
-    SeoAiVerticalDescriptor {
-        task_slug: SEO_METADATA_TASK_SLUG,
-        tool_name: SEO_METADATA_TOOL_NAME,
-        sensitive: false,
-    },
-];
+pub const SEO_AI_VERTICALS: &[SeoAiVerticalDescriptor] = &[SeoAiVerticalDescriptor {
+    task_slug: SEO_METADATA_TASK_SLUG,
+    tool_name: SEO_METADATA_TOOL_NAME,
+    sensitive: false,
+}];
 
 pub fn seo_ai_verticals() -> &'static [SeoAiVerticalDescriptor] {
     SEO_AI_VERTICALS
@@ -873,15 +871,19 @@ pub struct GenerateSeoMetadataInput {
 }
 
 pub fn validate_seo_metadata_payload(payload: &GeneratedSeoMetadata) -> Result<(), String> {
-    if let Some(title) = payload.meta_title.as_deref() {
-        if title.trim().is_empty() {
-            return Err("meta_title must not be blank when provided".to_string());
-        }
+    if payload
+        .meta_title
+        .as_deref()
+        .is_some_and(|title| title.trim().is_empty())
+    {
+        return Err("meta_title must not be blank when provided".to_string());
     }
-    if let Some(desc) = payload.meta_description.as_deref() {
-        if desc.trim().is_empty() {
-            return Err("meta_description must not be blank when provided".to_string());
-        }
+    if payload
+        .meta_description
+        .as_deref()
+        .is_some_and(|desc| desc.trim().is_empty())
+    {
+        return Err("meta_description must not be blank when provided".to_string());
     }
     Ok(())
 }
@@ -1342,7 +1344,7 @@ mod tests {
         assert_eq!(verticals.len(), 1);
         assert_eq!(verticals[0].task_slug, SEO_METADATA_TASK_SLUG);
         assert_eq!(verticals[0].tool_name, SEO_METADATA_TOOL_NAME);
-        assert_eq!(verticals[0].sensitive, false);
+        assert!(!verticals[0].sensitive);
 
         let valid = GeneratedSeoMetadata {
             meta_title: Some("Best Running Shoes 2026".to_string()),

@@ -97,39 +97,39 @@ export function RolesTable({
     <div className='space-y-6'>
       {/* Metrics Row */}
       <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
-        <Card className='shadow-none border'>
-          <CardHeader className='flex flex-row items-center justify-between pb-2 space-y-0'>
-            <CardTitle className='text-xs font-medium text-muted-foreground'>
+        <Card className='border shadow-none'>
+          <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+            <CardTitle className='text-muted-foreground text-xs font-medium'>
               {t('metrics-total-roles')}
             </CardTitle>
-            <IconShieldLock className='h-4 w-4 text-primary' />
+            <IconShieldLock className='text-primary h-4 w-4' />
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold'>{roles.length}</div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <p className='text-muted-foreground mt-1 text-xs'>
               {t('metrics-total-roles-desc')}
             </p>
           </CardContent>
         </Card>
 
-        <Card className='shadow-none border'>
-          <CardHeader className='flex flex-row items-center justify-between pb-2 space-y-0'>
-            <CardTitle className='text-xs font-medium text-muted-foreground'>
+        <Card className='border shadow-none'>
+          <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+            <CardTitle className='text-muted-foreground text-xs font-medium'>
               {t('metrics-permissions')}
             </CardTitle>
             <IconKey className='h-4 w-4 text-emerald-600' />
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold'>{totalUniquePermissions}</div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <p className='text-muted-foreground mt-1 text-xs'>
               {t('metrics-permissions-desc')}
             </p>
           </CardContent>
         </Card>
 
-        <Card className='shadow-none border'>
-          <CardHeader className='flex flex-row items-center justify-between pb-2 space-y-0'>
-            <CardTitle className='text-xs font-medium text-muted-foreground'>
+        <Card className='border shadow-none'>
+          <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+            <CardTitle className='text-muted-foreground text-xs font-medium'>
               {t('metrics-admin-roles')}
             </CardTitle>
             <IconUserCheck className='h-4 w-4 text-amber-600' />
@@ -142,22 +142,22 @@ export function RolesTable({
                 ).length
               }
             </div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <p className='text-muted-foreground mt-1 text-xs'>
               {t('metrics-admin-roles-desc')}
             </p>
           </CardContent>
         </Card>
 
-        <Card className='shadow-none border'>
-          <CardHeader className='flex flex-row items-center justify-between pb-2 space-y-0'>
-            <CardTitle className='text-xs font-medium text-muted-foreground'>
+        <Card className='border shadow-none'>
+          <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+            <CardTitle className='text-muted-foreground text-xs font-medium'>
               {t('metrics-custom-roles')}
             </CardTitle>
             <IconUsers className='h-4 w-4 text-sky-600' />
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold'>{customRolesCount}</div>
-            <p className='text-xs text-muted-foreground mt-1'>
+            <p className='text-muted-foreground mt-1 text-xs'>
               {t('metrics-custom-roles-desc')}
             </p>
           </CardContent>
@@ -166,8 +166,8 @@ export function RolesTable({
 
       {/* Search & Actions Bar */}
       <div className='flex items-center justify-between gap-4'>
-        <div className='relative flex-1 max-w-sm'>
-          <IconSearch className='absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground' />
+        <div className='relative max-w-sm flex-1'>
+          <IconSearch className='text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4' />
           <Input
             placeholder={t('search-placeholder')}
             value={search}
@@ -189,16 +189,22 @@ export function RolesTable({
       </div>
 
       {/* Main Table */}
-      <div className='rounded-xl border bg-card shadow-sm overflow-hidden'>
+      <div className='bg-card overflow-hidden rounded-xl border shadow-sm'>
         <Table>
           <TableHeader>
             <TableRow className='bg-muted/50'>
               <TableHead className='w-[200px]'>{t('table-role')}</TableHead>
               <TableHead className='w-[130px]'>{t('table-slug')}</TableHead>
               <TableHead className='w-[100px]'>{t('table-type')}</TableHead>
-              <TableHead className='w-[110px]'>{t('table-permissions')}</TableHead>
-              <TableHead className='min-w-[260px]'>{t('table-description')}</TableHead>
-              <TableHead className='w-[220px] text-right'>{t('table-actions')}</TableHead>
+              <TableHead className='w-[110px]'>
+                {t('table-permissions')}
+              </TableHead>
+              <TableHead className='min-w-[260px]'>
+                {t('table-description')}
+              </TableHead>
+              <TableHead className='w-[220px] text-right'>
+                {t('table-actions')}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -206,7 +212,9 @@ export function RolesTable({
               const isExpanded = expandedRole === role.slug;
               const isSystem =
                 Boolean(role.isSystem) ||
-                ['super_admin', 'admin', 'manager', 'customer'].includes(role.slug);
+                ['super_admin', 'admin', 'manager', 'customer'].includes(
+                  role.slug
+                );
               const description =
                 role.description ||
                 (role.slug === 'super_admin'
@@ -224,13 +232,15 @@ export function RolesTable({
                   <TableRow className='hover:bg-muted/40'>
                     <TableCell>
                       <div className='flex items-center gap-2'>
-                        <Badge variant={ROLE_BADGE_VARIANT[role.slug] ?? 'outline'}>
+                        <Badge
+                          variant={ROLE_BADGE_VARIANT[role.slug] ?? 'outline'}
+                        >
                           {role.displayName}
                         </Badge>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className='font-mono text-xs text-muted-foreground'>
+                      <span className='text-muted-foreground font-mono text-xs'>
                         {role.slug}
                       </span>
                     </TableCell>
@@ -249,7 +259,7 @@ export function RolesTable({
                     </TableCell>
                     <TableCell>
                       <div className='space-y-1.5'>
-                        <p className='text-xs text-muted-foreground line-clamp-1'>
+                        <p className='text-muted-foreground line-clamp-1 text-xs'>
                           {description}
                         </p>
                         <button
@@ -257,11 +267,13 @@ export function RolesTable({
                           onClick={() =>
                             setExpandedRole(isExpanded ? null : role.slug)
                           }
-                          className='text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs cursor-pointer font-medium transition-colors'
+                          className='text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1 text-xs font-medium transition-colors'
                         >
                           {isExpanded
                             ? t('action-hide-perms')
-                            : t('action-view-perms', { count: role.permissions.length })}
+                            : t('action-view-perms', {
+                                count: role.permissions.length
+                              })}
                           <IconChevronDown
                             className={`h-3 w-3 transition-transform ${
                               isExpanded ? 'rotate-180' : ''
@@ -280,7 +292,7 @@ export function RolesTable({
                             className='h-8 px-2 text-xs'
                             title={t('action-edit')}
                           >
-                            <IconEdit className='h-3.5 w-3.5 mr-1' />
+                            <IconEdit className='mr-1 h-3.5 w-3.5' />
                             <span>{t('action-edit')}</span>
                           </Button>
                         )}
@@ -300,11 +312,15 @@ export function RolesTable({
                             size='sm'
                             onClick={() => onDeleteRole(role)}
                             disabled={isSystem}
-                            title={isSystem ? t('system-protected-tooltip') : t('action-delete')}
-                            className='h-8 w-8 p-0 text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:hover:bg-transparent'
+                            title={
+                              isSystem
+                                ? t('system-protected-tooltip')
+                                : t('action-delete')
+                            }
+                            className='text-destructive hover:bg-destructive/10 h-8 w-8 p-0 disabled:opacity-30 disabled:hover:bg-transparent'
                           >
                             {isSystem ? (
-                              <IconLock className='h-3.5 w-3.5 text-muted-foreground' />
+                              <IconLock className='text-muted-foreground h-3.5 w-3.5' />
                             ) : (
                               <IconTrash className='h-3.5 w-3.5' />
                             )}
@@ -319,20 +335,24 @@ export function RolesTable({
                     <TableRow className='bg-muted/20'>
                       <TableCell colSpan={6} className='p-4'>
                         <div className='space-y-2'>
-                          <div className='flex items-center justify-between text-xs text-muted-foreground font-medium'>
+                          <div className='text-muted-foreground flex items-center justify-between text-xs font-medium'>
                             <span>
-                              {t('perms-granted-for', { name: role.displayName })}
+                              {t('perms-granted-for', {
+                                name: role.displayName
+                              })}
                             </span>
                             <span>
-                              {t('perms-total', { count: role.permissions.length })}
+                              {t('perms-total', {
+                                count: role.permissions.length
+                              })}
                             </span>
                           </div>
-                          <div className='flex flex-wrap gap-1.5 max-h-48 overflow-y-auto p-2 bg-background rounded-lg border'>
+                          <div className='bg-background flex max-h-48 flex-wrap gap-1.5 overflow-y-auto rounded-lg border p-2'>
                             {role.permissions.map((perm) => (
                               <Badge
                                 key={perm}
                                 variant='outline'
-                                className='font-mono text-[11px] bg-muted/30'
+                                className='bg-muted/30 font-mono text-[11px]'
                               >
                                 {perm}
                               </Badge>

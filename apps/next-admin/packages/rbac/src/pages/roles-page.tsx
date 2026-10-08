@@ -76,7 +76,10 @@ export default async function RolesPage({ token, tenantSlug }: RolesPageProps) {
   try {
     roles = await listRoles(opts);
   } catch (error) {
-    console.error('Failed to query RBAC roles from API, falling back to system defaults:', error);
+    console.error(
+      'Failed to query RBAC roles from API, falling back to system defaults:',
+      error
+    );
     roles = FALLBACK_SYSTEM_ROLES;
   }
 

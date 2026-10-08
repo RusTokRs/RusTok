@@ -60,17 +60,22 @@ interface ProductBundleCardProps {
   productHandle?: string;
   bundle?: ProductBundle | null;
   onCreateBundle?: (input: CreateBundleInput) => Promise<void>;
-  onUpdateBundle?: (bundleId: string, input: UpdateBundleInput) => Promise<void>;
+  onUpdateBundle?: (
+    bundleId: string,
+    input: UpdateBundleInput
+  ) => Promise<void>;
   onAddBundleItem?: (input: AddBundleItemInput) => Promise<void>;
   onRemoveBundleItem?: (bundleId: string, itemId: string) => Promise<void>;
-  onSearchProducts?: (query: string) => Promise<{
-    id: string;
-    title: string;
-    handle?: string;
-    thumbnail?: string;
-    sku?: string;
-    price?: string;
-  }[]>;
+  onSearchProducts?: (query: string) => Promise<
+    {
+      id: string;
+      title: string;
+      handle?: string;
+      thumbnail?: string;
+      sku?: string;
+      price?: string;
+    }[]
+  >;
   disabled?: boolean;
 }
 
@@ -90,10 +95,16 @@ export function ProductBundleCard({
   const [isUpdating, setIsUpdating] = React.useState(false);
 
   // Editable bundle config state
-  const [bundleType, setBundleType] = React.useState(bundle?.bundleType || 'fixed');
+  const [bundleType, setBundleType] = React.useState(
+    bundle?.bundleType || 'fixed'
+  );
   const [status, setStatus] = React.useState(bundle?.status || 'active');
-  const [discountType, setDiscountType] = React.useState(bundle?.discountType || 'none');
-  const [discountValue, setDiscountValue] = React.useState(bundle?.discountValue || '0');
+  const [discountType, setDiscountType] = React.useState(
+    bundle?.discountType || 'none'
+  );
+  const [discountValue, setDiscountValue] = React.useState(
+    bundle?.discountValue || '0'
+  );
 
   React.useEffect(() => {
     if (bundle) {
@@ -132,7 +143,13 @@ export function ProductBundleCard({
     if (!onCreateBundle) return;
     setIsUpdating(true);
     try {
-      const slug = productHandle || productTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `bundle-${productId.slice(0, 8)}`;
+      const slug =
+        productHandle ||
+        productTitle
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '') ||
+        `bundle-${productId.slice(0, 8)}`;
       await onCreateBundle({
         bundleProductId: productId,
         slug,
@@ -155,10 +172,10 @@ export function ProductBundleCard({
 
   return (
     <Card className='overflow-hidden shadow-xs'>
-      <CardHeader className='flex flex-row items-center justify-between border-b bg-muted/20 pb-4'>
+      <CardHeader className='bg-muted/20 flex flex-row items-center justify-between border-b pb-4'>
         <div className='space-y-1'>
           <div className='flex items-center gap-2'>
-            <Boxes className='h-5 w-5 text-primary' />
+            <Boxes className='text-primary h-5 w-5' />
             <CardTitle className='text-base font-semibold'>
               Product Bundle & Kit Composition
             </CardTitle>
@@ -170,7 +187,8 @@ export function ProductBundleCard({
             )}
           </div>
           <CardDescription>
-            Group products into fixed kits or configurable sets with package discounts.
+            Group products into fixed kits or configurable sets with package
+            discounts.
           </CardDescription>
         </div>
 
@@ -202,14 +220,17 @@ export function ProductBundleCard({
 
       <CardContent className='p-6'>
         {!bundle ? (
-          <div className='flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted p-8 text-center'>
-            <div className='rounded-full bg-primary/10 p-3 text-primary mb-3'>
+          <div className='border-muted flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center'>
+            <div className='bg-primary/10 text-primary mb-3 rounded-full p-3'>
               <Sparkles className='h-6 w-6' />
             </div>
-            <h4 className='text-base font-semibold'>Configure as Product Bundle</h4>
-            <p className='mt-1 max-w-md text-sm text-muted-foreground'>
-              Bundle multiple catalog items into a cohesive package. You can configure
-              bundle-level percentage discounts, fixed reductions, and optional items.
+            <h4 className='text-base font-semibold'>
+              Configure as Product Bundle
+            </h4>
+            <p className='text-muted-foreground mt-1 max-w-md text-sm'>
+              Bundle multiple catalog items into a cohesive package. You can
+              configure bundle-level percentage discounts, fixed reductions, and
+              optional items.
             </p>
             <Button
               className='mt-4 gap-1.5'
@@ -223,9 +244,9 @@ export function ProductBundleCard({
         ) : (
           <div className='space-y-6'>
             {/* Bundle Settings Grid */}
-            <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 rounded-lg border bg-muted/10 p-4'>
+            <div className='bg-muted/10 grid grid-cols-1 gap-4 rounded-lg border p-4 sm:grid-cols-2 lg:grid-cols-4'>
               <div className='space-y-1.5'>
-                <Label className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+                <Label className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
                   Kit Type
                 </Label>
                 <Select
@@ -238,13 +259,15 @@ export function ProductBundleCard({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value='fixed'>Fixed Composition</SelectItem>
-                    <SelectItem value='flexible'>Flexible / Configurable</SelectItem>
+                    <SelectItem value='flexible'>
+                      Flexible / Configurable
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className='space-y-1.5'>
-                <Label className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+                <Label className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
                   Status
                 </Label>
                 <Select
@@ -264,7 +287,7 @@ export function ProductBundleCard({
               </div>
 
               <div className='space-y-1.5'>
-                <Label className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+                <Label className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
                   Bundle Discount
                 </Label>
                 <Select
@@ -284,7 +307,7 @@ export function ProductBundleCard({
               </div>
 
               <div className='space-y-1.5'>
-                <Label className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+                <Label className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
                   Discount Value
                 </Label>
                 <div className='relative'>
@@ -297,10 +320,10 @@ export function ProductBundleCard({
                       setDiscountValue(e.target.value)
                     }
                     disabled={discountType === 'none' || isUpdating || disabled}
-                    className='h-9 text-xs pr-7'
+                    className='h-9 pr-7 text-xs'
                   />
                   {discountType === 'percentage' && (
-                    <Percent className='absolute right-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground' />
+                    <Percent className='text-muted-foreground absolute top-2.5 right-2.5 h-3.5 w-3.5' />
                   )}
                 </div>
               </div>
@@ -323,10 +346,10 @@ export function ProductBundleCard({
                     <TableRow>
                       <TableCell
                         colSpan={5}
-                        className='h-28 text-center text-sm text-muted-foreground'
+                        className='text-muted-foreground h-28 text-center text-sm'
                       >
                         <div className='flex flex-col items-center justify-center gap-1.5'>
-                          <Package className='h-6 w-6 text-muted-foreground/60' />
+                          <Package className='text-muted-foreground/60 h-6 w-6' />
                           <span>No items in this bundle yet.</span>
                           <Button
                             variant='link'
@@ -349,7 +372,7 @@ export function ProductBundleCard({
                         <TableRow key={item.id}>
                           <TableCell>
                             <div className='flex items-center gap-3'>
-                              <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted'>
+                              <div className='bg-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-md'>
                                 {item.product?.thumbnail ? (
                                   <img
                                     src={item.product.thumbnail}
@@ -357,14 +380,14 @@ export function ProductBundleCard({
                                     className='h-full w-full rounded-md object-cover'
                                   />
                                 ) : (
-                                  <Package className='h-4 w-4 text-muted-foreground' />
+                                  <Package className='text-muted-foreground h-4 w-4' />
                                 )}
                               </div>
                               <div className='min-w-0'>
-                                <p className='font-medium text-sm truncate'>
+                                <p className='truncate text-sm font-medium'>
                                   {item.product?.title || item.productId}
                                 </p>
-                                <p className='text-xs text-muted-foreground font-mono truncate'>
+                                <p className='text-muted-foreground truncate font-mono text-xs'>
                                   {item.variant?.sku
                                     ? `SKU: ${item.variant.sku}`
                                     : `ID: ${item.productId.slice(0, 8)}...`}
@@ -374,7 +397,7 @@ export function ProductBundleCard({
                           </TableCell>
 
                           <TableCell className='text-center font-medium'>
-                            <span className='inline-flex h-6 min-w-6 items-center justify-center rounded bg-muted px-2 font-mono text-xs font-semibold'>
+                            <span className='bg-muted inline-flex h-6 min-w-6 items-center justify-center rounded px-2 font-mono text-xs font-semibold'>
                               {item.quantity}x
                             </span>
                           </TableCell>
@@ -383,7 +406,7 @@ export function ProductBundleCard({
                             {item.isOptional ? (
                               <Badge
                                 variant='outline'
-                                className='border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-normal'
+                                className='border-amber-500/30 bg-amber-500/10 text-xs font-normal text-amber-700 dark:text-amber-400'
                               >
                                 Optional add-on
                               </Badge>
@@ -392,7 +415,7 @@ export function ProductBundleCard({
                                 variant='secondary'
                                 className='gap-1 text-xs font-normal'
                               >
-                                <CheckCircle2 className='h-3 w-3 text-primary' />
+                                <CheckCircle2 className='text-primary h-3 w-3' />
                                 Required component
                               </Badge>
                             )}
@@ -404,7 +427,9 @@ export function ProductBundleCard({
                                 -{discountRateNum}%
                               </span>
                             ) : (
-                              <span className='text-xs text-muted-foreground'>-</span>
+                              <span className='text-muted-foreground text-xs'>
+                                -
+                              </span>
                             )}
                           </TableCell>
 
@@ -412,7 +437,7 @@ export function ProductBundleCard({
                             <Button
                               variant='ghost'
                               size='icon'
-                              className='h-8 w-8 text-destructive hover:bg-destructive/10'
+                              className='text-destructive hover:bg-destructive/10 h-8 w-8'
                               onClick={() =>
                                 onRemoveBundleItem &&
                                 onRemoveBundleItem(bundle.id, item.id)
@@ -432,7 +457,7 @@ export function ProductBundleCard({
 
             {/* Bundle Composition Summary Bar */}
             {items.length > 0 && (
-              <div className='flex flex-wrap items-center justify-between gap-4 rounded-lg bg-muted/30 px-4 py-3 text-xs'>
+              <div className='bg-muted/30 flex flex-wrap items-center justify-between gap-4 rounded-lg px-4 py-3 text-xs'>
                 <div className='flex items-center gap-4'>
                   <div>
                     <span className='text-muted-foreground'>Total Items: </span>
@@ -440,7 +465,9 @@ export function ProductBundleCard({
                   </div>
                   <div>
                     <span className='text-muted-foreground'>Required: </span>
-                    <span className='font-semibold text-primary'>{requiredCount}</span>
+                    <span className='text-primary font-semibold'>
+                      {requiredCount}
+                    </span>
                   </div>
                   <div>
                     <span className='text-muted-foreground'>Optional: </span>
@@ -451,13 +478,15 @@ export function ProductBundleCard({
                 </div>
 
                 <div className='flex items-center gap-2'>
-                  <span className='text-muted-foreground'>Package Discount:</span>
+                  <span className='text-muted-foreground'>
+                    Package Discount:
+                  </span>
                   <span className='font-mono font-semibold'>
                     {discountType === 'percentage'
                       ? `${discountValue}% OFF`
                       : discountType === 'fixed_amount'
-                      ? `${discountValue} OFF`
-                      : 'None'}
+                        ? `${discountValue} OFF`
+                        : 'None'}
                   </span>
                 </div>
               </div>

@@ -121,31 +121,31 @@ export function PermissionMatrix({
       {/* Super Admin Notice */}
       {isSuperAdmin && (
         <div className='flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200'>
-          <IconLock className='h-4 w-4 shrink-0 text-amber-600 mt-0.5' />
+          <IconLock className='mt-0.5 h-4 w-4 shrink-0 text-amber-600' />
           <div>
-            <div className='font-semibold'>
-              {t('superadmin-locked-notice')}
-            </div>
+            <div className='font-semibold'>{t('superadmin-locked-notice')}</div>
           </div>
         </div>
       )}
 
       {/* Toolbar */}
-      <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-3'>
-        <div className='relative flex-1 max-w-sm'>
-          <IconSearch className='absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground' />
+      <div className='flex flex-col justify-between gap-3 sm:flex-row sm:items-center'>
+        <div className='relative max-w-sm flex-1'>
+          <IconSearch className='text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4' />
           <Input
             placeholder={t('matrix-search-placeholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className='pl-9 h-9 text-xs'
+            className='h-9 pl-9 text-xs'
           />
         </div>
 
         <div className='flex items-center gap-2'>
-          <Badge variant='outline' className='font-mono text-xs py-1'>
+          <Badge variant='outline' className='py-1 font-mono text-xs'>
             {t('matrix-selected-count', {
-              selected: isSuperAdmin ? permissions.length : selectedPermissions.length,
+              selected: isSuperAdmin
+                ? permissions.length
+                : selectedPermissions.length,
               total: permissions.length
             })}
           </Badge>
@@ -159,7 +159,7 @@ export function PermissionMatrix({
                 onClick={selectAll}
                 className='h-8 text-xs'
               >
-                <IconCheck className='h-3.5 w-3.5 mr-1 text-emerald-600' />
+                <IconCheck className='mr-1 h-3.5 w-3.5 text-emerald-600' />
                 {t('matrix-select-all')}
               </Button>
               <Button
@@ -169,7 +169,7 @@ export function PermissionMatrix({
                 onClick={clearAll}
                 className='h-8 text-xs'
               >
-                <IconX className='h-3.5 w-3.5 mr-1 text-rose-600' />
+                <IconX className='mr-1 h-3.5 w-3.5 text-rose-600' />
                 {t('matrix-clear-all')}
               </Button>
             </>
@@ -178,7 +178,7 @@ export function PermissionMatrix({
       </div>
 
       {/* Modules List / Cards */}
-      <div className='space-y-3 max-h-[480px] overflow-y-auto pr-1'>
+      <div className='max-h-[480px] space-y-3 overflow-y-auto pr-1'>
         {Array.from(filteredGroups.entries()).map(([resource, items]) => {
           const moduleSelectedCount = items.filter((i) =>
             isSuperAdmin ? true : selectedSet.has(i.id)
@@ -189,18 +189,18 @@ export function PermissionMatrix({
           return (
             <div
               key={resource}
-              className='rounded-lg border bg-card/60 p-3.5 shadow-sm space-y-3 transition-colors hover:border-primary/40'
+              className='bg-card/60 hover:border-primary/40 space-y-3 rounded-lg border p-3.5 shadow-sm transition-colors'
             >
               {/* Module Header */}
               <div className='flex items-center justify-between gap-2 border-b pb-2.5'>
                 <div className='flex items-center gap-2'>
-                  <div className='p-1 rounded bg-primary/10 text-primary'>
+                  <div className='bg-primary/10 text-primary rounded p-1'>
                     <IconFolder className='h-4 w-4' />
                   </div>
-                  <span className='font-semibold text-xs uppercase tracking-wider text-foreground'>
+                  <span className='text-foreground text-xs font-semibold tracking-wider uppercase'>
                     {resource.replace(/_/g, ' ')}
                   </span>
-                  <Badge variant='secondary' className='text-[10px] font-mono'>
+                  <Badge variant='secondary' className='font-mono text-[10px]'>
                     {moduleSelectedCount}/{items.length}
                   </Badge>
                 </div>
@@ -216,7 +216,7 @@ export function PermissionMatrix({
                           ? deselectAllInModule(items)
                           : selectAllInModule(items)
                       }
-                      className='h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground'
+                      className='text-muted-foreground hover:text-foreground h-7 px-2 text-[11px]'
                     >
                       {allSelected
                         ? t('matrix-module-none')
@@ -227,13 +227,13 @@ export function PermissionMatrix({
               </div>
 
               {/* Permissions Checkbox Grid */}
-              <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2'>
+              <div className='grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6'>
                 {items.map((item) => {
                   const isChecked = isSuperAdmin || selectedSet.has(item.id);
                   return (
                     <label
                       key={item.id}
-                      className={`flex items-center gap-2 rounded-md border p-2 text-xs transition-colors cursor-pointer select-none ${
+                      className={`flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs transition-colors select-none ${
                         isChecked
                           ? 'border-primary/40 bg-primary/5 text-foreground font-medium'
                           : 'border-border/60 bg-background/50 text-muted-foreground hover:bg-muted/30'
@@ -245,7 +245,10 @@ export function PermissionMatrix({
                         disabled={disabled || isSuperAdmin}
                         className='data-[state=checked]:bg-primary'
                       />
-                      <span className='capitalize font-mono text-[11px] truncate' title={item.id}>
+                      <span
+                        className='truncate font-mono text-[11px] capitalize'
+                        title={item.id}
+                      >
                         {item.action}
                       </span>
                     </label>
@@ -257,7 +260,7 @@ export function PermissionMatrix({
         })}
 
         {filteredGroups.size === 0 && (
-          <div className='rounded-lg border border-dashed p-8 text-center text-xs text-muted-foreground'>
+          <div className='text-muted-foreground rounded-lg border border-dashed p-8 text-center text-xs'>
             No permissions matching &ldquo;{search}&rdquo;
           </div>
         )}

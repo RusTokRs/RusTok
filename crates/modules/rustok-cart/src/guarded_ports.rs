@@ -309,12 +309,7 @@ mod tests {
         let (metadata, token) = prepare_guest_cart_metadata(None, json!({}));
         let token = token.expect("guest token");
         for actor in [PortActor::service("internal"), PortActor::system()] {
-            let base = PortContext::new(
-                Uuid::new_v4().to_string(),
-                actor,
-                "en",
-                "request",
-            );
+            let base = PortContext::new(Uuid::new_v4().to_string(), actor, "en", "request");
 
             assert!(
                 authorize_guest_cart(&base, &cart(metadata.clone())).is_err(),
@@ -334,12 +329,7 @@ mod tests {
     fn customer_owned_carts_remain_available_to_trusted_internal_actors() {
         let metadata = json!({});
         for actor in [PortActor::service("internal"), PortActor::system()] {
-            let context = PortContext::new(
-                Uuid::new_v4().to_string(),
-                actor,
-                "en",
-                "request",
-            );
+            let context = PortContext::new(Uuid::new_v4().to_string(), actor, "en", "request");
             let mut customer_cart = cart(metadata.clone());
             customer_cart.customer_id = Some(Uuid::new_v4());
 

@@ -38,7 +38,12 @@ mutation UpdateUser($id: UUID!, $input: UpdateUserInput!) {
 }`;
 
 const FALLBACK_ROLES: RoleInfo[] = [
-  { slug: 'super_admin', displayName: 'Super Admin', permissions: [], isSystem: true },
+  {
+    slug: 'super_admin',
+    displayName: 'Super Admin',
+    permissions: [],
+    isSystem: true
+  },
   { slug: 'admin', displayName: 'Admin', permissions: [], isSystem: true },
   { slug: 'manager', displayName: 'Manager', permissions: [], isSystem: true },
   { slug: 'customer', displayName: 'Customer', permissions: [], isSystem: true }
@@ -135,7 +140,9 @@ export default function UserDetailView({ userId }: { userId: string }) {
   };
 
   if (isLoading)
-    return <p className='text-muted-foreground text-sm'>{t('detail.loading')}</p>;
+    return (
+      <p className='text-muted-foreground text-sm'>{t('detail.loading')}</p>
+    );
   if (!user) return <p className='text-sm text-red-600'>{t('detail.empty')}</p>;
 
   return (
@@ -246,4 +253,3 @@ export default function UserDetailView({ userId }: { userId: string }) {
     </div>
   );
 }
-
