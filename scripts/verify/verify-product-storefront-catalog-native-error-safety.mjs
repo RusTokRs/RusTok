@@ -82,7 +82,10 @@ for (const [value, label] of [
   ["Product catalog context is unavailable", "context public message"],
 ]) requireText(source, value, label);
 
-if (countText(source, "request_context.as_ref()") !== 3) {
+// rustfmt wraps `request_context.as_ref()` as soon as the call chain grows, so the three uses
+// (locale, channel slug, channel id) are counted as a shape rather than as one line.
+const requestContextUses = source.match(/request_context\s*\.\s*as_ref\s*\(\s*\)/g)?.length ?? 0;
+if (requestContextUses !== 3) {
   failures.push("optional request context must remain in tenant, locale, and channel handling");
 }
 if (countText(source, "map_product_service_error(error,") !== 3) {

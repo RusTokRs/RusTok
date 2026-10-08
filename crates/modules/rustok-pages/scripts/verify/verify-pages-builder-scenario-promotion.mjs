@@ -7,6 +7,9 @@ const read = (path) => readFile(`${root}/${path}`, 'utf8');
 const [
   migrationMod,
   migration,
+  revisionMigration,
+  revisionEntity,
+  revisionTest,
   entity,
   service,
   graphql,
@@ -21,6 +24,9 @@ const [
 ] = await Promise.all([
   read('crates/modules/rustok-pages/src/migrations/mod.rs'),
   read('crates/modules/rustok-pages/src/migrations/m20260714_000002_add_scenario_baseline_promotion_metadata.rs'),
+  read('crates/modules/rustok-pages/src/migrations/m20261008_000001_create_scenario_baseline_revision_history.rs'),
+  read('crates/modules/rustok-pages/src/entities/page_builder_scenario_baseline_revision.rs'),
+  read('crates/modules/rustok-pages/tests/scenario_baseline_revision_journal_sqlite.rs'),
   read('crates/modules/rustok-pages/src/entities/page_builder_scenario_baseline.rs'),
   read('crates/modules/rustok-pages/src/services/scenario_baseline.rs'),
   read('crates/modules/rustok-pages/src/graphql/scenario_baseline.rs'),
@@ -65,6 +71,19 @@ const required = [
   [adminModel, 'pub promotion_note: Option<String>', 'Pages admin status model lacks promotion note'],
   [casAdapter, 'promotionNote', 'Pages admin CAS mutation does not send promotion note'],
   [statusAdapter, 'previousBaselineHash promotedBy promotionNote promotedAt', 'Pages admin status query omits promotion metadata'],
+  [migrationMod, 'm20261008_000001_create_scenario_baseline_revision_history', 'revision history migration is not registered'],
+  [revisionMigration, 'PageBuilderScenarioBaselineRevisions', 'revision history table definition is missing'],
+  [revisionMigration, 'PreviousBaselineHash', 'revision history previous hash column is missing'],
+  [revisionEntity, 'pub baseline: Json', 'revision entity payload is missing'],
+  [revisionEntity, 'pub actor_id: Option<Uuid>', 'revision entity actor is missing'],
+  [revisionEntity, 'pub note: Option<String>', 'revision entity review note is missing'],
+  [service, 'record_baseline_revision_in_tx', 'baseline mutations do not append a revision row'],
+  [service, 'BASELINE_OPERATION_CREATE', 'revision journal has no create operation'],
+  [service, 'BASELINE_OPERATION_REPLACE', 'revision journal has no replace operation'],
+  [service, 'BASELINE_OPERATION_DELETE', 'revision journal has no delete operation'],
+  [service, 'pub async fn history', 'revision history is not readable through the service'],
+  [graphql, 'page_builder_scenario_baseline_history', 'GraphQL does not expose the revision history'],
+  [revisionTest, 'baseline_mutations_append_one_revision_row_each', 'revision journal has no runtime coverage'],
   [composition, 'PageBuilderScenarioBaselineChange', 'Pages composition does not consume typed baseline changes'],
   [composition, 'change.promotion_note', 'Pages composition drops the review note'],
   [composition, 'server_status.get_untracked().baseline_hash.clone()', 'Pages composition does not use server-confirmed CAS state'],
@@ -74,6 +93,9 @@ const failures = required
   .filter(([source, marker]) => !source.includes(marker))
   .map(([, , message]) => message);
 
+if (/record_baseline_revision_in_tx\(\s*&self\.db/.test(service)) {
+  failures.push('revision journal must be written inside the baseline transaction');
+}
 if (service.includes('promotion_note.unwrap_or_default()')) {
   failures.push('service must not silently synthesize a promotion review note');
 }

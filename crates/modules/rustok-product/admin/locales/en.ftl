@@ -71,6 +71,14 @@ product-list-category = Primary category
 product-list-createdAt = Creation date
 product-list-descending = Newest first
 product-list-empty = No products yet.
+product-list-facetsClear = Clear filters
+# Bucket counts are rendered by the code-owned panel count template, not by Fluent.
+product-list-facetsEmpty = No filters are available for this catalog yet.
+product-list-facetsLabel = Filters
+product-list-facetsSelected = [x]
+product-list-facetsTruncated = More values are available than shown.
+product-list-facetsUnbounded = Enter a value in the filter field above.
+product-list-facetsUnselected = [ ]
 product-list-loading = Loading products...
 product-list-publishedAt = Publication date
 product-list-search = Search title

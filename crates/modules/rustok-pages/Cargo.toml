@@ -41,6 +41,7 @@ uuid.workspace = true
 url = "2.5"
 
 [dev-dependencies]
+fly = { path = "../../ui/fly" }
 rustok-test-utils.workspace = true
 tokio.workspace = true
 toml.workspace = true

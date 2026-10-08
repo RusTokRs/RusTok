@@ -16,13 +16,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- _No unreleased additions yet._
+- Page Builder scenario-baseline revision history: every accepted baseline mutation (`create`,
+  `replace`, `delete`) appends a record to `page_builder_scenario_baseline_revisions` inside the
+  same transaction, and `pageBuilderScenarioBaselineHistory` /
+  `PageBuilderScenarioBaselineService::history` read the trail back. The migration that creates the
+  table is registered for the first time and applies on next startup; it creates an empty table, so
+  there is no backfill and existing baselines are untouched.
 
 ### Changed
 - _No unreleased changes yet._
 
 ### Fixed
-- _No unreleased fixes yet._
+- The scenario-baseline revision history existed as schema only: the migration was not in the
+  `PagesModule` migration list and its entity was not part of the module tree, so the promotion
+  trail the schema promised was never written, with or without a reader. The migration is now
+  registered as `m20261008_000001_create_scenario_baseline_revision_history` — renamed from the
+  `m20260714_000003` it was authored as, because the composed migration plan is name-sorted and
+  must stay append-only, and it had never been applied anywhere under the old name. See
+  `docs/audits/page-subsystem-engineering-audit-2026-10-08.md` (F-9).
 
 ### Deprecated
 - _No unreleased deprecations yet._

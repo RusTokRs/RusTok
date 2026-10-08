@@ -821,9 +821,10 @@ pub fn ProductEditorPage(
                             </span>
                         </div>
 
-                        let axes_current_edit_id = current_edit_id.clone();
-                        let axes_parent_locale = locale.clone();
-                        {move || match active_kind.get() {
+                        {
+                            let axes_current_edit_id = current_edit_id.clone();
+                            let axes_parent_locale = locale.clone();
+                            move || match active_kind.get() {
                             ProductKind::Simple => view! {
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div class="space-y-1.5">

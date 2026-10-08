@@ -47,7 +47,7 @@ requireMarkers('crates/modules/rustok-product/src/services/catalog/types.rs', [
   'MAX_ATTRIBUTE_FILTERS',
   'MAX_ATTRIBUTE_FILTER_CODE_LENGTH',
   'MAX_ATTRIBUTE_FILTER_VALUE_LENGTH',
-  'filter.code.to_ascii_lowercase()',
+  'selection.code.eq_ignore_ascii_case(filter.code.as_str())',
 ]);
 
 requireMarkers('crates/modules/rustok-product/src/services/catalog_schema_service/attributes.rs', [
@@ -68,6 +68,8 @@ requireMarkers('crates/modules/rustok-product/src/services/catalog_schema_servic
 
 requireMarkers('crates/modules/rustok-product/src/services/catalog/attribute_filters.rs', [
   'validate_product_attribute_filters(filters)?;',
+  'group_product_attribute_filters(filters)',
+  'selection.code.to_ascii_lowercase()',
   'parse_product_attribute_filter_value(',
   'ProductAttributeFilterValue::Boolean(value)',
   'ProductAttributeFilterValue::Option(value)',

@@ -3,11 +3,8 @@
 import * as React from 'react';
 import type { ColumnDef, StockFeatures } from '@tanstack/react-table';
 import type { WorkflowExecution } from '../api/workflows';
-import { DataTable } from '@/widgets/data-table/data-table';
-import { DataTableToolbar } from '@/widgets/data-table/data-table-toolbar';
 import { DataTableColumnHeader } from '@/widgets/data-table/data-table-column-header';
-import { useDataTable } from '@/shared/hooks/use-data-table';
-import { parseAsInteger, useQueryState } from 'nuqs';
+import { DataTableShell } from '@/widgets/data-table/data-table-shell';
 
 export const EXECUTION_STATUS_OPTIONS = [
   { label: 'Completed', value: 'COMPLETED' },
@@ -122,24 +119,16 @@ interface ExecutionHistoryProps {
 }
 
 export function ExecutionHistory({ executions }: ExecutionHistoryProps) {
-  const [pageSize] = useQueryState('perPage', parseAsInteger.withDefault(10));
-  const pageCount = Math.max(1, Math.ceil(executions.length / pageSize));
-
-  const { table } = useDataTable({
-    data: executions,
-    columns: executionColumns,
-    pageCount,
-    shallow: false,
-    debounceMs: 300
-  });
-
   if (executions.length === 0) {
     return <p className='text-muted-foreground text-sm'>No executions yet.</p>;
   }
 
   return (
-    <DataTable table={table}>
-      <DataTableToolbar table={table} />
-    </DataTable>
+    <DataTableShell
+      data={executions}
+      columns={executionColumns}
+      defaultPageSize={10}
+      debounceMs={300}
+    />
   );
 }

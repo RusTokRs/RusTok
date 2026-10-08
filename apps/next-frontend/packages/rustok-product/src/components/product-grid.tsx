@@ -11,9 +11,11 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, PackageOpen } from "lucide-react";
 import type {
+  ProductCatalogFacet,
   ProductCatalogSearchOption,
   StorefrontProductListItem,
 } from "../api/types";
+import { applyQueryPairs, serializeAttributeFilters } from "../catalog/facets";
 import { ProductCard } from "./product-card";
 import { ProductFilters } from "./product-filters";
 
@@ -29,6 +31,9 @@ interface ProductGridProps {
   currentCategory?: string;
   currentSortBy?: string;
   currentSortDirection?: string;
+  currentAttributeFilters?: string[];
+  facets?: ProductCatalogFacet[];
+  currencyCode?: string;
   showFilters?: boolean;
 }
 
@@ -44,21 +49,30 @@ export function ProductGrid({
   currentCategory = "",
   currentSortBy = "published_at",
   currentSortDirection = "desc",
+  currentAttributeFilters = [],
+  facets = [],
+  currencyCode,
   showFilters = true,
 }: ProductGridProps) {
   const isRu = locale === "ru";
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
+  // Every control the catalog page accepts rides along on a page change: a facet selection that
+  // survives pagination is what makes the drill-down panel usable on multi-page catalogs.
   const buildPageUrl = (page: number) => {
-    const params = new URLSearchParams();
-    if (currentSearch) params.set("search", currentSearch);
-    if (currentCategory) params.set("category_id", currentCategory);
-    if (currentSortBy !== "published_at") params.set("sort_by", currentSortBy);
-    if (currentSortDirection !== "desc")
-      params.set("sort_direction", currentSortDirection);
-    if (page > 1) params.set("page", page.toString());
-    const query = params.toString();
-    return `/${locale}/products${query ? `?${query}` : ""}`;
+    const serializedFilters = serializeAttributeFilters(currentAttributeFilters);
+    return applyQueryPairs(`/${locale}/products`, [
+      ["search", currentSearch || null],
+      ["category_id", currentCategory || null],
+      ["sort_by", currentSortBy !== "published_at" ? currentSortBy : null],
+      [
+        "sort_direction",
+        currentSortDirection !== "desc" ? currentSortDirection : null,
+      ],
+      ["attribute_filters", serializedFilters || null],
+      ["currency", currencyCode || null],
+      ["page", page > 1 ? String(page) : null],
+    ]);
   };
 
   return (
@@ -72,6 +86,9 @@ export function ProductGrid({
           currentCategory={currentCategory}
           currentSortBy={currentSortBy}
           currentSortDirection={currentSortDirection}
+          currentAttributeFilters={currentAttributeFilters}
+          facets={facets}
+          currencyCode={currencyCode}
         />
       )}
 
@@ -89,7 +106,9 @@ export function ProductGrid({
               ? "Попробуйте изменить параметры поиска или сбросить активные фильтры."
               : "Try adjusting your search query or clear the active category filters."}
           </p>
-          {(currentSearch || currentCategory) && (
+          {(currentSearch ||
+            currentCategory ||
+            currentAttributeFilters.length > 0) && (
             <Link
               href={`/${locale}/products`}
               className="mt-4 inline-flex h-9 items-center justify-center rounded-xl bg-primary px-4 text-xs font-semibold text-primary-foreground shadow-xs hover:bg-primary/90 transition"

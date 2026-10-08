@@ -57,8 +57,9 @@ pub fn ProductView() -> impl IntoView {
         .module_route_base(resolve_route_segment(route_context.route_segment.as_deref()).as_str());
     let facet_labels = build_catalog_facet_labels(route_input.locale.as_deref());
     let facet_controls = catalog_input.clone();
+    let support_controls = catalog_input.clone();
     let catalog_support_resource = Resource::new_blocking(
-        move || (options_locale.clone(), catalog_input.clone()),
+        move || (options_locale.clone(), support_controls.clone()),
         move |(locale, controls)| async move {
             let options = transport::fetch_catalog_search_options(locale.clone())
                 .await
@@ -465,6 +466,27 @@ fn SelectedProductCard(
             <p class="mt-3 text-xs font-medium text-muted-foreground">{view_model.seller_boundary}</p>
             <h3 class="mt-4 text-3xl font-semibold text-foreground">{view_model.title}</h3>
             <p class="mt-4 text-sm leading-7 text-muted-foreground">{view_model.description}</p>
+            {if view_model.attributes.is_empty() {
+                view! { <span class="hidden" /> }.into_any()
+            } else {
+                let attributes = view_model.attributes.clone();
+                let attributes_label = view_model.attributes_label.clone();
+                view! {
+                    <section class="mt-8">
+                        <h4 class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            {attributes_label}
+                        </h4>
+                        <dl class="mt-3 divide-y divide-border overflow-hidden rounded-2xl border border-border">
+                            {attributes.into_iter().map(|attribute| view! {
+                                <div class="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-baseline sm:gap-6">
+                                    <dt class="min-w-40 font-medium text-foreground">{attribute.label}</dt>
+                                    <dd class="text-muted-foreground">{attribute.values.join(" · ")}</dd>
+                                </div>
+                            }).collect_view()}
+                        </dl>
+                    </section>
+                }.into_any()
+            }}
             {view_model.pricing_context.as_ref().map(|pricing_context| view! {
                 <div class="mt-4 inline-flex flex-wrap items-center gap-2 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-2 text-xs text-primary">
                     <span class="font-semibold uppercase tracking-[0.16em]">

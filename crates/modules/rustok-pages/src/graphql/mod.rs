@@ -38,7 +38,7 @@ pub use builder_rollout::{
 pub use runtime_data::PagesGraphqlRuntimeData;
 pub use runtime_data::attach_schema_data;
 pub use scenario_baseline::{
-    GqlPageBuilderScenarioBaseline, GqlPageBuilderScenarioReleaseStatus,
-    SaveGqlPageBuilderScenarioBaselineInput,
+    GqlPageBuilderScenarioBaseline, GqlPageBuilderScenarioBaselineRevision,
+    GqlPageBuilderScenarioReleaseStatus, SaveGqlPageBuilderScenarioBaselineInput,
 };
 pub use types::*;

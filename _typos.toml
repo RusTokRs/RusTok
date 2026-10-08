@@ -11,7 +11,6 @@ extend-exclude = [
   "crates/modules/rustok-commerce/tests/checkout_service_test.rs",
   "crates/modules/rustok-commerce/tests/graphql_runtime_parity_test.rs",
   "packages/richtext/dist/**",
-  "PAGE_BUILDER_CURRENT_CLEANUP_FAILURE.md",
   "migration-export-output.txt",
   "vendor/**",
   # Vendored upstream patch set; keep spellings and identifiers aligned with upstream.
