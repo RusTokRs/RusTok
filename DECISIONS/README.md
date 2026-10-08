@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-10-08](./2026-10-08-owner-routes-and-batched-conversion.md) | Owner-held routes, keyset pagination, and batched Blog/Forum conversion | Proposed | Not started | Extends [Content orchestration port boundary](./2026-03-28-content-orchestration-port-boundary.md) and [Multilingual content contract](./2026-03-28-multilingual-content-contract.md); will supersede the route-registry part of [Blog post URL contract](./2026-10-08-blog-post-url-and-publication-contract.md) |
 | [2026-10-08](./2026-10-08-blog-post-url-and-publication-contract.md) | Blog post URL, first-publication timestamp, featured image, and public locale contract | Accepted | In progress | Extends [Multilingual content contract](./2026-03-28-multilingual-content-contract.md) |
 | [2026-10-07](./2026-10-07-checkout-operation-invariants-owned-by-rust.md) | Checkout operation invariants are owned by typed Rust, not database triggers | Accepted | In progress | — |
 | [2026-10-07](./2026-10-07-canonical-money-owner.md) | Currency exponents, minor units, and money rounding are owned by `rustok-core::money` | Accepted | Implemented | Supersedes the provisional `rustok-commerce-foundation::money` recommendation of the 2026-10-07 e-commerce deep review (ECOM-MONEY-02) |
