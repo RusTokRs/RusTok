@@ -63,7 +63,7 @@ Consequences, stated plainly:
 |---|---|---|
 | F-1 | `Verify editor capability policy` | **Fixed** — brittle literal marker in the gate |
 | F-2 | `Run Fly browser contract tests` | **Fixed** — 6 assertions tied to pre-refactor code shapes; suites also never ran before `--lib` was removed |
-| F-3 | `Check Fly adapter feature combinations` | Root-caused (hypothesis): the `desktop` combination needs WebKitGTK/GTK system libraries the job never installs. **Workflow patch proposed, not applied** (§4.1) |
+| F-3 | `Check Fly adapter feature combinations` | **Root-caused statically** (§4.1): the `desktop` combination reaches `dioxus-desktop` → `wry` → WebKitGTK/GTK/soup sys crates, and neither the runner image nor any workflow provides those development packages. No crate-side fix exists; the apt-get patch is workflow-side and **left to the maintainer** |
 | F-4 | `Check admin SSR Page Builder endpoint` | **Unresolved — needs toolchain**, but narrowed by static sweep (§4.2): the generated admin registry, every module declaration and the build script's own validation all resolve, and the same CI job compiles the Pages/Page Builder crates |
 | F-5 | `Lint Fly browser and Page Builder integrations` | **Unresolved — needs toolchain** (§4.3) |
 | F-6 | `Check focused formatting` (`Focused formatting`) | **Closed upstream, verified.** The step is green in run `37732431202` (head `6d353fda`, the format commit) and `bundle.rs` is canonical for the pinned stable toolchain — leave it (§4.4) |
@@ -110,7 +110,9 @@ alternative — holding the source to one particular line wrapping — would mak
 run a potential CI failure.
 
 Verified: `node scripts/verify/verify-fly-ui-capability-policy.mjs` → exit 0;
-`bash scripts/fly-check.sh gates` → **19 passed, 0 failed** (was 18/1).
+`bash scripts/fly-check.sh gates` → **19 passed, 0 failed** (was 18/1 at the time of this fix; the
+F-9 change below adds the crate-local `pages-scenario-baseline-promotion` gate, so the same command
+now reports **20 passed, 0 failed**).
 
 ### 3.2 F-2 — eight contract suites, six assertions pinned to deleted code shapes
 
