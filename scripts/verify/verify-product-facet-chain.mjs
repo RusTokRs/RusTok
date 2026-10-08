@@ -14,6 +14,10 @@
  *   (selection strings, serde renames, native endpoints) → both panels (codes derived from the same
  *   options they render, caps aligned with the owner, counters and truncation preserved).
  *
+ * The attribute *selection* vocabulary is part of the same chain: one panel selection
+ * (`color=red;color=blue`) must mean the same thing to the owner database read, the facet counter and
+ * the index shadow, so the gate pins the single grouping rule and its OR-within-one-attribute shape.
+ *
  * It also rejects the two ways the boundary can be crossed: a storefront or admin surface that
  * counts facets itself (SQL, attribute tables, `COUNT(`), and a surface that calls the other
  * scope's root.
@@ -155,6 +159,16 @@ const NEXT_PRODUCTS = "apps/next-frontend/packages/rustok-product/src/api/produc
 const NEXT_FACETS = "apps/next-frontend/packages/rustok-product/src/catalog/facets.ts";
 const NEXT_FILTERS = "apps/next-frontend/packages/rustok-product/src/components/product-filters.tsx";
 const NEXT_PAGE = "apps/next-frontend/src/app/[locale]/products/page.tsx";
+const OWNER_ATTRIBUTE_FILTERS =
+  "crates/modules/rustok-product/src/services/catalog/attribute_filters.rs";
+const OWNER_TERM_RESOLUTION =
+  "crates/modules/rustok-product/src/services/catalog_schema_service/attributes.rs";
+const OWNER_STOREFRONT_LIST = "crates/modules/rustok-product/src/services/catalog/queries.rs";
+const OWNER_ADMIN_LIST = "crates/modules/rustok-product/src/services/catalog/admin_queries.rs";
+const DISTRIBUTION_SHADOW =
+  "crates/modules/rustok-distribution/src/product_index/storefront_shadow.rs";
+const OWNER_FACET_POSTGRES_TEST =
+  "crates/modules/rustok-product/tests/postgres_facet_counts.rs";
 
 const ownerPort = read(OWNER_PORT);
 const ownerPortTypes = read(OWNER_PORT_TYPES);
@@ -180,6 +194,12 @@ const nextProducts = read(NEXT_PRODUCTS);
 const nextFacets = read(NEXT_FACETS);
 const nextFilters = read(NEXT_FILTERS);
 const nextPage = read(NEXT_PAGE);
+const ownerAttributeFilters = read(OWNER_ATTRIBUTE_FILTERS);
+const ownerTermResolution = read(OWNER_TERM_RESOLUTION);
+const ownerStorefrontList = read(OWNER_STOREFRONT_LIST);
+const ownerAdminList = read(OWNER_ADMIN_LIST);
+const distributionShadow = read(DISTRIBUTION_SHADOW);
+const ownerFacetPostgresTest = read(OWNER_FACET_POSTGRES_TEST);
 
 // ── Owner: facets are a port capability with its own operation names ─────────────────────────────
 requireAll(
@@ -753,6 +773,80 @@ requireAll(
   ],
   "next facet panel view",
 );
+
+// ── Attribute selection: one OR-group per attribute code, AND between attributes ─────────────────
+
+requireAll(
+  ownerFilterLimits,
+  [
+    "pub(crate) const MAX_ATTRIBUTE_FILTER_ENTRIES: usize =",
+    "MAX_ATTRIBUTE_FILTERS * super::facets::MAX_CATALOG_FACET_VALUES;",
+    "pub struct ProductAttributeFilterSelection {",
+    "pub fn group_product_attribute_filters(",
+    "values: Vec<String>,",
+    "if !selection.values.iter().any(|value| value == &filter.value) {",
+    '"attribute_filters supports at most {MAX_ATTRIBUTE_FILTER_ENTRIES} code=value entries"',
+    '"attribute_filters supports at most {MAX_ATTRIBUTE_FILTERS} attributes"',
+  ],
+  `${OWNER_FILTER_LIMITS} (attribute selection contract)`,
+);
+reject(ownerFilterLimits, ["occurs more than once"], OWNER_FILTER_LIMITS);
+
+requireAll(
+  ownerAttributeFilters,
+  [
+    "let selections = group_product_attribute_filters(filters);",
+    "let mut attribute_condition = Condition::any();",
+    "attribute_condition = attribute_condition.add(build_attribute_filter_condition(",
+    "conditions.push(attribute_condition);",
+  ],
+  `${OWNER_ATTRIBUTE_FILTERS} (one condition per attribute)`,
+);
+reject(
+  ownerAttributeFilters,
+  ["conditions.push(build_attribute_filter_condition("],
+  OWNER_ATTRIBUTE_FILTERS,
+);
+
+requireAll(
+  ownerTermResolution,
+  [
+    "let selections = group_product_attribute_filters(filters);",
+    "ProductAttributeTermExpr::Or(predicates)",
+    "predicates.remove(0)",
+  ],
+  `${OWNER_TERM_RESOLUTION} (index shadow term grammar)`,
+);
+reject(ownerTermResolution, ["code: filter.code.clone(),"], OWNER_TERM_RESOLUTION);
+
+for (const [file, source] of [
+  [OWNER_STOREFRONT_LIST, ownerStorefrontList],
+  [OWNER_ADMIN_LIST, ownerAdminList],
+  [OWNER_FACETS, ownerFacets],
+]) {
+  requireAll(
+    source,
+    ["load_catalog_attribute_filter_conditions("],
+    `${file} (list and facet paths share the selection)`,
+  );
+}
+
+requireAll(
+  distributionShadow,
+  [
+    "group_product_attribute_filters(owner.attribute_filters.as_slice())",
+    "resolved.len() != selections.len()",
+  ],
+  `${DISTRIBUTION_SHADOW} (grouped resolution identity)`,
+);
+reject(distributionShadow, ["resolved.len() != owner.attribute_filters.len()"], DISTRIBUTION_SHADOW);
+
+requireAll(
+  ownerFacetPostgresTest,
+  ['"a facet ignores every value of its own selection"'],
+  `${OWNER_FACET_POSTGRES_TEST} (widened selection is pinned)`,
+);
+reject(ownerFacetPostgresTest, ["occurs more than once"], OWNER_FACET_POSTGRES_TEST);
 
 // ── Boundary: no surface counts facets itself, and no surface crosses scopes ────────────────────
 const COUNTING_TABLES = [

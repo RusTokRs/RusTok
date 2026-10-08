@@ -48,6 +48,17 @@ const GRID_FACET_TS = "packages/rustok-ui-grid/src/facet.ts";
 const NEXT_TYPES = "apps/next-frontend/packages/rustok-product/src/api/types.ts";
 const NEXT_PRODUCTS = "apps/next-frontend/packages/rustok-product/src/api/products.ts";
 const NEXT_FACETS = "apps/next-frontend/packages/rustok-product/src/catalog/facets.ts";
+const OWNER_FILTER_LIMITS = "crates/modules/rustok-product/src/services/catalog/types.rs";
+const OWNER_ATTRIBUTE_FILTERS =
+  "crates/modules/rustok-product/src/services/catalog/attribute_filters.rs";
+const OWNER_TERM_RESOLUTION =
+  "crates/modules/rustok-product/src/services/catalog_schema_service/attributes.rs";
+const OWNER_STOREFRONT_LIST = "crates/modules/rustok-product/src/services/catalog/queries.rs";
+const OWNER_ADMIN_LIST = "crates/modules/rustok-product/src/services/catalog/admin_queries.rs";
+const DISTRIBUTION_SHADOW =
+  "crates/modules/rustok-distribution/src/product_index/storefront_shadow.rs";
+const OWNER_FACET_POSTGRES_TEST =
+  "crates/modules/rustok-product/tests/postgres_facet_counts.rs";
 
 const SELECTION_BODY =
   "code label valueType isLocalized isEnumerable isTruncated totalProducts values { value label count }";
@@ -230,7 +241,14 @@ pub struct AdminCatalogFacetsRequest {
 }
 `;
 
-const OWNER_FACETS_SOURCE = `
+const FACET_POPULATION_SOURCE = `async fn facet_population(filters: &[ProductAttributeFilter]) -> CommerceResult<Condition> {
+    // The facet counter resolves the panel selection through the same helper as both lists.
+    let other_conditions = load_catalog_attribute_filter_conditions(filters).await?;
+    Ok(Condition::all())
+}
+`;
+
+const OWNER_FACETS_SOURCE = (options) => `
 pub const MAX_CATALOG_FACETS: usize = MAX_ATTRIBUTE_FILTERS;
 pub const MAX_CATALOG_FACET_VALUES: usize = 20;
 pub struct StorefrontCatalogFacetValue {
@@ -248,7 +266,7 @@ pub struct StorefrontCatalogFacet {
     pub values: Vec<StorefrontCatalogFacetValue>,
     pub total_products: u64,
 }
-`;
+${options.facetPathSkipsSelection ? "" : FACET_POPULATION_SOURCE}`;
 
 const COMMERCE_FACETS_SOURCE = (options) => `
 pub struct GqlStorefrontCatalogFacetValue {
@@ -847,12 +865,148 @@ try {
 }
 `;
 
+const OWNER_FILTER_LIMITS_SOURCE = (options) =>
+  `
+MAX_ATTRIBUTE_FILTERS: usize = 8;
+` +
+  (options.entryBoundMissing
+    ? ""
+    : `pub(crate) const MAX_ATTRIBUTE_FILTER_ENTRIES: usize =
+    MAX_ATTRIBUTE_FILTERS * super::facets::MAX_CATALOG_FACET_VALUES;
+`) +
+  `
+pub struct ProductAttributeFilterSelection {
+    pub code: String,
+    pub values: Vec<String>,
+}
+pub fn group_product_attribute_filters(
+    filters: &[ProductAttributeFilter],
+) -> Vec<ProductAttributeFilterSelection> {
+    let mut selections: Vec<ProductAttributeFilterSelection> = Vec::new();
+    for filter in filters {
+        match selections
+            .iter_mut()
+            .find(|selection| selection.code.eq_ignore_ascii_case(filter.code.as_str()))
+        {
+            Some(selection) => {
+                if !selection.values.iter().any(|value| value == &filter.value) {
+                    selection.values.push(filter.value.clone());
+                }
+            }
+            None => selections.push(ProductAttributeFilterSelection {
+                code: filter.code.clone(),
+                values: vec![filter.value.clone()],
+            }),
+        }
+    }
+    selections
+}
+fn validate_product_attribute_filters(filters: &[ProductAttributeFilter]) -> CommerceResult<()> {
+${options.entryBoundMissing ? "" : `    if filters.len() > MAX_ATTRIBUTE_FILTER_ENTRIES {
+        return Err(CommerceError::Validation(format!(
+            "attribute_filters supports at most {MAX_ATTRIBUTE_FILTER_ENTRIES} code=value entries"
+        )));
+    }
+`}    let selection_count = group_product_attribute_filters(filters).len();
+    if selection_count > MAX_ATTRIBUTE_FILTERS {
+        return Err(CommerceError::Validation(format!(
+            "attribute_filters supports at most {MAX_ATTRIBUTE_FILTERS} attributes"
+        )));
+    }
+    Ok(())
+}
+` + (options.attributeFilterRejectsRepeats ? '                "attribute filter {} occurs more than once",\n' : "");
+
+const OWNER_ATTRIBUTE_FILTERS_SOURCE = (options) => `
+pub(super) async fn load_catalog_attribute_filter_conditions(
+    filters: &[ProductAttributeFilter],
+) -> CommerceResult<Vec<Condition>> {
+    let selections = group_product_attribute_filters(filters);
+    let mut conditions = Vec::with_capacity(selections.len());
+    for selection in &selections {
+        let mut attribute_condition = Condition::${options.attributeFiltersConjunction ? "all" : "any"}();
+        attribute_condition = attribute_condition.add(build_attribute_filter_condition(selection)?);
+        conditions.push(attribute_condition);
+    }
+    Ok(conditions)
+}
+`;
+
+const OWNER_TERM_RESOLUTION_SOURCE = (options) => `
+pub async fn resolve_storefront_attribute_filter_terms(
+    filters: &[ProductAttributeFilter],
+) -> CommerceResult<Vec<ProductResolvedAttributeFilter>> {
+    let selections = group_product_attribute_filters(filters);
+    let mut resolved = Vec::with_capacity(selections.len());
+    for selection in &selections {
+        let predicate = if predicates.len() == 1 {
+            predicates.remove(0)
+        } else {
+            ProductAttributeTermExpr::Or(predicates)
+        };
+        resolved.push(ProductResolvedAttributeFilter {
+            code: ${options.termResolutionPerEntry ? "filter.code.clone()" : "selection.code.clone()"},
+            predicate,
+        });
+    }
+    Ok(resolved)
+}
+`;
+
+const OWNER_LIST_SOURCE = `
+for condition in attribute_filters::load_catalog_attribute_filter_conditions(
+    list_query.attribute_filters.as_slice(),
+)
+.await?
+{
+    query = query.filter(condition);
+}
+`;
+
+const OWNER_ADMIN_LIST_SOURCE = (options) =>
+  options.adminListSkipsAttributeFilters ? "fn admin_product_list() {}\n" : OWNER_LIST_SOURCE;
+
+const DISTRIBUTION_SHADOW_SOURCE = (options) => `
+fn resolved_attribute_filters_to_index(
+    owner: &StorefrontProductListQuery,
+    resolved: Vec<ProductResolvedAttributeFilter>,
+) -> Result<Vec<FilterExpr>, ProductStorefrontIndexShadowError> {
+    let selections = group_product_attribute_filters(owner.attribute_filters.as_slice());
+    if resolved.len() != ${options.shadowKeepsEntryCount ? "owner.attribute_filters.len()" : "selections.len()"} {
+        return Err(ProductStorefrontIndexShadowError::AttributeFilterResolutionMismatch);
+    }
+    resolved.into_iter().map(product_term_expr_to_index).collect()
+}
+`;
+
+const OWNER_FACET_POSTGRES_TEST_SOURCE = (options) => `
+let widened_own = facet(&widened, "color");
+assert_eq!(
+    widened_own.total_products, 5,
+    "a facet ignores every value of its own selection"
+);
+` +
+  (options.testPinsRejection
+    ? `let repeated_code = StorefrontProductListQuery::try_new_with_attribute_filters(
+    None, None, None, None,
+    vec![format!("color={RED}"), format!("color={BLUE}")],
+)
+.expect_err("a repeated attribute code is rejected");
+assert!(repeated_code.to_string().contains("attribute filter color occurs more than once"));\n`
+    : "");
+
 function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-facet-chain-"));
   write(root, OWNER_PORT, OWNER_PORT_SOURCE(options));
   write(root, OWNER_PORT_TYPES, OWNER_PORT_TYPES_SOURCE(options));
-  write(root, OWNER_FACETS, OWNER_FACETS_SOURCE);
-  write(root, "crates/modules/rustok-product/src/services/catalog/types.rs", "MAX_ATTRIBUTE_FILTERS: usize = 8;");
+  write(root, OWNER_FACETS, OWNER_FACETS_SOURCE(options));
+  write(root, OWNER_FILTER_LIMITS, OWNER_FILTER_LIMITS_SOURCE(options));
+  write(root, OWNER_ATTRIBUTE_FILTERS, OWNER_ATTRIBUTE_FILTERS_SOURCE(options));
+  write(root, OWNER_TERM_RESOLUTION, OWNER_TERM_RESOLUTION_SOURCE(options));
+  write(root, OWNER_STOREFRONT_LIST, OWNER_LIST_SOURCE);
+  write(root, OWNER_ADMIN_LIST, OWNER_ADMIN_LIST_SOURCE(options));
+  write(root, DISTRIBUTION_SHADOW, DISTRIBUTION_SHADOW_SOURCE(options));
+  write(root, OWNER_FACET_POSTGRES_TEST, OWNER_FACET_POSTGRES_TEST_SOURCE(options));
   write(root, COMMERCE_FACETS, COMMERCE_FACETS_SOURCE(options));
   write(root, STOREFRONT_MODEL, RUST_MODEL_SOURCE("ProductCatalogFacet", "ProductCatalogFacetValue", options));
   write(root, ADMIN_MODEL, RUST_MODEL_SOURCE("AdminCatalogFacet", "AdminCatalogFacetValue", options));
@@ -989,6 +1143,55 @@ test("the gate rejects a next mapper that drops the owner's truncation", () => {
   expectFailure(
     { omitNextTruncation: true },
     /next facet mapper: missing isTruncated: source\.isTruncated \|\| \(facet\.isTruncated \?\? false\)/,
+  );
+});
+
+test("the gate rejects an attribute selection that ANDs one attribute's values", () => {
+  expectFailure(
+    { attributeFiltersConjunction: true },
+    /\(one condition per attribute\): missing let mut attribute_condition = Condition::any\(\);/,
+  );
+});
+
+test("the gate rejects a reintroduced duplicate-code rejection", () => {
+  expectFailure(
+    { attributeFilterRejectsRepeats: true },
+    /services\/catalog\/types\.rs: forbidden occurs more than once/,
+  );
+});
+
+test("the gate rejects a term resolution that answers one entry per value", () => {
+  expectFailure(
+    { termResolutionPerEntry: true },
+    /catalog_schema_service\/attributes\.rs: forbidden code: filter\.code\.clone\(\),/,
+  );
+});
+
+test("the gate rejects a next admin list that stops sharing the attribute selection", () => {
+  expectFailure(
+    { adminListSkipsAttributeFilters: true },
+    /admin_queries\.rs \(list and facet paths share the selection\): missing load_catalog_attribute_filter_conditions\(/,
+  );
+});
+
+test("the gate rejects an index shadow that keys the resolution by entry", () => {
+  expectFailure(
+    { shadowKeepsEntryCount: true },
+    /forbidden resolved\.len\(\) != owner\.attribute_filters\.len\(\)/,
+  );
+});
+
+test("the gate rejects a selection whose entry bound is derived from the code bound only", () => {
+  expectFailure(
+    { entryBoundMissing: true },
+    /attribute selection contract\): missing pub\(crate\) const MAX_ATTRIBUTE_FILTER_ENTRIES: usize =/,
+  );
+});
+
+test("the gate rejects a facet counter that resolves the selection on its own", () => {
+  expectFailure(
+    { facetPathSkipsSelection: true },
+    /facets\.rs \(list and facet paths share the selection\): missing load_catalog_attribute_filter_conditions\(/,
   );
 });
 
@@ -1259,4 +1462,39 @@ test("the storefront panel renders the owner's panel instead of inventing bucket
   assert.ok(!nextFacets.includes("adminProductCatalogFacets"));
   assert.ok(!nextFacets.includes("product_attribute_values"));
   assert.match(nextFilters, /facets\?: ProductCatalogFacet\[\];/);
+});
+
+test("the owner resolves one selection per attribute code on every read path", () => {
+  for (const relative of [OWNER_STOREFRONT_LIST, OWNER_ADMIN_LIST, OWNER_FACETS]) {
+    const source = readFileSync(path.join(repoRoot, ...relative.split("/")), "utf8");
+    assert.match(source, /load_catalog_attribute_filter_conditions\(/, relative);
+  }
+  const limits = readFileSync(path.join(repoRoot, ...OWNER_FILTER_LIMITS.split("/")), "utf8");
+  // The entry bound is derived from the two caps the gate already pins (8 attributes x 20 values).
+  assert.match(
+    limits,
+    /pub\(crate\) const MAX_ATTRIBUTE_FILTER_ENTRIES: usize =\s*MAX_ATTRIBUTE_FILTERS \* super::facets::MAX_CATALOG_FACET_VALUES;/,
+  );
+  // The grouping lives in one place, and a repeated code is not an error any more.
+  assert.match(limits, /pub fn group_product_attribute_filters\(/);
+  assert.doesNotMatch(limits, /occurs more than once/);
+  const attributeFilters = readFileSync(
+    path.join(repoRoot, ...OWNER_ATTRIBUTE_FILTERS.split("/")),
+    "utf8",
+  );
+  assert.match(attributeFilters, /let mut attribute_condition = Condition::any\(\);/);
+  assert.doesNotMatch(attributeFilters, /conditions\.push\(build_attribute_filter_condition\(/);
+});
+
+test("the Next panel keeps several values of one attribute in one selection", () => {
+  const behaviour = runNextFacets(`
+checks.toggled = facets.toggleAttributeFilter(["color=red"], "color", "blue");
+checks.cleared = facets.clearAttributeFilterCode(checks.toggled, "color");
+checks.widened = facets.toggleAttributeFilter(checks.toggled, "size", "m");
+`);
+  // The owner accepts this vocabulary: two values of one attribute are one OR selection, and the
+  // panel must not silently replace the previous value of the same attribute.
+  assert.deepEqual(behaviour.toggled, ["color=red", "color=blue"]);
+  assert.deepEqual(behaviour.cleared, []);
+  assert.deepEqual(behaviour.widened, ["color=red", "color=blue", "size=m"]);
 });

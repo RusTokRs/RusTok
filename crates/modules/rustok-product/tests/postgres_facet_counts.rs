@@ -3,11 +3,11 @@
 //! The facet counters are the only place where the storefront and admin populations are computed,
 //! so their SQL is verified against a real database instead of a portable test schema: the two
 //! scopes (published storefront rows versus every lifecycle status), the drill-down rules (a facet
-//! ignores its own selection, intersects every other one and accepts one selection per attribute
-//! code), the bucket vocabulary of typed columns, the truncation flag at the value limit, the
-//! locale chain of attribute and option labels, and the tenant boundary. Every number in this file
-//! is a hand-written expectation over the seeded catalog, so a change in a counting rule has to be
-//! repeated here on purpose.
+//! ignores its own selection, intersects every other one, ORs the values of one attribute and ANDs
+//! several attributes), the bucket vocabulary of typed columns, the truncation flag at the value
+//! limit, the locale chain of attribute and option labels, and the tenant boundary. Every number in
+//! this file is a hand-written expectation over the seeded catalog, so a change in a counting rule
+//! has to be repeated here on purpose.
 //!
 //! The tests need PostgreSQL admin access and are ignored by default:
 //!
@@ -826,27 +826,43 @@ async fn run_drill_down_checks() -> Result<(), Box<dyn std::error::Error>> {
             vec![("true".to_string(), 1), ("false".to_string(), 1)]
         );
 
-        // Several attributes are an AND of their selections.
-        // The owner accepts one selection per attribute code: a product stores a single value row per
-        // attribute, so a repeated code cannot be answered as `red or blue` and is rejected instead of
-        // being silently ANDed into an empty catalog. The panel's multi-select vocabulary is a
-        // separate, open contract (`PROD-FACET-SELECT-001` in the audit); when the owner grows
-        // OR-within-one-code this expectation flips to the widened population.
-        let repeated_code = StorefrontProductListQuery::try_new_with_attribute_filters(
+        // Several values of one attribute are an OR inside that attribute (`PROD-FACET-SELECT-001`):
+        // a shopper ticking a second value widens the selection instead of failing the query, the
+        // facet keeps ignoring its own whole selection and every other facet narrows by the OR.
+        let widened = storefront_facets(
+            &db,
+            "en-US",
+            Some("en-US"),
             None,
-            None,
-            None,
-            None,
-            vec![format!("color={RED}"), format!("color={BLUE}")],
+            &storefront_query(
+                None,
+                None,
+                &[&format!("color={RED}"), &format!("color={BLUE}")],
+            ),
+            &["color", "material"],
         )
-        .expect_err("a repeated attribute code is rejected by the query contract");
-        assert!(
-            repeated_code
-                .to_string()
-                .contains("attribute filter color occurs more than once"),
-            "unexpected repeated-code error: {repeated_code}"
+        .await?;
+        let widened_own = facet(&widened, "color");
+        assert_eq!(
+            widened_own.total_products, 5,
+            "a facet ignores every value of its own selection"
+        );
+        assert_eq!(
+            buckets(widened_own),
+            vec![
+                (RED.to_string(), 2),
+                (BLUE.to_string(), 2),
+                (GREEN.to_string(), 1),
+            ]
+        );
+        assert_eq!(
+            facet(&widened, "material").total_products,
+            3,
+            "red or blue products with a material"
         );
 
+        // Several attributes stay an AND of their selections: the OR narrows this facet to the
+        // published red or blue products, and the second attribute narrows it further.
         let and_between_attributes = storefront_facets(
             &db,
             "en-US",
@@ -971,7 +987,9 @@ async fn run_request_validation_checks() -> Result<(), Box<dyn std::error::Error
             .await
             .expect_err("uncountable attribute code");
             assert!(
-                error.to_string().contains("not available as a product filter"),
+                error
+                    .to_string()
+                    .contains("not available as a product filter"),
                 "{code} must be rejected as unavailable, got {error}"
             );
         }
@@ -1010,6 +1028,64 @@ async fn run_request_validation_checks() -> Result<(), Box<dyn std::error::Error
             "the facet limit must be enforced, got {limit_error}"
         );
 
+        // The list limits count attributes, not values: one attribute may carry several selections
+        // (`color=red;color=blue`), so the attribute bound and the entry bound are two separate
+        // numbers and both answer with the same message shape as the facet limit.
+        let eight_attributes = ["a", "b", "c", "d", "e", "f", "g", "h"]
+            .map(|code| format!("{code}=1"))
+            .to_vec();
+        assert!(
+            StorefrontProductListQuery::try_new_with_attribute_filters(
+                None,
+                None,
+                None,
+                None,
+                eight_attributes,
+            )
+            .is_ok(),
+            "eight attributes are the documented attribute bound"
+        );
+
+        let nine_attributes = ["a", "b", "c", "d", "e", "f", "g", "h", "i"]
+            .map(|code| format!("{code}=1"))
+            .to_vec();
+        let attribute_limit = StorefrontProductListQuery::try_new_with_attribute_filters(
+            None,
+            None,
+            None,
+            None,
+            nine_attributes,
+        )
+        .expect_err("nine attributes exceed the attribute bound");
+        assert!(
+            attribute_limit.to_string().contains("at most 8 attributes"),
+            "unexpected attribute-bound error: {attribute_limit}"
+        );
+
+        // Eight attributes may carry up to twenty values each, which is exactly the entry bound; one
+        // entry more is rejected before any attribute is read.
+        let mut too_many_entries = Vec::new();
+        for code in ["a", "b", "c", "d", "e", "f", "g", "h"] {
+            for value in 0..21 {
+                too_many_entries.push(format!("{code}={value}"));
+            }
+        }
+        assert_eq!(too_many_entries.len(), 168);
+        let entry_limit = StorefrontProductListQuery::try_new_with_attribute_filters(
+            None,
+            None,
+            None,
+            None,
+            too_many_entries,
+        )
+        .expect_err("more entries than the documented bound");
+        assert!(
+            entry_limit
+                .to_string()
+                .contains("at most 160 code=value entries"),
+            "unexpected entry-bound error: {entry_limit}"
+        );
+
         // The admin scope shares the same request rules.
         let admin_error = service(&db)
             .admin_catalog_facets(
@@ -1021,9 +1097,11 @@ async fn run_request_validation_checks() -> Result<(), Box<dyn std::error::Error
             )
             .await
             .expect_err("unknown admin facet code");
-        assert!(admin_error
-            .to_string()
-            .contains("not available as a product filter"));
+        assert!(
+            admin_error
+                .to_string()
+                .contains("not available as a product filter")
+        );
 
         Ok(())
     })

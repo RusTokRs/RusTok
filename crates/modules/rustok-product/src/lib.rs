@@ -20,6 +20,7 @@ mod catalog_schema_write_port;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod fulfillment;
 mod image_translation_progress_target;
 mod image_translation_target;
 mod media_asset_read_port;
@@ -27,7 +28,6 @@ pub mod migrations;
 pub mod ports;
 mod public_error;
 mod runtime;
-pub mod fulfillment;
 mod seo_targets;
 pub mod services;
 mod storefront_http_read_port;
@@ -37,7 +37,6 @@ mod variant_translation_progress_target;
 mod variant_translation_target;
 
 pub use catalog_command_port::ProductCatalogCommandPort;
-pub use fulfillment::ProductFulfillmentRequirement;
 pub use catalog_schema_read_port::{
     ProductAttributeValuesRequest, ProductCatalogSchemaReadPort,
     ProductEffectiveFormAttributeProjection, ProductEffectiveFormProjection,
@@ -46,6 +45,7 @@ pub use catalog_schema_read_port::{
 };
 pub use catalog_schema_write_port::ProductCatalogSchemaWritePort;
 pub use error::{CommerceError, CommerceResult};
+pub use fulfillment::ProductFulfillmentRequirement;
 pub use image_translation_progress_target::ProductImageTranslationTargetProvider;
 pub use media_asset_read_port::{
     ENSURE_PRODUCT_IMAGE_MEDIA_ASSET_OPERATION, PRODUCT_MEDIA_ASSET_VALIDATION_DEADLINE,
@@ -65,8 +65,8 @@ pub use services::{
     MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE, MAX_PRODUCT_SALES_CHANNEL_CONVERGENCE_ERROR_BYTES,
     MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS, MAX_PRODUCT_SALES_CHANNEL_RELATION_PAGE,
     MAX_PRODUCT_SALES_CHANNEL_RELATION_TARGETS, MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES,
-    ProductAttributeFilter, ProductAttributeTermError, ProductAttributeTermExpr,
-    ProductCatalogSchemaService, ProductImageTranslationExactLocaleApply,
+    ProductAttributeFilter, ProductAttributeFilterSelection, ProductAttributeTermError,
+    ProductAttributeTermExpr, ProductCatalogSchemaService, ProductImageTranslationExactLocaleApply,
     ProductImageTranslationExactLocaleApplyReceipt, ProductImageTranslationExactLocaleError,
     ProductImageTranslationExactLocaleRecord, ProductImageTranslationExactLocaleResult,
     ProductImageTranslationExactLocaleSnapshot, ProductIndexLocaleRefreshRecord,
@@ -96,11 +96,11 @@ pub use services::{
     StorefrontCatalogFacet, StorefrontCatalogFacetValue, StorefrontProductList,
     StorefrontProductListImage, StorefrontProductListItem, StorefrontProductListPrice,
     StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
-    product_attribute_boolean_term, product_attribute_date_term, product_attribute_datetime_term,
-    product_attribute_decimal_term, product_attribute_integer_term,
-    product_attribute_localized_presence_term, product_attribute_localized_text_expr,
-    product_attribute_localized_text_term, product_attribute_option_term,
-    product_attribute_text_term,
+    group_product_attribute_filters, product_attribute_boolean_term, product_attribute_date_term,
+    product_attribute_datetime_term, product_attribute_decimal_term,
+    product_attribute_integer_term, product_attribute_localized_presence_term,
+    product_attribute_localized_text_expr, product_attribute_localized_text_term,
+    product_attribute_option_term, product_attribute_text_term,
 };
 pub use storefront_http_read_port::{
     LegacyStorefrontHttpProductsRequest, ProductStorefrontHttpReadPort,

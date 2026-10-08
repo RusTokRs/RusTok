@@ -15,7 +15,9 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};
-use crate::services::catalog::types::validate_product_attribute_filters;
+use crate::services::catalog::types::{
+    group_product_attribute_filters, validate_product_attribute_filters,
+};
 use crate::services::catalog_attribute_terms::{
     ProductAttributeFilterValue, parse_product_attribute_filter_value,
 };
@@ -293,7 +295,13 @@ impl ProductCatalogSchemaService {
     /// Resolve public Storefront attribute filters into the canonical Product-owned term grammar.
     ///
     /// This is an owner capability: consumers do not read Product attribute/option tables directly.
-    /// Missing option codes resolve to `Never`, matching the existing owner SQL's empty-result behavior.
+    /// Missing option codes resolve to `Never`, matching the existing owner SQL's empty-result
+    /// behavior.
+    ///
+    /// The answer carries one entry per attribute code, in the caller's first-seen order: several
+    /// selected values of one attribute become one [`ProductAttributeTermExpr::Or`], exactly like the
+    /// SQL list path builds one `Condition::any()` per attribute, so the owner database read and the
+    /// index shadow speak the same selection language.
     pub async fn resolve_storefront_attribute_filter_terms(
         &self,
         tenant_id: Uuid,
@@ -306,15 +314,16 @@ impl ProductCatalogSchemaService {
             return Ok(Vec::new());
         }
 
+        let selections = group_product_attribute_filters(filters);
         let definitions = load_storefront_filter_definitions(&self.db, tenant_id, filters).await?;
-        let mut resolved = Vec::with_capacity(filters.len());
-        for filter in filters {
+        let mut resolved = Vec::with_capacity(selections.len());
+        for selection in &selections {
             let definition = definitions
-                .get(&filter.code.to_ascii_lowercase())
+                .get(&selection.code.to_ascii_lowercase())
                 .ok_or_else(|| {
                     CommerceError::Validation(format!(
                         "attribute {} is not available as a product filter",
-                        filter.code
+                        selection.code
                     ))
                 })?;
             let value_type = AttributeValueType::from_storage(definition.value_type.as_str())
@@ -324,18 +333,27 @@ impl ProductCatalogSchemaService {
                         definition.code
                     ))
                 })?;
-            let predicate = resolve_storefront_filter_predicate(
-                &self.db,
-                tenant_id,
-                definition,
-                value_type,
-                filter.value.as_str(),
-                requested_locale,
-                fallback_locale,
-            )
-            .await?;
+            let mut predicates = Vec::with_capacity(selection.values.len());
+            for raw_value in &selection.values {
+                let predicate = resolve_storefront_filter_predicate(
+                    &self.db,
+                    tenant_id,
+                    definition,
+                    value_type,
+                    raw_value.as_str(),
+                    requested_locale,
+                    fallback_locale,
+                )
+                .await?;
+                predicates.push(predicate);
+            }
+            let predicate = if predicates.len() == 1 {
+                predicates.remove(0)
+            } else {
+                ProductAttributeTermExpr::Or(predicates)
+            };
             resolved.push(ProductResolvedAttributeFilter {
-                code: filter.code.clone(),
+                code: selection.code.clone(),
                 predicate,
             });
         }

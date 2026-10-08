@@ -2,7 +2,6 @@ use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use uuid::Uuid;
 
 pub(crate) const MAX_ATTRIBUTE_FILTERS: usize = 8;
@@ -103,23 +102,78 @@ fn validate_attribute_filter(filter: &ProductAttributeFilter) -> CommerceResult<
     Ok(())
 }
 
+/// Maximum number of `code=value` entries one list query may carry.
+///
+/// One attribute may be selected with several values (`color=red;color=blue`), so the entry count is
+/// no longer bounded by the code count: a facet panel renders at most `MAX_CATALOG_FACET_VALUES`
+/// buckets per facet and asks for at most `MAX_ATTRIBUTE_FILTERS` facets, which is exactly this
+/// bound.
+pub(crate) const MAX_ATTRIBUTE_FILTER_ENTRIES: usize =
+    MAX_ATTRIBUTE_FILTERS * super::facets::MAX_CATALOG_FACET_VALUES;
+
+/// One attribute of a list query together with every value the caller selected for it.
+///
+/// Several values of one attribute are an OR inside that attribute; several attributes are an AND.
+/// The grouping lives here so the storefront list, the facet counter and the index shadow read one
+/// selection vocabulary instead of three.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProductAttributeFilterSelection {
+    /// Attribute code exactly as the caller spelled it first.
+    pub code: String,
+    /// Selected values of that code in request order, without duplicates.
+    pub values: Vec<String>,
+}
+
+/// Groups `code=value` entries into one selection per attribute code, keeping first-seen order.
+///
+/// Codes compare case-insensitively; values compare exactly, because a value is an option id or a
+/// stored literal: `COLOR=red` and `color=red` address the same attribute, while `red` and `RED`
+/// stay different values.
+pub fn group_product_attribute_filters(
+    filters: &[ProductAttributeFilter],
+) -> Vec<ProductAttributeFilterSelection> {
+    let mut selections: Vec<ProductAttributeFilterSelection> = Vec::new();
+    for filter in filters {
+        match selections
+            .iter_mut()
+            .find(|selection| selection.code.eq_ignore_ascii_case(filter.code.as_str()))
+        {
+            Some(selection) => {
+                if !selection.values.iter().any(|value| value == &filter.value) {
+                    selection.values.push(filter.value.clone());
+                }
+            }
+            None => selections.push(ProductAttributeFilterSelection {
+                code: filter.code.clone(),
+                values: vec![filter.value.clone()],
+            }),
+        }
+    }
+    selections
+}
+
+/// Validates every `code=value` entry and both list limits.
+///
+/// Two bounds apply: the number of distinct attributes (`MAX_ATTRIBUTE_FILTERS`) and the number of
+/// entries (`MAX_ATTRIBUTE_FILTER_ENTRIES`). A repeated code is not an error any more: the owner ORs
+/// the values of one attribute into a single condition, so `color=red;color=blue` widens the
+/// selection instead of failing the whole list.
 pub(crate) fn validate_product_attribute_filters(
     filters: &[ProductAttributeFilter],
 ) -> CommerceResult<()> {
-    if filters.len() > MAX_ATTRIBUTE_FILTERS {
+    if filters.len() > MAX_ATTRIBUTE_FILTER_ENTRIES {
         return Err(CommerceError::Validation(format!(
-            "attribute_filters supports at most {MAX_ATTRIBUTE_FILTERS} entries"
+            "attribute_filters supports at most {MAX_ATTRIBUTE_FILTER_ENTRIES} code=value entries"
         )));
     }
-    let mut seen = HashSet::new();
     for filter in filters {
         validate_attribute_filter(filter)?;
-        if !seen.insert(filter.code.to_ascii_lowercase()) {
-            return Err(CommerceError::Validation(format!(
-                "attribute filter {} occurs more than once",
-                filter.code
-            )));
-        }
+    }
+    let selection_count = group_product_attribute_filters(filters).len();
+    if selection_count > MAX_ATTRIBUTE_FILTERS {
+        return Err(CommerceError::Validation(format!(
+            "attribute_filters supports at most {MAX_ATTRIBUTE_FILTERS} attributes"
+        )));
     }
     Ok(())
 }
@@ -495,7 +549,7 @@ mod tests {
     }
 
     #[test]
-    fn typed_attribute_filters_normalize_and_reject_duplicates() {
+    fn typed_attribute_filters_normalize_and_group_repeated_codes() {
         let query = StorefrontProductListQuery::try_new_with_attribute_filters(
             None,
             None,
@@ -506,15 +560,28 @@ mod tests {
         .expect("valid typed filter syntax");
         assert_eq!(query.attribute_filters[0].code, "color");
         assert_eq!(query.attribute_filters[0].value, "red");
-        assert!(
-            StorefrontProductListQuery::try_new_with_attribute_filters(
-                None,
-                None,
-                None,
-                None,
-                vec!["color=red".to_string(), "COLOR=blue".to_string()],
-            )
-            .is_err()
+
+        // A panel toggles values of one attribute into one selection (`color=red;color=blue`), so a
+        // repeated code is the multi-select vocabulary: the entries are kept as sent and every reader
+        // groups them into one OR selection per code.
+        let multi_select = StorefrontProductListQuery::try_new_with_attribute_filters(
+            None,
+            None,
+            None,
+            None,
+            vec![
+                "color=red".to_string(),
+                "COLOR=blue".to_string(),
+                "color=red".to_string(),
+            ],
+        )
+        .expect("repeated attribute codes are the multi-select vocabulary");
+        let selections = group_product_attribute_filters(multi_select.attribute_filters.as_slice());
+        assert_eq!(selections.len(), 1);
+        assert_eq!(selections[0].code, "color");
+        assert_eq!(
+            selections[0].values,
+            vec!["red".to_string(), "blue".to_string()]
         );
     }
 

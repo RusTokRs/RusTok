@@ -47,10 +47,10 @@ pub use translation_changes::{
 };
 pub use types::{
     AdminProductList, AdminProductListItem, AdminProductListQuery,
-    MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter, ProductTagState,
-    StorefrontProductList, StorefrontProductListImage, StorefrontProductListItem,
+    MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter, ProductAttributeFilterSelection,
+    ProductTagState, StorefrontProductList, StorefrontProductListImage, StorefrontProductListItem,
     StorefrontProductListPrice, StorefrontProductListQuery, StorefrontProductSortBy,
-    StorefrontProductSortDirection,
+    StorefrontProductSortDirection, group_product_attribute_filters,
 };
 pub use variant_translation::{
     ProductVariantTranslationExactLocaleApply, ProductVariantTranslationExactLocaleApplyReceipt,
