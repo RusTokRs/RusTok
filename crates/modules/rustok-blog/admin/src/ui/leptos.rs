@@ -141,6 +141,10 @@ pub fn BlogAdmin() -> impl IntoView {
         }
     });
 
+    // Admin posts are cursor-paged. The resource loads the first page; later pages are appended to `posts_rows`.
+    let posts_rows = RwSignal::new(Vec::<crate::model::BlogPostListItem>::new());
+    let posts_next_cursor = RwSignal::new(None::<String>);
+    let posts_load_more_error = RwSignal::new(None::<String>);
     let posts_resource = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get(), locale.get()),
         move |(token_value, tenant_value, _, locale_value)| async move {
@@ -148,10 +152,44 @@ pub fn BlogAdmin() -> impl IntoView {
                 token_value,
                 tenant_value,
                 core::locale_arg(locale_value.as_str()),
+                None,
             )
             .await
         },
     );
+    Effect::new(move |_| {
+        if let Some(Ok(list)) = posts_resource.get() {
+            posts_rows.set(list.items);
+            posts_next_cursor.set(list.next_cursor);
+            posts_load_more_error.set(None);
+        }
+    });
+    let load_more_error_label = load_posts_error_label.clone();
+    let load_more_posts = Callback::new(move |cursor: String| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let locale_value = locale.get_untracked();
+        let error_label = load_more_error_label.clone();
+        posts_load_more_error.set(None);
+        spawn_local(async move {
+            match transport::fetch_posts(
+                token_value,
+                tenant_value,
+                core::locale_arg(locale_value.as_str()),
+                Some(cursor),
+            )
+            .await
+            {
+                Ok(list) => {
+                    posts_rows.update(|rows| rows.extend(list.items));
+                    posts_next_cursor.set(list.next_cursor);
+                }
+                Err(err) => {
+                    posts_load_more_error.set(Some(format!("{error_label}: {err}")));
+                }
+            }
+        });
+    });
 
     let edit_post_locale = ui_locale.clone();
     let edit_post_reset_form_action = reset_form_action;
@@ -668,10 +706,16 @@ pub fn BlogAdmin() -> impl IntoView {
                                     );
 
                                     match posts_view {
-                                        core::BlogPostAdminPostsLoadViewModel::Loaded { items, total } => view! {
+                                        core::BlogPostAdminPostsLoadViewModel::Loaded { .. } => view! {
+                                            {move || posts_load_more_error.get().map(|message| view! {
+                                                <div class=shell_classes.load_error>
+                                                    {message}
+                                                </div>
+                                            })}
                                             <BlogPostsTable
-                                                items=items
-                                                total=total
+                                                items=posts_rows.get()
+                                                next_cursor=posts_next_cursor.get()
+                                                on_load_more=load_more_posts
                                                 editing_post_id=editing_post_id.get()
                                                 busy_key=busy_key.get()
                                                 on_edit=open_post
@@ -684,7 +728,8 @@ pub fn BlogAdmin() -> impl IntoView {
                                         core::BlogPostAdminPostsLoadViewModel::EmptyContractUnavailable => view! {
                                             <BlogPostsTable
                                                 items=Vec::new()
-                                                total=0
+                                                next_cursor=None
+                                                on_load_more=load_more_posts
                                                 editing_post_id=editing_post_id.get()
                                                 busy_key=busy_key.get()
                                                 on_edit=open_post

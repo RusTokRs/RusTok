@@ -12,7 +12,8 @@ pub(crate) async fn resolve_canonical_route(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_content::CanonicalUrlService;
+        use rustok_content::SharedCanonicalRouteResolver;
+        use rustok_core::ModuleRuntimeExtensions;
         use rustok_tenant::TenantService;
 
         let configured = configured_tenant_slug().ok_or_else(|| {
@@ -31,7 +32,22 @@ pub(crate) async fn resolve_canonical_route(
             .get_tenant_by_slug(tenant_slug.as_str())
             .await
             .map_err(ServerFnError::new)?;
-        let resolved = CanonicalUrlService::new(runtime.db_clone())
+        let extensions = runtime
+            .shared_get::<std::sync::Arc<ModuleRuntimeExtensions>>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "canonical route runtime extensions are not initialized; host bootstrap must provide ModuleRuntimeExtensions",
+                )
+            })?;
+        let resolver = extensions
+            .get::<SharedCanonicalRouteResolver>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "canonical route resolver is not initialized; host bootstrap must register it",
+                )
+            })?;
+        let resolved = resolver
+            .0
             .resolve_route(tenant.id, locale.as_str(), route.as_str())
             .await
             .map_err(ServerFnError::new)?;

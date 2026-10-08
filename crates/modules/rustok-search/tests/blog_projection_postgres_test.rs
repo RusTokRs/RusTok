@@ -583,7 +583,6 @@ async fn create_blog_projection_source_tables(
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             archived_at TIMESTAMPTZ NULL,
             comment_count BIGINT NOT NULL DEFAULT 0,
-            view_count BIGINT NOT NULL DEFAULT 0,
             version BIGINT NOT NULL DEFAULT 1
         );
 
@@ -658,12 +657,12 @@ async fn insert_blog_post(
 
         INSERT INTO blog_posts (
             id, tenant_id, author_id, category_id, status, slug, metadata, published_at,
-            created_at, updated_at, comment_count, view_count, version
+            created_at, updated_at, comment_count, version
         ) VALUES (
             '{post_id}', '{tenant_id}', '{author_id}', '{category_id}', '{status}', '{slug}',
             '{{"tags":["metadata-only"]}}'::jsonb,
             CASE WHEN '{status}' = 'published' THEN NOW() ELSE NULL END,
-            NOW(), NOW(), 4, 12, 1
+            NOW(), NOW(), 4, 1
         );
 
         INSERT INTO blog_post_translations (

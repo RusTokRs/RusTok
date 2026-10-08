@@ -32,6 +32,7 @@ impl PostService {
             MAX_POST_SEO_DESCRIPTION_CHARS,
             "SEO description",
         )?;
+        validate_optional_featured_image_url(featured_image_url.as_deref())?;
         let locale = normalize_locale(&locale)?;
         validate_tags(&tags)?;
 
@@ -89,7 +90,6 @@ impl PostService {
             updated_at: Set(now.into()),
             archived_at: Set(None),
             comment_count: Set(0),
-            view_count: Set(0),
             version: Set(1),
         }
         .insert(&txn)
@@ -101,6 +101,15 @@ impl PostService {
                 BlogError::from(error)
             }
         })?;
+        self.claim_post_route_in_tx(
+            &txn,
+            tenant_id,
+            security.user_id,
+            post_id,
+            &slug_for_error,
+            None,
+        )
+        .await?;
 
         blog_post_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -209,6 +218,9 @@ impl PostService {
         }
         if let Some(ref tags) = tags {
             validate_tags(tags)?;
+        }
+        if let Patch::Set(url) = featured_image_url.as_ref() {
+            validate_featured_image_url(url)?;
         }
 
         let has_translation_change = title.is_some()
@@ -352,6 +364,22 @@ impl PostService {
             ));
         }
 
+        if let Some(ref slug) = normalized_slug
+            && *slug != post.slug
+        {
+            // The previous route becomes a permanent redirect to the new
+            // canonical route; `CanonicalUrlChanged` drives SEO redirects.
+            self.claim_post_route_in_tx(
+                &txn,
+                tenant_id,
+                security.user_id,
+                post_id,
+                slug,
+                Some(post.slug.as_str()),
+            )
+            .await?;
+        }
+
         if has_translation_change {
             let locale = locale.as_deref().ok_or_else(|| {
                 BlogError::invariant(
@@ -448,7 +476,8 @@ impl PostService {
             post_id,
             post.version,
             BlogPostStatus::Published,
-            Some(now),
+            // published_at records the first publication and is never reset.
+            Some(post.published_at.map(Into::into).unwrap_or(now)),
             None,
         )
         .await?;
@@ -495,7 +524,7 @@ impl PostService {
             post_id,
             post.version,
             BlogPostStatus::Draft,
-            None,
+            post.published_at.map(Into::into),
             None,
         )
         .await?;
@@ -596,7 +625,7 @@ impl PostService {
             post_id,
             post.version,
             BlogPostStatus::Draft,
-            None,
+            post.published_at.map(Into::into),
             None,
         )
         .await?;
@@ -651,6 +680,9 @@ impl PostService {
                 "Blog post changed concurrently before deletion",
             ));
         }
+        BlogPostRouteOwner::new(self.event_bus.clone())
+            .remove_post_routes_in_tx(&txn, tenant_id, security.user_id, post_id, &post.slug)
+            .await?;
 
         self.event_bus
             .publish_in_tx(
@@ -688,6 +720,9 @@ fn ensure_transition(current: BlogPostStatus, next: BlogPostStatus) -> BlogResul
     }
 }
 
+/// Applies a lifecycle transition. `published_at` is the first-publication
+/// timestamp to persist; callers carry it over from the stored post unless the
+/// post is being published for the first time.
 async fn apply_status_transition_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,

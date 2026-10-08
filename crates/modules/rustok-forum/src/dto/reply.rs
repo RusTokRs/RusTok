@@ -1,3 +1,6 @@
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use chrono::{DateTime, FixedOffset, SecondsFormat};
 use serde::{Deserialize, Serialize};
 
 use rustok_api::{RichTextDocument, RichTextView};
@@ -5,6 +8,7 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::ForumQuoteReferenceInput;
+use crate::error::{ForumError, ForumResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateReplyInput {
@@ -81,11 +85,60 @@ impl From<UpdateReplyInput> for UpdateReplyCommandInput {
     }
 }
 
+/// Keyset position of a reply list: `(created_at, id)` of the last reply on the
+/// previous page. Ordering is `created_at ASC, id ASC`. Reply ids are UUIDv7, so the
+/// id breaks ties in creation order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReplyCursor {
+    pub created_at: DateTime<FixedOffset>,
+    pub id: Uuid,
+}
+
+impl ReplyCursor {
+    /// Opaque, URL-safe token. Clients must not parse it.
+    pub fn encode(&self) -> String {
+        let raw = format!(
+            "{}|{}",
+            self.created_at.to_rfc3339_opts(SecondsFormat::Nanos, false),
+            self.id
+        );
+        URL_SAFE_NO_PAD.encode(raw)
+    }
+
+    pub fn decode(value: &str) -> ForumResult<Self> {
+        let invalid = || ForumError::Validation("Forum reply list cursor is invalid".to_string());
+        let bytes = URL_SAFE_NO_PAD
+            .decode(value.trim())
+            .map_err(|_| invalid())?;
+        let raw = String::from_utf8(bytes).map_err(|_| invalid())?;
+        let (created_at, id) = raw.split_once('|').ok_or_else(invalid)?;
+        Ok(Self {
+            created_at: DateTime::parse_from_rfc3339(created_at).map_err(|_| invalid())?,
+            id: Uuid::parse_str(id).map_err(|_| invalid())?,
+        })
+    }
+}
+
+/// One keyset page of replies. `next_cursor` is present only when another page exists;
+/// the list never counts rows.
+#[derive(Debug, Clone)]
+pub struct ReplyPage<T> {
+    pub items: Vec<T>,
+    pub next_cursor: Option<String>,
+}
+
+/// REST body of the reply list: one page of list items plus the cursor for the next.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ReplyListItemPage {
+    pub items: Vec<ReplyListItem>,
+    pub next_cursor: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, IntoParams)]
 pub struct ListRepliesFilter {
     pub locale: Option<String>,
-    #[serde(default = "default_page")]
-    pub page: u64,
+    /// Opaque cursor returned as `next_cursor` by the previous page.
+    pub after: Option<String>,
     #[serde(
         default = "default_per_page",
         deserialize_with = "crate::dto::deserialize_forum_read_limit"
@@ -97,14 +150,10 @@ impl Default for ListRepliesFilter {
     fn default() -> Self {
         Self {
             locale: None,
-            page: default_page(),
+            after: None,
             per_page: default_per_page(),
         }
     }
-}
-
-fn default_page() -> u64 {
-    1
 }
 
 fn default_per_page() -> u64 {

@@ -7,7 +7,7 @@ impl TopicService {
         filter: ListTopicsFilter,
         fallback_locale: Option<&str>,
         hidden_category_ids: &[Uuid],
-    ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+    ) -> ForumResult<TopicPage<TopicListItem>> {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
         let locale = filter
             .locale
@@ -29,24 +29,21 @@ impl TopicService {
                 .filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()));
         }
 
-        let paginator = select
-            .order_by_desc(forum_topic::Column::IsPinned)
-            .order_by_desc(forum_topic::Column::LastReplyAt)
-            .order_by_desc(forum_topic::Column::UpdatedAt)
-            .paginate(&self.db, filter.per_page.max(1));
-        let total = paginator.num_items().await?;
-        let topics = paginator.fetch_page(filter.page.saturating_sub(1)).await?;
+        let page = self.fetch_topic_keyset_page(select, &filter).await?;
         let items = self
             .hydrate_topic_list_items(
                 tenant_id,
                 security.user_id,
-                topics,
+                page.items,
                 &locale,
                 fallback_locale.as_deref(),
             )
             .await?;
 
-        Ok((items, total))
+        Ok(TopicPage {
+            items,
+            next_cursor: page.next_cursor,
+        })
     }
 
     #[instrument(skip(self, security, hidden_category_ids))]
@@ -58,7 +55,7 @@ impl TopicService {
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
         hidden_category_ids: &[Uuid],
-    ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+    ) -> ForumResult<TopicPage<TopicListItem>> {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
         let locale = filter
             .locale
@@ -79,25 +76,120 @@ impl TopicService {
         }
         select = apply_tenant_scoped_storefront_channel_filter(select, tenant_id, channel_slug);
 
-        let paginator = select
-            .order_by_desc(forum_topic::Column::IsPinned)
-            .order_by_desc(forum_topic::Column::LastReplyAt)
-            .order_by_desc(forum_topic::Column::UpdatedAt)
-            .paginate(&self.db, filter.per_page.max(1));
-        let total = paginator.num_items().await?;
-        let topics = paginator.fetch_page(filter.page.saturating_sub(1)).await?;
+        let page = self.fetch_topic_keyset_page(select, &filter).await?;
         let items = self
             .hydrate_topic_list_items(
                 tenant_id,
                 security.user_id,
-                topics,
+                page.items,
                 &locale,
                 fallback_locale.as_deref(),
             )
             .await?;
 
-        Ok((items, total))
+        Ok(TopicPage {
+            items,
+            next_cursor: page.next_cursor,
+        })
     }
+
+    /// Keyset page of topics ordered `is_pinned DESC, last_reply_at DESC NULLS LAST,
+    /// updated_at DESC, id DESC`. Fetches one extra row to learn whether another page
+    /// exists, so the list never counts rows.
+    async fn fetch_topic_keyset_page(
+        &self,
+        mut select: Select<forum_topic::Entity>,
+        filter: &ListTopicsFilter,
+    ) -> ForumResult<TopicPage<forum_topic::Model>> {
+        let per_page = filter.per_page.max(1);
+        if let Some(raw) = filter.after.as_deref() {
+            let after = TopicListCursor::decode(raw)?;
+            select = select.filter(topic_list_after_condition(&after));
+        }
+
+        let mut topics = order_topic_list(select)
+            .limit(per_page + 1)
+            .all(&self.db)
+            .await?;
+
+        let has_next_page = topics.len() as u64 > per_page;
+        topics.truncate(per_page as usize);
+        let next_cursor = if has_next_page {
+            let last = topics.last().ok_or_else(|| {
+                ForumError::Validation("Topic page reported a next page without rows".to_string())
+            })?;
+            Some(topic_list_cursor(last).encode())
+        } else {
+            None
+        };
+        Ok(TopicPage {
+            items: topics,
+            next_cursor,
+        })
+    }
+}
+
+/// The one ordering of every topic list: `is_pinned DESC, last_reply_at DESC NULLS LAST,
+/// updated_at DESC, id DESC`. It is expressed as a column order with explicit NULL
+/// placement, not as an `IS NULL` expression, so `idx_forum_topics_list_keyset` can
+/// serve it. Read-model and unread projections order through this function too.
+pub(crate) fn order_topic_list(select: Select<forum_topic::Entity>) -> Select<forum_topic::Entity> {
+    select
+        .order_by_desc(forum_topic::Column::IsPinned)
+        .order_by_with_nulls(
+            forum_topic::Column::LastReplyAt,
+            Order::Desc,
+            NullOrdering::Last,
+        )
+        .order_by_desc(forum_topic::Column::UpdatedAt)
+        .order_by_desc(forum_topic::Column::Id)
+}
+
+/// Cursor that resumes the list directly after `topic` in `order_topic_list`.
+pub(crate) fn topic_list_cursor(topic: &forum_topic::Model) -> TopicListCursor {
+    TopicListCursor {
+        is_pinned: topic.is_pinned,
+        last_reply_at: topic.last_reply_at,
+        updated_at: topic.updated_at,
+        id: topic.id,
+    }
+}
+
+/// Rows strictly after `after` in `order_topic_list`, expanded lexicographically over
+/// the four sort keys.
+pub(crate) fn topic_list_after_condition(after: &TopicListCursor) -> Condition {
+    let pinned_eq = forum_topic::Column::IsPinned.eq(after.is_pinned);
+    let last_reply_eq = match after.last_reply_at {
+        Some(value) => forum_topic::Column::LastReplyAt.eq(value),
+        None => forum_topic::Column::LastReplyAt.is_null(),
+    };
+
+    let mut condition = Condition::any().add(forum_topic::Column::IsPinned.lt(after.is_pinned));
+    if let Some(last_reply_at) = after.last_reply_at {
+        // NULLs sort last, so after a non-NULL value come smaller values and every NULL.
+        condition = condition.add(
+            Condition::all().add(pinned_eq.clone()).add(
+                Condition::any()
+                    .add(forum_topic::Column::LastReplyAt.lt(last_reply_at))
+                    .add(forum_topic::Column::LastReplyAt.is_null()),
+            ),
+        );
+    }
+    // After a NULL `last_reply_at` nothing follows within the same pinned group except
+    // rows that are also NULL, which the two branches below already cover.
+    condition = condition.add(
+        Condition::all()
+            .add(pinned_eq.clone())
+            .add(last_reply_eq.clone())
+            .add(forum_topic::Column::UpdatedAt.lt(after.updated_at)),
+    );
+    condition.add(
+        Condition::all()
+            .add(pinned_eq)
+            .add(last_reply_eq)
+            .add(forum_topic::Column::UpdatedAt.eq(after.updated_at))
+            .add(forum_topic::Column::Id.lt(after.id)),
+    )
 }
 
 fn apply_tenant_scoped_storefront_channel_filter(

@@ -208,5 +208,3 @@ pub struct UpdateForumCategoryInput {
 }
 
 pub type ForumCategoryConnection = ListConnection<GqlForumCategory>;
-pub type ForumTopicConnection = ListConnection<GqlForumTopicListItem>;
-pub type ForumReplyConnection = ListConnection<GqlForumReply>;

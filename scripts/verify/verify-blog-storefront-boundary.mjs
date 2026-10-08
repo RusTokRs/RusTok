@@ -119,10 +119,11 @@ const plan = text(files.plan);
 const registry = text(files.registry);
 const verifierTest = text(files.verifierTest);
 const pkg = JSON.parse(text(files.packageJson));
+// PublicCommentsList moved to ui/comments_list.rs; the selected post section ends at the next component.
 const selectedPostUi = between(
   ui,
   "fn SelectedPostCard",
-  "fn PublicCommentsList",
+  "fn PublishedPostsList",
   files.ui,
 );
 

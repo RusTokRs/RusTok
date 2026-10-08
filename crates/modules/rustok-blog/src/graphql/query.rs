@@ -154,21 +154,14 @@ impl BlogQuery {
             tag: None,
             author_id: None,
             locale: None,
-            page: Some(1),
+            after: None,
             per_page: Some(20),
         });
 
         if is_public_request(ctx) {
-            return list_public_visible_posts(
-                ctx,
-                db,
-                event_bus,
-                tenant_id,
-                tenant.default_locale.as_str(),
-                filter,
-                public_channel_slug(ctx).as_deref(),
-            )
-            .await;
+            return Err(async_graphql::Error::new(
+                "Public blog listings use publicBlogPosts with cursor pagination",
+            ));
         }
 
         let requested_limit = filter.per_page;
@@ -187,7 +180,7 @@ impl BlogQuery {
                     tag: filter.tag.clone(),
                     author_id: filter.author_id,
                     locale: Some(locale.clone()),
-                    page: Some(filter.page.unwrap_or(1) as u32),
+                    after: filter.after.clone(),
                     per_page: Some(filter.per_page.unwrap_or(20) as u32),
                     sort_by: Some(crate::PostSortField::CreatedAt),
                     sort_order: Some(crate::PostSortOrder::Desc),
@@ -201,7 +194,7 @@ impl BlogQuery {
             "blog.posts",
             "service_list",
             list_started_at.elapsed().as_secs_f64(),
-            result.total,
+            result.items.len() as u64,
         );
 
         let author_profiles = load_author_profiles_map(
@@ -231,7 +224,137 @@ impl BlogQuery {
 
         Ok(GqlPostList {
             items,
-            total: result.total,
+            next_cursor: result.next_cursor,
+        })
+    }
+
+    /// Public published-post list with keyset pagination. Returns no total count.
+    async fn public_blog_posts(
+        &self,
+        ctx: &Context<'_>,
+        filter: Option<PublicPostsFilter>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlPublicPostList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_public_blog_channel_enabled(ctx).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
+
+        let filter = filter.unwrap_or_default();
+        let locale = resolve_graphql_locale(ctx, filter.locale.as_deref());
+        let after = filter
+            .after
+            .as_deref()
+            .map(crate::PublishedPostCursor::decode)
+            .transpose()
+            .map_err(crate::error::public::to_graphql_error)?;
+        let query = crate::PublicPostsPageQuery {
+            category_id: filter.category_id,
+            tag: filter.tag,
+            author_id: filter.author_id,
+            locale: Some(locale.clone()),
+            per_page: filter.per_page.map(|value| value as u32),
+            after,
+        };
+
+        let service = PostService::new(db.clone(), event_bus.clone());
+        let page = service
+            .list_public_visible_keyset(
+                tenant_id,
+                query,
+                Some(tenant.default_locale.as_str()),
+                public_channel_slug(ctx).as_deref(),
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        let author_profiles = load_author_profiles_map(
+            ctx,
+            tenant_id,
+            page.items.iter().map(|item| Some(item.author_id)),
+            locale.as_str(),
+            tenant.default_locale.as_str(),
+        )
+        .await?;
+        let items = page
+            .items
+            .into_iter()
+            .map(|item| {
+                let author_profile = author_profiles.get(&item.author_id).cloned();
+                map_post_list_item(item, author_profile)
+            })
+            .collect::<Vec<_>>();
+
+        Ok(GqlPublicPostList {
+            items,
+            next_cursor: page.next_cursor.map(|cursor| cursor.encode()),
+        })
+    }
+
+    /// Public published-post list with keyset pagination. Returns no total count.
+    async fn public_blog_posts(
+        &self,
+        ctx: &Context<'_>,
+        filter: Option<PublicPostsFilter>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlPublicPostList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_public_blog_channel_enabled(ctx).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
+
+        let filter = filter.unwrap_or_default();
+        let locale = resolve_graphql_locale(ctx, filter.locale.as_deref());
+        let after = filter
+            .after
+            .as_deref()
+            .map(crate::PublishedPostCursor::decode)
+            .transpose()
+            .map_err(crate::error::public::to_graphql_error)?;
+        let query = crate::PublicPostsPageQuery {
+            category_id: filter.category_id,
+            tag: filter.tag,
+            author_id: filter.author_id,
+            locale: Some(locale.clone()),
+            per_page: filter.per_page.map(|value| value as u32),
+            after,
+        };
+
+        let service = PostService::new(db.clone(), event_bus.clone());
+        let page = service
+            .list_public_visible_keyset(
+                tenant_id,
+                query,
+                Some(tenant.default_locale.as_str()),
+                public_channel_slug(ctx).as_deref(),
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        let author_profiles = load_author_profiles_map(
+            ctx,
+            tenant_id,
+            page.items.iter().map(|item| Some(item.author_id)),
+            locale.as_str(),
+            tenant.default_locale.as_str(),
+        )
+        .await?;
+        let items = page
+            .items
+            .into_iter()
+            .map(|item| {
+                let author_profile = author_profiles.get(&item.author_id).cloned();
+                map_post_list_item(item, author_profile)
+            })
+            .collect::<Vec<_>>();
+
+        Ok(GqlPublicPostList {
+            items,
+            next_cursor: page.next_cursor.map(|cursor| cursor.encode()),
         })
     }
 
@@ -394,82 +517,6 @@ fn is_post_visible_for_request(
     is_authenticated: bool,
 ) -> bool {
     is_authenticated || is_post_visible_for_channel(channel_slugs, public_channel_slug)
-}
-
-async fn list_public_visible_posts(
-    ctx: &Context<'_>,
-    db: &DatabaseConnection,
-    event_bus: &TransactionalEventBus,
-    tenant_id: Uuid,
-    default_locale: &str,
-    filter: PostsFilter,
-    public_channel_slug: Option<&str>,
-) -> Result<GqlPostList> {
-    let locale = resolve_graphql_locale_fallback(filter.locale.as_deref(), default_locale);
-    let service = PostService::new(db.clone(), event_bus.clone());
-    let result = service
-        .list_public_visible_with_locale_fallback(
-            tenant_id,
-            crate::PostListQuery {
-                status: Some(crate::BlogPostStatus::Published),
-                category_id: filter.category_id,
-                tag: filter.tag,
-                author_id: filter.author_id,
-                locale: Some(locale.clone()),
-                page: Some(filter.page.unwrap_or(1) as u32),
-                per_page: Some(filter.per_page.unwrap_or(20) as u32),
-                sort_by: Some(crate::PostSortField::PublishedAt),
-                sort_order: Some(crate::PostSortOrder::Desc),
-            },
-            Some(default_locale),
-            public_channel_slug,
-        )
-        .await
-        .map_err(crate::error::public::to_graphql_error)?;
-    let author_profiles = load_author_profiles_map(
-        ctx,
-        tenant_id,
-        result.items.iter().map(|item| Some(item.author_id)),
-        locale.as_str(),
-        default_locale,
-    )
-    .await?;
-    let items = result
-        .items
-        .into_iter()
-        .map(|item| {
-            let author_profile = author_profiles.get(&item.author_id).cloned();
-            map_post_list_item(item, author_profile)
-        })
-        .collect::<Vec<_>>();
-
-    Ok(GqlPostList {
-        items,
-        total: result.total,
-    })
-}
-
-fn resolve_graphql_locale_fallback(requested: Option<&str>, fallback: &str) -> String {
-    requested
-        .map(str::trim)
-        .filter(|locale| !locale.is_empty())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| fallback.to_string())
-}
-
-fn map_post(post: crate::PostResponse, author_profile: Option<GqlProfileSummary>) -> GqlPost {
-    let mut gql: GqlPost = post.into();
-    gql.author_profile = author_profile;
-    gql
-}
-
-fn map_post_list_item(
-    item: crate::PostSummary,
-    author_profile: Option<GqlProfileSummary>,
-) -> GqlPostListItem {
-    let mut gql: GqlPostListItem = item.into();
-    gql.author_profile = author_profile;
-    gql
 }
 
 async fn load_author_profiles_map<I>(

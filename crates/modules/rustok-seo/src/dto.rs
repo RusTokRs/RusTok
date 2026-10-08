@@ -729,8 +729,8 @@ pub struct SeoBulkListInput {
     pub locale: String,
     pub query: Option<String>,
     pub source: Option<SeoBulkSource>,
-    #[graphql(default = 1)]
-    pub page: i32,
+    /// Opaque cursor from `SeoBulkPage.next_cursor`; `None` starts the scan.
+    pub after: Option<String>,
     #[graphql(default = 20)]
     pub per_page: i32,
 }
@@ -754,8 +754,9 @@ pub struct SeoBulkItem {
 #[derive(SimpleObject, Serialize, Deserialize, Debug, Clone)]
 pub struct SeoBulkPage {
     pub items: Vec<SeoBulkItem>,
-    pub total: i32,
-    pub page: i32,
+    /// `None` when the scan is finished. A page can hold fewer items than
+    /// `per_page` (filters drop rows), and it can be followed by more pages.
+    pub next_cursor: Option<String>,
     pub per_page: i32,
 }
 

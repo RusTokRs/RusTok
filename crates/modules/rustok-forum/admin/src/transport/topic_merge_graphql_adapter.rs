@@ -7,7 +7,7 @@ use crate::topic_merge_model::{
 
 pub type ApiError = String;
 
-const MERGE_CANDIDATES_QUERY: &str = "query ForumAdminMergeCandidates($locale: String, $pagination: PaginationInput!) { forumTopics(locale: $locale, pagination: $pagination) { items { id title category_id: categoryId reply_count: replyCount solution_reply_id: solutionReplyId } } }";
+const MERGE_CANDIDATES_QUERY: &str = "query ForumAdminMergeCandidates($locale: String, $perPage: Int) { forumTopics(locale: $locale, perPage: $perPage) { items { id title category_id: categoryId reply_count: replyCount solution_reply_id: solutionReplyId } } }";
 const MERGE_TOPIC_MUTATION: &str = "mutation ForumAdminMergeTopic($targetTopicId: UUID!, $input: MergeForumTopicGraphqlInput!) { mergeForumTopic(targetTopicId: $targetTopicId, input: $input) { operation_id: operationId event_id: eventId source_topic_id: sourceTopicId target_topic_id: targetTopicId category_id: categoryId actor_id: actorId reason moved_reply_count: movedReplyCount moved_published_reply_count: movedPublishedReplyCount resulting_published_reply_count: resultingPublishedReplyCount position_offset: positionOffset merged_at: mergedAt } }";
 const MERGE_TOPIC_RESOLVING_SOLUTION_MUTATION: &str = "mutation ForumAdminMergeTopicResolvingSolution($targetTopicId: UUID!, $input: ResolveForumTopicMergeSolutionGraphqlInput!) { mergeForumTopicResolvingSolution(targetTopicId: $targetTopicId, input: $input) { selected_solution_reply_id: selectedSolutionReplyId merge { operation_id: operationId event_id: eventId source_topic_id: sourceTopicId target_topic_id: targetTopicId category_id: categoryId actor_id: actorId reason moved_reply_count: movedReplyCount moved_published_reply_count: movedPublishedReplyCount resulting_published_reply_count: resultingPublishedReplyCount position_offset: positionOffset merged_at: mergedAt } } }";
 
@@ -40,15 +40,10 @@ struct ResolvedMerge {
 }
 
 #[derive(Debug, Serialize)]
-struct PaginationInput {
-    offset: i64,
-    limit: i64,
-}
-
-#[derive(Debug, Serialize)]
 struct CandidatesVariables {
     locale: Option<String>,
-    pagination: PaginationInput,
+    #[serde(rename = "perPage")]
+    per_page: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -108,10 +103,7 @@ pub async fn fetch_candidates(
         MERGE_CANDIDATES_QUERY,
         CandidatesVariables {
             locale: Some(locale),
-            pagination: PaginationInput {
-                offset: 0,
-                limit: 100,
-            },
+            per_page: 100,
         },
         token,
         tenant_slug,

@@ -3,10 +3,9 @@ use std::time::Instant;
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use rustok_api::{TenantContext, graphql::GraphQLError};
 use rustok_telemetry::metrics;
-use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{CanonicalUrlService, ContentError, ResolvedContentRoute};
+use crate::{ContentError, ResolvedContentRoute, SharedCanonicalRouteResolver};
 
 #[derive(Default)]
 pub struct ContentQuery;
@@ -19,10 +18,11 @@ impl ContentQuery {
         route: String,
         locale: String,
     ) -> Result<Option<ResolvedCanonicalRoute>> {
-        let db = ctx.data::<DatabaseConnection>()?;
+        let resolver = ctx.data::<SharedCanonicalRouteResolver>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let lookup_started_at = Instant::now();
-        let resolved = CanonicalUrlService::new(db.clone())
+        let resolved = resolver
+            .0
             .resolve_route(tenant.id, locale.as_str(), route.as_str())
             .await
             .map_err(map_content_error)?;

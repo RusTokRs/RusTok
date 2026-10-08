@@ -19,7 +19,7 @@
     "native_authenticated_context_uses_topic_list_operation": true,
     "native_authenticated_host_facts_reused": true,
     "native_public_list_uses_exact_public_owner": true,
-    "native_items_and_total_share_exact_allowed_sequence": true,
+    "native_items_and_cursor_share_exact_allowed_sequence": true,
     "graphql_public_exact_field_added": true,
     "graphql_public_exact_field_validates_tenant_scope": true,
     "graphql_public_exact_field_uses_route_channel": true,

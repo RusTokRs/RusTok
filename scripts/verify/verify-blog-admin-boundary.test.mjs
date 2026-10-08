@@ -228,7 +228,7 @@ ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async
 function graphqlAdapterSource({ swallowPostsContractUnavailable = false } = {}) {
   return `
 use rustok_graphql::GraphqlRequest;
-const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin { posts { total } }";
+const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin { posts { nextCursor } }";
 pub fn is_posts_contract_unavailable() {}
 pub async fn fetch_posts() {
 ${swallowPostsContractUnavailable ? "    Err(error) if is_posts_contract_unavailable(&error) => return Ok(());" : ""}

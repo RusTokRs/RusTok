@@ -52,7 +52,8 @@ impl ReplyService {
         let locale = normalize_locale(&input.locale)?;
         let document = crate::richtext::normalize_discussion(input.content)?;
         let stored_body = crate::richtext::serialize_discussion(document.clone())?;
-        let reply_id = Uuid::new_v4();
+        // UUIDv7: the reply list keyset orders by (created_at, id), so ids must be time-ordered.
+        let reply_id = Uuid::now_v7();
         let quotes = super::relation_quote_input::normalize_quote_inputs(quote_inputs)?;
         let prepared_relations = self
             .relations

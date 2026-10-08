@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::model::{
-    ForumCategoryConnection, ForumMemberCard, ForumReplyConnection, ForumTopicConnection,
+    ForumCategoryConnection, ForumMemberCard, ForumReplyPage, ForumTopicPage,
     ForumTopicDetail, StorefrontForumData,
 };
 
@@ -30,10 +30,10 @@ impl Display for ApiError {
 impl std::error::Error for ApiError {}
 
 const STOREFRONT_FORUM_CATEGORIES_QUERY: &str = "query StorefrontForumCategories($tenantId: UUID, $locale: String, $pagination: PaginationInput) { forumStorefrontCategories(tenantId: $tenantId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale name slug description icon color parentId topicCount replyCount } } }";
-const STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY: &str = "query StorefrontForumAudienceTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumStorefrontAudienceTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt solutionReplyId voteScore } } }";
-const STOREFRONT_FORUM_UNREAD_TOPICS_QUERY: &str = "query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $limit: Int) { forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, limit: $limit) { total items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt readStateExplicit lastReadPosition lastReadRevision unreadCount hasUnreadTopicRevision isUnread } } }";
+const STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY: &str = "query StorefrontForumAudienceTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $perPage: Int) { forumStorefrontAudienceTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, perPage: $perPage) { nextCursor items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt solutionReplyId voteScore } } }";
+const STOREFRONT_FORUM_UNREAD_TOPICS_QUERY: &str = "query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $limit: Int) { forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, limit: $limit) { nextCursor items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt readStateExplicit lastReadPosition lastReadRevision unreadCount hasUnreadTopicRevision isUnread } } }";
 const STOREFRONT_FORUM_TOPIC_QUERY: &str = "query StorefrontForumTopic($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontAudienceTopic(tenantId: $tenantId, id: $id, locale: $locale) { id effectiveLocale availableLocales categoryId authorId title slug body { document html } bodyPlainText status tags isPinned isLocked replyCount createdAt updatedAt } }";
-const STOREFRONT_FORUM_REPLIES_QUERY: &str = "query StorefrontForumReplies($tenantId: UUID, $topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumStorefrontReplies(tenantId: $tenantId, topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale topicId authorId content { document html } contentPlainText status parentReplyId createdAt updatedAt } } }";
+const STOREFRONT_FORUM_REPLIES_QUERY: &str = "query StorefrontForumReplies($tenantId: UUID, $topicId: UUID!, $locale: String, $after: String, $perPage: Int) { forumStorefrontReplies(tenantId: $tenantId, topicId: $topicId, locale: $locale, after: $after, perPage: $perPage) { nextCursor items { id effectiveLocale topicId authorId content { document html } contentPlainText status parentReplyId createdAt updatedAt } } }";
 const STOREFRONT_FORUM_MEMBER_CARDS_QUERY: &str = "query StorefrontForumMemberCards($userIds: [UUID!]!, $locale: String) { forumMemberCards(userIds: $userIds, locale: $locale) { userId profile { userId handle displayName tags avatarMediaId preferredLocale } forumStats { topicCount replyCount solutionCount } } }";
 const MARK_STOREFRONT_FORUM_TOPIC_READ_MUTATION: &str = "mutation MarkStorefrontForumTopicRead($tenantId: UUID, $topicId: UUID!, $locale: String) { markForumStorefrontTopicRead(tenantId: $tenantId, topicId: $topicId, locale: $locale) { topicId } }";
 const MARK_STOREFRONT_FORUM_CATEGORY_READ_MUTATION: &str = "mutation MarkStorefrontForumCategoryRead($tenantId: UUID, $categoryId: UUID!, $input: MarkForumTopicsReadBatchGraphqlInput, $locale: String) { markForumStorefrontCategoryRead(tenantId: $tenantId, categoryId: $categoryId, input: $input, locale: $locale) { processed nextCursor hasMore snapshotAt } }";
@@ -48,13 +48,13 @@ struct StorefrontForumCategoriesResponse {
 #[derive(Debug, Deserialize)]
 struct StorefrontForumAudienceTopicsResponse {
     #[serde(rename = "forumStorefrontAudienceTopics")]
-    forum_storefront_audience_topics: ForumTopicConnection,
+    forum_storefront_audience_topics: ForumTopicPage,
 }
 
 #[derive(Debug, Deserialize)]
 struct StorefrontForumUnreadTopicsResponse {
     #[serde(rename = "forumStorefrontUnreadTopics")]
-    forum_storefront_unread_topics: ForumTopicConnection,
+    forum_storefront_unread_topics: ForumTopicPage,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,7 +66,7 @@ struct StorefrontForumTopicResponse {
 #[derive(Debug, Deserialize)]
 struct StorefrontForumRepliesResponse {
     #[serde(rename = "forumStorefrontReplies")]
-    forum_storefront_replies: ForumReplyConnection,
+    forum_storefront_replies: ForumReplyPage,
 }
 
 #[derive(Debug, Deserialize)]
@@ -120,7 +120,9 @@ struct TopicsVariables {
     #[serde(rename = "categoryId")]
     category_id: Option<String>,
     locale: Option<String>,
-    pagination: PaginationInput,
+    after: Option<String>,
+    #[serde(rename = "perPage")]
+    per_page: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -130,6 +132,7 @@ struct UnreadTopicsVariables {
     #[serde(rename = "categoryId")]
     category_id: Option<String>,
     locale: Option<String>,
+    after: Option<String>,
     limit: i32,
 }
 
@@ -148,7 +151,9 @@ struct RepliesVariables {
     #[serde(rename = "topicId")]
     topic_id: String,
     locale: Option<String>,
-    pagination: PaginationInput,
+    after: Option<String>,
+    #[serde(rename = "perPage")]
+    per_page: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -295,6 +300,7 @@ pub async fn fetch_storefront_forum_graphql(
             tenant_id: None,
             category_id: resolved_category_id.clone(),
             locale: locale.clone(),
+            after: None,
             limit: 20,
         },
     )
@@ -308,10 +314,8 @@ pub async fn fetch_storefront_forum_graphql(
                     tenant_id: None,
                     category_id: resolved_category_id.clone(),
                     locale: locale.clone(),
-                    pagination: PaginationInput {
-                        offset: 0,
-                        limit: 20,
-                    },
+                    after: None,
+                    per_page: 20,
                 },
             )
             .await?;
@@ -347,10 +351,8 @@ pub async fn fetch_storefront_forum_graphql(
                 tenant_id: None,
                 topic_id,
                 locale: locale.clone(),
-                pagination: PaginationInput {
-                    offset: 0,
-                    limit: 20,
-                },
+                after: None,
+                per_page: 20,
             },
         )
         .await?;
@@ -375,9 +377,9 @@ pub async fn fetch_storefront_forum_graphql(
 }
 
 async fn load_storefront_member_cards(
-    topics: &ForumTopicConnection,
+    topics: &ForumTopicPage,
     selected_topic: Option<&ForumTopicDetail>,
-    replies: &ForumReplyConnection,
+    replies: &ForumReplyPage,
     locale: Option<String>,
 ) -> Result<Vec<ForumMemberCard>, ApiError> {
     let user_ids = storefront_author_ids(topics, selected_topic, replies);
@@ -398,9 +400,9 @@ async fn load_storefront_member_cards(
 }
 
 fn storefront_author_ids(
-    topics: &ForumTopicConnection,
+    topics: &ForumTopicPage,
     selected_topic: Option<&ForumTopicDetail>,
-    replies: &ForumReplyConnection,
+    replies: &ForumReplyPage,
 ) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut user_ids = Vec::new();
@@ -497,10 +499,10 @@ fn graphql_bulk_limit(limit: Option<u64>) -> Result<Option<i32>, ApiError> {
         .transpose()
 }
 
-fn empty_replies() -> ForumReplyConnection {
-    ForumReplyConnection {
+fn empty_replies() -> ForumReplyPage {
+    ForumReplyPage {
         items: Vec::new(),
-        total: 0,
+        next_cursor: None,
     }
 }
 

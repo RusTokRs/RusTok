@@ -50,7 +50,7 @@ pub(super) async fn fetch_topic_merge_candidates_native(
         )?;
 
         let service = rustok_forum::TopicService::new(host.db_clone(), event_bus);
-        let (topics, _) = service
+        let page = service
             .list_with_locale_fallback(
                 tenant.id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -61,7 +61,7 @@ pub(super) async fn fetch_topic_merge_candidates_native(
                     category_id: None,
                     status: None,
                     locale: Some(locale),
-                    page: 1,
+                    after: None,
                     per_page: 100,
                 },
                 Some(tenant.default_locale.as_str()),
@@ -69,7 +69,8 @@ pub(super) async fn fetch_topic_merge_candidates_native(
             .await
             .map_err(|error| ServerFnError::new(error.to_string()))?;
 
-        Ok(topics
+        Ok(page
+            .items
             .into_iter()
             .map(|topic| ForumTopicMergeCandidate {
                 id: topic.id.to_string(),

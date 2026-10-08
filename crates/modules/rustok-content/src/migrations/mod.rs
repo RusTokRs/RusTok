@@ -7,7 +7,6 @@ mod m20260301_000002_alter_nodes_add_soft_delete;
 mod m20260311_000001_create_content_orchestration_tables;
 mod m20260316_000003_create_node_field_definitions;
 mod m20260317_000001_alter_categories_add_updated_at;
-mod m20260328_000001_create_content_url_tables;
 mod m20260721_000004_expand_content_locale_storage_columns;
 
 use sea_orm_migration::MigrationTrait;
@@ -21,7 +20,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260311_000001_create_content_orchestration_tables::Migration),
         Box::new(m20260316_000003_create_node_field_definitions::Migration),
         Box::new(m20260317_000001_alter_categories_add_updated_at::Migration),
-        Box::new(m20260328_000001_create_content_url_tables::Migration),
         Box::new(m20260721_000004_expand_content_locale_storage_columns::Migration),
     ]
 }

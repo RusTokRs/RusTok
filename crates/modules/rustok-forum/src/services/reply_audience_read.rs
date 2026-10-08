@@ -6,7 +6,7 @@ use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::audience::SharedForumAudienceFactsPort;
-use crate::dto::{ListRepliesFilter, ReplyListItem, ReplyResponse};
+use crate::dto::{ListRepliesFilter, ReplyListItem, ReplyPage, ReplyResponse};
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::ReplyStatus;
 
@@ -170,7 +170,7 @@ impl ForumReplyAudienceReadService {
         topic_id: Uuid,
         mut filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
-    ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
+    ) -> ForumResult<ReplyPage<ReplyListItem>> {
         enforce_scope(&security, Resource::ForumReplies, Action::List)?;
         let locale = required_context_locale(&context)?;
         let viewer = ForumTopicAudienceViewer::authenticated(security.clone(), context)?;
@@ -198,7 +198,7 @@ impl ForumReplyAudienceReadService {
         mut filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
         statuses: Option<&[ReplyStatus]>,
-    ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+    ) -> ForumResult<ReplyPage<ReplyResponse>> {
         enforce_scope(&security, Resource::ForumReplies, Action::List)?;
         let locale = required_context_locale(&context)?;
         let viewer = ForumTopicAudienceViewer::authenticated(security.clone(), context)?;
@@ -227,7 +227,7 @@ impl ForumReplyAudienceReadService {
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
         statuses: Option<&[ReplyStatus]>,
-    ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+    ) -> ForumResult<ReplyPage<ReplyResponse>> {
         let security = SecurityContext::public_read();
         enforce_scope(&security, Resource::ForumReplies, Action::List)?;
         let viewer = ForumTopicAudienceViewer::public();
@@ -236,7 +236,10 @@ impl ForumReplyAudienceReadService {
             .is_topic_visible(tenant_id, topic_id, channel_slug, &viewer)
             .await?
         {
-            return Ok((Vec::new(), 0));
+            return Ok(ReplyPage {
+                items: Vec::new(),
+                next_cursor: None,
+            });
         }
 
         self.reply_service
@@ -263,7 +266,7 @@ impl ForumReplyAudienceReadService {
         mut filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
         statuses: Option<&[ReplyStatus]>,
-    ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+    ) -> ForumResult<ReplyPage<ReplyResponse>> {
         enforce_scope(&security, Resource::ForumReplies, Action::List)?;
         let locale = required_context_locale(&context)?;
         let channel_slug = context.channel.clone();
@@ -273,7 +276,10 @@ impl ForumReplyAudienceReadService {
             .is_topic_visible(tenant_id, topic_id, channel_slug.as_deref(), &viewer)
             .await?
         {
-            return Ok((Vec::new(), 0));
+            return Ok(ReplyPage {
+                items: Vec::new(),
+                next_cursor: None,
+            });
         }
         filter.locale = Some(locale);
 

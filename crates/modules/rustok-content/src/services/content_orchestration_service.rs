@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -17,9 +16,8 @@ use rustok_core::{
 use rustok_api::{Action, Resource};
 use rustok_outbox::TransactionalEventBus;
 
-use crate::entities::{canonical_url, orchestration_audit_log, orchestration_operation, url_alias};
+use crate::entities::{orchestration_audit_log, orchestration_operation};
 use crate::error::{ContentError, ContentResult};
-use crate::normalize_locale_code;
 
 #[derive(Debug, Clone)]
 pub struct PromoteTopicToPostInput {
@@ -65,29 +63,11 @@ pub struct OrchestrationResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RetiredCanonicalTarget {
-    pub target_kind: String,
-    pub target_id: Uuid,
-    pub locale: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CanonicalUrlMutation {
-    pub target_kind: String,
-    pub target_id: Uuid,
-    pub locale: String,
-    pub canonical_url: String,
-    pub alias_urls: Vec<String>,
-    pub retired_targets: Vec<RetiredCanonicalTarget>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromoteTopicToPostOutput {
     pub topic_id: Uuid,
     pub post_id: Uuid,
     pub moved_comments: u64,
     pub effective_locale: String,
-    pub url_updates: Vec<CanonicalUrlMutation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,7 +76,6 @@ pub struct DemotePostToTopicOutput {
     pub topic_id: Uuid,
     pub moved_comments: u64,
     pub effective_locale: String,
-    pub url_updates: Vec<CanonicalUrlMutation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,7 +84,6 @@ pub struct SplitTopicOutput {
     pub target_topic_id: Uuid,
     pub moved_reply_ids: Vec<Uuid>,
     pub moved_comments: u64,
-    pub url_updates: Vec<CanonicalUrlMutation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,7 +91,6 @@ pub struct MergeTopicsOutput {
     pub target_topic_id: Uuid,
     pub source_topic_ids: Vec<Uuid>,
     pub moved_comments: u64,
-    pub url_updates: Vec<CanonicalUrlMutation>,
 }
 
 #[async_trait]
@@ -209,14 +186,6 @@ impl ContentOrchestrationService {
             .promote_topic_to_post(&txn, tenant_id, security.user_id, &input)
             .await?;
 
-        self.apply_canonical_url_mutations(
-            &txn,
-            tenant_id,
-            security.user_id,
-            &bridge_result.url_updates,
-        )
-        .await?;
-
         self.event_bus
             .publish_in_tx(
                 &txn,
@@ -288,14 +257,6 @@ impl ContentOrchestrationService {
             .bridge
             .demote_post_to_topic(&txn, tenant_id, security.user_id, &input)
             .await?;
-
-        self.apply_canonical_url_mutations(
-            &txn,
-            tenant_id,
-            security.user_id,
-            &bridge_result.url_updates,
-        )
-        .await?;
 
         self.event_bus
             .publish_in_tx(
@@ -369,14 +330,6 @@ impl ContentOrchestrationService {
             .split_topic(&txn, tenant_id, security.user_id, &input)
             .await?;
 
-        self.apply_canonical_url_mutations(
-            &txn,
-            tenant_id,
-            security.user_id,
-            &bridge_result.url_updates,
-        )
-        .await?;
-
         self.event_bus
             .publish_in_tx(
                 &txn,
@@ -448,14 +401,6 @@ impl ContentOrchestrationService {
             .bridge
             .merge_topics(&txn, tenant_id, security.user_id, &input)
             .await?;
-
-        self.apply_canonical_url_mutations(
-            &txn,
-            tenant_id,
-            security.user_id,
-            &bridge_result.url_updates,
-        )
-        .await?;
 
         self.event_bus
             .publish_in_tx(
@@ -551,316 +496,8 @@ impl ContentOrchestrationService {
         Ok(())
     }
 
-    fn normalize_target_kind(&self, target_kind: &str) -> ContentResult<String> {
-        let normalized = target_kind.trim().to_ascii_lowercase();
-        if normalized.is_empty() {
-            return Err(ContentError::validation("target_kind must not be empty"));
-        }
-        if normalized.len() > 64 {
-            return Err(ContentError::validation("target_kind must be <= 64 chars"));
-        }
-        if !normalized
-            .chars()
-            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '.')
-        {
-            return Err(ContentError::validation(
-                "target_kind may contain only lowercase ascii letters, digits, `_`, or `.`",
-            ));
-        }
-        Ok(normalized)
-    }
-
-    fn normalize_route_url(&self, field: &str, value: &str) -> ContentResult<String> {
-        let normalized = value.trim();
-        if normalized.is_empty() {
-            return Err(ContentError::validation(format!(
-                "{field} must not be empty"
-            )));
-        }
-        if normalized.len() > 512 {
-            return Err(ContentError::validation(format!(
-                "{field} must be <= 512 chars"
-            )));
-        }
-        if !normalized.starts_with('/') {
-            return Err(ContentError::validation(format!(
-                "{field} must start with `/`"
-            )));
-        }
-        if normalized.chars().any(char::is_whitespace) || normalized.contains("://") {
-            return Err(ContentError::validation(format!(
-                "{field} must be a relative route without whitespace or scheme"
-            )));
-        }
-        Ok(normalized.to_string())
-    }
-
-    async fn apply_canonical_url_mutations(
-        &self,
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        actor_id: Option<Uuid>,
-        updates: &[CanonicalUrlMutation],
-    ) -> ContentResult<()> {
-        for update in updates {
-            let target_kind = self.normalize_target_kind(&update.target_kind)?;
-            let locale = normalize_locale_code(&update.locale)
-                .ok_or_else(|| ContentError::validation("canonical locale must not be empty"))?;
-            let canonical_route =
-                self.normalize_route_url("canonical_url", update.canonical_url.as_str())?;
-
-            self.ensure_canonical_route_available(
-                txn,
-                tenant_id,
-                &locale,
-                &canonical_route,
-                &target_kind,
-                update.target_id,
-            )
-            .await?;
-
-            let mut alias_urls = BTreeSet::new();
-            for alias in &update.alias_urls {
-                let alias = self.normalize_route_url("alias_url", alias)?;
-                if alias != canonical_route {
-                    alias_urls.insert(alias);
-                }
-            }
-
-            for retired in &update.retired_targets {
-                let retired_kind = self.normalize_target_kind(&retired.target_kind)?;
-                let retired_locale = normalize_locale_code(&retired.locale).ok_or_else(|| {
-                    ContentError::validation("retired canonical locale must not be empty")
-                })?;
-
-                let retired_canonical = canonical_url::Entity::find()
-                    .filter(canonical_url::Column::TenantId.eq(tenant_id))
-                    .filter(canonical_url::Column::TargetKind.eq(retired_kind.clone()))
-                    .filter(canonical_url::Column::TargetId.eq(retired.target_id))
-                    .filter(canonical_url::Column::Locale.eq(retired_locale.clone()))
-                    .one(txn)
-                    .await?;
-
-                if let Some(retired_canonical) = retired_canonical {
-                    if retired_canonical.canonical_url != canonical_route {
-                        alias_urls.insert(retired_canonical.canonical_url.clone());
-                    }
-                    canonical_url::Entity::delete_by_id(retired_canonical.id)
-                        .exec(txn)
-                        .await?;
-                }
-
-                let retired_aliases = url_alias::Entity::find()
-                    .filter(url_alias::Column::TenantId.eq(tenant_id))
-                    .filter(url_alias::Column::TargetKind.eq(retired_kind))
-                    .filter(url_alias::Column::TargetId.eq(retired.target_id))
-                    .filter(url_alias::Column::Locale.eq(retired_locale))
-                    .all(txn)
-                    .await?;
-                for retired_alias in retired_aliases {
-                    if retired_alias.alias_url != canonical_route {
-                        alias_urls.insert(retired_alias.alias_url.clone());
-                    }
-                    url_alias::Entity::delete_by_id(retired_alias.id)
-                        .exec(txn)
-                        .await?;
-                }
-            }
-
-            let existing_canonical = canonical_url::Entity::find()
-                .filter(canonical_url::Column::TenantId.eq(tenant_id))
-                .filter(canonical_url::Column::TargetKind.eq(target_kind.clone()))
-                .filter(canonical_url::Column::TargetId.eq(update.target_id))
-                .filter(canonical_url::Column::Locale.eq(locale.clone()))
-                .one(txn)
-                .await?;
-
-            let now = Utc::now();
-            let mut mapping_changed = false;
-            if let Some(existing_canonical) = existing_canonical {
-                if existing_canonical.canonical_url != canonical_route {
-                    alias_urls.insert(existing_canonical.canonical_url.clone());
-                    let mut active: canonical_url::ActiveModel = existing_canonical.into();
-                    active.canonical_url = Set(canonical_route.clone());
-                    active.updated_at = Set(now.into());
-                    active.update(txn).await?;
-                    mapping_changed = true;
-                }
-            } else {
-                canonical_url::ActiveModel {
-                    id: Set(rustok_core::generate_id()),
-                    tenant_id: Set(tenant_id),
-                    target_kind: Set(target_kind.clone()),
-                    target_id: Set(update.target_id),
-                    locale: Set(locale.clone()),
-                    canonical_url: Set(canonical_route.clone()),
-                    created_at: Set(now.into()),
-                    updated_at: Set(now.into()),
-                }
-                .insert(txn)
-                .await?;
-                mapping_changed = true;
-            }
-
-            let alias_urls = alias_urls.into_iter().collect::<Vec<_>>();
-
-            for alias in &alias_urls {
-                self.ensure_alias_route_available(
-                    txn,
-                    tenant_id,
-                    &locale,
-                    alias,
-                    &target_kind,
-                    update.target_id,
-                )
-                .await?;
-            }
-
-            url_alias::Entity::delete_many()
-                .filter(url_alias::Column::TenantId.eq(tenant_id))
-                .filter(url_alias::Column::Locale.eq(locale.clone()))
-                .filter(url_alias::Column::AliasUrl.eq(canonical_route.clone()))
-                .exec(txn)
-                .await?;
-
-            for alias in &alias_urls {
-                let existing_alias = url_alias::Entity::find()
-                    .filter(url_alias::Column::TenantId.eq(tenant_id))
-                    .filter(url_alias::Column::Locale.eq(locale.clone()))
-                    .filter(url_alias::Column::AliasUrl.eq(alias.clone()))
-                    .one(txn)
-                    .await?;
-
-                if let Some(existing_alias) = existing_alias {
-                    let mut active: url_alias::ActiveModel = existing_alias.into();
-                    active.target_kind = Set(target_kind.clone());
-                    active.target_id = Set(update.target_id);
-                    active.canonical_url = Set(canonical_route.clone());
-                    active.updated_at = Set(now.into());
-                    active.update(txn).await?;
-                } else {
-                    url_alias::ActiveModel {
-                        id: Set(rustok_core::generate_id()),
-                        tenant_id: Set(tenant_id),
-                        target_kind: Set(target_kind.clone()),
-                        target_id: Set(update.target_id),
-                        locale: Set(locale.clone()),
-                        alias_url: Set(alias.clone()),
-                        canonical_url: Set(canonical_route.clone()),
-                        created_at: Set(now.into()),
-                        updated_at: Set(now.into()),
-                    }
-                    .insert(txn)
-                    .await?;
-                }
-            }
-
-            if mapping_changed || !alias_urls.is_empty() {
-                self.event_bus
-                    .publish_in_tx(
-                        txn,
-                        tenant_id,
-                        actor_id,
-                        DomainEvent::CanonicalUrlChanged {
-                            target_id: update.target_id,
-                            target_kind: target_kind.clone(),
-                            locale: locale.clone(),
-                            new_canonical_url: canonical_route.clone(),
-                            old_urls: alias_urls.clone(),
-                        },
-                    )
-                    .await?;
-
-                if !alias_urls.is_empty() {
-                    self.event_bus
-                        .publish_in_tx(
-                            txn,
-                            tenant_id,
-                            actor_id,
-                            DomainEvent::UrlAliasPurged {
-                                target_id: update.target_id,
-                                target_kind: target_kind.clone(),
-                                locale,
-                                urls: alias_urls,
-                            },
-                        )
-                        .await?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn ensure_canonical_route_available(
-        &self,
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        locale: &str,
-        canonical_route: &str,
-        target_kind: &str,
-        target_id: Uuid,
-    ) -> ContentResult<()> {
-        let existing_canonical = canonical_url::Entity::find()
-            .filter(canonical_url::Column::TenantId.eq(tenant_id))
-            .filter(canonical_url::Column::Locale.eq(locale.to_string()))
-            .filter(canonical_url::Column::CanonicalUrl.eq(canonical_route.to_string()))
-            .one(txn)
-            .await?;
-
-        if let Some(existing) = existing_canonical
-            && (existing.target_kind != target_kind || existing.target_id != target_id)
-        {
-            return Err(ContentError::validation(format!(
-                "canonical_url `{canonical_route}` already belongs to another content target"
-            )));
-        }
-
-        let existing_alias = url_alias::Entity::find()
-            .filter(url_alias::Column::TenantId.eq(tenant_id))
-            .filter(url_alias::Column::Locale.eq(locale.to_string()))
-            .filter(url_alias::Column::AliasUrl.eq(canonical_route.to_string()))
-            .one(txn)
-            .await?;
-
-        if let Some(existing) = existing_alias
-            && (existing.target_kind != target_kind || existing.target_id != target_id)
-        {
-            return Err(ContentError::validation(format!(
-                "canonical_url `{canonical_route}` collides with an alias owned by another content target"
-            )));
-        }
-
-        Ok(())
-    }
-
-    async fn ensure_alias_route_available(
-        &self,
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        locale: &str,
-        alias_route: &str,
-        target_kind: &str,
-        target_id: Uuid,
-    ) -> ContentResult<()> {
-        let existing_canonical = canonical_url::Entity::find()
-            .filter(canonical_url::Column::TenantId.eq(tenant_id))
-            .filter(canonical_url::Column::Locale.eq(locale.to_string()))
-            .filter(canonical_url::Column::CanonicalUrl.eq(alias_route.to_string()))
-            .one(txn)
-            .await?;
-
-        if let Some(existing) = existing_canonical
-            && (existing.target_kind != target_kind || existing.target_id != target_id)
-        {
-            return Err(ContentError::validation(format!(
-                "alias_url `{alias_route}` would shadow another target canonical URL"
-            )));
-        }
-
-        Ok(())
-    }
-
+    /// A promoted topic takes its Blog route over from any retired alias that an
+    /// earlier post left behind, the same claim rule Blog applies to its own slugs.
     async fn fetch_idempotent_result(
         &self,
         txn: &DatabaseTransaction,

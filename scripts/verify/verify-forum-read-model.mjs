@@ -25,9 +25,9 @@ const paths = {
   flexAttached: "crates/modules/flex/src/attached.rs",
   flexLib: "crates/modules/flex/src/lib.rs",
   topicService: "crates/modules/rustok-forum/src/services/topic.rs",
-  service: "crates/modules/rustok-forum/src/services/read_model.rs",
   serviceOwner: "crates/modules/rustok-forum/src/services/read_model_owner.rs",
-  compatibility: "crates/modules/rustok-forum/src/services/bounded_compat.rs",
+  // The canonical owner applies the read caps; no separate compat module exists.
+  compatibility: "crates/modules/rustok-forum/src/services/read_model_owner.rs",
   categoryOwner: "crates/modules/rustok-forum/src/services/category_owner.rs",
   servicesRegistry: "crates/modules/rustok-forum/src/services/mod.rs",
   topicDto: "crates/modules/rustok-forum/src/dto/topic.rs",
@@ -54,7 +54,8 @@ function verifyStatic() {
   const flexAttached = text(paths.flexAttached);
   const flexLib = text(paths.flexLib);
   const topicService = text(paths.topicService);
-  const service = `${text(paths.service)}\n${text(paths.serviceOwner)}`;
+  const sharedOrder = "crates/modules/rustok-forum/src/services/topic_visibility_list.rs";
+  const service = `${text(paths.serviceOwner)}\n${text(sharedOrder)}`;
   const compatibility = text(paths.compatibility);
   const categoryOwner = text(paths.categoryOwner);
   const servicesRegistry = text(paths.servicesRegistry);
@@ -82,26 +83,41 @@ function verifyStatic() {
     "list_topics",
     "list_replies",
     "CATEGORY_CURSOR_VERSION",
-    "TOPIC_CURSOR_VERSION",
     "REPLY_CURSOR_VERSION",
     "row.canonical.position",
-    "order_by_desc(forum_topic::Column::UpdatedAt)",
     "order_by_asc(forum_reply::Column::Position)",
+    "TopicListCursor::decode",
+    "order_topic_list(select)",
+    "topic_list_after_condition(&after)",
+    "topic_list_cursor(topic).encode()",
   ]) {
-    if (!service.includes(token)) fail(`${paths.service}: missing token ${token}`);
+    if (!service.includes(token)) fail(`${paths.serviceOwner}: missing token ${token}`);
+  }
+  // The single topic order lives in the shared helper, not in each reader.
+  for (const token of [
+    "order_by_desc(forum_topic::Column::IsPinned)",
+    "order_by_with_nulls(",
+    "NullOrdering::Last",
+    "order_by_desc(forum_topic::Column::UpdatedAt)",
+    "order_by_desc(forum_topic::Column::Id)",
+  ]) {
+    if (!text(sharedOrder).includes(token)) fail(`${sharedOrder}: missing order key ${token}`);
+  }
+  for (const legacy of ["TOPIC_CURSOR_VERSION", "decode_topic_cursor", "encode_topic_cursor"]) {
+    if (service.includes(legacy)) fail(`${paths.serviceOwner}: legacy topic cursor token ${legacy}`);
   }
 
   const overfetches = service.match(/\.limit\((?:limit|MAX_FORUM_CATEGORY_TREE_NODES) \+ 1\)/g) ?? [];
   if (overfetches.length !== 3) {
-    fail(`${paths.service}: expected 3 limit+1 keyset overfetches, found ${overfetches.length}`);
+    fail(`${paths.serviceOwner}: expected 3 limit+1 keyset overfetches, found ${overfetches.length}`);
   }
   if (service.includes(".paginate(")) {
-    fail(`${paths.service}: canonical cursor service must not use offset pagination`);
+    fail(`${paths.serviceOwner}: canonical cursor service must not use offset pagination`);
   }
   for (const token of [
     "idx_forum_categories_cursor",
     "idx_forum_topics_cursor",
-    "idx_forum_replies_cursor",
+    "idx_forum_replies_keyset",
   ]) {
     if (!migration.includes(token)) fail(`${paths.migration}: missing index ${token}`);
   }

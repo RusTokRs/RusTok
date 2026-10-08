@@ -27,7 +27,7 @@ pub struct ForumTopicSplitReply {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ForumTopicSplitReplyPage {
-    pub total: i64,
+    /// Every reply of the source topic, loaded through the keyset cursor.
     pub items: Vec<ForumTopicSplitReply>,
 }
 
@@ -134,7 +134,7 @@ pub fn build_forum_topic_split_command(
     if reply_ids.len() != selected_reply_ids.len() {
         return Err("Selected reply identities must be unique".to_string());
     }
-    if i64::try_from(reply_ids.len()).unwrap_or(i64::MAX) >= replies.total {
+    if reply_ids.len() >= replies.items.len() {
         return Err("The source topic must retain at least one reply".to_string());
     }
 
@@ -319,7 +319,6 @@ mod tests {
             target_topic_id: "00000000-0000-4000-8000-000000000003".to_string(),
         };
         let replies = ForumTopicSplitReplyPage {
-            total: 3,
             items: vec![
                 reply("00000000-0000-4000-8000-000000000011", None),
                 reply(
@@ -351,7 +350,6 @@ mod tests {
     #[test]
     fn parent_boundary_is_rejected_before_transport() {
         let replies = ForumTopicSplitReplyPage {
-            total: 3,
             items: vec![
                 reply("00000000-0000-4000-8000-000000000011", None),
                 reply(

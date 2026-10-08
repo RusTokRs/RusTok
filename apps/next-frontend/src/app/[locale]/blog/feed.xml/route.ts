@@ -16,6 +16,14 @@ import {
 } from "@/shared/api/modules";
 import { fetchPublishedPosts, type BlogPostSummary } from "@rustok/blog-frontend";
 
+/**
+ * Wraps text in a CDATA section. A literal `]]>` inside the text would close
+ * the section early, so it is split across two sections.
+ */
+function cdata(value: string): string {
+  return `<![CDATA[${value.split("]]>").join("]]]]><![CDATA[>")}]]>`;
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ locale: string }> }
@@ -27,12 +35,17 @@ export async function GET(
   let posts: BlogPostSummary[] = [];
   if (tenantId) {
     try {
+      // The feed is locale-scoped: items use the requested locale with the
+      // canonical fallback chain applied by the backend.
       const res = await fetchPublishedPosts(
         storefrontGraphql,
         tenantId,
         tenantSlug,
-        1,
-        25
+        null,
+        25,
+        undefined,
+        undefined,
+        locale
       );
       posts = res.items;
     } catch (err) {
@@ -63,18 +76,18 @@ export async function GET(
         ? new Date(post.publishedAt).toUTCString()
         : new Date().toUTCString();
       const categoryTag = post.categoryName
-        ? `\n      <category><![CDATA[${post.categoryName}]]></category>`
+        ? `\n      <category>${cdata(post.categoryName)}</category>`
         : "";
       const tagsXml = post.tags
-        .map((tag) => `\n      <category><![CDATA[${tag}]]></category>`)
+        .map((tag) => `\n      <category>${cdata(tag)}</category>`)
         .join("");
 
       return `    <item>
-      <title><![CDATA[${post.title}]]></title>
+      <title>${cdata(post.title)}</title>
       <link>${postUrl}</link>
       <guid isPermaLink="true">${postUrl}</guid>
       <pubDate>${pubDate}</pubDate>
-      <description><![CDATA[${post.excerpt || post.title}]]></description>${categoryTag}${tagsXml}
+      <description>${cdata(post.excerpt || post.title)}</description>${categoryTag}${tagsXml}
     </item>`;
     })
     .join("\n");
@@ -82,9 +95,9 @@ export async function GET(
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title><![CDATA[${feedTitle}]]></title>
+    <title>${cdata(feedTitle)}</title>
     <link>${blogUrl}</link>
-    <description><![CDATA[${feedDescription}]]></description>
+    <description>${cdata(feedDescription)}</description>
     <language>${locale}</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     <atom:link href="${blogUrl}/feed.xml" rel="self" type="application/rss+xml"/>

@@ -12,7 +12,7 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::{ListTopicsFilter, TopicListItem, TopicResponse};
+use crate::dto::{ListTopicsFilter, TopicListItem, TopicPage, TopicResponse};
 use crate::entities::{forum_reply, forum_solution, forum_topic, forum_topic_merge_operation};
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
@@ -80,7 +80,7 @@ impl TopicService {
         filter: ListTopicsFilter,
         fallback_locale: Option<&str>,
         hidden_category_ids: &[Uuid],
-    ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+    ) -> ForumResult<TopicPage<TopicListItem>> {
         self.inner
             .list_with_locale_fallback_and_hidden_categories(
                 tenant_id,
@@ -100,7 +100,7 @@ impl TopicService {
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
         hidden_category_ids: &[Uuid],
-    ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+    ) -> ForumResult<TopicPage<TopicListItem>> {
         self.inner
             .list_storefront_visible_with_locale_fallback_and_hidden_categories(
                 tenant_id,

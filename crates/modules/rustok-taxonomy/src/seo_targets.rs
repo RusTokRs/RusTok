@@ -1,12 +1,13 @@
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use rustok_seo_targets::{
-    SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
-    SeoTargetAlternateRoute, SeoTargetBulkListRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
+    SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
+    SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
+    SeoTargetCapabilities, SeoTargetLoadRequest,
     SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
     SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
     builtin_slug, schema,
@@ -181,17 +182,35 @@ impl SeoTargetProvider for TaxonomyCategorySeoTargetProvider {
         Ok(None)
     }
 
-    async fn list_bulk_summaries(
+    async fn list_bulk_summaries_page(
         &self,
         runtime: &SeoTargetRuntimeContext,
-        request: SeoTargetBulkListRequest<'_>,
-    ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
-        let terms = taxonomy_term::Entity::find()
+        request: SeoTargetBulkPageRequest<'_>,
+    ) -> AnyResult<SeoBulkSummaryPage> {
+        let after = request
+            .after
+            .map(Uuid::parse_str)
+            .transpose()
+            .map_err(|_| anyhow::anyhow!("invalid taxonomy SEO bulk cursor"))?;
+        let limit = request.limit.max(1);
+        let mut query = taxonomy_term::Entity::find()
             .filter(taxonomy_term::Column::TenantId.eq(request.tenant_id))
-            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
-            .order_by_asc(taxonomy_term::Column::CanonicalKey)
+            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category));
+        if let Some(after) = after {
+            query = query.filter(taxonomy_term::Column::Id.gt(after));
+        }
+        let mut terms = query
+            .order_by_asc(taxonomy_term::Column::Id)
+            .limit(limit + 1)
             .all(&runtime.db)
             .await?;
+        let has_next_page = terms.len() as u64 > limit;
+        terms.truncate(limit as usize);
+        let next_cursor = if has_next_page {
+            terms.last().map(|term| term.id.to_string())
+        } else {
+            None
+        };
 
         let mut terms_by_scope: BTreeMap<(TaxonomyScopeType, String), Vec<Uuid>> = BTreeMap::new();
         for term in terms {
@@ -225,7 +244,10 @@ impl SeoTargetProvider for TaxonomyCategorySeoTargetProvider {
             }
         }
 
-        Ok(summaries)
+        Ok(SeoBulkSummaryPage {
+            items: summaries,
+            next_cursor,
+        })
     }
 
     async fn sitemap_candidates(

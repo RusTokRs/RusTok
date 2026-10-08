@@ -185,6 +185,81 @@ impl PostService {
         Ok(())
     }
 
+    /// Claims `slug` for `post_id` and records the retired slug as a permanent
+    /// redirect. A redirect that still holds the new canonical route is released
+    /// first, so a redirect can never shadow a live canonical slug. Blog routes
+    /// are global, so no locale is involved. `previous_slug` is the slug replaced
+    /// on rename. Its route becomes a redirect to the post's canonical route.
+    pub(super) async fn claim_post_route_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        post_id: Uuid,
+        slug: &str,
+        previous_slug: Option<&str>,
+    ) -> BlogResult<()> {
+        let owner = BlogPostRouteOwner::new(self.event_bus.clone());
+        owner
+            .release_slug_route_in_tx(txn, tenant_id, actor_id, slug)
+            .await?;
+        if let Some(previous_slug) = previous_slug {
+            owner
+                .redirect_retired_slug_in_tx(txn, tenant_id, actor_id, post_id, previous_slug, slug)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Resolves a post by its current slug first, then through the Blog-owned
+    /// redirect table, which holds routes retired by a slug change. Callers must
+    /// redirect when the returned post's slug differs from the requested one. A
+    /// redirect that points at another module resolves to `None`: Blog does not
+    /// serve it.
+    pub(super) async fn find_post_by_current_or_canonical_route(
+        &self,
+        tenant_id: Uuid,
+        slug: &str,
+    ) -> BlogResult<Option<blog_post::Model>> {
+        if let Some(post) = blog_post::Entity::find()
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Slug.eq(slug))
+            .one(&self.db)
+            .await
+            .map_err(BlogError::from)?
+        {
+            Self::validate_persisted_version(&post)?;
+            return Ok(Some(post));
+        }
+
+        let Some(redirect) = BlogPostRouteOwner::find_redirect(
+            &self.db,
+            tenant_id,
+            &canonical_post_route(slug),
+        )
+        .await?
+        else {
+            return Ok(None);
+        };
+        if redirect.target_kind != BLOG_POST_TARGET_KIND {
+            return Ok(None);
+        }
+
+        let post = blog_post::Entity::find_by_id(redirect.target_id)
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(BlogError::from)?
+            .ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog redirect '{slug}' references missing post {}",
+                    redirect.target_id
+                ))
+            })?;
+        Self::validate_persisted_version(&post)?;
+        Ok(Some(post))
+    }
+
     pub(super) async fn upsert_translation_in_tx(
         &self,
         txn: &DatabaseTransaction,

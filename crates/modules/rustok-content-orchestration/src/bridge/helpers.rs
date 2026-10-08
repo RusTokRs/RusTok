@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 
 use chrono::Utc;
-use rustok_blog::blog_post_translation;
 use rustok_content::{
     ContentError, ContentResult, normalize_locale_code, resolve_by_locale_with_fallback,
 };
@@ -53,26 +52,8 @@ pub(crate) fn normalize_slug(value: &str) -> String {
     slug.trim_matches('-').to_string()
 }
 
-pub(crate) fn blog_post_route(slug: &str) -> String {
-    format!("/modules/blog?slug={slug}")
-}
-
-pub(crate) fn forum_topic_route(topic_id: Uuid) -> String {
-    format!("/modules/forum?topic={topic_id}")
-}
-
 pub(crate) fn locales_from_topic_translations(
     translations: &[forum_topic_translation::Model],
-) -> ContentResult<Vec<String>> {
-    locales_from_strs(
-        translations
-            .iter()
-            .map(|translation| translation.locale.as_str()),
-    )
-}
-
-pub(crate) fn locales_from_post_translations(
-    translations: &[blog_post_translation::Model],
 ) -> ContentResult<Vec<String>> {
     locales_from_strs(
         translations

@@ -158,8 +158,8 @@ for (const marker of [
   "tenant_topic_channel_access_subquery(tenant_id)",
   "matching_tenant_topic_channel_access_subquery(tenant_id, &channel_slug)",
   "forum_topic_channel_access::Column::TenantId",
-  "let total = paginator.num_items().await?",
-  "let topics = paginator.fetch_page",
+  "fn fetch_topic_keyset_page(",
+  ".limit(per_page + 1)",
 ]) {
   requireText(
     compatibilitySelector,
@@ -170,7 +170,7 @@ for (const marker of [
 const categoryFilterIndex = compatibilitySelector.indexOf(
   "forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec())",
 );
-const paginatorIndex = compatibilitySelector.indexOf("let paginator = select");
+const paginatorIndex = compatibilitySelector.indexOf("self.fetch_topic_keyset_page(select, &filter)");
 if (categoryFilterIndex < 0 || paginatorIndex < 0 || categoryFilterIndex > paginatorIndex) {
   failures.push("category visibility must be applied before storefront count and pagination");
 }
@@ -213,10 +213,10 @@ for (const marker of [
   "inherited_authenticated_categories_filter_before_storefront_pagination",
   "ForumCategoryVisibility::Authenticated",
   "ForumTopicVisibilityScope::storefront_for_viewer(None, true)",
-  "assert_eq!(public_total, 1)",
-  "assert_eq!(authenticated_total, 2)",
-  "assert_eq!(public_restricted_total, 0)",
-  "assert_eq!(authenticated_restricted_total, 1)",
+  "assert_eq!(public_page.len(), 1)",
+  "assert_eq!(authenticated_page.len(), 2)",
+  "assert_eq!(public_restricted_page.len(), 0)",
+  "assert_eq!(authenticated_restricted_page.len(), 1)",
   ".is_none()",
   ".is_some()",
 ]) {

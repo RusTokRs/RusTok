@@ -20,6 +20,7 @@ import {
   getStorefrontTenantSlug,
 } from "@/shared/api/modules";
 import { buildSeoMetadata } from "@/shared/seo/metadata";
+import { getSiteUrl } from "@/shared/seo/site";
 import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import { RichTextHtml } from "@rustok/richtext/view";
 import { TableOfContents } from "@/shared/ui/table-of-contents";
@@ -74,8 +75,15 @@ export async function generateMetadata({
     route: path,
   });
 
-  const title = post?.title || slug;
-  const description = post?.excerpt || "Read this article on RusToK Blog.";
+  // Explicit SEO fields win; otherwise use the localized post content.
+  // The default description is localized, never a hard-coded English string
+  // for non-English pages.
+  const title = post?.seoTitle || post?.title || slug;
+  const defaultDescription =
+    locale === "ru"
+      ? "Читайте эту статью в блоге RusToK."
+      : "Read this article on RusToK Blog.";
+  const description = post?.seoDescription || post?.excerpt || defaultDescription;
 
   return buildSeoMetadata({
     locale,
@@ -135,6 +143,12 @@ export default async function BlogPostPage({
     notFound();
   }
 
+  // The post was resolved through a retired slug (or the slug was otherwise
+  // non-canonical): redirect permanently to the current canonical slug.
+  if (post.slug && post.slug !== slug) {
+    permanentRedirect(`/${locale}/blog/${encodeURIComponent(post.slug)}`);
+  }
+
   const publishedDate = post.publishedAt
     ? new Date(post.publishedAt).toLocaleDateString(locale, {
         year: "numeric",
@@ -146,24 +160,53 @@ export default async function BlogPostPage({
   const readingMinutes = calculateReadingTime(post.contentPlainText);
   const readingTimeLabel = formatReadingTime(readingMinutes, locale);
 
+  // Related articles: same category first (when the post has one), then the
+  // most recent posts to fill up to three. Both reads use the requested locale.
   let relatedPosts: BlogPostSummary[] = [];
   try {
-    const relatedRes = await fetchPublishedPosts(
-      storefrontGraphql,
-      tenantId,
-      tenantSlug,
-      1,
-      4
-    );
-    relatedPosts = relatedRes.items.filter((p) => p.slug !== slug).slice(0, 3);
+    const collected: BlogPostSummary[] = [];
+    if (post.categoryId) {
+      const sameCategory = await fetchPublishedPosts(
+        storefrontGraphql,
+        tenantId,
+        tenantSlug,
+        null,
+        4,
+        undefined,
+        post.categoryId,
+        locale
+      );
+      collected.push(...sameCategory.items);
+    }
+    if (collected.filter((p) => p.slug !== post.slug).length < 3) {
+      const recent = await fetchPublishedPosts(
+        storefrontGraphql,
+        tenantId,
+        tenantSlug,
+        null,
+        4,
+        undefined,
+        undefined,
+        locale
+      );
+      collected.push(...recent.items);
+    }
+    const seen = new Set<string>([post.id]);
+    relatedPosts = collected
+      .filter((item) => {
+        if (seen.has(item.id) || item.slug === post.slug) return false;
+        seen.add(item.id);
+        return true;
+      })
+      .slice(0, 3);
   } catch {
     relatedPosts = [];
   }
 
-  const articleUrl = `/${locale}/blog/${encodeURIComponent(slug)}`;
+  const articleUrl = `/${locale}/blog/${encodeURIComponent(post.slug ?? slug)}`;
   const jsonLd = buildArticleJsonLd({
     post,
-    url: articleUrl,
+    url: `${getSiteUrl()}${articleUrl}`,
   });
 
   const comments = post.publicComments;

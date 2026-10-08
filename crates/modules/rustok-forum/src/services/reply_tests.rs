@@ -123,14 +123,14 @@ mod tests {
                 .expect("reply should be created");
         }
 
-        let (replies, total) = service
+        let page = service
             .list_response_for_topic_with_locale_fallback(
                 tenant_id,
                 security,
                 topic.id,
                 ListRepliesFilter {
                     locale: Some("en".to_string()),
-                    page: 1,
+                    after: None,
                     per_page: 20,
                 },
                 None,
@@ -138,7 +138,8 @@ mod tests {
             .await
             .expect("reply list should load");
 
-        assert_eq!(total, 3);
+        assert!(page.next_cursor.is_none());
+        let replies = page.items;
         assert_eq!(replies.len(), 3);
         let contents = replies
             .into_iter()

@@ -22,12 +22,15 @@ interface DataTableProps<
 > extends React.ComponentProps<'div'> {
   table: ReactTable<StockFeatures, TData>;
   actionBar?: React.ReactNode;
+  /** Replaces the count-based pagination, for lists paged by cursor. */
+  pagination?: React.ReactNode;
 }
 
 export function DataTable<TData extends RowData = any>({
   table,
   actionBar,
-  children
+  children,
+  pagination
 }: DataTableProps<TData>) {
   return (
     <div className='flex flex-1 flex-col space-y-4'>
@@ -86,7 +89,7 @@ export function DataTable<TData extends RowData = any>({
         </div>
       </div>
       <div className='flex flex-col gap-2.5'>
-        <DataTablePagination table={table} />
+        {pagination ?? <DataTablePagination table={table} />}
         {actionBar &&
           table.getFilteredSelectedRowModel().rows.length > 0 &&
           actionBar}

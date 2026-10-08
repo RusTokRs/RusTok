@@ -12,7 +12,7 @@ use std::time::Instant;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::{ListTopicsFilter, SubscriptionService, TopicListItem, TopicResponse};
+use crate::{ListTopicsFilter, SubscriptionService, TopicListItemPage, TopicResponse};
 
 #[derive(Debug, Clone, Copy, Deserialize, IntoParams, ToSchema)]
 pub struct PaginationParams {
@@ -59,7 +59,7 @@ fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
     tag = "forum",
     params(ListTopicsFilter),
     responses(
-        (status = 200, description = "List of topics", body = Vec<TopicListItem>),
+        (status = 200, description = "One keyset page of topics", body = TopicListItemPage),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
@@ -70,7 +70,7 @@ pub async fn list_topics(
     auth: AuthContext,
     request_context: RequestContext,
     Query(mut filter): Query<ListTopicsFilter>,
-) -> HttpResult<Json<Vec<TopicListItem>>> {
+) -> HttpResult<Json<TopicListItemPage>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_LIST],
@@ -83,7 +83,7 @@ pub async fn list_topics(
     filter.per_page = effective_limit;
     let service = runtime.topic_service();
     let list_started_at = Instant::now();
-    let (topics, _) = service
+    let page = service
         .list_with_locale_fallback(
             tenant.id,
             forum_security(&auth),
@@ -97,17 +97,20 @@ pub async fn list_topics(
         "forum.list_topics",
         "service_list",
         list_started_at.elapsed().as_secs_f64(),
-        topics.len() as u64,
+        page.items.len() as u64,
     );
     metrics::record_read_path_budget(
         "http",
         "forum.list_topics",
         requested_limit,
         effective_limit,
-        topics.len(),
+        page.items.len(),
     );
 
-    Ok(Json(topics))
+    Ok(Json(TopicListItemPage {
+        items: page.items,
+        next_cursor: page.next_cursor,
+    }))
 }
 
 #[cfg(test)]

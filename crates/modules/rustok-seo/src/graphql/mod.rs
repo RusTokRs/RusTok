@@ -647,42 +647,6 @@ mod tests {
         .expect("create seo_redirects table");
     }
 
-    async fn seed_content_routing_tables(db: &DatabaseConnection) {
-        db.execute_raw(Statement::from_string(
-            DbBackend::Sqlite,
-            "CREATE TABLE content_canonical_urls (
-                id TEXT PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                target_kind TEXT NOT NULL,
-                target_id TEXT NOT NULL,
-                locale TEXT NOT NULL,
-                canonical_url TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )"
-            .to_string(),
-        ))
-        .await
-        .expect("create content_canonical_urls table");
-        db.execute_raw(Statement::from_string(
-            DbBackend::Sqlite,
-            "CREATE TABLE content_url_aliases (
-                id TEXT PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                target_kind TEXT NOT NULL,
-                target_id TEXT NOT NULL,
-                locale TEXT NOT NULL,
-                alias_url TEXT NOT NULL,
-                canonical_url TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )"
-            .to_string(),
-        ))
-        .await
-        .expect("create content_url_aliases table");
-    }
-
     async fn seed_meta_tables(db: &DatabaseConnection) {
         db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
@@ -930,6 +894,9 @@ mod tests {
         rustok_forum::ForumModule
             .register_runtime_extensions(&mut extensions)
             .expect("register forum extensions");
+        extensions.insert(rustok_content::SharedCanonicalRouteResolver(Arc::new(
+            rustok_content_orchestration::OwnerCanonicalRouteResolver::new(db.clone()),
+        )));
         extensions.insert(SharedStaticModuleSettingsReader(Arc::new(
             TestStaticSettingsReader { db },
         )));
@@ -941,6 +908,9 @@ mod tests {
     ) -> Arc<ModuleRuntimeExtensions> {
         let mut extensions = ModuleRuntimeExtensions::default();
         extensions.insert(Arc::new(crate::SeoTargetRegistry::default()));
+        extensions.insert(rustok_content::SharedCanonicalRouteResolver(Arc::new(
+            rustok_content_orchestration::OwnerCanonicalRouteResolver::new(db.clone()),
+        )));
         extensions.insert(SharedStaticModuleSettingsReader(Arc::new(
             TestStaticSettingsReader { db },
         )));
@@ -952,7 +922,6 @@ mod tests {
         let db = test_db().await;
         seed_tenant_modules_table(&db).await;
         seed_seo_redirects_table(&db).await;
-        seed_content_routing_tables(&db).await;
         let tenant_id = Uuid::new_v4();
         insert_enabled_seo_module(&db, tenant_id, json!({})).await;
         insert_redirect(&db, tenant_id, "/legacy", "https://example.com/new", 308).await;
@@ -1270,7 +1239,6 @@ mod tests {
         let db = test_db().await;
         seed_tenant_modules_table(&db).await;
         seed_meta_tables(&db).await;
-        seed_content_routing_tables(&db).await;
         run_seo_migrations(&db).await;
         run_taxonomy_migrations(&db).await;
         run_forum_migrations(&db).await;

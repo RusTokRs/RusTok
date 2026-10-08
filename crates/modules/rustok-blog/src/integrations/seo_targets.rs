@@ -3,18 +3,18 @@ use async_trait::async_trait;
 use rustok_core::SecurityContext;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
-    SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
-    SeoTargetAlternateRoute, SeoTargetBulkListRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
+    SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
+    SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
+    SeoTargetCapabilities, SeoTargetLoadRequest,
     SeoTargetLoadScope, SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
     SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
     builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
+use uuid::Uuid;
 
 use crate::state_machine::BlogPostStatus;
-use crate::{
-    BlogError, PostListQuery, PostResponse, PostService, PostSortField, PostSortOrder, PostSummary,
-};
+use crate::{BlogError, PostResponse, PostService, PostSummary};
 
 const BULK_FETCH_SIZE: u32 = 48;
 
@@ -102,49 +102,31 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
             }))
     }
 
-    async fn list_bulk_summaries(
+    async fn list_bulk_summaries_page(
         &self,
         runtime: &SeoTargetRuntimeContext,
-        request: SeoTargetBulkListRequest<'_>,
-    ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
+        request: SeoTargetBulkPageRequest<'_>,
+    ) -> AnyResult<SeoBulkSummaryPage> {
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page_number = 1_u32;
-        let mut summaries = Vec::new();
+        let after = request
+            .after
+            .map(Uuid::parse_str)
+            .transpose()
+            .map_err(|_| anyhow::anyhow!("invalid blog SEO bulk cursor"))?;
+        let scan = service
+            .scan_published_posts(
+                request.tenant_id,
+                request.locale,
+                Some(request.default_locale),
+                after,
+                u32::try_from(request.limit)?,
+            )
+            .await?;
 
-        loop {
-            let page = service
-                .list_public_visible_with_locale_fallback(
-                    request.tenant_id,
-                    PostListQuery {
-                        status: Some(BlogPostStatus::Published),
-                        category_id: None,
-                        tag: None,
-                        author_id: None,
-                        locale: Some(request.locale.to_string()),
-                        page: Some(page_number),
-                        per_page: Some(BULK_FETCH_SIZE),
-                        sort_by: Some(PostSortField::PublishedAt),
-                        sort_order: Some(PostSortOrder::Desc),
-                    },
-                    Some(request.default_locale),
-                    None,
-                )
-                .await?;
-            if page.items.is_empty() {
-                break;
-            }
-
-            for item in page.items {
-                summaries.push(map_post_bulk_summary(item));
-            }
-
-            if page_number >= page.total_pages.max(1) {
-                break;
-            }
-            page_number += 1;
-        }
-
-        Ok(summaries)
+        Ok(SeoBulkSummaryPage {
+            items: scan.items.into_iter().map(map_post_bulk_summary).collect(),
+            next_cursor: scan.next_after.map(|id| id.to_string()),
+        })
     }
 
     async fn sitemap_candidates(
@@ -153,40 +135,28 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
         request: SeoTargetSitemapRequest<'_>,
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page_number = 1_u32;
+        let mut after = None;
         let mut candidates = Vec::new();
 
         loop {
             let page = service
-                .list_public_visible_with_locale_fallback(
+                .scan_published_posts(
                     request.tenant_id,
-                    PostListQuery {
-                        status: Some(BlogPostStatus::Published),
-                        category_id: None,
-                        tag: None,
-                        author_id: None,
-                        locale: Some(request.default_locale.to_string()),
-                        page: Some(page_number),
-                        per_page: Some(BULK_FETCH_SIZE),
-                        sort_by: Some(PostSortField::PublishedAt),
-                        sort_order: Some(PostSortOrder::Desc),
-                    },
+                    request.default_locale,
                     Some(request.default_locale),
-                    None,
+                    after,
+                    BULK_FETCH_SIZE,
                 )
                 .await?;
-            if page.items.is_empty() {
-                break;
-            }
 
             for item in page.items {
                 candidates.push(map_post_sitemap_candidate(item));
             }
 
-            if page_number >= page.total_pages.max(1) {
-                break;
+            match page.next_after {
+                Some(next) => after = Some(next),
+                None => break,
             }
-            page_number += 1;
         }
 
         Ok(candidates)
@@ -238,7 +208,7 @@ fn map_post_response(post: PostResponse) -> SeoLoadedTargetRecord {
         .or_else(|| summarize_text(post.title.as_str()));
     let primary_image = primary_post_image_descriptor(&post, title.as_str());
     let open_graph_images = primary_image.clone().into_iter().collect::<Vec<_>>();
-    let canonical_route = format!("/modules/blog?slug={}", post.slug);
+    let canonical_route = crate::services::canonical_post_route(&post.slug);
     let mut template_fields = SeoTemplateFieldMap::default();
     template_fields.insert("title", title.clone());
     template_fields.insert("description", description.clone().unwrap_or_default());

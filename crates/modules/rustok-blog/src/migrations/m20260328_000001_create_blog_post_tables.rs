@@ -90,6 +90,21 @@ impl MigrationTrait for Migration {
                     .col(BlogPosts::TenantId)
                     .col(BlogPosts::Status)
                     .col(BlogPosts::PublishedAt)
+                    // Keyset tie-breaker for the public list: (published_at, id).
+                    .col(BlogPosts::Id)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Keyset scan by id for bulk and sitemap jobs.
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_blog_posts_tenant_status_id")
+                    .table(BlogPosts::Table)
+                    .col(BlogPosts::TenantId)
+                    .col(BlogPosts::Status)
+                    .col(BlogPosts::Id)
                     .to_owned(),
             )
             .await?;
@@ -105,6 +120,25 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
+        // Keyset tie-breakers for the admin post list, one per sort field: (sort column, id).
+        for (name, column) in [
+            ("idx_blog_posts_tenant_created_id", BlogPosts::CreatedAt),
+            ("idx_blog_posts_tenant_updated_id", BlogPosts::UpdatedAt),
+            ("idx_blog_posts_tenant_published_id", BlogPosts::PublishedAt),
+        ] {
+            manager
+                .create_index(
+                    Index::create()
+                        .name(name)
+                        .table(BlogPosts::Table)
+                        .col(BlogPosts::TenantId)
+                        .col(column)
+                        .col(BlogPosts::Id)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_table(

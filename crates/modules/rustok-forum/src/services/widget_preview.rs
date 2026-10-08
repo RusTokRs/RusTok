@@ -185,29 +185,30 @@ impl ForumWidgetPreviewService {
             )
             .await?;
 
-        let (replies, replies_total) = if include_replies {
-            ReplyService::new(self.db.clone(), self.event_bus.clone())
+        let (replies, next_cursor) = if include_replies {
+            let page = ReplyService::new(self.db.clone(), self.event_bus.clone())
                 .list_response_for_topic_by_statuses_with_locale_fallback(
                     tenant_id,
                     security,
                     topic_id,
                     ListRepliesFilter {
                         locale: Some(requested_locale.to_string()),
-                        page: 1,
+                        after: None,
                         per_page: TOPIC_DETAIL_PREVIEW_REPLIES,
                     },
                     fallback_locale,
                     Some(&APPROVED_PREVIEW_REPLY_STATUSES),
                 )
-                .await?
+                .await?;
+            (page.items, page.next_cursor)
         } else {
-            (Vec::new(), 0)
+            (Vec::new(), None)
         };
 
         Ok(ForumTopicDetailWidgetPreview {
             topic,
             replies,
-            replies_total,
+            next_cursor,
             include_replies,
         })
     }
@@ -221,18 +222,23 @@ impl ForumWidgetPreviewService {
         props: &Value,
     ) -> ForumResult<ForumReplyStreamWidgetPreview> {
         let topic_id = required_uuid(props, "topic_id")?;
-        let page = required_u64(props, "page")?;
+        let after = props
+            .get("after")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
         let per_page = required_u64(props, "per_page")?;
         let approved_only = required_bool(props, "approved_only")?;
         let statuses = reply_stream_preview_statuses(approved_only, &security)?;
-        let (items, total) = ReplyService::new(self.db.clone(), self.event_bus.clone())
+        let page = ReplyService::new(self.db.clone(), self.event_bus.clone())
             .list_response_for_topic_by_statuses_with_locale_fallback(
                 tenant_id,
                 security,
                 topic_id,
                 ListRepliesFilter {
                     locale: Some(locale.to_string()),
-                    page,
+                    after,
                     per_page,
                 },
                 fallback_locale,
@@ -242,9 +248,8 @@ impl ForumWidgetPreviewService {
 
         Ok(ForumReplyStreamWidgetPreview {
             topic_id: topic_id.to_string(),
-            items,
-            total,
-            page,
+            items: page.items,
+            next_cursor: page.next_cursor,
             per_page,
             approved_only,
         })

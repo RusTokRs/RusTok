@@ -39,6 +39,14 @@ pub fn SeoBulkPane(
         }
     });
     let clear_selected = Callback::new(move |_| bulk_selected_ids.set(Vec::new()));
+    let on_next_page = Callback::new(move |cursor: String| {
+        bulk_selected_ids.set(Vec::new());
+        bulk_filter_form.update(|draft| draft.after = Some(cursor));
+    });
+    let on_first_page = Callback::new(move |_| {
+        bulk_selected_ids.set(Vec::new());
+        bulk_filter_form.update(|draft| draft.after = None);
+    });
 
     view! {
         <div class="space-y-6">
@@ -214,7 +222,15 @@ pub fn SeoBulkPane(
 
                     <Suspense fallback=move || view! { <p class="text-sm text-muted-foreground">"Loading bulk grid..."</p> }>
                         {move || match bulk_items.get() {
-                            Some(Ok(page)) if !page.items.is_empty() => view! { <BulkGridList page=page bulk_selected_ids=bulk_selected_ids /> }.into_any(),
+                            Some(Ok(page)) if !page.items.is_empty() => view! {
+                                <BulkGridList
+                                    page=page
+                                    bulk_selected_ids=bulk_selected_ids
+                                    has_previous=bulk_filter_form.with(|form| form.after.is_some())
+                                    on_next=on_next_page
+                                    on_first=on_first_page
+                                />
+                            }.into_any(),
                             Some(Ok(_)) => view! { <p class="text-sm text-muted-foreground">"No items matched the current bulk scope."</p> }.into_any(),
                             Some(Err(err)) => view! { <p class="text-sm text-destructive">{err.to_string()}</p> }.into_any(),
                             None => view! { <p class="text-sm text-muted-foreground">"No bulk scope loaded yet."</p> }.into_any(),
@@ -434,10 +450,40 @@ pub fn SeoBulkPane(
 }
 
 #[component]
-fn BulkGridList(page: SeoBulkPage, bulk_selected_ids: RwSignal<Vec<Uuid>>) -> impl IntoView {
+fn BulkGridList(
+    page: SeoBulkPage,
+    bulk_selected_ids: RwSignal<Vec<Uuid>>,
+    has_previous: bool,
+    on_next: Callback<String>,
+    on_first: Callback<()>,
+) -> impl IntoView {
+    let item_count = page.items.len();
+    let next_cursor = page.next_cursor.clone();
     view! {
         <div class="space-y-3">
-            <div class="text-sm text-muted-foreground">{format!("Total scope items: {}", page.total)}</div>
+            <div class="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                <span>{format!("Items on this page: {item_count}")}</span>
+                <div class="flex gap-2">
+                    {has_previous.then(|| view! {
+                        <button
+                            type="button"
+                            class="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent"
+                            on:click=move |_| on_first.run(())
+                        >
+                            "First page"
+                        </button>
+                    })}
+                    {next_cursor.map(|cursor| view! {
+                        <button
+                            type="button"
+                            class="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent"
+                            on:click=move |_| on_next.run(cursor.clone())
+                        >
+                            "Next page"
+                        </button>
+                    })}
+                </div>
+            </div>
             <ul class="space-y-3">
                 {page.items.into_iter().map(|item| {
                     let target_id = item.target_id;

@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::{DateTime, Utc};
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Statement, Value, sea_query::Expr,
@@ -19,7 +18,8 @@ use rustok_taxonomy::{
 use crate::dto::{
     CategoryCursorPage, CategoryCursorQuery, CategoryReadModel, MAX_FORUM_CATEGORY_TREE_NODES,
     MAX_FORUM_READ_LIMIT, ReplyCursorPage, ReplyCursorQuery, ReplyReadModel, TopicCursorPage,
-    TopicCursorQuery, TopicReadModel, TopicUnreadCursorPage, TopicUnreadCursorQuery,
+    TopicCursorQuery, TopicListCursor, TopicReadModel, TopicUnreadCursorPage,
+    TopicUnreadCursorQuery,
     TopicUnreadReadModel, TopicUnreadSummaryReadModel, bounded_forum_read_limit,
 };
 use crate::entities::{
@@ -27,13 +27,13 @@ use crate::entities::{
     forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
+use crate::services::topic::{order_topic_list, topic_list_after_condition, topic_list_cursor};
 use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
 use crate::services::vote::VoteService;
 
 const CATEGORY_CURSOR_VERSION: &str = "c1";
-const TOPIC_CURSOR_VERSION: &str = "t1";
 const REPLY_CURSOR_VERSION: &str = "r1";
 
 /// Canonical Forum read-model owner for category, topic and reply projections.
@@ -415,29 +415,19 @@ impl ForumReadModelService {
         if let Some(extra_filter) = extra_filter {
             select = select.filter(extra_filter);
         }
-        if let Some(cursor) = query.cursor.as_deref() {
-            let cursor = decode_topic_cursor(cursor)?;
-            select = select.filter(
-                Condition::any()
-                    .add(forum_topic::Column::UpdatedAt.lt(cursor.updated_at))
-                    .add(
-                        Condition::all()
-                            .add(forum_topic::Column::UpdatedAt.eq(cursor.updated_at))
-                            .add(forum_topic::Column::Id.lt(cursor.id)),
-                    ),
-            );
+        if let Some(raw) = query.cursor.as_deref() {
+            let after = TopicListCursor::decode(raw)?;
+            select = select.filter(topic_list_after_condition(&after));
         }
 
-        let mut topics = select
-            .order_by_desc(forum_topic::Column::UpdatedAt)
-            .order_by_desc(forum_topic::Column::Id)
+        let mut topics = order_topic_list(select)
             .limit(limit + 1)
             .all(&self.db)
             .await?;
         let has_more = topics.len() > limit as usize;
         topics.truncate(limit as usize);
         let next_cursor = has_more
-            .then(|| topics.last().map(encode_topic_cursor))
+            .then(|| topics.last().map(|topic| topic_list_cursor(topic).encode()))
             .flatten();
         Ok((topics, next_cursor, has_more))
     }
@@ -542,45 +532,10 @@ fn invalid_category_cursor() -> ForumError {
     ForumError::Validation("Invalid category cursor".to_string())
 }
 
-#[derive(Clone)]
-struct TopicCursor {
-    updated_at: sea_orm::prelude::DateTimeWithTimeZone,
-    id: Uuid,
-}
-
 #[derive(Clone, Copy)]
 struct ReplyCursor {
     position: i64,
     id: Uuid,
-}
-
-fn encode_topic_cursor(topic: &forum_topic::Model) -> String {
-    format!(
-        "{TOPIC_CURSOR_VERSION}:{}:{}",
-        topic.updated_at.timestamp_millis(),
-        topic.id
-    )
-}
-
-fn decode_topic_cursor(value: &str) -> ForumResult<TopicCursor> {
-    let mut parts = value.splitn(3, ':');
-    if parts.next() != Some(TOPIC_CURSOR_VERSION) {
-        return Err(invalid_cursor("topic"));
-    }
-    let millis = parts
-        .next()
-        .and_then(|value| value.parse::<i64>().ok())
-        .ok_or_else(|| invalid_cursor("topic"))?;
-    let updated_at: DateTime<Utc> =
-        DateTime::<Utc>::from_timestamp_millis(millis).ok_or_else(|| invalid_cursor("topic"))?;
-    let id = parts
-        .next()
-        .and_then(|value| Uuid::parse_str(value).ok())
-        .ok_or_else(|| invalid_cursor("topic"))?;
-    Ok(TopicCursor {
-        updated_at: updated_at.fixed_offset(),
-        id,
-    })
 }
 
 fn encode_reply_cursor(reply: &forum_reply::Model) -> String {

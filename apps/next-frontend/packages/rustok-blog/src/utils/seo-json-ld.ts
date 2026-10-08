@@ -10,6 +10,10 @@
 
 import type { BlogPostDetail } from '../api/posts';
 
+/**
+ * Builds BlogPosting JSON-LD. `url` must be an absolute URL (schema.org
+ * `mainEntityOfPage` requires it to identify the page unambiguously).
+ */
 export function buildArticleJsonLd({
   post,
   url,
@@ -24,8 +28,8 @@ export function buildArticleJsonLd({
       '@type': 'WebPage',
       '@id': url,
     },
-    headline: post.title,
-    description: post.excerpt || post.title,
+    headline: post.seoTitle || post.title,
+    description: post.seoDescription || post.excerpt || post.title,
     inLanguage: post.effectiveLocale,
   };
 
@@ -35,6 +39,10 @@ export function buildArticleJsonLd({
 
   if (post.publishedAt) {
     schema.datePublished = post.publishedAt;
+  }
+
+  if (post.updatedAt) {
+    schema.dateModified = post.updatedAt;
   }
 
   if (post.authorProfile) {

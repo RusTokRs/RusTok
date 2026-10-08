@@ -395,3 +395,168 @@ The fresh saga audit found that the first TOCTOU fix only compensated `PostNotFo
 ## 2026-09-24 Public comment compensation authority
 
 A second saga audit found that the compensation delete inherited the caller's `SecurityContext`. Ordinary storefront customers have Comments create permission but delete is owner-scoped, so a compensation could itself be rejected by authorization. Blog compensation now uses a trusted `SecurityContext::system()` operation through the existing owner-managed Comments port, with a fresh idempotency key. The original user remains represented by the create-side event/audit context; compensation is explicitly a system-owned cleanup action. Source verification and a focused Rust unit regression enforce this boundary.
+
+## 2026-10-08 Engineering audit remediation (Waves 1 and part of 2)
+
+This section records the remediation of the 2026-10-08 Blog engineering audit.
+The governing contract is
+[`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../../DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md).
+
+### Fixed in this slice
+
+- **H-1 public locale.** The public GraphQL post list resolves the read locale
+  from the filter or the request context (`rustok_api::resolve_graphql_locale`)
+  instead of the tenant default. The Next RSS feed, the list page, the home
+  section, and the related-articles block pass the route locale explicitly.
+  The fallback chain is unchanged: requested, explicit fallback, `en`, first
+  available.
+- **H-2 slugs for non-ASCII titles.** Post slugs use
+  `rustok_taxonomy::normalize_term_route_key`, the same primitive as Taxonomy
+  route keys. A Cyrillic title without an explicit slug now produces a
+  transliterated slug. Blog keeps no local transliteration copy.
+- **H-3 slug redirects on the canonical registry.** Blog keeps no slug-history
+  table. Post routes live in the `rustok-content` canonical URL registry and are
+  written only through `CanonicalUrlWriter`. Renames keep the old route as an
+  alias and emit `CanonicalUrlChanged`, which drives SEO redirects. Creates claim
+  a retired route through `release_alias_route_in_tx`. Deletes purge the post's
+  routes in the same transaction. `get_post_by_slug_with_locale_fallback` resolves
+  the current slug first and then the registry route with the request locale. The
+  Next post route issues a permanent redirect to the current slug.
+- **H-4 publication timestamp.** `published_at` is the first publication time.
+  Publish keeps an existing value; unpublish, archive, and restore preserve it.
+  The DTO field is documented accordingly.
+- **H-5 dead counter.** `view_count` is removed from the entity, DTOs, GraphQL
+  mapping, search projection, the content-orchestration promotion path, and the
+  test fixtures. Migration `m20261008_000031` drops the column. Real view
+  analytics are not implemented; they belong to a future analytics owner.
+- **H-10 featured image.** `featured_image_url` is validated on create and on
+  update: absolute `http`/`https` or a root-relative path, at most 2048
+  characters, no control characters, no whitespace padding, no
+  protocol-relative values.
+- **M-1 RSS feed.** CDATA content escapes a literal `]]>`, and the feed is
+  locale-scoped. The feed already declares `atom:link rel="self"`. The
+  `https://rustok.dev` fallback for `NEXT_PUBLIC_SITE_URL` is still present and
+  is tracked below.
+- **M-2 SEO fallbacks.** The storefront post query requests `seoTitle`,
+  `seoDescription`, and `updatedAt`. Page metadata uses SEO fields first, then
+  the excerpt, then a localized default description. JSON-LD uses the SEO fields,
+  adds `dateModified`, and uses an absolute `mainEntityOfPage` URL.
+
+### Verification status
+
+- Frontend: `npm ci` in `apps/next-frontend` (with the sandbox CA bundle
+  supplied through `NODE_EXTRA_CA_CERTS`), `npm run typecheck` (`tsc --noEmit`),
+  and `verify-adrs` pass. ESLint reports the changed files as ignored by the
+  current configuration, so lint coverage for them is not established.
+- Rust: `cargo` was not available in the authoring environment, so
+  `cargo check`, `cargo test -p rustok-blog`, and the PostgreSQL integration
+  tests were **not run**. Unit tests were added for slug transliteration and
+  featured image validation. Maintainer CI must run them before this slice is
+  marked implemented.
+- Still required: a PostgreSQL migration smoke for `m20261008_000031`, a
+  rename-and-redirect integration test, a claim test for a retired slug, a
+  delete-purge test, and a republish test that checks the first `published_at`
+  is preserved.
+
+### Open backlog (Known Limitations)
+
+These audit findings are deliberately out of this slice. Each needs its own
+owner decision or a larger implementation.
+
+- **H-6 scheduled publishing.** No `scheduled` status, no `publish_at`, and no
+  worker. Only `Draft -> Published` exists.
+- **H-7 list search and facets.** The `?q=` filter applies to the rows loaded so
+  far, and the tag list is built from those rows. `PostsFilter` and
+  `PublicPostsFilter` have no text query. Search is not wired to `rustok-search`.
+  The public list (`publicBlogPosts`) is keyset-paginated on `(published_at, id)`
+  and returns no total. The admin `posts` list is keyset-paginated on the sort
+  column and `id` (`nextCursor`, no total); its REST sort options are
+  `published_at`, `updated_at`, and `created_at`, and NULL sort values come last.
+  The GraphQL `posts` query always sorts by `created_at DESC`.
+- **H-8 article richness.** The rich-text profile has no inline images, tables,
+  embeds, footnotes, callouts, or heading anchors.
+- **H-9 comments.** Readers cannot edit, delete, or report comments. The
+  Blog-owned `update_comment`/`delete_comment` service methods are not exposed.
+  There are no notifications through `rustok-notifications`. Comment depth is not
+  limited.
+- **M-1 feed follow-ups.** Only the 25 newest posts. No pagination, Atom,
+  per-category, per-tag, or per-author feeds, and no full-text `content:encoded`.
+  The site URL fallback is still hard-coded.
+- **M-2 follow-ups.** No per-post canonical override, no `noindex`, no separate
+  Open Graph image, and the publisher has no logo.
+- **M-3 trash.** Published posts cannot be deleted; unpublish followed by delete
+  is a hard delete with no recovery window.
+- **M-4 preview and revisions.** No draft preview token and no stored revisions.
+  Concurrency is handled by `version`, but the Next admin has no conflict UI.
+- **M-5 related posts.** Related articles now prefer the same category, but they
+  are not ranked by relevance (tags, recency weighting).
+- **M-6 editorial features.** No series, sticky posts, co-authors, or author
+  archive pages.
+- **M-7 archives.** Tag and category archives are query-string filters with no
+  crawlable pages, metadata, or canonical URLs.
+- **M-8 anonymous read API.** REST `/api/blog/*` requires authentication; reads
+  are GraphQL-only for anonymous clients.
+- **M-9 audience features.** No newsletter, membership, paid or member-only
+  content. Visibility is channel-based only.
+- **M-10 reactions.** Posts support only `like`. Comments have no reactions.
+- **M-11 admin UX (Next).** Locale is a free-text input, not a select of enabled
+  locales. No bulk actions, no admin text search, no autosave, no unsaved-changes
+  guard.
+- **M-12 duplicated storefronts.** Blog is implemented in both the Next
+  storefront and the Leptos `BlogView`. The Leptos storefront resolves retired
+  slugs but does not redirect them. The canonical storefront decision is open.
+- **M-13 sorting.** The authenticated GraphQL `posts` path hard-codes
+  `CreatedAt DESC`, and the filter exposes no sort field.
+- **L-1** Counter types are `i32` in storage and `i64` in DTOs
+  (`comment_count`); overflow semantics are undocumented.
+- **L-2** Reading time is computed on the frontend from plain text, so it can
+  differ across consumers.
+- **L-3** The table of contents is built on the client and has only heading
+  levels 2 to 4.
+- **L-4** Most blog documentation covers evidence and migration tracking; there
+  is no user-facing feature roadmap.
+- **L-5** No frontend tests exist for the Blog storefront packages.
+- **L-6** The post page calls `fetchPublishedPost` twice per request (metadata
+  and page) without an explicit cache key.
+
+### Competitive reference (from model knowledge, not web-verified)
+
+This comparison was written from the model's knowledge of the platforms and was
+**not** re-checked against live product documentation in this slice. Cells marked
+"verify" need checking before external use.
+
+| Capability | RusTok Blog (after this slice) | WordPress core | Ghost | Audit ID |
+|---|---|---|---|---|
+| Draft / publish / archive | Yes | Yes | Yes | |
+| Scheduled publishing | No | Yes | Yes | H-6 |
+| Revisions / history | No (CAS `version` only) | Yes | verify | M-4 |
+| Draft preview link | No | Yes | Yes | M-4 |
+| Trash / undo delete | No (hard delete) | Yes (30 days default) | verify | M-3 |
+| Sticky post | No | Yes | verify | M-6 |
+| Slug change redirect | Yes (Next storefront, canonical route registry) | Yes | Yes (redirects file) | H-3 |
+| Localized slugs | No (global canonical slug, by contract) | Via plugins | No | H-2 |
+| Multi-author | Single author | Roles; co-authors via plugin | Staff users | M-6 |
+| Inline images / embeds / tables | No | Yes (blocks) | Yes (cards) | H-8 |
+| Featured image alt text | No (URL only) | Yes (media library) | Yes | H-10 |
+| Full-text search of posts | Platform search only, not wired to list | Yes | Yes | H-7 |
+| Category and tag archive pages | Query filters only | Yes | Yes | M-7 |
+| Threaded comments and moderation | Yes | Yes | Yes | |
+| Comment edit, delete, report | No | Plugins / policy | verify | H-9 |
+| RSS / Atom per taxonomy | RSS 2.0 only, newest 25 | Yes | Yes | M-1 |
+| SEO fields, JSON-LD, sitemap | Yes | Yes (core and plugins) | Yes | M-2 |
+| Newsletter / membership | No | Plugins | Yes | M-9 |
+| Reactions | `like` on posts only | Plugins | verify | M-10 |
+| Anonymous read API | GraphQL only | REST | Content API | M-8 |
+| View analytics | Removed (field had no writer) | Plugins | Native | H-5 |
+| Multi-tenant modular runtime, outbox events | Yes | No | No | strength |
+
+### Next waves (from the audit roadmap)
+
+1. H-6 scheduled publishing with a worker on the outbox or cron.
+2. M-3 trash with retention; M-4 draft preview tokens and revisions.
+3. H-7 server-side `q`, tag and category facets, and relevance-based related
+   posts (M-5); M-7 crawlable archives; M-1 Atom and per-taxonomy feeds.
+4. H-8 article profile extension; H-9 comment edit window, delete, report,
+   depth limit, and notifications.
+5. M-6 series, sticky posts, and co-authors; M-9 and M-8 as product decisions;
+   M-12 choice of the canonical storefront.

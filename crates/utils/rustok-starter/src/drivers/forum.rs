@@ -118,7 +118,7 @@ pub async fn import_forum_topics(
                 },
             )
             .await?
-            .0;
+            .items;
 
         let exists = existing_topics.iter().any(|item| {
             item.title == topic.title || topic.slug.as_deref().is_some_and(|s| s == item.slug)

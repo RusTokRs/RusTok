@@ -17,9 +17,9 @@ use rustok_seo_targets::{SeoTargetBulkListRequest, SeoTargetSlug};
 
 use crate::dto::{
     SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkArtifactRecord, SeoBulkBoolFieldPatch,
-    SeoBulkExportInput, SeoBulkFieldPatchMode, SeoBulkImportInput, SeoBulkItem,
+    SeoBulkExportInput, SeoBulkFieldPatchMode, SeoBulkImportInput,
     SeoBulkJobOperationKind, SeoBulkJobRecord, SeoBulkJobStatus, SeoBulkJsonFieldPatch,
-    SeoBulkListInput, SeoBulkMetaPatchInput, SeoBulkPage, SeoBulkSelectionInput,
+    SeoBulkListInput, SeoBulkMetaPatchInput, SeoBulkSelectionInput,
     SeoBulkSelectionMode, SeoBulkSelectionPreviewRecord, SeoBulkSource, SeoBulkStringFieldPatch,
     SeoMetaInput, SeoMetaRecord, SeoMetaTranslationInput,
 };
@@ -29,7 +29,6 @@ use crate::{SeoError, SeoResult};
 use super::SeoService;
 use super::robots::is_valid_structured_data_payload;
 
-const MAX_BULK_PAGE_SIZE: i32 = 100;
 const CSV_MIME_TYPE: &str = "text/csv; charset=utf-8";
 const CSV_HEADERS: [&str; 13] = [
     "target_kind",
@@ -53,10 +52,10 @@ struct NormalizedBulkListFilter {
     locale: String,
     query: Option<String>,
     source: SeoBulkSource,
-    page: i32,
-    per_page: i32,
 }
 
+/// Normalizes the scope a bulk job runs over. Jobs cover the whole scope, so the
+/// page window of the editor list is not part of the job filter.
 fn normalize_bulk_list_input(
     input: SeoBulkListInput,
     fallback_locale: &str,
@@ -69,8 +68,6 @@ fn normalize_bulk_list_input(
             .map(|value| value.trim().to_ascii_lowercase())
             .filter(|value| !value.is_empty()),
         source: input.source.unwrap_or(SeoBulkSource::Any),
-        page: input.page.max(1),
-        per_page: input.per_page.clamp(1, MAX_BULK_PAGE_SIZE),
     })
 }
 
@@ -637,7 +634,7 @@ mod tests {
                     locale: "en-US".to_string(),
                     query: None,
                     source: None,
-                    page: 1,
+                    after: None,
                     per_page: 20,
                 }),
             },
@@ -648,14 +645,14 @@ mod tests {
     }
 
     #[test]
-    fn normalize_bulk_list_input_canonicalizes_locale_and_bounds_page() {
+    fn normalize_bulk_list_input_canonicalizes_locale_and_query() {
         let filter = normalize_bulk_list_input(
             SeoBulkListInput {
                 target_kind: page_slug(),
                 locale: "en-us".to_string(),
                 query: Some("  Sale  ".to_string()),
                 source: None,
-                page: 0,
+                after: None,
                 per_page: 999,
             },
             "ru-RU",
@@ -664,8 +661,6 @@ mod tests {
 
         assert_eq!(filter.locale, "en-US");
         assert_eq!(filter.query.as_deref(), Some("sale"));
-        assert_eq!(filter.page, 1);
-        assert_eq!(filter.per_page, MAX_BULK_PAGE_SIZE);
         assert_eq!(filter.source, SeoBulkSource::Any);
     }
 
@@ -956,56 +951,6 @@ struct BulkImportRow {
 
 #[allow(dead_code)]
 impl SeoService {
-    pub async fn list_bulk_items(
-        &self,
-        tenant: &TenantContext,
-        input: SeoBulkListInput,
-    ) -> SeoResult<SeoBulkPage> {
-        let filter = normalize_bulk_list_input(input, tenant.default_locale.as_str())?;
-        let scoped = self.collect_bulk_scope(tenant, &filter).await?;
-        let total = scoped.len() as i32;
-        let offset = ((filter.page - 1) * filter.per_page) as usize;
-        let items = scoped
-            .into_iter()
-            .skip(offset)
-            .take(filter.per_page as usize)
-            .collect::<Vec<_>>();
-
-        let mut page_items = Vec::with_capacity(items.len());
-        for item in items {
-            let record = self
-                .seo_meta(
-                    tenant,
-                    filter.target_kind.clone(),
-                    item.summary.target_id,
-                    Some(filter.locale.as_str()),
-                )
-                .await?
-                .ok_or(SeoError::NotFound)?;
-            page_items.push(SeoBulkItem {
-                target_kind: filter.target_kind.clone(),
-                target_id: item.summary.target_id,
-                locale: filter.locale.clone(),
-                effective_locale: record.effective_locale.clone(),
-                label: item.summary.label,
-                route: item.summary.route,
-                source: map_bulk_source(record.source.as_str()).unwrap_or(item.source),
-                title: record.translation.title,
-                description: record.translation.description,
-                canonical_url: record.canonical_url,
-                noindex: record.noindex,
-                nofollow: record.nofollow,
-            });
-        }
-
-        Ok(SeoBulkPage {
-            items: page_items,
-            total,
-            page: filter.page,
-            per_page: filter.per_page,
-        })
-    }
-
     pub async fn preview_bulk_selection_count(
         &self,
         tenant: &TenantContext,

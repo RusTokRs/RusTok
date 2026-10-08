@@ -7,8 +7,8 @@ use rustok_outbox::TransactionalEventBus;
 
 use crate::audience::SharedForumAudienceFactsPort;
 use crate::dto::{
-    CreateTopicCommandInput, CreateTopicInput, ListTopicsFilter, TopicListItem, TopicResponse,
-    UpdateTopicCommandInput, UpdateTopicInput,
+    CreateTopicCommandInput, CreateTopicInput, ListTopicsFilter, TopicListItem, TopicPage,
+    TopicResponse, UpdateTopicCommandInput, UpdateTopicInput,
 };
 use crate::entities::forum_topic;
 use crate::error::{ForumError, ForumResult};
@@ -335,7 +335,7 @@ impl TopicService {
         tenant_id: Uuid,
         security: SecurityContext,
         filter: ListTopicsFilter,
-    ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+    ) -> ForumResult<TopicPage<TopicListItem>> {
         self.list_with_locale_fallback(tenant_id, security, filter, None)
             .await
     }
@@ -346,7 +346,7 @@ impl TopicService {
         security: SecurityContext,
         filter: ListTopicsFilter,
         fallback_locale: Option<&str>,
-    ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+    ) -> ForumResult<TopicPage<TopicListItem>> {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
         let visibility = ForumTopicVisibilityService::new(self.db.clone());
         let hidden_category_ids = visibility
@@ -372,7 +372,7 @@ impl TopicService {
         filter: ListTopicsFilter,
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
-    ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+    ) -> ForumResult<TopicPage<TopicListItem>> {
         let scope = ForumTopicVisibilityScope::storefront_for_viewer(
             channel_slug,
             !security.is_public_read(),
@@ -392,7 +392,7 @@ impl TopicService {
                 &hidden_category_ids,
             )
             .await?;
-        let candidate_ids = page.0.iter().map(|topic| topic.id).collect::<Vec<_>>();
+        let candidate_ids = page.items.iter().map(|topic| topic.id).collect::<Vec<_>>();
         let visible_ids = visibility
             .filter_visible_topic_ids(tenant_id, &candidate_ids, &scope)
             .await?;
@@ -477,9 +477,9 @@ fn require_localized_topic_response(response: TopicResponse) -> ForumResult<Topi
 }
 
 fn require_localized_topic_page(
-    page: (Vec<TopicListItem>, u64),
-) -> ForumResult<(Vec<TopicListItem>, u64)> {
-    let (items, total) = page;
+    page: TopicPage<TopicListItem>,
+) -> ForumResult<TopicPage<TopicListItem>> {
+    let TopicPage { items, next_cursor } = page;
     if let Some(item) = items
         .iter()
         .find(|item| item.available_locales.is_empty() || item.title.is_empty())
@@ -489,5 +489,5 @@ fn require_localized_topic_page(
             item.id
         )));
     }
-    Ok((items, total))
+    Ok(TopicPage { items, next_cursor })
 }

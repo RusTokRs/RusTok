@@ -4,7 +4,8 @@ use rustok_core::SecurityContext;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
     SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
-    SeoTargetAlternateRoute, SeoTargetBulkListRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
+    SeoBulkSummaryPage, SeoTargetAlternateRoute, SeoTargetBulkPageRequest, SeoTargetCapabilities,
+    SeoTargetLoadRequest,
     SeoTargetLoadScope, SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
     SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
     builtin_slug, populate_image_template_fields, schema,
@@ -96,51 +97,46 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         }))
     }
 
-    async fn list_bulk_summaries(
+    async fn list_bulk_summaries_page(
         &self,
         runtime: &SeoTargetRuntimeContext,
-        request: SeoTargetBulkListRequest<'_>,
-    ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
+        request: SeoTargetBulkPageRequest<'_>,
+    ) -> AnyResult<SeoBulkSummaryPage> {
         let service = CategoryService::new(runtime.db.clone());
-        let mut page_number = 1_u64;
-        let mut summaries = Vec::new();
+        let after = request
+            .after
+            .map(Uuid::parse_str)
+            .transpose()
+            .map_err(|_| anyhow::anyhow!("invalid forum category SEO bulk cursor"))?;
+        let (categories, next_cursor) = service
+            .list_keyset_with_locale_fallback(
+                request.tenant_id,
+                SecurityContext::system(),
+                request.locale,
+                after,
+                request.limit,
+                Some(request.default_locale),
+            )
+            .await?;
 
-        loop {
-            let (items, total) = service
-                .list_paginated_with_locale_fallback(
-                    request.tenant_id,
-                    SecurityContext::system(),
-                    request.locale,
-                    page_number,
-                    BULK_FETCH_SIZE,
-                    Some(request.default_locale),
-                )
-                .await?;
-            if items.is_empty() {
-                break;
+        let mut items = Vec::with_capacity(categories.len());
+        for item in categories {
+            if let Some(summary) = load_category_summary(
+                &service,
+                request.tenant_id,
+                request.locale,
+                request.default_locale,
+                item,
+            )
+            .await?
+            {
+                items.push(summary);
             }
-
-            for item in items {
-                if let Some(summary) = load_category_summary(
-                    &service,
-                    request.tenant_id,
-                    request.locale,
-                    request.default_locale,
-                    item,
-                )
-                .await?
-                {
-                    summaries.push(summary);
-                }
-            }
-
-            if page_number.saturating_mul(BULK_FETCH_SIZE) >= total {
-                break;
-            }
-            page_number += 1;
         }
-
-        Ok(summaries)
+        Ok(SeoBulkSummaryPage {
+            items,
+            next_cursor: next_cursor.map(|id| id.to_string()),
+        })
     }
 
     async fn sitemap_candidates(
@@ -270,55 +266,45 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         }))
     }
 
-    async fn list_bulk_summaries(
+    async fn list_bulk_summaries_page(
         &self,
         runtime: &SeoTargetRuntimeContext,
-        request: SeoTargetBulkListRequest<'_>,
-    ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
+        request: SeoTargetBulkPageRequest<'_>,
+    ) -> AnyResult<SeoBulkSummaryPage> {
         let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page_number = 1_u64;
-        let mut summaries = Vec::new();
+        let page = service
+            .list_with_locale_fallback(
+                request.tenant_id,
+                SecurityContext::system(),
+                ListTopicsFilter {
+                    category_id: None,
+                    status: None,
+                    locale: Some(request.locale.to_string()),
+                    after: request.after.map(str::to_string),
+                    per_page: request.limit,
+                },
+                Some(request.default_locale),
+            )
+            .await?;
 
-        loop {
-            let (items, total) = service
-                .list_with_locale_fallback(
-                    request.tenant_id,
-                    SecurityContext::system(),
-                    ListTopicsFilter {
-                        category_id: None,
-                        status: None,
-                        locale: Some(request.locale.to_string()),
-                        page: page_number,
-                        per_page: BULK_FETCH_SIZE,
-                    },
-                    Some(request.default_locale),
-                )
-                .await?;
-            if items.is_empty() {
-                break;
+        let mut items = Vec::with_capacity(page.items.len());
+        for item in page.items {
+            if let Some(summary) = load_topic_summary(
+                &service,
+                request.tenant_id,
+                request.locale,
+                request.default_locale,
+                item,
+            )
+            .await?
+            {
+                items.push(summary);
             }
-
-            for item in items {
-                if let Some(summary) = load_topic_summary(
-                    &service,
-                    request.tenant_id,
-                    request.locale,
-                    request.default_locale,
-                    item,
-                )
-                .await?
-                {
-                    summaries.push(summary);
-                }
-            }
-
-            if page_number.saturating_mul(BULK_FETCH_SIZE) >= total {
-                break;
-            }
-            page_number += 1;
         }
-
-        Ok(summaries)
+        Ok(SeoBulkSummaryPage {
+            items,
+            next_cursor: page.next_cursor,
+        })
     }
 
     async fn sitemap_candidates(
@@ -327,11 +313,11 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         request: SeoTargetSitemapRequest<'_>,
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
         let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page_number = 1_u64;
+        let mut after: Option<String> = None;
         let mut candidates = Vec::new();
 
         loop {
-            let (items, total) = service
+            let page = service
                 .list_storefront_visible_with_locale_fallback(
                     request.tenant_id,
                     SecurityContext::system(),
@@ -339,18 +325,15 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                         category_id: None,
                         status: Some(TopicStatus::Open),
                         locale: Some(request.default_locale.to_string()),
-                        page: page_number,
+                        after: after.clone(),
                         per_page: BULK_FETCH_SIZE,
                     },
                     Some(request.default_locale),
                     None,
                 )
                 .await?;
-            if items.is_empty() {
-                break;
-            }
 
-            for item in items {
+            for item in page.items {
                 if let Some(candidate) = load_topic_sitemap_candidate(
                     &service,
                     request.tenant_id,
@@ -363,10 +346,10 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                 }
             }
 
-            if page_number.saturating_mul(BULK_FETCH_SIZE) >= total {
-                break;
+            match page.next_cursor {
+                Some(cursor) => after = Some(cursor),
+                None => break,
             }
-            page_number += 1;
         }
 
         Ok(candidates)

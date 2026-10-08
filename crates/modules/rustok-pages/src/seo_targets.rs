@@ -4,15 +4,16 @@ use rustok_content::entities::node::ContentStatus;
 use rustok_core::SecurityContext;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
-    SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
-    SeoTargetAlternateRoute, SeoTargetBulkListRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
+    SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
+    SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
+    SeoTargetCapabilities, SeoTargetLoadRequest,
     SeoTargetLoadScope, SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
     SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
     builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
 
-use crate::{ListPagesFilter, PageListItem, PageResponse, PageService, PageTranslationResponse};
+use crate::{PageListItem, PageResponse, PageService, PageTranslationResponse, PagesError};
 
 const BULK_FETCH_SIZE: u64 = 48;
 
@@ -43,16 +44,14 @@ impl SeoTargetProvider for PagesSeoTargetProvider {
         request: SeoTargetLoadRequest<'_>,
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
         let service = PageService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let page = service
-            .get_with_locale_fallback(
-                request.tenant_id,
-                SecurityContext::system(),
-                request.target_id,
-                request.locale,
-                Some(request.default_locale),
-            )
-            .await
-            .ok();
+        let page = load_page_if_present(
+            &service,
+            request.tenant_id,
+            request.target_id,
+            request.locale,
+            request.default_locale,
+        )
+        .await?;
         let Some(page) = page else {
             return Ok(None);
         };
@@ -94,54 +93,39 @@ impl SeoTargetProvider for PagesSeoTargetProvider {
             }))
     }
 
-    async fn list_bulk_summaries(
+    async fn list_bulk_summaries_page(
         &self,
         runtime: &SeoTargetRuntimeContext,
-        request: SeoTargetBulkListRequest<'_>,
-    ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
+        request: SeoTargetBulkPageRequest<'_>,
+    ) -> AnyResult<SeoBulkSummaryPage> {
         let service = PageService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page_number = 1_u64;
-        let mut summaries = Vec::new();
+        let (items, next_cursor) = service
+            .scan_published_pages(
+                request.tenant_id,
+                request.locale,
+                request.after,
+                request.limit,
+            )
+            .await?;
 
-        loop {
-            let (items, total) = service
-                .list(
-                    request.tenant_id,
-                    SecurityContext::system(),
-                    ListPagesFilter {
-                        status: Some(ContentStatus::Published),
-                        template: None,
-                        locale: Some(request.locale.to_string()),
-                        page: page_number,
-                        per_page: BULK_FETCH_SIZE,
-                    },
-                )
-                .await?;
-            if items.is_empty() {
-                break;
+        let mut summaries = Vec::with_capacity(items.len());
+        for item in items {
+            if let Some(summary) = load_page_summary(
+                &service,
+                request.tenant_id,
+                request.locale,
+                request.default_locale,
+                item,
+            )
+            .await?
+            {
+                summaries.push(summary);
             }
-
-            for item in items {
-                if let Some(summary) = load_page_summary(
-                    &service,
-                    request.tenant_id,
-                    request.locale,
-                    request.default_locale,
-                    item,
-                )
-                .await?
-                {
-                    summaries.push(summary);
-                }
-            }
-
-            if page_number.saturating_mul(BULK_FETCH_SIZE) >= total {
-                break;
-            }
-            page_number += 1;
         }
-
-        Ok(summaries)
+        Ok(SeoBulkSummaryPage {
+            items: summaries,
+            next_cursor,
+        })
     }
 
     async fn sitemap_candidates(
@@ -150,26 +134,18 @@ impl SeoTargetProvider for PagesSeoTargetProvider {
         request: SeoTargetSitemapRequest<'_>,
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
         let service = PageService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page_number = 1_u64;
+        let mut after: Option<String> = None;
         let mut candidates = Vec::new();
 
         loop {
-            let (items, total) = service
-                .list_public_visible(
+            let (items, next_cursor) = service
+                .scan_public_published_pages(
                     request.tenant_id,
-                    ListPagesFilter {
-                        status: Some(ContentStatus::Published),
-                        template: None,
-                        locale: Some(request.default_locale.to_string()),
-                        page: page_number,
-                        per_page: BULK_FETCH_SIZE,
-                    },
-                    None,
+                    request.default_locale,
+                    after.as_deref(),
+                    BULK_FETCH_SIZE,
                 )
                 .await?;
-            if items.is_empty() {
-                break;
-            }
 
             for item in items {
                 if let Some(candidate) = load_page_sitemap_candidate(
@@ -184,13 +160,37 @@ impl SeoTargetProvider for PagesSeoTargetProvider {
                 }
             }
 
-            if page_number.saturating_mul(BULK_FETCH_SIZE) >= total {
-                break;
+            match next_cursor {
+                Some(cursor) => after = Some(cursor),
+                None => break,
             }
-            page_number += 1;
         }
 
         Ok(candidates)
+    }
+}
+
+/// Loads a page for SEO. A missing page is `None`; every other error propagates.
+async fn load_page_if_present(
+    service: &PageService,
+    tenant_id: uuid::Uuid,
+    page_id: uuid::Uuid,
+    locale: &str,
+    default_locale: &str,
+) -> AnyResult<Option<PageResponse>> {
+    match service
+        .get_with_locale_fallback(
+            tenant_id,
+            SecurityContext::system(),
+            page_id,
+            locale,
+            Some(default_locale),
+        )
+        .await
+    {
+        Ok(page) => Ok(Some(page)),
+        Err(PagesError::PageNotFound(_)) => Ok(None),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -201,16 +201,7 @@ async fn load_page_summary(
     default_locale: &str,
     item: PageListItem,
 ) -> AnyResult<Option<SeoBulkSummaryRecord>> {
-    let page = service
-        .get_with_locale_fallback(
-            tenant_id,
-            SecurityContext::system(),
-            item.id,
-            locale,
-            Some(default_locale),
-        )
-        .await
-        .ok();
+    let page = load_page_if_present(service, tenant_id, item.id, locale, default_locale).await?;
     let Some(page) = page else {
         return Ok(None);
     };
@@ -230,16 +221,8 @@ async fn load_page_sitemap_candidate(
     default_locale: &str,
     item: PageListItem,
 ) -> AnyResult<Option<SeoSitemapCandidateRecord>> {
-    let page = service
-        .get_with_locale_fallback(
-            tenant_id,
-            SecurityContext::system(),
-            item.id,
-            default_locale,
-            Some(default_locale),
-        )
-        .await
-        .ok();
+    let page =
+        load_page_if_present(service, tenant_id, item.id, default_locale, default_locale).await?;
     let Some(page) = page else {
         return Ok(None);
     };

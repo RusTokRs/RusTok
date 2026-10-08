@@ -207,7 +207,8 @@ pub struct SeoBulkFilterForm {
     pub locale: String,
     pub query: String,
     pub source: SeoBulkSource,
-    pub page: i32,
+    /// Cursor of the page to show; `None` is the first page.
+    pub after: Option<String>,
     pub per_page: i32,
 }
 
@@ -219,7 +220,7 @@ impl SeoBulkFilterForm {
             locale: default_locale.unwrap_or("en").to_string(),
             query: String::new(),
             source: SeoBulkSource::Any,
-            page: 1,
+            after: None,
             per_page: 20,
         }
     }
@@ -235,7 +236,7 @@ impl SeoBulkFilterForm {
             locale: locale.to_string(),
             query: trim_to_option(self.query.as_str()),
             source: Some(self.source),
-            page: self.page.max(1),
+            after: self.after.clone(),
             per_page: self.per_page.clamp(1, 100),
         })
     }

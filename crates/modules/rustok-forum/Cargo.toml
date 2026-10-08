@@ -11,6 +11,7 @@ async-graphql = { workspace = true, features = ["dataloader"] }
 async-graphql-value.workspace = true
 async-trait.workspace = true
 axum.workspace = true
+base64.workspace = true
 chrono.workspace = true
 flex.workspace = true
 rustok-api = { workspace = true, features = ["server"] }

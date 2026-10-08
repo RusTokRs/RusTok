@@ -1,3 +1,6 @@
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use chrono::{DateTime, FixedOffset, SecondsFormat};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -6,6 +9,7 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::ForumQuoteReferenceInput;
+use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -126,8 +130,8 @@ pub struct ListTopicsFilter {
     pub category_id: Option<Uuid>,
     pub status: Option<TopicStatus>,
     pub locale: Option<String>,
-    #[serde(default = "default_page")]
-    pub page: u64,
+    /// Opaque cursor returned as `next_cursor` by the previous page.
+    pub after: Option<String>,
     #[serde(
         default = "default_per_page",
         deserialize_with = "crate::dto::deserialize_forum_read_limit"
@@ -141,14 +145,83 @@ impl Default for ListTopicsFilter {
             category_id: None,
             status: None,
             locale: None,
-            page: default_page(),
+            after: None,
             per_page: default_per_page(),
         }
     }
 }
 
-fn default_page() -> u64 {
-    1
+/// Keyset position of a topic list. The order is
+/// `is_pinned DESC, last_reply_at DESC NULLS LAST, updated_at DESC, id DESC`. The cursor
+/// carries the sort key of the last topic on the previous page plus its id as the final
+/// tie-breaker, so pages neither repeat nor skip topics when sort keys tie.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TopicListCursor {
+    pub is_pinned: bool,
+    pub last_reply_at: Option<DateTime<FixedOffset>>,
+    pub updated_at: DateTime<FixedOffset>,
+    pub id: Uuid,
+}
+
+impl TopicListCursor {
+    /// Opaque, URL-safe token. Clients must not parse it.
+    pub fn encode(&self) -> String {
+        let last_reply_at = self
+            .last_reply_at
+            .map(|value| value.to_rfc3339_opts(SecondsFormat::Nanos, false))
+            .unwrap_or_else(|| "-".to_string());
+        let raw = format!(
+            "v1|{}|{}|{}|{}",
+            u8::from(self.is_pinned),
+            last_reply_at,
+            self.updated_at.to_rfc3339_opts(SecondsFormat::Nanos, false),
+            self.id
+        );
+        URL_SAFE_NO_PAD.encode(raw)
+    }
+
+    pub fn decode(value: &str) -> ForumResult<Self> {
+        let invalid = || ForumError::Validation("Forum topic list cursor is invalid".to_string());
+        let bytes = URL_SAFE_NO_PAD.decode(value.trim()).map_err(|_| invalid())?;
+        let raw = String::from_utf8(bytes).map_err(|_| invalid())?;
+        let parts: Vec<&str> = raw.split('|').collect();
+        let [version, is_pinned, last_reply_at, updated_at, id] = parts.as_slice() else {
+            return Err(invalid());
+        };
+        if *version != "v1" {
+            return Err(invalid());
+        }
+        let is_pinned = match *is_pinned {
+            "0" => false,
+            "1" => true,
+            _ => return Err(invalid()),
+        };
+        let last_reply_at = match *last_reply_at {
+            "-" => None,
+            raw_value => Some(DateTime::parse_from_rfc3339(raw_value).map_err(|_| invalid())?),
+        };
+        Ok(Self {
+            is_pinned,
+            last_reply_at,
+            updated_at: DateTime::parse_from_rfc3339(updated_at).map_err(|_| invalid())?,
+            id: Uuid::parse_str(id).map_err(|_| invalid())?,
+        })
+    }
+}
+
+/// One keyset page of topics. `next_cursor` is present only when another page exists;
+/// the list never counts rows.
+#[derive(Debug, Clone)]
+pub struct TopicPage<T> {
+    pub items: Vec<T>,
+    pub next_cursor: Option<String>,
+}
+
+/// REST body of the topic list: one page of list items plus the cursor for the next.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TopicListItemPage {
+    pub items: Vec<TopicListItem>,
+    pub next_cursor: Option<String>,
 }
 
 fn default_per_page() -> u64 {
@@ -207,6 +280,9 @@ pub struct TopicListItem {
     pub is_locked: bool,
     pub reply_count: i32,
     pub created_at: String,
+    /// Keyset sort key of this row, set by the owner listing. Never serialized.
+    #[serde(skip)]
+    pub(crate) sort_key: Option<TopicListCursor>,
 }
 
 #[cfg(test)]

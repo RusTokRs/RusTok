@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use rustok_blog::{
     BlogModule, BlogPostStatus, CategoryService, CreateCategoryInput, CreatePostInput,
-    PostListQuery, PostService,
+    PostListQuery, PostService, PublicPostsPageQuery,
 };
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
@@ -138,12 +138,10 @@ async fn post_category_name_projects_across_detail_and_list_paths() {
     );
 
     let public = post_service
-        .list_public_visible_with_locale_fallback(
+        .list_public_visible_keyset(
             tenant_id,
-            PostListQuery {
-                status: Some(BlogPostStatus::Published),
+            PublicPostsPageQuery {
                 locale: Some("fr".to_string()),
-                page: Some(1),
                 per_page: Some(10),
                 ..Default::default()
             },

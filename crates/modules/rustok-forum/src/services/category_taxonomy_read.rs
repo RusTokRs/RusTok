@@ -5,6 +5,7 @@ use rustok_core::SecurityContext;
 use rustok_taxonomy::{TaxonomyError, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Select,
     sea_query::{Query, SelectStatement},
 };
 use uuid::Uuid;
@@ -25,6 +26,17 @@ pub(in crate::services) struct CategoryTaxonomyListFilter<'a> {
     pub locale: &'a str,
     pub page: u64,
     pub per_page: u64,
+    pub fallback_locale: Option<&'a str>,
+    pub hidden_category_ids: &'a [Uuid],
+}
+
+/// Keyset form of [`CategoryTaxonomyListFilter`]: rows with `id > after`, ordered by `id`.
+pub(in crate::services) struct CategoryTaxonomyKeysetFilter<'a> {
+    pub tenant_id: Uuid,
+    pub security: SecurityContext,
+    pub locale: &'a str,
+    pub after: Option<Uuid>,
+    pub limit: u64,
     pub fallback_locale: Option<&'a str>,
     pub hidden_category_ids: &'a [Uuid],
 }
@@ -102,40 +114,87 @@ impl CategoryTaxonomyReadService {
         filter: CategoryTaxonomyListFilter<'_>,
     ) -> ForumResult<(Vec<CategoryListItem>, u64)> {
         enforce_scope(&filter.security, Resource::ForumCategories, Action::List)?;
-        let tenant_id = filter.tenant_id;
 
-        let mut query = forum_category::Entity::find()
-            .filter(forum_category::Column::TenantId.eq(tenant_id))
-            .filter(
-                forum_category::Column::Id
-                    .not_in_subquery(archived_category_ids_subquery(tenant_id)),
-            );
-        if !filter.hidden_category_ids.is_empty() {
-            query = query
-                .filter(forum_category::Column::Id.is_not_in(filter.hidden_category_ids.to_vec()));
-        }
-
-        let paginator = query
+        let paginator = visible_categories_query(filter.tenant_id, filter.hidden_category_ids)
             .order_by_asc(forum_category::Column::Id)
             .paginate(&self.db, filter.per_page.max(1));
         let total = paginator.num_items().await?;
         let categories = paginator.fetch_page(filter.page.saturating_sub(1)).await?;
+        let items = self
+            .category_list_items(
+                filter.tenant_id,
+                filter.security.user_id,
+                filter.locale,
+                filter.fallback_locale,
+                categories,
+            )
+            .await?;
+        Ok((items, total))
+    }
+
+    /// One keyset page ordered by `id`. Returns the cursor of the last row when more
+    /// rows follow; the cursor is the category id.
+    pub(in crate::services) async fn list_keyset_with_locale_fallback_and_hidden_categories(
+        &self,
+        filter: CategoryTaxonomyKeysetFilter<'_>,
+    ) -> ForumResult<(Vec<CategoryListItem>, Option<Uuid>)> {
+        enforce_scope(&filter.security, Resource::ForumCategories, Action::List)?;
+        let limit = filter.limit.max(1);
+
+        let mut query = visible_categories_query(filter.tenant_id, filter.hidden_category_ids);
+        if let Some(after) = filter.after {
+            query = query.filter(forum_category::Column::Id.gt(after));
+        }
+        let mut categories = query
+            .order_by_asc(forum_category::Column::Id)
+            .limit(limit + 1)
+            .all(&self.db)
+            .await?;
+        let has_next_page = categories.len() as u64 > limit;
+        categories.truncate(limit as usize);
+        let next_after = if has_next_page {
+            categories.last().map(|category| category.id)
+        } else {
+            None
+        };
+        let items = self
+            .category_list_items(
+                filter.tenant_id,
+                filter.security.user_id,
+                filter.locale,
+                filter.fallback_locale,
+                categories,
+            )
+            .await?;
+        Ok((items, next_after))
+    }
+
+    /// Maps category rows to list items with their localized projection and the
+    /// viewer's subscription flags. Shared by the offset and keyset lists.
+    async fn category_list_items(
+        &self,
+        tenant_id: Uuid,
+        user_id: Option<Uuid>,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        categories: Vec<forum_category::Model>,
+    ) -> ForumResult<Vec<CategoryListItem>> {
         let category_ids = categories
             .iter()
             .map(|category| category.id)
             .collect::<Vec<_>>();
         if category_ids.is_empty() {
-            return Ok((Vec::new(), total));
+            return Ok(Vec::new());
         }
 
         let projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
             .load_scoped_categories(
-                filter.tenant_id,
+                tenant_id,
                 TaxonomyScopeType::Module,
                 Some("forum"),
                 Some(&category_ids),
-                filter.locale,
-                filter.fallback_locale,
+                locale,
+                fallback_locale,
             )
             .await
             .map_err(map_taxonomy_read_error)?;
@@ -145,7 +204,7 @@ impl CategoryTaxonomyReadService {
             .collect::<HashMap<_, _>>();
 
         let subscription_flags = SubscriptionService::new(self.db.clone())
-            .category_subscription_flags(filter.tenant_id, &category_ids, filter.security.user_id)
+            .category_subscription_flags(tenant_id, &category_ids, user_id)
             .await?;
         let mut items = Vec::with_capacity(categories.len());
         for category in categories {
@@ -173,9 +232,23 @@ impl CategoryTaxonomyReadService {
                     .unwrap_or(false),
             });
         }
-
-        Ok((items, total))
+        Ok(items)
     }
+}
+
+fn visible_categories_query(
+    tenant_id: Uuid,
+    hidden_category_ids: &[Uuid],
+) -> Select<forum_category::Entity> {
+    let mut query = forum_category::Entity::find()
+        .filter(forum_category::Column::TenantId.eq(tenant_id))
+        .filter(
+            forum_category::Column::Id.not_in_subquery(archived_category_ids_subquery(tenant_id)),
+        );
+    if !hidden_category_ids.is_empty() {
+        query = query.filter(forum_category::Column::Id.is_not_in(hidden_category_ids.to_vec()));
+    }
+    query
 }
 
 fn archived_category_ids_subquery(tenant_id: Uuid) -> SelectStatement {

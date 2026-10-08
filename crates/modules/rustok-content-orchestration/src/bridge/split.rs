@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use chrono::Utc;
 use rustok_content::{
-    CanonicalUrlMutation, ContentError, ContentResult, SplitTopicInput, SplitTopicOutput,
+    ContentError, ContentResult, SplitTopicInput, SplitTopicOutput,
 };
 use rustok_forum::{forum_reply, forum_topic, forum_topic_translation};
 use rustok_taxonomy::TaxonomyService;
@@ -10,8 +10,8 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseTransaction};
 use uuid::Uuid;
 
 use crate::bridge::helpers::{
-    adjust_forum_category_counters_in_tx, find_topic_in_tx, forum_topic_route,
-    load_forum_reply_records_in_tx, load_topic_translations_in_tx, locales_from_topic_translations,
+    adjust_forum_category_counters_in_tx, find_topic_in_tx,
+    load_forum_reply_records_in_tx, load_topic_translations_in_tx,
     normalize_locale, normalize_slug, refresh_forum_topic_stats_in_tx,
     resequence_forum_topic_replies_in_tx, resolve_topic_translation,
 };
@@ -152,25 +152,10 @@ pub(crate) async fn split_topic(
     refresh_forum_topic_stats_in_tx(txn, tenant_id, target_topic_id).await?;
     adjust_forum_category_counters_in_tx(txn, tenant_id, source_topic.category_id, 1, 0).await?;
 
-    let target_translations =
-        load_topic_translations_in_tx(txn, tenant_id, target_topic_id).await?;
-    let url_updates = locales_from_topic_translations(&target_translations)?
-        .into_iter()
-        .map(|locale| CanonicalUrlMutation {
-            target_kind: "forum_topic".to_string(),
-            target_id: target_topic_id,
-            locale,
-            canonical_url: forum_topic_route(target_topic_id),
-            alias_urls: Vec::new(),
-            retired_targets: Vec::new(),
-        })
-        .collect();
-
     Ok(SplitTopicOutput {
         source_topic_id: source_topic.id,
         target_topic_id,
         moved_reply_ids: input.reply_ids.clone(),
         moved_comments: moved_records.len() as u64,
-        url_updates,
     })
 }

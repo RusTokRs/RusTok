@@ -50,7 +50,7 @@ const observation = graphql.indexOf(
   ownerAwait,
 );
 const mapping = graphql.indexOf("let items = page", observation);
-const response = graphql.indexOf("Ok(ForumTopicConnection::new(", mapping);
+const response = graphql.indexOf("Ok(ForumTopicPage {", mapping);
 if (
   ownerCall < 0 ||
   ownerAwait <= ownerCall ||
