@@ -24,7 +24,7 @@ const [
 ] = await Promise.all([
   read('crates/modules/rustok-pages/src/migrations/mod.rs'),
   read('crates/modules/rustok-pages/src/migrations/m20260714_000002_add_scenario_baseline_promotion_metadata.rs'),
-  read('crates/modules/rustok-pages/src/migrations/m20260714_000003_create_scenario_baseline_revision_history.rs'),
+  read('crates/modules/rustok-pages/src/migrations/m20261008_000001_create_scenario_baseline_revision_history.rs'),
   read('crates/modules/rustok-pages/src/entities/page_builder_scenario_baseline_revision.rs'),
   read('crates/modules/rustok-pages/tests/scenario_baseline_revision_journal_sqlite.rs'),
   read('crates/modules/rustok-pages/src/entities/page_builder_scenario_baseline.rs'),
@@ -71,7 +71,7 @@ const required = [
   [adminModel, 'pub promotion_note: Option<String>', 'Pages admin status model lacks promotion note'],
   [casAdapter, 'promotionNote', 'Pages admin CAS mutation does not send promotion note'],
   [statusAdapter, 'previousBaselineHash promotedBy promotionNote promotedAt', 'Pages admin status query omits promotion metadata'],
-  [migrationMod, 'm20260714_000003_create_scenario_baseline_revision_history', 'revision history migration is not registered'],
+  [migrationMod, 'm20261008_000001_create_scenario_baseline_revision_history', 'revision history migration is not registered'],
   [revisionMigration, 'PageBuilderScenarioBaselineRevisions', 'revision history table definition is missing'],
   [revisionMigration, 'PreviousBaselineHash', 'revision history previous hash column is missing'],
   [revisionEntity, 'pub baseline: Json', 'revision entity payload is missing'],

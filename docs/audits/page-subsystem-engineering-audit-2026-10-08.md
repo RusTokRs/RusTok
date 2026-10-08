@@ -401,8 +401,19 @@ reader does not repeat the work:
   not produced, and `previous_baseline_hash` could only ever carry a single previous value.
   **Fixed** in this change set, in the shape the schema implies — the journal is the durable record,
   so it is written, not dropped:
-  - `m20260714_000003_create_scenario_baseline_revision_history` is declared and registered, and the
-    entity is declared and exported.
+  - The migration is declared and registered, and the entity is declared and exported. Registering it
+    as authored was **not** possible: `rustok-migrations` composes the platform plan and sorts it by
+    migration name (`all.sort_by(|a, b| a.name().cmp(b.name()))`), and the "append-only migration
+    plan" job requires the head plan to extend the base plan position by position
+    (`verify-migration-plan-compatibility.mjs`, `verify-migration-backfill-contracts.mjs`). A
+    `m20260714_000003_…` entry would have been inserted in the middle of the plan — every later
+    entry would shift and both gates would fail on a change that is additive in fact. The file was
+    never registered, so no database ever recorded it and it is renamed to
+    `m20261008_000001_create_scenario_baseline_revision_history`, which sorts after every existing
+    migration (the highest is `m20261007_000122_add_provider_operation_admission`). The rename is
+    therefore not a rewrite of applied schema history; the reason is recorded next to the module
+    declaration in `src/migrations/mod.rs` and the new name carries a backfill contract (`mode:
+    none`) in `docs/migrations/backfill-contracts.json`, as the appended-migration gate requires.
   - `save_internal` and `delete_internal` now run inside a transaction and append exactly one
     revision row per accepted mutation: `create` (first baseline), `replace` (both the CAS path and
     the non-CAS overwrite), `delete` (a clear). The row carries the operation, the baseline id and

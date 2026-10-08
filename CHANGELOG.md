@@ -27,9 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - _No unreleased changes yet._
 
 ### Fixed
-- The scenario-baseline revision history existed as schema only: `m20260714_000003` was not in the
+- The scenario-baseline revision history existed as schema only: the migration was not in the
   `PagesModule` migration list and its entity was not part of the module tree, so the promotion
-  trail the schema promised was never written, with or without a reader. See
+  trail the schema promised was never written, with or without a reader. The migration is now
+  registered as `m20261008_000001_create_scenario_baseline_revision_history` — renamed from the
+  `m20260714_000003` it was authored as, because the composed migration plan is name-sorted and
+  must stay append-only, and it had never been applied anywhere under the old name. See
   `docs/audits/page-subsystem-engineering-audit-2026-10-08.md` (F-9).
 
 ### Deprecated

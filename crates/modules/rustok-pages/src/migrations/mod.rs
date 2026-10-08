@@ -2,7 +2,6 @@ mod m20260328_000001_create_pages_tables;
 mod m20260329_000001_create_page_channel_visibility_table;
 mod m20260714_000001_create_page_builder_scenario_baselines;
 mod m20260714_000002_add_scenario_baseline_promotion_metadata;
-mod m20260714_000003_create_scenario_baseline_revision_history;
 mod m20260718_000002_create_static_landing_artifacts;
 mod m20260721_000003_expand_pages_locale_storage_columns;
 mod m20260721_000004_enforce_language_agnostic_pages;
@@ -16,6 +15,10 @@ mod m20260806_000013_create_page_publish_rebuild_sources;
 mod m20260806_000014_add_explicit_artifact_rebuild;
 mod m20260806_000014_add_translation_target_support;
 mod m20260807_000015_create_page_artifact_binding_replacements;
+// Renamed from the July slot it was authored in: the file was never registered, and the composed
+// migration plan is name-sorted, so registering the old name would have inserted an entry in the
+// middle of the plan instead of appending one.
+mod m20261008_000001_create_scenario_baseline_revision_history;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -26,7 +29,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260329_000001_create_page_channel_visibility_table::Migration),
         Box::new(m20260714_000001_create_page_builder_scenario_baselines::Migration),
         Box::new(m20260714_000002_add_scenario_baseline_promotion_metadata::Migration),
-        Box::new(m20260714_000003_create_scenario_baseline_revision_history::Migration),
         Box::new(m20260718_000002_create_static_landing_artifacts::Migration),
         Box::new(m20260721_000003_expand_pages_locale_storage_columns::Migration),
         Box::new(m20260721_000004_enforce_language_agnostic_pages::Migration),
@@ -40,6 +42,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260806_000014_add_explicit_artifact_rebuild::Migration),
         Box::new(m20260806_000014_add_translation_target_support::Migration),
         Box::new(m20260807_000015_create_page_artifact_binding_replacements::Migration),
+        Box::new(m20261008_000001_create_scenario_baseline_revision_history::Migration),
     ]
 }
 
