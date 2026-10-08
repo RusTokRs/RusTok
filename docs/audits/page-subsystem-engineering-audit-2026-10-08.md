@@ -277,6 +277,14 @@ Migration, because the old value is persisted in MySQL, exported over GraphQL an
   it; the difference is that the claim can no longer be forged with a cheap 64-bit collision.
 - Nothing newly captured produces the legacy form.
 
+The same fail-open pattern was closed in `context_json_schema.rs`, the last member of the family:
+its `x-fly-fields`/`x-fly-computed` mirrors fell back to empty arrays through `unwrap_or_default()`,
+and `contract_hash` hashed *empty bytes*. It is a displayed identity rather than an approval gate,
+so the cheap fingerprint stays (which `digest.rs` explicitly permits for identity), but a failed
+encoding now reports a diagnostic and leaves the hash empty instead of handing every broken schema
+the same constant — and a contract entry that cannot be serialised is reported rather than silently
+flattened to an empty list.
+
 Also fixed as part of this: `snapshot_hash()` no longer hashes *empty bytes* on a serialisation
 failure — it returns an empty string, which never parses as a `ContentDigest`, so every
 verification path fails closed instead of comparing a constant. (Not a `FlyResult`, as the
@@ -346,14 +354,18 @@ reader does not repeat the work:
   and `verify-pages-consumer-properties-source-execution.mjs` (same). All workflows pin the
   immutable v7.0.1 commit. The gates are the staleness; the fix is to assert the pinned-SHA form
   the supply-chain checker already enforces.
-- `page_builder_scenario_baseline_revision` (entity + migration
-  `m20260714_000003_create_scenario_baseline_revision_history`) has **no writer anywhere in the
-  workspace**: `PageBuilderScenarioBaselineService` updates the active row and its
-  `previous_baseline_hash` column but never inserts a revision, and nothing else references the
-  table. Either the history is written by a path this audit did not find (it is not referenced by
-  name outside `entities/` and `migrations/`) or the table is dead and the promotion trail it
-  promises does not exist. This is a documentation/incompleteness defect under `AGENTS.md` §14:
-  the schema implies an audit trail that the runtime does not produce.
+- `page_builder_scenario_baseline_revisions` (F-9) has **no reader and no writer anywhere in the
+  workspace**. Migration `m20260714_000003_create_scenario_baseline_revision_history` creates the
+  table, `src/entities/page_builder_scenario_baseline_revision.rs` models it — and that file is not
+  declared in `src/entities/mod.rs`, so it is not even part of the crate's module tree.
+  `PageBuilderScenarioBaselineService` updates the active row and its `previous_baseline_hash`
+  column and stops there, so the promotion trail the schema promises is not produced. Under
+  `AGENTS.md` §14 an unrecorded incompleteness is treated as a defect, and a dangling entity file is
+  a `cargo`-visible orphan the moment it is declared; the gap is now recorded in
+  `crates/modules/rustok-pages/README.md` under *Known Limitations / Pending Implementation* with
+  both resolutions (wire it, or drop the entity and the table). Not fixed here: writing the history
+  is a feature with its own transactional and backfill decisions, and neither it nor a schema
+  removal can be verified without a toolchain.
 - Language policy: `AGENTS.md` §12 makes English the only repository documentation language with
   `README.ru.md` as the single exception, yet `docs/audits/` contains Russian documents
   (`fly-builder-engineering-audit-2026-10-02.md`, `ffa-ui-libraries-engineering-audit-2026-10-03.md`,
