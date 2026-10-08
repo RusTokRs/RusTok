@@ -25,10 +25,14 @@ Consequences, stated plainly:
 - `cargo check`, `cargo test`, `cargo clippy` and `cargo fmt --check` were **not** run for this
   audit. Every finding that depends on them is labelled **needs toolchain**; none is described as
   passing.
-- GitHub Actions logs are not retrievable from this environment (`gh run view --log-failed` fails
-  with `EOF`); only job/step names and conclusions are available through
-  `gh api .../actions/runs/<id>/jobs`. Root causes below were therefore derived statically and are
-  labelled as hypothesis where the toolchain would decide.
+- GitHub Actions logs are not retrievable from this environment: the log API answers with a
+  redirect to `productionresultssa*.blob.core.windows.net`, a host outside this environment's
+  network scope (`gh run view --log-failed` fails with `EOF`). Two substitutes were used:
+  `gh api .../actions/runs/<id>/jobs` for job/step names and conclusions, and the job check run's
+  annotations (`gh api .../check-runs/<id>/annotations`), which record the *exit code* of every
+  failing step even though they carry no step names — that is what identifies F-3 as a cargo
+  failure (§4.1). Root causes below were still derived statically and are labelled as hypothesis
+  where the toolchain would decide.
 - Two substitute checks were provisioned, verified against the repository itself, and committed as
   audit tooling under `scripts/audit/` (they are deliberately **not** wired into CI):
   - `scripts/audit/rust_syntax_check.mjs` — parses changed `.rs` files with the real
@@ -146,11 +150,58 @@ The step runs five checks; the first is
 `crates/ui/fly/dioxus/Cargo.toml` maps that feature to `dioxus/desktop`, and `Cargo.lock` resolves
 `dioxus 0.6.3` with `dioxus-desktop 0.6.3`, `wry 0.45.0` and `tao 0.30.8` in the graph. On Linux
 those crates reach WebKitGTK/GTK/soup through sys crates whose build scripts run `pkg-config`
-during `cargo check`. No workflow installs them: the only `apt-get install` calls in the repository
-are `lld` (`.github/workflows/ci.yml:200`) and `redis-server`
-(`cache-hardening.yml:288`, `rbac-runtime-evidence.yml:170`). This is the leading hypothesis for
-the step's failure and it explains why the failure is confined to the desktop combination while the
-wasm32 checks pass.
+during `cargo check`.
+
+**Refined on 2026-10-08 — the environment cause is established, and the crate is not at fault.**
+The first write-up recorded this as a leading hypothesis; four static checks now close it, leaving
+only the step's own log line to be pasted in by whoever owns CI:
+
+1. *The step failed as a cargo failure, not as an assertion in a script.* Of the five failing steps
+   in the job, exactly one runs a Node gate (`Verify editor capability policy` →
+   `node scripts/verify/verify-fly-ui-capability-policy.mjs`) and the other four run `cargo`. The
+   failure annotations on the job's check run (`113164370724`, run `37732431202`, head `6d353fda`)
+   hold five entries: one `Process completed with exit code 1` and four
+   `Process completed with exit code 101`. `101` is cargo's failure exit code, so the four cargo
+   steps died in the build rather than in a test assertion, and the Node step accounts for the
+   `exit 1`. The annotations carry no step names, so this mapping rests on arity and executor, not
+   on a per-step label — but it does rule out a gate-shape failure such as F-1/F-2.
+2. *The dependency chain and the pkg-config modules behind it are confirmed.* `desktop = ["dioxus/desktop"]` →
+   `dioxus-desktop 0.6.3` → `wry 0.45.0` → `webkit2gtk 2.0.1`/`webkit2gtk-sys 2.0.1`,
+   `gtk 0.18.2`/`gtk-sys 0.18.2`, `soup3 0.5.0`/`soup3-sys 0.5.0`, `javascriptcore-rs-sys 1.1.1`, plus
+   `tao 0.30.8`. In `Cargo.lock`, `webkit2gtk-sys` lists `pkg-config` as a build dependency, and its
+   `[package.metadata.system-deps]` block names the module `webkit2gtk-4.1` (read at tag
+   `webkit2gtk-sys-v2.0.1`) and `gtk-sys 0.18.1` declares `gtk+-3.0` (≥ 3.22) at tag `0.18.1`.
+   Nixpkgs' `default-crate-overrides.nix` maps every sys crate in this graph to the same native
+   libraries through `pkg-config` (`webkit2gtk-sys` and `javascriptcore-rs-sys` → `webkitgtk_4_1`,
+   `gtk-sys` → `gtk3`, `soup3-sys` → `libsoup_3`), and `wry`'s own README at tag `wry-v0.45.0`
+   (line 91) documents the Linux prerequisite as `sudo apt install libwebkit2gtk-4.1-dev` — the
+   **4.1** module, which Ubuntu 24.04 still ships. Nothing else in the graph is exotic.
+3. *The runner image does not carry those packages, and no workflow installs them.* A code search
+   over `actions/runner-images` (the repository that builds the GitHub-hosted runner images) returns
+   **zero** files matching `libgtk-3-dev` and **zero** matching `libwebkit2gtk-4.1-dev`, while the
+   index demonstrably works (`pkg-config` → 15 files). The image's published Ubuntu 24.04 package
+   list (`images/ubuntu/Ubuntu2404-Readme.md`) lists `pkg-config 1.8.1-2build1` and no GTK/WebKit
+   development package. Repository-side, the only `apt-get install` calls are `lld`
+   (`.github/workflows/ci.yml:200`) and `redis-server` (`cache-hardening.yml:288`,
+   `rbac-runtime-evidence.yml:170`); this step installs nothing.
+4. *No code-side defect remains to explain the failure.* `fly-dioxus` is 77 lines of component shells
+   over `fly_web` re-exports with no `cfg(feature = "desktop")` code at all — the `desktop` feature's
+   entire effect is reaching `dioxus/desktop`, so the failure can only originate in the dependency
+   graph. In the other direction, the sibling `--no-default-features` check on `fly-leptos` is not
+   self-contradictory and is worth keeping: `leptos 0.8.19` declares no `default` feature at all, and
+   a code search over `leptos-rs/leptos` finds no `compile_error!` demanding a renderer feature
+   (5 hits, all in proc-macro crates), so the renderer-less build is a legitimate compile target.
+
+Conclusion: the desktop combination fails because WebKitGTK/GTK/soup development packages are absent
+from `ubuntu-latest`, and no crate in `crates/ui/fly/**` can fix it. The step's own log would show the
+`pkg-config` build-script error verbatim; the job log is served from Azure blob storage, which this
+audit's environment cannot reach, so the exit codes above stand in for it.
+
+Volatility note for whoever applies the patch: `ubuntu-latest` currently resolves to Ubuntu 24.04 and
+the runner now emits *"The ubuntu-latest label will migrate to Ubuntu 26 beginning October 19,
+2026"* as a notice on this very job, so the apt list and the `webkit2gtk-4.1` module name should be
+re-validated against the new image. Pinning the check to an explicit image (`runs-on: ubuntu-24.04`)
+is the cheap way to keep it version-stable.
 
 Proposed patch (not applied — `AGENTS.md` §15 forbids editing CI workflow files unless CI changes
 are explicitly requested):
@@ -163,15 +214,31 @@ are explicitly requested):
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev
 ```
 
-Placed before the feature-combination step, this is the standard Dioxus/Tauri Linux dependency set
-and is harmless if the real cause turns out to differ. If the desktop adapter is deliberately not
-part of the shipped surface (`crates/ui/fly/README.md` lists `fly-dioxus` as *Foundation only*),
-the alternative is to drop `--features desktop` from the step and document that the combination is
-not compiled anywhere — but then nothing would compile it, which is the situation the step exists
-to prevent.
+Placed before the feature-combination step: `libwebkit2gtk-4.1-dev` is the package `wry` documents
+and provides the `webkit2gtk-4.1` module this graph asks for, while the GTK 3 and libsoup 3
+development packages are listed explicitly rather than assumed to arrive with it (`librsvg2-dev` is
+carried over from the standard Tauri/Dioxus set although nothing in this graph asks for it). If the
+desktop adapter is deliberately not part of the shipped surface (`crates/ui/fly/README.md` lists
+`fly-dioxus` as *Foundation only*), the alternative is to drop `--features desktop` from the step —
+but the workspace-wide check below enables the same feature anyway, so dropping it here would only
+lose the focused, fast signal, which is the situation the step exists to prevent.
 
-**Needs toolchain:** with `cargo`, `cargo check -p fly-dioxus --features desktop` on a clean
-runner settles this in one command.
+**Same cause, wider blast radius — the main `Cargo Check` jobs.** `crates/ui/fly/dioxus` is an
+explicit `[workspace] members` entry, so the repository's primary compile gate,
+`cargo check --workspace --all-targets --all-features` (`.github/workflows/ci.yml:73`, the
+`Cargo Check (1.96.0)` / `Cargo Check (stable)` matrix jobs of the `CI` workflow), enables
+`fly-dioxus/web` **and** `fly-dioxus/desktop` as well — and with them `dioxus-desktop`, `wry` and the
+WebKitGTK sys crates — on the same stock `ubuntu-latest` runner. Both matrix jobs fail at the tip of
+`main`: run `37732431476` (workflow `CI`, head `6d353fda`, created 2026-10-08T05:27:04Z) has each of
+them failing on its single step, and the check is red in every one of the last five `main` commits.
+Annotations cannot show whether the WebKitGTK build script is the *first* error in a command that
+spans the whole workspace, so this is not a claim that the apt-get patch alone turns that job green —
+only that the job cannot pass while those packages are missing. The patch is therefore not a
+focused-step nicety; it is a precondition for the workspace-wide gate.
+
+**Needs toolchain:** with `cargo`, `cargo check -p fly-dioxus --features desktop` on a provisioned
+runner turns the last inference into the literal error text; it cannot change the fix, which is
+environment-side either way.
 
 ### 4.2 F-4 — `Check admin SSR Page Builder endpoint`
 
@@ -455,7 +522,10 @@ reader does not repeat the work:
 
 1. ~~Apply the `bundle.rs` decision in §4.4~~ — done: leave it, verified green in CI at the tip of
    `main` (§4.4).
-2. Apply the adapter-dependency patch in §4.1 (F-3) and run the feature-combination step.
+2. ~~Root-cause and patch F-3 (§4.1)~~ — root-caused against the dependency graph, `Cargo.lock`
+   and the runner image contents; the apt-get patch is workflow-side and **left to the maintainer**
+   (CI scope). It also gates the workspace-wide `Cargo Check` jobs (§4.1), which currently fail on
+   the same missing packages.
 3. Run `cargo test -p fly-browser --all-targets` and `cargo clippy … -- -D warnings` locally to
    close F-2 and name F-5 (F-2 is expected to pass; F-5 needs the warning text).
 4. Triage F-4 with the failing log.
@@ -477,19 +547,30 @@ Recorded because it separates "fixed upstream" from "still open", which a red ba
 |---|---|
 | `Run Fly browser contract tests` (F-2) | **failure** — fixed on this branch |
 | `Verify editor capability policy` (F-1) | **failure** — fixed on this branch |
-| `Check Fly adapter feature combinations` (F-3) | **failure** — needs the workflow patch (§4.1) |
+| `Check Fly adapter feature combinations` (F-3) | **failure** — root-caused environment-side, needs the workflow patch (§4.1) |
 | `Check admin SSR Page Builder endpoint` (F-4) | **failure** — needs the toolchain or the log (§4.2) |
 | `Lint Fly browser and Page Builder integrations` (F-5) | **failure** — needs the clippy output (§4.3) |
 | `Focused formatting` (F-6, separate job) | **success** — closed upstream (§4.4) |
 | `Run Fly core tests`, `Run Fly UI and web runtime tests`, `Check Fly framework adapters`, `Check Fly without the platform i18n dependency`, `Run Page Builder admin unit tests`, `Run Pages domain unit tests`, `Run Pages integration unit tests`, `Check Pages storefront`, `Check Page Builder storefront`, `Lint Fly`, and all 16 `Verify …` source guards | success |
 | `Audit dependencies` (F-7, advisory job) | failure — advisory, out of scope |
 
+Adjacent red on the same commit, observed while refining F-3: the `CI` workflow's `Cargo Check`
+matrix (`cargo check --workspace --all-targets --all-features`, `.github/workflows/ci.yml:73`) failed
+in both of its jobs — `Cargo Check (1.96.0)` and `Cargo Check (stable)`, run `37732431476`, head
+`6d353fda`, created 2026-10-08T05:27:04Z — each on its single step, and it is red in the last five
+`main` commits. That command enables `fly-dioxus`'s renderer features too (the crate is an explicit
+workspace member), so §4.1's missing system libraries are one guaranteed obstacle in it; whether they
+are its first error is not something annotations can answer. Recorded here because it upgrades F-3
+from "one focused step is red" to "the workspace-wide gate cannot pass either".
+
 ## 9. What this audit does not establish
 
 - Nothing here proves the page subsystem compiles or its tests pass at this commit; the toolchain
   was unavailable by construction (§1).
-- F-3, F-4 and F-5 are root-cause *hypotheses* of failing steps, not confirmed diagnoses; each
-  needs one command with a toolchain, or the step's log.
+- F-4 and F-5 are root-cause *hypotheses* of failing steps, not confirmed diagnoses; each needs one
+  command with a toolchain, or the step's log. F-3 is no longer a hypothesis: the missing
+  WebKitGTK/GTK/soup development packages, the cargo exit codes and the absence of desktop-side code
+  in `fly-dioxus` establish the cause statically (§4.1) — only the literal log line is missing.
 - The audit covers the page/builder subsystem; unrelated red workflows (forum, e-commerce, index
   evidence) were out of scope except where they share a cause with the findings above.
 - Performance claims (clone counts, query patterns) were not re-measured; §1a of the 2026-10-02
