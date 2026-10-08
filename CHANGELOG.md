@@ -16,9 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Blog post slug history: `blog_post_slug_history` (migration `m20261008_000030`) records retired
-  canonical slugs per tenant. Renaming a post keeps its old slug, public reads resolve retired
-  slugs, and the Next storefront redirects permanently to the current slug.
+- Blog post slug redirects use the shared canonical URL registry of `rustok-content`
+  (`canonical_url` / `url_alias`) through `CanonicalUrlWriter`. Renaming a post keeps its old
+  route as an alias, public reads resolve it to the current post, a new post may take a retired
+  slug, and deleting a post purges its routes. Blog keeps no slug-history table. Content
+  orchestration uses the same Blog route definition.
 - Blog post slugs for non-ASCII titles are transliterated through the shared Taxonomy route-key
   normalizer, so Cyrillic titles no longer fail with "Slug cannot be empty".
 - Page Builder scenario-baseline revision history: every accepted baseline mutation (`create`,

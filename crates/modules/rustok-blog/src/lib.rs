@@ -42,7 +42,10 @@ pub use integrations::reaction_subject::{
 pub use module::BlogModule;
 pub use ports::{blog_category, blog_post, blog_post_tag, blog_post_translation};
 pub use rustok_comments_api::CommentsThreadPort;
-pub use services::{CategoryService, CommentService, PostService, TagService};
+pub use services::{
+    CANONICAL_POST_ROUTE_LOCALE, CategoryService, CommentService, PostService, TagService,
+    canonical_post_route,
+};
 pub use state_machine::{
     Archived, BlogPost, BlogPostStatus, CommentStatus, Draft, Published, ToBlogPostStatus,
 };

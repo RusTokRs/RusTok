@@ -44,7 +44,7 @@ pub use richtext::{
     render_html, validate, validate_and_normalize,
 };
 pub use services::{
-    CanonicalUrlMutation, CanonicalUrlService, ContentOrchestrationBridge,
+    CanonicalUrlMutation, CanonicalUrlService, CanonicalUrlWriter, ContentOrchestrationBridge,
     ContentOrchestrationService, DemotePostToTopicInput, DemotePostToTopicOutput, MergeTopicsInput,
     MergeTopicsOutput, OrchestrationResult, PromoteTopicToPostInput, PromoteTopicToPostOutput,
     ResolvedContentRoute, RetiredCanonicalTarget, SplitTopicInput, SplitTopicOutput,

@@ -53,10 +53,6 @@ pub(crate) fn normalize_slug(value: &str) -> String {
     slug.trim_matches('-').to_string()
 }
 
-pub(crate) fn blog_post_route(slug: &str) -> String {
-    format!("/modules/blog?slug={slug}")
-}
-
 pub(crate) fn forum_topic_route(topic_id: Uuid) -> String {
     format!("/modules/forum?topic={topic_id}")
 }

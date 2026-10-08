@@ -238,7 +238,7 @@ fn map_post_response(post: PostResponse) -> SeoLoadedTargetRecord {
         .or_else(|| summarize_text(post.title.as_str()));
     let primary_image = primary_post_image_descriptor(&post, title.as_str());
     let open_graph_images = primary_image.clone().into_iter().collect::<Vec<_>>();
-    let canonical_route = format!("/modules/blog?slug={}", post.slug);
+    let canonical_route = crate::services::canonical_post_route(&post.slug);
     let mut template_fields = SeoTemplateFieldMap::default();
     template_fields.insert("title", title.clone());
     template_fields.insert("description", description.clone().unwrap_or_default());

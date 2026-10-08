@@ -14,7 +14,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::bridge::helpers::{
-    adjust_forum_category_counters_in_tx, blog_post_route, ensure_forum_category_exists_in_tx,
+    adjust_forum_category_counters_in_tx, ensure_forum_category_exists_in_tx,
     forum_topic_route, locales_from_post_translations, normalize_locale,
     refresh_forum_topic_stats_in_tx, resequence_forum_topic_replies_in_tx,
 };
@@ -137,11 +137,11 @@ pub(crate) async fn demote_post_to_topic(
             target_id: topic_id,
             locale: locale.clone(),
             canonical_url: forum_topic_route(topic_id),
-            alias_urls: vec![blog_post_route(post.slug.as_str())],
+            alias_urls: vec![rustok_blog::canonical_post_route(post.slug.as_str())],
             retired_targets: vec![RetiredCanonicalTarget {
                 target_kind: "blog_post".to_string(),
                 target_id: post.id,
-                locale,
+                locale: rustok_blog::CANONICAL_POST_ROUTE_LOCALE.to_string(),
             }],
         })
         .collect();

@@ -5,6 +5,8 @@ const checks = [];
 const read = (path) => readFileSync(path, 'utf8');
 const service = read('crates/modules/rustok-content/src/services/content_orchestration_service.rs');
 const resolver = read('crates/modules/rustok-content/src/services/canonical_url_service.rs');
+// The canonical mutation helper lives in `CanonicalUrlWriter`, which the orchestration service delegates to.
+const canonicalMutationHelper = `${service}\n${resolver}`;
 const bridgeDir = 'crates/modules/rustok-content-orchestration/src/bridge';
 const productionBridge = existsSync(bridgeDir)
   ? readdirSync(bridgeDir)
@@ -100,22 +102,22 @@ for (const op of operations) {
 
 check(
   'canonical mutation helper normalizes route, locale and target kind',
-  includesAll(service, ['normalize_target_kind', 'normalize_route_url', 'normalize_locale_code']),
+  includesAll(canonicalMutationHelper, ['normalize_target_kind', 'normalize_route_url', 'normalize_locale_code']),
   'canonical URL updates must normalize target kind, route and locale',
 );
 check(
   'canonical mutation helper preserves retired URLs as aliases',
-  includesAll(service, ['retired_targets', 'delete_by_id(retired_canonical.id)', 'alias_urls.insert(retired_canonical.canonical_url.clone())']),
+  includesAll(canonicalMutationHelper, ['retired_targets', 'delete_by_id(retired_canonical.id)', 'alias_urls.insert(retired_canonical.canonical_url.clone())']),
   'retired canonical targets must be atomically retired and redirected',
 );
 check(
   'canonical mutation helper rejects canonical/alias route collisions',
-  includesAll(service, ['ensure_canonical_route_available', 'ensure_alias_route_available', 'already belongs to another content target', 'would shadow another target canonical URL']),
+  includesAll(canonicalMutationHelper, ['ensure_canonical_route_available', 'ensure_alias_route_available', 'already belongs to another content target', 'would shadow another target canonical URL']),
   'canonical URL changes must reject cross-target route collisions before mutating mappings',
 );
 check(
   'canonical mutation helper publishes URL outbox events',
-  includesAll(service, ['DomainEvent::CanonicalUrlChanged', 'DomainEvent::UrlAliasPurged']),
+  includesAll(canonicalMutationHelper, ['DomainEvent::CanonicalUrlChanged', 'DomainEvent::UrlAliasPurged']),
   'canonical URL changes must emit both URL events when aliases are present',
 );
 check(

@@ -414,12 +414,14 @@ The governing contract is
   `rustok_taxonomy::normalize_term_route_key`, the same primitive as Taxonomy
   route keys. A Cyrillic title without an explicit slug now produces a
   transliterated slug. Blog keeps no local transliteration copy.
-- **H-3 slug history and redirects.** `blog_post_slug_history` (migration
-  `m20261008_000030`) stores retired canonical slugs per tenant. Renames record
-  the old slug; creates and renames claim the new slug and remove stale history
-  rows in the same transaction. `get_post_by_slug_with_locale_fallback` resolves
-  retired slugs, and the Next post route issues a permanent redirect to the
-  current slug.
+- **H-3 slug redirects on the canonical registry.** Blog keeps no slug-history
+  table. Post routes live in the `rustok-content` canonical URL registry and are
+  written only through `CanonicalUrlWriter`. Renames keep the old route as an
+  alias and emit `CanonicalUrlChanged`, which drives SEO redirects. Creates claim
+  a retired route through `release_alias_route_in_tx`. Deletes purge the post's
+  routes in the same transaction. `get_post_by_slug_with_locale_fallback` resolves
+  the current slug first and then the registry route with the request locale. The
+  Next post route issues a permanent redirect to the current slug.
 - **H-4 publication timestamp.** `published_at` is the first publication time.
   Publish keeps an existing value; unpublish, archive, and restore preserve it.
   The DTO field is documented accordingly.
@@ -451,9 +453,10 @@ The governing contract is
   tests were **not run**. Unit tests were added for slug transliteration and
   featured image validation. Maintainer CI must run them before this slice is
   marked implemented.
-- Still required: a PostgreSQL migration smoke for `m20261008_000030` and
-  `m20261008_000031`, a rename-and-redirect integration test, and a republish
-  test that checks the first `published_at` is preserved.
+- Still required: a PostgreSQL migration smoke for `m20261008_000031`, a
+  rename-and-redirect integration test, a claim test for a retired slug, a
+  delete-purge test, and a republish test that checks the first `published_at`
+  is preserved.
 
 ### Open backlog (Known Limitations)
 
@@ -525,7 +528,7 @@ This comparison was written from the model's knowledge of the platforms and was
 | Draft preview link | No | Yes | Yes | M-4 |
 | Trash / undo delete | No (hard delete) | Yes (30 days default) | verify | M-3 |
 | Sticky post | No | Yes | verify | M-6 |
-| Slug change redirect | Yes (Next storefront, retired slug history) | Yes | Yes (redirects file) | H-3 |
+| Slug change redirect | Yes (Next storefront, canonical route registry) | Yes | Yes (redirects file) | H-3 |
 | Localized slugs | No (global canonical slug, by contract) | Via plugins | No | H-2 |
 | Multi-author | Single author | Roles; co-authors via plugin | Staff users | M-6 |
 | Inline images / embeds / tables | No | Yes (blocks) | Yes (cards) | H-8 |

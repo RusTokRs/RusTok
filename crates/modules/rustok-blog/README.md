@@ -157,8 +157,14 @@ copy must use the canonical Taxonomy owner contract.
 - Post slugs are global canonical identifiers, not locale-aware. They are
   normalized through the shared Taxonomy route-key primitive, so non-ASCII titles
   are transliterated.
-- Renaming a post records the retired slug. Public reads resolve retired slugs to
-  the current post, and the storefront redirects permanently to the current slug.
+- Post routes are owned by the canonical URL registry of `rustok-content`. Blog
+  writes them through `CanonicalUrlWriter` and defines the route once in
+  `canonical_post_route` (`/modules/blog?slug={slug}`). Renaming a post keeps the
+  previous route as an alias. Public reads resolve it to the current post, and the
+  storefront redirects permanently to the current slug. Creating a post may take
+  a retired slug. Deleting a post purges its routes.
+- Post routes are stored under `CANONICAL_POST_ROUTE_LOCALE` (the platform
+  fallback locale), because Blog slugs are global canonical identifiers.
 - `published_at` is the first publication time. It is preserved across
   unpublish, archive, and restore. `updated_at` tracks the last change.
 - `featured_image_url` must be an absolute `http`/`https` URL or a root-relative

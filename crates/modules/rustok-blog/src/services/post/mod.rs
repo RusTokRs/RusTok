@@ -16,10 +16,11 @@ struct PostTranslationUpsertInput {
     now: chrono::DateTime<chrono::Utc>,
 }
 
-use rustok_api::{Action, Patch, Resource};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Patch, Resource};
 use rustok_channel::ChannelService;
 use rustok_content::{
-    available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
+    CanonicalUrlMutation, CanonicalUrlService, CanonicalUrlWriter, available_locales_from,
+    normalize_locale_code, resolve_by_locale_with_fallback,
 };
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
@@ -31,8 +32,7 @@ use crate::dto::{
     PostSummary, UpdatePostInput,
 };
 use crate::entities::{
-    blog_post, blog_post_channel_visibility, blog_post_slug_history, blog_post_tag,
-    blog_post_translation,
+    blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation,
 };
 use crate::error::{BlogError, BlogResult};
 use crate::richtext::{canonical_article_body, normalize_article, project_stored_article};
@@ -172,6 +172,24 @@ fn validate_post_field_length(
         )));
     }
     Ok(())
+}
+
+/// Canonical-route `object_type` used by Blog posts in the shared
+/// `canonical_url` / `url_alias` registry owned by `rustok-content`.
+pub(crate) const BLOG_POST_TARGET_KIND: &str = "blog_post";
+
+/// Locale under which every Blog post route is stored. Blog slugs are global
+/// canonical identifiers (see `DECISIONS/2026-03-28-multilingual-content-contract.md`),
+/// so the route does not vary by translation locale. `resolve_route` falls back
+/// to the platform locale for every requested locale, so the route resolves
+/// for any language.
+pub const CANONICAL_POST_ROUTE_LOCALE: &str = PLATFORM_FALLBACK_LOCALE;
+
+/// Canonical public route of a Blog post. Shared by Blog, content orchestration
+/// and SEO target projection, so there is exactly one definition of the route.
+/// The slug is already a route key (`[a-z0-9-]`), so it needs no escaping.
+pub fn canonical_post_route(slug: &str) -> String {
+    format!("/modules/blog?slug={slug}")
 }
 
 fn normalize_locale(locale: &str) -> BlogResult<String> {

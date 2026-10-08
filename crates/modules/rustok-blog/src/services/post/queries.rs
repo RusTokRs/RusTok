@@ -73,11 +73,11 @@ impl PostService {
         if normalized_slug.is_empty() {
             return Ok(None);
         }
-        // Resolves the current canonical slug first, then a retired slug. The
-        // returned post always carries its current slug, so callers can issue
-        // a permanent redirect when the requested slug was retired.
+        // Resolves the current slug first, then a route retired by a slug
+        // change. The returned post always carries its current slug, so callers
+        // can issue a permanent redirect when the requested slug was retired.
         let Some(post) = self
-            .find_post_by_current_or_retired_slug(tenant_id, &normalized_slug)
+            .find_post_by_current_or_canonical_route(tenant_id, &locale, &normalized_slug)
             .await?
         else {
             return Ok(None);

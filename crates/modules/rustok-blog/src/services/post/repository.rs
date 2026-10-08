@@ -185,51 +185,54 @@ impl PostService {
         Ok(())
     }
 
-    /// Makes `slug` owned by a current post: any retired-slug record for it is
-    /// dropped, so a redirect can never shadow a live canonical slug.
-    pub(super) async fn claim_post_slug_in_tx(
+    /// Makes `route` of the post's slug canonical for `post_id` through the
+    /// shared canonical-route writer. A retired route that still points at
+    /// another post is released first, so a redirect can never shadow a live
+    /// canonical slug. `previous_slug` is the slug being replaced on rename; its
+    /// route becomes a permanent redirect to the new canonical route.
+    pub(super) async fn claim_post_route_in_tx(
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
-        slug: &str,
-    ) -> BlogResult<()> {
-        blog_post_slug_history::Entity::delete_many()
-            .filter(blog_post_slug_history::Column::TenantId.eq(tenant_id))
-            .filter(blog_post_slug_history::Column::Slug.eq(slug))
-            .exec(txn)
-            .await
-            .map_err(BlogError::from)?;
-        Ok(())
-    }
-
-    /// Records `slug` as retired by `post_id`, so old public URLs can be
-    /// permanently redirected to the post's current canonical slug.
-    pub(super) async fn retire_post_slug_in_tx(
-        &self,
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
         post_id: Uuid,
         slug: &str,
-        retired_at: chrono::DateTime<chrono::Utc>,
+        previous_slug: Option<&str>,
     ) -> BlogResult<()> {
-        blog_post_slug_history::ActiveModel {
-            tenant_id: Set(tenant_id),
-            slug: Set(slug.to_string()),
-            post_id: Set(post_id),
-            created_at: Set(retired_at.into()),
-        }
-        .insert(txn)
-        .await
-        .map_err(BlogError::from)?;
+        let canonical_route = canonical_post_route(slug);
+        let writer = CanonicalUrlWriter::new(self.event_bus.clone());
+        writer
+            .release_alias_route_in_tx(txn, tenant_id, actor_id, &canonical_route)
+            .await?;
+
+        let mutation = CanonicalUrlMutation {
+            target_kind: BLOG_POST_TARGET_KIND.to_string(),
+            target_id: post_id,
+            locale: CANONICAL_POST_ROUTE_LOCALE.to_string(),
+            canonical_url: canonical_route,
+            alias_urls: previous_slug.map(canonical_post_route).into_iter().collect(),
+            retired_targets: Vec::new(),
+        };
+        writer
+            .apply_canonical_url_mutations(
+                txn,
+                tenant_id,
+                actor_id,
+                std::slice::from_ref(&mutation),
+            )
+            .await?;
         Ok(())
     }
 
-    /// Resolves a post by its current canonical slug, falling back to the
-    /// retired-slug history. Callers must redirect when the returned post's
-    /// slug differs from the requested one.
-    pub(super) async fn find_post_by_current_or_retired_slug(
+    /// Resolves a post by its current slug first, then through the canonical
+    /// route registry, which holds routes retired by a slug change. Callers
+    /// must redirect when the returned post's slug differs from the requested
+    /// one. A route now owned by another module resolves to `None`: Blog does
+    /// not serve it.
+    pub(super) async fn find_post_by_current_or_canonical_route(
         &self,
         tenant_id: Uuid,
+        locale: &str,
         slug: &str,
     ) -> BlogResult<Option<blog_post::Model>> {
         if let Some(post) = blog_post::Entity::find()
@@ -243,25 +246,25 @@ impl PostService {
             return Ok(Some(post));
         }
 
-        let Some(retired) = blog_post_slug_history::Entity::find()
-            .filter(blog_post_slug_history::Column::TenantId.eq(tenant_id))
-            .filter(blog_post_slug_history::Column::Slug.eq(slug))
-            .one(&self.db)
-            .await
-            .map_err(BlogError::from)?
+        let Some(resolved) = CanonicalUrlService::new(self.db.clone())
+            .resolve_route(tenant_id, locale, &canonical_post_route(slug))
+            .await?
         else {
             return Ok(None);
         };
+        if resolved.target_kind != BLOG_POST_TARGET_KIND {
+            return Ok(None);
+        }
 
-        let post = blog_post::Entity::find_by_id(retired.post_id)
+        let post = blog_post::Entity::find_by_id(resolved.target_id)
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await
             .map_err(BlogError::from)?
             .ok_or_else(|| {
                 BlogError::invariant(format!(
-                    "Retired blog slug '{slug}' references missing post {}",
-                    retired.post_id
+                    "Canonical blog route '{slug}' references missing post {}",
+                    resolved.target_id
                 ))
             })?;
         Self::validate_persisted_version(&post)?;

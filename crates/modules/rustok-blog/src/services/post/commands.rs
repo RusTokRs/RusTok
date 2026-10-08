@@ -64,7 +64,6 @@ impl PostService {
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         self.ensure_slug_unique_in_tx(&txn, tenant_id, &slug, None)
             .await?;
-        self.claim_post_slug_in_tx(&txn, tenant_id, &slug).await?;
         if let Some(category_id) = category_id {
             CategoryService::ensure_exists_in_tx(&txn, tenant_id, category_id).await?;
         }
@@ -102,6 +101,15 @@ impl PostService {
                 BlogError::from(error)
             }
         })?;
+        self.claim_post_route_in_tx(
+            &txn,
+            tenant_id,
+            security.user_id,
+            post_id,
+            &slug_for_error,
+            None,
+        )
+        .await?;
 
         blog_post_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -281,7 +289,6 @@ impl PostService {
         if let Some(ref slug) = normalized_slug {
             self.ensure_slug_unique_in_tx(&txn, tenant_id, slug, Some(post_id))
                 .await?;
-            self.claim_post_slug_in_tx(&txn, tenant_id, slug).await?;
         }
         if let Patch::Set(category_id) = category_id.as_ref() {
             CategoryService::ensure_exists_in_tx(&txn, tenant_id, *category_id).await?;
@@ -360,10 +367,17 @@ impl PostService {
         if let Some(ref slug) = normalized_slug
             && *slug != post.slug
         {
-            // Keep the previous canonical slug so that existing public URLs
-            // can be permanently redirected to the new one.
-            self.retire_post_slug_in_tx(&txn, tenant_id, post_id, &post.slug, now)
-                .await?;
+            // The previous route becomes a permanent redirect to the new
+            // canonical route; `CanonicalUrlChanged` drives SEO redirects.
+            self.claim_post_route_in_tx(
+                &txn,
+                tenant_id,
+                security.user_id,
+                post_id,
+                slug,
+                Some(post.slug.as_str()),
+            )
+            .await?;
         }
 
         if has_translation_change {
@@ -666,6 +680,15 @@ impl PostService {
                 "Blog post changed concurrently before deletion",
             ));
         }
+        CanonicalUrlWriter::new(self.event_bus.clone())
+            .remove_target_routes_in_tx(
+                &txn,
+                tenant_id,
+                security.user_id,
+                BLOG_POST_TARGET_KIND,
+                post_id,
+            )
+            .await?;
 
         self.event_bus
             .publish_in_tx(

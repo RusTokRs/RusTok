@@ -1,7 +1,7 @@
 mod canonical_url_service;
 mod content_orchestration_service;
 
-pub use canonical_url_service::{CanonicalUrlService, ResolvedContentRoute};
+pub use canonical_url_service::{CanonicalUrlService, CanonicalUrlWriter, ResolvedContentRoute};
 pub use content_orchestration_service::{
     CanonicalUrlMutation, ContentOrchestrationBridge, ContentOrchestrationService,
     DemotePostToTopicInput, DemotePostToTopicOutput, MergeTopicsInput, MergeTopicsOutput,

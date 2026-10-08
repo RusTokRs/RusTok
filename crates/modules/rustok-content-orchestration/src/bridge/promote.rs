@@ -14,7 +14,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::bridge::helpers::{
-    ForumReplyRecord, adjust_forum_category_counters_in_tx, blog_post_route, find_topic_in_tx,
+    ForumReplyRecord, adjust_forum_category_counters_in_tx, find_topic_in_tx,
     forum_topic_route, load_forum_reply_records_in_tx, load_topic_translations_in_tx,
     locales_from_topic_translations, normalize_locale, normalize_slug, resolve_topic_translation,
 };
@@ -153,21 +153,24 @@ pub(crate) async fn promote_topic_to_post(
     adjust_forum_category_counters_in_tx(txn, tenant_id, topic.category_id, -1, -topic.reply_count)
         .await?;
 
-    let url_updates = locales_from_topic_translations(&translations)?
+    // Blog routes are global, so the Blog mutation is written once under the
+    // Blog route locale. Every topic translation is retired into it.
+    let retired_targets = locales_from_topic_translations(&translations)?
         .into_iter()
-        .map(|locale| CanonicalUrlMutation {
-            target_kind: "blog_post".to_string(),
-            target_id: post_id,
-            locale: locale.clone(),
-            canonical_url: blog_post_route(&slug),
-            alias_urls: vec![forum_topic_route(topic.id)],
-            retired_targets: vec![RetiredCanonicalTarget {
-                target_kind: "forum_topic".to_string(),
-                target_id: topic.id,
-                locale,
-            }],
+        .map(|locale| RetiredCanonicalTarget {
+            target_kind: "forum_topic".to_string(),
+            target_id: topic.id,
+            locale,
         })
         .collect();
+    let url_updates = vec![CanonicalUrlMutation {
+        target_kind: "blog_post".to_string(),
+        target_id: post_id,
+        locale: rustok_blog::CANONICAL_POST_ROUTE_LOCALE.to_string(),
+        canonical_url: rustok_blog::canonical_post_route(&slug),
+        alias_urls: vec![forum_topic_route(topic.id)],
+        retired_targets,
+    }];
 
     Ok(PromoteTopicToPostOutput {
         topic_id: topic.id,

@@ -50,6 +50,11 @@ the [central implementation plan](../../../docs/modules/rich-text-implementation
 - Conversion flows persist typed redirect/canonical state in
   `content_canonical_urls` and `content_url_aliases` and publish
   `CanonicalUrlChanged` / `UrlAliasPurged` through the outbox contract.
+- `CanonicalUrlWriter` is the single writer of these tables for every module.
+  Blog post routes (create, rename, delete) and content orchestration go
+  through it. `release_alias_route_in_tx` lets a module claim a route that a
+  retired alias still holds, and `remove_target_routes_in_tx` purges a deleted
+  target's routes.
 
 Richtext policy is the production runtime gate for Blog, Forum, and Comments.
 Their owner services select fixed profiles and keep locale in owner rows. The

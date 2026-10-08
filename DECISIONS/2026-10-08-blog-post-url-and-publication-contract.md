@@ -3,7 +3,7 @@
 - Date: 2026-10-08
 - Decision status: Accepted
 - Implementation status: In progress
-- Owners: `rustok-blog` (post lifecycle, slug history, featured image contract); `apps/next-frontend` storefront consumes the contract
+- Owners: `rustok-blog` (post lifecycle, slug column, featured image contract); `rustok-content` (canonical URL and alias registry, including the Blog post route); `apps/next-frontend` storefront consumes the contract
 - Extends: `DECISIONS/2026-03-28-multilingual-content-contract.md`
 - Supersedes: None
 - Superseded by: None
@@ -18,9 +18,8 @@ domain:
 2. Post slugs were built by an ASCII-only normaliser, so a Cyrillic title without
    an explicit Latin slug could not be saved, while Taxonomy route keys are
    transliterated (H-2).
-3. Changing a post slug removed the old public URL without any redirect; Blog did
-   not own a slug history, and `CanonicalUrlChanged` is emitted only by
-   `rustok-content` orchestration (H-3).
+3. Changing a post slug removed the old public URL without any redirect. The
+   retired route was not recorded in the canonical route registry (H-3).
 4. `published_at` was overwritten on every publish and cleared on unpublish, so a
    republished post received a new public date, RSS `pubDate`, and JSON-LD
    `datePublished` (H-4).
@@ -52,23 +51,37 @@ primitive used for Taxonomy route keys and Blog Category/Tag route keys. Blog
 does not keep a local transliteration copy. The 255-byte storage limit applies
 after normalization.
 
-### Retired slug history
+### Slug routes and redirects
 
-Blog owns `blog_post_slug_history (tenant_id, slug) -> post_id`, a derived lookup
-for retired canonical slugs. Invariants:
+The Blog post route is owned by the canonical URL registry of `rustok-content`
+(`canonical_url` and `url_alias`). Blog does not keep its own slug table. Blog
+writes the registry only through `CanonicalUrlWriter`, the single writer that
+also serves content orchestration. Rules:
 
-- a slug is either the current `blog_posts.slug` of exactly one post or a
-  retired-slug record of at most one post in the same tenant, never both;
-- claiming a slug for a create or a rename deletes any retired-slug record for it
-  in the same transaction;
-- renaming a post inserts the previous slug as a retired-slug record in the same
-  transaction;
-- deleting a post cascades its retired-slug records through a composite foreign
-  key `(tenant_id, post_id) -> blog_posts (tenant_id, id)`.
-
-`PostService::get_post_by_slug_with_locale_fallback` resolves the current slug
-first and then the retired slug. The returned post always carries its current
-canonical slug, and the storefront issues a permanent redirect when they differ.
+- The route is `canonical_post_route(slug)` = `/modules/blog?slug={slug}`. It is
+  defined once in `rustok-blog` and reused by content orchestration and the SEO
+  target projection.
+- Blog slugs are global canonical identifiers. Their routes are stored under
+  `CANONICAL_POST_ROUTE_LOCALE`, which is `rustok_api::PLATFORM_FALLBACK_LOCALE`.
+  `resolve_route` falls back to that locale for every requested locale.
+- Create claims the route. `release_alias_route_in_tx` releases any retired alias
+  of the route in every locale, and `apply_canonical_url_mutations` then makes it
+  canonical. A retired route therefore never shadows a live slug.
+- Rename releases the new route and makes the new canonical route. The previous
+  route is passed as an alias, so the writer stores it as a `url_alias` and emits
+  `CanonicalUrlChanged`. `rustok-seo` turns that event into a redirect when the
+  tenant enables submodule redirects and automatic slug-change redirects.
+- Delete removes every canonical and alias row of the post through
+  `remove_target_routes_in_tx`, in the same transaction as the post delete, and
+  publishes `UrlAliasPurged`.
+- Public reads resolve the current slug first. If none matches, they resolve the
+  route through `CanonicalUrlService::resolve_route` with the request locale. The
+  returned post always carries its current slug, so the storefront issues a
+  permanent redirect when they differ. A route that now belongs to another module
+  (for example a demoted post served as a forum topic) resolves to no Blog post.
+- Content orchestration follows the same rules: promote claims the Blog route
+  and retires the topic routes, and demote retires the Blog route in the global
+  locale.
 
 ### Publication timestamp
 
@@ -102,8 +115,9 @@ analytics owner, not to a column on `blog_posts`.
 ## Sources of truth and ownership
 
 - `blog_posts` owns the current canonical slug, status, and `published_at`.
-- `blog_post_slug_history` is Blog-owned derived state for redirects only. It is
-  not used for authorization or for reads of current content.
+- `canonical_url` and `url_alias` (owned by `rustok-content`) hold every route,
+  including the Blog post route. They serve redirects only. They are not used for
+  authorization or for reads of current content.
 - Locale resolution is owned by `rustok-content::locale`; the GraphQL request
   locale is owned by `rustok-api`.
 
@@ -111,48 +125,57 @@ analytics owner, not to a column on `blog_posts`.
 
 ### Allowed states
 
-- Current slug and retired slugs are disjoint per tenant.
+- A Blog route is canonical for at most one post. A retired route is an alias of
+  at most one target, across all locales.
 - A post that has ever been published keeps the same `published_at` value for the
   rest of its life; only a first publication may set it.
 
 ### Forbidden states
 
-- A retired slug that points at a post which currently owns that slug.
+- A retired alias of a route that is also the live canonical route of a target.
 - A stored `featured_image_url` with a non-http(s) scheme or with a length above
   2048 characters.
 
 ## Data, transaction, and concurrency boundary
 
-- Slug claim, slug retirement, and the post update run in one database
-  transaction. The version compare-and-set on `blog_posts` is unchanged.
-- The composite foreign key on `blog_post_slug_history` and the primary key
-  `(tenant_id, slug)` are the database-enforced invariants.
-- Deleting a post is a cascade on the history table; no separate cleanup runs.
+- Route claim, rename, and delete write the registry in the same database
+  transaction as the post write. The version compare-and-set on `blog_posts` is
+  unchanged.
+- The registry has no foreign key to `blog_posts`. Delete removes the post's
+  routes explicitly through `remove_target_routes_in_tx`.
 
 ## Context dimensions
 
-- Tenant: every slug and history row is tenant-scoped.
-- Locale: public reads use the request locale with the canonical fallback chain.
-  Slugs are locale-neutral.
+- Tenant: every route row is tenant-scoped.
+- Locale: the Blog route is stored under the platform fallback locale. Public
+  reads use the request locale through `resolve_route`, with the canonical
+  fallback chain. Slugs are locale-neutral.
 - Channel: public visibility is still checked after slug resolution.
 
 ## Events and projections
 
-- No new domain events. The Blog search projection is updated through the
-  existing full-reindex path. Its `view_count` key is removed.
-- `CanonicalUrlChanged` is not emitted by Blog in this decision.
+- No new domain event type. Rename emits `CanonicalUrlChanged` and
+  `UrlAliasPurged` through the writer. Delete emits `UrlAliasPurged`.
+- The Blog search projection is updated through the existing full-reindex path.
+  Its `view_count` key is removed.
 
 ## Failure semantics
 
 - A duplicate slug claim fails with the existing duplicate-slug error.
-- A history row that references a missing post is an invariant failure, not a
+- A route whose live canonical belongs to another target cannot be released; the
+  release fails with a validation error.
+- A canonical route that references a missing post is an invariant failure, not a
   silent miss.
 - Invalid featured image URLs fail validation before any write.
 
 ## Migration and cutover
 
-- `m20261008_000030_create_blog_post_slug_history` creates the table. No backfill
-  is needed: existing posts have no retired slugs.
+- The unreleased `blog_post_slug_history` table and its migration
+  `m20261008_000030` are removed before release. Its migration
+  `m20261008_000031` now depends on `m20260924_000029`.
+- Posts that predate the registry write have no canonical row. A rename of such a
+  post still records the old route as an alias, and their current slug resolves
+  directly, so no backfill is needed.
 - `m20261008_000031_remove_blog_post_view_count` drops the column. Its `down`
   is intentionally irreversible under the Zero-Legacy Policy.
 - Existing posts keep their current `published_at`. Posts that were unpublished
@@ -162,10 +185,12 @@ analytics owner, not to a column on `blog_posts`.
 
 ## Alternatives considered
 
-- Emit `CanonicalUrlChanged` from Blog and rely on `rustok-seo`. Rejected for now:
-  `rustok-seo` redirect rules are keyed on that event and its rule owner is
-  content orchestration; Blog would need a second owner contract. The Blog-owned
-  history keeps the redirect source inside the owner module.
+- A Blog-owned slug history table. Rejected: it duplicated the canonical URL
+  registry that `rustok-content` already owns and that `rustok-seo` already
+  consumes. Blog writes through the registry instead, so one source of truth
+  holds every public route.
+- Reject a retired slug on create. Rejected: a new post must be able to take a
+  slug that an older post retired. The claim releases the old alias explicitly.
 - Store slugs per locale. Rejected by the 2026-03-28 multilingual contract: Blog
   slugs are global canonical identifiers.
 - A separate Blog-specific transliteration function. Rejected: duplicates the
@@ -178,13 +203,17 @@ analytics owner, not to a column on `blog_posts`.
   acceptance and rejection.
 - Migration ordering is covered by the existing migration dependency descriptors.
 - Still required before status moves to Implemented: `cargo test -p rustok-blog`,
-  PostgreSQL migration smoke for both new migrations, a rename-and-redirect
-  integration test (old slug resolves to the current post), and a republish test
-  that asserts the first `published_at` is preserved.
+  `cargo test -p rustok-content`, `cargo test -p rustok-content-orchestration`,
+  a PostgreSQL migration smoke for `m20261008_000031`, a rename-and-redirect
+  integration test (old route resolves to the current post), a claim test (a new
+  post takes a retired slug), a delete-purge test, and a republish test that
+  asserts the first `published_at` is preserved.
 
 ## Consequences
 
 - Public URLs survive slug renames in the Next storefront (permanent redirect).
+  The redirect source is the registry alias, which is the same record that
+  content orchestration and SEO use.
 - Russian titles produce readable slugs without a manual Latin slug.
 - The public `published_at` is a first-publication timestamp. Clients that used
   it as "last published" must use `updated_at` instead.
