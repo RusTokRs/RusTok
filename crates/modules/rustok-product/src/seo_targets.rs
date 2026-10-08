@@ -5,14 +5,16 @@ use async_trait::async_trait;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
     SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
-    SeoTargetAlternateRoute, SeoTargetBulkListRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
+    SeoBulkSummaryPage, SeoTargetAlternateRoute, SeoTargetBulkPageRequest, SeoTargetCapabilities,
+    SeoTargetLoadRequest,
     SeoTargetLoadScope, SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
     SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
     builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
+use uuid::Uuid;
 
-use crate::{CatalogService, StorefrontProductListItem};
+use crate::{CatalogService, CommerceError, StorefrontProductListItem};
 
 const BULK_FETCH_SIZE: u64 = 48;
 
@@ -94,49 +96,39 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
         }))
     }
 
-    async fn list_bulk_summaries(
+    async fn list_bulk_summaries_page(
         &self,
         runtime: &SeoTargetRuntimeContext,
-        request: SeoTargetBulkListRequest<'_>,
-    ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
+        request: SeoTargetBulkPageRequest<'_>,
+    ) -> AnyResult<SeoBulkSummaryPage> {
         let service = CatalogService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page = 1_u64;
-        let mut summaries = Vec::new();
+        let after = request
+            .after
+            .map(Uuid::parse_str)
+            .transpose()
+            .map_err(|_| anyhow::anyhow!("invalid product SEO bulk cursor"))?;
+        let (product_ids, next_after) = service
+            .scan_published_product_ids(request.tenant_id, None, after, request.limit)
+            .await?;
 
-        loop {
-            let list = service
-                .list_published_products_with_locale_fallback(
-                    request.tenant_id,
-                    request.locale,
-                    Some(request.default_locale),
-                    None,
-                    page,
-                    BULK_FETCH_SIZE,
-                )
-                .await?;
-            if list.items.is_empty() {
-                break;
+        let mut items = Vec::with_capacity(product_ids.len());
+        for product_id in product_ids {
+            if let Some(summary) = load_product_summary(
+                &service,
+                request.tenant_id,
+                request.locale,
+                request.default_locale,
+                product_id,
+            )
+            .await?
+            {
+                items.push(summary);
             }
-            for item in list.items {
-                if let Some(summary) = load_product_summary(
-                    &service,
-                    request.tenant_id,
-                    request.locale,
-                    request.default_locale,
-                    item,
-                )
-                .await?
-                {
-                    summaries.push(summary);
-                }
-            }
-            if !list.has_next {
-                break;
-            }
-            page += 1;
         }
-
-        Ok(summaries)
+        Ok(SeoBulkSummaryPage {
+            items,
+            next_cursor: next_after.map(|id| id.to_string()),
+        })
     }
 
     async fn sitemap_candidates(
@@ -189,14 +181,15 @@ async fn load_product_summary(
     tenant_id: uuid::Uuid,
     locale: &str,
     default_locale: &str,
-    item: StorefrontProductListItem,
+    product_id: uuid::Uuid,
 ) -> AnyResult<Option<SeoBulkSummaryRecord>> {
-    let product = service
-        .get_product_with_locale_fallback(tenant_id, item.id, locale, Some(default_locale))
+    let product = match service
+        .get_product_with_locale_fallback(tenant_id, product_id, locale, Some(default_locale))
         .await
-        .ok();
-    let Some(product) = product else {
-        return Ok(None);
+    {
+        Ok(product) => product,
+        Err(CommerceError::ProductNotFound(_)) => return Ok(None),
+        Err(error) => return Err(error.into()),
     };
     let mapped = map_product_response(product, locale, default_locale);
     Ok(Some(SeoBulkSummaryRecord {

@@ -281,6 +281,36 @@ impl CategoryService {
             .await
     }
 
+    /// Keyset form of [`Self::list_paginated_with_locale_fallback`] for batch readers.
+    pub async fn list_keyset_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        locale: &str,
+        after: Option<Uuid>,
+        limit: u64,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<(Vec<CategoryListItem>, Option<Uuid>)> {
+        enforce_scope(&security, Resource::ForumCategories, Action::List)?;
+        let hidden_category_ids = self
+            .visibility
+            .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
+            .await?;
+        self.read
+            .list_keyset_with_locale_fallback_and_hidden_categories(
+                category::taxonomy_read::CategoryTaxonomyKeysetFilter {
+                    tenant_id,
+                    security,
+                    locale,
+                    after,
+                    limit: bounded_forum_read_limit(Some(limit)),
+                    fallback_locale,
+                    hidden_category_ids: &hidden_category_ids,
+                },
+            )
+            .await
+    }
+
     pub(crate) async fn adjust_counters_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,

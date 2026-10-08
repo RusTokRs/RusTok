@@ -21,6 +21,43 @@ impl CatalogService {
         .await
     }
 
+    /// Keyset scan of published product ids for batch readers (SEO bulk): same base
+    /// filters as the storefront list, ordered by `id`. Returns the cursor of the last
+    /// id when more rows follow.
+    pub(crate) async fn scan_published_product_ids(
+        &self,
+        tenant_id: Uuid,
+        public_channel_slug: Option<&str>,
+        after: Option<Uuid>,
+        limit: u64,
+    ) -> CommerceResult<(Vec<Uuid>, Option<Uuid>)> {
+        let limit = limit.max(1);
+        let mut query = entities::product::Entity::find()
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .filter(entities::product::Column::Status.eq(entities::product::ProductStatus::Active))
+            .filter(entities::product::Column::PublishedAt.is_not_null())
+            .filter(product_channel_visibility_condition(
+                self.db.get_database_backend(),
+                public_channel_slug,
+            ));
+        if let Some(after) = after {
+            query = query.filter(entities::product::Column::Id.gt(after));
+        }
+        let mut rows = query
+            .order_by_asc(entities::product::Column::Id)
+            .limit(limit + 1)
+            .all(&self.db)
+            .await?;
+        let has_next_page = rows.len() as u64 > limit;
+        rows.truncate(limit as usize);
+        let next_after = if has_next_page {
+            rows.last().map(|product| product.id)
+        } else {
+            None
+        };
+        Ok((rows.into_iter().map(|product| product.id).collect(), next_after))
+    }
+
     #[instrument(skip(self))]
     pub async fn list_published_products_with_query(
         &self,

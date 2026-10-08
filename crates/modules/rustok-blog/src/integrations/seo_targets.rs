@@ -3,13 +3,15 @@ use async_trait::async_trait;
 use rustok_core::SecurityContext;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
-    SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
-    SeoTargetAlternateRoute, SeoTargetBulkListRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
+    SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
+    SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
+    SeoTargetCapabilities, SeoTargetLoadRequest,
     SeoTargetLoadScope, SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
     SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
     builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
+use uuid::Uuid;
 
 use crate::state_machine::BlogPostStatus;
 use crate::{BlogError, PostResponse, PostService, PostSummary};
@@ -100,37 +102,31 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
             }))
     }
 
-    async fn list_bulk_summaries(
+    async fn list_bulk_summaries_page(
         &self,
         runtime: &SeoTargetRuntimeContext,
-        request: SeoTargetBulkListRequest<'_>,
-    ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
+        request: SeoTargetBulkPageRequest<'_>,
+    ) -> AnyResult<SeoBulkSummaryPage> {
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut after = None;
-        let mut summaries = Vec::new();
+        let after = request
+            .after
+            .map(Uuid::parse_str)
+            .transpose()
+            .map_err(|_| anyhow::anyhow!("invalid blog SEO bulk cursor"))?;
+        let scan = service
+            .scan_published_posts(
+                request.tenant_id,
+                request.locale,
+                Some(request.default_locale),
+                after,
+                u32::try_from(request.limit)?,
+            )
+            .await?;
 
-        loop {
-            let page = service
-                .scan_published_posts(
-                    request.tenant_id,
-                    request.locale,
-                    Some(request.default_locale),
-                    after,
-                    BULK_FETCH_SIZE,
-                )
-                .await?;
-
-            for item in page.items {
-                summaries.push(map_post_bulk_summary(item));
-            }
-
-            match page.next_after {
-                Some(next) => after = Some(next),
-                None => break,
-            }
-        }
-
-        Ok(summaries)
+        Ok(SeoBulkSummaryPage {
+            items: scan.items.into_iter().map(map_post_bulk_summary).collect(),
+            next_cursor: scan.next_after.map(|id| id.to_string()),
+        })
     }
 
     async fn sitemap_candidates(

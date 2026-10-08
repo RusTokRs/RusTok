@@ -4,8 +4,9 @@ use rustok_content::entities::node::ContentStatus;
 use rustok_core::SecurityContext;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
-    SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
-    SeoTargetAlternateRoute, SeoTargetBulkListRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
+    SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
+    SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
+    SeoTargetCapabilities, SeoTargetLoadRequest,
     SeoTargetLoadScope, SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
     SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
     builtin_slug, populate_image_template_fields, schema,
@@ -94,54 +95,39 @@ impl SeoTargetProvider for PagesSeoTargetProvider {
             }))
     }
 
-    async fn list_bulk_summaries(
+    async fn list_bulk_summaries_page(
         &self,
         runtime: &SeoTargetRuntimeContext,
-        request: SeoTargetBulkListRequest<'_>,
-    ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
+        request: SeoTargetBulkPageRequest<'_>,
+    ) -> AnyResult<SeoBulkSummaryPage> {
         let service = PageService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page_number = 1_u64;
-        let mut summaries = Vec::new();
+        let (items, next_cursor) = service
+            .scan_published_pages(
+                request.tenant_id,
+                request.locale,
+                request.after,
+                request.limit,
+            )
+            .await?;
 
-        loop {
-            let (items, total) = service
-                .list(
-                    request.tenant_id,
-                    SecurityContext::system(),
-                    ListPagesFilter {
-                        status: Some(ContentStatus::Published),
-                        template: None,
-                        locale: Some(request.locale.to_string()),
-                        page: page_number,
-                        per_page: BULK_FETCH_SIZE,
-                    },
-                )
-                .await?;
-            if items.is_empty() {
-                break;
+        let mut summaries = Vec::with_capacity(items.len());
+        for item in items {
+            if let Some(summary) = load_page_summary(
+                &service,
+                request.tenant_id,
+                request.locale,
+                request.default_locale,
+                item,
+            )
+            .await?
+            {
+                summaries.push(summary);
             }
-
-            for item in items {
-                if let Some(summary) = load_page_summary(
-                    &service,
-                    request.tenant_id,
-                    request.locale,
-                    request.default_locale,
-                    item,
-                )
-                .await?
-                {
-                    summaries.push(summary);
-                }
-            }
-
-            if page_number.saturating_mul(BULK_FETCH_SIZE) >= total {
-                break;
-            }
-            page_number += 1;
         }
-
-        Ok(summaries)
+        Ok(SeoBulkSummaryPage {
+            items: summaries,
+            next_cursor,
+        })
     }
 
     async fn sitemap_candidates(

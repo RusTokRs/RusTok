@@ -230,11 +230,8 @@ topics must scale. Measured on the current code:
   use `scan_published_posts`, a keyset on `id` (`idx_blog_posts_tenant_status_id`).
   Third cleanup: the blog storefront no longer carries a total or a header count,
   the offset method `list_public_visible_with_locale_fallback` is removed, and the
-  blog tests call the keyset method. The SEO bulk editor (`rustok-seo`
-  `list_bulk_items_batched`) is not a cursor path yet: it loads every summary up to
-  `MAX_BULK_TARGETS` per request and filters and offsets in memory, so its cost is
-  the full load, not the `OFFSET`. Moving it to a cursor requires a provider-side
-  keyset and an admin contract change, so it is a separate slice.
+  blog tests call the keyset method. The SEO bulk editor moved to a cursor in the
+  seventh slice below.
   Forum replies (fourth slice): the reply list keyset is `(created_at, id)`, as the
   user confirmed. Reply rows get UUIDv7 ids on creation, so `id` breaks ties in
   creation order. Rows created before this change keep UUIDv4 ids; the tie-break is
@@ -281,9 +278,24 @@ topics must scale. Measured on the current code:
   Still on offset: the `topic_list` page-builder widget (its own `page` and
   `per_page` contract, `per_page` at most 100, `page` at most 100000; it orders by
   the widget `sort` and cannot share the default keyset without a per-sort cursor),
-  the SEO bulk editor (see the Blog implementation plan, H-7), comments, and the
-  category and other admin lists. `EXPLAIN` evidence for the new keyset queries is
+  comments, the admin lists that still use offset, and the storefront product list
+  (`list_published_products_with_query` keeps offset and `total`). `EXPLAIN` evidence for the new keyset queries is
   still pending (stage 6).
+  SEO bulk (seventh slice): `SeoTargetProvider::list_bulk_summaries_page` takes
+  `SeoTargetBulkPageRequest { after, limit }` and returns
+  `SeoBulkSummaryPage { items, next_cursor }`. Each provider owns its cursor and
+  keyset: blog `id`, forum topics `TopicListCursor`, forum categories `id`, pages
+  `(updated_at, id)`, product `id`, taxonomy terms `id` (taxonomy previously loaded
+  every term with `.all()`). The default `list_bulk_summaries` walks pages for batch
+  readers (diagnostics, cross-links, selection, export), and providers no longer
+  override it. The editor request returns one batch of matching rows per call. A
+  page can hold fewer than `per_page` items because filters drop rows, and it may be
+  followed by more pages. A page is empty only when the scan budget (20 provider
+  calls) runs out. `SeoBulkPage` drops `total` and `page` and returns `next_cursor`;
+  the admin editor offers next and first page. The legacy offset list and the
+  `page` field of the job filter are removed. Still on offset: the pages and product
+  sitemap scans (`list_public_visible`, `list_published_products_with_locale_fallback`).
+  Verifier: `verify-seo-bulk-cursor-pagination`.
 - Precondition: no external consumer of the GraphQL or REST contracts exists. The
   decision owner confirmed this on 2026-10-08. If a consumer is later proven, a
   time-bounded exception is recorded in `compatibility-exceptions.json` first.

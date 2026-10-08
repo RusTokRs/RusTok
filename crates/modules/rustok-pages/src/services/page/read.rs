@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use chrono::{DateTime, SecondsFormat};
+use sea_orm::{
+    ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    prelude::DateTimeWithTimeZone,
+};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -219,6 +223,20 @@ impl PageService {
             .paginate(&self.db, per_page.max(1));
         let total = paginator.num_items().await?;
         let pages = paginator.fetch_page(page_number.saturating_sub(1)).await?;
+        let items = self
+            .page_list_items(tenant_id, pages, &locale, fallback_locale.as_deref())
+            .await?;
+        Ok((items, total))
+    }
+
+    /// Maps page rows to list items with their resolved translation and channels.
+    async fn page_list_items(
+        &self,
+        tenant_id: Uuid,
+        pages: Vec<page::Model>,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> PagesResult<Vec<PageListItem>> {
         let page_ids: Vec<Uuid> = pages.iter().map(|item| item.id).collect();
         let translations_map = self.load_translations_map(tenant_id, &page_ids).await?;
         let channel_slugs_map = self.load_channel_slugs_map(tenant_id, &page_ids).await?;
@@ -226,8 +244,7 @@ impl PageService {
         let mut items = Vec::with_capacity(pages.len());
         for page in pages {
             let translations = translations_map.get(&page.id).cloned().unwrap_or_default();
-            let resolved =
-                resolve_translation_record(&translations, &locale, fallback_locale.as_deref());
+            let resolved = resolve_translation_record(&translations, locale, fallback_locale);
             items.push(PageListItem {
                 id: page.id,
                 status: storage_to_status(&page.status)?,
@@ -238,8 +255,52 @@ impl PageService {
                 updated_at: page.updated_at.to_string(),
             });
         }
+        Ok(items)
+    }
 
-        Ok((items, total))
+    /// Keyset scan of published pages ordered `updated_at DESC, id DESC`, for batch
+    /// readers (SEO bulk). `after` is the opaque cursor from the previous page; the
+    /// returned cursor is `None` when the scan is finished.
+    pub(crate) async fn scan_published_pages(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        after: Option<&str>,
+        limit: u64,
+    ) -> PagesResult<(Vec<PageListItem>, Option<String>)> {
+        let limit = limit.max(1);
+        let mut select = page::Entity::find()
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .filter(page::Column::Status.eq(status_to_storage(&ContentStatus::Published)));
+        if let Some(raw) = after {
+            let cursor = PublishedPageCursor::decode(raw)?;
+            select = select.filter(
+                Condition::any()
+                    .add(page::Column::UpdatedAt.lt(cursor.updated_at))
+                    .add(
+                        Condition::all()
+                            .add(page::Column::UpdatedAt.eq(cursor.updated_at))
+                            .add(page::Column::Id.lt(cursor.id)),
+                    ),
+            );
+        }
+        let mut pages = select
+            .order_by_desc(page::Column::UpdatedAt)
+            .order_by_desc(page::Column::Id)
+            .limit(limit + 1)
+            .all(&self.db)
+            .await?;
+        let has_next_page = pages.len() as u64 > limit;
+        pages.truncate(limit as usize);
+        let next_cursor = if has_next_page {
+            pages.last().map(PublishedPageCursor::from_page).map(|cursor| cursor.encode())
+        } else {
+            None
+        };
+        let items = self
+            .page_list_items(tenant_id, pages, locale, None)
+            .await?;
+        Ok((items, next_cursor))
     }
 
     pub(super) async fn find_page(
@@ -372,6 +433,38 @@ impl PageService {
             body: response_body,
             channel_slugs: parts.channel_slugs,
             metadata: page.metadata,
+        })
+    }
+}
+
+/// Opaque keyset cursor for `scan_published_pages`: `<updated_at RFC 3339>|<page id>`.
+struct PublishedPageCursor {
+    updated_at: DateTimeWithTimeZone,
+    id: Uuid,
+}
+
+impl PublishedPageCursor {
+    fn from_page(page: &page::Model) -> Self {
+        Self {
+            updated_at: page.updated_at,
+            id: page.id,
+        }
+    }
+
+    fn encode(&self) -> String {
+        format!(
+            "{}|{}",
+            self.updated_at.to_rfc3339_opts(SecondsFormat::Nanos, false),
+            self.id
+        )
+    }
+
+    fn decode(raw: &str) -> PagesResult<Self> {
+        let invalid = || PagesError::validation("Invalid published page scan cursor");
+        let (updated_at, id) = raw.split_once('|').ok_or_else(invalid)?;
+        Ok(Self {
+            updated_at: DateTime::parse_from_rfc3339(updated_at).map_err(|_| invalid())?,
+            id: Uuid::parse_str(id).map_err(|_| invalid())?,
         })
     }
 }
