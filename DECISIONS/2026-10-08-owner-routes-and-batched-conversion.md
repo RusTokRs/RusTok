@@ -248,8 +248,16 @@ topics must scale. Measured on the current code:
   `(tenant_id, topic_id, created_at, id)` replaces the position index. Still on
   offset: forum topic lists, the `topic_list` page-builder widget, comments, and the
   admin lists.
-  The forum, comments, and the admin lists keep their offset paths until their
-  own slices.
+  Blog admin post list (fifth slice, owner decision): `posts` and REST `list_posts`
+  are keyset-paginated on the sort column (`published_at`, `updated_at`, or
+  `created_at`) and `id`, with `nextCursor` and no total. NULL sort values come
+  last on every database. The cursor carries the sort field and order, so a
+  cursor cannot be replayed against another sort. Admin indexes:
+  `(tenant_id, created_at|updated_at|published_at, id)`. The public Blog list keeps
+  no total; counts come from the projection (stage 4).
+  Still on offset until their own slices: the SEO bulk editor (see the Blog
+  implementation plan, H-7), forum topic lists, the `topic_list` page-builder
+  widget, comments, and the other admin lists.
 - Precondition: no external consumer of the GraphQL or REST contracts exists. The
   decision owner confirmed this on 2026-10-08. If a consumer is later proven, a
   time-bounded exception is recorded in `compatibility-exceptions.json` first.
