@@ -1,4 +1,5 @@
 import { getTranslations } from '@rustok/next-fluent/server';
+import { Badge } from '@/shared/ui/shadcn/badge';
 import {
   Card,
   CardContent,
@@ -42,40 +43,38 @@ export async function CacheAdminPage(opts: GqlOpts = {}) {
             {error ? (
               <p className='text-sm text-destructive'>{error}</p>
             ) : health ? (
-              <div className='space-y-2 text-sm'>
-                <div className='flex justify-between'>
+              <div className='space-y-3 text-sm'>
+                <div className='flex items-center justify-between'>
                   <span className='text-muted-foreground'>
                     {t('health.backend')}
                   </span>
                   <span className='font-mono font-medium'>{health.backend}</span>
                 </div>
-                <div className='flex justify-between'>
+                <div className='flex items-center justify-between'>
                   <span className='text-muted-foreground'>
                     {t('health.configured')}
                   </span>
-                  <span
-                    className={
-                      health.redisConfigured
-                        ? 'font-medium text-green-600'
-                        : 'font-medium text-muted-foreground'
-                    }
-                  >
-                    {health.redisConfigured ? t('yes') : t('no')}
-                  </span>
+                  {health.redisConfigured ? (
+                    <Badge variant='outline' className='text-emerald-600 border-emerald-500/30 bg-emerald-500/10'>
+                      {t('yes')}
+                    </Badge>
+                  ) : (
+                    <Badge variant='secondary'>{t('no')}</Badge>
+                  )}
                 </div>
-                <div className='flex justify-between'>
+                <div className='flex items-center justify-between'>
                   <span className='text-muted-foreground'>
                     {t('health.healthy')}
                   </span>
-                  <span
-                    className={
-                      health.redisHealthy
-                        ? 'font-medium text-green-600'
-                        : 'font-medium text-destructive'
-                    }
-                  >
-                    {health.redisHealthy ? t('yes') : t('no')}
-                  </span>
+                  {health.redisHealthy ? (
+                    <Badge variant='outline' className='text-emerald-600 border-emerald-500/30 bg-emerald-500/10'>
+                      {t('yes')}
+                    </Badge>
+                  ) : health.redisConfigured ? (
+                    <Badge variant='destructive'>{t('no')}</Badge>
+                  ) : (
+                    <span className='text-muted-foreground'>—</span>
+                  )}
                 </div>
                 {health.redisError && (
                   <div className='pt-2'>
