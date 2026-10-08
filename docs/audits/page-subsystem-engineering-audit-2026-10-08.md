@@ -646,3 +646,13 @@ rollback/read validation path therefore had a hidden write side effect and could
 timestamps before the later rollback decision completed. The binding call has been removed from the
 read helper; binding remains owned by the explicit publish/activation paths. This restores the
 read-versus-mutation boundary and prevents rollback verification from changing publication state.
+
+### 10.6 GraphQL read tenant override — fixed
+
+The three public Pages GraphQL reads (`page`, `pageBySlug`, and `pages`) accepted an optional
+`tenant_id` and passed it directly to `PageService`. Unlike the mutation and baseline roots, these
+reads did not reject a requested tenant different from `TenantContext.id`. A caller with a known
+foreign tenant UUID could therefore select another tenant's Pages dataset through the read API; the
+public-channel check did not establish tenant ownership. The query root now resolves the optional
+argument through `query_tenant_id`, accepting only the current request tenant and rejecting a
+mismatch before any service/database read.

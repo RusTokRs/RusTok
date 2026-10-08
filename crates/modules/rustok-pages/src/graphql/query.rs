@@ -36,7 +36,7 @@ impl PagesQuery {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let security = request_security_context(ctx);
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = query_tenant_id(tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = PageService::new(db.clone(), event_bus.clone());
@@ -82,7 +82,7 @@ impl PagesQuery {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let security = request_security_context(ctx);
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = query_tenant_id(tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = PageService::new(db.clone(), event_bus.clone());
@@ -121,7 +121,7 @@ impl PagesQuery {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let security = request_security_context(ctx);
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = query_tenant_id(tenant, tenant_id)?;
 
         let filter = filter.unwrap_or(ListGqlPagesFilter {
             locale: None,
@@ -180,6 +180,15 @@ impl PagesQuery {
 
         Ok(GqlPageList { items, total })
     }
+}
+
+fn query_tenant_id(tenant: &TenantContext, requested: Option<Uuid>) -> Result<Uuid> {
+    if requested.is_some_and(|requested| requested != tenant.id) {
+        return Err(async_graphql::Error::new(
+            "Pages reads must use the current tenant",
+        ));
+    }
+    Ok(tenant.id)
 }
 
 fn request_security_context(ctx: &Context<'_>) -> SecurityContext {
