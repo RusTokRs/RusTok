@@ -277,12 +277,25 @@ impl ProductCatalogSchemaService {
         tenant_id: Uuid,
         primary_category_id: Option<Uuid>,
     ) -> CommerceResult<()> {
+        Self::validate_new_product_publish_requirements_in(&self.db, tenant_id, primary_category_id)
+            .await
+    }
+
+    /// Validates publish requirements on the caller's connection, so a Product create can check
+    /// them inside the same transaction that inserts the product.
+    pub(crate) async fn validate_new_product_publish_requirements_in<C>(
+        db: &C,
+        tenant_id: Uuid,
+        primary_category_id: Option<Uuid>,
+    ) -> CommerceResult<()>
+    where
+        C: ConnectionTrait,
+    {
         let Some(category_id) = primary_category_id else {
             return Ok(());
         };
-        let form = self
-            .load_effective_form_for_category(tenant_id, category_id, &[])
-            .await?;
+        let form =
+            Self::load_effective_form_for_category_in(db, tenant_id, category_id, &[]).await?;
         let mut required_attribute_ids = Vec::new();
         for binding in form
             .attributes
@@ -300,7 +313,7 @@ impl ProductCatalogSchemaService {
         }
         required_attribute_ids.sort();
         required_attribute_ids.dedup();
-        let missing = load_attribute_codes(&self.db, tenant_id, &required_attribute_ids).await?;
+        let missing = load_attribute_codes(db, tenant_id, &required_attribute_ids).await?;
         Err(CommerceError::Validation(format!(
             "required product attributes are missing: {}",
             missing.join(", ")

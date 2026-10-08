@@ -94,13 +94,23 @@ impl ProductCatalogSchemaService {
                 ON t.schema_id = s.id AND t.locale = $2
             WHERE s.tenant_id = $1 AND s.archived_at IS NULL
             ORDER BY s.code ASC
+            LIMIT $3
             "#,
-            vec![tenant_id.into(), locale.to_string().into()],
+            vec![
+                tenant_id.into(),
+                locale.to_string().into(),
+                ((super::MAX_SCHEMA_LIST_ROWS + 1) as i64).into(),
+            ],
         ))
         .all(&self.db)
         .await
-        .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(Into::into)
+        .and_then(
+            |rows| -> CommerceResult<Vec<ProductAttributeSchemaListRecord>> {
+                super::ensure_schema_list_within_limit(rows.len(), "schema")?;
+                Ok(rows.into_iter().map(Into::into).collect())
+            },
+        )
     }
 
     pub async fn create_schema_group(

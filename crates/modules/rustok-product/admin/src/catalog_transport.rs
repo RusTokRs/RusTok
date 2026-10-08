@@ -13,6 +13,16 @@
 
 #[path = "transport/graphql_error_safety.rs"]
 mod graphql_error_safety;
+#[path = "transport/graphql_fallback_mutation_error_safety.rs"]
+mod graphql_fallback_mutation_error_safety;
+#[path = "transport/graphql_fallback_mutations.rs"]
+mod graphql_fallback_mutations;
+pub(crate) use graphql_fallback_mutations::{
+    bind_category_attribute, bind_schema_attribute, clear_detached_product_attribute_values,
+    create_attribute_schema, create_catalog_category, create_category_attribute_group,
+    create_product_attribute, create_product_attribute_option,
+    create_product_attribute_schema_group, save_product_attribute_values, set_category_schema_mode,
+};
 
 use leptos::prelude::*;
 use rustok_graphql::GraphqlHttpError;
@@ -30,7 +40,6 @@ use crate::model::{
 };
 use crate::transport as legacy;
 
-use graphql_error_safety::GraphqlFallbackMutationContext;
 use graphql_error_safety::GraphqlMutationContext;
 use graphql_error_safety::GraphqlReadContext;
 
@@ -475,237 +484,6 @@ pub(crate) async fn delete_product(
     legacy::delete_product(token, tenant_slug, tenant_id, user_id, id)
         .await
         .map_err(|mutation_error| context.map_error(mutation_error))
-}
-
-pub(crate) async fn create_product_attribute(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: ProductAttributeDraft,
-) -> Result<bool, ApiError> {
-    let context = GraphqlFallbackMutationContext::for_create_product_attribute(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-    );
-    legacy::create_product_attribute(token, tenant_slug, tenant_id, user_id, locale, draft)
-        .await
-        .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
-}
-
-pub(crate) async fn create_product_attribute_option(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: ProductAttributeOptionDraft,
-) -> Result<bool, ApiError> {
-    let context = GraphqlFallbackMutationContext::for_create_product_attribute_option(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-    );
-    legacy::create_product_attribute_option(token, tenant_slug, tenant_id, user_id, locale, draft)
-        .await
-        .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
-}
-
-pub(crate) async fn create_catalog_category(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: CatalogCategoryDraft,
-) -> Result<bool, ApiError> {
-    let context = GraphqlFallbackMutationContext::for_create_catalog_category(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-    );
-    legacy::create_catalog_category(token, tenant_slug, tenant_id, user_id, locale, draft)
-        .await
-        .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
-}
-
-pub(crate) async fn create_attribute_schema(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: ProductAttributeSchemaDraft,
-) -> Result<bool, ApiError> {
-    let context = GraphqlFallbackMutationContext::for_create_attribute_schema(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-    );
-    legacy::create_attribute_schema(token, tenant_slug, tenant_id, user_id, locale, draft)
-        .await
-        .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
-}
-
-pub(crate) async fn set_category_schema_mode(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    draft: SetCategorySchemaModeDraft,
-) -> Result<bool, ApiError> {
-    let context = GraphqlFallbackMutationContext::for_set_category_schema_mode(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-    );
-    legacy::set_category_schema_mode(token, tenant_slug, tenant_id, user_id, draft)
-        .await
-        .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
-}
-
-pub(crate) async fn create_product_attribute_schema_group(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: ProductAttributeSchemaGroupDraft,
-) -> Result<bool, ApiError> {
-    let context = GraphqlFallbackMutationContext::for_create_product_attribute_schema_group(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-    );
-    legacy::create_product_attribute_schema_group(
-        token,
-        tenant_slug,
-        tenant_id,
-        user_id,
-        locale,
-        draft,
-    )
-    .await
-    .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
-}
-
-pub(crate) async fn create_category_attribute_group(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: CategoryAttributeGroupDraft,
-) -> Result<bool, ApiError> {
-    let context = GraphqlFallbackMutationContext::for_create_category_attribute_group(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-    );
-    legacy::create_category_attribute_group(token, tenant_slug, tenant_id, user_id, locale, draft)
-        .await
-        .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
-}
-
-pub(crate) async fn bind_schema_attribute(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    draft: BindSchemaAttributeDraft,
-) -> Result<bool, ApiError> {
-    let context = GraphqlFallbackMutationContext::for_bind_schema_attribute(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-    );
-    legacy::bind_schema_attribute(token, tenant_slug, tenant_id, user_id, draft)
-        .await
-        .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
-}
-
-pub(crate) async fn bind_category_attribute(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    draft: BindCategoryAttributeDraft,
-) -> Result<bool, ApiError> {
-    let context = GraphqlFallbackMutationContext::for_bind_category_attribute(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-    );
-    legacy::bind_category_attribute(token, tenant_slug, tenant_id, user_id, draft)
-        .await
-        .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
-}
-
-pub(crate) async fn save_product_attribute_values(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    product_id: String,
-    locale: String,
-    patches: Vec<ProductAttributeValuePatchDraft>,
-) -> Result<Vec<ProductAttributeValueItem>, ApiError> {
-    let context = GraphqlFallbackMutationContext::for_save_product_attribute_values(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-    );
-    legacy::save_product_attribute_values(
-        token,
-        tenant_slug,
-        tenant_id,
-        user_id,
-        product_id,
-        locale,
-        patches,
-    )
-    .await
-    .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
-}
-
-pub(crate) async fn clear_detached_product_attribute_values(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    product_id: String,
-    locale: String,
-    attribute_ids: Vec<String>,
-) -> Result<Vec<ProductAttributeValueItem>, ApiError> {
-    let context = GraphqlFallbackMutationContext::for_clear_detached_product_attribute_values(
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        tenant_id.as_str(),
-        user_id.as_str(),
-    );
-    legacy::clear_detached_product_attribute_values(
-        token,
-        tenant_slug,
-        tenant_id,
-        user_id,
-        product_id,
-        locale,
-        attribute_ids,
-    )
-    .await
-    .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
 }
 
 /// Image and variant writes keep their retry identity in the private gateway.

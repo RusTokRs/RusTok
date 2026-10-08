@@ -43,7 +43,10 @@ pub use catalog_schema_read_port::{
     ProductEffectiveFormRequest, ProductEffectiveFormSubject,
     ProductStorefrontAttributeFilterResolutionRequest,
 };
-pub use catalog_schema_write_port::ProductCatalogSchemaWritePort;
+pub use catalog_schema_write_port::{
+    PRODUCT_CALLER_IDEMPOTENCY_NAMESPACE, ProductCatalogSchemaWritePort,
+    scoped_caller_idempotency_key,
+};
 pub use error::{CommerceError, CommerceResult};
 pub use fulfillment::ProductFulfillmentRequirement;
 pub use image_translation_progress_target::ProductImageTranslationTargetProvider;

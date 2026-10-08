@@ -81,6 +81,10 @@ const core = readRepo(corePath);
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
+// Schema-authoring mutation documents moved out of the adapter into the retry-aware module that
+// retains their caller idempotency keys; the adapter re-exports those functions.
+const schemaGraphqlPath = "crates/modules/rustok-product/admin/src/transport/product_schema_graphql.rs";
+const schemaGraphql = readRepo(schemaGraphqlPath);
 const nativeAdapter = readRepo(nativeAdapterPath);
 const adminCatalogNative = readRepo(adminCatalogNativePath);
 const cargo = readRepo(cargoPath);
@@ -251,19 +255,23 @@ for (const marker of [
   "ProductAdminAttributeSchemas($tenantId: UUID!, $locale: String!)",
   "ProductAdminEffectiveForm($tenantId: UUID!, $productId: UUID, $categoryId: UUID, $locale: String!)",
   "ProductAdminAttributeValues($tenantId: UUID!, $productId: UUID!, $locale: String!)",
-  "ProductAdminSaveAttributeValues($productId: UUID!, $locale: String!",
-  "ProductAdminClearDetachedAttributeValues($productId: UUID!, $locale: String!",
-  "ProductAdminCreateAttribute($locale: String!",
-  "ProductAdminCreateAttributeOption($locale: String!",
-  "ProductAdminCreateCatalogCategory($locale: String!",
-  "ProductAdminCreateAttributeSchema($locale: String!",
-  "ProductAdminCreateSchemaGroup($locale: String!",
-  "ProductAdminCreateCategoryGroup($locale: String!",
   "options { id code label position } groupCode groupLabel",
   "struct LocaleVariables",
-  "struct LocaleMutationVariables",
 ]) {
   assertContains(graphqlAdapter, marker, `${graphqlAdapterPath}: new catalog attribute contract must use explicit host-provided locale (${marker})`);
+}
+for (const marker of [
+  "ProductAdminSaveAttributeValues($idempotencyKey: String!, $productId: UUID!, $locale: String!",
+  "ProductAdminClearDetachedAttributeValues($idempotencyKey: String!, $productId: UUID!, $locale: String!",
+  "ProductAdminCreateAttribute($idempotencyKey: String!, $locale: String!",
+  "ProductAdminCreateAttributeOption($idempotencyKey: String!, $locale: String!",
+  "ProductAdminCreateCatalogCategory($idempotencyKey: String!, $locale: String!",
+  "ProductAdminCreateAttributeSchema($idempotencyKey: String!, $locale: String!",
+  "ProductAdminCreateSchemaGroup($idempotencyKey: String!, $locale: String!",
+  "ProductAdminCreateCategoryGroup($idempotencyKey: String!, $locale: String!",
+  "struct LocaleInputVariables",
+]) {
+  assertContains(schemaGraphql, marker, `${schemaGraphqlPath}: schema-authoring mutations must use explicit host-provided locale and the required caller idempotency key (${marker})`);
 }
 assertNotContains(graphqlAdapter, "$userId:", `${graphqlAdapterPath}: GraphQL mutations must derive the actor from authenticated server context, not client input`);
 for (const marker of [
@@ -281,6 +289,7 @@ for (const marker of [
 ]) {
   assertNotContains(transport, marker, `${transportPath}: new catalog attribute facade must not invent optional/fallback locale`);
   assertNotContains(graphqlAdapter, marker, `${graphqlAdapterPath}: new catalog attribute GraphQL adapter must not invent optional/fallback locale`);
+  assertNotContains(schemaGraphql, marker, `${schemaGraphqlPath}: schema-authoring GraphQL writes must not invent optional/fallback locale`);
 }
 for (const marker of [
   "product_schema_read_port",

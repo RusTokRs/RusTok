@@ -5,12 +5,9 @@ use rustok_ui_core::normalize_ui_text as optional_text;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategoryDraft,
-    CatalogCategoryList, CategoryAttributeGroupDraft, ProductAdminBootstrap, ProductAttributeDraft,
-    ProductAttributeList, ProductAttributeOptionDraft, ProductAttributeSchemaDraft,
-    ProductAttributeSchemaGroupDraft, ProductAttributeSchemaList, ProductAttributeValueItem,
-    ProductAttributeValuePatchDraft, ProductDetail, ProductDraft, ProductEffectiveForm,
-    ProductList, ProductPricingDetail, SetCategorySchemaModeDraft, ShippingProfileList,
+    CatalogCategoryList, ProductAdminBootstrap, ProductAttributeList, ProductAttributeSchemaList,
+    ProductAttributeValueItem, ProductDetail, ProductDraft, ProductEffectiveForm, ProductList,
+    ProductPricingDetail, ShippingProfileList,
 };
 
 pub type ApiError = GraphqlHttpError;
@@ -30,17 +27,6 @@ const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($input
 const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($id: UUID!, $input: UpdateProductInput!) { updateProduct(id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } } }";
 const DELETE_PRODUCT_MUTATION: &str =
     "mutation ProductAdminDeleteProduct($id: UUID!) { deleteProduct(id: $id) }";
-const CREATE_PRODUCT_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminCreateAttribute($locale: String!, $input: CreateProductAttributeInput!) { createProductAttribute(locale: $locale, input: $input) }";
-const CREATE_PRODUCT_ATTRIBUTE_OPTION_MUTATION: &str = "mutation ProductAdminCreateAttributeOption($locale: String!, $input: CreateProductAttributeOptionInput!) { createProductAttributeOption(locale: $locale, input: $input) }";
-const CREATE_CATALOG_CATEGORY_MUTATION: &str = "mutation ProductAdminCreateCatalogCategory($locale: String!, $input: CreateCatalogCategoryInput!) { createCatalogCategory(locale: $locale, input: $input) }";
-const CREATE_ATTRIBUTE_SCHEMA_MUTATION: &str = "mutation ProductAdminCreateAttributeSchema($locale: String!, $input: CreateProductAttributeSchemaInput!) { createProductAttributeSchema(locale: $locale, input: $input) }";
-const CREATE_SCHEMA_GROUP_MUTATION: &str = "mutation ProductAdminCreateSchemaGroup($locale: String!, $input: CreateProductAttributeSchemaGroupInput!) { createProductAttributeSchemaGroup(locale: $locale, input: $input) }";
-const CREATE_CATEGORY_GROUP_MUTATION: &str = "mutation ProductAdminCreateCategoryGroup($locale: String!, $input: CreateCategoryAttributeGroupInput!) { createCatalogCategoryAttributeGroup(locale: $locale, input: $input) }";
-const SET_CATEGORY_SCHEMA_MODE_MUTATION: &str = "mutation ProductAdminSetCategorySchemaMode($input: SetCategorySchemaModeInput!) { setCatalogCategorySchemaMode(input: $input) }";
-const BIND_SCHEMA_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminBindSchemaAttribute($input: BindSchemaAttributeInput!) { bindProductAttributeSchemaAttribute(input: $input) }";
-const BIND_CATEGORY_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminBindCategoryAttribute($input: BindCategoryAttributeInput!) { bindCatalogCategoryAttribute(input: $input) }";
-const SAVE_ATTRIBUTE_VALUES_MUTATION: &str = "mutation ProductAdminSaveAttributeValues($productId: UUID!, $locale: String!, $patches: [ProductAttributeValuePatchInput!]!) { saveProductAttributeValues(productId: $productId, locale: $locale, patches: $patches) { attributeId kind text integer decimal boolean date datetime optionId optionIds json detached } }";
-const CLEAR_DETACHED_ATTRIBUTE_VALUES_MUTATION: &str = "mutation ProductAdminClearDetachedAttributeValues($productId: UUID!, $locale: String!, $attributeIds: [UUID!]!) { clearDetachedProductAttributeValues(productId: $productId, locale: $locale, attributeIds: $attributeIds) { attributeId kind text integer decimal boolean date datetime optionId optionIds json detached } }";
 
 #[derive(Debug, Deserialize)]
 struct BootstrapResponse {
@@ -102,18 +88,6 @@ struct AttributeValuesResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct SaveAttributeValuesResponse {
-    #[serde(rename = "saveProductAttributeValues")]
-    save_product_attribute_values: Vec<ProductAttributeValueItem>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ClearDetachedAttributeValuesResponse {
-    #[serde(rename = "clearDetachedProductAttributeValues")]
-    clear_detached_product_attribute_values: Vec<ProductAttributeValueItem>,
-}
-
-#[derive(Debug, Deserialize)]
 struct CreateProductResponse {
     #[serde(rename = "createProduct")]
     create_product: ProductDetail,
@@ -129,28 +103,6 @@ struct UpdateProductResponse {
 struct DeleteProductResponse {
     #[serde(rename = "deleteProduct")]
     delete_product: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct BoolMutationResponse {
-    #[serde(rename = "createProductAttribute")]
-    create_product_attribute: Option<bool>,
-    #[serde(rename = "createProductAttributeOption")]
-    create_product_attribute_option: Option<bool>,
-    #[serde(rename = "createCatalogCategory")]
-    create_catalog_category: Option<bool>,
-    #[serde(rename = "createProductAttributeSchema")]
-    create_product_attribute_schema: Option<bool>,
-    #[serde(rename = "createProductAttributeSchemaGroup")]
-    create_product_attribute_schema_group: Option<bool>,
-    #[serde(rename = "createCatalogCategoryAttributeGroup")]
-    create_catalog_category_attribute_group: Option<bool>,
-    #[serde(rename = "setCatalogCategorySchemaMode")]
-    set_catalog_category_schema_mode: Option<bool>,
-    #[serde(rename = "bindProductAttributeSchemaAttribute")]
-    bind_product_attribute_schema_attribute: Option<bool>,
-    #[serde(rename = "bindCatalogCategoryAttribute")]
-    bind_catalog_category_attribute: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -219,23 +171,6 @@ struct AttributeValuesVariables {
 }
 
 #[derive(Debug, Serialize)]
-struct SaveAttributeValuesVariables {
-    #[serde(rename = "productId")]
-    product_id: String,
-    locale: String,
-    patches: Vec<ProductAttributeValuePatchDraft>,
-}
-
-#[derive(Serialize)]
-struct ClearDetachedAttributeValuesVariables {
-    #[serde(rename = "productId")]
-    product_id: String,
-    locale: String,
-    #[serde(rename = "attributeIds")]
-    attribute_ids: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
 struct ProductIdVariables {
     id: String,
 }
@@ -243,17 +178,6 @@ struct ProductIdVariables {
 #[derive(Debug, Serialize)]
 struct CreateProductVariables {
     input: CreateProductInput,
-}
-
-#[derive(Debug, Serialize)]
-struct LocaleMutationVariables<T> {
-    locale: String,
-    input: T,
-}
-
-#[derive(Debug, Serialize)]
-struct InputVariables<T> {
-    input: T,
 }
 
 #[derive(Debug, Serialize)]
@@ -390,6 +314,16 @@ where
     )
     .await
 }
+
+// Schema-authoring writes are owned by `product_schema_graphql`, which forwards the caller
+// idempotency key minted once per logical invocation by `transport`. The same key reaches the
+// native owner call, so the native-first fallbacks in `transport` share one owner receipt.
+pub(super) use crate::product_schema_graphql::{
+    bind_category_attribute, bind_schema_attribute, clear_detached_product_attribute_values,
+    create_attribute_schema, create_catalog_category, create_category_attribute_group,
+    create_product_attribute, create_product_attribute_option,
+    create_product_attribute_schema_group, save_product_attribute_values, set_category_schema_mode,
+};
 
 pub(super) async fn fetch_bootstrap(
     token: Option<String>,
@@ -628,282 +562,6 @@ pub(super) async fn create_product(
     )
     .await?;
     Ok(response.create_product)
-}
-
-pub(super) async fn create_product_attribute(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: ProductAttributeDraft,
-) -> Result<bool, ApiError> {
-    let response: BoolMutationResponse = request(
-        CREATE_PRODUCT_ATTRIBUTE_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: LocaleMutationVariables {
-                locale,
-                input: draft,
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.create_product_attribute.unwrap_or(false))
-}
-
-pub(super) async fn create_product_attribute_option(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: ProductAttributeOptionDraft,
-) -> Result<bool, ApiError> {
-    let response: BoolMutationResponse = request(
-        CREATE_PRODUCT_ATTRIBUTE_OPTION_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: LocaleMutationVariables {
-                locale,
-                input: draft,
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.create_product_attribute_option.unwrap_or(false))
-}
-
-pub(super) async fn create_catalog_category(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: CatalogCategoryDraft,
-) -> Result<bool, ApiError> {
-    let response: BoolMutationResponse = request(
-        CREATE_CATALOG_CATEGORY_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: LocaleMutationVariables {
-                locale,
-                input: draft,
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.create_catalog_category.unwrap_or(false))
-}
-
-pub(super) async fn create_attribute_schema(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: ProductAttributeSchemaDraft,
-) -> Result<bool, ApiError> {
-    let response: BoolMutationResponse = request(
-        CREATE_ATTRIBUTE_SCHEMA_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: LocaleMutationVariables {
-                locale,
-                input: draft,
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.create_product_attribute_schema.unwrap_or(false))
-}
-
-pub(super) async fn create_product_attribute_schema_group(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: ProductAttributeSchemaGroupDraft,
-) -> Result<bool, ApiError> {
-    let response: BoolMutationResponse = request(
-        CREATE_SCHEMA_GROUP_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: LocaleMutationVariables {
-                locale,
-                input: draft,
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response
-        .create_product_attribute_schema_group
-        .unwrap_or(false))
-}
-
-pub(super) async fn create_category_attribute_group(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    locale: String,
-    draft: CategoryAttributeGroupDraft,
-) -> Result<bool, ApiError> {
-    let response: BoolMutationResponse = request(
-        CREATE_CATEGORY_GROUP_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: LocaleMutationVariables {
-                locale,
-                input: draft,
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response
-        .create_catalog_category_attribute_group
-        .unwrap_or(false))
-}
-
-pub(super) async fn set_category_schema_mode(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    draft: SetCategorySchemaModeDraft,
-) -> Result<bool, ApiError> {
-    let response: BoolMutationResponse = request(
-        SET_CATEGORY_SCHEMA_MODE_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: InputVariables { input: draft },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.set_catalog_category_schema_mode.unwrap_or(false))
-}
-
-pub(super) async fn bind_schema_attribute(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    draft: BindSchemaAttributeDraft,
-) -> Result<bool, ApiError> {
-    let response: BoolMutationResponse = request(
-        BIND_SCHEMA_ATTRIBUTE_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: InputVariables { input: draft },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response
-        .bind_product_attribute_schema_attribute
-        .unwrap_or(false))
-}
-
-pub(super) async fn bind_category_attribute(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    draft: BindCategoryAttributeDraft,
-) -> Result<bool, ApiError> {
-    let response: BoolMutationResponse = request(
-        BIND_CATEGORY_ATTRIBUTE_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: InputVariables { input: draft },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.bind_catalog_category_attribute.unwrap_or(false))
-}
-
-pub(super) async fn save_product_attribute_values(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    product_id: String,
-    locale: String,
-    mut patches: Vec<ProductAttributeValuePatchDraft>,
-) -> Result<Vec<ProductAttributeValueItem>, ApiError> {
-    for patch in &mut patches {
-        patch.kind = patch.kind.trim().to_ascii_uppercase();
-    }
-    let response: SaveAttributeValuesResponse = request(
-        SAVE_ATTRIBUTE_VALUES_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: SaveAttributeValuesVariables {
-                product_id,
-                locale,
-                patches,
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.save_product_attribute_values)
-}
-
-pub(super) async fn clear_detached_product_attribute_values(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    product_id: String,
-    locale: String,
-    attribute_ids: Vec<String>,
-) -> Result<Vec<ProductAttributeValueItem>, ApiError> {
-    let response: ClearDetachedAttributeValuesResponse = request(
-        CLEAR_DETACHED_ATTRIBUTE_VALUES_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: ClearDetachedAttributeValuesVariables {
-                product_id,
-                locale,
-                attribute_ids,
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.clear_detached_product_attribute_values)
 }
 
 pub(super) async fn update_product(

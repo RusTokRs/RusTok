@@ -66,7 +66,9 @@ for (const required of [
 
 for (const required of [
   "mod catalog_schema_write_port;",
-  "pub use catalog_schema_write_port::ProductCatalogSchemaWritePort;",
+  "pub use catalog_schema_write_port::{",
+  "ProductCatalogSchemaWritePort,",
+  "scoped_caller_idempotency_key,",
 ]) {
   requireText(lib, required, "Product schema write public export");
 }

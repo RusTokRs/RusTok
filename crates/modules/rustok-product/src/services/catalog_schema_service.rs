@@ -32,6 +32,21 @@ use super::catalog_schema::{
 };
 use super::write_transaction::ProductWriteTransaction;
 
+/// Upper bound on tenant-wide schema administration lists.
+///
+/// Lists fetch one extra row, so an over-limit tenant fails explicitly instead of receiving an
+/// unbounded or silently truncated payload.
+const MAX_SCHEMA_LIST_ROWS: usize = 1000;
+
+fn ensure_schema_list_within_limit(row_count: usize, subject: &str) -> CommerceResult<()> {
+    if row_count > MAX_SCHEMA_LIST_ROWS {
+        return Err(CommerceError::Validation(format!(
+            "{subject} list exceeds {MAX_SCHEMA_LIST_ROWS} rows; narrow the catalog before listing"
+        )));
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct ProductCatalogSchemaService {
     db: DatabaseConnection,

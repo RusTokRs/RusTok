@@ -201,16 +201,7 @@ const CATALOG_CATEGORIES_QUERY: &str = "query ProductAdminCatalogCategories($ten
 const ATTRIBUTE_SCHEMAS_QUERY: &str = "query ProductAdminAttributeSchemas($tenantId: UUID!, $locale: String!) { productAttributeSchemas(tenantId: $tenantId, locale: $locale) { total items { id } } }";
 const EFFECTIVE_FORM_QUERY: &str = "query ProductAdminEffectiveForm($tenantId: UUID!, $productId: UUID, $categoryId: UUID, $locale: String!) { productEffectiveForm(tenantId: $tenantId, productId: $productId, categoryId: $categoryId, locale: $locale) { categoryId attributes { options { id code label position } groupCode groupLabel } } }";
 const ATTRIBUTE_VALUES_QUERY: &str = "query ProductAdminAttributeValues($tenantId: UUID!, $productId: UUID!, $locale: String!) { productAttributeValues(tenantId: $tenantId, productId: $productId, locale: $locale) { attributeId } }";
-const SAVE_ATTRIBUTE_VALUES_MUTATION: &str = "mutation ProductAdminSaveAttributeValues($productId: UUID!, $locale: String!, $patches: [ProductAttributeValuePatchInput!]!) { saveProductAttributeValues(productId: $productId, locale: $locale, patches: $patches) { attributeId } }";
-const CLEAR_DETACHED_ATTRIBUTE_VALUES_MUTATION: &str = "mutation ProductAdminClearDetachedAttributeValues($productId: UUID!, $locale: String!, $attributeIds: [UUID!]!) { clearDetachedProductAttributeValues(productId: $productId, locale: $locale, attributeIds: $attributeIds) { attributeId } }";
-const CREATE_PRODUCT_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminCreateAttribute($locale: String!, $input: CreateProductAttributeInput!) { createProductAttribute(locale: $locale, input: $input) }";
-const CREATE_PRODUCT_ATTRIBUTE_OPTION_MUTATION: &str = "mutation ProductAdminCreateAttributeOption($locale: String!, $input: CreateProductAttributeOptionInput!) { createProductAttributeOption(locale: $locale, input: $input) }";
-const CREATE_CATALOG_CATEGORY_MUTATION: &str = "mutation ProductAdminCreateCatalogCategory($locale: String!, $input: CreateCatalogCategoryInput!) { createCatalogCategory(locale: $locale, input: $input) }";
-const CREATE_ATTRIBUTE_SCHEMA_MUTATION: &str = "mutation ProductAdminCreateAttributeSchema($locale: String!, $input: CreateProductAttributeSchemaInput!) { createProductAttributeSchema(locale: $locale, input: $input) }";
-const CREATE_SCHEMA_GROUP_MUTATION: &str = "mutation ProductAdminCreateSchemaGroup($locale: String!, $input: CreateProductAttributeSchemaGroupInput!) { createProductAttributeSchemaGroup(locale: $locale, input: $input) }";
-const CREATE_CATEGORY_GROUP_MUTATION: &str = "mutation ProductAdminCreateCategoryGroup($locale: String!, $input: CreateCategoryAttributeGroupInput!) { createCatalogCategoryAttributeGroup(locale: $locale, input: $input) }";
 struct LocaleVariables { locale: String }
-struct LocaleMutationVariables<T> { locale: String, input: T }
 pub async fn fetch_bootstrap() {}
 pub async fn fetch_products() {}
 pub async fn fetch_product() {}
@@ -236,6 +227,24 @@ pub async fn clear_detached_product_attribute_values(locale: String) {}
 pub async fn update_product() {}
 pub async fn change_product_status() {}
 pub async fn delete_product() {}
+`;
+}
+
+function schemaGraphqlSource() {
+  return `
+use rustok_graphql::GraphqlRequest;
+const SAVE_ATTRIBUTE_VALUES_MUTATION: &str = "mutation ProductAdminSaveAttributeValues($idempotencyKey: String!, $productId: UUID!, $locale: String!, $patches: [ProductAttributeValuePatchInput!]!) { saveProductAttributeValues(idempotencyKey: $idempotencyKey, productId: $productId, locale: $locale, patches: $patches) { attributeId } }";
+const CLEAR_DETACHED_ATTRIBUTE_VALUES_MUTATION: &str = "mutation ProductAdminClearDetachedAttributeValues($idempotencyKey: String!, $productId: UUID!, $locale: String!, $attributeIds: [UUID!]!) { clearDetachedProductAttributeValues(idempotencyKey: $idempotencyKey, productId: $productId, locale: $locale, attributeIds: $attributeIds) { attributeId } }";
+const CREATE_PRODUCT_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminCreateAttribute($idempotencyKey: String!, $locale: String!, $input: CreateProductAttributeInput!) { createProductAttribute(idempotencyKey: $idempotencyKey, locale: $locale, input: $input) }";
+const CREATE_PRODUCT_ATTRIBUTE_OPTION_MUTATION: &str = "mutation ProductAdminCreateAttributeOption($idempotencyKey: String!, $locale: String!, $input: CreateProductAttributeOptionInput!) { createProductAttributeOption(idempotencyKey: $idempotencyKey, locale: $locale, input: $input) }";
+const CREATE_CATALOG_CATEGORY_MUTATION: &str = "mutation ProductAdminCreateCatalogCategory($idempotencyKey: String!, $locale: String!, $input: CreateCatalogCategoryInput!) { createCatalogCategory(idempotencyKey: $idempotencyKey, locale: $locale, input: $input) }";
+const CREATE_ATTRIBUTE_SCHEMA_MUTATION: &str = "mutation ProductAdminCreateAttributeSchema($idempotencyKey: String!, $locale: String!, $input: CreateProductAttributeSchemaInput!) { createProductAttributeSchema(idempotencyKey: $idempotencyKey, locale: $locale, input: $input) }";
+const CREATE_SCHEMA_GROUP_MUTATION: &str = "mutation ProductAdminCreateSchemaGroup($idempotencyKey: String!, $locale: String!, $input: CreateProductAttributeSchemaGroupInput!) { createProductAttributeSchemaGroup(idempotencyKey: $idempotencyKey, locale: $locale, input: $input) }";
+const CREATE_CATEGORY_GROUP_MUTATION: &str = "mutation ProductAdminCreateCategoryGroup($idempotencyKey: String!, $locale: String!, $input: CreateCategoryAttributeGroupInput!) { createCatalogCategoryAttributeGroup(idempotencyKey: $idempotencyKey, locale: $locale, input: $input) }";
+struct LocaleInputVariables<T> { locale: String, input: T }
+pub(crate) async fn create_product_attribute(locale: String) {}
+pub(crate) async fn save_product_attribute_values(locale: String) {}
+pub(crate) async fn clear_detached_product_attribute_values(locale: String) {}
 `;
 }
 
@@ -306,6 +315,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/modules/rustok-product/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport.rs", transportSource(options));
   writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs", apiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport/product_schema_graphql.rs", schemaGraphqlSource());
   writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
   writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs", adminCatalogNativeSource(options));
   writeFixtureFile(root, "crates/modules/rustok-product/admin/Cargo.toml", "[package]\nname = \"rustok-product-admin-fixture\"\nversion = \"0.1.0\"\n");
