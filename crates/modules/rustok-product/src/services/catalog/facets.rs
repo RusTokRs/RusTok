@@ -619,7 +619,10 @@ async fn load_facet_option_labels(
 }
 
 /// Locale candidates in resolution order: requested, then fallback (when different).
-fn locale_candidates(locale: &str, fallback_locale: &str) -> Vec<String> {
+///
+/// Shared with the storefront attribute projection: both read the owner's translation tables and
+/// must resolve a locale the same way.
+pub(super) fn locale_candidates(locale: &str, fallback_locale: &str) -> Vec<String> {
     let mut candidates = Vec::with_capacity(2);
     if !locale.is_empty() {
         candidates.push(locale.to_string());

@@ -58,6 +58,7 @@ impl MockProductCatalogReadPort {
             variant_axes: Vec::new(),
             variants: Vec::new(),
             images: Vec::new(),
+            storefront_attributes: Vec::new(),
         }
     }
 }

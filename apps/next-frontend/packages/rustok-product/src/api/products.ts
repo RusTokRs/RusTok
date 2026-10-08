@@ -90,6 +90,15 @@ const STOREFRONT_PRODUCT_QUERY = `
           onSale
         }
       }
+      attributes {
+        code
+        label
+        valueType
+        isLocalized
+        values {
+          text
+        }
+      }
     }
   }
 `;

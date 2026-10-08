@@ -65,6 +65,8 @@ pub struct GqlProduct {
     pub variant_axes: Vec<GqlVariantAxisConfig>,
     pub variants: Vec<GqlVariant>,
     pub images: Vec<GqlProductImage>,
+    /// Storefront-safe specifications; empty on admin roots (see `GqlStorefrontProductAttribute`).
+    pub attributes: Vec<GqlStorefrontProductAttribute>,
 }
 
 #[derive(SimpleObject)]
@@ -75,6 +77,26 @@ pub struct GqlProductTranslation {
     pub description: Option<String>,
     pub meta_title: Option<String>,
     pub meta_description: Option<String>,
+}
+
+/// One display-ready value of a storefront attribute.
+#[derive(SimpleObject)]
+pub struct GqlStorefrontProductAttributeValue {
+    /// Localized text, option label or formatted number/date; booleans stay `true`/`false`.
+    pub text: String,
+}
+
+/// One storefront-safe product attribute with its resolved values.
+///
+/// Filled by the published storefront detail root; admin roots read attributes through the catalog
+/// schema form and therefore return an empty list here.
+#[derive(SimpleObject)]
+pub struct GqlStorefrontProductAttribute {
+    pub code: String,
+    pub label: String,
+    pub value_type: String,
+    pub is_localized: bool,
+    pub values: Vec<GqlStorefrontProductAttributeValue>,
 }
 
 #[derive(SimpleObject)]
@@ -1787,7 +1809,34 @@ impl From<dto::ProductResponse> for GqlProduct {
                 .into_iter()
                 .map(GqlProductImage::from)
                 .collect(),
+            attributes: product
+                .storefront_attributes
+                .into_iter()
+                .map(GqlStorefrontProductAttribute::from)
+                .collect(),
         }
+    }
+}
+
+impl From<dto::StorefrontProductAttributeResponse> for GqlStorefrontProductAttribute {
+    fn from(attribute: dto::StorefrontProductAttributeResponse) -> Self {
+        Self {
+            code: attribute.code,
+            label: attribute.label,
+            value_type: attribute.value_type,
+            is_localized: attribute.is_localized,
+            values: attribute
+                .values
+                .into_iter()
+                .map(GqlStorefrontProductAttributeValue::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<dto::StorefrontProductAttributeValueResponse> for GqlStorefrontProductAttributeValue {
+    fn from(value: dto::StorefrontProductAttributeValueResponse) -> Self {
+        Self { text: value.text }
     }
 }
 

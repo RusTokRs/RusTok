@@ -361,6 +361,18 @@ impl CatalogService {
         )
         .await?;
 
+        // Specifications travel with the detail contract: the owner resolves which attributes may
+        // reach the storefront and formats every value, so a consumer renders a table and nothing
+        // else.
+        product.storefront_attributes = super::storefront_attributes::load_storefront_product_attributes(
+            &self.db,
+            tenant_id,
+            product_id,
+            locale,
+            fallback_locale,
+        )
+        .await?;
+
         Ok(Some(localize_product_response(
             product,
             locale,

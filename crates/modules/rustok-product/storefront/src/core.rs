@@ -247,6 +247,20 @@ pub struct SelectedProductViewModel {
     pub pricing_preview_label: String,
     pub inventory_label: String,
     pub open_pricing_label: String,
+    /// Header of the specifications block ("Specifications").
+    pub attributes_label: String,
+    /// Storefront-safe specifications: already localized by the Product owner, so the view only
+    /// prints them. Empty when the cataloguer filled nothing for the storefront.
+    pub attributes: Vec<SelectedProductAttributeViewModel>,
+}
+
+/// One specification row of the product detail panel.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelectedProductAttributeViewModel {
+    pub code: String,
+    pub label: String,
+    /// One row per value: dictionaries contribute one entry per selected option, multiselect several.
+    pub values: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -396,6 +410,31 @@ pub fn build_selected_product_view_model(
         .clone()
         .unwrap_or_else(|| t(locale, "product.selected.unscheduled", "scheduled later"));
     let metadata_items = vec![product_type.clone(), vendor.clone(), published_at.clone()];
+    // The owner sends display-ready values; only the boolean vocabulary needs the locale, because
+    // it is the one value the owner cannot phrase (its i18n lives with the storefronts).
+    let attributes = product
+        .attributes
+        .iter()
+        .map(|attribute| SelectedProductAttributeViewModel {
+            code: attribute.code.clone(),
+            label: attribute.label.clone(),
+            values: attribute
+                .values
+                .iter()
+                .map(|value| {
+                    if attribute.value_type.eq_ignore_ascii_case("boolean") {
+                        match value.text.trim().to_ascii_lowercase().as_str() {
+                            "true" => t(locale, "product.selected.attributeYes", "Yes"),
+                            "false" => t(locale, "product.selected.attributeNo", "No"),
+                            _ => value.text.clone(),
+                        }
+                    } else {
+                        value.text.clone()
+                    }
+                })
+                .collect(),
+        })
+        .collect::<Vec<_>>();
     let gallery = product
         .images
         .iter()
@@ -446,6 +485,8 @@ pub fn build_selected_product_view_model(
             "product.selected.openPricing",
             "Open pricing module",
         ),
+        attributes_label: t(locale, "product.selected.attributes", "Specifications"),
+        attributes,
     }
 }
 
@@ -1378,6 +1419,7 @@ mod tests {
     #[test]
     fn selected_product_view_model_is_built_without_ui_runtime() {
         let product = ProductDetail {
+            // Attributes are owner-formatted; the view model only phrases the boolean pair.
             id: "product-1".to_string(),
             status: "published".to_string(),
             seller_id: Some("seller-1".to_string()),
@@ -1418,6 +1460,31 @@ mod tests {
                     on_sale: true,
                 }],
             }],
+            attributes: vec![
+                ProductAttribute {
+                    code: "material".to_string(),
+                    label: "Материал".to_string(),
+                    value_type: "multiselect".to_string(),
+                    is_localized: false,
+                    values: vec![
+                        ProductAttributeValue {
+                            text: "Leather".to_string(),
+                        },
+                        ProductAttributeValue {
+                            text: "Rubber".to_string(),
+                        },
+                    ],
+                },
+                ProductAttribute {
+                    code: "waterproof".to_string(),
+                    label: "Waterproof".to_string(),
+                    value_type: "boolean".to_string(),
+                    is_localized: false,
+                    values: vec![ProductAttributeValue {
+                        text: "true".to_string(),
+                    }],
+                },
+            ],
         };
         let context = ProductPricingContext {
             currency_code: "USD".to_string(),
@@ -1485,6 +1552,76 @@ mod tests {
         assert_eq!(view_model.pricing_preview_label, "Pricing module preview");
         assert_eq!(view_model.inventory_label, "Inventory");
         assert_eq!(view_model.open_pricing_label, "Open pricing module");
+        assert_eq!(view_model.attributes_label, "Specifications");
+        assert_eq!(view_model.attributes.len(), 2);
+        assert_eq!(view_model.attributes[0].code, "material");
+        assert_eq!(view_model.attributes[0].label, "Материал");
+        assert_eq!(
+            view_model.attributes[0].values,
+            vec!["Leather".to_string(), "Rubber".to_string()],
+        );
+        // The owner sends the boolean vocabulary; the view model phrases it per locale.
+        assert_eq!(
+            view_model.attributes[1].values,
+            vec!["Yes".to_string()],
+            "boolean values must be localized for the storefront",
+        );
+    }
+
+    #[test]
+    fn storefront_attributes_are_dropped_when_the_owner_sent_none() {
+        let mut product = ProductDetail {
+            id: "product-2".to_string(),
+            status: "published".to_string(),
+            seller_id: None,
+            vendor: None,
+            product_type: None,
+            tags: Vec::new(),
+            published_at: None,
+            images: Vec::new(),
+            translations: Vec::new(),
+            variants: Vec::new(),
+            attributes: Vec::new(),
+        };
+        let view_model = build_selected_product_view_model(
+            &product,
+            None,
+            None,
+            None,
+            Some("ru"),
+            "/pricing",
+        );
+        assert!(view_model.attributes.is_empty());
+
+        // A hidden definition never reaches the contract, but a boolean the owner did send is
+        // phrased in the requested locale.
+        product.attributes = vec![ProductAttribute {
+            code: "waterproof".to_string(),
+            label: "Waterproof".to_string(),
+            value_type: "boolean".to_string(),
+            is_localized: false,
+            values: vec![
+                ProductAttributeValue {
+                    text: "false".to_string(),
+                },
+                ProductAttributeValue {
+                    text: "true".to_string(),
+                },
+            ],
+        }];
+        let view_model = build_selected_product_view_model(
+            &product,
+            None,
+            None,
+            None,
+            Some("ru"),
+            "/pricing",
+        );
+        assert_eq!(view_model.attributes_label, "Характеристики");
+        assert_eq!(
+            view_model.attributes[0].values,
+            vec!["Нет".to_string(), "Да".to_string()],
+        );
     }
 
     #[test]

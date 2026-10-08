@@ -73,7 +73,11 @@ impl ProductCatalogSchemaService {
         Self::load_effective_form_for_product_in(&self.db, tenant_id, product_id).await
     }
 
-    pub(super) async fn load_effective_form_for_product_in<C>(
+    /// Effective form of a product's primary category.
+    ///
+    /// `pub(crate)` because the storefront attribute projection needs the same binding-level
+    /// visibility overrides (and the same display order) the admin form uses.
+    pub(crate) async fn load_effective_form_for_product_in<C>(
         db: &C,
         tenant_id: Uuid,
         product_id: Uuid,

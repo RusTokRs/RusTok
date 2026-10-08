@@ -18,6 +18,8 @@ export type {
   ProductCatalogSearchOptions,
   StorefrontCatalogFilter,
   StorefrontEffectivePrice,
+  StorefrontProductAttribute,
+  StorefrontProductAttributeValue,
   StorefrontProductDetail,
   StorefrontProductListItem,
   StorefrontProductListResponse,
@@ -46,6 +48,17 @@ export {
   serializeAttributeFilters,
   toggleAttributeFilter,
 } from "./catalog/facets";
+
+export type {
+  ProductSpecificationLabels,
+  ProductSpecificationRow,
+} from "./catalog/specifications";
+
+export {
+  buildProductSpecificationLabels,
+  buildProductSpecifications,
+  formatSpecificationValue,
+} from "./catalog/specifications";
 
 export {
   fetchCatalogSearchOptions,

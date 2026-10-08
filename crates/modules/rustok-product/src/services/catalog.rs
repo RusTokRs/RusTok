@@ -9,6 +9,7 @@ mod image_translation_changes;
 mod image_translation_progress;
 mod projection;
 mod queries;
+mod storefront_attributes;
 mod tags;
 mod translation;
 mod translation_changes;
