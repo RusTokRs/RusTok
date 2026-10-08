@@ -5,6 +5,26 @@ version = "0.1.0"
 description = "Centralised bounded cache capability — Redis lifecycle/timeouts, weighted fallback, atomic compare-and-set, invalidation and anti-stampede loading."
 ownership = "first_party"
 trust_level = "core"
-ui_classification = "capability_only"
+ui_classification = "dual_surface"
+
 [crate]
 entry_type = "CacheModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-cache-admin"
+route_segment = "cache"
+nav_label = "Cache"
+next_package = "@rustok/cache-admin"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[settings]
+mode = { type = "string", default = "in-memory", options = ["in-memory", "redis", "hybrid"], description = "Cache storage mode" }
+redis_host = { type = "string", default = "127.0.0.1", description = "Redis server hostname or IP" }
+redis_port = { type = "integer", default = 6379, description = "Redis server port" }
+redis_password = { type = "string", default = "", secret = true, description = "Redis authentication password" }
+redis_db = { type = "integer", default = 0, description = "Redis database index (0-255)" }
+redis_url = { type = "string", default = "", description = "Optional Redis connection URL" }

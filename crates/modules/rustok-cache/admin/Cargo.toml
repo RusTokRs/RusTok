@@ -1,0 +1,39 @@
+[package]
+name = "rustok-cache-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin UI package for the rustok-cache module"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:rustok-core",
+  "dep:rustok-cache",
+  "rustok-api/server",
+]
+
+[dependencies]
+rustok-ui-core.workspace = true
+rustok-ui-transport.workspace = true
+rustok-ui-i18n.workspace = true
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+leptos-auth.workspace = true
+rustok-graphql.workspace = true
+leptos-ui-routing.workspace = true
+leptos_router.workspace = true
+rustok-api = { workspace = true, default-features = false }
+
+rustok-core = { workspace = true, optional = true }
+rustok-cache = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+uuid.workspace = true
+tracing.workspace = true

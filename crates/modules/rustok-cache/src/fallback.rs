@@ -343,24 +343,26 @@ impl CacheBackend for DegradationAwareFallbackBackend {
     }
 
     async fn get(&self, key: &str) -> rustok_core::Result<Option<Vec<u8>>> {
-        let _guard = self.key_lock(key).lock().await;
-        if self.pending_invalidation_active(key).await {
-            return Ok(None);
-        }
-        if let Some(value) = self.read_degraded_write(key).await? {
-            return Ok(Some(value));
-        }
-        if self.tombstone_saturation.load(Ordering::Acquire) {
-            return Err(rustok_core::Error::Cache(
-                "cache invalidation tombstone tracker saturated; shared reads suspended until reconciliation"
-                    .to_string(),
-            ));
+        {
+            let _guard = self.key_lock(key).lock().await;
+            if self.pending_invalidation_active(key).await {
+                return Ok(None);
+            }
+            if let Some(value) = self.read_degraded_write(key).await? {
+                return Ok(Some(value));
+            }
+            if self.tombstone_saturation.load(Ordering::Acquire) {
+                return Err(rustok_core::Error::Cache(
+                    "cache invalidation tombstone tracker saturated; shared reads suspended until reconciliation"
+                        .to_string(),
+                ));
+            }
         }
 
         match self.primary.get(key).await {
             Ok(primary_value) => {
-                // Keep the defensive re-check even though same-key operations are serialized: a
-                // test or maintenance path may manipulate the concrete fallback directly.
+                let _guard = self.key_lock(key).lock().await;
+                // Re-check after async read to catch invalidations or writes that raced with the network call.
                 if self.pending_invalidation_active(key).await {
                     return Ok(None);
                 }
@@ -394,6 +396,10 @@ impl CacheBackend for DegradationAwareFallbackBackend {
             }
             Err(error) => {
                 tracing::debug!(%error, key, "Primary cache GET failed, using local fallback");
+                let _guard = self.key_lock(key).lock().await;
+                if self.pending_invalidation_active(key).await {
+                    return Ok(None);
+                }
                 self.fallback.get(key).await
             }
         }

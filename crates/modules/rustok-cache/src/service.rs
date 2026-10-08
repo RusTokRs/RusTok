@@ -37,6 +37,16 @@ where
 /// Shared cache service providing backend creation from a centralized Redis connection.
 ///
 /// Other modules (tenant, RBAC, rate-limit) call `CacheService::backend()` instead of
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct SharedBackendKey {
+    pub prefix: String,
+    pub ttl: Duration,
+    pub max_capacity: u64,
+    pub weighted: bool,
+    pub metrics_enabled: bool,
+}
+
+/// Resolves Redis URLs once per service instead of having callers construct or
 /// resolving Redis URLs themselves. This keeps Redis lifecycle in one place.
 #[derive(Clone)]
 pub struct CacheService {
@@ -49,6 +59,7 @@ pub struct CacheService {
     default_backend_options: CacheBackendOptions,
     loaders: Arc<CacheLoadCoordinator>,
     invalidations: CacheInvalidationService,
+    shared_backends: Arc<StdMutex<HashMap<SharedBackendKey, Arc<dyn CacheBackend>>>>,
 }
 
 /// Backend construction options used by `CacheService`.
@@ -110,6 +121,7 @@ impl CacheService {
             default_backend_options: options,
             loaders: Arc::new(CacheLoadCoordinator::default()),
             invalidations,
+            shared_backends: Arc::new(StdMutex::new(HashMap::new())),
         }
     }
 
@@ -128,7 +140,28 @@ impl CacheService {
             default_backend_options: options,
             loaders: Arc::new(CacheLoadCoordinator::default()),
             invalidations: CacheInvalidationService::new(),
+            shared_backends: Arc::new(StdMutex::new(HashMap::new())),
         }
+    }
+
+    pub(crate) fn get_shared_backend(&self, key: &SharedBackendKey) -> Option<Arc<dyn CacheBackend>> {
+        self.shared_backends
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(key)
+            .cloned()
+    }
+
+    pub(crate) fn insert_shared_backend(
+        &self,
+        key: SharedBackendKey,
+        backend: Arc<dyn CacheBackend>,
+    ) -> Arc<dyn CacheBackend> {
+        let mut backends = self
+            .shared_backends
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        backends.entry(key).or_insert(backend).clone()
     }
 
     /// Returns `true` if a Redis connection is available.
