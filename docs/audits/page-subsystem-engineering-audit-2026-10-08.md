@@ -533,8 +533,9 @@ reader does not repeat the work:
 4. Triage F-4 with the failing log.
 5. ~~Schedule §5 (C-1 residual) as a migration-sized change~~ — done; review the migration
    behaviour in §5 on a database that already holds baselines, and confirm `cargo test -p fly -p rustok-pages`.
-6. Repair the two `upload-artifact` gates (§7) — **left to the maintainer** (CI/workflow scope);
-   the stale root receipt is ~~retired~~ done.
+6. ~~Repair the two `upload-artifact` gates (§7)~~ — done in commit `985da9a` by changing both
+   evidence verifiers to require the immutable `actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`
+   reference already used by the workflows. Both verifiers pass on the current checkout.
 7. Confirm the F-9 journal wiring (§7) on a toolchain: `cargo test -p rustok-pages --test
    scenario_baseline_revision_journal_sqlite` plus `cargo fmt --check`. The change adds a migration
    to the `PagesModule` list, so on a database that already exists the migration runs on next
@@ -577,3 +578,50 @@ from "one focused step is red" to "the workspace-wide gate cannot pass either".
   evidence) were out of scope except where they share a cause with the findings above.
 - Performance claims (clone counts, query patterns) were not re-measured; §1a of the 2026-10-02
   audit remains the record for those, with the status verification in its new §10.
+
+## 10. Current-checkout engineering re-audit — 2026-10-08
+
+This section is an implementation review of the checkout attached to the remediation branch, not a
+claim that the historical audit base commit is identical to the current checkout. The header above
+references base `7895d7fe` / branch `arena/ecde41c8-rustok`, while the current remediation branch is
+`arena/f20879f0-rustok` at `90865e7`. Findings below are therefore revalidated against the files that
+are actually present here.
+
+### 10.1 Baseline journal integrity and tenant boundary — fixed
+
+The first source pass found four defects in `PageBuilderScenarioBaselineService`:
+
+- `history(..., None)` emitted an unbounded query despite the module README and GraphQL contract
+  describing a maximum of 200 rows;
+- ordering used only `created_at DESC`, leaving same-timestamp rows nondeterministic;
+- `evaluate_publish` and `ensure_publish_allowed` read `page_bodies` by `page_id` and `format`
+  without an explicit `tenant_id` predicate;
+- the delete journal row discarded the active row's `previous_baseline_hash`, despite the journal
+  comment promising an exact deleted-row snapshot.
+
+These are repository-owned integrity defects, not test-only issues. Commit `90865e7` fixes them by
+introducing a service-level 200-row cap, adding `id DESC` as a deterministic tie-breaker, adding
+`TenantId` predicates to both body reads, and retaining `existing.previous_baseline_hash` in the
+delete revision. The GraphQL clamp remains compatible with the service cap.
+
+### 10.2 Verification boundary
+
+The current environment has no `cargo` or `rustc`, so the re-audit does not claim Rust compilation,
+clippy, formatting, database execution, or browser execution. The source-level checks that do run
+currently pass: `scripts/fly-check.sh gates` reports 20/20, the Pages/Page Builder module-resolution
+check resolves 120 declarations, the admin registry check resolves all 34 registered admin modules,
+and both repaired evidence verifiers pass. Standalone module verifiers are not a substitute for a
+coherent audit: many require arguments, evidence packets, Playwright, or `cargo metadata`, and their
+raw direct invocation includes expected input/fixture failures.
+
+### 10.3 Remaining audit actions
+
+The baseline journal fix still requires maintainer confirmation with a Rust toolchain:
+
+- `cargo fmt --check` for `rustok-pages`;
+- `cargo test -p rustok-pages --test scenario_baseline_revision_journal_sqlite`;
+- the focused Page Builder/Page integration and clippy commands from §8.
+
+The provenance mismatch in the audit header must be resolved before treating historical CI claims as
+current-branch evidence. CI/workflow failures F-3/F-4/F-5 remain open until a provisioned toolchain
+and the relevant workflow logs are available; this source pass does not silently promote them.
