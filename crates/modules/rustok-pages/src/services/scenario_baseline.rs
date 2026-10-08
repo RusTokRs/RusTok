@@ -461,7 +461,7 @@ impl PageBuilderScenarioBaselineService {
         tenant_id: Uuid,
         page_id: Uuid,
     ) -> PagesResult<Option<PageBuilderScenarioBaselineRecord>> {
-        let Some(model) = page_builder_scenario_baseline::Entity::find()
+        let Some(mut model) = page_builder_scenario_baseline::Entity::find()
             .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
             .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
             .one(&self.db)
@@ -469,12 +469,15 @@ impl PageBuilderScenarioBaselineService {
         else {
             return Ok(None);
         };
-        let baseline: RuntimeScenarioReleaseBaseline = serde_json::from_value(model.baseline)
-            .map_err(|error| {
+        let mut baseline: RuntimeScenarioReleaseBaseline =
+            serde_json::from_value(model.baseline.clone()).map_err(|error| {
                 PagesError::validation(format!(
                     "Stored Page Builder scenario baseline is invalid: {error}"
                 ))
             })?;
+        if baseline.is_legacy_hash_form() {
+            (model, baseline) = self.upgrade_legacy_baseline_hashes(model, baseline).await?;
+        }
         let diagnostics = baseline.validate();
         if !diagnostics.is_empty()
             || baseline.baseline_hash != model.baseline_hash
@@ -492,6 +495,80 @@ impl PageBuilderScenarioBaselineService {
             promotion_note: model.promotion_note,
             promoted_at: model.promoted_at,
         }))
+    }
+
+    /// Rewrite a stored baseline's retired FNV-1a 64 hashes as sha256 digests, in place.
+    ///
+    /// Fly accepted `ProjectHash` (FNV-1a 64) fingerprints for release baselines until
+    /// 2026-10-08. It still recognises that form so existing rows keep loading, but a 64-bit
+    /// non-cryptographic value must not stay the recorded digest of an approved artefact, so the
+    /// row is upgraded the first time it is read and never needs a manual re-capture. The
+    /// contents are not touched — only the two hash fields are re-derived from them — and the
+    /// caller only reaches here for a baseline whose contents already matched both fingerprints,
+    /// so this preserves a verification result rather than manufacturing one.
+    ///
+    /// The update is a compare-and-swap on the stored hash: if another writer replaced the row in
+    /// the meantime, that writer's row is what gets returned, not this one.
+    async fn upgrade_legacy_baseline_hashes(
+        &self,
+        mut model: page_builder_scenario_baseline::Model,
+        mut baseline: RuntimeScenarioReleaseBaseline,
+    ) -> PagesResult<(
+        page_builder_scenario_baseline::Model,
+        RuntimeScenarioReleaseBaseline,
+    )> {
+        // The caller only reaches this helper for a fully legacy form, so it always rewrites.
+        let _ = baseline.upgrade_legacy_hashes();
+        let upgraded = serde_json::to_value(&baseline).map_err(|error| {
+            PagesError::validation(format!(
+                "Unable to encode upgraded Page Builder scenario baseline: {error}"
+            ))
+        })?;
+        let now: sea_orm::prelude::DateTimeWithTimeZone = Utc::now().into();
+        let result = page_builder_scenario_baseline::Entity::update_many()
+            .col_expr(
+                page_builder_scenario_baseline::Column::BaselineHash,
+                Expr::value(baseline.baseline_hash.clone()),
+            )
+            .col_expr(
+                page_builder_scenario_baseline::Column::Baseline,
+                Expr::value(upgraded.clone()),
+            )
+            .col_expr(
+                page_builder_scenario_baseline::Column::UpdatedAt,
+                Expr::value(now),
+            )
+            .filter(page_builder_scenario_baseline::Column::TenantId.eq(model.tenant_id))
+            .filter(page_builder_scenario_baseline::Column::PageId.eq(model.page_id))
+            .filter(
+                page_builder_scenario_baseline::Column::BaselineHash
+                    .eq(model.baseline_hash.clone()),
+            )
+            .exec(&self.db)
+            .await?;
+        if result.rows_affected == 1 {
+            model.baseline_hash = baseline.baseline_hash.clone();
+            model.baseline = upgraded;
+            model.updated_at = now;
+            return Ok((model, baseline));
+        }
+        let fresh = page_builder_scenario_baseline::Entity::find()
+            .filter(page_builder_scenario_baseline::Column::TenantId.eq(model.tenant_id))
+            .filter(page_builder_scenario_baseline::Column::PageId.eq(model.page_id))
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| {
+                PagesError::validation(
+                    "Page Builder scenario baseline disappeared while its hashes were upgraded",
+                )
+            })?;
+        let fresh_baseline: RuntimeScenarioReleaseBaseline =
+            serde_json::from_value(fresh.baseline.clone()).map_err(|error| {
+                PagesError::validation(format!(
+                    "Stored Page Builder scenario baseline is invalid: {error}"
+                ))
+            })?;
+        Ok((fresh, fresh_baseline))
     }
 
     async fn find_page(&self, tenant_id: Uuid, page_id: Uuid) -> PagesResult<page::Model> {

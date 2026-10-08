@@ -2,7 +2,7 @@ use crate::dto::PageBuilderPreviewRuntime;
 use crate::landing::LandingProjectError;
 use crate::static_landing::StaticLandingCompiler;
 use fly::{
-    PageSelection, ProjectHash, RuntimeContextScenario, RuntimeScenarioRenderSnapshot,
+    ContentDigest, PageSelection, RuntimeContextScenario, RuntimeScenarioRenderSnapshot,
     StaticLandingArtifact, ValidationSeverity, materialize_project_with_runtime_context,
 };
 use serde::{Deserialize, Serialize};
@@ -88,7 +88,8 @@ impl PageBuilderMaterializedStaticLandingArtifact {
                 ));
             }
             let case = &snapshot.cases[0];
-            let static_document_hash = ProjectHash::from_bytes(page.document_html.as_bytes()).hex();
+            let static_document_hash =
+                ContentDigest::from_bytes(page.document_html.as_bytes()).to_string();
             if case.scenario_id != expected_scenario_id
                 || case.page_id != page.page_id
                 || case.document_hash.as_deref() != Some(static_document_hash.as_str())
@@ -355,7 +356,7 @@ mod tests {
             .expect("preview render");
         let result = compile_materialized_static_landing(&project(), runtime)
             .expect("materialized static artifact");
-        let preview_document_hash = ProjectHash::from_bytes(preview_html.as_bytes()).hex();
+        let preview_document_hash = ContentDigest::from_bytes(preview_html.as_bytes()).to_string();
 
         assert_eq!(result.artifact.pages[0].document_html, preview_html);
         assert_eq!(

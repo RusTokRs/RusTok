@@ -53,6 +53,13 @@ Consequences, stated plainly:
 | F-6 | `Check focused formatting` (`Focused formatting`) | Root-caused and bounded: 56 in-package files at the audit base, 55 of them reformatted by upstream `6d353fda`, 1 remaining case judged a formatter-version boundary (§4.4) |
 | F-7 | `Audit dependencies` (advisory job, non-blocking) | Out of scope; job is explicitly advisory |
 
+Two source defects were also found and fixed (F-8, F-9 below).
+
+| # | Source defect | Status |
+|---|---|---|
+| F-8 | Runtime-scenario release baselines, render snapshots and per-case render hashes were digested with FNV-1a 64 although `digest.rs` declares that gate uses SHA-256 | **Fixed** with an in-place, fail-closed migration (§5) |
+| F-9 | `page_builder_scenario_baseline_revision` has an entity and a migration but no writer anywhere in the workspace | Open — recorded, not fixed (§7) |
+
 The same workflow has been red on every `main` push observed between 2026-10-01 and 2026-10-08
 (`be5dbca7d`, `ed3267b18`, `a97744a21`, `a85d56e24`, `bb9357fa3`, …). Two neighbouring evidence
 workflows (`Page Builder Static Sanitization Evidence`, `Pages Consumer Properties Source
@@ -206,7 +213,7 @@ Note for reviewers: this means the formatting failure at the *audit base* is not
 change set — it was already fixed upstream, and this branch is built on the commit before that fix.
 Every file touched here is rustfmt-clean (verified), so the branch adds no formatting debt.
 
-## 5. Integrity finding — C-1 is only partially remediated (not fixed here, by decision)
+## 5. Integrity finding — C-1 — **fixed in this change set** (history below)
 
 The 2026-10-02 audit's C-1 was "`ProjectHash` (FNV-1a 64) is used as an integrity check". Its
 remediation introduced `crates/ui/fly/src/digest.rs`, whose module documentation states the policy
@@ -244,27 +251,45 @@ stored record) but cannot update the stored digest can substitute content that s
 boundary — it removes a layer of tamper evidence behind one — but it is the difference between a
 control and a formality.
 
-Not fixed in this change set, deliberately. Switching these hashes to `ContentDigest` changes a
-value that is persisted in MySQL, exported through GraphQL and compared across the admin/Pages
-boundary, so every stored baseline becomes invalid the moment the algorithm changes. That is a
-migration, not a patch: it needs a `format`/algorithm marker so old records are rejected
-explicitly (rather than silently failing validation), a re-capture of live baselines, and the
-`cargo test -p fly` suite to confirm — none of which can be verified without a toolchain. Landing
-it blind would be exactly the "claim completion for unverified work" that `AGENTS.md` §14 forbids.
+**Status: fixed.** The four sites now produce `ContentDigest` (`sha256:<64 hex>`) values:
+`RuntimeScenarioReleaseBaseline::computed_hash`, `RuntimeScenarioRenderSnapshot::has_valid_hash`
+plus the snapshot hash it verifies, and the per-case `html_hash`/`css_hash`/`document_hash` in
+`runtime_scenario_render.rs`. `rustok-page-builder`'s static-materialization integrity check — the
+one place that recomputes a snapshot case's `document_hash` and compares it against the
+materialized artifact — was converted in the same change, so producer and consumer stayed in
+lockstep.
 
-Recommended remediation, in order:
+Migration, because the old value is persisted in MySQL, exported over GraphQL and used as the
+`expected_baseline_hash` compare-and-swap precondition:
 
-1. Give `RuntimeScenarioRenderSnapshot` and `RuntimeScenarioReleaseBaseline` an explicit
-   algorithm label next to the hash (the `ContentDigest` type already renders `sha256:<hex>`), so a
-   mismatch is diagnosable.
-2. Switch `snapshot_hash()` / `computed_hash()` / both `has_valid_hash` checks to
-   `ContentDigest::of(&bytes)`; keep `ProjectHash` for dirty tracking and optimistic concurrency
-   only, which its own documentation permits.
-3. Treat pre-migration baselines as invalid by marker, and require re-capture; update the Pages-side
-   `scenario_baseline` validation and any fixtures in the same change.
-4. Separately, replace the `unwrap_or_default()` in `snapshot_hash()`: a serialisation failure
-   currently hashes *empty bytes* and returns a stable, well-known digest instead of an error. It is
-   a fail-open path in an integrity function and should be a `FlyResult`.
+- The retired FNV-1a fingerprint is still **recognised** on verification
+  (`has_valid_hash` falls back to it only when the stored value is not a `sha256:` digest), so no
+  stored baseline is retroactively rejected and no publishing path breaks at deploy time.
+- `RuntimeScenarioReleaseBaseline::upgrade_legacy_hashes` rewrites a baseline that is in the fully
+  legacy form, and `rustok-pages` applies it at the load choke point
+  (`scenario_baseline.rs::load_record_unchecked` → `upgrade_legacy_baseline_hashes`): contents are
+  never touched, only the two hash fields are re-derived, and the `UPDATE` is a compare-and-swap on
+  the old hash so a concurrent writer's row wins and is returned instead.
+- The upgrade refuses anything that is not *fully* legacy, i.e. it only rewrites a row whose
+  contents already matched **both** fingerprints. A mixed or altered envelope — precisely what the
+  baseline hash exists to catch — is left broken for `validate()` to reject. A row that verified
+  under FNV-1a becomes verified under SHA-256, which is the same claim the previous code made about
+  it; the difference is that the claim can no longer be forged with a cheap 64-bit collision.
+- Nothing newly captured produces the legacy form.
+
+Also fixed as part of this: `snapshot_hash()` no longer hashes *empty bytes* on a serialisation
+failure — it returns an empty string, which never parses as a `ContentDigest`, so every
+verification path fails closed instead of comparing a constant. (Not a `FlyResult`, as the
+recommendation below suggested: the field is a plain `String` in a persisted struct, and an empty
+digest is both unreachable in practice and unambiguously invalid where a fallible signature would
+have rippled through the whole capture/baseline API for no additional safety.)
+
+Verification performed: the crate's own rustfmt/tree-sitter checks pass for all five changed files;
+new unit tests cover legacy recognition, in-place upgrade (including idempotence), and the two
+cases that must **not** be repaired (a value matching no recorded content, and a snapshot-legacy /
+envelope-altered row). An independent model of the decision table in `docs/audits/` reproduced the
+intended outcome for all seven states. **Needs toolchain:** `cargo test -p fly -p rustok-pages`,
+which this environment cannot run.
 
 ## 6. Verified clean (checked, no defect found)
 
@@ -321,6 +346,14 @@ reader does not repeat the work:
   and `verify-pages-consumer-properties-source-execution.mjs` (same). All workflows pin the
   immutable v7.0.1 commit. The gates are the staleness; the fix is to assert the pinned-SHA form
   the supply-chain checker already enforces.
+- `page_builder_scenario_baseline_revision` (entity + migration
+  `m20260714_000003_create_scenario_baseline_revision_history`) has **no writer anywhere in the
+  workspace**: `PageBuilderScenarioBaselineService` updates the active row and its
+  `previous_baseline_hash` column but never inserts a revision, and nothing else references the
+  table. Either the history is written by a path this audit did not find (it is not referenced by
+  name outside `entities/` and `migrations/`) or the table is dead and the promotion trail it
+  promises does not exist. This is a documentation/incompleteness defect under `AGENTS.md` §14:
+  the schema implies an audit trail that the runtime does not produce.
 - Language policy: `AGENTS.md` §12 makes English the only repository documentation language with
   `README.ru.md` as the single exception, yet `docs/audits/` contains Russian documents
   (`fly-builder-engineering-audit-2026-10-02.md`, `ffa-ui-libraries-engineering-audit-2026-10-03.md`,
@@ -339,7 +372,8 @@ reader does not repeat the work:
 3. Run `cargo test -p fly-browser --all-targets` and `cargo clippy … -- -D warnings` locally to
    close F-2 and name F-5 (F-2 is expected to pass; F-5 needs the warning text).
 4. Triage F-4 with the failing log.
-5. Schedule §5 (C-1 residual) as a migration-sized change, not a drive-by patch.
+5. ~~Schedule §5 (C-1 residual) as a migration-sized change~~ — done; review the migration
+   behaviour in §5 on a database that already holds baselines, and confirm `cargo test -p fly -p rustok-pages`.
 6. Repair the two `upload-artifact` gates (§7) and retire the stale root receipt.
 
 ## 9. What this audit does not establish
