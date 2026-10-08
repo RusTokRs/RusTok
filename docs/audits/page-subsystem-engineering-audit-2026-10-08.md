@@ -635,3 +635,14 @@ afterward. The data mutation was tenant-filtered, but the lock boundary was not.
 first performs an ownership-only read without a lock, rejects a foreign tenant immediately, and only
 then locks the matching current-tenant row with an explicit tenant predicate. This removes avoidable
 cross-tenant lock contention while retaining the fail-closed ownership check.
+
+### 10.5 Rollback read-path mutation — fixed
+
+`load_current_published_set_in_tx` in `services/page/artifact_set.rs` is a read/validation helper
+used while reconstructing the current immutable artifact cursor. It was calling
+`PageBuilderArtifactService::bind_existing_body_in_tx` for every already-bound artifact. That helper
+updates an existing binding and writes a fresh `published_at`, or inserts a binding if absent. A
+rollback/read validation path therefore had a hidden write side effect and could rewrite publication
+timestamps before the later rollback decision completed. The binding call has been removed from the
+read helper; binding remains owned by the explicit publish/activation paths. This restores the
+read-versus-mutation boundary and prevents rollback verification from changing publication state.
