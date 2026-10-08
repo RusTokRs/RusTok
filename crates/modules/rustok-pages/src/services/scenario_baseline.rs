@@ -8,19 +8,71 @@ use rustok_page_builder::runtime_scenario_release::{
     evaluate_page_builder_runtime_scenario_release,
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, QueryOrder, TransactionTrait, sea_query::Expr,
 };
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::entities::{page, page_body, page_builder_scenario_baseline};
+use crate::entities::{
+    page, page_body, page_builder_scenario_baseline, page_builder_scenario_baseline_revision,
+};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::enforce_owned_scope;
 
 pub const PAGE_BUILDER_SCENARIO_BASELINE_CONFLICT_ERROR_CODE: &str = "SCENARIO_BASELINE_CONFLICT";
 pub const PAGE_BUILDER_SCENARIO_BASELINE_PROMOTION_NOTE_REQUIRED_ERROR_CODE: &str =
     "SCENARIO_BASELINE_PROMOTION_NOTE_REQUIRED";
+
+/// Operation vocabulary of the append-only baseline revision journal.
+const BASELINE_OPERATION_CREATE: &str = "create";
+const BASELINE_OPERATION_REPLACE: &str = "replace";
+const BASELINE_OPERATION_DELETE: &str = "delete";
+
+/// One append-only record of what a baseline mutation did, as stored in
+/// `page_builder_scenario_baseline_revisions`.
+///
+/// The revision table exists because the active row keeps only a single `previous_baseline_hash`:
+/// after two promotions the earlier review trail is gone. The journal is written in the same
+/// transaction as the mutation it describes, so a promotion and its record cannot diverge.
+struct BaselineRevision<'a> {
+    operation: &'static str,
+    baseline_id: &'a str,
+    baseline_hash: &'a str,
+    source_project_hash: &'a str,
+    previous_baseline_hash: Option<&'a str>,
+    /// The stored baseline payload, or — for a delete — the row exactly as it was removed.
+    baseline: Value,
+    actor_id: Option<Uuid>,
+    note: Option<&'a str>,
+}
+
+/// Append one revision record inside `txn`.
+async fn record_baseline_revision_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    revision: BaselineRevision<'_>,
+    created_at: sea_orm::prelude::DateTimeWithTimeZone,
+) -> PagesResult<()> {
+    page_builder_scenario_baseline_revision::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        page_id: Set(page_id),
+        operation: Set(revision.operation.to_string()),
+        baseline_id: Set(revision.baseline_id.to_string()),
+        baseline_hash: Set(revision.baseline_hash.to_string()),
+        source_project_hash: Set(revision.source_project_hash.to_string()),
+        previous_baseline_hash: Set(revision.previous_baseline_hash.map(ToString::to_string)),
+        baseline: Set(revision.baseline),
+        actor_id: Set(revision.actor_id),
+        note: Set(revision.note.map(ToString::to_string)),
+        created_at: Set(created_at),
+    }
+    .insert(txn)
+    .await?;
+    Ok(())
+}
 
 #[derive(Clone, Debug)]
 pub struct PageBuilderScenarioBaselineRecord {
@@ -154,10 +206,13 @@ impl PageBuilderScenarioBaselineService {
         let baseline_json = serde_json::to_value(&baseline).map_err(|error| {
             PagesError::validation(format!("Unable to encode scenario baseline: {error}"))
         })?;
+        // The read, the mutation and the revision record share one transaction: a baseline change
+        // without its journal row, or a journal row without the change, would both be audit lies.
+        let txn = self.db.begin().await?;
         let existing = page_builder_scenario_baseline::Entity::find()
             .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
             .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
-            .one(&self.db)
+            .one(&txn)
             .await?;
         let promotion_note = normalized_promotion_note(promotion_note.as_deref());
         if enforce_expected_state && existing.is_some() && promotion_note.is_none() {
@@ -184,11 +239,11 @@ impl PageBuilderScenarioBaselineService {
                     )
                     .col_expr(
                         page_builder_scenario_baseline::Column::Baseline,
-                        Expr::value(baseline_json),
+                        Expr::value(baseline_json.clone()),
                     )
                     .col_expr(
                         page_builder_scenario_baseline::Column::PreviousBaselineHash,
-                        Expr::value(previous_hash),
+                        Expr::value(previous_hash.clone()),
                     )
                     .col_expr(
                         page_builder_scenario_baseline::Column::PromotedBy,
@@ -209,11 +264,28 @@ impl PageBuilderScenarioBaselineService {
                     .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
                     .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
                     .filter(page_builder_scenario_baseline::Column::BaselineHash.eq(expected_hash))
-                    .exec(&self.db)
+                    .exec(&txn)
                     .await?;
                 if result.rows_affected != 1 {
                     return Err(baseline_conflict(page_id));
                 }
+                record_baseline_revision_in_tx(
+                    &txn,
+                    tenant_id,
+                    page_id,
+                    BaselineRevision {
+                        operation: BASELINE_OPERATION_REPLACE,
+                        baseline_id: &baseline.baseline_id,
+                        baseline_hash: &baseline.baseline_hash,
+                        source_project_hash: &baseline.source_project_hash,
+                        previous_baseline_hash: Some(previous_hash.as_str()),
+                        baseline: baseline_json,
+                        actor_id: promoted_by,
+                        note: promotion_note.as_deref(),
+                    },
+                    now,
+                )
+                .await?;
             }
             (Some(_), None) if enforce_expected_state => {
                 return Err(baseline_conflict(page_id));
@@ -224,13 +296,30 @@ impl PageBuilderScenarioBaselineService {
                 active.baseline_id = Set(baseline.baseline_id.clone());
                 active.baseline_hash = Set(baseline.baseline_hash.clone());
                 active.source_project_hash = Set(baseline.source_project_hash.clone());
-                active.baseline = Set(baseline_json);
-                active.previous_baseline_hash = Set(Some(previous_hash));
+                active.baseline = Set(baseline_json.clone());
+                active.previous_baseline_hash = Set(Some(previous_hash.clone()));
                 active.promoted_by = Set(promoted_by);
-                active.promotion_note = Set(promotion_note);
+                active.promotion_note = Set(promotion_note.clone());
                 active.promoted_at = Set(Some(now));
                 active.updated_at = Set(now);
-                active.update(&self.db).await?;
+                active.update(&txn).await?;
+                record_baseline_revision_in_tx(
+                    &txn,
+                    tenant_id,
+                    page_id,
+                    BaselineRevision {
+                        operation: BASELINE_OPERATION_REPLACE,
+                        baseline_id: &baseline.baseline_id,
+                        baseline_hash: &baseline.baseline_hash,
+                        source_project_hash: &baseline.source_project_hash,
+                        previous_baseline_hash: Some(previous_hash.as_str()),
+                        baseline: baseline_json,
+                        actor_id: promoted_by,
+                        note: promotion_note.as_deref(),
+                    },
+                    now,
+                )
+                .await?;
             }
             (None, Some(_)) => return Err(baseline_conflict(page_id)),
             (None, None) => {
@@ -241,15 +330,15 @@ impl PageBuilderScenarioBaselineService {
                     baseline_id: Set(baseline.baseline_id.clone()),
                     baseline_hash: Set(baseline.baseline_hash.clone()),
                     source_project_hash: Set(baseline.source_project_hash.clone()),
-                    baseline: Set(baseline_json),
+                    baseline: Set(baseline_json.clone()),
                     previous_baseline_hash: Set(None),
                     promoted_by: Set(promoted_by),
-                    promotion_note: Set(promotion_note),
+                    promotion_note: Set(promotion_note.clone()),
                     promoted_at: Set(Some(now)),
                     created_at: Set(now),
                     updated_at: Set(now),
                 }
-                .insert(&self.db)
+                .insert(&txn)
                 .await;
                 if let Err(error) = insert {
                     if enforce_expected_state {
@@ -257,8 +346,26 @@ impl PageBuilderScenarioBaselineService {
                     }
                     return Err(error.into());
                 }
+                record_baseline_revision_in_tx(
+                    &txn,
+                    tenant_id,
+                    page_id,
+                    BaselineRevision {
+                        operation: BASELINE_OPERATION_CREATE,
+                        baseline_id: &baseline.baseline_id,
+                        baseline_hash: &baseline.baseline_hash,
+                        source_project_hash: &baseline.source_project_hash,
+                        previous_baseline_hash: None,
+                        baseline: baseline_json,
+                        actor_id: promoted_by,
+                        note: promotion_note.as_deref(),
+                    },
+                    now,
+                )
+                .await?;
             }
         }
+        txn.commit().await?;
         Ok(baseline)
     }
 
@@ -283,6 +390,29 @@ impl PageBuilderScenarioBaselineService {
             .await
     }
 
+    /// The append-only revision trail for a page, newest first.
+    ///
+    /// Rows are stamped from the mutation's own clock, so two revisions recorded inside the same
+    /// microsecond are not strictly ordered relative to each other.
+    pub async fn history(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        page_id: Uuid,
+        limit: Option<u64>,
+    ) -> PagesResult<Vec<page_builder_scenario_baseline_revision::Model>> {
+        let page = self.find_page(tenant_id, page_id).await?;
+        enforce_owned_scope(&security, Resource::Pages, Action::Read, page.author_id)?;
+        let mut query = page_builder_scenario_baseline_revision::Entity::find()
+            .filter(page_builder_scenario_baseline_revision::Column::TenantId.eq(tenant_id))
+            .filter(page_builder_scenario_baseline_revision::Column::PageId.eq(page_id))
+            .order_by_desc(page_builder_scenario_baseline_revision::Column::CreatedAt);
+        if let Some(limit) = limit {
+            query = query.limit(limit);
+        }
+        Ok(query.all(&self.db).await?)
+    }
+
     async fn delete_internal(
         &self,
         tenant_id: Uuid,
@@ -294,14 +424,18 @@ impl PageBuilderScenarioBaselineService {
         let page = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(&security, Resource::Pages, Action::Update, page.author_id)?;
 
+        let now: sea_orm::prelude::DateTimeWithTimeZone = Utc::now().into();
+        let txn = self.db.begin().await?;
+        // Read before deleting: the revision record is the only copy of what was removed, and it
+        // carries the row's own payload so a cleared baseline stays reconstructible.
+        let existing = page_builder_scenario_baseline::Entity::find()
+            .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
+            .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
+            .one(&txn)
+            .await?;
+
         if enforce_expected_state && expected_baseline_hash.is_none() {
-            let exists = page_builder_scenario_baseline::Entity::find()
-                .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
-                .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
-                .one(&self.db)
-                .await?
-                .is_some();
-            return if exists {
+            return if existing.is_some() {
                 Err(baseline_conflict(page_id))
             } else {
                 Ok(false)
@@ -315,10 +449,32 @@ impl PageBuilderScenarioBaselineService {
             delete = delete
                 .filter(page_builder_scenario_baseline::Column::BaselineHash.eq(expected_hash));
         }
-        let result = delete.exec(&self.db).await?;
+        let result = delete.exec(&txn).await?;
         if enforce_expected_state && result.rows_affected != 1 {
             return Err(baseline_conflict(page_id));
         }
+        if result.rows_affected == 1
+            && let Some(existing) = existing
+        {
+            record_baseline_revision_in_tx(
+                &txn,
+                tenant_id,
+                page_id,
+                BaselineRevision {
+                    operation: BASELINE_OPERATION_DELETE,
+                    baseline_id: &existing.baseline_id,
+                    baseline_hash: &existing.baseline_hash,
+                    source_project_hash: &existing.source_project_hash,
+                    previous_baseline_hash: None,
+                    baseline: existing.baseline,
+                    actor_id: security.user_id,
+                    note: None,
+                },
+                now,
+            )
+            .await?;
+        }
+        txn.commit().await?;
         Ok(result.rows_affected > 0)
     }
 

@@ -72,17 +72,16 @@ Recorded by the 2026-10-08 page-subsystem audit
 ([`docs/audits/page-subsystem-engineering-audit-2026-10-08.md`](../../../docs/audits/page-subsystem-engineering-audit-2026-10-08.md)).
 These are gaps in what the runtime actually does, not accepted design:
 
-- **The scenario-baseline revision history is not written.** Migration
-  `m20260714_000003_create_scenario_baseline_revision_history` creates
-  `page_builder_scenario_baseline_revisions`, and
-  `src/entities/page_builder_scenario_baseline_revision.rs` models it — but that file is not
-  declared in `src/entities/mod.rs`, so it is not part of the crate's module tree at all, and
-  nothing in the workspace inserts into or reads the table.
-  `PageBuilderScenarioBaselineService` updates the active row and its `previous_baseline_hash`
-  column and stops there. The schema therefore promises a promotion trail that no code produces,
-  and `previous_baseline_hash` carries exactly one previous value rather than a history. Either
-  declare and write the revision on save/replace/delete (with the promotion note and actor that
-  `save_if_current` already carries) and read it back, or remove the orphan entity and the table.
+- **The scenario-baseline revision history has no retention policy.** Every accepted baseline
+  mutation (`create`, `replace`, `delete`) appends a row to
+  `page_builder_scenario_baseline_revisions` in the same transaction as the mutation, and
+  `PageBuilderScenarioBaselineService::history` /
+  `pageBuilderScenarioBaselineHistory` read it back (newest first, capped at 200). Nothing prunes
+  the journal, so it grows with the page's review activity; a retention window is a product
+  decision that has not been made.
+- **The admin UI does not surface the revision history.** `rustok-pages-admin` reads the current
+  baseline and the scenario release status only, so the trail is reachable through GraphQL and SQL
+  rather than in the editor.
 - **Scenario baselines captured before 2026-10-08 are migrated on read, not on deploy.** Their
   integrity hash was FNV-1a 64 and is rewritten to a SHA-256 digest the first time the row is read
   (`upgrade_legacy_baseline_hashes`). A row that is never read keeps the retired hash; that is

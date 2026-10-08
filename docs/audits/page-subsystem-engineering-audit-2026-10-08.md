@@ -65,12 +65,13 @@ Consequences, stated plainly:
 | F-6 | `Check focused formatting` (`Focused formatting`) | **Closed upstream, verified.** The step is green in run `37732431202` (head `6d353fda`, the format commit) and `bundle.rs` is canonical for the pinned stable toolchain — leave it (§4.4) |
 | F-7 | `Audit dependencies` (advisory job, non-blocking) | Out of scope; job is explicitly advisory |
 
-Two source defects were also found and fixed (F-8, F-9 below).
+Two source defects were also found (F-8, F-9): F-8 was fixed during the audit, while F-9 was
+recorded open first and is fixed in the same change set that wired the revision journal (§7).
 
 | # | Source defect | Status |
 |---|---|---|
 | F-8 | Runtime-scenario release baselines and render snapshots were digested with FNV-1a 64 although `digest.rs` declares that gate uses SHA-256 | **Fixed** with an in-place, fail-closed migration (§5) |
-| F-9 | `page_builder_scenario_baseline_revision` has an entity and a migration but no writer anywhere in the workspace | Open — recorded, not fixed (§7) |
+| F-9 | `page_builder_scenario_baseline_revision` has an entity and a migration but no writer anywhere in the workspace | **Fixed** — migration and entity declared, journal written by every baseline mutation and readable through the service and GraphQL; runtime coverage added (§7) |
 
 The same workflow has been red on every `main` push observed between 2026-10-01 and 2026-10-08
 (`be5dbca7d`, `ed3267b18`, `a97744a21`, `a85d56e24`, `bb9357fa3`, …). Two neighbouring evidence
@@ -390,18 +391,44 @@ reader does not repeat the work:
   and `verify-pages-consumer-properties-source-execution.mjs` (same). All workflows pin the
   immutable v7.0.1 commit. The gates are the staleness; the fix is to assert the pinned-SHA form
   the supply-chain checker already enforces.
-- `page_builder_scenario_baseline_revisions` (F-9) has **no reader and no writer anywhere in the
-  workspace**. Migration `m20260714_000003_create_scenario_baseline_revision_history` creates the
-  table, `src/entities/page_builder_scenario_baseline_revision.rs` models it — and that file is not
-  declared in `src/entities/mod.rs`, so it is not even part of the crate's module tree.
-  `PageBuilderScenarioBaselineService` updates the active row and its `previous_baseline_hash`
-  column and stops there, so the promotion trail the schema promises is not produced. Under
-  `AGENTS.md` §14 an unrecorded incompleteness is treated as a defect, and a dangling entity file is
-  a `cargo`-visible orphan the moment it is declared; the gap is now recorded in
-  `crates/modules/rustok-pages/README.md` under *Known Limitations / Pending Implementation* with
-  both resolutions (wire it, or drop the entity and the table). Not fixed here: writing the history
-  is a feature with its own transactional and backfill decisions, and neither it nor a schema
-  removal can be verified without a toolchain.
+- `page_builder_scenario_baseline_revisions` (F-9) had **no reader and no writer anywhere in the
+  workspace**, and the two commits that introduced it (`374d0dea9` entity, `682a639c6` migration,
+  one file each) left it in a state where nothing compiled: the migration file was never declared in
+  `src/migrations/mod.rs` (so the table was never created, in tests or in production) and
+  `src/entities/page_builder_scenario_baseline_revision.rs` was never declared in
+  `src/entities/mod.rs`. `PageBuilderScenarioBaselineService` updated the active row and its
+  `previous_baseline_hash` column and stopped there, so the promotion trail the schema promised was
+  not produced, and `previous_baseline_hash` could only ever carry a single previous value.
+  **Fixed** in this change set, in the shape the schema implies — the journal is the durable record,
+  so it is written, not dropped:
+  - `m20260714_000003_create_scenario_baseline_revision_history` is declared and registered, and the
+    entity is declared and exported.
+  - `save_internal` and `delete_internal` now run inside a transaction and append exactly one
+    revision row per accepted mutation: `create` (first baseline), `replace` (both the CAS path and
+    the non-CAS overwrite), `delete` (a clear). The row carries the operation, the baseline id and
+    the two hashes, the stored baseline payload, the promotion note that `save_if_current` already
+    required, the acting user (`promoted_by`, or `SecurityContext::user_id` for a delete) and the
+    timestamp. A rejected mutation — stale CAS, missing review note, conflict — rolls back and
+    appends nothing, so a baseline change and its record cannot diverge.
+  - A delete now reads the row before removing it and stores that payload in the revision, which is
+    the only surviving copy of a cleared baseline.
+  - `PageBuilderScenarioBaselineService::history` and the GraphQL field
+    `pageBuilderScenarioBaselineHistory` (read permission, newest first, capped at 200) read the
+    trail back.
+  - `crates/modules/rustok-pages/tests/scenario_baseline_revision_journal_sqlite.rs` covers the
+    lifecycle: one row per accepted mutation with the expected operation/hash linkage/actor/note and
+    payload round-trip, no row for any rejected or no-op path (stale CAS, missing review note, a
+    guarded clear without an expected hash, clearing an absent baseline), and the removed payload
+    surviving in the journal after a clear. It is also the first runtime coverage the
+    scenario-baseline tables have anywhere in the workspace.
+  - Verification status: written and statically reviewed here, **not compiled or run** — this
+    environment has no Rust toolchain. The file was checked with the calibrated rustfmt-on-wasm
+    described in §1 and `scripts/audit/rust_module_resolution_check.py` resolves the new
+    declarations; `cargo test -p rustok-pages --test scenario_baseline_revision_journal_sqlite`
+    (and `cargo fmt --check`) is the confirmation to run on a toolchain, listed in §8.
+  What remains a product decision, not a defect: the journal is append-only and grows without a
+  retention policy, and the admin UI does not surface it yet (`rustok-pages-admin` reads the current
+  baseline and release status only). Both are recorded in the module README.
 - Language policy: `AGENTS.md` §12 makes English the only repository documentation language with
   `README.ru.md` as the single exception, yet `docs/audits/` contains Russian documents
   (`fly-builder-engineering-audit-2026-10-02.md`, `ffa-ui-libraries-engineering-audit-2026-10-03.md`,
@@ -425,6 +452,11 @@ reader does not repeat the work:
    behaviour in §5 on a database that already holds baselines, and confirm `cargo test -p fly -p rustok-pages`.
 6. Repair the two `upload-artifact` gates (§7) — **left to the maintainer** (CI/workflow scope);
    the stale root receipt is ~~retired~~ done.
+7. Confirm the F-9 journal wiring (§7) on a toolchain: `cargo test -p rustok-pages --test
+   scenario_baseline_revision_journal_sqlite` plus `cargo fmt --check`. The change adds a migration
+   to the `PagesModule` list, so on a database that already exists the migration runs on next
+   startup — it is `if_not_exists` and creates an empty table, so there is no backfill and no effect
+   on existing baselines or their promotion metadata.
 
 ## 8.1 CI snapshot at the tip of `main` (`6d353fda`, run `37732431202`)
 

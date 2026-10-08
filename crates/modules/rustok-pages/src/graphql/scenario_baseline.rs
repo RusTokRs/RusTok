@@ -12,6 +12,7 @@ use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::entities::page_builder_scenario_baseline_revision;
 use crate::{
     PageBuilderScenarioBaselineRecord, PageBuilderScenarioBaselineService,
     SaveIfCurrentScenarioBaselineRequest,
@@ -132,6 +133,35 @@ impl GqlPageBuilderScenarioReleaseStatus {
     }
 }
 
+#[derive(Clone, Debug, SimpleObject)]
+pub struct GqlPageBuilderScenarioBaselineRevision {
+    pub operation: String,
+    pub baseline_id: String,
+    pub baseline_hash: String,
+    pub source_project_hash: String,
+    pub previous_baseline_hash: Option<String>,
+    pub baseline: Value,
+    pub actor_id: Option<Uuid>,
+    pub note: Option<String>,
+    pub created_at: String,
+}
+
+impl GqlPageBuilderScenarioBaselineRevision {
+    fn from_revision(revision: page_builder_scenario_baseline_revision::Model) -> Self {
+        Self {
+            operation: revision.operation,
+            baseline_id: revision.baseline_id,
+            baseline_hash: revision.baseline_hash,
+            source_project_hash: revision.source_project_hash,
+            previous_baseline_hash: revision.previous_baseline_hash,
+            baseline: revision.baseline,
+            actor_id: revision.actor_id,
+            note: revision.note,
+            created_at: revision.created_at.to_rfc3339(),
+        }
+    }
+}
+
 #[derive(InputObject)]
 pub struct SaveGqlPageBuilderScenarioBaselineInput {
     pub baseline: Value,
@@ -162,6 +192,30 @@ impl PageBuilderScenarioBaselineQuery {
             .map_err(|error| async_graphql::Error::new(error.to_string()))?
             .map(|baseline| GqlPageBuilderScenarioBaseline::from_baseline(page_id, baseline))
             .transpose()
+    }
+
+    /// The append-only baseline revision trail (creates, promotions and clears), newest first.
+    async fn page_builder_scenario_baseline_history(
+        &self,
+        ctx: &Context<'_>,
+        page_id: Uuid,
+        tenant_id: Option<Uuid>,
+        limit: Option<i32>,
+    ) -> Result<Vec<GqlPageBuilderScenarioBaselineRevision>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let auth = require_pages_permission(ctx, Permission::PAGES_READ)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = current_tenant_id(tenant, &auth, tenant_id)?;
+        let limit = limit.map(|limit| u64::try_from(limit.clamp(1, 200)).unwrap_or(200));
+        let service = PageBuilderScenarioBaselineService::new(db.clone());
+        Ok(service
+            .history(tenant_id, page_security(&auth), page_id, limit)
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?
+            .into_iter()
+            .map(GqlPageBuilderScenarioBaselineRevision::from_revision)
+            .collect())
     }
 
     async fn page_builder_scenario_release_status(
