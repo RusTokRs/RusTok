@@ -225,8 +225,8 @@ export async function listForumTopics(
   input: { locale?: string; first?: number } = {}
 ): Promise<ForumTopicSummary[]> {
   const query = `
-    query ForumTopics($tenantId: UUID!, $locale: String, $pagination: PaginationInput!) {
-      forumTopics(tenantId: $tenantId, locale: $locale, pagination: $pagination) {
+    query ForumTopics($tenantId: UUID!, $locale: String, $perPage: Int) {
+      forumTopics(tenantId: $tenantId, locale: $locale, perPage: $perPage) {
         items {
           id
           locale
@@ -245,7 +245,7 @@ export async function listForumTopics(
     {
       tenantId: string;
       locale?: string;
-      pagination: { first: number };
+      perPage: number;
     },
     {
       forumTopics: { items: ForumTopicSummary[] };
@@ -255,7 +255,7 @@ export async function listForumTopics(
     {
       tenantId: opts.tenantId!,
       locale: input.locale,
-      pagination: { first: input.first ?? 100 }
+      perPage: input.first ?? 100
     },
     opts.token,
     opts.tenantSlug
@@ -264,25 +264,30 @@ export async function listForumTopics(
   return data.forumTopics.items;
 }
 
+/** Upper bound for admin operations that need a whole thread. Above it the load is refused. */
+const ADMIN_REPLY_LOAD_LIMIT = 5000;
+
 export async function listForumTopicReplies(
   topicId: string,
   opts: GqlOpts = {},
-  input: { locale?: string; first?: number } = {}
+  input: { locale?: string } = {}
 ): Promise<ForumTopicSplitReplyPage> {
   const query = `
     query ForumTopicSplitReplies(
       $tenantId: UUID!
       $topicId: UUID!
       $locale: String
-      $pagination: PaginationInput!
+      $after: String
+      $perPage: Int
     ) {
       forumReplies(
         tenantId: $tenantId
         topicId: $topicId
         locale: $locale
-        pagination: $pagination
+        after: $after
+        perPage: $perPage
       ) {
-        total
+        nextCursor
         items {
           id
           contentPreview: contentPlainText
@@ -294,27 +299,43 @@ export async function listForumTopicReplies(
     }
   `;
 
-  const data = await graphqlRequest<
-    {
-      tenantId: string;
-      topicId: string;
-      locale?: string;
-      pagination: { first: number };
-    },
-    { forumReplies: ForumTopicSplitReplyPage }
-  >(
-    query,
-    {
-      tenantId: opts.tenantId!,
-      topicId,
-      locale: input.locale,
-      pagination: { first: input.first ?? 500 }
-    },
-    opts.token,
-    opts.tenantSlug
-  );
+  // Split and fork need every reply, so walk the keyset cursor to the end.
+  const items: ForumTopicSplitReplyPage['items'] = [];
+  let after: string | null = null;
+  for (;;) {
+    const data = await graphqlRequest<
+      {
+        tenantId: string;
+        topicId: string;
+        locale?: string;
+        after: string | null;
+        perPage: number;
+      },
+      { forumReplies: { nextCursor: string | null; items: ForumTopicSplitReplyPage['items'] } }
+    >(
+      query,
+      {
+        tenantId: opts.tenantId!,
+        topicId,
+        locale: input.locale,
+        after,
+        perPage: 100
+      },
+      opts.token,
+      opts.tenantSlug
+    );
 
-  return data.forumReplies;
+    items.push(...data.forumReplies.items);
+    if (items.length > ADMIN_REPLY_LOAD_LIMIT) {
+      throw new Error(
+        `Topic has more than ${ADMIN_REPLY_LOAD_LIMIT} replies and cannot be loaded for this operation`
+      );
+    }
+    if (!data.forumReplies.nextCursor) {
+      return { items };
+    }
+    after = data.forumReplies.nextCursor;
+  }
 }
 
 export async function createForumReply(

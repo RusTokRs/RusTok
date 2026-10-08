@@ -22,7 +22,7 @@ const FORUM_TOPIC_AUDIENCE_SCAN_PAGE_SIZE: u64 = MAX_FORUM_READ_LIMIT;
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct ForumTopicAudiencePage {
     pub items: Vec<TopicListItem>,
-    pub total: u64,
+    pub next_cursor: Option<String>,
 }
 
 /// Exact storefront topic-list owner over the canonical base visibility query and
@@ -118,40 +118,25 @@ impl ForumTopicAudienceListService {
         channel_slug: Option<&str>,
     ) -> ForumResult<ForumTopicAudiencePage> {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
-        if filter.page == 0 {
-            return Err(ForumError::Validation(
-                "Forum topic audience page must be at least 1".to_string(),
-            ));
-        }
         if !(1..=MAX_FORUM_READ_LIMIT).contains(&filter.per_page) {
             return Err(ForumError::Validation(format!(
                 "Forum topic audience page size must be between 1 and {MAX_FORUM_READ_LIMIT}"
             )));
         }
+        let per_page = filter.per_page as usize;
 
-        let requested_start = filter
-            .page
-            .saturating_sub(1)
-            .checked_mul(filter.per_page)
-            .ok_or_else(|| {
-                ForumError::Validation("Forum topic audience page offset is too large".to_string())
-            })?;
-        let requested_end = requested_start
-            .checked_add(filter.per_page)
-            .ok_or_else(|| {
-                ForumError::Validation("Forum topic audience page range is too large".to_string())
-            })?;
-
-        let mut items = Vec::with_capacity(filter.per_page as usize);
-        let mut visible_total = 0_u64;
-        let mut candidate_page = 1_u64;
-
-        loop {
+        // Walk owner keyset batches from the cursor, keeping only topics the audience can
+        // see. The cursor advances over scanned candidates; a page is closed only when one
+        // more visible topic exists, so the last page never comes back empty.
+        let mut items: Vec<TopicListItem> = Vec::with_capacity(per_page);
+        let mut candidate_after = filter.after.clone();
+        let mut has_more = false;
+        'scan: loop {
             let mut candidate_filter = filter.clone();
-            candidate_filter.page = candidate_page;
+            candidate_filter.after = candidate_after.clone();
             candidate_filter.per_page = FORUM_TOPIC_AUDIENCE_SCAN_PAGE_SIZE;
 
-            let (candidates, candidate_total) = self
+            let candidates = self
                 .topic_service
                 .list_storefront_visible_with_locale_fallback(
                     tenant_id,
@@ -162,33 +147,39 @@ impl ForumTopicAudienceListService {
                 )
                 .await?;
 
-            if candidates.is_empty() {
+            if candidates.items.is_empty() {
                 break;
             }
 
-            for topic in candidates {
+            for topic in candidates.items {
                 if self
                     .visibility
                     .is_topic_visible(tenant_id, topic.id, channel_slug, &viewer)
                     .await?
                 {
-                    if visible_total >= requested_start && visible_total < requested_end {
-                        items.push(topic);
+                    if items.len() == per_page {
+                        has_more = true;
+                        break 'scan;
                     }
-                    visible_total = visible_total.saturating_add(1);
+                    items.push(topic);
                 }
             }
 
-            let scanned = candidate_page.saturating_mul(FORUM_TOPIC_AUDIENCE_SCAN_PAGE_SIZE);
-            if scanned >= candidate_total {
-                break;
+            match candidates.next_cursor {
+                Some(cursor) => candidate_after = Some(cursor),
+                None => break,
             }
-            candidate_page = candidate_page.saturating_add(1);
         }
 
-        Ok(ForumTopicAudiencePage {
-            items,
-            total: visible_total,
-        })
+        let next_cursor = if has_more {
+            items
+                .last()
+                .and_then(|topic| topic.sort_key)
+                .map(|key| key.encode())
+        } else {
+            None
+        };
+
+        Ok(ForumTopicAudiencePage { items, next_cursor })
     }
 }

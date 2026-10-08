@@ -12,7 +12,8 @@ use uuid::Uuid;
 
 use crate::{
     ForumReplyAudienceReadService, ForumReplyReadOperation, ForumReplyReadTransport,
-    ListRepliesFilter, ReplyListItem, ReplyResponse, reply_read_audience_port_context,
+    ListRepliesFilter, ReplyListItemPage, ReplyResponse,
+    reply_read_audience_port_context,
 };
 
 fn clamp_per_page(per_page: u64) -> u64 {
@@ -36,7 +37,7 @@ fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
         ListRepliesFilter,
     ),
     responses(
-        (status = 200, description = "List of replies", body = Vec<ReplyListItem>),
+        (status = 200, description = "One keyset page of replies", body = ReplyListItemPage),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
@@ -48,7 +49,7 @@ pub async fn list_replies(
     request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
     Query(mut filter): Query<ListRepliesFilter>,
-) -> HttpResult<Json<Vec<ReplyListItem>>> {
+) -> HttpResult<Json<ReplyListItemPage>> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_LIST],
@@ -74,7 +75,7 @@ pub async fn list_replies(
     .map_err(crate::controllers::map_forum_error)?;
     let service = reply_audience_read_service(&runtime);
     let list_started_at = Instant::now();
-    let (replies, _) = service
+    let page = service
         .list_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
@@ -90,7 +91,7 @@ pub async fn list_replies(
         "forum.list_replies",
         "exact_reply_audience_owner",
         list_started_at.elapsed().as_secs_f64(),
-        replies.len() as u64,
+        page.items.len() as u64,
     );
 
     metrics::record_read_path_budget(
@@ -98,10 +99,13 @@ pub async fn list_replies(
         "forum.list_replies",
         requested_limit,
         effective_limit,
-        replies.len(),
+        page.items.len(),
     );
 
-    Ok(Json(replies))
+    Ok(Json(ReplyListItemPage {
+        items: page.items,
+        next_cursor: page.next_cursor,
+    }))
 }
 
 #[cfg(test)]

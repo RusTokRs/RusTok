@@ -64,8 +64,7 @@ export function ForumTopicSplit({
     let cancelled = false;
     setLoadingReplies(true);
     listForumTopicReplies(sourceTopicId, gqlOpts, {
-      locale: targetLocale || activeLocale,
-      first: 500
+      locale: targetLocale || activeLocale
     })
       .then((page) => {
         if (!cancelled) {

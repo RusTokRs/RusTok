@@ -250,7 +250,6 @@ async fn test_post_read_paths_normalize_requested_and_fallback_locale() -> TestR
             SecurityContext::system(),
             PostListQuery {
                 locale: Some("EN_us".to_string()),
-                page: Some(1),
                 per_page: Some(10),
                 ..Default::default()
             },
@@ -300,33 +299,56 @@ async fn test_list_posts_with_pagination() -> TestResult<()> {
             .await?;
     }
 
+    // Default sort is created_at DESC. Walk the cursor: 2 + 2 + 1 items, then no cursor.
     let page1 = post_service
         .list_posts(
             tenant_id,
             admin.clone(),
             PostListQuery {
-                page: Some(1),
                 per_page: Some(2),
                 ..Default::default()
             },
         )
         .await?;
-    assert_eq!(page1.total, 5);
     assert_eq!(page1.items.len(), 2);
-    assert_eq!(page1.total_pages, 3);
+    let cursor1 = page1.next_cursor.clone().expect("first page should have a cursor");
+
+    let page2 = post_service
+        .list_posts(
+            tenant_id,
+            admin.clone(),
+            PostListQuery {
+                after: Some(cursor1),
+                per_page: Some(2),
+                ..Default::default()
+            },
+        )
+        .await?;
+    assert_eq!(page2.items.len(), 2);
+    let cursor2 = page2.next_cursor.clone().expect("second page should have a cursor");
 
     let page3 = post_service
         .list_posts(
             tenant_id,
             admin.clone(),
             PostListQuery {
-                page: Some(3),
+                after: Some(cursor2),
                 per_page: Some(2),
                 ..Default::default()
             },
         )
         .await?;
     assert_eq!(page3.items.len(), 1);
+    assert!(page3.next_cursor.is_none());
+
+    let seen: std::collections::HashSet<_> = page1
+        .items
+        .iter()
+        .chain(page2.items.iter())
+        .chain(page3.items.iter())
+        .map(|item| item.id)
+        .collect();
+    assert_eq!(seen.len(), 5, "keyset pages must not repeat or skip posts");
 
     Ok(())
 }
@@ -389,10 +411,11 @@ async fn test_filter_posts_by_tag() -> TestResult<()> {
         .await?;
 
     let rust_posts = post_service
-        .get_posts_by_tag(tenant_id, admin.clone(), "rust".to_string(), 1, 10)
+        .get_posts_by_tag(tenant_id, admin.clone(), "rust".to_string(), None, 10)
         .await?;
 
-    assert_eq!(rust_posts.total, 1);
+    assert_eq!(rust_posts.items.len(), 1);
+    assert!(rust_posts.next_cursor.is_none());
     assert_eq!(rust_posts.items[0].tags, vec!["rust"]);
 
     Ok(())
@@ -1501,16 +1524,15 @@ mod unit_tests {
     #[test]
     fn test_post_list_query() {
         let query = PostListQuery {
-            page: Some(2),
+            after: Some("cursor".to_string()),
             per_page: Some(25),
             status: Some(BlogPostStatus::Published),
             tag: Some("rust".to_string()),
             ..Default::default()
         };
 
-        assert_eq!(query.page(), 2);
+        assert_eq!(query.after.as_deref(), Some("cursor"));
         assert_eq!(query.per_page(), 25);
-        assert_eq!(query.offset(), 25);
     }
 
     #[test]

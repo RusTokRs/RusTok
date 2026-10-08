@@ -10,8 +10,6 @@ impl MigrationTrait for Migration {
         if manager.get_database_backend() == DbBackend::Postgres {
             for sql in [
                 "ALTER TABLE meta_translations ALTER COLUMN locale TYPE VARCHAR(32)",
-                "ALTER TABLE content_canonical_urls ALTER COLUMN locale TYPE VARCHAR(32)",
-                "ALTER TABLE content_url_aliases ALTER COLUMN locale TYPE VARCHAR(32)",
             ] {
                 manager
                     .get_connection()

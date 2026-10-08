@@ -2,14 +2,18 @@ use rustok_graphql::{GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 
 use crate::topic_fork_model::{
-    ForumTopicForkCandidate, ForumTopicForkCommand, ForumTopicForkReceipt, ForumTopicForkReplyPage,
+    ForumTopicForkCandidate, ForumTopicForkCommand, ForumTopicForkReceipt, ForumTopicForkReply,
+    ForumTopicForkReplyPage,
 };
 
 pub type ApiError = String;
 
-const FORK_CANDIDATES_QUERY: &str = "query ForumAdminForkCandidates($locale: String, $pagination: PaginationInput!) { forumTopics(locale: $locale, pagination: $pagination) { items { id locale title category_id: categoryId reply_count: replyCount } } }";
-const FORK_REPLIES_QUERY: &str = "query ForumAdminForkReplies($topicId: UUID!, $locale: String, $pagination: PaginationInput!) { forumReplies(topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id content_preview: contentPlainText status parent_reply_id: parentReplyId created_at: createdAt } } }";
+const FORK_CANDIDATES_QUERY: &str = "query ForumAdminForkCandidates($locale: String, $perPage: Int) { forumTopics(locale: $locale, perPage: $perPage) { items { id locale title category_id: categoryId reply_count: replyCount } } }";
+const FORK_REPLIES_QUERY: &str = "query ForumAdminForkReplies($topicId: UUID!, $locale: String, $after: String, $perPage: Int) { forumReplies(topicId: $topicId, locale: $locale, after: $after, perPage: $perPage) { nextCursor items { id content_preview: contentPlainText status parent_reply_id: parentReplyId created_at: createdAt } } }";
 const FORK_TOPIC_MUTATION: &str = "mutation ForumAdminForkTopic($sourceTopicId: UUID!, $input: ForkForumTopicReplyBranchGraphqlInput!) { forkForumTopicReplyBranch(sourceTopicId: $sourceTopicId, input: $input) { operation_id: operationId event_id: eventId source_topic_id: sourceTopicId target_topic_id: targetTopicId root_reply_id: rootReplyId category_id: categoryId actor_id: actorId reason copied_reply_count: copiedReplyCount copied_published_reply_count: copiedPublishedReplyCount copied_body_count: copiedBodyCount copied_reply_revision_count: copiedReplyRevisionCount copied_relation_revision_count: copiedRelationRevisionCount copied_mention_count: copiedMentionCount copied_quote_count: copiedQuoteCount forked_at: forkedAt } }";
+
+const ADMIN_REPLY_PAGE_SIZE: i32 = 100;
+const ADMIN_REPLY_LOAD_LIMIT: usize = 5_000;
 
 #[derive(Debug, Deserialize)]
 struct CandidatesResponse {
@@ -25,7 +29,14 @@ struct CandidateConnection {
 #[derive(Debug, Deserialize)]
 struct RepliesResponse {
     #[serde(rename = "forumReplies")]
-    forum_replies: ForumTopicForkReplyPage,
+    forum_replies: ReplyCursorPage,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReplyCursorPage {
+    items: Vec<ForumTopicForkReply>,
+    #[serde(rename = "nextCursor", default)]
+    next_cursor: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,15 +46,10 @@ struct ForkResponse {
 }
 
 #[derive(Debug, Serialize)]
-struct PaginationInput {
-    offset: i64,
-    limit: i64,
-}
-
-#[derive(Debug, Serialize)]
 struct CandidatesVariables {
     locale: Option<String>,
-    pagination: PaginationInput,
+    #[serde(rename = "perPage")]
+    per_page: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -51,7 +57,9 @@ struct RepliesVariables {
     #[serde(rename = "topicId")]
     topic_id: String,
     locale: Option<String>,
-    pagination: PaginationInput,
+    after: Option<String>,
+    #[serde(rename = "perPage")]
+    per_page: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -105,10 +113,7 @@ pub async fn fetch_candidates(
         FORK_CANDIDATES_QUERY,
         CandidatesVariables {
             locale: Some(locale),
-            pagination: PaginationInput {
-                offset: 0,
-                limit: 100,
-            },
+            per_page: 100,
         },
         token,
         tenant_slug,
@@ -123,21 +128,34 @@ pub async fn fetch_replies(
     source_topic_id: String,
     locale: String,
 ) -> Result<ForumTopicForkReplyPage, ApiError> {
-    let response: RepliesResponse = request(
-        FORK_REPLIES_QUERY,
-        RepliesVariables {
-            topic_id: source_topic_id,
-            locale: Some(locale),
-            pagination: PaginationInput {
-                offset: 0,
-                limit: 500,
+    // Operations on a whole thread need every reply, so walk the keyset cursor to
+    // the end. The load is capped: a thread above the cap is refused, not truncated.
+    let mut items = Vec::new();
+    let mut after: Option<String> = None;
+    loop {
+        let response: RepliesResponse = request(
+            FORK_REPLIES_QUERY,
+            RepliesVariables {
+                topic_id: source_topic_id.clone(),
+                locale: Some(locale.clone()),
+                after: after.take(),
+                per_page: ADMIN_REPLY_PAGE_SIZE,
             },
-        },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.forum_replies)
+            token.clone(),
+            tenant_slug.clone(),
+        )
+        .await?;
+        items.extend(response.forum_replies.items);
+        if items.len() > ADMIN_REPLY_LOAD_LIMIT {
+            return Err(format!(
+                "Topic has more than {ADMIN_REPLY_LOAD_LIMIT} replies and cannot be loaded for this operation"
+            ));
+        }
+        match response.forum_replies.next_cursor {
+            Some(cursor) => after = Some(cursor),
+            None => return Ok(ForumTopicForkReplyPage { items }),
+        }
+    }
 }
 
 pub async fn fork_topic(

@@ -232,14 +232,17 @@ fn ForumShowcase(
                             />
                             <ForumTopicFeed
                                 items=topics.items.clone()
-                                total=topics.total
+                                total=selected_category_topic_count(&categories.items, selected_category_id.as_deref())
                                 selected_category_id=selected_category_id.clone()
                                 selected_topic_id=selected_topic_id.clone()
                             />
                             <ForumThreadPanel
                                 topic=selected_topic.clone()
                                 replies=replies.items.clone()
-                                replies_total=replies.total
+                                replies_total=selected_topic
+                                    .as_ref()
+                                    .map(|topic| u64::try_from(topic.reply_count).unwrap_or_default())
+                                    .unwrap_or_default()
                                 read_state_available
                                 on_mark_topic_read
                                 mutation_busy
@@ -613,5 +616,25 @@ fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
                 class="richtext mt-3 text-sm leading-6 text-muted-foreground"
             />
         </article>
+    }
+}
+
+/// Thread count shown by the topic feed. Topics are paged by cursor and never counted, so the
+/// count comes from the owner-provided `topic_count` of the selected category (all categories
+/// when none is selected).
+fn selected_category_topic_count(
+    categories: &[crate::model::ForumCategoryListItem],
+    selected_category_id: Option<&str>,
+) -> u64 {
+    let count = |item: &crate::model::ForumCategoryListItem| {
+        u64::try_from(item.topic_count).unwrap_or(0)
+    };
+    match selected_category_id {
+        Some(id) => categories
+            .iter()
+            .find(|item| item.id == id)
+            .map(count)
+            .unwrap_or(0),
+        None => categories.iter().map(count).sum(),
     }
 }

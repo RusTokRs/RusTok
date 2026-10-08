@@ -49,14 +49,16 @@ export interface PostResponse {
 
 export interface PostListResponse {
   items: PostSummary[];
-  total: number;
+  /** Present only when another page exists. Lists never count rows. */
+  nextCursor: string | null;
 }
 
 export interface PostListQuery {
   status?: BlogPostStatus;
   authorId?: string;
   locale?: string;
-  page?: number;
+  /** Opaque cursor: `nextCursor` of the previous page. */
+  after?: string;
   perPage?: number;
 }
 
@@ -106,7 +108,7 @@ query Posts($tenantId: UUID!, $filter: PostsFilter) {
       createdAt
       publishedAt
     }
-    total
+    nextCursor
   }
 }
 `;
@@ -211,7 +213,7 @@ export async function listPosts(
   if (query.status) filter.status = query.status;
   if (query.authorId) filter.authorId = query.authorId;
   if (query.locale) filter.locale = query.locale;
-  if (query.page) filter.page = query.page;
+  if (query.after) filter.after = query.after;
   if (query.perPage) filter.perPage = query.perPage;
 
   const data = await graphqlRequest<

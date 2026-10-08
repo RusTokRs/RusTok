@@ -3,8 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{Result as AnyResult, anyhow};
 use async_trait::async_trait;
 use rustok_seo_targets::{
-    SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
-    SeoTargetAlternateRoute, SeoTargetBulkListRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
+    SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
+    SeoBulkSummaryPage, SeoTargetAlternateRoute, SeoTargetBulkPageRequest, SeoTargetCapabilities,
+    SeoTargetLoadRequest,
     SeoTargetLoadScope, SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
     SeoTargetSitemapRequest, SeoTargetSlug,
 };
@@ -157,16 +158,18 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         }))
     }
 
-    async fn list_bulk_summaries(
+    async fn list_bulk_summaries_page(
         &self,
         runtime: &SeoTargetRuntimeContext,
-        request: SeoTargetBulkListRequest<'_>,
-    ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
+        request: SeoTargetBulkPageRequest<'_>,
+    ) -> AnyResult<SeoBulkSummaryPage> {
         let tenant_id = request.tenant_id;
         let default_locale = request.default_locale;
-        let candidates = category_provider()
-            .list_bulk_summaries(runtime, request)
+        let page = category_provider()
+            .list_bulk_summaries_page(runtime, request)
             .await?;
+        let next_cursor = page.next_cursor;
+        let candidates = page.items;
         let discovery = public_discovery(runtime);
         let route_service = ForumCategoryRouteService::new(runtime.db.clone());
         let mut visible = Vec::with_capacity(candidates.len());
@@ -195,7 +198,10 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
             candidate.route = descriptor.path;
             visible.push(candidate);
         }
-        Ok(visible)
+        Ok(SeoBulkSummaryPage {
+            items: visible,
+            next_cursor,
+        })
     }
 
     async fn sitemap_candidates(
@@ -366,16 +372,18 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         }))
     }
 
-    async fn list_bulk_summaries(
+    async fn list_bulk_summaries_page(
         &self,
         runtime: &SeoTargetRuntimeContext,
-        request: SeoTargetBulkListRequest<'_>,
-    ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
+        request: SeoTargetBulkPageRequest<'_>,
+    ) -> AnyResult<SeoBulkSummaryPage> {
         let tenant_id = request.tenant_id;
         let default_locale = request.default_locale;
-        let candidates = topic_provider()
-            .list_bulk_summaries(runtime, request)
+        let page = topic_provider()
+            .list_bulk_summaries_page(runtime, request)
             .await?;
+        let next_cursor = page.next_cursor;
+        let candidates = page.items;
         let discovery = public_discovery(runtime);
         let route_service = ForumTopicRouteService::new(runtime.db.clone());
         let mut visible = Vec::with_capacity(candidates.len());
@@ -404,7 +412,10 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
             candidate.route = descriptor.path;
             visible.push(candidate);
         }
-        Ok(visible)
+        Ok(SeoBulkSummaryPage {
+            items: visible,
+            next_cursor,
+        })
     }
 
     async fn sitemap_candidates(

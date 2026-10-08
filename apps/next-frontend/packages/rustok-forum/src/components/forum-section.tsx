@@ -48,7 +48,6 @@ export function ForumSection({
   const [categoriesTotal, setCategoriesTotal] = useState(0);
 
   const [topics, setTopics] = useState<ForumTopicListItem[]>([]);
-  const [topicsTotal, setTopicsTotal] = useState(0);
 
   const [selectedTopic, setSelectedTopic] = useState<ForumTopicDetail | null>(null);
   const [replies, setReplies] = useState<ForumReplyDetail[]>([]);
@@ -73,6 +72,12 @@ export function ForumSection({
     }
   }, [tenantId, tenantSlug, locale]);
 
+  // Topics are paged by cursor and never counted; the feed count comes from the owner-provided
+  // topicCount of the selected category (all categories when none is selected).
+  const topicsTotal = selectedCategoryId
+    ? (categories.find((category) => category.id === selectedCategoryId)?.topicCount ?? 0)
+    : categories.reduce((sum, category) => sum + category.topicCount, 0);
+
   // Load Topics
   const loadTopics = useCallback(async () => {
     try {
@@ -83,7 +88,6 @@ export function ForumSection({
         locale,
       });
       setTopics(data.items);
-      setTopicsTotal(data.total);
 
       // Collect author IDs for member cards
       const userIds = Array.from(
@@ -130,7 +134,8 @@ export function ForumSection({
 
       setSelectedTopic(topicData);
       setReplies(repliesData.items);
-      setRepliesTotal(repliesData.total);
+      // Reply count comes from the topic counter; the reply list is cursor-paged and uncounted.
+      setRepliesTotal(topicData?.replyCount ?? 0);
 
       // Collect author IDs
       const userIds = Array.from(

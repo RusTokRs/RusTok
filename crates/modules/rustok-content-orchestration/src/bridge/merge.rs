@@ -2,24 +2,26 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use chrono::Utc;
 use rustok_content::{
-    CanonicalUrlMutation, ContentError, ContentResult, MergeTopicsInput, MergeTopicsOutput,
-    RetiredCanonicalTarget,
+    ContentError, ContentResult, MergeTopicsInput, MergeTopicsOutput,
 };
+use rustok_forum::services::topic_routes::forum_topic_route;
 use rustok_forum::{forum_reply, forum_topic};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseTransaction, EntityTrait};
 use uuid::Uuid;
 
+use crate::bridge::OwnerRoutes;
 use crate::bridge::helpers::{
-    adjust_forum_category_counters_in_tx, find_topic_in_tx, forum_topic_route,
+    adjust_forum_category_counters_in_tx, find_topic_in_tx,
     load_forum_reply_records_in_tx, load_topic_translations_in_tx, locales_from_topic_translations,
     next_forum_reply_position_in_tx, refresh_forum_topic_stats_in_tx,
     resequence_forum_topic_replies_in_tx,
 };
 
 pub(crate) async fn merge_topics(
+    routes: &OwnerRoutes,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    _actor_id: Option<Uuid>,
+    actor_id: Option<Uuid>,
     input: &MergeTopicsInput,
 ) -> ContentResult<MergeTopicsOutput> {
     let target_topic = find_topic_in_tx(txn, tenant_id, input.target_topic_id).await?;
@@ -33,12 +35,15 @@ pub(crate) async fn merge_topics(
     let mut merge_locales = locales_from_topic_translations(&target_translations)?
         .into_iter()
         .collect::<BTreeSet<_>>();
+    let mut source_locales_by_topic: Vec<(Uuid, Vec<String>)> = Vec::new();
 
     for source_topic_id in &source_ids {
         let source_topic = find_topic_in_tx(txn, tenant_id, *source_topic_id).await?;
         let source_translations =
             load_topic_translations_in_tx(txn, tenant_id, source_topic.id).await?;
-        merge_locales.extend(locales_from_topic_translations(&source_translations)?);
+        let source_locales = locales_from_topic_translations(&source_translations)?;
+        merge_locales.extend(source_locales.iter().cloned());
+        source_locales_by_topic.push((source_topic.id, source_locales));
         let replies = load_forum_reply_records_in_tx(txn, tenant_id, source_topic.id).await?;
         for record in &replies {
             let mut active: forum_reply::ActiveModel = record.reply.clone().into();
@@ -82,39 +87,43 @@ pub(crate) async fn merge_topics(
         adjust_forum_category_counters_in_tx(txn, tenant_id, category_id, 0, reply_delta).await?;
     }
 
-    let alias_urls = source_topics
-        .iter()
-        .map(|source_topic| forum_topic_route(source_topic.id))
-        .collect::<Vec<_>>();
-    let retired_target_ids = source_topics
-        .iter()
-        .map(|source_topic| source_topic.id)
-        .collect::<Vec<_>>();
-    let url_updates = merge_locales
-        .into_iter()
-        .map(|locale| CanonicalUrlMutation {
-            target_kind: "forum_topic".to_string(),
-            target_id: target_topic.id,
-            locale: locale.clone(),
-            canonical_url: forum_topic_route(target_topic.id),
-            alias_urls: alias_urls.clone(),
-            retired_targets: retired_target_ids
-                .iter()
-                .copied()
-                .map(|target_id| RetiredCanonicalTarget {
-                    target_kind: "forum_topic".to_string(),
-                    target_id,
-                    locale: locale.clone(),
-                })
-                .collect(),
-        })
-        .collect();
+    // Routes move from the source topics to the target. Redirects that pointed
+    // at a source topic leave with it, its canonical route is purged in the
+    // locales it had, and every source route redirects to the target in every
+    // locale the merged thread has.
+    let target_canonical = forum_topic_route(target_topic.id);
+    for (source_topic_id, locales) in &source_locales_by_topic {
+        routes
+            .forum
+            .remove_redirects_to_target_in_tx(txn, tenant_id, actor_id, "forum_topic", *source_topic_id)
+            .await?;
+        routes
+            .forum
+            .purge_topic_canonical_in_tx(txn, tenant_id, actor_id, *source_topic_id, locales)
+            .await?;
+    }
+    for (source_topic_id, _) in &source_locales_by_topic {
+        for locale in &merge_locales {
+            routes
+                .forum
+                .record_redirect_in_tx(
+                    txn,
+                    tenant_id,
+                    actor_id,
+                    locale,
+                    &forum_topic_route(*source_topic_id),
+                    "forum_topic",
+                    target_topic.id,
+                    &target_canonical,
+                )
+                .await?;
+        }
+    }
 
     Ok(MergeTopicsOutput {
         target_topic_id: target_topic.id,
         source_topic_ids: source_ids,
         moved_comments: moved_count,
-        url_updates,
     })
 }
 

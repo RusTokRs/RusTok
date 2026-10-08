@@ -13,6 +13,7 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim()
 // boundary have independent readiness contracts and must not mask this hardening signal.
 const checks = [
   ['verify-seo-bulk-batch-reads.mjs', 'SEO bulk batching and bounded execution'],
+  ['verify-seo-bulk-cursor-pagination.mjs', 'SEO bulk keyset pagination'],
   ['verify-seo-diagnostics-batch-reads.mjs', 'SEO diagnostics batching'],
   ['verify-seo-sitemap-background-worker.mjs', 'SEO sitemap background worker'],
   ['verify-seo-index-repair-background-worker.mjs', 'SEO index repair background worker'],

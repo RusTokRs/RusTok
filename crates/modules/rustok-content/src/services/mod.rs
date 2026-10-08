@@ -1,10 +1,12 @@
-mod canonical_url_service;
+mod canonical_route_resolver;
 mod content_orchestration_service;
 
-pub use canonical_url_service::{CanonicalUrlService, ResolvedContentRoute};
+pub use canonical_route_resolver::{
+    CanonicalRouteResolver, ResolvedContentRoute, SharedCanonicalRouteResolver,
+};
+pub use canonical_route_resolver::normalize_route;
 pub use content_orchestration_service::{
-    CanonicalUrlMutation, ContentOrchestrationBridge, ContentOrchestrationService,
-    DemotePostToTopicInput, DemotePostToTopicOutput, MergeTopicsInput, MergeTopicsOutput,
-    OrchestrationResult, PromoteTopicToPostInput, PromoteTopicToPostOutput, RetiredCanonicalTarget,
-    SplitTopicInput, SplitTopicOutput,
+    ContentOrchestrationBridge, ContentOrchestrationService, DemotePostToTopicInput,
+    DemotePostToTopicOutput, MergeTopicsInput, MergeTopicsOutput, OrchestrationResult,
+    PromoteTopicToPostInput, PromoteTopicToPostOutput, SplitTopicInput, SplitTopicOutput,
 };

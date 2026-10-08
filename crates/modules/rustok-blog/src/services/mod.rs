@@ -17,7 +17,10 @@ pub use category_command::CategoryCommandService;
 pub use category_owner::CategoryService;
 pub use comment::CommentService;
 pub use comment_projection::BlogCommentProjectionHandler;
-pub use post::PostService;
+pub use post::{
+    BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner, CANONICAL_POST_ROUTE_LOCALE,
+    PostService, canonical_post_route,
+};
 pub(crate) use post::{is_post_visible_for_channel, load_post_subject_snapshot};
 pub use tag::TagService;
 pub use taxonomy_translation_owner::BlogTaxonomyTranslationOwner;

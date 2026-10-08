@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rustok_api::TenantContext;
 use rustok_content::resolve_by_locale_with_fallback;
-use rustok_seo_targets::{SeoTargetBulkListRequest, SeoTargetSlug};
+use rustok_seo_targets::{SeoBulkSummaryRecord, SeoTargetBulkPageRequest, SeoTargetSlug};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde_json::Value;
 use uuid::Uuid;
@@ -18,6 +18,11 @@ use super::{LoadedMeta, SeoService, TargetState, trimmed_option};
 const MAX_BULK_PAGE_SIZE: i32 = 100;
 const MAX_BULK_TARGETS: usize = 100_000;
 const BULK_META_BATCH_SIZE: usize = 256;
+/// Raw rows requested from a provider per call; also the walk batch size.
+const BULK_SCAN_BATCH: u64 = MAX_BULK_PAGE_SIZE as u64;
+/// Provider calls one page request may spend before it returns what it has, so a
+/// selective filter cannot hold the request open over the whole catalog.
+const MAX_BULK_SCAN_BATCHES: usize = 20;
 
 #[derive(Debug, Clone)]
 pub(super) struct BulkReadFilter {
@@ -51,39 +56,173 @@ pub(super) struct BulkReadRow {
     pub projection: BulkReadProjection,
 }
 
+#[derive(Debug)]
+struct BulkScan {
+    rows: Vec<BulkReadRow>,
+    /// Provider cursor to resume from; `None` when the scan is finished.
+    next_cursor: Option<String>,
+    /// Summaries the providers returned during this call.
+    scanned: usize,
+}
+
 impl SeoService {
+    /// Every matching row, walking all provider pages. Used by selection and export,
+    /// which need the whole set; the total is bounded by `MAX_BULK_TARGETS`.
     pub(super) async fn collect_bulk_read_rows(
         &self,
         tenant: &TenantContext,
         filter: &BulkReadFilter,
     ) -> SeoResult<Vec<BulkReadRow>> {
-        if !self.is_enabled(tenant.id).await? {
-            return Ok(Vec::new());
+        let mut rows = Vec::new();
+        let mut scanned_total = 0_usize;
+        let mut after: Option<String> = None;
+        loop {
+            let scan = self
+                .scan_bulk_read_rows(tenant, filter, after.as_deref(), BULK_SCAN_BATCH, usize::MAX)
+                .await?;
+            scanned_total += scan.scanned;
+            if scanned_total > MAX_BULK_TARGETS {
+                return Err(SeoError::validation(format!(
+                    "bulk selection exceeds the {MAX_BULK_TARGETS} target limit"
+                )));
+            }
+            rows.extend(scan.rows);
+            match scan.next_cursor {
+                None => return Ok(rows),
+                Some(next) if after.as_deref() == Some(next.as_str()) => {
+                    return Err(SeoError::validation(
+                        "SEO bulk scan returned a non-advancing cursor",
+                    ));
+                }
+                Some(next) => after = Some(next),
+            }
         }
+    }
 
-        let Some(provider) = self.registry.get(&filter.target_kind) else {
-            return Ok(Vec::new());
+    pub(super) async fn list_bulk_items_batched(
+        &self,
+        tenant: &TenantContext,
+        input: SeoBulkListInput,
+    ) -> SeoResult<SeoBulkPage> {
+        let per_page = input.per_page.clamp(1, MAX_BULK_PAGE_SIZE);
+        let filter = BulkReadFilter {
+            target_kind: input.target_kind,
+            locale: super::normalize_effective_locale(
+                input.locale.as_str(),
+                tenant.default_locale.as_str(),
+            )?,
+            query: input
+                .query
+                .map(|value| value.trim().to_ascii_lowercase())
+                .filter(|value| !value.is_empty()),
+            source: input.source.unwrap_or(SeoBulkSource::Any),
         };
-        let summaries = provider
-            .list_bulk_summaries(
-                &self.target_runtime(),
-                SeoTargetBulkListRequest {
-                    tenant_id: tenant.id,
-                    default_locale: tenant.default_locale.as_str(),
-                    locale: filter.locale.as_str(),
-                },
+        let scan = self
+            .scan_bulk_read_rows(
+                tenant,
+                &filter,
+                input.after.as_deref(),
+                per_page as u64,
+                MAX_BULK_SCAN_BATCHES,
             )
-            .await
-            .map_err(|error| {
-                SeoError::validation(format!(
-                    "SEO target provider `{}` failed to collect bulk summaries: {error}",
-                    filter.target_kind.as_str()
-                ))
-            })?;
-        if summaries.len() > MAX_BULK_TARGETS {
-            return Err(SeoError::validation(format!(
-                "bulk selection exceeds the {MAX_BULK_TARGETS} target limit"
-            )));
+            .await?;
+        let items = scan
+            .rows
+            .into_iter()
+            .map(|row| SeoBulkItem {
+                target_kind: filter.target_kind.clone(),
+                target_id: row.target_id,
+                locale: filter.locale.clone(),
+                effective_locale: row.projection.effective_locale,
+                label: row.label,
+                route: row.route,
+                source: row.projection.source,
+                title: row.projection.title,
+                description: row.projection.description,
+                canonical_url: row.projection.canonical_url,
+                noindex: row.projection.noindex,
+                nofollow: row.projection.nofollow,
+            })
+            .collect();
+
+        Ok(SeoBulkPage {
+            items,
+            next_cursor: scan.next_cursor,
+            per_page,
+        })
+    }
+
+    /// Scans provider pages from `after` until one batch yields rows, the provider is
+    /// exhausted, or `max_batches` calls were spent. Rows are never returned empty
+    /// while the provider has more, except when the batch budget runs out.
+    async fn scan_bulk_read_rows(
+        &self,
+        tenant: &TenantContext,
+        filter: &BulkReadFilter,
+        after: Option<&str>,
+        limit: u64,
+        max_batches: usize,
+    ) -> SeoResult<BulkScan> {
+        let finished = BulkScan {
+            rows: Vec::new(),
+            next_cursor: None,
+            scanned: 0,
+        };
+        if !self.is_enabled(tenant.id).await? {
+            return Ok(finished);
+        }
+        let Some(provider) = self.registry.get(&filter.target_kind) else {
+            return Ok(finished);
+        };
+        let runtime = self.target_runtime();
+
+        let mut cursor = after.map(str::to_string);
+        let mut scanned = 0_usize;
+        let mut batches = 0_usize;
+        loop {
+            let page = provider
+                .list_bulk_summaries_page(
+                    &runtime,
+                    SeoTargetBulkPageRequest {
+                        tenant_id: tenant.id,
+                        default_locale: tenant.default_locale.as_str(),
+                        locale: filter.locale.as_str(),
+                        after: cursor.as_deref(),
+                        limit,
+                    },
+                )
+                .await
+                .map_err(|error| {
+                    SeoError::validation(format!(
+                        "SEO target provider `{}` failed to collect bulk summaries: {error}",
+                        filter.target_kind.as_str()
+                    ))
+                })?;
+            batches += 1;
+            scanned += page.items.len();
+
+            let rows = self.bulk_rows_for_summaries(tenant, filter, page.items).await?;
+            if !rows.is_empty() || page.next_cursor.is_none() || batches >= max_batches {
+                return Ok(BulkScan {
+                    rows,
+                    next_cursor: page.next_cursor,
+                    scanned,
+                });
+            }
+            cursor = page.next_cursor;
+        }
+    }
+
+    /// Resolves projections for one provider batch and applies the source and query
+    /// filters. Rows dropped here still advance the provider cursor.
+    async fn bulk_rows_for_summaries(
+        &self,
+        tenant: &TenantContext,
+        filter: &BulkReadFilter,
+        summaries: Vec<SeoBulkSummaryRecord>,
+    ) -> SeoResult<Vec<BulkReadRow>> {
+        if summaries.is_empty() {
+            return Ok(Vec::new());
         }
         let target_ids = summaries
             .iter()
@@ -142,56 +281,6 @@ impl SeoService {
         }
 
         Ok(rows)
-    }
-
-    pub(super) async fn list_bulk_items_batched(
-        &self,
-        tenant: &TenantContext,
-        input: SeoBulkListInput,
-    ) -> SeoResult<SeoBulkPage> {
-        let page = input.page.max(1);
-        let per_page = input.per_page.clamp(1, MAX_BULK_PAGE_SIZE);
-        let filter = BulkReadFilter {
-            target_kind: input.target_kind,
-            locale: super::normalize_effective_locale(
-                input.locale.as_str(),
-                tenant.default_locale.as_str(),
-            )?,
-            query: input
-                .query
-                .map(|value| value.trim().to_ascii_lowercase())
-                .filter(|value| !value.is_empty()),
-            source: input.source.unwrap_or(SeoBulkSource::Any),
-        };
-        let rows = self.collect_bulk_read_rows(tenant, &filter).await?;
-        let total = rows.len() as i32;
-        let offset = ((page - 1) * per_page) as usize;
-        let items = rows
-            .into_iter()
-            .skip(offset)
-            .take(per_page as usize)
-            .map(|row| SeoBulkItem {
-                target_kind: filter.target_kind.clone(),
-                target_id: row.target_id,
-                locale: filter.locale.clone(),
-                effective_locale: row.projection.effective_locale,
-                label: row.label,
-                route: row.route,
-                source: row.projection.source,
-                title: row.projection.title,
-                description: row.projection.description,
-                canonical_url: row.projection.canonical_url,
-                noindex: row.projection.noindex,
-                nofollow: row.projection.nofollow,
-            })
-            .collect();
-
-        Ok(SeoBulkPage {
-            items,
-            total,
-            page,
-            per_page,
-        })
     }
 
     async fn load_bulk_explicit_meta_batches(

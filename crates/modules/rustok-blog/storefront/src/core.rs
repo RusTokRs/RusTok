@@ -96,18 +96,6 @@ pub fn count_label(total: u64, suffix: &str) -> String {
     format!("{total} {suffix}")
 }
 
-pub fn published_posts_total_label(total: u64, suffix: &str) -> String {
-    count_label(total, suffix)
-}
-
-pub fn published_posts_header_view(
-    title: String,
-    total: u64,
-    total_suffix: &str,
-) -> (String, String) {
-    (title, published_posts_total_label(total, total_suffix))
-}
-
 pub fn selected_post_empty_state_view(title: String, body: String) -> (String, String) {
     (title, body)
 }
@@ -147,11 +135,6 @@ pub struct PublishedPostCardView {
     pub locale_meta: String,
 }
 
-pub struct PublishedPostsHeaderView {
-    pub title: String,
-    pub total_label: String,
-}
-
 pub struct SelectedPostEmptyStateView {
     pub title: String,
     pub body: String,
@@ -174,15 +157,6 @@ pub struct PostLinkView {
 pub enum PublishedPostsReadyView<T> {
     Items(Vec<T>),
     Empty(PublishedPostsEmptyStateView),
-}
-
-pub fn published_posts_header_typed_view(
-    title: String,
-    total: u64,
-    total_suffix: &str,
-) -> PublishedPostsHeaderView {
-    let (title, total_label) = published_posts_header_view(title, total, total_suffix);
-    PublishedPostsHeaderView { title, total_label }
 }
 
 pub fn selected_post_empty_state_typed_view(

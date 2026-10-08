@@ -62,6 +62,7 @@ reqwest = { workspace = true, optional = true }
 [dev-dependencies]
 rustok-blog.workspace = true
 rustok-forum.workspace = true
+rustok-content-orchestration = { workspace = true, features = ["mod-content", "mod-blog", "mod-forum", "mod-comments"] }
 rustok-outbox = { workspace = true, features = ["test-transport-fallback"] }
 rustok-pages.workspace = true
 rustok-product.workspace = true

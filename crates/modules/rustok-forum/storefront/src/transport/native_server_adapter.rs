@@ -6,7 +6,7 @@ use crate::model::StorefrontForumData;
 #[cfg(feature = "ssr")]
 use crate::model::{
     ForumCategoryConnection, ForumCategoryListItem, ForumMemberCard, ForumMemberProfileSummary,
-    ForumMemberStats, ForumReplyConnection, ForumReplyDetail, ForumTopicConnection,
+    ForumMemberStats, ForumReplyDetail, ForumReplyPage, ForumTopicPage,
     ForumTopicDetail, ForumTopicListItem,
 };
 
@@ -202,11 +202,12 @@ async fn storefront_forum_native(
             category_id: resolved_category_id,
             status: None,
             locale: Some(effective_locale.clone()),
-            page: 1,
+            after: None,
             per_page: 20,
         };
 
-        let (topic_items, topics_total, first_topic_id, read_state_available) = if let Some(auth) =
+        let (topic_items, topics_next_cursor, first_topic_id, read_state_available) =
+            if let Some(auth) =
             auth.as_ref().filter(|auth| {
                 has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_LIST])
             }) {
@@ -237,7 +238,7 @@ async fn storefront_forum_native(
                     .into_iter()
                     .map(map_unread_topic)
                     .collect::<Vec<_>>(),
-                page.total,
+                page.next_cursor,
                 first_topic_id,
                 true,
             )
@@ -257,7 +258,7 @@ async fn storefront_forum_native(
                     .into_iter()
                     .map(map_topic_list_item)
                     .collect::<Vec<_>>(),
-                page.total,
+                page.next_cursor,
                 first_topic_id,
                 false,
             )
@@ -283,7 +284,7 @@ async fn storefront_forum_native(
             && selected_topic.is_some()
         {
             let approved_statuses = [ReplyStatus::Approved];
-            let (items, total) = if let Some(auth) = auth.as_ref().filter(|auth| {
+            let page = if let Some(auth) = auth.as_ref().filter(|auth| {
                 has_any_effective_permission(&auth.permissions, &[Permission::FORUM_REPLIES_LIST])
             }) {
                 let security = SecurityContext::from_permission_snapshot(
@@ -307,7 +308,7 @@ async fn storefront_forum_native(
                         topic_id,
                         ListRepliesFilter {
                             locale: Some(effective_locale.clone()),
-                            page: 1,
+                            after: None,
                             per_page: 20,
                         },
                         Some(tenant.default_locale.as_str()),
@@ -322,7 +323,7 @@ async fn storefront_forum_native(
                         topic_id,
                         ListRepliesFilter {
                             locale: Some(effective_locale.clone()),
-                            page: 1,
+                            after: None,
                             per_page: 20,
                         },
                         Some(tenant.default_locale.as_str()),
@@ -332,9 +333,9 @@ async fn storefront_forum_native(
                     .await
                     .map_err(server_error)?
             };
-            ForumReplyConnection {
-                items: items.into_iter().map(map_reply).collect(),
-                total,
+            ForumReplyPage {
+                items: page.items.into_iter().map(map_reply).collect(),
+                next_cursor: page.next_cursor,
             }
         } else {
             empty_replies()
@@ -371,9 +372,9 @@ async fn storefront_forum_native(
                 items: categories.into_iter().map(map_category).collect(),
                 total: categories_total,
             },
-            topics: ForumTopicConnection {
+            topics: ForumTopicPage {
                 items: topic_items,
-                total: topics_total,
+                next_cursor: topics_next_cursor,
             },
             selected_category_id: resolved_category_id.map(|id| id.to_string()),
             selected_topic_id: resolved_topic_id.map(|id| id.to_string()),
@@ -632,7 +633,7 @@ fn storefront_member_card_audience(
 fn storefront_author_ids(
     topics: &[ForumTopicListItem],
     selected_topic: Option<&ForumTopicDetail>,
-    replies: &ForumReplyConnection,
+    replies: &ForumReplyPage,
 ) -> Result<Vec<uuid::Uuid>, ServerFnError> {
     let mut seen = std::collections::HashSet::new();
     let mut user_ids = Vec::new();
@@ -781,10 +782,10 @@ fn map_reply(value: rustok_forum::ReplyResponse) -> ForumReplyDetail {
 }
 
 #[cfg(feature = "ssr")]
-fn empty_replies() -> ForumReplyConnection {
-    ForumReplyConnection {
+fn empty_replies() -> ForumReplyPage {
+    ForumReplyPage {
         items: Vec::new(),
-        total: 0,
+        next_cursor: None,
     }
 }
 

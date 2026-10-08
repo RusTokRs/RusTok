@@ -20,16 +20,16 @@ const contract = JSON.parse(
 requireText(owner, 'pub struct ForumTopicAudienceListService', 'list owner');
 requireText(owner, 'FORUM_TOPIC_AUDIENCE_SCAN_PAGE_SIZE', 'bounded scan page');
 requireText(owner, '.is_topic_visible(tenant_id, topic.id, channel_slug, &viewer)', 'exact audience decision');
-requireText(owner, 'visible_total >= requested_start', 'post-decision pagination');
+requireText(owner, 'items.len() == per_page', 'post-decision pagination');
 requireText(readState, 'list_topics_with_unread_audience_visible', 'exact unread owner method');
-requireText(readState, 'page.items, page.total', 'shared exact page and total');
+requireText(readState, 'page.items, page.next_cursor', 'shared exact page and cursor');
 requireText(graphql, 'ForumTopicReadOperation::TopicList', 'GraphQL topic-list context');
 requireText(graphql, '.list_topics_with_unread_audience_visible(', 'GraphQL exact unread composition');
 requireText(transport, 'TopicList', 'topic-list operation identity');
 
 if (contract.task !== 'FORUM-20BD') throw new Error('unexpected task');
-if (!contract.pagination_boundary.items_and_total_share_allowed_sequence) {
-  throw new Error('contract must lock exact items/total sequence');
+if (!contract.pagination_boundary.items_and_cursor_share_allowed_sequence) {
+  throw new Error('contract must lock exact items/cursor sequence');
 }
 if (!contract.pagination_boundary.graphql_unread_query_uses_exact_owner) {
   throw new Error('contract must lock GraphQL unread composition');

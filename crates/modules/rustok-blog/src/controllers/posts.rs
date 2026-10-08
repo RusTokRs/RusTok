@@ -69,7 +69,7 @@ pub async fn list_posts(
         "blog.list_posts",
         "service_list",
         list_started_at.elapsed().as_secs_f64(),
-        result.total,
+        result.items.len() as u64,
     );
 
     metrics::record_read_path_budget(

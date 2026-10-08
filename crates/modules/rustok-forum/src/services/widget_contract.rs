@@ -158,7 +158,7 @@ fn validate_reply_stream_props(
     let object = expect_object(props, "props", issues);
     sanitize_unknown_fields(
         object,
-        &["topic_id", "page", "per_page", "approved_only"],
+        &["topic_id", "after", "per_page", "approved_only"],
         issues,
     );
 
@@ -169,9 +169,44 @@ fn validate_reply_stream_props(
         issues,
         "topic_id must be a valid UUID",
     );
-    validate_u64_with_bounds(object, "page", 1, 100_000, 1, normalized, issues);
+    validate_reply_cursor(object, normalized, issues);
     validate_u64_with_bounds(object, "per_page", 1, 100, 20, normalized, issues);
     validate_bool(object, "approved_only", true, normalized, issues);
+}
+
+/// Opaque reply-list cursor. Blank values are dropped; anything that does not
+/// decode as a `ReplyCursor` is rejected.
+fn validate_reply_cursor(
+    object: Option<&Map<String, Value>>,
+    normalized: &mut Map<String, Value>,
+    issues: &mut Vec<ForumWidgetValidationIssue>,
+) {
+    let Some(object) = object else {
+        return;
+    };
+    match object.get("after") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(raw)) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return;
+            }
+            if crate::dto::ReplyCursor::decode(trimmed).is_err() {
+                issues.push(validation_issue(
+                    "after",
+                    "invalid_cursor",
+                    "Field must be a reply list cursor",
+                ));
+            } else {
+                normalized.insert("after".to_string(), Value::String(trimmed.to_string()));
+            }
+        }
+        Some(_) => issues.push(validation_issue(
+            "after",
+            "invalid_type",
+            "Field must be a string",
+        )),
+    }
 }
 
 fn expect_object<'a>(
@@ -560,7 +595,7 @@ fn reply_stream_catalog_item() -> ForumWidgetCatalogItem {
             "required": ["topic_id"],
             "properties": {
                 "topic_id": { "type": "string", "format": "uuid" },
-                "page": { "type": "integer", "minimum": 1, "maximum": 100000, "default": 1 },
+                "after": { "type": "string", "maxLength": 512 },
                 "per_page": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 },
                 "approved_only": { "type": "boolean", "default": true }
             },

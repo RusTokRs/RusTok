@@ -205,6 +205,17 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         static_settings_reader,
     ));
 
+    // Canonical route resolution is owned by content orchestration, which
+    // dispatches to Blog and Forum owner tables. SEO receives the port here.
+    #[cfg(all(
+        feature = "mod-content",
+        feature = "mod-blog",
+        feature = "mod-forum"
+    ))]
+    extensions.insert(rustok_content::SharedCanonicalRouteResolver(Arc::new(
+        rustok_content_orchestration::OwnerCanonicalRouteResolver::new(db.clone()),
+    )));
+
     #[cfg(all(feature = "mod-seo", feature = "mod-media"))]
     if let Some(storage) = runtime_ctx.shared_get::<rustok_storage::StorageRuntime>() {
         let provider: Arc<dyn rustok_media::MediaAssetReadPort> =

@@ -2,7 +2,7 @@ use url::Url;
 use uuid::Uuid;
 
 use rustok_api::TenantContext;
-use rustok_content::{CanonicalUrlService, resolve_by_locale_with_fallback};
+use rustok_content::resolve_by_locale_with_fallback;
 use rustok_seo_targets::{
     SeoRouteMatchRecord, SeoTargetCapabilityKind, SeoTargetRouteResolveRequest, SeoTargetSlug,
 };
@@ -111,12 +111,12 @@ impl SeoService {
             }));
         }
 
-        let canonical_service = CanonicalUrlService::new(self.db.clone());
         if self
             .load_settings(tenant.id)
             .await?
             .submodule_canonical_enabled
-            && let Some(resolved) = canonical_service
+            && let Some(resolved) = self
+                .canonical_route_resolver()?
                 .resolve_route(tenant.id, locale, route)
                 .await
                 .map_err(|err| SeoError::validation(err.to_string()))?
@@ -179,12 +179,12 @@ impl SeoService {
         route: &str,
         channel_slug: Option<&str>,
     ) -> SeoResult<Option<SeoPageContext>> {
-        let canonical_service = CanonicalUrlService::new(self.db.clone());
         if self
             .load_settings(tenant.id)
             .await?
             .submodule_canonical_enabled
-            && let Some(resolved) = canonical_service
+            && let Some(resolved) = self
+                .canonical_route_resolver()?
                 .resolve_route(tenant.id, locale, route)
                 .await
                 .map_err(|err| SeoError::validation(err.to_string()))?
@@ -972,42 +972,6 @@ mod tests {
         .expect("create meta_translations table");
     }
 
-    async fn seed_content_routing_tables(db: &DatabaseConnection) {
-        db.execute_raw(Statement::from_string(
-            DbBackend::Sqlite,
-            "CREATE TABLE content_canonical_urls (
-                id TEXT PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                target_kind TEXT NOT NULL,
-                target_id TEXT NOT NULL,
-                locale TEXT NOT NULL,
-                canonical_url TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )"
-            .to_string(),
-        ))
-        .await
-        .expect("create content_canonical_urls table");
-        db.execute_raw(Statement::from_string(
-            DbBackend::Sqlite,
-            "CREATE TABLE content_url_aliases (
-                id TEXT PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                target_kind TEXT NOT NULL,
-                target_id TEXT NOT NULL,
-                locale TEXT NOT NULL,
-                alias_url TEXT NOT NULL,
-                canonical_url TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )"
-            .to_string(),
-        ))
-        .await
-        .expect("create content_url_aliases table");
-    }
-
     async fn enable_module(db: &DatabaseConnection, tenant_id: Uuid, module_slug: &str) {
         let now = chrono::Utc::now();
         tenant_module::ActiveModel {
@@ -1093,7 +1057,6 @@ mod tests {
         let db = test_db().await;
         seed_tenant_modules_table(&db).await;
         seed_meta_tables(&db).await;
-        seed_content_routing_tables(&db).await;
         run_seo_migrations(&db).await;
         run_taxonomy_migrations(&db).await;
         run_forum_migrations(&db).await;
@@ -1156,20 +1119,18 @@ mod tests {
             .expect("forum topic should be created");
 
         let now = chrono::Utc::now().fixed_offset();
-        rustok_content::entities::url_alias::ActiveModel {
-            id: Set(Uuid::new_v4()),
+        rustok_forum::entities::forum_topic_route::ActiveModel {
             tenant_id: Set(tenant_id),
+            locale: Set("en".to_string()),
+            source_route: Set("/modules/forum?topic=legacy".to_string()),
             target_kind: Set("forum_topic".to_string()),
             target_id: Set(topic.id),
-            locale: Set("en".to_string()),
-            alias_url: Set("/modules/forum?topic=legacy".to_string()),
-            canonical_url: Set(format!("/modules/forum?topic={}", topic.id)),
             created_at: Set(now),
             updated_at: Set(now),
         }
         .insert(&db)
         .await
-        .expect("legacy content alias should be inserted");
+        .expect("legacy forum topic redirect should be inserted");
 
         let service = SeoService::with_builtin_registry(db.clone(), event_bus);
         assert!(
@@ -1263,7 +1224,6 @@ mod tests {
         let db = test_db().await;
         seed_tenant_modules_table(&db).await;
         seed_meta_tables(&db).await;
-        seed_content_routing_tables(&db).await;
         run_seo_migrations(&db).await;
         run_taxonomy_migrations(&db).await;
         run_forum_migrations(&db).await;

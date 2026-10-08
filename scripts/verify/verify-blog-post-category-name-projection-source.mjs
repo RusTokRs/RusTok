@@ -152,7 +152,7 @@ for (const marker of [
   'get_post_with_locale_fallback(',
   'Some("de")',
   'list_posts_with_locale_fallback(',
-  'list_public_visible_with_locale_fallback(',
+  'list_public_visible_keyset(',
   'detail.category_name.as_deref()',
   'listed.items[0].category_name.as_deref()',
   'public.items[0].category_name.as_deref()',

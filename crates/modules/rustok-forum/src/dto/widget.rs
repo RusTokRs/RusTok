@@ -108,7 +108,8 @@ pub struct ForumTopicListWidgetPreview {
 pub struct ForumTopicDetailWidgetPreview {
     pub topic: TopicResponse,
     pub replies: Vec<ReplyResponse>,
-    pub replies_total: u64,
+    /// Cursor for the next reply page; present only when another page exists.
+    pub next_cursor: Option<String>,
     pub include_replies: bool,
 }
 
@@ -116,8 +117,8 @@ pub struct ForumTopicDetailWidgetPreview {
 pub struct ForumReplyStreamWidgetPreview {
     pub topic_id: String,
     pub items: Vec<ReplyResponse>,
-    pub total: u64,
-    pub page: u64,
+    /// Cursor for the next reply page; present only when another page exists.
+    pub next_cursor: Option<String>,
     pub per_page: u64,
     pub approved_only: bool,
 }

@@ -1,6 +1,6 @@
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, Select, Set, TransactionTrait,
+    Order, QueryFilter, QueryOrder, Select, Set, TransactionTrait,
     sea_query::{Query, SelectStatement},
 };
 use std::collections::HashMap;
@@ -16,7 +16,7 @@ struct PostTranslationUpsertInput {
     now: chrono::DateTime<chrono::Utc>,
 }
 
-use rustok_api::{Action, Patch, Resource};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Patch, Resource};
 use rustok_channel::ChannelService;
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
@@ -27,8 +27,9 @@ use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
 
 use crate::dto::{
-    CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder,
-    PostSummary, UpdatePostInput,
+    AdminPostCursor, CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder,
+    PostSummary, PublicPostPage, PublicPostsPageQuery, PublishedPostCursor,
+    PublishedPostScanPage, UpdatePostInput,
 };
 use crate::entities::{
     blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation,
@@ -64,6 +65,9 @@ struct ResolvedTranslationRecord<'a> {
 mod commands;
 mod queries;
 mod repository;
+mod routes;
+
+pub use routes::{BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner};
 
 pub(crate) use repository::load_post_subject_snapshot;
 
@@ -106,32 +110,73 @@ fn resolve_translation_record<'a>(
     }
 }
 
-fn apply_post_sort(
-    mut select: sea_orm::Select<blog_post::Entity>,
-    query: &PostListQuery,
-) -> sea_orm::Select<blog_post::Entity> {
-    let ascending = matches!(query.sort_order.unwrap_or_default(), PostSortOrder::Asc);
-    let field = query.sort_by.unwrap_or_default();
-
-    macro_rules! order {
-        ($column:expr) => {{
-            if ascending {
-                select = select.order_by_asc($column);
-                select = select.order_by_asc(blog_post::Column::Id);
-            } else {
-                select = select.order_by_desc($column);
-                select = select.order_by_desc(blog_post::Column::Id);
-            }
-        }};
-    }
-
+fn admin_post_sort_column(field: PostSortField) -> blog_post::Column {
     match field {
-        PostSortField::PublishedAt => order!(blog_post::Column::PublishedAt),
-        PostSortField::UpdatedAt => order!(blog_post::Column::UpdatedAt),
-        PostSortField::CreatedAt => order!(blog_post::Column::CreatedAt),
+        PostSortField::PublishedAt => blog_post::Column::PublishedAt,
+        PostSortField::UpdatedAt => blog_post::Column::UpdatedAt,
+        PostSortField::CreatedAt => blog_post::Column::CreatedAt,
     }
+}
 
+fn admin_post_sort_value(
+    post: &blog_post::Model,
+    field: PostSortField,
+) -> Option<chrono::DateTime<chrono::FixedOffset>> {
+    match field {
+        PostSortField::PublishedAt => post.published_at,
+        PostSortField::UpdatedAt => Some(post.updated_at),
+        PostSortField::CreatedAt => Some(post.created_at),
+    }
+}
+
+/// Orders an admin list by `(sort column IS NULL, sort column, id)` in the requested
+/// direction. NULL sort values always come last, on every database.
+fn apply_admin_post_order(
+    select: Select<blog_post::Entity>,
+    sort_by: PostSortField,
+    sort_order: PostSortOrder,
+) -> Select<blog_post::Entity> {
+    let order = match sort_order {
+        PostSortOrder::Asc => Order::Asc,
+        PostSortOrder::Desc => Order::Desc,
+    };
     select
+        .order_by(admin_post_sort_column(sort_by).is_null(), Order::Asc)
+        .order_by(admin_post_sort_column(sort_by), order.clone())
+        .order_by(blog_post::Column::Id, order)
+}
+
+/// Restricts an admin list to rows strictly after `after` in the order built by
+/// `apply_admin_post_order`.
+fn apply_admin_post_keyset(
+    select: Select<blog_post::Entity>,
+    after: AdminPostCursor,
+) -> Select<blog_post::Entity> {
+    let column = admin_post_sort_column(after.sort_by);
+    let descending = matches!(after.sort_order, PostSortOrder::Desc);
+    let id_beyond = if descending {
+        blog_post::Column::Id.lt(after.id)
+    } else {
+        blog_post::Column::Id.gt(after.id)
+    };
+    let condition = match after.value {
+        // Non-null cursor: later non-null values, the same value with a later id,
+        // or any NULL-valued row (NULLs follow every non-null value).
+        Some(value) => {
+            let value_beyond = if descending {
+                column.lt(value)
+            } else {
+                column.gt(value)
+            };
+            Condition::any()
+                .add(value_beyond)
+                .add(Condition::all().add(column.eq(value)).add(id_beyond))
+                .add(column.is_null())
+        }
+        // NULL cursor: only NULL-valued rows with a later id remain.
+        None => Condition::all().add(column.is_null()).add(id_beyond),
+    };
+    select.filter(condition)
 }
 
 fn validate_title(title: &str) -> BlogResult<()> {
@@ -173,23 +218,86 @@ fn validate_post_field_length(
     Ok(())
 }
 
+/// Canonical-route `object_type` used by Blog posts in the shared
+/// `canonical_url` / `url_alias` registry owned by `rustok-content`.
+pub(crate) const BLOG_POST_TARGET_KIND: &str = "blog_post";
+
+/// Locale under which every Blog post route is stored. Blog slugs are global
+/// canonical identifiers (see `DECISIONS/2026-03-28-multilingual-content-contract.md`),
+/// so the route does not vary by translation locale. `resolve_route` falls back
+/// to the platform locale for every requested locale, so the route resolves
+/// for any language.
+pub const CANONICAL_POST_ROUTE_LOCALE: &str = PLATFORM_FALLBACK_LOCALE;
+
+/// Canonical public route of a Blog post. Shared by Blog, content orchestration
+/// and SEO target projection, so there is exactly one definition of the route.
+/// The slug is already a route key (`[a-z0-9-]`), so it needs no escaping.
+pub fn canonical_post_route(slug: &str) -> String {
+    format!("/modules/blog?slug={slug}")
+}
+
 fn normalize_locale(locale: &str) -> BlogResult<String> {
     normalize_locale_code(locale).ok_or_else(|| BlogError::validation("Invalid locale"))
 }
 
+/// Normalizes a blog post slug through the shared Taxonomy route-key contract.
+///
+/// Blog post slugs are global canonical identifiers (see
+/// `DECISIONS/2026-03-28-multilingual-content-contract.md`), so the same
+/// normalizer is used for every locale. Non-ASCII titles are transliterated
+/// instead of being dropped. Returns an empty string when nothing usable remains.
 fn normalize_slug(slug: &str) -> String {
-    let mut normalized = String::with_capacity(slug.len());
-    let mut previous_dash = false;
-    for ch in slug.chars().flat_map(|ch| ch.to_lowercase()) {
-        if ch.is_ascii_alphanumeric() {
-            normalized.push(ch);
-            previous_dash = false;
-        } else if !previous_dash {
-            normalized.push('-');
-            previous_dash = true;
-        }
+    rustok_taxonomy::normalize_term_route_key(slug).unwrap_or_default()
+}
+
+const MAX_FEATURED_IMAGE_URL_CHARS: usize = 2048;
+
+/// Validates a featured image reference.
+///
+/// Accepts an absolute `http`/`https` URL or a root-relative path (`/...`,
+/// not protocol-relative `//...`). Any other scheme (`javascript:`, `data:`,
+/// `file:`, ...) is rejected so that the value is safe to render in `<img src>`
+/// and in feed/Open Graph metadata.
+fn validate_featured_image_url(url: &str) -> BlogResult<()> {
+    if url.trim() != url || url.is_empty() {
+        return Err(BlogError::validation(
+            "Featured image URL must be a non-empty URL without surrounding whitespace",
+        ));
     }
-    normalized.trim_matches('-').to_string()
+    if url.chars().count() > MAX_FEATURED_IMAGE_URL_CHARS {
+        return Err(BlogError::validation(format!(
+            "Featured image URL cannot exceed {MAX_FEATURED_IMAGE_URL_CHARS} characters"
+        )));
+    }
+    if url.chars().any(char::is_control) {
+        return Err(BlogError::validation(
+            "Featured image URL cannot contain control characters",
+        ));
+    }
+    if url.starts_with('/') {
+        if url.starts_with("//") {
+            return Err(BlogError::validation(
+                "Featured image URL cannot be protocol-relative",
+            ));
+        }
+        return Ok(());
+    }
+    let parsed = url::Url::parse(url).map_err(|_| {
+        BlogError::validation("Featured image URL must be an absolute or root-relative URL")
+    })?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(()),
+        _ => Err(BlogError::validation(
+            "Featured image URL must use http or https",
+        )),
+    }
+}
+
+fn validate_optional_featured_image_url(url: Option<&str>) -> BlogResult<()> {
+    if let Some(url) = url {
+        validate_featured_image_url(url)?;
+    }
+    Ok(())
 }
 
 const RESERVED_POST_METADATA_KEYS: &[&str] = &[

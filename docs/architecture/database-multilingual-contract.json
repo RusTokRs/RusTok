@@ -260,8 +260,6 @@
             "ALTER TABLE bodies",
             "ALTER TABLE category_translations",
             "ALTER TABLE meta_translations",
-            "ALTER TABLE content_canonical_urls",
-            "ALTER TABLE content_url_aliases",
             "ALTER COLUMN locale TYPE VARCHAR(32)"
           ]
         },

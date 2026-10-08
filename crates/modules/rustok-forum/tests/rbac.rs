@@ -189,7 +189,7 @@ async fn customer_permissions_are_enforced_in_forum_services() {
         .expect_err("customer should not delete replies");
     assert!(matches!(denied_reply_delete, ForumError::Forbidden(_)));
 
-    let (topics, total) = topic_service
+    let page = topic_service
         .list(
             tenant_id,
             customer,
@@ -197,13 +197,14 @@ async fn customer_permissions_are_enforced_in_forum_services() {
                 category_id: Some(category.id),
                 status: None,
                 locale: Some("en".to_string()),
-                page: 1,
+                after: None,
                 per_page: 20,
             },
         )
         .await
         .expect("customer list should still work");
-    assert_eq!(total, 1);
+    let topics = page.items;
+    assert_eq!(topics.len(), 1);
     assert_eq!(topics.len(), 1);
 }
 

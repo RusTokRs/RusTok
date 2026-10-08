@@ -37,12 +37,9 @@ tables safely. Rollback is safe only when no in-flight orchestration operations 
 
 ## Canonical URL collision and reindex drift
 
-`ContentOrchestrationService` must reject cross-target route ownership conflicts before it mutates `content_canonical_urls`, `content_url_aliases`, or publishes outbox events. Treat either of these validation errors as a route ownership incident, not as a DB uniqueness failure:
+Owner route services (`BlogPostRouteOwner`, `ForumTopicRouteOwner`) write `blog_post_routes` and `forum_topic_routes` inside the conversion transaction. A route that is already taken by another live target is a route ownership incident, not a DB uniqueness failure. Canonical routes are derived from owner rows, so there is no separate canonical table to conflict with.
 
-- `canonical_url` already belongs to another target or collides with another target alias.
-- `alias_url` would shadow another target canonical URL.
-
-**Recovery:** choose a new canonical route or retire the previous target through the typed bridge output (`retired_targets`) so the old canonical can be converted into an alias for the new target atomically. After correction, replay the orchestration command with the same idempotency key only if no orchestration record was persisted; otherwise issue a new audited correction operation and trigger the affected domain reindex flow.
+**Recovery:** choose a new slug or retire the previous target's redirect through its owner service so the old route becomes a redirect to the new target inside the same transaction. After correction, replay the orchestration command with the same idempotency key only if no orchestration record was persisted; otherwise issue a new audited correction operation and trigger the affected domain reindex flow.
 
 ## Reindex procedure
 

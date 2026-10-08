@@ -184,7 +184,7 @@ async fn test_starter_engine_import_default_blueprint_and_verify_storefront_visi
 
     // 3. Verify Forum Topics are listed
     let topic_service = TopicService::new(db.clone(), event_bus.clone());
-    let (topics, total) = topic_service
+    let page = topic_service
         .list(
             tenant_id,
             SecurityContext::system(),
@@ -194,8 +194,8 @@ async fn test_starter_engine_import_default_blueprint_and_verify_storefront_visi
             },
         )
         .await?;
-    assert_eq!(total, 4);
-    assert_eq!(topics.len(), 4);
+    assert_eq!(page.items.len(), 4);
+    assert!(page.next_cursor.is_none());
 
     // 4. Verify Navigation Menu is bound to default channel and active
     let binding_service = MenuBindingService::new(db.clone());

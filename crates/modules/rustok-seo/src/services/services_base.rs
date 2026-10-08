@@ -136,6 +136,7 @@ pub(crate) struct SeoService {
     registry: Arc<SeoTargetRegistry>,
     media_asset_read_port: Option<Arc<dyn MediaAssetReadPort>>,
     static_settings_reader: Option<SharedStaticModuleSettingsReader>,
+    canonical_routes: Option<Arc<dyn rustok_content::CanonicalRouteResolver>>,
 }
 
 #[derive(Clone)]
@@ -186,6 +187,7 @@ impl SeoService {
             registry,
             media_asset_read_port: None,
             static_settings_reader: None,
+            canonical_routes: None,
         }
     }
 
@@ -202,6 +204,24 @@ impl SeoService {
         self
     }
 
+    /// Injects the canonical route resolver owned by content orchestration.
+    /// SEO never queries Blog or Forum route tables itself.
+    pub fn with_canonical_route_resolver(
+        mut self,
+        resolver: Arc<dyn rustok_content::CanonicalRouteResolver>,
+    ) -> Self {
+        self.canonical_routes = Some(resolver);
+        self
+    }
+
+    pub(crate) fn canonical_route_resolver(
+        &self,
+    ) -> SeoResult<Arc<dyn rustok_content::CanonicalRouteResolver>> {
+        self.canonical_routes
+            .clone()
+            .ok_or_else(|| SeoError::configuration("Canonical route resolver is not injected"))
+    }
+
     pub fn from_runtime_extensions(
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
@@ -215,8 +235,15 @@ impl SeoService {
             .ok_or_else(|| {
                 SeoError::configuration("SEO static settings reader is not initialized")
             })?;
+        let canonical_routes = extensions
+            .get::<rustok_content::SharedCanonicalRouteResolver>()
+            .cloned()
+            .ok_or_else(|| {
+                SeoError::configuration("Canonical route resolver is not initialized")
+            })?;
         let service = Self::new(db, event_bus, registry)
-            .with_static_settings_reader(settings_reader);
+            .with_static_settings_reader(settings_reader)
+            .with_canonical_route_resolver(canonical_routes.0);
         if let Some(provider) = extensions.get::<SeoMediaAssetReadProvider>() {
             Ok(service.with_media_asset_read_port(provider.port()))
         } else {
@@ -232,8 +259,12 @@ impl SeoService {
         let reader = SharedStaticModuleSettingsReader(Arc::new(TestStaticSettingsReader {
             db: db.clone(),
         }));
+        let resolver = Arc::new(rustok_content_orchestration::OwnerCanonicalRouteResolver::new(
+            db.clone(),
+        ));
         Self::new(db, event_bus, built_in_target_registry())
             .with_static_settings_reader(reader)
+            .with_canonical_route_resolver(resolver)
     }
 
     #[cfg(test)]

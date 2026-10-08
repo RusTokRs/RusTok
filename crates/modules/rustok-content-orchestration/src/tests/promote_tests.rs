@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rustok_api::RichTextDocument;
 use rustok_blog::{blog_post, blog_post_tag, blog_post_translation};
 use rustok_comments::{comment, comment_thread};
-use rustok_content::{CanonicalUrlService, ContentOrchestrationService, PromoteTopicToPostInput};
+use rustok_content::{CanonicalRouteResolver, ContentOrchestrationService, PromoteTopicToPostInput};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ReplyService,
     TopicService, forum_category, forum_topic,
@@ -12,6 +12,7 @@ use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
+use crate::OwnerCanonicalRouteResolver;
 use crate::ServerContentOrchestrationBridge;
 use crate::tests::helpers::{
     admin_security, ensure_conversion_schema, insert_test_actor, setup_conversion_test_db,
@@ -196,7 +197,7 @@ async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
     assert_eq!(category.topic_count, 0);
     assert_eq!(category.reply_count, 0);
 
-    let canonical = CanonicalUrlService::new(db.clone());
+    let canonical = OwnerCanonicalRouteResolver::new(db.clone());
     let alias_resolution = canonical
         .resolve_route(
             tenant_id,

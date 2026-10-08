@@ -24,13 +24,15 @@ pub async fn fetch_posts(
     token: Option<String>,
     tenant_slug: Option<String>,
     locale: Option<String>,
+    after: Option<String>,
 ) -> Result<BlogPostList, ApiError> {
     let native_locale = locale.clone();
+    let native_after = after.clone();
     execute_selected_transport(
         "blog/admin/posts",
         selected_transport_path(),
-        move || native_server_adapter::fetch_posts(native_locale),
-        move || graphql_adapter::fetch_posts(token, tenant_slug, locale),
+        move || native_server_adapter::fetch_posts(native_locale, native_after),
+        move || graphql_adapter::fetch_posts(token, tenant_slug, locale, after),
     )
     .await
 }

@@ -152,6 +152,45 @@ copy must use the canonical Taxonomy owner contract.
   required `TransactionalEventBus` keeps owner mutation and Search reindex
   publication in the same transaction.
 
+## Publication and URL contract
+
+- Post slugs are global canonical identifiers, not locale-aware. They are
+  normalized through the shared Taxonomy route-key primitive, so non-ASCII titles
+  are transliterated.
+- Post routes are owned by the canonical URL registry of `rustok-content`. Blog
+  writes them through `CanonicalUrlWriter` and defines the route once in
+  `canonical_post_route` (`/modules/blog?slug={slug}`). Renaming a post keeps the
+  previous route as an alias. Public reads resolve it to the current post, and the
+  storefront redirects permanently to the current slug. Creating a post may take
+  a retired slug. Deleting a post purges its routes.
+- Post routes are stored under `CANONICAL_POST_ROUTE_LOCALE` (the platform
+  fallback locale), because Blog slugs are global canonical identifiers.
+- `published_at` is the first publication time. It is preserved across
+  unpublish, archive, and restore. `updated_at` tracks the last change.
+- `featured_image_url` must be an absolute `http`/`https` URL or a root-relative
+  path, at most 2048 characters.
+- Public reads use the requested locale with the fallback chain
+  `requested -> explicit fallback -> en -> first available`.
+
+See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md).
+
+## Known limitations
+
+The following are not implemented. Each is tracked with its audit identifier in
+[the current implementation cursor](./docs/implementation-plan-current.md#open-backlog-known-limitations).
+
+- No scheduled publishing (H-6); no server-side text search or facets for the
+  post list (H-7).
+- The rich-text body has no inline images, tables, or embeds (H-8).
+- Readers cannot edit, delete, or report comments, and comments send no
+  notifications (H-9).
+- No trash, draft preview, or revision history (M-3, M-4).
+- Tag and category archives are query-string filters without their own pages (M-7).
+- Anonymous REST read access is not available (M-8).
+- Newsletter, membership, and paid content are not available (M-9).
+- Reactions are limited to `like` on posts (M-10).
+- The Leptos storefront does not redirect retired slugs (M-12).
+
 ## Entry points
 
 - `BlogModule`

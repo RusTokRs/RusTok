@@ -143,7 +143,7 @@ async fn mark_and_clear_solution_updates_topic_and_reply_read_paths() {
         .expect("topic should load");
     assert_eq!(topic_after_mark.solution_reply_id, Some(reply.id));
 
-    let (topics, total) = topic_service
+    let page = topic_service
         .list(
             tenant_id,
             customer.clone(),
@@ -151,13 +151,14 @@ async fn mark_and_clear_solution_updates_topic_and_reply_read_paths() {
                 category_id: Some(category.id),
                 status: None,
                 locale: Some("en".to_string()),
-                page: 1,
+                after: None,
                 per_page: 20,
             },
         )
         .await
         .expect("topic list should load");
-    assert_eq!(total, 1);
+    let topics = page.items;
+    assert_eq!(topics.len(), 1);
     assert_eq!(topics[0].solution_reply_id, Some(reply.id));
 
     let reply_after_mark = reply_service
@@ -166,22 +167,23 @@ async fn mark_and_clear_solution_updates_topic_and_reply_read_paths() {
         .expect("reply should load");
     assert!(reply_after_mark.is_solution);
 
-    let (replies, replies_total) = reply_service
+    let replies_page = reply_service
         .list_response_for_topic_with_locale_fallback(
             tenant_id,
             customer.clone(),
             topic.id,
             ListRepliesFilter {
                 locale: Some("en".to_string()),
-                page: 1,
+                after: None,
                 per_page: 20,
             },
             Some("en"),
         )
         .await
         .expect("reply list should load");
-    assert_eq!(replies_total, 1);
-    assert!(replies[0].is_solution);
+    assert!(replies_page.next_cursor.is_none());
+    assert_eq!(replies_page.items.len(), 1);
+    assert!(replies_page.items[0].is_solution);
 
     moderation_service
         .clear_solution(tenant_id, topic.id, manager)

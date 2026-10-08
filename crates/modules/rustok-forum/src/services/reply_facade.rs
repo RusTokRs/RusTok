@@ -7,8 +7,8 @@ use rustok_outbox::TransactionalEventBus;
 
 use crate::audience::SharedForumAudienceFactsPort;
 use crate::dto::{
-    CreateReplyCommandInput, CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse,
-    UpdateReplyCommandInput, UpdateReplyInput,
+    CreateReplyCommandInput, CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyPage,
+    ReplyResponse, UpdateReplyCommandInput, UpdateReplyInput,
 };
 use crate::entities::forum_reply;
 use crate::error::{ForumError, ForumResult};
@@ -262,7 +262,7 @@ impl ReplyService {
         security: SecurityContext,
         topic_id: Uuid,
         filter: ListRepliesFilter,
-    ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
+    ) -> ForumResult<ReplyPage<ReplyListItem>> {
         self.list_for_topic_with_locale_fallback(tenant_id, security, topic_id, filter, None)
             .await
     }
@@ -274,7 +274,7 @@ impl ReplyService {
         topic_id: Uuid,
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
-    ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
+    ) -> ForumResult<ReplyPage<ReplyListItem>> {
         enforce_scope(&security, Resource::ForumReplies, Action::List)?;
         if !self
             .topic_category_is_visible(tenant_id, topic_id, &security)
@@ -302,7 +302,7 @@ impl ReplyService {
         topic_id: Uuid,
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
-    ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+    ) -> ForumResult<ReplyPage<ReplyResponse>> {
         self.list_response_for_topic_by_statuses_with_locale_fallback(
             tenant_id,
             security,
@@ -322,7 +322,7 @@ impl ReplyService {
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
         statuses: Option<&[ReplyStatus]>,
-    ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+    ) -> ForumResult<ReplyPage<ReplyResponse>> {
         enforce_scope(&security, Resource::ForumReplies, Action::List)?;
         if !self
             .topic_category_is_visible(tenant_id, topic_id, &security)
@@ -411,23 +411,26 @@ fn require_localized_reply_response(response: ReplyResponse) -> ForumResult<Repl
 }
 
 fn require_localized_reply_list_page(
-    page: (Vec<ReplyListItem>, u64),
-) -> ForumResult<(Vec<ReplyListItem>, u64)> {
-    let (items, total) = page;
-    if let Some(item) = items.iter().find(|item| item.content_preview.is_empty()) {
+    page: ReplyPage<ReplyListItem>,
+) -> ForumResult<ReplyPage<ReplyListItem>> {
+    if let Some(item) = page
+        .items
+        .iter()
+        .find(|item| item.content_preview.is_empty())
+    {
         return Err(ForumError::Validation(format!(
             "Reply {} has no localized body",
             item.id
         )));
     }
-    Ok((items, total))
+    Ok(page)
 }
 
 fn require_localized_reply_response_page(
-    page: (Vec<ReplyResponse>, u64),
-) -> ForumResult<(Vec<ReplyResponse>, u64)> {
-    let (items, total) = page;
-    if let Some(item) = items
+    page: ReplyPage<ReplyResponse>,
+) -> ForumResult<ReplyPage<ReplyResponse>> {
+    if let Some(item) = page
+        .items
         .iter()
         .find(|item| item.content.document.content.is_empty())
     {
@@ -436,5 +439,5 @@ fn require_localized_reply_response_page(
             item.id
         )));
     }
-    Ok((items, total))
+    Ok(page)
 }

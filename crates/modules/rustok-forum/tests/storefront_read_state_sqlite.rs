@@ -60,7 +60,7 @@ fn topic_filter(category_id: Option<Uuid>, per_page: u64) -> ListTopicsFilter {
         category_id,
         status: None,
         locale: Some("en".into()),
-        page: 1,
+        after: None,
         per_page,
     }
 }

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -13,7 +12,6 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const wrapper = read('crates/modules/rustok-seo/src/services/diagnostics.rs');
-const legacy = read('crates/modules/rustok-seo/src/services/diagnostics_legacy.rs');
 const batch = read('crates/modules/rustok-seo/src/services/diagnostics_batch.rs');
 
 const requireText = (content, value, label) => {
@@ -27,13 +25,17 @@ if (wrapper.trim() !== 'include!("diagnostics_batch.rs");') {
   failures.push('diagnostics wrapper must activate only the batched implementation');
 }
 
-const legacyBlobHeader = Buffer.from(`blob ${Buffer.byteLength(legacy)}\0`);
-const legacyBlobSha = createHash('sha1')
-  .update(legacyBlobHeader)
-  .update(legacy)
-  .digest('hex');
-if (legacyBlobSha !== '5461125fc54dbc53232e575eb7b074f85443a7fc') {
-  failures.push(`legacy diagnostics blob changed: ${legacyBlobSha}`);
+const legacyPath = new URL('crates/modules/rustok-seo/src/services/diagnostics_legacy.rs', root);
+if (existsSync(legacyPath)) {
+  failures.push('diagnostics_legacy.rs must stay deleted; the batched implementation is the only one');
+}
+const servicesDir = new URL('crates/modules/rustok-seo/src/services/', root);
+for (const file of readdirSync(servicesDir)) {
+  if (!file.endsWith('.rs')) continue;
+  const content = read(`crates/modules/rustok-seo/src/services/${file}`);
+  if (content.includes('diagnostics_legacy')) {
+    failures.push(`${file}: forbidden reference to diagnostics_legacy`);
+  }
 }
 
 for (const [value, label] of [

@@ -582,6 +582,31 @@ pub struct SeoTargetBulkListRequest<'a> {
     pub locale: &'a str,
 }
 
+/// One keyset page of bulk summaries. `after` is the opaque cursor returned by the
+/// previous page (`None` starts the scan); `limit` bounds the rows scanned, not the
+/// summaries returned, because providers may skip rows that have no translation.
+#[cfg(feature = "server")]
+#[derive(Debug, Clone, Copy)]
+pub struct SeoTargetBulkPageRequest<'a> {
+    pub tenant_id: Uuid,
+    pub default_locale: &'a str,
+    pub locale: &'a str,
+    pub after: Option<&'a str>,
+    pub limit: u64,
+}
+
+#[cfg(feature = "server")]
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub struct SeoBulkSummaryPage {
+    pub items: Vec<SeoBulkSummaryRecord>,
+    /// `None` means the scan is finished. Providers own the cursor format.
+    pub next_cursor: Option<String>,
+}
+
+/// Raw rows per provider call when a caller walks the whole bulk set.
+#[cfg(feature = "server")]
+const SEO_BULK_WALK_BATCH: u64 = 500;
+
 #[cfg(feature = "server")]
 #[derive(Debug, Clone, Copy)]
 pub struct SeoTargetSitemapRequest<'a> {
@@ -920,12 +945,49 @@ pub trait SeoTargetProvider: Send + Sync {
         Ok(None)
     }
 
-    async fn list_bulk_summaries(
+    /// One keyset page. Providers without bulk support keep the empty default.
+    async fn list_bulk_summaries_page(
         &self,
         _runtime: &SeoTargetRuntimeContext,
-        _request: SeoTargetBulkListRequest<'_>,
+        _request: SeoTargetBulkPageRequest<'_>,
+    ) -> AnyResult<SeoBulkSummaryPage> {
+        Ok(SeoBulkSummaryPage::default())
+    }
+
+    /// Walks every page. Batch consumers (diagnostics, cross-links, export) use this;
+    /// providers implement only `list_bulk_summaries_page`.
+    async fn list_bulk_summaries(
+        &self,
+        runtime: &SeoTargetRuntimeContext,
+        request: SeoTargetBulkListRequest<'_>,
     ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
-        Ok(Vec::new())
+        let mut after: Option<String> = None;
+        let mut summaries = Vec::new();
+        loop {
+            let page = self
+                .list_bulk_summaries_page(
+                    runtime,
+                    SeoTargetBulkPageRequest {
+                        tenant_id: request.tenant_id,
+                        default_locale: request.default_locale,
+                        locale: request.locale,
+                        after: after.as_deref(),
+                        limit: SEO_BULK_WALK_BATCH,
+                    },
+                )
+                .await?;
+            summaries.extend(page.items);
+            match page.next_cursor {
+                None => return Ok(summaries),
+                Some(next) if after.as_deref() == Some(next.as_str()) => {
+                    return Err(anyhow::anyhow!(
+                        "SEO bulk provider `{}` returned a non-advancing cursor",
+                        self.slug().as_str()
+                    ));
+                }
+                Some(next) => after = Some(next),
+            }
+        }
     }
 
     async fn sitemap_candidates(

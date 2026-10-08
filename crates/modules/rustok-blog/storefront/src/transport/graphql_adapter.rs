@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{ApiError, configured_tenant_slug};
 
-const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PostsFilter, $locale: String, $commentsPage: Int!, $commentsPerPage: Int!) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt categoryId categoryName authorProfile { userId handle displayName tags avatarMediaId } content { document html } contentPlainText status publishedAt tags featuredImageUrl publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { availability cachedSnapshot total items { id effectiveLocale authorId contentPreview parentCommentId createdAt } } } posts(filter: $filter) { total items { id title effectiveLocale slug excerpt categoryId categoryName status publishedAt tags featuredImageUrl authorProfile { userId handle displayName tags avatarMediaId } } } }";
+const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PublicPostsFilter, $locale: String, $commentsPage: Int!, $commentsPerPage: Int!) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt categoryId categoryName authorProfile { userId handle displayName tags avatarMediaId } content { document html } contentPlainText status publishedAt tags featuredImageUrl publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { availability cachedSnapshot total items { id effectiveLocale authorId contentPreview parentCommentId createdAt } } } posts: publicBlogPosts(filter: $filter) { items { id title effectiveLocale slug excerpt categoryId categoryName status publishedAt tags featuredImageUrl authorProfile { userId handle displayName tags avatarMediaId } } } }";
 const CREATE_BLOG_COMMENT_MUTATION: &str = "mutation CreateBlogComment($postId: UUID!, $input: CreateBlogCommentInput!) { createBlogComment(postId: $postId, input: $input) { id requestedLocale effectiveLocale postId authorId content { document html } contentPlainText status parentCommentId createdAt updatedAt } }";
 
 #[derive(Debug, Deserialize)]
@@ -55,14 +55,12 @@ struct CreateBlogCommentInput {
 }
 
 #[derive(Clone, Debug, Serialize)]
-struct PostsFilter {
-    status: Option<String>,
+struct PublicPostsFilter {
     #[serde(skip_serializing_if = "Option::is_none", rename = "categoryId")]
     category_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tag: Option<String>,
     locale: Option<String>,
-    page: u64,
     #[serde(rename = "perPage")]
     per_page: u64,
 }
@@ -91,12 +89,10 @@ pub async fn fetch_blog(
         STOREFRONT_BLOG_QUERY,
         StorefrontBlogVariables {
             post_slug: fetch_request.post_slug,
-            filter: PostsFilter {
-                status: Some("PUBLISHED".to_string()),
+            filter: PublicPostsFilter {
                 category_id: fetch_request.category_id,
                 tag: fetch_request.tag,
                 locale: fetch_request.locale.clone(),
-                page: 1,
                 per_page: 6,
             },
             locale: fetch_request.locale,

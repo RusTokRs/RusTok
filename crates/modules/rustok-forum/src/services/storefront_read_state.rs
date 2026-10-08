@@ -41,7 +41,7 @@ pub struct ForumStorefrontUnreadTopic {
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct ForumStorefrontUnreadTopicPage {
     pub items: Vec<ForumStorefrontUnreadTopic>,
-    pub total: u64,
+    pub next_cursor: Option<String>,
 }
 
 /// Visibility-safe storefront composition over canonical Forum owner services.
@@ -103,7 +103,7 @@ impl ForumStorefrontReadStateService {
                 fallback_locale,
             )
             .await?;
-        self.enrich_topics_with_unread(tenant_id, security, page.items, page.total)
+        self.enrich_topics_with_unread(tenant_id, security, page.items, page.next_cursor)
             .await
     }
 
@@ -123,7 +123,7 @@ impl ForumStorefrontReadStateService {
                 "Forum storefront unread page size must be between 1 and {MAX_FORUM_READ_LIMIT}"
             )));
         }
-        let (topics, total) = TopicService::new(self.db.clone(), self.event_bus.clone())
+        let page = TopicService::new(self.db.clone(), self.event_bus.clone())
             .list_storefront_visible_with_locale_fallback(
                 tenant_id,
                 security.clone(),
@@ -132,7 +132,7 @@ impl ForumStorefrontReadStateService {
                 channel_slug,
             )
             .await?;
-        self.enrich_topics_with_unread(tenant_id, security, topics, total)
+        self.enrich_topics_with_unread(tenant_id, security, page.items, page.next_cursor)
             .await
     }
 
@@ -141,7 +141,7 @@ impl ForumStorefrontReadStateService {
         tenant_id: Uuid,
         security: SecurityContext,
         topics: Vec<TopicListItem>,
-        total: u64,
+        next_cursor: Option<String>,
     ) -> ForumResult<ForumStorefrontUnreadTopicPage> {
         let summaries = ForumReadModelService::new(self.db.clone())
             .summarize_topic_ids(
@@ -173,7 +173,7 @@ impl ForumStorefrontReadStateService {
             })
             .collect::<ForumResult<Vec<_>>>()?;
 
-        Ok(ForumStorefrontUnreadTopicPage { items, total })
+        Ok(ForumStorefrontUnreadTopicPage { items, next_cursor })
     }
 
     /// Rechecks the exact richer audience decision before marking the latest

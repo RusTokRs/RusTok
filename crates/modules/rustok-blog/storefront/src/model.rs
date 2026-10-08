@@ -12,7 +12,6 @@ pub struct StorefrontBlogData {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostList {
     pub items: Vec<BlogPostListItem>,
-    pub total: u64,
 }
 
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]

@@ -108,20 +108,64 @@ async fn seed_channel(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
 #[test]
 fn post_list_query_defaults() {
     let query = PostListQuery::default();
-    assert_eq!(query.page(), 1);
+    assert!(query.after.is_none());
     assert_eq!(query.per_page(), 20);
-    assert_eq!(query.offset(), 0);
+    assert_eq!(
+        query.sort(),
+        (PostSortField::CreatedAt, PostSortOrder::Desc)
+    );
 }
 
 #[test]
 fn post_list_query_clamps_bounds() {
     let query = PostListQuery {
-        page: Some(0),
         per_page: Some(200),
         ..Default::default()
     };
-    assert_eq!(query.page(), 1);
     assert_eq!(query.per_page(), 100);
+}
+
+#[test]
+fn admin_post_cursor_round_trips_with_and_without_sort_value() {
+    let id = Uuid::new_v4();
+    let value = chrono::DateTime::parse_from_rfc3339("2026-10-08T10:15:30.123456789+03:00")
+        .expect("valid timestamp");
+    for cursor_value in [Some(value), None] {
+        let cursor = AdminPostCursor {
+            sort_by: PostSortField::PublishedAt,
+            sort_order: PostSortOrder::Asc,
+            value: cursor_value,
+            id,
+        };
+        let decoded = AdminPostCursor::decode(
+            &cursor.encode(),
+            PostSortField::PublishedAt,
+            PostSortOrder::Asc,
+        )
+        .expect("cursor should decode for the same sort");
+        assert_eq!(decoded, cursor);
+    }
+}
+
+#[test]
+fn admin_post_cursor_rejects_a_different_sort_and_garbage() {
+    let cursor = AdminPostCursor {
+        sort_by: PostSortField::CreatedAt,
+        sort_order: PostSortOrder::Desc,
+        value: None,
+        id: Uuid::new_v4(),
+    };
+    let token = cursor.encode();
+    assert!(
+        AdminPostCursor::decode(&token, PostSortField::UpdatedAt, PostSortOrder::Desc).is_err()
+    );
+    assert!(
+        AdminPostCursor::decode(&token, PostSortField::CreatedAt, PostSortOrder::Asc).is_err()
+    );
+    assert!(
+        AdminPostCursor::decode("not-a-cursor", PostSortField::CreatedAt, PostSortOrder::Desc)
+            .is_err()
+    );
 }
 
 #[test]
@@ -143,6 +187,23 @@ fn channel_visibility_normalizes_and_filters_blog_channel_lists() {
 fn slug_normalization_is_stable() {
     assert_eq!(normalize_slug("Hello, World!"), "hello-world");
     assert_eq!(normalize_slug("  many   spaces  "), "many-spaces");
+}
+
+#[test]
+fn slug_normalization_transliterates_non_ascii_titles() {
+    assert_eq!(normalize_slug("Привет, мир!"), "privet-mir");
+    assert!(normalize_slug("!!!").is_empty());
+}
+
+#[test]
+fn featured_image_url_accepts_only_http_https_or_root_relative_paths() {
+    assert!(validate_featured_image_url("https://cdn.example.com/a.png").is_ok());
+    assert!(validate_featured_image_url("/media/a.png").is_ok());
+    assert!(validate_featured_image_url("javascript:alert(1)").is_err());
+    assert!(validate_featured_image_url("data:image/png;base64,AAAA").is_err());
+    assert!(validate_featured_image_url("//cdn.example.com/a.png").is_err());
+    assert!(validate_featured_image_url("not a url").is_err());
+    assert!(validate_featured_image_url(" https://cdn.example.com/a.png").is_err());
 }
 
 #[test]
@@ -279,7 +340,6 @@ async fn customer_cannot_create_or_read_draft_posts() {
             tenant_id,
             customer,
             PostListQuery {
-                page: Some(1),
                 per_page: Some(10),
                 ..Default::default()
             },
@@ -287,7 +347,7 @@ async fn customer_cannot_create_or_read_draft_posts() {
         .await
         .expect("customer listing should succeed");
     assert!(listed.items.is_empty());
-    assert_eq!(listed.total, 0);
+    assert!(listed.next_cursor.is_none());
 }
 
 #[tokio::test]
@@ -420,15 +480,11 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
     }
 
     let visible = post_service
-        .list_public_visible_with_locale_fallback(
+        .list_public_visible_keyset(
             tenant_id,
-            PostListQuery {
-                status: Some(BlogPostStatus::Published),
+            PublicPostsPageQuery {
                 locale: Some("en".to_string()),
-                page: Some(1),
                 per_page: Some(10),
-                sort_by: Some(PostSortField::PublishedAt),
-                sort_order: Some(PostSortOrder::Desc),
                 ..Default::default()
             },
             Some("en"),
@@ -437,7 +493,7 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
         .await
         .expect("public visible list should succeed");
 
-    assert_eq!(visible.total, 2);
+    assert!(visible.next_cursor.is_none());
     let slugs = visible
         .items
         .into_iter()

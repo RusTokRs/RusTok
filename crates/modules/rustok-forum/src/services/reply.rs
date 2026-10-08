@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, TransactionTrait,
 };
 use tracing::instrument;
@@ -17,7 +17,7 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::{ListRepliesFilter, ReplyListItem, ReplyResponse};
+use crate::dto::{ListRepliesFilter, ReplyCursor, ReplyListItem, ReplyPage, ReplyResponse};
 use crate::entities::{forum_reply, forum_reply_body, forum_solution};
 use crate::error::{ForumError, ForumResult};
 use crate::richtext::project_stored_discussion;
@@ -96,7 +96,7 @@ impl ReplyService {
         topic_id: Uuid,
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
-    ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
+    ) -> ForumResult<ReplyPage<ReplyListItem>> {
         enforce_scope(&security, Resource::ForumReplies, Action::List)?;
         let locale = filter
             .locale
@@ -105,8 +105,11 @@ impl ReplyService {
         let locale = normalize_locale(&locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
 
-        let (replies, total) = self
-            .fetch_reply_page(tenant_id, topic_id, filter.page, filter.per_page, None)
+        let ReplyPage {
+            items: replies,
+            next_cursor,
+        } = self
+            .fetch_reply_page(tenant_id, topic_id, &filter, None)
             .await?;
         let solution_reply_id = self
             .load_solution_reply_id_for_topic(tenant_id, topic_id)
@@ -156,7 +159,7 @@ impl ReplyService {
             })
             .collect::<ForumResult<Vec<_>>>()?;
 
-        Ok((items, total))
+        Ok(ReplyPage { items, next_cursor })
     }
 
     #[instrument(skip(self, security))]
@@ -168,7 +171,7 @@ impl ReplyService {
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
         statuses: Option<&[ReplyStatus]>,
-    ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+    ) -> ForumResult<ReplyPage<ReplyResponse>> {
         enforce_scope(&security, Resource::ForumReplies, Action::List)?;
         let locale = filter
             .locale
@@ -176,8 +179,11 @@ impl ReplyService {
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
         let locale = normalize_locale(&locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-        let (replies, total) = self
-            .fetch_reply_page(tenant_id, topic_id, filter.page, filter.per_page, statuses)
+        let ReplyPage {
+            items: replies,
+            next_cursor,
+        } = self
+            .fetch_reply_page(tenant_id, topic_id, &filter, statuses)
             .await?;
         let solution_reply_id = self
             .load_solution_reply_id_for_topic(tenant_id, topic_id)
@@ -203,7 +209,7 @@ impl ReplyService {
             })
             .collect::<ForumResult<Vec<_>>>()?;
 
-        Ok((items, total))
+        Ok(ReplyPage { items, next_cursor })
     }
 
     pub(crate) async fn find_reply(
@@ -292,18 +298,19 @@ impl ReplyService {
             .map(|solution| solution.reply_id))
     }
 
+    /// Keyset page of replies ordered `(created_at ASC, id ASC)`. Fetches one extra row
+    /// to learn whether another page exists, so the list never counts rows.
     async fn fetch_reply_page(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
-        page: u64,
-        per_page: u64,
+        filter: &ListRepliesFilter,
         statuses: Option<&[ReplyStatus]>,
-    ) -> ForumResult<(Vec<forum_reply::Model>, u64)> {
+    ) -> ForumResult<ReplyPage<forum_reply::Model>> {
+        let per_page = filter.per_page.max(1);
         let mut query = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
-            .filter(forum_reply::Column::TopicId.eq(topic_id))
-            .order_by_asc(forum_reply::Column::Position);
+            .filter(forum_reply::Column::TopicId.eq(topic_id));
 
         if let Some(statuses) = statuses
             && !statuses.is_empty()
@@ -315,10 +322,46 @@ impl ReplyService {
             query = query.filter(condition);
         }
 
-        let paginator = query.paginate(&self.db, per_page.max(1));
-        let total = paginator.num_items().await?;
-        let replies = paginator.fetch_page(page.saturating_sub(1)).await?;
-        Ok((replies, total))
+        if let Some(raw) = filter.after.as_deref() {
+            let after = ReplyCursor::decode(raw)?;
+            query = query.filter(
+                Condition::any()
+                    .add(forum_reply::Column::CreatedAt.gt(after.created_at))
+                    .add(
+                        Condition::all()
+                            .add(forum_reply::Column::CreatedAt.eq(after.created_at))
+                            .add(forum_reply::Column::Id.gt(after.id)),
+                    ),
+            );
+        }
+
+        let mut replies = query
+            .order_by_asc(forum_reply::Column::CreatedAt)
+            .order_by_asc(forum_reply::Column::Id)
+            .limit(per_page + 1)
+            .all(&self.db)
+            .await?;
+
+        let has_next_page = replies.len() as u64 > per_page;
+        replies.truncate(per_page as usize);
+        let next_cursor = if has_next_page {
+            let last = replies.last().ok_or_else(|| {
+                ForumError::Validation("Reply page reported a next page without rows".to_string())
+            })?;
+            Some(
+                ReplyCursor {
+                    created_at: last.created_at,
+                    id: last.id,
+                }
+                .encode(),
+            )
+        } else {
+            None
+        };
+        Ok(ReplyPage {
+            items: replies,
+            next_cursor,
+        })
     }
 
     async fn load_bodies_map(

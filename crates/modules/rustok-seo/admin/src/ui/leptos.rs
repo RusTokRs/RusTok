@@ -115,7 +115,7 @@ pub fn SeoAdmin() -> impl IntoView {
 
             bulk_filter_form.update(|draft| {
                 draft.target_kind = first.slug.clone();
-                draft.page = 1;
+                draft.after = None;
             });
             bulk_selected_ids.set(Vec::new());
             bulk_selection_preview.set(None);

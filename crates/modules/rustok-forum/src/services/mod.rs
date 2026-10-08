@@ -1,5 +1,6 @@
 mod attachment_hold_reconciliation;
 mod attachment_relation;
+pub mod topic_routes;
 mod category {
     include!("category_import.rs");
     include!("category.rs");
