@@ -228,6 +228,13 @@ topics must scale. Measured on the current code:
   `idx_blog_posts_status_published_at` is amended with `id` as the keyset
   tie-breaker. Second slice (same day): the SEO bulk and sitemap scans of Blog
   use `scan_published_posts`, a keyset on `id` (`idx_blog_posts_tenant_status_id`).
+  Third cleanup: the blog storefront no longer carries a total or a header count,
+  the offset method `list_public_visible_with_locale_fallback` is removed, and the
+  blog tests call the keyset method. The SEO bulk editor (`rustok-seo`
+  `list_bulk_items_batched`) is not a cursor path yet: it loads every summary up to
+  `MAX_BULK_TARGETS` per request and filters and offsets in memory, so its cost is
+  the full load, not the `OFFSET`. Moving it to a cursor requires a provider-side
+  keyset and an admin contract change, so it is a separate slice.
   The forum, comments, and the admin lists keep their offset paths until their
   own slices.
 - Precondition: no external consumer of the GraphQL or REST contracts exists. The

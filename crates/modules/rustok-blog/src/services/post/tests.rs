@@ -437,15 +437,11 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
     }
 
     let visible = post_service
-        .list_public_visible_with_locale_fallback(
+        .list_public_visible_keyset(
             tenant_id,
-            PostListQuery {
-                status: Some(BlogPostStatus::Published),
+            PublicPostsPageQuery {
                 locale: Some("en".to_string()),
-                page: Some(1),
                 per_page: Some(10),
-                sort_by: Some(PostSortField::PublishedAt),
-                sort_order: Some(PostSortOrder::Desc),
                 ..Default::default()
             },
             Some("en"),
@@ -454,7 +450,7 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
         .await
         .expect("public visible list should succeed");
 
-    assert_eq!(visible.total, 2);
+    assert!(visible.next_cursor.is_none());
     let slugs = visible
         .items
         .into_iter()

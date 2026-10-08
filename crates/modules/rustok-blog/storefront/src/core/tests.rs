@@ -70,29 +70,6 @@ fn fallback_text_returns_fallback_for_none() {
 }
 
 #[test]
-fn published_posts_total_label_delegates_to_count_label() {
-    assert_eq!(
-        published_posts_total_label(7, "total"),
-        "7 total".to_string()
-    );
-}
-
-#[test]
-fn published_posts_header_view_returns_title_and_total_label() {
-    assert_eq!(
-        published_posts_header_view("Published posts".to_string(), 3, "total"),
-        ("Published posts".to_string(), "3 total".to_string())
-    );
-}
-
-#[test]
-fn published_posts_header_typed_view_builds_struct() {
-    let view = published_posts_header_typed_view("Published posts".to_string(), 3, "total");
-    assert_eq!(view.title, "Published posts".to_string());
-    assert_eq!(view.total_label, "3 total".to_string());
-}
-
-#[test]
 fn selected_post_empty_state_view_returns_payload_tuple() {
     assert_eq!(
         selected_post_empty_state_view(
