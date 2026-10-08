@@ -270,7 +270,7 @@ requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
   '"Content is required for a new locale"',
 ]);
 requireAll("crates/modules/rustok-blog/src/services/post/queries.rs", [
-  "pub async fn list_public_visible_with_locale_fallback(",
+  "pub async fn list_public_visible_keyset(",
   "Self::validate_persisted_version(&post)?",
 ]);
 forbid("crates/modules/rustok-blog/src/services/post/repository.rs", [
