@@ -18,7 +18,7 @@ CREATE INDEX IF NOT EXISTS idx_forum_topics_cursor
     ON forum_topics (tenant_id, updated_at DESC, id DESC);
 
 CREATE INDEX IF NOT EXISTS idx_forum_topics_list_keyset
-    ON forum_topics (tenant_id, is_pinned DESC, last_reply_at DESC, updated_at DESC, id DESC);
+    ON forum_topics (tenant_id, is_pinned DESC, last_reply_at DESC NULLS LAST, updated_at DESC, id DESC);
 
 CREATE INDEX IF NOT EXISTS idx_forum_replies_keyset
     ON forum_replies (tenant_id, topic_id, created_at, id);

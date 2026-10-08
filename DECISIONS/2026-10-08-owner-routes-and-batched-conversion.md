@@ -257,7 +257,9 @@ topics must scale. Measured on the current code:
   no total; counts come from the projection (stage 4).
   Forum topics (sixth slice): `ListTopicsFilter` takes `after` and `perPage`
   instead of `page`. The owner keyset is
-  `is_pinned DESC, last_reply_at DESC NULLS LAST, updated_at DESC, id DESC`. The
+  `is_pinned DESC, last_reply_at DESC NULLS LAST, updated_at DESC, id DESC`. It is
+  expressed as a column order with explicit NULL placement (not an `IS NULL`
+  expression) so the index can serve it. The
   offset order had no `id` tie-breaker, so ties could repeat or skip topics, and
   NULL `last_reply_at` sorted first on PostgreSQL but last on SQLite. The cursor
   is versioned (`v1|pinned|last_reply_at|updated_at|id`). Responses are
@@ -268,11 +270,14 @@ topics must scale. Measured on the current code:
   list filters candidates in batches from the cursor, closes a page only after it
   finds one more visible topic, and never returns an empty last page. Its cost is
   bounded by the owner batch size, not by the offset. Index
-  `idx_forum_topics_list_keyset` on `(tenant_id, is_pinned, last_reply_at,
-  updated_at, id)` is amended into the forum read-model index migration. The
+  `idx_forum_topics_list_keyset` on `(tenant_id, is_pinned DESC, last_reply_at DESC
+  NULLS LAST, updated_at DESC, id DESC)` is amended into the forum read-model index
+  migration (pending, unreleased schema). The
   admin candidate pickers (merge, fork, split, reply range, slug rename) take the
   first page by `perPage` as before, so they show the same first-page subset.
-  The existing unread read-model cursor `(updated_at, id)` is unchanged.
+  The read-model `list_topics` and the unread topic list (REST and GraphQL) use
+  the same order function and cursor, so there is one topic order across surfaces.
+  The former `(updated_at, id)` read-model cursor is retired.
   Still on offset: the `topic_list` page-builder widget (its own `page` and
   `per_page` contract, `per_page` at most 100, `page` at most 100000; it orders by
   the widget `sort` and cannot share the default keyset without a per-sort cursor),

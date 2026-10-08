@@ -27,7 +27,7 @@ use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, Order, PaginatorTrait, QueryFilter, QueryOrder, Select,
     Statement, TransactionTrait,
-    sea_query::{Expr, Query, SelectStatement},
+    sea_query::{Expr, NullOrdering, Query, SelectStatement},
 };
 use serde_json::Value;
 use tracing::instrument;

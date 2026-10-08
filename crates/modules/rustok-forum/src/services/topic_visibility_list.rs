@@ -107,12 +107,7 @@ impl TopicService {
             select = select.filter(topic_list_after_condition(&after));
         }
 
-        let mut topics = select
-            .order_by_desc(forum_topic::Column::IsPinned)
-            .order_by(forum_topic::Column::LastReplyAt.is_null(), Order::Asc)
-            .order_by_desc(forum_topic::Column::LastReplyAt)
-            .order_by_desc(forum_topic::Column::UpdatedAt)
-            .order_by_desc(forum_topic::Column::Id)
+        let mut topics = order_topic_list(select)
             .limit(per_page + 1)
             .all(&self.db)
             .await?;
@@ -123,15 +118,7 @@ impl TopicService {
             let last = topics.last().ok_or_else(|| {
                 ForumError::Validation("Topic page reported a next page without rows".to_string())
             })?;
-            Some(
-                TopicListCursor {
-                    is_pinned: last.is_pinned,
-                    last_reply_at: last.last_reply_at,
-                    updated_at: last.updated_at,
-                    id: last.id,
-                }
-                .encode(),
-            )
+            Some(topic_list_cursor(last).encode())
         } else {
             None
         };
@@ -142,9 +129,35 @@ impl TopicService {
     }
 }
 
-/// Rows strictly after `after` in `is_pinned DESC, last_reply_at DESC NULLS LAST,
-/// updated_at DESC, id DESC`, expanded lexicographically over the four sort keys.
-fn topic_list_after_condition(after: &TopicListCursor) -> Condition {
+/// The one ordering of every topic list: `is_pinned DESC, last_reply_at DESC NULLS LAST,
+/// updated_at DESC, id DESC`. It is expressed as a column order with explicit NULL
+/// placement, not as an `IS NULL` expression, so `idx_forum_topics_list_keyset` can
+/// serve it. Read-model and unread projections order through this function too.
+pub(crate) fn order_topic_list(select: Select<forum_topic::Entity>) -> Select<forum_topic::Entity> {
+    select
+        .order_by_desc(forum_topic::Column::IsPinned)
+        .order_by_with_nulls(
+            forum_topic::Column::LastReplyAt,
+            Order::Desc,
+            NullOrdering::Last,
+        )
+        .order_by_desc(forum_topic::Column::UpdatedAt)
+        .order_by_desc(forum_topic::Column::Id)
+}
+
+/// Cursor that resumes the list directly after `topic` in `order_topic_list`.
+pub(crate) fn topic_list_cursor(topic: &forum_topic::Model) -> TopicListCursor {
+    TopicListCursor {
+        is_pinned: topic.is_pinned,
+        last_reply_at: topic.last_reply_at,
+        updated_at: topic.updated_at,
+        id: topic.id,
+    }
+}
+
+/// Rows strictly after `after` in `order_topic_list`, expanded lexicographically over
+/// the four sort keys.
+pub(crate) fn topic_list_after_condition(after: &TopicListCursor) -> Condition {
     let pinned_eq = forum_topic::Column::IsPinned.eq(after.is_pinned);
     let last_reply_eq = match after.last_reply_at {
         Some(value) => forum_topic::Column::LastReplyAt.eq(value),
