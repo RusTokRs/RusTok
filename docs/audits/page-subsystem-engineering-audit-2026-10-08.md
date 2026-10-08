@@ -57,7 +57,7 @@ Two source defects were also found and fixed (F-8, F-9 below).
 
 | # | Source defect | Status |
 |---|---|---|
-| F-8 | Runtime-scenario release baselines, render snapshots and per-case render hashes were digested with FNV-1a 64 although `digest.rs` declares that gate uses SHA-256 | **Fixed** with an in-place, fail-closed migration (§5) |
+| F-8 | Runtime-scenario release baselines and render snapshots were digested with FNV-1a 64 although `digest.rs` declares that gate uses SHA-256 | **Fixed** with an in-place, fail-closed migration (§5) |
 | F-9 | `page_builder_scenario_baseline_revision` has an entity and a migration but no writer anywhere in the workspace | Open — recorded, not fixed (§7) |
 
 The same workflow has been red on every `main` push observed between 2026-10-01 and 2026-10-08
@@ -251,13 +251,24 @@ stored record) but cannot update the stored digest can substitute content that s
 boundary — it removes a layer of tamper evidence behind one — but it is the difference between a
 control and a formality.
 
-**Status: fixed.** The four sites now produce `ContentDigest` (`sha256:<64 hex>`) values:
-`RuntimeScenarioReleaseBaseline::computed_hash`, `RuntimeScenarioRenderSnapshot::has_valid_hash`
-plus the snapshot hash it verifies, and the per-case `html_hash`/`css_hash`/`document_hash` in
-`runtime_scenario_render.rs`. `rustok-page-builder`'s static-materialization integrity check — the
-one place that recomputes a snapshot case's `document_hash` and compares it against the
-materialized artifact — was converted in the same change, so producer and consumer stayed in
-lockstep.
+**Status: fixed for the two approval gates.** `RuntimeScenarioReleaseBaseline::computed_hash` and
+the `snapshot_hash` it covers now produce `ContentDigest` (`sha256:<64 hex>`) values, verified by
+constant-time comparison in `has_valid_hash` and `RuntimeScenarioRenderSnapshot::has_valid_hash`.
+
+The per-case `html_hash`/`css_hash`/`document_hash` in `runtime_scenario_render.rs` deliberately
+stay FNV-1a, and this was a mid-implementation correction worth recording: changing them looked
+like consistency, but `runtime_snapshots` is **persisted** in
+`page_static_landing_artifact`/`page_publish_rebuild_source` and re-verified later —
+`artifact_integrity_audit.rs` and `page_builder_artifact.rs` rebuild the materialization from the
+stored JSON and compare each case's `document_hash` against a freshly computed value, and
+`artifact_rebuild.rs` compares stored snapshots against a fresh materialization. Switching the
+algorithm would have failed every artifact row written before the deploy with
+"runtime snapshot for static page N does not match the materialized artifact" — a deploy-time
+regression across the serve, audit and rebuild paths. The revert costs nothing in integrity: the
+case hashes are a consistency tie, not an approval gate, and every payload they are compared
+against is already bound by sha256 (`StaticLandingPage::content_hash` over `document_html`, and the
+identity's `runtime_snapshot_hash` over the stored snapshots), while the snapshot digest added here
+covers the case list itself.
 
 Migration, because the old value is persisted in MySQL, exported over GraphQL and used as the
 `expected_baseline_hash` compare-and-swap precondition:

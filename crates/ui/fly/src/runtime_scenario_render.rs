@@ -1,5 +1,5 @@
 use crate::{
-    ContentDigest, PageSelection, ProjectDocument, RenderPolicy, RuntimeContextScenario,
+    PageSelection, ProjectDocument, ProjectHash, RenderPolicy, RuntimeContextScenario,
     RuntimeRenderResult, ValidationDiagnostic, ValidationSeverity,
     render_page_with_runtime_context,
 };
@@ -165,9 +165,9 @@ fn successful_case(
         scenario_label: scenario.label.clone(),
         rendered: true,
         page_id: result.page.page_id.clone(),
-        html_hash: Some(ContentDigest::from_bytes(result.page.html.as_bytes()).to_string()),
-        css_hash: Some(ContentDigest::from_bytes(result.page.css.as_bytes()).to_string()),
-        document_hash: Some(ContentDigest::from_bytes(document_html.as_bytes()).to_string()),
+        html_hash: Some(ProjectHash::from_bytes(result.page.html.as_bytes()).hex()),
+        css_hash: Some(ProjectHash::from_bytes(result.page.css.as_bytes()).hex()),
+        document_hash: Some(ProjectHash::from_bytes(document_html.as_bytes()).hex()),
         diagnostics: result.diagnostics,
         defaults_applied: result.defaults_applied,
         computed_applied: result.computed_applied,
