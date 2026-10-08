@@ -200,7 +200,7 @@ for (const marker of [
   "static_publish_resource_limits::tests::",
   ...expectedCommands,
   "node scripts/evidence/record-page-builder-static-sanitization-execution.mjs",
-  "actions/upload-artifact@v7",
+  "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
   "retention-days: 90",
   "name: Static Sanitization Evidence Gate",
 ]) {
