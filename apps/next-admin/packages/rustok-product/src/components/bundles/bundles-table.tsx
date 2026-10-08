@@ -11,13 +11,11 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from '@/widgets/data-table';
+  DataTablePaginationBar,
+  DataTableStatic,
+  dataTableRangeLabel,
+  type DataTableStaticColumn
+} from '@/widgets/data-table/data-table-static';
 import { Button } from '@/shared/ui/shadcn/button';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Input } from '@/shared/ui/shadcn/input';
@@ -85,7 +83,7 @@ export function BundlesTable({
     onTypeFilterChange?.(val === 'all' ? '' : val);
   };
 
-  const totalPages = Math.ceil(total / perPage) || 1;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
 
   return (
     <div className='space-y-4'>
@@ -150,185 +148,163 @@ export function BundlesTable({
         </div>
       </div>
 
-      {/* Bundles Table */}
-      <div className='bg-card rounded-md border'>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className='w-[35%]'>Bundle Name & Slug</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className='text-center'>Items</TableHead>
-              <TableHead>Discount</TableHead>
-              <TableHead className='text-right'>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {bundles.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={6}
-                  className='text-muted-foreground h-36 text-center text-sm'
-                >
-                  <div className='flex flex-col items-center justify-center gap-2'>
-                    <Boxes className='text-muted-foreground/60 h-8 w-8' />
-                    <p className='font-medium'>No bundles found</p>
-                    <p className='text-muted-foreground text-xs'>
-                      Create the first product bundle or kit for your store
-                      catalog.
-                    </p>
-                    {onCreateClick && (
-                      <Button
-                        size='sm'
-                        variant='outline'
-                        onClick={onCreateClick}
-                        className='mt-2 gap-1 text-xs'
-                      >
-                        <Plus className='h-3.5 w-3.5' />
-                        Create First Bundle
-                      </Button>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : (
-              bundles.map((bundle) => {
-                const itemsCount = bundle.items?.length ?? 0;
+      {/* Bundles Table: the shared static table owns the header, the empty state and the row loop */}
+      {(() => {
+        const columns: DataTableStaticColumn<ProductBundle>[] = [
+          {
+            id: 'name',
+            header: 'Bundle Name & Slug',
+            headerClassName: 'w-[35%]',
+            cell: (bundle) => (
+              <div className='flex items-center gap-3'>
+                <div className='bg-primary/10 text-primary flex h-9 w-9 shrink-0 items-center justify-center rounded'>
+                  <Boxes className='h-4 w-4' />
+                </div>
+                <div className='min-w-0'>
+                  <p className='truncate text-sm font-medium'>{bundle.name}</p>
+                  <p className='text-muted-foreground truncate font-mono text-xs'>
+                    /{bundle.slug}
+                  </p>
+                </div>
+              </div>
+            )
+          },
+          {
+            id: 'type',
+            header: 'Type',
+            cell: (bundle) => (
+              <Badge variant='outline' className='text-xs font-normal'>
+                {bundle.bundleType === 'fixed' ? 'Fixed Kit' : 'Flexible Set'}
+              </Badge>
+            )
+          },
+          {
+            id: 'status',
+            header: 'Status',
+            cell: (bundle) => (
+              <Badge
+                variant={
+                  bundle.status === 'active'
+                    ? 'default'
+                    : bundle.status === 'draft'
+                      ? 'secondary'
+                      : 'outline'
+                }
+                className='text-xs font-normal capitalize'
+              >
+                {bundle.status}
+              </Badge>
+            )
+          },
+          {
+            id: 'items',
+            header: 'Items',
+            headerClassName: 'text-center',
+            cellClassName: 'text-center font-mono text-xs',
+            cell: (bundle) => (
+              <span className='bg-muted inline-flex items-center gap-1 rounded px-2 py-0.5 font-semibold'>
+                <Layers className='text-muted-foreground h-3 w-3' />
+                {bundle.items?.length ?? 0}
+              </span>
+            )
+          },
+          {
+            id: 'discount',
+            header: 'Discount',
+            cell: (bundle) =>
+              bundle.discountType === 'percentage' &&
+              parseFloat(bundle.discountValue) > 0 ? (
+                <span className='inline-flex items-center rounded-sm bg-emerald-500/10 px-2 py-0.5 font-mono text-xs font-medium text-emerald-700 dark:text-emerald-400'>
+                  -{bundle.discountValue}%
+                </span>
+              ) : bundle.discountType === 'fixed_amount' &&
+                parseFloat(bundle.discountValue) > 0 ? (
+                <span className='inline-flex items-center rounded-sm bg-blue-500/10 px-2 py-0.5 font-mono text-xs font-medium text-blue-700 dark:text-blue-400'>
+                  -{bundle.discountValue}
+                </span>
+              ) : (
+                <span className='text-muted-foreground text-xs'>None</span>
+              )
+          },
+          {
+            id: 'actions',
+            header: 'Actions',
+            headerClassName: 'text-right',
+            cellClassName: 'text-right',
+            cell: (bundle) => (
+              <div className='flex items-center justify-end gap-1'>
+                {bundle.bundleProductId && (
+                  <Button
+                    asChild
+                    variant='ghost'
+                    size='icon'
+                    className='text-muted-foreground hover:text-foreground h-8 w-8'
+                  >
+                    <Link href={`/dashboard/product/${bundle.bundleProductId}`}>
+                      <ExternalLink className='h-4 w-4' />
+                    </Link>
+                  </Button>
+                )}
+                {onDeleteBundle && (
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='text-destructive hover:bg-destructive/10 h-8 w-8'
+                    onClick={() => onDeleteBundle(bundle.id)}
+                    disabled={disabled}
+                  >
+                    <Trash2 className='h-4 w-4' />
+                  </Button>
+                )}
+              </div>
+            )
+          }
+        ];
 
-                return (
-                  <TableRow key={bundle.id}>
-                    <TableCell>
-                      <div className='flex items-center gap-3'>
-                        <div className='bg-primary/10 text-primary flex h-9 w-9 shrink-0 items-center justify-center rounded'>
-                          <Boxes className='h-4 w-4' />
-                        </div>
-                        <div className='min-w-0'>
-                          <p className='truncate text-sm font-medium'>
-                            {bundle.name}
-                          </p>
-                          <p className='text-muted-foreground truncate font-mono text-xs'>
-                            /{bundle.slug}
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-
-                    <TableCell>
-                      <Badge variant='outline' className='text-xs font-normal'>
-                        {bundle.bundleType === 'fixed'
-                          ? 'Fixed Kit'
-                          : 'Flexible Set'}
-                      </Badge>
-                    </TableCell>
-
-                    <TableCell>
-                      <Badge
-                        variant={
-                          bundle.status === 'active'
-                            ? 'default'
-                            : bundle.status === 'draft'
-                              ? 'secondary'
-                              : 'outline'
-                        }
-                        className='text-xs font-normal capitalize'
-                      >
-                        {bundle.status}
-                      </Badge>
-                    </TableCell>
-
-                    <TableCell className='text-center font-mono text-xs'>
-                      <span className='bg-muted inline-flex items-center gap-1 rounded px-2 py-0.5 font-semibold'>
-                        <Layers className='text-muted-foreground h-3 w-3' />
-                        {itemsCount}
-                      </span>
-                    </TableCell>
-
-                    <TableCell>
-                      {bundle.discountType === 'percentage' &&
-                      parseFloat(bundle.discountValue) > 0 ? (
-                        <span className='inline-flex items-center rounded-sm bg-emerald-500/10 px-2 py-0.5 font-mono text-xs font-medium text-emerald-700 dark:text-emerald-400'>
-                          -{bundle.discountValue}%
-                        </span>
-                      ) : bundle.discountType === 'fixed_amount' &&
-                        parseFloat(bundle.discountValue) > 0 ? (
-                        <span className='inline-flex items-center rounded-sm bg-blue-500/10 px-2 py-0.5 font-mono text-xs font-medium text-blue-700 dark:text-blue-400'>
-                          -{bundle.discountValue}
-                        </span>
-                      ) : (
-                        <span className='text-muted-foreground text-xs'>
-                          None
-                        </span>
-                      )}
-                    </TableCell>
-
-                    <TableCell className='text-right'>
-                      <div className='flex items-center justify-end gap-1'>
-                        {bundle.bundleProductId && (
-                          <Button
-                            asChild
-                            variant='ghost'
-                            size='icon'
-                            className='text-muted-foreground hover:text-foreground h-8 w-8'
-                          >
-                            <Link
-                              href={`/dashboard/product/${bundle.bundleProductId}`}
-                            >
-                              <ExternalLink className='h-4 w-4' />
-                            </Link>
-                          </Button>
-                        )}
-                        {onDeleteBundle && (
-                          <Button
-                            variant='ghost'
-                            size='icon'
-                            className='text-destructive hover:bg-destructive/10 h-8 w-8'
-                            onClick={() => onDeleteBundle(bundle.id)}
-                            disabled={disabled}
-                          >
-                            <Trash2 className='h-4 w-4' />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+        return (
+          <DataTableStatic
+            rows={bundles}
+            columns={columns}
+            getRowKey={(bundle) => bundle.id}
+            className='bg-card'
+            emptyState={
+              <div className='flex h-36 flex-col items-center justify-center gap-2'>
+                <Boxes className='text-muted-foreground/60 h-8 w-8' />
+                <p className='font-medium'>No bundles found</p>
+                <p className='text-muted-foreground text-xs'>
+                  Create the first product bundle or kit for your store catalog.
+                </p>
+                {onCreateClick && (
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    onClick={onCreateClick}
+                    className='mt-2 gap-1 text-xs'
+                  >
+                    <Plus className='h-3.5 w-3.5' />
+                    Create First Bundle
+                  </Button>
+                )}
+              </div>
+            }
+          />
+        );
+      })()}
 
       {/* Pagination Bar */}
       {totalPages > 1 && onPageChange && (
-        <div className='text-muted-foreground flex items-center justify-between text-xs'>
-          <span>
-            Showing {(page - 1) * perPage + 1} to{' '}
-            {Math.min(page * perPage, total)} of {total} bundles
-          </span>
-          <div className='flex items-center gap-1'>
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => onPageChange(page - 1)}
-              disabled={page <= 1 || disabled}
-              className='h-8 text-xs'
-            >
-              Previous
-            </Button>
-            <span className='px-2 font-mono'>
-              {page} / {totalPages}
-            </span>
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => onPageChange(page + 1)}
-              disabled={page >= totalPages || disabled}
-              className='h-8 text-xs'
-            >
-              Next
-            </Button>
-          </div>
-        </div>
+        <DataTablePaginationBar
+          page={page}
+          pageCount={totalPages}
+          onPageChange={onPageChange}
+          disabled={disabled}
+          rangeLabel={dataTableRangeLabel({
+            page,
+            perPage,
+            total,
+            noun: 'bundles'
+          })}
+        />
       )}
     </div>
   );

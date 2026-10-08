@@ -1,14 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from '@/widgets/data-table/table';
+import { DataTableStatic } from '@/widgets/data-table/data-table-static';
+import type { DataTableStaticColumn } from '@/widgets/data-table/data-table-static';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Button } from '@/shared/ui/shadcn/button';
 import { Input } from '@/shared/ui/shadcn/input';
@@ -24,6 +18,15 @@ interface AttributesTableProps {
   onCreateOption: (
     payload: CreateProductAttributeOptionPayload
   ) => Promise<void>;
+}
+
+/** A boolean attribute flag: a check for true, a dash for false. */
+function BooleanFlag({ value }: { value: boolean }) {
+  return value ? (
+    <Check className='inline h-4 w-4 text-emerald-600' />
+  ) : (
+    <Minus className='text-muted-foreground/40 inline h-3.5 w-3.5' />
+  );
 }
 
 export function AttributesTable({
@@ -49,6 +52,88 @@ export function AttributesTable({
     setOptionDialogOpen(true);
   };
 
+  const columns: DataTableStaticColumn<ProductAttributeSummary>[] = [
+    {
+      id: 'label',
+      header: 'Label',
+      headerClassName: 'w-[240px]',
+      cellClassName: 'text-sm font-medium',
+      cell: (attr) => attr.label
+    },
+    {
+      id: 'code',
+      header: 'Code',
+      cell: (attr) => (
+        <code className='bg-muted rounded px-1.5 py-0.5 font-mono text-xs'>
+          {attr.code}
+        </code>
+      )
+    },
+    {
+      id: 'valueType',
+      header: 'Value Type',
+      cell: (attr) => (
+        <Badge
+          variant='outline'
+          className='text-xs font-normal capitalize'
+        >
+          {attr.valueType.replace('_', ' ')}
+        </Badge>
+      )
+    },
+    {
+      id: 'isLocalized',
+      header: 'Localized',
+      headerClassName: 'text-center',
+      cellClassName: 'text-center',
+      cell: (attr) => <BooleanFlag value={attr.isLocalized} />
+    },
+    {
+      id: 'isFilterable',
+      header: 'Filterable',
+      headerClassName: 'text-center',
+      cellClassName: 'text-center',
+      cell: (attr) => <BooleanFlag value={attr.isFilterable} />
+    },
+    {
+      id: 'isSortable',
+      header: 'Sortable',
+      headerClassName: 'text-center',
+      cellClassName: 'text-center',
+      cell: (attr) => <BooleanFlag value={attr.isSortable} />
+    },
+    {
+      id: 'showOnStorefront',
+      header: 'Storefront',
+      headerClassName: 'text-center',
+      cellClassName: 'text-center',
+      cell: (attr) => <BooleanFlag value={attr.showOnStorefront} />
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      headerClassName: 'text-right',
+      cellClassName: 'text-right',
+      cell: (attr) => {
+        const isOptionType =
+          attr.valueType === 'option' || attr.valueType === 'multi_option';
+        return isOptionType ? (
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-8 text-xs'
+            onClick={() => handleOpenAddOption(attr)}
+          >
+            <PlusCircle className='mr-1 h-3.5 w-3.5' />
+            Add Option
+          </Button>
+        ) : (
+          <span className='text-muted-foreground text-xs'>-</span>
+        );
+      }
+    }
+  ];
+
   return (
     <div className='space-y-4'>
       <div className='flex items-center gap-3'>
@@ -69,107 +154,17 @@ export function AttributesTable({
         </p>
       </div>
 
-      <div className='rounded-md border'>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className='w-[240px]'>Label</TableHead>
-              <TableHead>Code</TableHead>
-              <TableHead>Value Type</TableHead>
-              <TableHead className='text-center'>Localized</TableHead>
-              <TableHead className='text-center'>Filterable</TableHead>
-              <TableHead className='text-center'>Sortable</TableHead>
-              <TableHead className='text-center'>Storefront</TableHead>
-              <TableHead className='text-right'>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredAttributes.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={8}
-                  className='text-muted-foreground py-8 text-center text-sm'
-                >
-                  <div className='flex flex-col items-center justify-center gap-1.5'>
-                    <Sliders className='text-muted-foreground/50 h-8 w-8' />
-                    <p>No product attributes found.</p>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredAttributes.map((attr) => {
-                const isOptionType =
-                  attr.valueType === 'option' ||
-                  attr.valueType === 'multi_option';
-
-                return (
-                  <TableRow key={attr.id}>
-                    <TableCell className='text-sm font-medium'>
-                      {attr.label}
-                    </TableCell>
-                    <TableCell>
-                      <code className='bg-muted rounded px-1.5 py-0.5 font-mono text-xs'>
-                        {attr.code}
-                      </code>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant='outline'
-                        className='text-xs font-normal capitalize'
-                      >
-                        {attr.valueType.replace('_', ' ')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className='text-center'>
-                      {attr.isLocalized ? (
-                        <Check className='inline h-4 w-4 text-emerald-600' />
-                      ) : (
-                        <Minus className='text-muted-foreground/40 inline h-3.5 w-3.5' />
-                      )}
-                    </TableCell>
-                    <TableCell className='text-center'>
-                      {attr.isFilterable ? (
-                        <Check className='inline h-4 w-4 text-emerald-600' />
-                      ) : (
-                        <Minus className='text-muted-foreground/40 inline h-3.5 w-3.5' />
-                      )}
-                    </TableCell>
-                    <TableCell className='text-center'>
-                      {attr.isSortable ? (
-                        <Check className='inline h-4 w-4 text-emerald-600' />
-                      ) : (
-                        <Minus className='text-muted-foreground/40 inline h-3.5 w-3.5' />
-                      )}
-                    </TableCell>
-                    <TableCell className='text-center'>
-                      {attr.showOnStorefront ? (
-                        <Check className='inline h-4 w-4 text-emerald-600' />
-                      ) : (
-                        <Minus className='text-muted-foreground/40 inline h-3.5 w-3.5' />
-                      )}
-                    </TableCell>
-                    <TableCell className='text-right'>
-                      {isOptionType ? (
-                        <Button
-                          variant='ghost'
-                          size='sm'
-                          className='h-8 text-xs'
-                          onClick={() => handleOpenAddOption(attr)}
-                        >
-                          <PlusCircle className='mr-1 h-3.5 w-3.5' />
-                          Add Option
-                        </Button>
-                      ) : (
-                        <span className='text-muted-foreground text-xs'>-</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTableStatic
+        rows={filteredAttributes}
+        columns={columns}
+        getRowKey={(attr) => attr.id}
+        emptyState={
+          <div className='flex flex-col items-center justify-center gap-1.5'>
+            <Sliders className='text-muted-foreground/50 h-8 w-8' />
+            <p>No product attributes found.</p>
+          </div>
+        }
+      />
 
       <AttributeOptionsDialog
         attribute={selectedAttribute}

@@ -10,7 +10,7 @@ crate-type = ["rlib"]
 
 [features]
 default = []
-csr = ["leptos/csr"]
+csr = ["leptos/csr", "rustok-grid-leptos/csr"]
 hydrate = ["leptos/hydrate", "leptos-auth/hydrate", "rustok-grid-leptos/hydrate"]
 ssr = [
   "rustok-grid-leptos/ssr",

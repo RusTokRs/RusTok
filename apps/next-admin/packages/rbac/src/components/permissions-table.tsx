@@ -2,12 +2,8 @@
 
 import * as React from 'react';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
+  DataTableStatic,
+  type DataTableStaticColumn
 } from '@/widgets/data-table';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Input } from '@/shared/ui/shadcn/input';
@@ -92,6 +88,65 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
     });
   }, [permissions, selectedModule, search]);
 
+  // The shared static table owns the header, the row loop and the empty state; this component only
+  // declares what a permission column shows.
+  const columns: DataTableStaticColumn<PermissionRecord>[] = [
+    {
+      id: 'module',
+      header: 'Module',
+      headerClassName: 'w-[140px]',
+      cell: (perm) => (
+        <Badge variant='outline' className='font-mono text-xs capitalize'>
+          {perm.module}
+        </Badge>
+      )
+    },
+    {
+      id: 'slug',
+      header: 'Permission Key',
+      headerClassName: 'min-w-[220px]',
+      cell: (perm) => (
+        <div className='flex items-center gap-2'>
+          <IconKey className='text-muted-foreground h-3.5 w-3.5 flex-shrink-0' />
+          <span className='text-foreground font-mono text-xs font-semibold'>
+            {perm.slug}
+          </span>
+        </div>
+      )
+    },
+    {
+      id: 'action',
+      header: 'Action',
+      headerClassName: 'w-[120px]',
+      cell: (perm) => (
+        <Badge variant='secondary' className='font-mono text-xs'>
+          {perm.action}
+        </Badge>
+      )
+    },
+    {
+      id: 'roles',
+      header: 'Granted to Roles',
+      cell: (perm) => (
+        <div className='flex flex-wrap gap-1.5'>
+          {perm.roles.map((roleName) => (
+            <Badge
+              key={roleName}
+              variant={
+                roleName.toLowerCase().includes('admin')
+                  ? 'default'
+                  : 'secondary'
+              }
+              className='text-xs'
+            >
+              {roleName}
+            </Badge>
+          ))}
+        </div>
+      )
+    }
+  ];
+
   return (
     <div className='space-y-4'>
       {/* Filters row */}
@@ -126,74 +181,14 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
         </div>
       </div>
 
-      {/* Table view */}
-      <div className='bg-card overflow-hidden rounded-xl border shadow-sm'>
-        <Table>
-          <TableHeader>
-            <TableRow className='bg-muted/50'>
-              <TableHead className='w-[140px]'>Module</TableHead>
-              <TableHead className='min-w-[220px]'>Permission Key</TableHead>
-              <TableHead className='w-[120px]'>Action</TableHead>
-              <TableHead>Granted to Roles</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredPermissions.length > 0 ? (
-              filteredPermissions.map((perm) => (
-                <TableRow key={perm.slug} className='hover:bg-muted/40'>
-                  <TableCell>
-                    <Badge
-                      variant='outline'
-                      className='font-mono text-xs capitalize'
-                    >
-                      {perm.module}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className='flex items-center gap-2'>
-                      <IconKey className='text-muted-foreground h-3.5 w-3.5 flex-shrink-0' />
-                      <span className='text-foreground font-mono text-xs font-semibold'>
-                        {perm.slug}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant='secondary' className='font-mono text-xs'>
-                      {perm.action}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className='flex flex-wrap gap-1.5'>
-                      {perm.roles.map((roleName) => (
-                        <Badge
-                          key={roleName}
-                          variant={
-                            roleName.toLowerCase().includes('admin')
-                              ? 'default'
-                              : 'secondary'
-                          }
-                          className='text-xs'
-                        >
-                          {roleName}
-                        </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={4}
-                  className='text-muted-foreground h-32 text-center'
-                >
-                  No permissions found matching the filter.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {/* Table view: markup lives in the shared primitive */}
+      <DataTableStatic
+        rows={filteredPermissions}
+        columns={columns}
+        getRowKey={(perm) => perm.slug}
+        className='bg-card overflow-hidden rounded-xl shadow-sm'
+        emptyState='No permissions found matching the filter.'
+      />
 
       <div className='text-muted-foreground flex items-center justify-between px-1 text-xs'>
         <span>
