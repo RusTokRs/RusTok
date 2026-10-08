@@ -84,7 +84,9 @@ export function facetDomainIsEnumerable(domain: FacetDomain): boolean {
  *
  * The bucket list is cut at {@link MAX_GRID_FACET_VALUES} and the cut is reported through
  * `isTruncated` instead of being silent, exactly like `GridFacet::from_buckets` does for the Leptos
- * grids: a panel may show fewer values than the owner counted, but it must say so.
+ * grids: a panel may show fewer values than the owner counted, but it must say so. An open domain
+ * keeps an empty bucket list, again like its Rust twin, because an unbounded attribute has nothing
+ * to enumerate.
  */
 export function facetFromBuckets(input: {
   code: string;
@@ -93,20 +95,26 @@ export function facetFromBuckets(input: {
   total: number;
   values: readonly FacetBucket[];
 }): FacetSource {
+  const isEnumerable = facetDomainIsEnumerable(input.domain);
   const values: FacetBucket[] = [];
   let isTruncated = false;
-  for (const bucket of input.values ?? []) {
-    if (values.length === MAX_GRID_FACET_VALUES) {
-      isTruncated = true;
-      break;
+  // Only an enumerable domain has a bucket list: an open facet keeps none, exactly like
+  // `GridFacet::from_buckets`, so a caller may hand over whatever the owner sent without the panel
+  // inventing buckets for a free-text, numeric or date attribute.
+  if (isEnumerable) {
+    for (const bucket of input.values ?? []) {
+      if (values.length === MAX_GRID_FACET_VALUES) {
+        isTruncated = true;
+        break;
+      }
+      values.push(bucket);
     }
-    values.push(bucket);
   }
   return {
     code: input.code,
     label: input.label,
     domain: input.domain,
-    isEnumerable: facetDomainIsEnumerable(input.domain),
+    isEnumerable,
     isTruncated,
     total: input.total,
     values,
