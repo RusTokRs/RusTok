@@ -79,19 +79,54 @@ pub fn export_runtime_context_json_schema(document: &ProjectDocument) -> Runtime
     }
 
     if let Some(object) = root.as_object_mut() {
-        object.insert(
-            "x-fly-fields".to_string(),
-            serde_json::to_value(&contract.fields).unwrap_or(Value::Array(Vec::new())),
-        );
-        object.insert(
-            "x-fly-computed".to_string(),
-            serde_json::to_value(&contract.computed).unwrap_or(Value::Array(Vec::new())),
-        );
+        // A contract entry that cannot be serialized is a real gap in the exported schema, so the
+        // caller is told about it instead of being handed a silently empty `x-fly-*` list.
+        let fields = match serde_json::to_value(&contract.fields) {
+            Ok(value) => value,
+            Err(error) => {
+                diagnostics.push(schema_diagnostic(
+                    ValidationSeverity::Warning,
+                    "runtime_context_json_schema_contract_entry_unserializable",
+                    "x-fly-fields",
+                    format!("context contract fields could not be serialized: {error}"),
+                ));
+                Value::Array(Vec::new())
+            }
+        };
+        let computed = match serde_json::to_value(&contract.computed) {
+            Ok(value) => value,
+            Err(error) => {
+                diagnostics.push(schema_diagnostic(
+                    ValidationSeverity::Warning,
+                    "runtime_context_json_schema_contract_entry_unserializable",
+                    "x-fly-computed",
+                    format!("context contract computed entries could not be serialized: {error}"),
+                ));
+                Value::Array(Vec::new())
+            }
+        };
+        object.insert("x-fly-fields".to_string(), fields);
+        object.insert("x-fly-computed".to_string(), computed);
     }
-    let bytes = serde_json::to_vec(&root).unwrap_or_default();
+    // `contract_hash` is an identity shown to the author, not an approval gate, so the cheap
+    // fingerprint is the right tool here (see `digest.rs`). It must still not be a *constant*
+    // when encoding fails: hashing empty bytes would make every broken schema share one hash, so
+    // the value is left empty and the failure is reported instead.
+    let contract_hash = match serde_json::to_vec(&root) {
+        Ok(bytes) => ProjectHash::from_bytes(&bytes).hex(),
+        Err(error) => {
+            diagnostics.push(schema_diagnostic(
+                ValidationSeverity::Warning,
+                "runtime_context_json_schema_contract_hash_unavailable",
+                "",
+                format!("context schema identity could not be computed: {error}"),
+            ));
+            String::new()
+        }
+    };
     RuntimeContextJsonSchema {
         schema: root,
-        contract_hash: ProjectHash::from_bytes(&bytes).hex(),
+        contract_hash,
         diagnostics,
     }
 }

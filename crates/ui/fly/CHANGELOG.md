@@ -14,6 +14,31 @@ Engineering audit remediation — see
 
 ### Security
 
+- **The runtime-scenario release baseline hash is now a SHA-256 digest.** `digest.rs` states that
+  every gate answering "is this payload the one that was approved?" uses `ContentDigest`, and names
+  the runtime-scenario release baseline as one of them — but
+  `RuntimeScenarioReleaseBaseline::computed_hash` still returned a `ProjectHash` (FNV-1a 64)
+  fingerprint. FNV-1a's `xor`/`multiply` chain is invertible, so a payload can be constructed to
+  match a chosen 64-bit value, and this hash is what `runtime_scenario_baseline_hash_invalid`,
+  `RuntimeScenarioReleaseMode::BlockBroken` and the `expected_baseline_hash` compare-and-swap rest
+  on. It now produces `sha256:<64 hex>`, verified with a constant-time comparison.
+
+  `RuntimeScenarioRenderSnapshot::snapshot_hash` deliberately stays on `ProjectHash`. It is not an
+  approval anchor: a snapshot is always carried inside an envelope that digests it with sha256 (the
+  baseline payload above, and the materialization identity's `runtime_snapshot_hash`), and
+  snapshots are persisted inside `page_static_landing_artifact` and
+  `page_publish_rebuild_source`, where the rebuild path requires a rebuild to reproduce them *byte
+  for byte* — changing the algorithm would fail every retained artifact with "rebuilt runtime
+  evidence does not exactly reproduce retained provenance". The same reasoning kept the per-case
+  `html_hash`/`css_hash`/`document_hash` on FNV-1a.
+
+- **Baselines persisted in the old form keep working and are upgraded on first read.** The legacy
+  FNV-1a fingerprint is still recognised, so no row is retroactively rejected and no publishing
+  path breaks on upgrade; `rustok-pages` rewrites `baseline_hash` the first time such a row is read
+  (contents untouched, compare-and-swap on the old hash, a concurrent writer's row wins and is
+  returned instead). A value that matches no recorded fingerprint — an altered envelope, exactly
+  what this hash exists to catch — is never repaired, and new captures never produce the legacy
+  form.
 - `EditorCommand::RestoreSnapshot` now restores through `restore_verified`. `restore` verifies
   the content digest only when one is present, falling back to `project_hash` — a cheap FNV-1a
   change-detection token that is trivial to forge. Nothing untrusted reaches that path today, but
