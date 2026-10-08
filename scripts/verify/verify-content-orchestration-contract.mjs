@@ -4,9 +4,28 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 const checks = [];
 const read = (path) => readFileSync(path, 'utf8');
 const service = read('crates/modules/rustok-content/src/services/content_orchestration_service.rs');
-const resolver = read('crates/modules/rustok-content/src/services/canonical_url_service.rs');
-// The canonical mutation helper lives in `CanonicalUrlWriter`, which the orchestration service delegates to.
-const canonicalMutationHelper = `${service}\n${resolver}`;
+const routeResolver = read('crates/modules/rustok-content-orchestration/src/route_resolver.rs');
+const routePort = read('crates/modules/rustok-content/src/services/canonical_route_resolver.rs');
+const blogRoutesMigration = read('crates/modules/rustok-blog/src/migrations/m20261008_000032_create_blog_post_routes.rs');
+const forumRoutesMigration = read('crates/modules/rustok-forum/src/migrations/m20261008_000037_create_forum_topic_routes.rs');
+const serverWiring = [
+  'apps/server/src/services/app_runtime.rs',
+  'apps/server/src/services/module_event_dispatcher.rs',
+  'apps/server/src/services/graphql_schema.rs',
+  'apps/server/src/graphql/schema.rs',
+  'apps/storefront/src/shared/context/canonical_route_native_server_adapter.rs',
+].map((file) => read(file)).join('\n');
+// Production code under crates/ and apps/ must not touch the retired registry.
+const retiredRegistryPatterns = [
+  'content_canonical_urls',
+  'content_url_aliases',
+  'canonical_url::',
+  'url_alias::',
+  'CanonicalUrlService',
+  'CanonicalUrlWriter',
+  'apply_canonical_url_mutations',
+  'url_updates',
+];
 const bridgeDir = 'crates/modules/rustok-content-orchestration/src/bridge';
 const productionBridge = existsSync(bridgeDir)
   ? readdirSync(bridgeDir)
@@ -84,9 +103,9 @@ for (const op of operations) {
     `${op.name} is missing one or more RBAC scope checks`,
   );
   check(
-    `${op.name}: canonical URL mutations are transactional`,
-    body.includes('apply_canonical_url_mutations') && body.indexOf('apply_canonical_url_mutations') > body.indexOf(`.${op.name}(`),
-    `${op.name} must apply bridge URL updates inside the same transaction`,
+    `${op.name}: route writes go through owner services, not a URL registry`,
+    !body.includes('url_updates') && !body.includes('apply_canonical_url_mutations'),
+    `${op.name} must not reference the retired URL registry`,
   );
   check(
     `${op.name}: outbox event is emitted`,
@@ -101,24 +120,70 @@ for (const op of operations) {
 }
 
 check(
-  'canonical mutation helper normalizes route, locale and target kind',
-  includesAll(canonicalMutationHelper, ['normalize_target_kind', 'normalize_route_url', 'normalize_locale_code']),
-  'canonical URL updates must normalize target kind, route and locale',
+  'service contract carries no URL registry payload',
+  !service.includes('url_updates') && !service.includes('CanonicalUrlWriter') && !service.includes('CanonicalUrlMutation'),
+  'ContentOrchestrationService must not carry URL registry mutations; routes are owned by Blog and Forum',
 );
 check(
-  'canonical mutation helper preserves retired URLs as aliases',
-  includesAll(canonicalMutationHelper, ['retired_targets', 'delete_by_id(retired_canonical.id)', 'alias_urls.insert(retired_canonical.canonical_url.clone())']),
-  'retired canonical targets must be atomically retired and redirected',
+  'conversion bridge writes routes through the owner services inside the transaction',
+  includesAll(productionBridge, [
+    'BlogPostRouteOwner',
+    'ForumTopicRouteOwner',
+    'remove_post_routes_in_tx(',
+    'remove_redirects_to_target_in_tx(',
+    'purge_topic_canonical_in_tx(',
+    'record_redirect_in_tx(',
+    'redirect_source_route_in_tx(',
+    'release_slug_route_in_tx(',
+  ]),
+  'conversion bridges must move routes through BlogPostRouteOwner / ForumTopicRouteOwner',
 );
 check(
-  'canonical mutation helper rejects canonical/alias route collisions',
-  includesAll(canonicalMutationHelper, ['ensure_canonical_route_available', 'ensure_alias_route_available', 'already belongs to another content target', 'would shadow another target canonical URL']),
-  'canonical URL changes must reject cross-target route collisions before mutating mappings',
+  'production code does not reference the retired URL registry',
+  retiredRegistryHits().length === 0,
+  `retired registry references remain: ${retiredRegistryHits().join(', ')}`,
 );
 check(
-  'canonical mutation helper publishes URL outbox events',
-  includesAll(canonicalMutationHelper, ['DomainEvent::CanonicalUrlChanged', 'DomainEvent::UrlAliasPurged']),
-  'canonical URL changes must emit both URL events when aliases are present',
+  'owner route tables are created by the amended blog and forum migrations',
+  // Columns are declared through sea-query `Iden` variants, so match variant names.
+  blogRoutesMigration.includes('"blog_post_routes"') &&
+    blogRoutesMigration.includes('SourceRoute') &&
+    forumRoutesMigration.includes('"forum_topic_routes"') &&
+    forumRoutesMigration.includes('Locale') &&
+    forumRoutesMigration.includes('SourceRoute'),
+  'blog_post_routes and forum_topic_routes must be created by their owner migrations',
+);
+check(
+  'route resolver reads owner redirects before deriving canonical routes',
+  includesAll(routeResolver, [
+    'impl CanonicalRouteResolver for OwnerCanonicalRouteResolver',
+    'BlogPostRouteOwner::find_redirect',
+    'ForumTopicRouteOwner::find_redirects',
+    'redirect_required: true',
+    'canonical_for_target(',
+  ]) && includesAll(routePort, ['trait CanonicalRouteResolver', 'resolve_route']),
+  'OwnerCanonicalRouteResolver must implement the rustok-content port over owner redirect tables',
+);
+check(
+  'route resolver uses shared locale normalization and fallback',
+  includesAll(routeResolver, ['normalize_locale_code', 'resolve_by_locale']),
+  'route resolver must use rustok-content locale helpers, not local copies',
+);
+check(
+  'route resolver is wired into server, GraphQL and storefront consumers',
+  includesAll(serverWiring, [
+    'OwnerCanonicalRouteResolver',
+    'SharedCanonicalRouteResolver',
+  ]),
+  'the canonical route port must be registered in server runtime extensions and consumed by GraphQL and storefront',
+);
+check(
+  'integration tests do not depend on the retired URL registry',
+  !integrationTests.includes('content_canonical_urls') &&
+    !integrationTests.includes('content_url_aliases') &&
+    !integrationTests.includes('url_alias::') &&
+    !integrationTests.includes('canonical_url::'),
+  'rustok-content integration tests must not seed or assert the retired registry',
 );
 check(
   'server conversion bridge reads taxonomy through the transaction owner boundary',
@@ -164,27 +229,6 @@ check(
   'Forum conversion tag sync must constrain relation deletion to the tenant and persist tenant_id on new relations',
 );
 check(
-  'canonical collision integration evidence covers rollback/no outbox side effects',
-  includesAll(integrationTests, [
-    'test_promote_rejects_cross_target_canonical_collision_without_side_effects',
-    'test_promote_rejects_alias_shadowing_other_canonical_without_side_effects',
-    'assert_no_orchestration_side_effects',
-    'collision must not persist idempotency state',
-    'collision must not publish outbox events',
-  ]),
-  'integration tests must cover canonical collision and alias-shadow rollback/no-outbox evidence',
-);
-check(
-  'route resolver keeps alias-first redirect semantics',
-  resolver.indexOf('url_alias::Entity::find()') >= 0 && resolver.indexOf('url_alias::Entity::find()') < resolver.indexOf('canonical_url::Entity::find()') && resolver.includes('redirect_required: true'),
-  'CanonicalUrlService must resolve aliases before canonical routes',
-);
-check(
-  'route resolver uses shared locale fallback',
-  resolver.includes('normalize_locale_code') && resolver.includes('resolve_by_locale'),
-  'CanonicalUrlService must use shared locale normalization/fallback helpers',
-);
-check(
   'local docs mention the compile-free content verifier',
   plan.includes('npm run verify:content:orchestration') && docs.includes('npm run verify:content:orchestration') && runbook.includes('npm run verify:content:orchestration'),
   'implementation plan, docs README and runbook must mention npm run verify:content:orchestration',
@@ -199,6 +243,24 @@ check(
   pkg.includes('"verify:content:orchestration": "node scripts/verify/verify-content-orchestration-contract.mjs"'),
   'package.json must define verify:content:orchestration',
 );
+
+function retiredRegistryHits() {
+  const roots = ['crates', 'apps'];
+  const hits = [];
+  for (const root of roots) {
+    if (!existsSync(root)) continue;
+    for (const entry of readdirSync(root, { recursive: true })) {
+      const file = String(entry);
+      if (!file.endsWith('.rs') || !file.includes('/src/')) continue;
+      if (file.includes('node_modules') || file.includes('/target/')) continue;
+      const text = read(`${root}/${file}`);
+      for (const pattern of retiredRegistryPatterns) {
+        if (text.includes(pattern)) hits.push(`${root}/${file}: ${pattern}`);
+      }
+    }
+  }
+  return hits;
+}
 
 const failed = checks.filter((item) => !item.ok);
 if (failed.length > 0) {
