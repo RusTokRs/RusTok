@@ -185,6 +185,89 @@ impl PostService {
         Ok(())
     }
 
+    /// Makes `slug` owned by a current post: any retired-slug record for it is
+    /// dropped, so a redirect can never shadow a live canonical slug.
+    pub(super) async fn claim_post_slug_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        slug: &str,
+    ) -> BlogResult<()> {
+        blog_post_slug_history::Entity::delete_many()
+            .filter(blog_post_slug_history::Column::TenantId.eq(tenant_id))
+            .filter(blog_post_slug_history::Column::Slug.eq(slug))
+            .exec(txn)
+            .await
+            .map_err(BlogError::from)?;
+        Ok(())
+    }
+
+    /// Records `slug` as retired by `post_id`, so old public URLs can be
+    /// permanently redirected to the post's current canonical slug.
+    pub(super) async fn retire_post_slug_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        post_id: Uuid,
+        slug: &str,
+        retired_at: chrono::DateTime<chrono::Utc>,
+    ) -> BlogResult<()> {
+        blog_post_slug_history::ActiveModel {
+            tenant_id: Set(tenant_id),
+            slug: Set(slug.to_string()),
+            post_id: Set(post_id),
+            created_at: Set(retired_at.into()),
+        }
+        .insert(txn)
+        .await
+        .map_err(BlogError::from)?;
+        Ok(())
+    }
+
+    /// Resolves a post by its current canonical slug, falling back to the
+    /// retired-slug history. Callers must redirect when the returned post's
+    /// slug differs from the requested one.
+    pub(super) async fn find_post_by_current_or_retired_slug(
+        &self,
+        tenant_id: Uuid,
+        slug: &str,
+    ) -> BlogResult<Option<blog_post::Model>> {
+        if let Some(post) = blog_post::Entity::find()
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Slug.eq(slug))
+            .one(&self.db)
+            .await
+            .map_err(BlogError::from)?
+        {
+            Self::validate_persisted_version(&post)?;
+            return Ok(Some(post));
+        }
+
+        let Some(retired) = blog_post_slug_history::Entity::find()
+            .filter(blog_post_slug_history::Column::TenantId.eq(tenant_id))
+            .filter(blog_post_slug_history::Column::Slug.eq(slug))
+            .one(&self.db)
+            .await
+            .map_err(BlogError::from)?
+        else {
+            return Ok(None);
+        };
+
+        let post = blog_post::Entity::find_by_id(retired.post_id)
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(BlogError::from)?
+            .ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Retired blog slug '{slug}' references missing post {}",
+                    retired.post_id
+                ))
+            })?;
+        Self::validate_persisted_version(&post)?;
+        Ok(Some(post))
+    }
+
     pub(super) async fn upsert_translation_in_tx(
         &self,
         txn: &DatabaseTransaction,

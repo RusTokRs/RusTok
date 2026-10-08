@@ -85,9 +85,10 @@ pub struct PostResponse {
     pub channel_slugs: Vec<String>,
     pub metadata: Value,
     pub comment_count: i64,
-    pub view_count: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// First publication time. Set on the first publish and kept across
+    /// unpublish, archive and restore; `None` only if the post was never published.
     pub published_at: Option<DateTime<Utc>>,
     pub version: i32,
 }
@@ -138,6 +139,8 @@ pub struct PostSummary {
     pub featured_image_url: Option<String>,
     pub channel_slugs: Vec<String>,
     pub comment_count: i64,
+    /// First publication time. Set on the first publish and kept across
+    /// unpublish, archive and restore; `None` only if the post was never published.
     pub published_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
 }

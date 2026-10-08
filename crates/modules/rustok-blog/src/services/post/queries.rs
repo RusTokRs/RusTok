@@ -69,16 +69,19 @@ impl PostService {
         enforce_scope(&security, Resource::BlogPosts, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-        let Some(post) = blog_post::Entity::find()
-            .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::Slug.eq(normalize_slug(slug)))
-            .one(&self.db)
-            .await
-            .map_err(BlogError::from)?
+        let normalized_slug = normalize_slug(slug);
+        if normalized_slug.is_empty() {
+            return Ok(None);
+        }
+        // Resolves the current canonical slug first, then a retired slug. The
+        // returned post always carries its current slug, so callers can issue
+        // a permanent redirect when the requested slug was retired.
+        let Some(post) = self
+            .find_post_by_current_or_retired_slug(tenant_id, &normalized_slug)
+            .await?
         else {
             return Ok(None);
         };
-        Self::validate_persisted_version(&post)?;
 
         if storage_to_status(&post.status)? != BlogPostStatus::Published
             && !can_read_non_public_posts(&security)
@@ -521,7 +524,6 @@ impl PostService {
             channel_slugs,
             metadata: scrub_reserved_metadata(post.metadata),
             comment_count: post.comment_count as i64,
-            view_count: post.view_count as i64,
             created_at: post.created_at.into(),
             updated_at: post.updated_at.into(),
             published_at: post.published_at.map(Into::into),

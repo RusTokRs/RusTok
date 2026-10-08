@@ -19,7 +19,6 @@ pub struct Model {
     pub updated_at: DateTimeWithTimeZone,
     pub archived_at: Option<DateTimeWithTimeZone>,
     pub comment_count: i32,
-    pub view_count: i32,
     pub version: i32,
 }
 

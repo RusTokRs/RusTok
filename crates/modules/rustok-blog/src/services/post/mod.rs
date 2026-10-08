@@ -31,7 +31,8 @@ use crate::dto::{
     PostSummary, UpdatePostInput,
 };
 use crate::entities::{
-    blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation,
+    blog_post, blog_post_channel_visibility, blog_post_slug_history, blog_post_tag,
+    blog_post_translation,
 };
 use crate::error::{BlogError, BlogResult};
 use crate::richtext::{canonical_article_body, normalize_article, project_stored_article};
@@ -177,19 +178,64 @@ fn normalize_locale(locale: &str) -> BlogResult<String> {
     normalize_locale_code(locale).ok_or_else(|| BlogError::validation("Invalid locale"))
 }
 
+/// Normalizes a blog post slug through the shared Taxonomy route-key contract.
+///
+/// Blog post slugs are global canonical identifiers (see
+/// `DECISIONS/2026-03-28-multilingual-content-contract.md`), so the same
+/// normalizer is used for every locale. Non-ASCII titles are transliterated
+/// instead of being dropped. Returns an empty string when nothing usable remains.
 fn normalize_slug(slug: &str) -> String {
-    let mut normalized = String::with_capacity(slug.len());
-    let mut previous_dash = false;
-    for ch in slug.chars().flat_map(|ch| ch.to_lowercase()) {
-        if ch.is_ascii_alphanumeric() {
-            normalized.push(ch);
-            previous_dash = false;
-        } else if !previous_dash {
-            normalized.push('-');
-            previous_dash = true;
-        }
+    rustok_taxonomy::normalize_term_route_key(slug).unwrap_or_default()
+}
+
+const MAX_FEATURED_IMAGE_URL_CHARS: usize = 2048;
+
+/// Validates a featured image reference.
+///
+/// Accepts an absolute `http`/`https` URL or a root-relative path (`/...`,
+/// not protocol-relative `//...`). Any other scheme (`javascript:`, `data:`,
+/// `file:`, ...) is rejected so that the value is safe to render in `<img src>`
+/// and in feed/Open Graph metadata.
+fn validate_featured_image_url(url: &str) -> BlogResult<()> {
+    if url.trim() != url || url.is_empty() {
+        return Err(BlogError::validation(
+            "Featured image URL must be a non-empty URL without surrounding whitespace",
+        ));
     }
-    normalized.trim_matches('-').to_string()
+    if url.chars().count() > MAX_FEATURED_IMAGE_URL_CHARS {
+        return Err(BlogError::validation(format!(
+            "Featured image URL cannot exceed {MAX_FEATURED_IMAGE_URL_CHARS} characters"
+        )));
+    }
+    if url.chars().any(char::is_control) {
+        return Err(BlogError::validation(
+            "Featured image URL cannot contain control characters",
+        ));
+    }
+    if url.starts_with('/') {
+        if url.starts_with("//") {
+            return Err(BlogError::validation(
+                "Featured image URL cannot be protocol-relative",
+            ));
+        }
+        return Ok(());
+    }
+    let parsed = url::Url::parse(url).map_err(|_| {
+        BlogError::validation("Featured image URL must be an absolute or root-relative URL")
+    })?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(()),
+        _ => Err(BlogError::validation(
+            "Featured image URL must use http or https",
+        )),
+    }
+}
+
+fn validate_optional_featured_image_url(url: Option<&str>) -> BlogResult<()> {
+    if let Some(url) = url {
+        validate_featured_image_url(url)?;
+    }
+    Ok(())
 }
 
 const RESERVED_POST_METADATA_KEYS: &[&str] = &[

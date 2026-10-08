@@ -107,7 +107,6 @@ pub(crate) async fn promote_topic_to_post(
             None
         }),
         comment_count: Set(active_comments),
-        view_count: Set(0),
         version: Set(1),
     }
     .insert(txn)

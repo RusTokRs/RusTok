@@ -100,6 +100,7 @@ export default async function BlogListingPage({
         pageSize,
         selectedTag,
         selectedCategory,
+        locale
       );
       posts = res.items;
       totalPosts = res.total;

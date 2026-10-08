@@ -42,6 +42,9 @@ export interface BlogPublicComment {
 export interface BlogPostDetail extends BlogPostSummary {
   effectiveLocale: string;
   version?: number;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  updatedAt: string;
   content: RichTextView;
   contentPlainText: string;
   publicComments: {
@@ -103,6 +106,7 @@ const PUBLISHED_POST_QUERY = `
   query PublishedPost($tenantId: UUID!, $slug: String!, $locale: String, $commentsPage: Int, $commentsPerPage: Int) {
     postBySlug(tenantId: $tenantId, slug: $slug, locale: $locale) {
       id title slug excerpt featuredImageUrl authorId categoryId categoryName tags publishedAt effectiveLocale version
+      seoTitle seoDescription updatedAt
       authorProfile {
         userId handle displayName tags avatarMediaId
       }
@@ -134,6 +138,7 @@ export async function fetchPublishedPosts(
   perPage = 6,
   tag?: string,
   categoryId?: string,
+  locale?: string,
 ): Promise<BlogPostListResponse> {
   const filter: {
     status: string;
@@ -141,6 +146,7 @@ export async function fetchPublishedPosts(
     perPage: number;
     tag?: string;
     categoryId?: string;
+    locale?: string;
   } = {
     status: "PUBLISHED",
     page,
@@ -148,6 +154,9 @@ export async function fetchPublishedPosts(
   };
   if (tag) filter.tag = tag;
   if (categoryId) filter.categoryId = categoryId;
+  // Requested locale drives the read; the backend applies the canonical
+  // fallback chain (requested -> tenant default -> first available).
+  if (locale) filter.locale = locale;
 
   const response = await graphql<PostsQueryResponse, {
     tenantId: string;

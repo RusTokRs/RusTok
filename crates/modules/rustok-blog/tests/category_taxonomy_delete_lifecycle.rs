@@ -124,10 +124,10 @@ async fn delete_category_detaches_posts_without_dangling_reference() {
         INSERT INTO blog_posts (
             id, tenant_id, author_id, category_id, status, slug, metadata,
             published_at, created_at, updated_at, archived_at,
-            comment_count, view_count, version
+            comment_count, version
         ) VALUES (
             ?, ?, ?, ?, 'draft', ?, '{}', NULL,
-            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, 0, 0, 1
+            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, 0, 1
         )
         "#,
         [

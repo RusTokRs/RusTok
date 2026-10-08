@@ -347,7 +347,6 @@ impl BlogSearchProjector {
                     'tags', COALESCE(tags.tag_list, '[]'::jsonb),
                     'channel_slugs', COALESCE(channels.channel_slugs, '[]'::jsonb),
                     'comment_count', p.comment_count,
-                    'view_count', p.view_count,
                     'version', p.version,
                     'published_at', p.published_at,
                     'archived_at', p.archived_at

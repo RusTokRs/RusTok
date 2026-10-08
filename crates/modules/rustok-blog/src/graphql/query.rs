@@ -405,7 +405,9 @@ async fn list_public_visible_posts(
     filter: PostsFilter,
     public_channel_slug: Option<&str>,
 ) -> Result<GqlPostList> {
-    let locale = resolve_graphql_locale_fallback(filter.locale.as_deref(), default_locale);
+    // The requested locale (or the request context locale) drives the read;
+    // missing translations fall back through `default_locale`.
+    let locale = resolve_graphql_locale(ctx, filter.locale.as_deref());
     let service = PostService::new(db.clone(), event_bus.clone());
     let result = service
         .list_public_visible_with_locale_fallback(
@@ -447,14 +449,6 @@ async fn list_public_visible_posts(
         items,
         total: result.total,
     })
-}
-
-fn resolve_graphql_locale_fallback(requested: Option<&str>, fallback: &str) -> String {
-    requested
-        .map(str::trim)
-        .filter(|locale| !locale.is_empty())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| fallback.to_string())
 }
 
 fn map_post(post: crate::PostResponse, author_profile: Option<GqlProfileSummary>) -> GqlPost {

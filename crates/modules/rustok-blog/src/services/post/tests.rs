@@ -146,6 +146,23 @@ fn slug_normalization_is_stable() {
 }
 
 #[test]
+fn slug_normalization_transliterates_non_ascii_titles() {
+    assert_eq!(normalize_slug("Привет, мир!"), "privet-mir");
+    assert!(normalize_slug("!!!").is_empty());
+}
+
+#[test]
+fn featured_image_url_accepts_only_http_https_or_root_relative_paths() {
+    assert!(validate_featured_image_url("https://cdn.example.com/a.png").is_ok());
+    assert!(validate_featured_image_url("/media/a.png").is_ok());
+    assert!(validate_featured_image_url("javascript:alert(1)").is_err());
+    assert!(validate_featured_image_url("data:image/png;base64,AAAA").is_err());
+    assert!(validate_featured_image_url("//cdn.example.com/a.png").is_err());
+    assert!(validate_featured_image_url("not a url").is_err());
+    assert!(validate_featured_image_url(" https://cdn.example.com/a.png").is_err());
+}
+
+#[test]
 fn unknown_persisted_post_status_is_an_invariant_failure() {
     let error =
         storage_to_status("corrupt-status").expect_err("unknown persisted status must fail closed");

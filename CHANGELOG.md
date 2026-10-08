@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Blog post slug history: `blog_post_slug_history` (migration `m20261008_000030`) records retired
+  canonical slugs per tenant. Renaming a post keeps its old slug, public reads resolve retired
+  slugs, and the Next storefront redirects permanently to the current slug.
+- Blog post slugs for non-ASCII titles are transliterated through the shared Taxonomy route-key
+  normalizer, so Cyrillic titles no longer fail with "Slug cannot be empty".
 - Page Builder scenario-baseline revision history: every accepted baseline mutation (`create`,
   `replace`, `delete`) appends a record to `page_builder_scenario_baseline_revisions` inside the
   same transaction, and `pageBuilderScenarioBaselineHistory` /
@@ -24,9 +29,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   there is no backfill and existing baselines are untouched.
 
 ### Changed
-- _No unreleased changes yet._
+- Blog `published_at` is the first publication time: republishing, unpublishing, archiving, and
+  restoring no longer change or clear it. `updated_at` tracks the last change.
+- Blog public list, RSS feed, and related-article reads use the requested locale instead of the
+  tenant default locale.
+- Blog post SEO fallbacks use `seoTitle`/`seoDescription` first and a localized default description;
+  Article JSON-LD adds `dateModified` and an absolute URL.
+
+### Removed
+- Blog `view_count` field from the entity, REST/GraphQL-facing DTOs, search projection, and schema
+  (migration `m20261008_000031`). The field had no writer and always returned 0.
 
 ### Fixed
+- Blog `featured_image_url` is validated on create and update: only absolute `http`/`https` URLs or
+  root-relative paths, at most 2048 characters. Other schemes were previously stored and reached SEO
+  and JSON-LD output.
+- Blog RSS feed escapes a literal `]]>` inside CDATA sections, which previously broke the XML.
 - The scenario-baseline revision history existed as schema only: the migration was not in the
   `PagesModule` migration list and its entity was not part of the module tree, so the promotion
   trail the schema promised was never written, with or without a reader. The migration is now

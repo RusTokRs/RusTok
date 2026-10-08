@@ -221,7 +221,6 @@ async fn create_projection_tables(db: &DatabaseConnection) -> Result<(), sea_orm
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             archived_at TIMESTAMPTZ NULL,
             comment_count INTEGER NOT NULL DEFAULT 0,
-            view_count INTEGER NOT NULL DEFAULT 0,
             version INTEGER NOT NULL DEFAULT 1
         );
 
@@ -266,8 +265,8 @@ async fn insert_post(
         r#"
         INSERT INTO blog_posts (
             id, tenant_id, author_id, status, slug, metadata,
-            comment_count, view_count, version
-        ) VALUES ($1, $2, $3, 'published', 'duplicate-race-test', '{}'::jsonb, 0, 0, 1)
+            comment_count, version
+        ) VALUES ($1, $2, $3, 'published', 'duplicate-race-test', '{}'::jsonb, 0, 1)
         "#,
         vec![post_id.into(), tenant_id.into(), author_id.into()],
     ))

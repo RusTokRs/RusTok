@@ -32,6 +32,7 @@ impl PostService {
             MAX_POST_SEO_DESCRIPTION_CHARS,
             "SEO description",
         )?;
+        validate_optional_featured_image_url(featured_image_url.as_deref())?;
         let locale = normalize_locale(&locale)?;
         validate_tags(&tags)?;
 
@@ -63,6 +64,7 @@ impl PostService {
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         self.ensure_slug_unique_in_tx(&txn, tenant_id, &slug, None)
             .await?;
+        self.claim_post_slug_in_tx(&txn, tenant_id, &slug).await?;
         if let Some(category_id) = category_id {
             CategoryService::ensure_exists_in_tx(&txn, tenant_id, category_id).await?;
         }
@@ -89,7 +91,6 @@ impl PostService {
             updated_at: Set(now.into()),
             archived_at: Set(None),
             comment_count: Set(0),
-            view_count: Set(0),
             version: Set(1),
         }
         .insert(&txn)
@@ -210,6 +211,9 @@ impl PostService {
         if let Some(ref tags) = tags {
             validate_tags(tags)?;
         }
+        if let Patch::Set(url) = featured_image_url.as_ref() {
+            validate_featured_image_url(url)?;
+        }
 
         let has_translation_change = title.is_some()
             || content.is_some()
@@ -277,6 +281,7 @@ impl PostService {
         if let Some(ref slug) = normalized_slug {
             self.ensure_slug_unique_in_tx(&txn, tenant_id, slug, Some(post_id))
                 .await?;
+            self.claim_post_slug_in_tx(&txn, tenant_id, slug).await?;
         }
         if let Patch::Set(category_id) = category_id.as_ref() {
             CategoryService::ensure_exists_in_tx(&txn, tenant_id, *category_id).await?;
@@ -350,6 +355,15 @@ impl PostService {
             return Err(BlogError::conflict(
                 "Blog post changed concurrently before the update could be applied",
             ));
+        }
+
+        if let Some(ref slug) = normalized_slug
+            && *slug != post.slug
+        {
+            // Keep the previous canonical slug so that existing public URLs
+            // can be permanently redirected to the new one.
+            self.retire_post_slug_in_tx(&txn, tenant_id, post_id, &post.slug, now)
+                .await?;
         }
 
         if has_translation_change {
@@ -448,7 +462,8 @@ impl PostService {
             post_id,
             post.version,
             BlogPostStatus::Published,
-            Some(now),
+            // published_at records the first publication and is never reset.
+            Some(post.published_at.map(Into::into).unwrap_or(now)),
             None,
         )
         .await?;
@@ -495,7 +510,7 @@ impl PostService {
             post_id,
             post.version,
             BlogPostStatus::Draft,
-            None,
+            post.published_at.map(Into::into),
             None,
         )
         .await?;
@@ -596,7 +611,7 @@ impl PostService {
             post_id,
             post.version,
             BlogPostStatus::Draft,
-            None,
+            post.published_at.map(Into::into),
             None,
         )
         .await?;
@@ -688,6 +703,9 @@ fn ensure_transition(current: BlogPostStatus, next: BlogPostStatus) -> BlogResul
     }
 }
 
+/// Applies a lifecycle transition. `published_at` is the first-publication
+/// timestamp to persist; callers carry it over from the stored post unless the
+/// post is being published for the first time.
 async fn apply_status_transition_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
