@@ -9,13 +9,19 @@
  */
 
 /**
- * Storefront facet panel semantics for the Next storefront.
+ * Catalog facet panel semantics for the Next storefront.
  *
  * The panel is a pure function of the owner's facet answer and the current route state: every
  * bucket is a link that toggles exactly one `code=value` attribute-filter selection, so selection
  * round-trips through the URL (deep links stay shareable) and the component keeps no client-side
- * state. The module is framework-free on purpose — the same rules back the Rust storefront
- * (`rustok-product-storefront`: `catalog_controls`, `core`) and this file mirrors them:
+ * state.
+ *
+ * Everything that is not product-specific lives in the shared table toolkit `@rustok/ui-grid`
+ * (the TypeScript twin of `crates/ui/rustok-grid`) — the `code=value` selection vocabulary, the
+ * domain rules and the panel view model. What stays here is what only this catalog knows: the route
+ * parameter name (`attribute_filters`), the product route pairs, the FTL copy and the facet codes
+ * derived from the catalog search options. The rules back the Rust storefront
+ * (`rustok-product-storefront`: `catalog_controls`, `core`) and mirror them:
  *
  *   - `attribute_filters` is one route value carrying `code=value` entries joined by `;`;
  *   - a facet's own selections are ignored by the owner while it counts that facet, so the panel
@@ -25,10 +31,35 @@
  *   - a truncated bucket list is reported as such rather than silently cut.
  */
 
+import {
+  applyQueryPairs,
+  buildFacetPanel,
+  countLabel,
+  facetFromBuckets,
+  facetDomainIsEnumerable,
+  hasSelectionForKey,
+  isSelectionSelected,
+  parseSelection,
+  selectionAfterClear,
+  selectionAfterClearKey,
+  selectionAfterToggle,
+  serializeSelection,
+  splitSelection,
+  type FacetDomain,
+  type FacetPanelFacetView,
+  type FacetPanelLabels,
+  type FacetPanelValueView,
+  type FacetPanelView,
+  type FacetSource
+} from "@rustok/ui-grid";
+
 import type {
   ProductCatalogFacet,
-  ProductCatalogSearchOptions,
+  ProductCatalogSearchOptions
 } from "../api/types";
+
+/** Route parameter carrying the `;`-joined `code=value` attribute-filter selection. */
+export const CATALOG_ATTRIBUTE_FILTERS_PARAM = "attribute_filters";
 
 /** Route state the panel reads and rewrites; mirrors the storefront catalog controls. */
 export type CatalogFacetControls = {
@@ -41,86 +72,47 @@ export type CatalogFacetControls = {
 };
 
 /** Panel copy; the adapter renders it verbatim. */
-export type CatalogFacetLabels = {
-  title: string;
-  /** Sub-label of an unbounded facet (text, numeric, date). */
-  unboundedHint: string;
-  /** Shown under a facet whose bucket list the owner cut. */
-  truncatedHint: string;
-  clearLabel: string;
-  emptyMessage: string;
-  /** Bucket count template, e.g. `({count})`. */
-  countTemplate: string;
-  selectedMarker: string;
-  unselectedMarker: string;
-};
+export type CatalogFacetLabels = FacetPanelLabels;
 
 /** One bucket rendered as a toggle link. */
-export type CatalogFacetValueView = {
-  value: string;
-  label: string;
-  countLabel: string;
-  selected: boolean;
-  marker: string;
+export type CatalogFacetValueView = FacetPanelValueView & {
+  /** Link that toggles exactly this selection. */
   href: string;
 };
 
-export type CatalogFacetView = {
-  code: string;
-  label: string;
-  isEnumerable: boolean;
-  unboundedHint?: string;
-  isTruncated: boolean;
-  truncatedHint?: string;
+export type CatalogFacetView = Omit<FacetPanelFacetView, "values"> & {
   /** Drops this facet's selections; absent while nothing of it is selected. */
   clearHref?: string;
-  clearLabel: string;
   values: CatalogFacetValueView[];
 };
 
-export type CatalogFacetFiltersView = {
-  title: string;
+export type CatalogFacetFiltersView = Omit<FacetPanelView, "facets"> & {
   facets: CatalogFacetView[];
-  showEmptyState: boolean;
-  emptyMessage: string;
   /** Drops every attribute-filter selection; absent when nothing is selected. */
   clearHref?: string;
-  clearLabel: string;
 };
 
 /** The key part of one `code=value` entry, or `null` when the entry addresses nothing. */
 export function attributeFilterCode(entry: string): string | null {
-  const separator = entry.indexOf("=");
-  if (separator < 0) return null;
-  const code = entry.slice(0, separator).trim();
-  return code.length > 0 ? code : null;
+  return splitSelection(entry)?.key ?? null;
 }
 
 /** Splits one `code=value` entry into its parts; both must be non-empty after trimming. */
 export function parseAttributeFilter(
   entry: string,
 ): { code: string; value: string } | null {
-  const separator = entry.indexOf("=");
-  if (separator < 0) return null;
-  const code = entry.slice(0, separator).trim();
-  const value = entry.slice(separator + 1).trim();
-  if (code.length === 0 || value.length === 0) return null;
-  return { code, value };
+  const parsed = splitSelection(entry);
+  return parsed === null ? null : { code: parsed.key, value: parsed.value };
 }
 
 /** Reads the semicolon-joined route value into attribute-filter entries. */
 export function parseAttributeFilters(value?: string | null): string[] {
-  const normalized = (value ?? "").trim();
-  if (normalized.length === 0) return [];
-  return normalized
-    .split(";")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
+  return parseSelection(value);
 }
 
 /** Serializes attribute-filter entries back into the single route value. */
 export function serializeAttributeFilters(filters: readonly string[]): string {
-  return filters.join(";");
+  return serializeSelection(filters);
 }
 
 /** True when `code=value` is already part of the active selection. */
@@ -129,16 +121,7 @@ export function isAttributeFilterSelected(
   code: string,
   value: string,
 ): boolean {
-  const wantedCode = code.trim();
-  const wantedValue = value.trim();
-  return filters.some((entry) => {
-    const parsed = parseAttributeFilter(entry);
-    return (
-      parsed !== null &&
-      parsed.code === wantedCode &&
-      parsed.value === wantedValue
-    );
-  });
+  return isSelectionSelected(filters, code, value);
 }
 
 /** True when `code=<any value>` is part of the active selection. */
@@ -146,8 +129,7 @@ export function hasAttributeFilterForCode(
   filters: readonly string[],
   code: string,
 ): boolean {
-  const wantedCode = code.trim();
-  return filters.some((entry) => attributeFilterCode(entry) === wantedCode);
+  return hasSelectionForKey(filters, code);
 }
 
 /**
@@ -159,27 +141,7 @@ export function toggleAttributeFilter(
   code: string,
   value: string,
 ): string[] {
-  const wantedCode = code.trim();
-  const wantedValue = value.trim();
-  if (wantedCode.length === 0 || wantedValue.length === 0) return [...filters];
-  const selection = `${wantedCode}=${wantedValue}`;
-  const toggled: string[] = [];
-  let removed = false;
-  for (const entry of filters) {
-    const parsed = parseAttributeFilter(entry);
-    if (
-      !removed &&
-      parsed !== null &&
-      parsed.code === wantedCode &&
-      parsed.value === wantedValue
-    ) {
-      removed = true;
-      continue;
-    }
-    toggled.push(entry);
-  }
-  if (!removed) toggled.push(selection);
-  return toggled;
+  return selectionAfterToggle(filters, code, value);
 }
 
 /** Drops every selection that belongs to `code`, keeping the other facets' selections. */
@@ -187,51 +149,7 @@ export function clearAttributeFilterCode(
   filters: readonly string[],
   code: string,
 ): string[] {
-  const wantedCode = code.trim();
-  return filters.filter((entry) => attributeFilterCode(entry) !== wantedCode);
-}
-
-/** Renders the bucket count from the panel template. */
-export function countLabel(template: string, count: number): string {
-  return template.replace("{count}", String(count));
-}
-
-/**
- * Applies `key=value` pairs to a route path with an optional query string.
- *
- * An existing key keeps its position (stable links), an empty or blank value removes the key, an
- * unknown key is appended, and values are encoded with browser form rules — the same contract as
- * `rustok_ui_core::apply_ui_query_pairs` used by the Leptos storefront.
- */
-export function applyQueryPairs(
-  base: string,
-  pairs: ReadonlyArray<readonly [string, string | null | undefined]>,
-): string {
-  const separator = base.indexOf("?");
-  const path = separator >= 0 ? base.slice(0, separator) : base;
-  const query = separator >= 0 ? base.slice(separator + 1) : "";
-  const merged: Array<[string, string]> = [];
-  for (const [key, value] of new URLSearchParams(query).entries()) {
-    merged.push([key, value]);
-  }
-  for (const [key, rawValue] of pairs) {
-    const nextValue =
-      rawValue === null || rawValue === undefined ? "" : rawValue.trim();
-    const index = merged.findIndex(([existingKey]) => existingKey === key);
-    if (index >= 0) {
-      if (nextValue.length > 0) {
-        merged[index][1] = nextValue;
-      } else {
-        merged.splice(index, 1);
-      }
-    } else if (nextValue.length > 0) {
-      merged.push([key, nextValue]);
-    }
-  }
-  if (merged.length === 0) return path;
-  const params = new URLSearchParams();
-  for (const [key, value] of merged) params.append(key, value);
-  return `${path}?${params.toString()}`;
+  return selectionAfterClearKey(filters, code);
 }
 
 /**
@@ -250,6 +168,39 @@ export function buildCatalogFacetCodes(
     codes.push(code);
   }
   return codes;
+}
+
+/**
+ * Maps one owner facet into the shared facet contract.
+ *
+ * The domain is derived from the owner's `isEnumerable` flag first and from the stored value type
+ * second, so a bounded dictionary keeps its `multi` flag and an unbounded domain keeps its open
+ * semantics even if a future value type arrives with a different name.
+ */
+export function catalogFacetToSource(
+  facet: ProductCatalogFacet,
+): FacetSource {
+  const domain: FacetDomain = facet.isEnumerable
+    ? facet.valueType?.toLowerCase() === "boolean"
+      ? { kind: "boolean" }
+      : {
+          kind: "dictionary",
+          multi: facet.valueType?.toLowerCase() === "multiselect"
+        }
+    : { kind: "open" };
+  const source = facetFromBuckets({
+    code: facet.code,
+    label: facet.label,
+    domain,
+    total: facet.totalProducts ?? 0,
+    values: facet.values ?? []
+  });
+  // Truncation is either the owner cutting its value limit or this mapper cutting ours; both mean
+  // "there are more values than shown", and neither may be dropped silently.
+  return {
+    ...source,
+    isTruncated: source.isTruncated || (facet.isTruncated ?? false)
+  };
 }
 
 /** Query of the current catalog page without any attribute-filter selection. */
@@ -298,8 +249,8 @@ function buildCatalogQueryWithFilters(
     ["category_id", controls.categoryId],
     ["sort_by", controls.sortBy],
     ["sort_direction", controls.sortDirection],
-    ["attribute_filters", serialized.length > 0 ? serialized : null],
-    ["currency", controls.currencyCode],
+    [CATALOG_ATTRIBUTE_FILTERS_PARAM, serialized.length > 0 ? serialized : null],
+    ["currency", controls.currencyCode]
   ]);
 }
 
@@ -315,7 +266,7 @@ export function buildCatalogFacetLabels(locale?: string | null): CatalogFacetLab
         emptyMessage: "Для этого каталога фильтры пока недоступны.",
         countTemplate: "({count})",
         selectedMarker: "[x]",
-        unselectedMarker: "[ ]",
+        unselectedMarker: "[ ]"
       }
     : {
         title: "Filters",
@@ -325,15 +276,15 @@ export function buildCatalogFacetLabels(locale?: string | null): CatalogFacetLab
         emptyMessage: "No filters are available for this catalog yet.",
         countTemplate: "({count})",
         selectedMarker: "[x]",
-        unselectedMarker: "[ ]",
+        unselectedMarker: "[ ]"
       };
 }
 
 /**
  * Builds the whole panel: every facet with its buckets, selection state and toggle links.
  *
- * Selection always addresses the route, so the view model only carries data and hrefs — the
- * adapter decides how to render a marker, a count and a clear action.
+ * Selection always addresses the route, so the shared panel reports the selection each action
+ * produces and this builder turns it into the exact link of the current catalog page.
  */
 export function buildCatalogFacetFiltersView(
   routeBase: string,
@@ -341,48 +292,45 @@ export function buildCatalogFacetFiltersView(
   controls: CatalogFacetControls,
   labels: CatalogFacetLabels,
 ): CatalogFacetFiltersView {
-  const facetViews: CatalogFacetView[] = (facets ?? []).map((facet) => ({
-    code: facet.code,
-    label: facet.label,
-    isEnumerable: facet.isEnumerable,
-    unboundedHint: facet.isEnumerable ? undefined : labels.unboundedHint,
-    isTruncated: facet.isTruncated,
-    truncatedHint: facet.isTruncated ? labels.truncatedHint : undefined,
-    clearHref: hasAttributeFilterForCode(controls.attributeFilters, facet.code)
+  const selection = controls.attributeFilters;
+  const panel = buildFacetPanel(
+    (facets ?? []).map(catalogFacetToSource),
+    selection,
+    labels,
+  );
+
+  const facetViews: CatalogFacetView[] = panel.facets.map((facet) => ({
+    ...facet,
+    clearHref: hasAttributeFilterForCode(selection, facet.code)
       ? buildCatalogFacetClearCodeQuery(routeBase, controls, facet.code)
       : undefined,
-    clearLabel: labels.clearLabel,
-    values: (facet.values ?? []).map((bucket) => {
-      const selected = isAttributeFilterSelected(
-        controls.attributeFilters,
+    values: facet.values.map((bucket) => ({
+      ...bucket,
+      href: buildCatalogFacetToggleQuery(
+        routeBase,
+        controls,
         facet.code,
         bucket.value,
-      );
-      return {
-        value: bucket.value,
-        label: bucket.label,
-        countLabel: countLabel(labels.countTemplate, bucket.count),
-        selected,
-        marker: selected ? labels.selectedMarker : labels.unselectedMarker,
-        href: buildCatalogFacetToggleQuery(
-          routeBase,
-          controls,
-          facet.code,
-          bucket.value,
-        ),
-      };
-    }),
+      ),
+    })),
   }));
 
   return {
-    title: labels.title,
+    ...panel,
     facets: facetViews,
-    showEmptyState: facetViews.length === 0,
-    emptyMessage: labels.emptyMessage,
     clearHref:
-      controls.attributeFilters.length > 0
+      selection.length > 0
         ? buildCatalogFacetClearQuery(routeBase, controls)
         : undefined,
-    clearLabel: labels.clearLabel,
   };
 }
+
+// Re-exported so one import keeps serving the catalog surface; the implementations live in the
+// shared table toolkit and are not duplicated here.
+export {
+  applyQueryPairs,
+  countLabel,
+  facetDomainIsEnumerable,
+  selectionAfterClear,
+  type FacetSource
+};

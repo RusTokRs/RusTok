@@ -54,6 +54,9 @@ const rustControls = read(
   "crates/modules/rustok-product/storefront/src/catalog_controls.rs",
 );
 const graphqlRoot = read("crates/modules/rustok-commerce/src/graphql/product_catalog.rs");
+const sharedGrid = read("packages/rustok-ui-grid/src/facet.ts");
+const sharedPanel = read("packages/rustok-ui-grid/src/panel.ts");
+const sharedUrl = read("packages/rustok-ui-grid/src/url.ts");
 
 requireAll(
   facets,
@@ -65,7 +68,6 @@ requireAll(
     "export function hasAttributeFilterForCode",
     "export function toggleAttributeFilter",
     "export function clearAttributeFilterCode",
-    "export function applyQueryPairs",
     "export function buildCatalogFacetCodes",
     "export function buildCatalogFacetToggleQuery",
     "export function buildCatalogFacetClearCodeQuery",
@@ -75,22 +77,47 @@ requireAll(
   ],
   "storefront facet core",
 );
+// The storefront keeps no private copy of the table vocabulary: the generic half is imported from
+// the host table toolkit (the TypeScript twin of `crates/ui/rustok-grid`) and re-exported.
 requireAll(
   facets,
   [
-    'filters.join(";")',
-    ".split(\";\")",
-    "URLSearchParams",
-    "facet.isEnumerable",
-    "facet.isTruncated",
-    "bucket.count",
+    'from "@rustok/ui-grid"',
+    "buildFacetPanel(",
+    "facetFromBuckets(",
+    "catalogFacetToSource(",
   ],
-  "storefront facet contract",
+  "storefront facet shared core",
+);
+requireAll(
+  sharedGrid,
+  [
+    "SELECTION_LIST_SEPARATOR",
+    "selected.join(SELECTION_LIST_SEPARATOR)",
+    "split(SELECTION_LIST_SEPARATOR)",
+    "MAX_GRID_FACETS",
+  ],
+  "shared ui-grid selection contract",
+);
+requireAll(
+  sharedUrl,
+  ["URLSearchParams", "export function applyQueryPairs", "export function queryParam"],
+  "shared ui-grid route contract",
+);
+requireAll(
+  sharedPanel,
+  ["facet.isTruncated", "bucket.count", "countLabel(", "marker:"],
+  "shared ui-grid panel contract",
 );
 reject(
   facets,
   ['from "react"', 'from "next/', "useState"],
   "storefront facet core must stay framework-free",
+);
+reject(
+  facets,
+  ["URLSearchParams", "SELECTION_LIST_SEPARATOR"],
+  "storefront facet core must delegate the vocabulary instead of re-implementing it",
 );
 
 requireAll(

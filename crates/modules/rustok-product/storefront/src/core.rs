@@ -1,10 +1,12 @@
 use rustok_api::locale_tags_match;
 use rustok_ui_core::{apply_ui_query_pairs, normalize_optional_ui_text};
 
+use rustok_grid::facet_panel::{FacetPanel, count_label as grid_count_label};
+use rustok_grid::{FacetDomain, FacetValue, GridFacet};
+
 use crate::catalog_controls::{
     CatalogFacetLabels, CatalogListInput, clear_attribute_filter_code,
-    has_attribute_filter_for_code, is_attribute_filter_selected, serialize_attribute_filters,
-    toggle_attribute_filter,
+    serialize_attribute_filters, toggle_attribute_filter,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -627,7 +629,7 @@ pub fn format_pricing_context(locale: Option<&str>, context: &ProductPricingCont
 }
 
 pub fn count_label(template: &str, total: u64) -> String {
-    template.replace("{count}", &total.to_string())
+    grid_count_label(template, total)
 }
 
 /// One facet bucket rendered as a toggle link; selection always round-trips through the URL.
@@ -683,6 +685,37 @@ pub fn build_catalog_facet_codes(options: &ProductCatalogSearchOptions) -> Vec<S
         codes.push(code.to_string());
     }
     codes
+}
+
+/// Maps one owner facet into the shared table facet contract.
+///
+/// The domain is derived from the owner's `is_enumerable` flag first and from the stored value type
+/// second, so a bounded dictionary keeps its `multi` flag and an unbounded domain keeps its open
+/// semantics even if a future value type arrives with a different name.
+fn catalog_facet_to_grid(facet: &ProductCatalogFacet) -> GridFacet {
+    let domain = if !facet.is_enumerable {
+        FacetDomain::Open
+    } else if facet.value_type.eq_ignore_ascii_case("boolean") {
+        FacetDomain::Boolean
+    } else {
+        FacetDomain::Dictionary {
+            multi: facet.value_type.eq_ignore_ascii_case("multiselect"),
+        }
+    };
+    let mut mapped = GridFacet::from_buckets(
+        facet.code.as_str(),
+        facet.label.as_str(),
+        domain,
+        facet.total_products,
+        facet
+            .values
+            .iter()
+            .map(|value| FacetValue::new(value.value.clone(), value.label.clone(), value.count)),
+    );
+    // Truncation is either the owner cutting its own value limit or this mapping cutting ours;
+    // both mean "there are more values than shown", and neither may be dropped silently.
+    mapped.is_truncated |= facet.is_truncated;
+    mapped
 }
 
 /// Query of the current catalog page with one facet selection flipped.
@@ -742,65 +775,60 @@ pub fn build_catalog_facet_filters_view_model(
     controls: &CatalogListInput,
     labels: CatalogFacetLabels,
 ) -> CatalogFacetFiltersViewModel {
-    let facets: Vec<CatalogFacetViewModel> = facets
+    // The panel semantics (selection state, markers, count rendering, hints, limits) live in the
+    // shared table toolkit; only the links below are product-specific.
+    let grid_facets: Vec<GridFacet> = facets.iter().map(catalog_facet_to_grid).collect();
+    let panel = FacetPanel::build(
+        grid_facets.as_slice(),
+        controls.attribute_filters.as_slice(),
+        &labels.to_grid_labels(),
+    );
+
+    let facets: Vec<CatalogFacetViewModel> = panel
+        .facets
         .iter()
         .map(|facet| CatalogFacetViewModel {
-            code: facet.code.clone(),
+            code: facet.key.clone(),
             label: facet.label.clone(),
             is_enumerable: facet.is_enumerable,
-            unbounded_hint: (!facet.is_enumerable).then(|| labels.unbounded_hint.clone()),
+            unbounded_hint: facet.unbounded_hint.clone(),
             is_truncated: facet.is_truncated,
-            truncated_hint: facet.is_truncated.then(|| labels.truncated_hint.clone()),
-            clear_href: has_attribute_filter_for_code(
-                controls.attribute_filters.as_slice(),
-                facet.code.as_str(),
-            )
-            .then(|| {
+            truncated_hint: facet.truncated_hint.clone(),
+            clear_href: facet.has_selection.then(|| {
                 build_catalog_facet_clear_code_query(
                     module_route_base,
                     controls,
-                    facet.code.as_str(),
+                    facet.key.as_str(),
                 )
             }),
-            clear_label: labels.clear_label.clone(),
+            clear_label: facet.clear_label.clone(),
             values: facet
                 .values
                 .iter()
-                .map(|value| {
-                    let selected = is_attribute_filter_selected(
-                        controls.attribute_filters.as_slice(),
-                        facet.code.as_str(),
+                .map(|value| CatalogFacetValueViewModel {
+                    value: value.value.clone(),
+                    label: value.label.clone(),
+                    count_label: value.count_label.clone(),
+                    selected: value.selected,
+                    marker: value.marker.clone(),
+                    href: build_catalog_facet_toggle_query(
+                        module_route_base,
+                        controls,
+                        facet.key.as_str(),
                         value.value.as_str(),
-                    );
-                    CatalogFacetValueViewModel {
-                        value: value.value.clone(),
-                        label: value.label.clone(),
-                        count_label: count_label(labels.count_template.as_str(), value.count),
-                        selected,
-                        marker: if selected {
-                            labels.selected_marker.clone()
-                        } else {
-                            labels.unselected_marker.clone()
-                        },
-                        href: build_catalog_facet_toggle_query(
-                            module_route_base,
-                            controls,
-                            facet.code.as_str(),
-                            value.value.as_str(),
-                        ),
-                    }
+                    ),
                 })
                 .collect(),
         })
         .collect();
 
     CatalogFacetFiltersViewModel {
-        title: labels.title,
-        show_empty_state: facets.is_empty(),
-        empty_message: labels.empty_message,
+        title: panel.title,
+        show_empty_state: panel.show_empty_state,
+        empty_message: panel.empty_message,
         clear_href: (!controls.attribute_filters.is_empty())
             .then(|| build_catalog_facet_clear_query(module_route_base, controls)),
-        clear_label: labels.clear_label,
+        clear_label: panel.clear_label,
         facets,
     }
 }

@@ -14,6 +14,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { writeWorkspacePackageResolver } from "./lib/workspace-package-resolver.mjs";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -23,6 +24,7 @@ const facetsModulePath = path.join(
   "apps/next-frontend/packages/rustok-product/src/catalog/facets.ts",
 );
 const verifierPath = path.join(scriptDir, "verify-product-storefront-next-facets.mjs");
+const sharedGridRoot = path.join(repoRoot, "packages/rustok-ui-grid");
 
 /** Runs `body` in a child process that can import the TypeScript module, and returns its report. */
 function runInModuleScope(body) {
@@ -39,10 +41,18 @@ function runInModuleScope(body) {
       "",
     ].join("\n"),
   );
+  // The product module imports the host table toolkit by its package name, exactly as the apps do
+  // through their `file:` dependency; the helper resolves that specifier to the workspace sources,
+  // so the tested code is the shipped code without installing anything.
+  const register = writeWorkspacePackageResolver(directory, {
+    packageName: "@rustok/ui-grid",
+    packageRoot: sharedGridRoot,
+    id: "ui-grid",
+  });
   try {
     const result = spawnSync(
       process.execPath,
-      ["--experimental-strip-types", harness],
+      ["--experimental-strip-types", "--import", register, harness],
       { encoding: "utf8" },
     );
     assert.equal(

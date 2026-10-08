@@ -1,5 +1,10 @@
 use rustok_ui_core::normalize_optional_ui_text;
 
+use rustok_grid::facet_panel::{
+    FacetPanelLabels, has_selection_for_key, is_selection_selected, selection_after_clear_key,
+    selection_after_toggle, split_selection,
+};
+
 use crate::i18n::t;
 
 const SORT_BY_PUBLISHED_AT: &str = "published_at";
@@ -75,71 +80,32 @@ pub fn serialize_attribute_filters(filters: &[String]) -> String {
 }
 
 /// Splits the `code=value` transport entry of one attribute filter into its parts.
+///
+/// The vocabulary itself belongs to the table toolkit (`rustok_grid::facet_panel`): the storefront
+/// panel and the admin grid mutate one selection language, so neither owns a private copy.
 pub fn parse_attribute_filter(entry: &str) -> Option<(String, String)> {
-    let (code, value) = entry.split_once('=')?;
-    let code = code.trim();
-    let value = value.trim();
-    if code.is_empty() || value.is_empty() {
-        return None;
-    }
-    Some((code.to_string(), value.to_string()))
+    split_selection(entry).map(|(code, value)| (code.to_string(), value.to_string()))
 }
 
 /// True when `code=value` is already part of the active attribute-filter list.
 pub fn is_attribute_filter_selected(filters: &[String], code: &str, value: &str) -> bool {
-    let code = code.trim();
-    let value = value.trim();
-    filters.iter().any(|entry| {
-        matches!(parse_attribute_filter(entry), Some((entry_code, entry_value))
-            if entry_code == code && entry_value == value)
-    })
+    is_selection_selected(filters, code, value)
 }
 
 /// Flips `code=value` in the attribute-filter list: unknown selections are appended, an already
 /// selected entry is removed, and the original order of the remaining entries is preserved.
 pub fn toggle_attribute_filter(filters: &[String], code: &str, value: &str) -> Vec<String> {
-    let code = code.trim();
-    let value = value.trim();
-    if code.is_empty() || value.is_empty() {
-        return filters.to_vec();
-    }
-    let selection = format!("{code}={value}");
-    let mut toggled: Vec<String> = Vec::with_capacity(filters.len());
-    let mut removed = false;
-    for entry in filters {
-        match parse_attribute_filter(entry) {
-            Some((entry_code, entry_value))
-                if !removed && entry_code == code && entry_value == value =>
-            {
-                removed = true;
-            }
-            _ => toggled.push(entry.clone()),
-        }
-    }
-    if !removed {
-        toggled.push(selection);
-    }
-    toggled
+    selection_after_toggle(filters, code, value)
 }
 
 /// True when `code=<any value>` is part of the active attribute-filter list.
 pub fn has_attribute_filter_for_code(filters: &[String], code: &str) -> bool {
-    let code = code.trim();
-    filters.iter().any(|entry| {
-        matches!(parse_attribute_filter(entry), Some((entry_code, _)) if entry_code == code)
-    })
+    has_selection_for_key(filters, code)
 }
 
 /// Clears every selection that belongs to `code`, keeping the other facet selections.
 pub fn clear_attribute_filter_code(filters: &[String], code: &str) -> Vec<String> {
-    let code = code.trim();
-    filters
-        .iter()
-        .filter(|entry| {
-            !matches!(parse_attribute_filter(entry), Some((entry_code, _)) if entry_code == code)
-        })
-        .cloned()
-        .collect()
+    selection_after_clear_key(filters, code)
 }
 
 /// Copy of the storefront facet filter panel; the Leptos adapter renders it verbatim.
@@ -156,6 +122,22 @@ pub struct CatalogFacetLabels {
     pub count_template: String,
     pub selected_marker: String,
     pub unselected_marker: String,
+}
+
+impl CatalogFacetLabels {
+    /// The shared panel labels, so one panel implementation serves every surface.
+    pub fn to_grid_labels(&self) -> FacetPanelLabels {
+        FacetPanelLabels {
+            title: self.title.clone(),
+            unbounded_hint: self.unbounded_hint.clone(),
+            truncated_hint: self.truncated_hint.clone(),
+            clear_label: self.clear_label.clone(),
+            empty_message: self.empty_message.clone(),
+            count_template: self.count_template.clone(),
+            selected_marker: self.selected_marker.clone(),
+            unselected_marker: self.unselected_marker.clone(),
+        }
+    }
 }
 
 pub fn build_catalog_facet_labels(locale: Option<&str>) -> CatalogFacetLabels {

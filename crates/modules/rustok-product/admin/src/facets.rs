@@ -42,7 +42,7 @@ pub fn admin_catalog_facets_to_grid(facets: &[AdminCatalogFacet]) -> Vec<GridFac
                     multi: facet.value_type.eq_ignore_ascii_case("multiselect"),
                 }
             };
-            GridFacet::from_buckets(
+            let mut mapped = GridFacet::from_buckets(
                 facet.code.as_str(),
                 facet.label.as_str(),
                 domain,
@@ -51,7 +51,11 @@ pub fn admin_catalog_facets_to_grid(facets: &[AdminCatalogFacet]) -> Vec<GridFac
                     .values
                     .iter()
                     .map(|value| FacetValue::new(value.value.clone(), value.label.clone(), value.count)),
-            )
+            );
+            // Truncation is either the owner cutting its own value limit or this mapping cutting
+            // ours; both mean "there are more values than shown", and neither may be dropped.
+            mapped.is_truncated |= facet.is_truncated;
+            mapped
         })
         .collect()
 }
