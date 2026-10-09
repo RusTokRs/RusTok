@@ -12,6 +12,14 @@ The module owns `menus`, localized menu copies, nested items and active location
 
 GraphQL and HTTP use tenant and channel contexts resolved by the host. Storefront components are contributed through the generic `header_navigation` and `footer_navigation` slots.
 
+## Known Limitations
+
+Items currently persist static URLs only; Page slug changes do not update a
+menu item. The accepted [page-link decision](../../../../DECISIONS/2026-10-09-page-layouts-and-menu-page-links.md)
+requires a target discriminator and a host-supplied Pages route reader across
+GraphQL, HTTP and storefront before page-target writes can be enabled. There
+is no cross-module Pages dependency in Navigation.
+
 ## Translation target
 
 `NavigationMenuTranslationTargetProvider` registers the exact

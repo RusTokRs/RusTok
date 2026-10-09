@@ -40,6 +40,16 @@ channel visibility and deterministic published artifacts.
 - Missing providers and invalid documents fail visibly rather than falling back
   to another document model.
 
+## Known Limitations
+
+The `pages.template` field is presently a free-form label; no stored layout
+wraps the document during review/publish. The accepted [page layout and menu
+link decision](../../../../DECISIONS/2026-10-09-page-layouts-and-menu-page-links.md)
+specifies the Pages-owned versioned template and host-resolved menu target,
+but its schema, authoring surface, publish integration and route adapter are
+not yet implemented. Site symbols still require manual re-review and
+re-publication of dependent pages after a shared edit.
+
 ## Integration
 
 - `rustok-content` supplies content status and locale helpers.
