@@ -19,7 +19,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::helpers::body_revision_timestamp;
-use crate::entities::{page, page_body, page_body_draft, site_symbol};
+use crate::entities::{page, page_body, page_body_draft, page_template, site_symbol};
 use crate::error::{PagesError, PagesResult};
 
 const FLY_SYMBOLS_REVISION_FIELD: &str = "flySymbolsRevision";
@@ -252,8 +252,14 @@ pub(super) async fn sync_site_symbols_in_tx<C: ConnectionTrait>(
     }
 
     // A definition may be removed only after all instances in other pages
-    // have been removed. The current page is excluded because its submitted
-    // body (already written inside this transaction) is checked directly.
+    // and all layout references have been removed. The current page is excluded
+    // because its submitted body (already written inside this transaction) is
+    // checked directly. Load the catalog's layout references once per save.
+    let template_references = if existing.iter().any(|row| !desired.contains_key(&row.symbol_id)) {
+        template_symbol_ids(conn, tenant_id, locale).await?
+    } else {
+        std::collections::BTreeSet::new()
+    };
     for removed in existing
         .iter()
         .filter(|row| !desired.contains_key(&row.symbol_id))
@@ -271,6 +277,7 @@ pub(super) async fn sync_site_symbols_in_tx<C: ConnectionTrait>(
                 &removed.symbol_id,
             )
             .await?
+            || template_references.contains(&removed.symbol_id)
         {
             return Err(PagesError::validation(format!(
                 "cannot remove site symbol `{}` while a page still references it",
@@ -306,7 +313,7 @@ pub(super) async fn sync_site_symbols_in_tx<C: ConnectionTrait>(
 
 /// Postgres serializes catalog writers for one tenant/locale before reading
 /// the version. SQLite's write transaction already serializes writers.
-async fn lock_site_symbol_catalog_in_tx<C: ConnectionTrait>(
+pub(crate) async fn lock_site_symbol_catalog_in_tx<C: ConnectionTrait>(
     conn: &C,
     tenant_id: Uuid,
     locale: &str,
@@ -402,6 +409,28 @@ async fn symbol_used_by_published_current_page<C: ConnectionTrait>(
         }
         _ => Ok(false),
     }
+}
+
+async fn template_symbol_ids<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    locale: &str,
+) -> PagesResult<std::collections::BTreeSet<String>> {
+    let templates = page_template::Entity::find()
+        .filter(page_template::Column::TenantId.eq(tenant_id))
+        .filter(page_template::Column::Locale.eq(locale))
+        .all(conn)
+        .await?;
+    let mut references = std::collections::BTreeSet::new();
+    for template in templates {
+        for raw in [template.header_symbol_ids, template.footer_symbol_ids] {
+            let ids: Vec<String> = serde_json::from_value(raw).map_err(|error| {
+                PagesError::validation(format!("corrupt page template symbol list: {error}"))
+            })?;
+            references.extend(ids);
+        }
+    }
+    Ok(references)
 }
 
 fn content_references_any_symbol(

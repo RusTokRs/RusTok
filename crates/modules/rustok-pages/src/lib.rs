@@ -113,7 +113,8 @@ pub use services::{
     PageInlineEditGrantClaims, PageInlineEditGrantContext, PageInlineEditKeyId,
     PageInlineEditKeyring, PageInlineEditSecret, PageRouteDescriptor, PageRouteDisposition,
     PageRouteHistoryImportItem, PageRouteHistoryImportResult, PageRouteHistoryImportService,
-    PageRouteResolution, PageRouteService, PageService, PublishedLandingArtifact,
+    PageRouteResolution, PageRouteService, PageService, PageTemplateRecord,
+    PageTemplateService, PublishedLandingArtifact, MAX_TEMPLATE_SECTIONS,
     SaveIfCurrentScenarioBaselineRequest, inline_edit_context_mismatch,
     page_inline_edit_keyring_from_environment,
 };

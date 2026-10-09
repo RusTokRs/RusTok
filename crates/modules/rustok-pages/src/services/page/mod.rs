@@ -19,6 +19,7 @@ mod route;
 mod route_history_import;
 mod schedule;
 mod symbols;
+pub(crate) use symbols::lock_site_symbol_catalog_in_tx;
 mod translation_apply;
 
 use rustok_content::entities::node::ContentStatus;

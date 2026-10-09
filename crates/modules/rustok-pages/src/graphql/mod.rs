@@ -6,6 +6,7 @@ mod query;
 mod runtime_data;
 mod scenario_baseline;
 mod types;
+mod templates;
 
 use async_graphql::MergedObject;
 
@@ -14,6 +15,7 @@ pub struct PagesQuery(
     query::PagesQuery,
     scenario_baseline::PageBuilderScenarioBaselineQuery,
     builder_rollout::PageBuilderRolloutQuery,
+    templates::PageTemplateQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -22,6 +24,7 @@ pub struct PagesMutation(
     scenario_baseline::PageBuilderScenarioBaselineMutation,
     artifact_integrity_audit::PageArtifactIntegrityAuditMutation,
     artifact_repair::PageArtifactRepairMutation,
+    templates::PageTemplateMutation,
 );
 
 pub use artifact_integrity_audit::{

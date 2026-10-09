@@ -302,6 +302,13 @@
       "mode": "none",
       "owner": "rustok-pages",
       "reason": "Creates site symbol definition storage as new owner storage; symbol instances were not expressible before this change, so no historical definitions exist to backfill"
+    },
+    {
+      "id": "pages-page-template-catalog",
+      "migration": "m20261009_000004_create_page_templates",
+      "mode": "none",
+      "owner": "rustok-pages",
+      "reason": "Adds an empty Pages-owned layout catalog without changing existing pages.template labels or published artifacts; default remains a virtual empty layout and non-default legacy labels require an explicit operator audit before publish enforcement"
     }
   ]
 }

@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: Not started
+- Implementation status: In progress
 - Owners: `rustok-pages` (templates, published routes and page visibility), `rustok-navigation` (menu references and trees), host adapters (composition)
 - Extends: [Site symbols](./2026-10-09-site-symbols-shared-definitions.md), [Multilingual content contract](./2026-03-28-multilingual-content-contract.md)
 - Supersedes: None
@@ -69,7 +69,7 @@ Stage the additive columns/tables and dual static/page input first, then wire **
 
 ## Verification
 
-Test additive/backfill migration on populated menu and pages schemas; uniqueness/CAS and cross-tenant template writes; exact-locale/channel unpublished/deleted and missing-adapter behavior in GraphQL, HTTP and native storefront; published slug change without Navigation row mutation; cache identity after route change; reviewed layout/symbol drift, one-page publish and immutable artifact integrity; legacy `default` and static-link parity. Run scoped Rust tests and repository migration/ADR gates. Until that evidence exists, implementation status remains **Not started**.
+Test additive/backfill migration on populated menu and pages schemas; uniqueness/CAS and cross-tenant template writes; exact-locale/channel unpublished/deleted and missing-adapter behavior in GraphQL, HTTP and native storefront; published slug change without Navigation row mutation; cache identity after route change; reviewed layout/symbol drift, one-page publish and immutable artifact integrity; legacy `default` and static-link parity. Run scoped Rust tests and repository migration/ADR gates. The additive Pages-owned template catalog, CAS authoring service and GraphQL authoring surface are implemented. Publish/preview composition, existing-label cutover, navigation page targets and host route adapters are **not** implemented; implementation status remains **In progress** until the full verification matrix is satisfied.
 
 ## Consequences
 
