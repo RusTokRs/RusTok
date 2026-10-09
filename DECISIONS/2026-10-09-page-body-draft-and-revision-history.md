@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-pages` (Pages module)
 - Extends: [Multilingual content contract](./2026-03-28-multilingual-content-contract.md)
 - Supersedes: None
