@@ -74,7 +74,9 @@ for (const marker of [
   "list_authenticated_storefront_visible_with_audience_context",
   "list_public_storefront_visible_with_locale_fallback",
   "public_channel_slug(ctx)",
-  "is_topic_visible_for_channel",
+  "topic_read_audience_port_context(",
+  "topic_audience_read_service(",
+  "topic_audience_list_service(",
   "Some(&PUBLIC_REPLY_STATUSES)",
 ]) {
   requireMarker(runtime, marker, runtimePath);
@@ -85,7 +87,6 @@ rejectMarker(moduleSource, "mod query_runtime;", modulePath);
 requireMarker(channelVerifier, runtimePath, channelVerifierPath);
 for (const marker of [
   "public_channel_slug(ctx)",
-  "is_topic_visible_for_channel",
   "async fn forum_storefront_replies(",
   "list_public_storefront_visible_with_locale_fallback",
   "Some(&PUBLIC_REPLY_STATUSES)",

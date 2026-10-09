@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -65,8 +68,10 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
 async fn user_stats_track_topic_reply_and_solution_lifecycle() {
     let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus.clone());
-    let reply_service = ReplyService::new(db.clone(), event_bus.clone());
+    let topic_service = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
+    let reply_service = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let moderation_service = ModerationService::new(db.clone(), event_bus.clone());
     let stats_service = UserStatsService::new(db);
 

@@ -3,13 +3,14 @@ use axum::{
     extract::{Path, State},
 };
 use rustok_api::Permission;
-use rustok_api::{AuthContext, TenantContext, has_any_effective_permission};
+use rustok_api::{AuthContext, RequestContext, TenantContext, has_any_effective_permission};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
-    ForumSubscriptionPolicyResponse, ForumSubscriptionResponse, SubscriptionService,
-    UpdateForumSubscriptionInput, UpdateForumSubscriptionPolicyInput,
+    ForumSubscriptionPolicyResponse, ForumSubscriptionResponse, ForumTopicReadOperation,
+    ForumTopicReadTransport, SubscriptionService, UpdateForumSubscriptionInput,
+    UpdateForumSubscriptionPolicyInput, topic_read_audience_port_context,
 };
 
 #[utoipa::path(
@@ -119,6 +120,7 @@ pub async fn update_topic_subscription_settings(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateForumSubscriptionInput>,
 ) -> HttpResult<Json<ForumSubscriptionResponse>> {
@@ -127,8 +129,18 @@ pub async fn update_topic_subscription_settings(
         &[Permission::FORUM_TOPICS_READ],
         "Permission denied: forum_topics:read required",
     )?;
-    let settings = SubscriptionService::new(runtime.db_clone())
-        .update_topic_subscription(tenant.id, id, security(&auth), input)
+    let write_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::Subscription,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(operation_error)?;
+    let settings = runtime
+        .subscription_service()
+        .update_topic_subscription(tenant.id, id, security(&auth), write_context, input)
         .await
         .map_err(operation_error)?;
     Ok(Json(settings))

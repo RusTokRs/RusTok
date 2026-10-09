@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -124,6 +127,7 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
     }
 
     let topic = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             admin.clone(),

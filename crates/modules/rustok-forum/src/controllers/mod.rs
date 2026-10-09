@@ -76,8 +76,28 @@ impl ForumHttpRuntime {
     }
 
     fn vote_service(&self) -> crate::VoteService {
-        crate::VoteService::new(self.db_clone())
-            .with_settings_providers(self.settings_providers.clone())
+        let service = crate::VoteService::new(self.db_clone())
+            .with_settings_providers(self.settings_providers.clone());
+        match self.audience_facts.clone() {
+            Some(facts) => service.with_audience_facts(facts),
+            None => service,
+        }
+    }
+
+    fn subscription_service(&self) -> crate::SubscriptionService {
+        let service = crate::SubscriptionService::new(self.db_clone());
+        match self.audience_facts.clone() {
+            Some(facts) => service.with_audience_facts(facts),
+            None => service,
+        }
+    }
+
+    fn widget_preview_service(&self) -> crate::ForumWidgetPreviewService {
+        crate::ForumWidgetPreviewService::new(
+            self.db_clone(),
+            self.event_bus(),
+            self.audience_facts.clone(),
+        )
     }
 
     fn moderation_service(&self) -> crate::ModerationService {
@@ -170,6 +190,11 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
             HttpError::not_found(code, "The requested forum resource was not found")
         }
         ForumError::Forbidden(_) => HttpError::forbidden(code, "Permission denied"),
+        ForumError::RateLimited { .. } => HttpError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            code,
+            "Forum posting rate limit reached; retry later",
+        ),
         ForumError::RelationRevisionConflict
         | ForumError::RelationRevisionUnavailable
         | ForumError::AttachmentSourceRevisionConflict { .. }
@@ -192,6 +217,7 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
         ),
         ForumError::TopicClosed
         | ForumError::TopicArchived
+        | ForumError::TopicAwaitingModeration
         | ForumError::TopicLocked
         | ForumError::TopicDeleted
         | ForumError::TopicRestoreUnavailable(_)

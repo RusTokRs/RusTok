@@ -15,6 +15,7 @@ use super::rbac::enforce_scope;
 use super::topic_audience_visibility::{
     ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
 };
+use super::engagement_mode::ForumSettingsProviders;
 use super::topic_facade::TopicService;
 
 const FORUM_TOPIC_AUDIENCE_SCAN_PAGE_SIZE: u64 = MAX_FORUM_READ_LIMIT;
@@ -25,13 +26,27 @@ pub struct ForumTopicAudiencePage {
     pub next_cursor: Option<String>,
 }
 
-/// Exact storefront topic-list owner over the canonical base visibility query and
-/// every persisted category/topic audience layer.
+/// Which read contract a topic-list scan enforces.
 ///
-/// The owner scans the base storefront candidate set in bounded database pages,
-/// applies the richer decision before output pagination, and derives `items` and
-/// `total` from the same allowed sequence. This prevents hidden topics from
-/// producing sparse pages or leaking through a pre-audience count.
+/// Both variants share one bounded keyset scan. They differ only in the base candidate
+/// query and in the per-topic predicate, so the owner and storefront paths cannot drift
+/// in how they page or count visible topics.
+#[derive(Clone, Copy)]
+enum TopicListAudience<'a> {
+    /// Storefront contract: open topics, route channel, and every audience layer.
+    Storefront { channel_slug: Option<&'a str> },
+    /// Owner/admin contract: every status, the inherited category floor, and every
+    /// audience layer. Channel visibility is not part of the owner read.
+    Owner,
+}
+
+/// Exact topic-list owner over the canonical base visibility query and every persisted
+/// category/topic audience layer.
+///
+/// The owner scans the base candidate set in bounded database pages, applies the richer
+/// decision before output pagination, and derives `items` and the next cursor from the
+/// same allowed sequence. This prevents hidden topics from producing sparse pages or
+/// leaking through a pre-audience count.
 pub struct ForumTopicAudienceListService {
     topic_service: TopicService,
     visibility: ForumTopicAudienceVisibilityService,
@@ -48,6 +63,14 @@ impl ForumTopicAudienceListService {
         facts_port: SharedForumAudienceFactsPort,
     ) -> Self {
         Self::with_optional_audience_facts(db, event_bus, Some(facts_port))
+    }
+
+    /// Applies tenant settings (for example `show_locked_topics_in_lists`) to the
+    /// base topic read path, so the audience-aware list honours the same flags as
+    /// the plain list.
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.topic_service = self.topic_service.with_settings_providers(settings);
+        self
     }
 
     fn with_optional_audience_facts(
@@ -74,7 +97,7 @@ impl ForumTopicAudienceListService {
             ForumTopicAudienceViewer::public(),
             filter,
             fallback_locale,
-            channel_slug,
+            TopicListAudience::Storefront { channel_slug },
         )
         .await
     }
@@ -103,7 +126,40 @@ impl ForumTopicAudienceListService {
             viewer,
             filter,
             fallback_locale,
-            channel_slug.as_deref(),
+            TopicListAudience::Storefront {
+                channel_slug: channel_slug.as_deref(),
+            },
+        )
+        .await
+    }
+
+    /// Exact authenticated owner/admin topic list. The effective locale comes from the
+    /// validated caller context and overrides any locale in the filter so the page and the
+    /// audience facts always describe the same request.
+    pub async fn list_authenticated_owner_visible_with_audience_context(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        context: PortContext,
+        mut filter: ListTopicsFilter,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<ForumTopicAudiencePage> {
+        enforce_scope(&security, Resource::ForumTopics, Action::List)?;
+        let locale = context.locale.trim().to_string();
+        if locale.is_empty() {
+            return Err(ForumError::Validation(
+                "Forum topic audience list context locale is unavailable".to_string(),
+            ));
+        }
+        let viewer = ForumTopicAudienceViewer::authenticated(security.clone(), context)?;
+        filter.locale = Some(locale);
+        self.list_visible(
+            tenant_id,
+            security,
+            viewer,
+            filter,
+            fallback_locale,
+            TopicListAudience::Owner,
         )
         .await
     }
@@ -115,7 +171,7 @@ impl ForumTopicAudienceListService {
         viewer: ForumTopicAudienceViewer,
         filter: ListTopicsFilter,
         fallback_locale: Option<&str>,
-        channel_slug: Option<&str>,
+        audience: TopicListAudience<'_>,
     ) -> ForumResult<ForumTopicAudiencePage> {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
         if !(1..=MAX_FORUM_READ_LIMIT).contains(&filter.per_page) {
@@ -136,27 +192,48 @@ impl ForumTopicAudienceListService {
             candidate_filter.after = candidate_after.clone();
             candidate_filter.per_page = FORUM_TOPIC_AUDIENCE_SCAN_PAGE_SIZE;
 
-            let candidates = self
-                .topic_service
-                .list_storefront_visible_with_locale_fallback(
-                    tenant_id,
-                    security.clone(),
-                    candidate_filter,
-                    fallback_locale,
-                    channel_slug,
-                )
-                .await?;
+            let candidates = match audience {
+                TopicListAudience::Storefront { channel_slug } => {
+                    self.topic_service
+                        .list_storefront_visible_with_locale_fallback(
+                            tenant_id,
+                            security.clone(),
+                            candidate_filter,
+                            fallback_locale,
+                            channel_slug,
+                        )
+                        .await?
+                }
+                TopicListAudience::Owner => {
+                    self.topic_service
+                        .list_with_locale_fallback(
+                            tenant_id,
+                            security.clone(),
+                            candidate_filter,
+                            fallback_locale,
+                        )
+                        .await?
+                }
+            };
 
             if candidates.items.is_empty() {
                 break;
             }
 
             for topic in candidates.items {
-                if self
-                    .visibility
-                    .is_topic_visible(tenant_id, topic.id, channel_slug, &viewer)
-                    .await?
-                {
+                let visible = match audience {
+                    TopicListAudience::Storefront { channel_slug } => {
+                        self.visibility
+                            .is_topic_visible(tenant_id, topic.id, channel_slug, &viewer)
+                            .await?
+                    }
+                    TopicListAudience::Owner => {
+                        self.visibility
+                            .is_topic_owner_visible(tenant_id, topic.id, &viewer)
+                            .await?
+                    }
+                };
+                if visible {
                     if items.len() == per_page {
                         has_more = true;
                         break 'scan;

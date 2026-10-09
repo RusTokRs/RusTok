@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -187,6 +190,7 @@ async fn exact_topic_read_enforces_inherited_and_topic_audience_before_hydration
     let root = create_category(&db, tenant_id, admin.clone(), "members", None).await;
     let child = create_category(&db, tenant_id, admin.clone(), "trusted", Some(root)).await;
     let topic_id = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             admin.clone(),

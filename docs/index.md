@@ -40,6 +40,8 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Settings and Configuration Architecture](./architecture/settings.md)
 - [Platform Glossary](./glossary.md)
 - [Module and Owner Map](./modules/registry.md)
+- [UI Architecture and Landscape](./UI/README.md)
+- [UI Workbench Architecture](./UI/ui-workbench-architecture.md)
 
 ## Module System
 

@@ -123,18 +123,101 @@ if (existsSync(rustTypesPath) && existsSync(reactButtonPath)) {
   fail('Could not locate Rust or React button component definitions');
 }
 
-// 5. Verify Workbench Pages Exist in Both Hosts
+// 5. Verify Rust UI Component Adapters (Dioxus & Leptos)
+const dioxusComponents = [
+  { file: 'button.rs', symbol: 'pub fn Button' },
+  { file: 'badge.rs', symbol: 'pub fn Badge' },
+  { file: 'card.rs', symbol: 'pub fn Card' },
+  { file: 'input.rs', symbol: 'pub fn Input' },
+  { file: 'checkbox.rs', symbol: 'pub fn Checkbox' },
+  { file: 'switch.rs', symbol: 'pub fn Switch' },
+];
+
+for (const cmp of dioxusComponents) {
+  const p = resolve(rootDir, 'crates/ui/rustok-ui/dioxus/src', cmp.file);
+  if (existsSync(p)) {
+    const code = readFileSync(p, 'utf-8');
+    if (code.includes(cmp.symbol)) {
+      pass(`Dioxus ${cmp.file.replace('.rs', '')} verified`);
+    } else {
+      fail(`Dioxus ${cmp.file} missing expected symbol: ${cmp.symbol}`);
+    }
+  } else {
+    fail(`Missing Dioxus component at ${p}`);
+  }
+}
+
+const leptosComponents = [
+  { file: 'button.rs', symbol: 'pub fn Button' },
+  { file: 'badge.rs', symbol: 'pub fn Badge' },
+  { file: 'card.rs', symbol: 'pub fn Card' },
+  { file: 'input.rs', symbol: 'pub fn Input' },
+  { file: 'checkbox.rs', symbol: 'pub fn Checkbox' },
+  { file: 'switch.rs', symbol: 'pub fn Switch' },
+];
+
+for (const cmp of leptosComponents) {
+  const p = resolve(rootDir, 'crates/ui/rustok-ui/leptos/src', cmp.file);
+  if (existsSync(p)) {
+    const code = readFileSync(p, 'utf-8');
+    if (code.includes(cmp.symbol)) {
+      pass(`Leptos ${cmp.file.replace('.rs', '')} verified`);
+    } else {
+      fail(`Leptos ${cmp.file} missing expected symbol: ${cmp.symbol}`);
+    }
+  } else {
+    fail(`Missing Leptos component at ${p}`);
+  }
+}
+
+// 6. Verify Flutter Mobile Component Kit Parity
+const flutterKitComponents = [
+  { file: 'button.dart', symbol: 'class RusTokButton' },
+  { file: 'badge.dart', symbol: 'class RusTokBadge' },
+  { file: 'card.dart', symbol: 'class RusTokCard' },
+  { file: 'input.dart', symbol: 'class RusTokInput' },
+  { file: 'checkbox.dart', symbol: 'class RusTokCheckbox' },
+  { file: 'switch.dart', symbol: 'class RusTokSwitch' },
+  { file: 'separator.dart', symbol: 'class RusTokSeparator' },
+  { file: 'avatar.dart', symbol: 'class RusTokAvatar' },
+];
+
+for (const cmp of flutterKitComponents) {
+  const p = resolve(rootDir, 'rustok_mobile/packages/app_ui_kit/lib/components', cmp.file);
+  if (existsSync(p)) {
+    const code = readFileSync(p, 'utf-8');
+    if (code.includes(cmp.symbol)) {
+      pass(`Flutter ${cmp.symbol} verified in app_ui_kit`);
+    } else {
+      fail(`Flutter ${cmp.file} missing expected symbol: ${cmp.symbol}`);
+    }
+  } else {
+    fail(`Missing Flutter component at ${p}`);
+  }
+}
+
+// 7. Verify Workbench Pages Exist in Both Hosts and Mount Recipes
 const nextWorkbenchPage = resolve(rootDir, 'apps/next-admin/src/app/dashboard/design-system/page.tsx');
 const leptosWorkbenchPage = resolve(rootDir, 'apps/admin/src/pages/design_system.rs');
 
 if (existsSync(nextWorkbenchPage)) {
-  pass('Next.js UI Workbench page verified at /dashboard/design-system');
+  const nextCode = readFileSync(nextWorkbenchPage, 'utf-8');
+  if (nextCode.includes('Entity Summary Card') && nextCode.includes('Confirm Action Dialog')) {
+    pass('Next.js UI Workbench verified with full recipe matrix at /dashboard/design-system');
+  } else {
+    fail('Next.js UI Workbench missing required recipe patterns');
+  }
 } else {
   fail(`Missing Next.js UI Workbench page at ${nextWorkbenchPage}`);
 }
 
 if (existsSync(leptosWorkbenchPage)) {
-  pass('Leptos UI Workbench page verified at apps/admin/src/pages/design_system.rs');
+  const leptosCode = readFileSync(leptosWorkbenchPage, 'utf-8');
+  if (leptosCode.includes('Entity Summary Card') && leptosCode.includes('Confirm Action Dialog')) {
+    pass('Leptos UI Workbench verified with full recipe matrix at apps/admin/src/pages/design_system.rs');
+  } else {
+    fail('Leptos UI Workbench missing required recipe patterns');
+  }
 } else {
   fail(`Missing Leptos UI Workbench page at ${leptosWorkbenchPage}`);
 }

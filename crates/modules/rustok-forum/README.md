@@ -161,6 +161,96 @@ See the canonical settings contract in
 - `admin::ForumAdmin` (publishable Leptos package)
 - `storefront::ForumView` (publishable Leptos package)
 
+## Known Limitations / Pending Implementation
+
+The items below are verified gaps. They are not hidden behind compatibility
+wrappers. Each one has an owner decision or a follow-up task in
+[`docs/implementation-plan.md`](./docs/implementation-plan.md).
+
+- Topic reads (GraphQL `forumTopic`, `forumTopics`, REST topic list and detail,
+  the REST redirect, and the public SEO provider) apply the topic-level and
+  category audience contract. See
+  [`DECISIONS/2026-10-09-forum-topic-owner-audience-read.md`](../../../DECISIONS/2026-10-09-forum-topic-owner-audience-read.md).
+- Vote and subscription writes evaluate the owner audience of the parent topic
+  before the write, and reject self-voting unless `allow_self_voting` is enabled. See
+  [`DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md`](../../../DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md).
+  Known gaps: the route channel is not part of the write gate; the gate runs
+  before the write transaction, so a policy change committed in between can let
+  one write through; clear operations are intentionally not gated.
+- Widget previews (`forum.topic_list`, `forum.topic_detail`, `forum.reply_stream`)
+  apply the owner audience contract for the caller. See
+  [`DECISIONS/2026-10-09-forum-widget-preview-owner-audience.md`](../../../DECISIONS/2026-10-09-forum-widget-preview-owner-audience.md).
+  The topic-list preview scans at most 1000 candidate topics. Larger candidate sets
+  fail until `category_id` narrows them. Previews do not take a route channel.
+- The `Authoring` SEO scope keeps the system context and does not apply the
+  audience contract.
+- Moderation solution write responses (REST and GraphQL mark/clear) read the topic through
+  the owner path after the write. The moderation gate exempts the exact topic author, so an
+  author who has lost audience access gets `TopicNotFound` (404) after a committed write.
+  See [`DECISIONS/2026-10-09-forum-topic-owner-audience-read.md`](../../../DECISIONS/2026-10-09-forum-topic-owner-audience-read.md).
+- `ForumOwnerExportReader` is an operator-scope library reader. It is not
+  audience-filtered and has no CLI or API transport.
+- Among the `ForumModuleSettings` values, `use_reactions`, `allow_downvotes`, and
+  `allow_self_voting` are enforced on internal vote writes. See
+  [`DECISIONS/2026-10-09-forum-vote-policy-settings.md`](../../../DECISIONS/2026-10-09-forum-vote-policy-settings.md).
+- Three `ForumModuleSettings` fields are declared in `rustok-module.toml` and `dto/settings.rs`, and no runtime code
+  reads them yet. Changing them has no effect: `default_topic_sort` (the list order is fixed, see the topic sort item),
+  `allow_user_topic_closing` (authors cannot close or lock their own topics through this setting), and
+  `allow_anonymous_reading` (no read path checks it, and the admin form no longer shows it). Each one needs its own
+  wiring decision, because each changes a read or write path.
+  The unread settings removed by `DECISIONS/2026-10-09-forum-remove-unwired-module-settings.md` are no longer declared.
+- `topics_per_page` and `replies_per_page` are the default page size for REST and GraphQL list requests that omit
+  `per_page`. An explicit `per_page` is bounded to 1..=100 and wins over the setting. See
+  [`DECISIONS/2026-10-09-forum-list-page-size-from-settings.md`](../../../DECISIONS/2026-10-09-forum-list-page-size-from-settings.md).
+- Topic title and post body length limits are enforced on topic create, topic update (title or body
+  supplied), topic translation upsert, reply create, and reply update (content supplied). Imports and exact
+  translation apply are not limited. The check counts characters of the trimmed title and of the plain text of
+  the body; `0` as a maximum means unlimited. The admin form edits only the title limits; body limits are
+  set through the settings JSON. See
+  [`DECISIONS/2026-10-09-forum-content-length-enforcement.md`](../../../DECISIONS/2026-10-09-forum-content-length-enforcement.md).
+- `max_edit_window_minutes` is enforced on author topic and reply updates. After the window closes, an author
+  update returns `FORUM_VALIDATION_FAILED` (HTTP 400). Moderators and administrators are not limited. See
+  [`DECISIONS/2026-10-09-forum-wire-author-edit-window-and-locked-list-settings.md`](../../../DECISIONS/2026-10-09-forum-wire-author-edit-window-and-locked-list-settings.md).
+- Author self-service: the built-in Customer role edits its own topics and replies (`forum_topics:update` and
+  `forum_replies:update`, scope `Own`). A role without the update or delete permission gets no author access, and any
+  other user is refused. Authors delete their own topics and replies only when `allow_user_content_deletion` is `true`
+  (default `false`). Moderators and administrators delete through their own permissions and are not affected. The
+  checks are in the owner services, after the ownership check. See
+  [`DECISIONS/2026-10-09-forum-author-self-service-and-deletion.md`](../../../DECISIONS/2026-10-09-forum-author-self-service-and-deletion.md).
+- `pre_moderation_enabled = true` holds every new topic and reply as `Pending` until a moderator approves it. The
+  per-category `moderated` flag still holds replies only, as before. A topic in `Pending` accepts no replies
+  (`FORUM_TOPIC_AWAITING_MODERATION`). A pending topic or reply is visible only to its author and to viewers with the
+  moderation scope `All`, on every owner read and list. Storefront reads and storefront search return only `Open` topics
+  and `Approved` replies, so held content is excluded there. Moderators approve a pending topic with the reopen
+  transition (`Pending` to `Open`, requires `ForumTopics:Moderate`) and reject it with the archive transition
+  (`Pending` to `Archived`). A pending topic cannot be promoted to a Blog post. Known limitation: approving a held topic
+  does not notify its subscribers, and there is no dedicated approve or reject transport for topics yet. See
+  [`DECISIONS/2026-10-09-forum-topic-pre-moderation.md`](../../../DECISIONS/2026-10-09-forum-topic-pre-moderation.md) and
+  [`DECISIONS/2026-10-09-forum-reply-pre-moderation-setting.md`](../../../DECISIONS/2026-10-09-forum-reply-pre-moderation-setting.md).
+- `show_locked_topics_in_lists = false` hides locked topics from the storefront topic list. The widget preview
+  (`forum.topic_list`) does not apply it yet, and owner and moderator lists are not filtered.
+- Topic and reply creates enforce the per-author cooldowns `rate_limit_new_topic_seconds` and
+  `rate_limit_new_reply_seconds` (`0` disables each). A create inside the cooldown returns `FORUM_RATE_LIMITED`
+  (HTTP 429). Only user actors are limited. System and service actors, including the starter import and
+  the starter driver, are exempt. The cooldown does not count window limits; see
+  [`DECISIONS/2026-10-09-forum-posting-rate-limits.md`](../../../DECISIONS/2026-10-09-forum-posting-rate-limits.md).
+  The posting policy evaluator (`posting_policy_evaluator.rs`) is not yet wired into the write path, so its
+  window rules are not enforced.
+- User reports on topics and replies are filed with the Moderation owner through the `reportForumTopic` and
+  `reportForumReply` GraphQL mutations, which return the report id. Forum checks the reporter's read audience, rejects
+  self-reports, and pins the current subject revision; the host adapter forwards the report through
+  `ForumModerationReportPort`. Without that adapter the mutations fail closed. Not yet implemented: automatic flags
+  (a `rustok-moderation` policy, not a forum setting), free-text descriptions, report rate limits, REST transport, and the storefront report
+  action. See [`DECISIONS/2026-10-09-forum-user-reports-via-moderation.md`](../../../DECISIONS/2026-10-09-forum-user-reports-via-moderation.md).
+- Notifications are emitted only for topic creation and user mentions.
+- Topic move (`FORUM-21A`) has an owner service but no transport or UI.
+  Topic revision history has services but no API or UI.
+- Attachment relations have a service but no transport or UI.
+- Topic view counters and topic sort orders are not implemented. The list order is
+  fixed as pinned first, then recent activity.
+- The Next.js storefront shows the first page of topics without load-more.
+  Reply pagination has no load-more.
+
 ## Roadmap
 
 [`docs/implementation-plan.md`](./docs/implementation-plan.md) is the only

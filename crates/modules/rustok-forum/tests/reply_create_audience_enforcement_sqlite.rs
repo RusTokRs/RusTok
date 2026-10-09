@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -140,6 +143,7 @@ async fn create_topic(
     suffix: &str,
 ) -> Uuid {
     TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -347,7 +351,8 @@ async fn reply_create_commands_enforce_inherited_audience_before_owner_writes() 
         .await
         .expect("explicit deny reply-create layer should persist");
 
-    let ordinary = ReplyService::new(db.clone(), event_bus.clone());
+    let ordinary = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     ordinary
         .create(
             tenant_id,
@@ -422,7 +427,8 @@ async fn reply_create_commands_enforce_inherited_audience_before_owner_writes() 
         active_user_id: allowed_admin_id,
         requests: requests.clone(),
     });
-    let composed = ReplyService::with_audience_facts(db.clone(), event_bus, facts_port);
+    let composed = ReplyService::with_audience_facts(db.clone(), event_bus, facts_port)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
 
     assert!(matches!(
         composed

@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
@@ -123,6 +126,7 @@ async fn topic_subscription_audience_filters_exact_recipients_before_cursor_prog
     }
 
     let topic = TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             admin.clone(),

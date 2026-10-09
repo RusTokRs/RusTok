@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 mod support;
 
 use std::sync::Arc;
@@ -88,7 +91,8 @@ async fn d1_replacement_wins_before_stale_d2_preserve_on_postgres() -> TestResul
         let tenant_id = fixture.tenant_id;
         let reply_id = fixture.reply_id;
         let d2 = tokio::spawn(async move {
-            let service = ReplyService::new(d2_db.clone(), event_bus(d2_db));
+            let service = ReplyService::new(d2_db.clone(), event_bus(d2_db))
+                .with_settings_providers(posting_cooldown::zero_cooldown_providers());
             match service
                 .update(
                     tenant_id,
@@ -183,7 +187,8 @@ async fn soft_deleted_reply_rejects_d1_and_d2_without_mutating_relation_history(
     let outcome = async {
         let fixture = create_quote_fixture(&context).await?;
         let security = admin_security(fixture.author_id);
-        let reply_service = ReplyService::new(context.db.clone(), event_bus(context.db.clone()));
+        let reply_service = ReplyService::new(context.db.clone(), event_bus(context.db.clone()))
+            .with_settings_providers(posting_cooldown::zero_cooldown_providers());
         reply_service
             .delete(
                 fixture.tenant_id,
@@ -294,6 +299,7 @@ async fn mention_owner_event_commits_with_notifications_not_composed() -> TestRe
         let security = admin_security(author_id);
 
         let topic = TopicService::new(context.db.clone(), event_bus(context.db.clone()))
+            .with_settings_providers(posting_cooldown::zero_cooldown_providers())
             .create(
                 tenant_id,
                 security.clone(),
@@ -310,6 +316,7 @@ async fn mention_owner_event_commits_with_notifications_not_composed() -> TestRe
             )
             .await?;
         let reply = ReplyService::new(context.db.clone(), event_bus(context.db.clone()))
+            .with_settings_providers(posting_cooldown::zero_cooldown_providers())
             .create_command(
                 tenant_id,
                 security,
@@ -390,6 +397,7 @@ async fn create_quote_fixture(context: &PostgresForumTestDb) -> TestResult<Quote
     let security = admin_security(author_id);
 
     let topic = TopicService::new(context.db.clone(), event_bus(context.db.clone()))
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security.clone(),
@@ -409,6 +417,7 @@ async fn create_quote_fixture(context: &PostgresForumTestDb) -> TestResult<Quote
         latest_relation_revision_id(&context.db, tenant_id, "topic", topic.id).await?;
 
     let reply = ReplyService::new(context.db.clone(), event_bus(context.db.clone()))
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create_command(
             tenant_id,
             security,

@@ -1,35 +1,34 @@
+/// Upper bound on candidate topics that one widget list preview may visit.
+///
+/// The exact `total` and the requested page both depend on the owner audience of every
+/// candidate in the ordered widget query, so the scan is linear in the candidate count. A
+/// request over this bound fails with a validation error instead of returning a partial total.
+/// Callers narrow the preview with `category_id`.
+pub(crate) const FORUM_WIDGET_TOPIC_LIST_MAX_CANDIDATES: u64 = 1_000;
+const FORUM_WIDGET_TOPIC_LIST_SCAN_BATCH: u64 = 100;
+
+/// Typed widget list query after props validation.
+pub(crate) struct WidgetTopicListQuery<'a> {
+    pub category_id: Option<Uuid>,
+    pub page: u64,
+    pub per_page: u64,
+    pub include_pinned: bool,
+    pub sort: &'a str,
+}
+
 impl TopicService {
-    /// Bounded owner read for the Forum Page Builder topic-list widget.
-    ///
-    /// Widget ordering is applied before pagination. The public facade supplies the exact hidden
-    /// category set before this persistence-layer query executes, so Page Builder does not gain a
-    /// second visibility policy path.
-    #[instrument(skip(self, security, hidden_category_ids))]
-    pub(crate) async fn list_widget_preview_with_locale_fallback_and_hidden_categories(
-        &self,
+    /// Ordered widget candidate query. Ordering is applied before pagination; the id tiebreaker
+    /// keeps offsets stable across scan batches.
+    fn widget_topic_candidates(
         tenant_id: Uuid,
-        security: SecurityContext,
         category_id: Option<Uuid>,
-        page: u64,
-        per_page: u64,
         include_pinned: bool,
         sort: &str,
-        locale: &str,
-        fallback_locale: Option<&str>,
-        hidden_category_ids: &[Uuid],
-    ) -> ForumResult<(Vec<TopicListItem>, u64)> {
-        enforce_scope(&security, Resource::ForumTopics, Action::List)?;
-        let locale = normalize_locale(locale)?;
-        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-
+    ) -> ForumResult<Select<forum_topic::Entity>> {
         let mut select =
             forum_topic::Entity::find().filter(forum_topic::Column::TenantId.eq(tenant_id));
         if let Some(category_id) = category_id {
             select = select.filter(forum_topic::Column::CategoryId.eq(category_id));
-        }
-        if !hidden_category_ids.is_empty() {
-            select = select
-                .filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()));
         }
         if !include_pinned {
             select = select.filter(forum_topic::Column::IsPinned.eq(false));
@@ -37,7 +36,7 @@ impl TopicService {
             select = select.order_by_desc(forum_topic::Column::IsPinned);
         }
 
-        select = match sort {
+        let select = match sort {
             "activity" => select
                 .order_by_desc(forum_topic::Column::LastReplyAt)
                 .order_by_desc(forum_topic::Column::UpdatedAt),
@@ -56,22 +55,77 @@ impl TopicService {
                 )));
             }
         };
+        Ok(select.order_by_desc(forum_topic::Column::Id))
+    }
 
-        let paginator = select
-            .order_by_desc(forum_topic::Column::Id)
-            .paginate(&self.db, per_page.clamp(1, 100));
-        let total = paginator.num_items().await?;
-        let topics = paginator.fetch_page(page.saturating_sub(1)).await?;
+    /// Exact owner-audience widget topic list.
+    ///
+    /// Every candidate is checked with
+    /// `ForumTopicAudienceVisibilityService::is_topic_owner_visible`, which covers the inherited
+    /// category floor and every richer category/topic layer. Pagination and `total` count only
+    /// topics the viewer can read, so a page never has gaps and the total never counts hidden
+    /// topics.
+    #[instrument(skip(self, security, context, visibility, query, fallback_locale))]
+    pub(crate) async fn list_widget_preview_owner_visible(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        context: rustok_api::PortContext,
+        visibility: &crate::services::ForumTopicAudienceVisibilityService,
+        query: WidgetTopicListQuery<'_>,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+        enforce_scope(&security, Resource::ForumTopics, Action::List)?;
+        let locale = normalize_locale(&context.locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        let per_page = query.per_page.clamp(1, 100);
+        let viewer = crate::services::ForumTopicAudienceViewer::authenticated(
+            security.clone(),
+            context,
+        )?;
+
+        let candidates = Self::widget_topic_candidates(
+            tenant_id,
+            query.category_id,
+            query.include_pinned,
+            query.sort,
+        )?;
+        let paginator = candidates.paginate(&self.db, FORUM_WIDGET_TOPIC_LIST_SCAN_BATCH);
+        let candidate_count = paginator.num_items().await?;
+        if candidate_count > FORUM_WIDGET_TOPIC_LIST_MAX_CANDIDATES {
+            return Err(ForumError::Validation(format!(
+                "Forum widget topic list has {candidate_count} candidate topics; narrow \
+                 category_id so the preview scans at most {FORUM_WIDGET_TOPIC_LIST_MAX_CANDIDATES}"
+            )));
+        }
+
+        let skip = query.page.saturating_sub(1).saturating_mul(per_page);
+        let mut visible_total: u64 = 0;
+        let mut selected = Vec::new();
+        for page_index in 0..paginator.num_pages().await? {
+            for topic in paginator.fetch_page(page_index).await? {
+                if !visibility
+                    .is_topic_owner_visible(tenant_id, topic.id, &viewer)
+                    .await?
+                {
+                    continue;
+                }
+                if visible_total >= skip && (selected.len() as u64) < per_page {
+                    selected.push(topic);
+                }
+                visible_total = visible_total.saturating_add(1);
+            }
+        }
+
         let items = self
             .hydrate_topic_list_items(
                 tenant_id,
                 security.user_id,
-                topics,
+                selected,
                 &locale,
                 fallback_locale.as_deref(),
             )
             .await?;
-
-        Ok((items, total))
+        Ok((items, visible_total))
     }
 }

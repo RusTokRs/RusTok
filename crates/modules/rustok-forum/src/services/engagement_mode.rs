@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use rustok_api::{
     PortError, PortErrorKind, SharedStaticModuleSettingsReader,
-    SharedStaticModuleSettingsTransactionReader,
+    SharedStaticModuleSettingsTransactionReader, StaticModuleSettingsSnapshot,
 };
 use sea_orm::DatabaseTransaction;
 
@@ -31,6 +31,62 @@ impl ForumSettingsProviders {
         self.static_reader = Some(static_reader);
         self.transactional_reader = Some(transactional_reader);
         self
+    }
+
+    /// Reads the Forum module settings inside the caller's transaction. A disabled module or
+    /// a missing reader yields the default settings, so every flag takes its default value.
+    pub(crate) async fn module_settings_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+    ) -> ForumResult<ForumSettings> {
+        let Some(reader) = self.transactional_reader.as_ref() else {
+            return Ok(ForumSettings::default());
+        };
+        let snapshot = reader
+            .settings_in_tx(txn, tenant_id, FORUM_MODULE_SLUG)
+            .await
+            .map_err(map_port_error)?;
+        settings_from_snapshot(snapshot)
+    }
+
+    /// Non-transactional variant of [`Self::module_settings_in_tx`] for read-before-write checks.
+    pub(crate) async fn module_settings(&self, tenant_id: Uuid) -> ForumResult<ForumSettings> {
+        let Some(reader) = self.static_reader.as_ref() else {
+            return Ok(ForumSettings::default());
+        };
+        let snapshot = reader
+            .settings(tenant_id, FORUM_MODULE_SLUG)
+            .await
+            .map_err(map_port_error)?;
+        settings_from_snapshot(snapshot)
+    }
+
+    /// Page size for topic lists when a transport request omits `per_page`.
+    pub(crate) async fn default_topics_per_page(&self, tenant_id: Uuid) -> ForumResult<u64> {
+        let settings = self.module_settings(tenant_id).await?;
+        Ok(crate::dto::bounded_forum_read_limit(Some(u64::from(
+            settings.topics_per_page,
+        ))))
+    }
+
+    /// Page size for reply lists when a transport request omits `per_page`.
+    pub(crate) async fn default_replies_per_page(&self, tenant_id: Uuid) -> ForumResult<u64> {
+        let settings = self.module_settings(tenant_id).await?;
+        Ok(crate::dto::bounded_forum_read_limit(Some(u64::from(
+            settings.replies_per_page,
+        ))))
+    }
+}
+
+/// A disabled Forum module, or a missing row, yields the default settings.
+fn settings_from_snapshot(
+    snapshot: Option<StaticModuleSettingsSnapshot>,
+) -> ForumResult<ForumSettings> {
+    match snapshot {
+        Some(snapshot) if snapshot.enabled => Ok(parse_forum_settings(&snapshot.settings)?
+            .unwrap_or_default()),
+        _ => Ok(ForumSettings::default()),
     }
 }
 
@@ -83,33 +139,15 @@ impl ForumEngagementMode {
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
     ) -> ForumResult<Self> {
-        let Some(reader) = providers.transactional_reader.as_ref() else {
-            return Ok(Self::InternalVotes);
-        };
-
-        let forum_snapshot = reader
-            .settings_in_tx(txn, tenant_id, FORUM_MODULE_SLUG)
-            .await
-            .map_err(map_port_error)?;
-
-        let forum_settings = if forum_snapshot
-            .as_ref()
-            .is_some_and(|snapshot| snapshot.enabled)
-        {
-            forum_snapshot
-                .as_ref()
-                .map(|snapshot| parse_forum_settings(&snapshot.settings))
-                .transpose()?
-                .flatten()
-                .unwrap_or_default()
-        } else {
-            ForumSettings::default()
-        };
+        let forum_settings = providers.module_settings_in_tx(txn, tenant_id).await?;
 
         if !forum_settings.use_reactions {
             return Ok(Self::InternalVotes);
         }
 
+        let Some(reader) = providers.transactional_reader.as_ref() else {
+            return Ok(Self::InternalVotes);
+        };
         let reactions_enabled = reader
             .settings_in_tx(txn, tenant_id, FORUM_REACTIONS_MODULE_SLUG)
             .await
@@ -176,6 +214,61 @@ fn map_port_error(error: PortError) -> ForumError {
             "Static module settings request was rejected by its owner".to_string(),
         ),
     }
+}
+
+/// Test-only providers that keep the module defaults but set both posting cooldowns to `0`.
+/// Tests that create several posts by one author, and are not about the cooldown, use this so the
+/// soft-default cooldown does not reject the second create. Integration tests use the matching
+/// helper in `tests/support/posting_cooldown.rs`.
+#[cfg(test)]
+pub(crate) fn providers_without_posting_cooldown() -> ForumSettingsProviders {
+    use async_trait::async_trait;
+    use rustok_api::{
+        PortError, SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
+        StaticModuleSettingsReader, StaticModuleSettingsTransactionReader,
+    };
+    use std::sync::Arc;
+
+    struct ZeroCooldownSettings;
+
+    fn snapshot(module_slug: &str) -> Option<StaticModuleSettingsSnapshot> {
+        Some(StaticModuleSettingsSnapshot {
+            enabled: module_slug == FORUM_MODULE_SLUG,
+            settings: serde_json::json!({
+                "rate_limit_new_topic_seconds": 0,
+                "rate_limit_new_reply_seconds": 0,
+            }),
+        })
+    }
+
+    #[async_trait]
+    impl StaticModuleSettingsReader for ZeroCooldownSettings {
+        async fn settings(
+            &self,
+            _tenant_id: Uuid,
+            module_slug: &str,
+        ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+            Ok(snapshot(module_slug))
+        }
+    }
+
+    #[async_trait]
+    impl StaticModuleSettingsTransactionReader for ZeroCooldownSettings {
+        async fn settings_in_tx(
+            &self,
+            _txn: &DatabaseTransaction,
+            _tenant_id: Uuid,
+            module_slug: &str,
+        ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+            Ok(snapshot(module_slug))
+        }
+    }
+
+    let reader = Arc::new(ZeroCooldownSettings);
+    ForumSettingsProviders::default().with_static_readers(
+        SharedStaticModuleSettingsReader(reader.clone()),
+        SharedStaticModuleSettingsTransactionReader(reader),
+    )
 }
 
 #[cfg(test)]

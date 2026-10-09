@@ -508,7 +508,7 @@ async fn lock_active_subject_and_revision(
     Ok(())
 }
 
-async fn current_subject_revision(
+pub(crate) async fn current_subject_revision(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
     kind: ModerationSubjectKind,

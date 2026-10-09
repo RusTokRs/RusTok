@@ -12,11 +12,22 @@ use uuid::Uuid;
 
 use crate::{
     ForumReplyAudienceReadService, ForumReplyReadOperation, ForumReplyReadTransport,
-    ListRepliesFilter, ReplyListItemPage, ReplyResponse, reply_read_audience_port_context,
+    ForumTopicReadOperation, ForumTopicReadTransport, ListRepliesFilter, ReplyListItemPage,
+    ReplyResponse, reply_read_audience_port_context, topic_read_audience_port_context,
 };
 
+/// REST query for the reply list. `per_page` stays optional so an omitted value resolves to
+/// the tenant's `replies_per_page` setting.
+#[derive(Debug, Clone, serde::Deserialize, utoipa::IntoParams)]
+pub struct ListRepliesQuery {
+    pub locale: Option<String>,
+    /// Opaque cursor returned as `next_cursor` by the previous page.
+    pub after: Option<String>,
+    pub per_page: Option<u64>,
+}
+
 fn clamp_per_page(per_page: u64) -> u64 {
-    per_page.min(100)
+    crate::dto::bounded_forum_read_limit(Some(per_page))
 }
 
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
@@ -33,7 +44,7 @@ fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
     tag = "forum",
     params(
         ("id" = Uuid, Path, description = "Topic ID"),
-        ListRepliesFilter,
+        ListRepliesQuery,
     ),
     responses(
         (status = 200, description = "One keyset page of replies", body = ReplyListItemPage),
@@ -47,7 +58,7 @@ pub async fn list_replies(
     auth: AuthContext,
     request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
-    Query(mut filter): Query<ListRepliesFilter>,
+    Query(query): Query<ListRepliesQuery>,
 ) -> HttpResult<Json<ReplyListItemPage>> {
     ensure_forum_permission(
         &auth,
@@ -55,10 +66,20 @@ pub async fn list_replies(
         "Permission denied: forum_replies:list required",
     )?;
 
-    filter.locale = filter.locale.or(Some(request_context.locale.clone()));
-    let requested_limit = Some(filter.per_page);
-    let effective_limit = clamp_per_page(filter.per_page);
-    filter.per_page = effective_limit;
+    let requested_limit = query.per_page;
+    let effective_limit = match requested_limit {
+        Some(value) => clamp_per_page(value),
+        None => runtime
+            .settings_providers
+            .default_replies_per_page(tenant.id)
+            .await
+            .map_err(crate::controllers::map_forum_error)?,
+    };
+    let filter = ListRepliesFilter {
+        locale: query.locale.or(Some(request_context.locale.clone())),
+        after: query.after,
+        per_page: effective_limit,
+    };
     let effective_locale = filter
         .locale
         .as_deref()
@@ -260,29 +281,26 @@ pub async fn set_reply_vote(
     )?;
 
     let read_service = reply_audience_read_service(&runtime);
-    let preflight_context = reply_read_audience_port_context(
-        ForumReplyReadTransport::Rest,
-        ForumReplyReadOperation::SelectedReply,
+    // The vote service gates the parent topic audience and rejects missing or denied
+    // replies with `ReplyNotFound`, so no separate read preflight is needed here.
+    let write_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::Vote,
         tenant.id,
         &auth,
         Some(&request_context),
         request_context.locale.as_str(),
     )
     .map_err(crate::controllers::map_forum_error)?;
-    read_service
-        .get_authenticated_owner_visible_with_audience_context(
-            tenant.id,
-            forum_security(&auth),
-            preflight_context,
-            reply_id,
-            Some(tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-
     runtime
         .vote_service()
-        .set_reply_vote(tenant.id, reply_id, forum_security(&auth), value)
+        .set_reply_vote(
+            tenant.id,
+            reply_id,
+            forum_security(&auth),
+            write_context,
+            value,
+        )
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
@@ -333,25 +351,6 @@ pub async fn clear_reply_vote(
     )?;
 
     let read_service = reply_audience_read_service(&runtime);
-    let preflight_context = reply_read_audience_port_context(
-        ForumReplyReadTransport::Rest,
-        ForumReplyReadOperation::SelectedReply,
-        tenant.id,
-        &auth,
-        Some(&request_context),
-        request_context.locale.as_str(),
-    )
-    .map_err(crate::controllers::map_forum_error)?;
-    read_service
-        .get_authenticated_owner_visible_with_audience_context(
-            tenant.id,
-            forum_security(&auth),
-            preflight_context,
-            reply_id,
-            Some(tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
 
     runtime
         .vote_service()

@@ -316,6 +316,10 @@ static CUSTOMER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Permission::new(Resource::ForumReplies, Action::Read),
         Permission::new(Resource::ForumReplies, Action::List),
         Permission::new(Resource::ForumReplies, Action::Create),
+        Permission::new(Resource::ForumTopics, Action::Update),
+        Permission::new(Resource::ForumTopics, Action::Delete),
+        Permission::new(Resource::ForumReplies, Action::Update),
+        Permission::new(Resource::ForumReplies, Action::Delete),
         Permission::INVENTORY_READ,
         Permission::INVENTORY_LIST,
     ]);
@@ -601,6 +605,17 @@ fn permission_scope_for_set(
     }
 
     if matches!(role, UserRole::Customer) {
+        // Forum authors edit and delete their own topics and replies. The scope is `Own`
+        // only when the role holds the permission, so a role without it gets no author access.
+        if matches!(
+            permission.resource,
+            Resource::ForumTopics | Resource::ForumReplies
+        ) && matches!(permission.action, Action::Update | Action::Delete)
+            && has_effective_permission_in_set(permissions, permission)
+        {
+            return PermissionScope::Own;
+        }
+
         if permission.resource == Resource::Orders
             && has_effective_permission_in_set(permissions, permission)
         {
@@ -830,6 +845,64 @@ mod tests {
                 .unwrap_err()
                 .code,
             "port.role_required"
+        );
+    }
+
+    #[test]
+    fn customer_edits_and_deletes_forum_content_only_as_author() {
+        let security = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+        assert_eq!(
+            security.get_scope(Resource::ForumTopics, Action::Update),
+            PermissionScope::Own
+        );
+        assert_eq!(
+            security.get_scope(Resource::ForumTopics, Action::Delete),
+            PermissionScope::Own
+        );
+        assert_eq!(
+            security.get_scope(Resource::ForumReplies, Action::Update),
+            PermissionScope::Own
+        );
+        assert_eq!(
+            security.get_scope(Resource::ForumReplies, Action::Delete),
+            PermissionScope::Own
+        );
+        assert_eq!(
+            security.get_scope(Resource::ForumTopics, Action::Read),
+            PermissionScope::All
+        );
+        assert_eq!(
+            security.get_scope(Resource::ForumTopics, Action::Moderate),
+            PermissionScope::None
+        );
+    }
+
+    #[test]
+    fn forum_content_scope_is_own_only_when_the_permission_is_held() {
+        let security = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(Uuid::new_v4()),
+            [Permission::new(Resource::ForumReplies, Action::Create)],
+        );
+        assert_eq!(
+            security.get_scope(Resource::ForumTopics, Action::Update),
+            PermissionScope::None
+        );
+        assert_eq!(
+            security.get_scope(Resource::ForumTopics, Action::Delete),
+            PermissionScope::None
+        );
+    }
+
+    #[test]
+    fn forum_update_grant_without_staff_permissions_is_author_scoped() {
+        let grant = [Permission::new(Resource::ForumTopics, Action::Update)];
+        let role = infer_user_role_from_permissions(&grant);
+        assert_eq!(role, UserRole::Customer);
+        let security = SecurityContext::from_permissions(role, Some(Uuid::new_v4()), grant);
+        assert_eq!(
+            security.get_scope(Resource::ForumTopics, Action::Update),
+            PermissionScope::Own
         );
     }
 }

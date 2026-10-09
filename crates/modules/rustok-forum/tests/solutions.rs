@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -92,8 +95,10 @@ async fn create_category(
 async fn mark_and_clear_solution_updates_topic_and_reply_read_paths() {
     let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus.clone());
-    let reply_service = ReplyService::new(db.clone(), event_bus.clone());
+    let topic_service = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
+    let reply_service = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let moderation_service = ModerationService::new(db, event_bus);
 
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -207,8 +212,10 @@ async fn mark_and_clear_solution_updates_topic_and_reply_read_paths() {
 async fn pending_reply_cannot_be_marked_as_solution() {
     let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus.clone());
-    let reply_service = ReplyService::new(db.clone(), event_bus.clone());
+    let topic_service = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
+    let reply_service = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let moderation_service = ModerationService::new(db, event_bus);
 
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));

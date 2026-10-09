@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 
+use super::edit_window::enforce_author_edit_window;
 use crate::dto::UpdateReplyCommandInput;
+use crate::services::content_limits::ForumContentLimits;
 
 impl ReplyService {
     pub(crate) const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize = 512;
@@ -91,6 +93,19 @@ impl ReplyService {
             existing.author_id,
         )?;
 
+        let max_edit_window_minutes = self
+            .settings
+            .module_settings(tenant_id)
+            .await?
+            .max_edit_window_minutes;
+        enforce_author_edit_window(
+            &security,
+            Resource::ForumReplies,
+            existing.author_id,
+            existing.created_at,
+            max_edit_window_minutes,
+            chrono::Utc::now(),
+        )?;
         let has_content_change = input.content.is_some();
         if !has_content_change && quote_inputs.is_none() {
             return self.get(tenant_id, security, reply_id, &locale).await;
@@ -98,6 +113,9 @@ impl ReplyService {
 
         let (document, stored_body) = if let Some(content) = input.content {
             let document = crate::richtext::normalize_discussion(content)?;
+            ForumContentLimits::resolve(&self.settings, tenant_id)
+                .await?
+                .validate_body(&crate::richtext::project_discussion(document.clone())?.plain_text)?;
             let stored_body = crate::richtext::serialize_discussion(document.clone())?;
             (document, Some(stored_body))
         } else {

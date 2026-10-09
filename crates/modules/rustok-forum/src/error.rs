@@ -43,6 +43,9 @@ pub enum ForumError {
     #[error("Topic is archived")]
     TopicArchived,
 
+    #[error("Topic is awaiting moderation")]
+    TopicAwaitingModeration,
+
     #[error("Topic is locked")]
     TopicLocked,
 
@@ -63,6 +66,9 @@ pub enum ForumError {
 
     #[error("Validation error: {0}")]
     Validation(String),
+
+    #[error("Forum posting rate limit reached; retry after {retry_after_seconds} seconds")]
+    RateLimited { retry_after_seconds: u64 },
 
     #[error("Forbidden: {0}")]
     Forbidden(String),
@@ -253,6 +259,7 @@ impl ForumError {
             Self::SolutionNotFound(_) => "FORUM_SOLUTION_NOT_FOUND",
             Self::TopicClosed => "FORUM_TOPIC_CLOSED",
             Self::TopicArchived => "FORUM_TOPIC_ARCHIVED",
+            Self::TopicAwaitingModeration => "FORUM_TOPIC_AWAITING_MODERATION",
             Self::TopicLocked => "FORUM_TOPIC_LOCKED",
             Self::TopicDeleted => "FORUM_TOPIC_DELETED",
             Self::TopicRestoreUnavailable(_) => "FORUM_TOPIC_RESTORE_UNAVAILABLE",
@@ -260,6 +267,7 @@ impl ForumError {
             Self::InternalVotingDisabled => "FORUM_INTERNAL_VOTING_DISABLED",
             Self::ReplyRestoreUnavailable(_) => "FORUM_REPLY_RESTORE_UNAVAILABLE",
             Self::Validation(_) => "FORUM_VALIDATION_FAILED",
+            Self::RateLimited { .. } => "FORUM_RATE_LIMITED",
             Self::Forbidden(_) => "FORUM_FORBIDDEN",
             Self::Database(_) | Self::Content(_) | Self::Internal(_) => "FORUM_INTERNAL_ERROR",
             Self::InvalidTopicTransition(_) => "FORUM_TOPIC_TRANSITION_INVALID",
