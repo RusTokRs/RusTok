@@ -46,8 +46,10 @@ and whose instances re-issue on publish.**
    precedent.
 3. **Canonical site store.** `rustok-pages` persists definitions in a
    `site_symbols` table keyed by `(tenant_id, locale, symbol_id)`. The body
-   document is the editing surface; every body save upserts the store from the
-   document's `flySymbols` block. On load and before publish the store is
+   document is the editing surface; body saves synchronize the store from the
+   document's `flySymbols` block with an optimistic `flySymbolsRevision` token.
+   Create without definitions and body-revision restore leave the store alone.
+   On editor load and before publish the store is
    merged back (store wins), so a document's embedded copy is a working cache
    and the store is the single source of truth across pages.
 4. **Resolution.** `fly::resolve_symbol_instances(document)` produces a copy
@@ -60,7 +62,7 @@ and whose instances re-issue on publish.**
    Editing a definition and re-publishing a page re-issues that page's
    occurrences; already published artifacts stay immutable until their page is
    re-published (the reviewed-publish contract and policy-free serving are
-   untouched). A `symbolUsage` report lists pages whose current bodies
+   untouched). A `siteSymbolUsage` report lists pages whose current bodies
    reference a symbol so operators know what to re-issue. Bulk automatic
    re-publish is a non-goal for this iteration.
 6. **Editor commands.** `EditorCommand::Symbol { command: SymbolCommand }`
@@ -78,7 +80,7 @@ and whose instances re-issue on publish.**
   `SymbolDescriptor`, `SymbolCommand`, validation rules, and
   `resolve_symbol_instances` (pure document in, document out).
 - `rustok-pages` owns the canonical cross-page store (`site_symbols`), the
-  save-time upsert, the load/publish merge, and the `symbolUsage` report.
+  save-time upsert, the load/publish merge, and the `siteSymbolUsage` report.
 - The page body document remains the editing surface and keeps a working copy
   under `flySymbols`; it is a projection of the store after every load.
 - `rustok-page-builder` admin owns the Symbols panel (document-local commands
@@ -94,7 +96,9 @@ and whose instances re-issue on publish.**
   are errors; publish never renders an unresolved instance.
 - `SymbolCommand::Remove` cannot orphan live instances.
 - Definition content passes the same static policy as any authored content;
-  symbols introduce no new attribute or element surface.
+  symbols introduce no new attribute or element surface. Fly caps the site
+  catalog at 128 definitions and each definition at 512 component nodes and
+  256 KiB of encoded content before it can enter the store.
 - The FFA capability envelope is unchanged; symbol flows use `EditorCommand`
   and the existing facade save path.
 
@@ -112,11 +116,17 @@ and whose instances re-issue on publish.**
 ## Data, transaction, and concurrency boundary
 
 - `site_symbols` writes happen inside the body-save transaction of
-  `rustok-pages` (one aggregate write: body upsert + symbol upserts). The body
-  CAS (`expected_revision`) continues to guard body edits; symbols are
-  last-write-wins per `(tenant, locale, symbol_id)` in this iteration.
-- Reads (load, publish, usage report) are snapshot reads of the store; publish
-  resolution sees the store state at publish time.
+  `rustok-pages` (one aggregate write: body upsert + catalog synchronization).
+  The body CAS (`expected_revision`) continues to guard body edits; the
+  editor-read `flySymbolsRevision` (SHA-256 of the sorted catalog) guards the
+  shared definition set. Postgres uses a transaction-scoped advisory lock per
+  `(tenant, locale)` before checking that token; SQLite serializes write
+  transactions. Stale saves fail closed instead of erasing symbols added from
+  another page. Deletion additionally checks for dependent page instances
+  and rejects if any remain.
+- Reads (editor load, publish, usage report) are snapshot reads of the store;
+  publish resolution sees the store state at publish time. Public page reads
+  and immutable served artifacts must not overlay unpublished definitions.
 
 ## Context dimensions
 
@@ -127,7 +137,7 @@ and whose instances re-issue on publish.**
 ## Events and projections
 
 - No new outbox events. A symbol edit travels with the body save; page publish
-  emits its existing events. The `symbolUsage` query is an on-demand report,
+  emits its existing events. The `siteSymbolUsage` query is an on-demand report,
   not a projection.
 
 ## Failure semantics

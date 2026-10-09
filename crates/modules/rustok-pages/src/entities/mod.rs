@@ -20,6 +20,7 @@ pub mod page_route_history_import;
 pub mod page_route_publication;
 pub mod page_static_landing_artifact;
 pub mod page_translation;
+pub mod site_symbol;
 pub mod translation_change;
 
 pub use page::Entity as Page;
@@ -40,3 +41,4 @@ pub use page_route_alias::Entity as PageRouteAlias;
 pub use page_route_history_import::Entity as PageRouteHistoryImport;
 pub use page_route_publication::Entity as PageRoutePublication;
 pub use page_static_landing_artifact::Entity as PageStaticLandingArtifact;
+pub use site_symbol::Entity as SiteSymbol;

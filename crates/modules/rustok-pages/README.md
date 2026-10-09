@@ -116,6 +116,22 @@ These are gaps in what the runtime actually does, not accepted design:
   bodies only and ignores a published source's drafts. Runtime coverage lives in
   `tests/page_body_draft_and_history_sqlite.rs` (SQLite); the Postgres suites and the full
   cargo verification matrix remain CI's authority for this change.
+- **Wave 3 site symbols (G-5 of the 2026-10-09 audit) are in progress**: symbol
+  definitions live in the shared `site_symbols` catalog (`(tenant, locale, symbol_id)`),
+  instances carry `symbolId` and expand at publish, so editing a definition and
+  re-publishing re-issues every occurrence on that page
+  (see [`DECISIONS/2026-10-09-site-symbols-shared-definitions.md`](../../../DECISIONS/2026-10-09-site-symbols-shared-definitions.md)).
+  Behaviour notes: body saves (draft or direct) require a matching `flySymbolsRevision`
+  catalog token before replacing stored definitions (definitions are site-wide immediately;
+  they have no draft cycle of their own). Restore does not roll back the global catalog.
+  Editor reads and reviewed publish merge the stored catalog back (store wins)
+  and publish fails closed on unknown references or cycles; already published artifacts
+  update only when their page is re-published. `siteSymbolUsage` (GraphQL)
+  lists pages to re-issue, including nested symbol dependencies. **Pending pieces:**
+  a usage UI, per-instance overrides, bulk re-publish, and a SQLite integration
+  suite for the catalog sync (helper-level unit
+  coverage lives in `services/page/symbols.rs`; the cargo verification matrix remains CI's
+  authority).
 - **Draft state has no dedicated signal in the page list.** `PageBody.state` reports
   `draft` vs `current` on page detail reads only; the admin document list cannot show at a
   glance which published pages carry unpublished draft edits.

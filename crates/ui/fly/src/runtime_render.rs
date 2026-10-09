@@ -48,6 +48,14 @@ pub fn render_page_with_runtime_context(
     policy: &RenderPolicy,
     context: &Value,
 ) -> FlyResult<RuntimeRenderResult> {
+    // Definitions must expand before runtime bindings, actions, and conditions
+    // materialize, not only at the final HTML render pass.
+    let resolved = if crate::document_has_symbol_instances(document) {
+        Some(crate::resolve_symbol_instances(document)?)
+    } else {
+        None
+    };
+    let document = resolved.as_ref().unwrap_or(document);
     let RuntimeProjectMaterialization {
         document,
         effective_context: _,

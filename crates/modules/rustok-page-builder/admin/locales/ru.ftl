@@ -266,3 +266,10 @@ page_builder-translations-valuesPlaceholder =
     {"}"}
 page_builder-unbound-body = Откройте документ, которым владеет модуль-потребитель, чтобы начать визуальное редактирование. Page Builder не владеет хранением документов.
 page_builder-unbound-title = Документ потребителя не выбран
+page_builder-panel-symbols = Символы сайта
+page_builder-symbols-id = Идентификатор символа
+page_builder-symbols-name = Название
+page_builder-symbols-convert = Преобразовать выделенный блок
+page_builder-symbols-insert = Вставить экземпляр
+page_builder-symbols-remove = Удалить определение
+page_builder-symbols-explainer = Преобразуйте выделенный блок в общий символ. После изменения определения повторно опубликуйте каждую страницу, на которой он используется.

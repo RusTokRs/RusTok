@@ -169,6 +169,19 @@ crates/ui/fly/
 - **Rendering escapes at every sink.** HTML text, attribute values, CSS attribute selectors and the
   `<style>` element body each have their own escape; URLs are filtered by `RenderPolicy`.
 
+## Site symbols
+
+`SymbolDescriptor` definitions are stored in `project.extensions.flySymbols`; a
+component with `symbolId` is a child-free reference. `EditorCommand::Symbol`
+(upsert/remove) manages definitions, and `convert_component_to_symbol`/
+`insert_symbol_instance` generate ordinary editor commands for the authoring UI.
+`resolve_symbol_instances` expands referenced definitions with deterministic,
+unique ids before rendering or publication; unknown ids, invalid definitions,
+and reference cycles fail closed. Definition content has its own size and count
+caps. The `fly` crate has no cross-page store: consumer modules such as
+`rustok-pages` own the site catalog, revision checks, and re-publish workflow
+([ADR](../../../DECISIONS/2026-10-09-site-symbols-shared-definitions.md)).
+
 ## Standalone Usage
 
 See [Extraction readiness](#extraction-readiness) first, in particular what a standalone build

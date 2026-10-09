@@ -124,6 +124,15 @@ impl PageService {
 
         let builder_sources =
             require_builder_sources(collect_builder_sources(&current_bodies, None, true))?;
+        // Site symbols resolve freshly at publish: the stored catalog wins over
+        // each body's embedded working copy, and every instance expands into its
+        // definition before sanitization so re-publishing re-issues occurrences.
+        let site_symbols = super::symbols::load_site_symbols_by_locale(&txn, tenant_id).await?;
+        let mut builder_sources = builder_sources;
+        for (locale, content) in builder_sources.iter_mut() {
+            let symbols = site_symbols.get(locale).cloned().unwrap_or_default();
+            *content = super::symbols::apply_site_symbols_to_content(content, &symbols)?;
+        }
         let project_values = parse_builder_project_values(&builder_sources)?;
         ensure_builder_publish_enabled_in_tx(&txn, tenant_id).await?;
         ensure_candidates_allowed_in_tx(&txn, tenant_id, page_id, &reviewed, project_values)

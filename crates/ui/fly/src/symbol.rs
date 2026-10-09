@@ -12,13 +12,18 @@
 use crate::fragment::reset_remapped_style_rule_identity;
 use crate::id_reference::remap_value_ids;
 use crate::{
-    ComponentNode, ComponentObject, FlyError, FlyResult, ProjectDocument, validate_identifier,
+    ComponentNode, ComponentObject, EditorCommand, FlyError, FlyResult, ProjectDocument,
+    ProjectFragment, SymbolCommand, validate_identifier,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const FLY_SYMBOLS_FIELD: &str = "flySymbols";
+/// Explicit caps on authoring definitions independent of per-page render caps.
+pub const MAX_SYMBOL_DEFINITIONS: usize = 128;
+pub const MAX_SYMBOL_COMPONENTS: usize = 512;
+pub const MAX_SYMBOL_DEFINITION_BYTES: usize = 262_144;
 
 /// One named definition body referenced by symbol instances.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,9 +41,9 @@ pub struct SymbolDescriptor {
 
 impl SymbolDescriptor {
     pub fn from_value(raw: &Value) -> Option<Self> {
-        serde_json::from_value(raw.clone()).ok().and_then(|descriptor: Self| {
-            (!descriptor.id.is_empty()).then_some(descriptor)
-        })
+        serde_json::from_value(raw.clone())
+            .ok()
+            .and_then(|descriptor: Self| (!descriptor.id.is_empty()).then_some(descriptor))
     }
 
     pub fn into_value(self) -> FlyResult<Value> {
@@ -69,10 +74,7 @@ impl SymbolDescriptor {
 }
 
 /// Replaces the stored definition list with `symbols` (used by command application).
-pub fn set_symbol_descriptors(
-    document: &mut ProjectDocument,
-    symbols: Vec<Value>,
-) {
+pub fn set_symbol_descriptors(document: &mut ProjectDocument, symbols: Vec<Value>) {
     if symbols.is_empty() {
         document.project.extensions.remove(FLY_SYMBOLS_FIELD);
         return;
@@ -130,6 +132,11 @@ pub fn apply_symbol_command(
             } else {
                 entries.push(symbol.clone());
             }
+            if entries.len() > MAX_SYMBOL_DEFINITIONS {
+                return Err(FlyError::InvalidSymbolReference(format!(
+                    "site symbol catalog exceeds {MAX_SYMBOL_DEFINITIONS} definitions"
+                )));
+            }
             set_symbol_descriptors(document, entries);
             let cycles = detect_symbol_cycles(&SymbolDescriptor::catalog_from_document(document));
             if let Some(cycle) = cycles.first() {
@@ -154,6 +161,18 @@ pub fn apply_symbol_command(
                     "cannot remove symbol `{symbol_id}`; {referenced} instance(s) still reference it"
                 )));
             }
+            for definition in entries.iter().filter_map(SymbolDescriptor::from_value) {
+                if definition.id != *symbol_id
+                    && symbol_references(&definition.components)
+                        .iter()
+                        .any(|id| id == symbol_id)
+                {
+                    return Err(FlyError::InvalidSymbolReference(format!(
+                        "cannot remove symbol `{symbol_id}`; definition `{}` still references it",
+                        definition.id
+                    )));
+                }
+            }
             let retained: Vec<Value> = entries
                 .into_iter()
                 .filter(|entry| {
@@ -171,6 +190,28 @@ pub fn apply_symbol_command(
 }
 
 fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
+    let encoded = serde_json::to_vec(descriptor)
+        .map_err(|error| FlyError::InvalidSymbolReference(error.to_string()))?;
+    if encoded.len() > MAX_SYMBOL_DEFINITION_BYTES {
+        return Err(FlyError::InvalidSymbolReference(format!(
+            "symbol `{}` exceeds {MAX_SYMBOL_DEFINITION_BYTES} bytes",
+            descriptor.id
+        )));
+    }
+    let mut pending: Vec<&ComponentNode> = descriptor.components.iter().collect();
+    let mut count = 0;
+    while let Some(component) = pending.pop() {
+        count += 1;
+        if count > MAX_SYMBOL_COMPONENTS {
+            return Err(FlyError::InvalidSymbolReference(format!(
+                "symbol `{}` exceeds {MAX_SYMBOL_COMPONENTS} components",
+                descriptor.id
+            )));
+        }
+        if let ComponentNode::Object(object) = component {
+            pending.extend(object.children());
+        }
+    }
     if let Err(reason) = validate_identifier(&descriptor.id) {
         return Err(FlyError::InvalidSymbolReference(format!(
             "symbol id `{}` is invalid: {reason}",
@@ -199,6 +240,77 @@ fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
     Ok(())
 }
 
+/// Converts a selected non-root component into a shared symbol in one editor
+/// history entry: save its subtree as a definition, then replace the original
+/// component at the same position with a reference wrapper of the same id.
+pub fn convert_component_to_symbol(
+    document: &ProjectDocument,
+    component_id: &str,
+    symbol_id: &str,
+    name: Option<String>,
+) -> FlyResult<EditorCommand> {
+    validate_identifier(symbol_id).map_err(|reason| {
+        FlyError::InvalidSymbolReference(format!("symbol id `{symbol_id}` is invalid: {reason}"))
+    })?;
+    let location = document
+        .component_location(component_id)
+        .ok_or_else(|| FlyError::ComponentNotFound(component_id.to_string()))?;
+    let parent_id = location.parent_component_id.ok_or_else(|| {
+        FlyError::InvalidSymbolReference("the page root cannot become a symbol".to_string())
+    })?;
+    let fragment = ProjectFragment::from_component(document, component_id)?;
+    let definition = SymbolDescriptor {
+        id: symbol_id.to_string(),
+        name,
+        components: fragment.components,
+        styles: fragment.styles,
+        assets: fragment.assets,
+    };
+    let wrapper = ComponentNode::Object(Box::new(ComponentObject {
+        id: Some(component_id.to_string()),
+        component_type: Some("symbol".to_string()),
+        symbol_id: Some(symbol_id.to_string()),
+        ..ComponentObject::default()
+    }));
+    Ok(EditorCommand::batch([
+        EditorCommand::Symbol {
+            command: SymbolCommand::Upsert {
+                symbol: definition.into_value()?,
+            },
+        },
+        EditorCommand::Remove {
+            component_id: component_id.to_string(),
+        },
+        EditorCommand::Insert {
+            parent_id: Some(parent_id),
+            index: location.index,
+            component: wrapper,
+        },
+    ]))
+}
+
+/// Appends an instance of a catalog symbol to the document's first page root.
+pub fn insert_symbol_instance(
+    document: &ProjectDocument,
+    symbol_id: &str,
+) -> FlyResult<EditorCommand> {
+    if !SymbolDescriptor::catalog_from_document(document).contains_key(symbol_id) {
+        return Err(FlyError::SymbolNotFound(symbol_id.to_string()));
+    }
+    let index = document
+        .root_child_count()
+        .ok_or(FlyError::MissingProjectRoot)?;
+    Ok(EditorCommand::Insert {
+        parent_id: None,
+        index,
+        component: ComponentNode::Object(Box::new(ComponentObject {
+            component_type: Some("symbol".to_string()),
+            symbol_id: Some(symbol_id.to_string()),
+            ..ComponentObject::default()
+        })),
+    })
+}
+
 /// Expands every symbol instance into its definition content.
 ///
 /// The returned document is a pure content projection: instance shells keep
@@ -210,9 +322,7 @@ fn validate_definition(descriptor: &SymbolDescriptor) -> FlyResult<()> {
 /// and therefore equal published hashes.
 pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<ProjectDocument> {
     let catalog = strict_catalog(document)?;
-    if catalog.is_empty()
-        && !document_has_instances(document)
-    {
+    if !document_has_symbol_instances(document) {
         return Ok(document.clone());
     }
     let mut resolved = document.clone();
@@ -226,14 +336,21 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
     for page in &mut resolved.project.pages {
         if let Some(root) = page.component.as_mut() {
             let mut stack = Vec::new();
-            expand_node(root, &catalog, &mut used_ids, &mut stack, &mut pending_styles)?;
+            expand_node(
+                root,
+                &catalog,
+                &mut used_ids,
+                &mut stack,
+                &mut pending_styles,
+            )?;
         }
     }
     resolved.project.styles.extend(pending_styles);
     Ok(resolved)
 }
 
-fn document_has_instances(document: &ProjectDocument) -> bool {
+/// True when a page contains at least one unresolved symbol instance.
+pub fn document_has_symbol_instances(document: &ProjectDocument) -> bool {
     let mut found = false;
     document.project.visit_components(|component, _, _| {
         found = found || component.symbol_id.is_some();
@@ -241,13 +358,29 @@ fn document_has_instances(document: &ProjectDocument) -> bool {
     found
 }
 
-fn strict_catalog(
-    document: &ProjectDocument,
-) -> FlyResult<BTreeMap<String, SymbolDescriptor>> {
+fn strict_catalog(document: &ProjectDocument) -> FlyResult<BTreeMap<String, SymbolDescriptor>> {
+    if document
+        .project
+        .extensions
+        .get(FLY_SYMBOLS_FIELD)
+        .is_some_and(|block| !block.is_array())
+    {
+        return Err(FlyError::InvalidSymbolReference(format!(
+            "{FLY_SYMBOLS_FIELD} must be an array"
+        )));
+    }
     let mut catalog = BTreeMap::new();
-    for (path, entry) in SymbolDescriptor::entries_from_document(document) {
-        let descriptor = SymbolDescriptor::from_value(&entry)
-            .ok_or_else(|| FlyError::InvalidSymbolReference(format!("{path} is not a valid symbol definition")))?;
+    let entries = SymbolDescriptor::entries_from_document(document);
+    if entries.len() > MAX_SYMBOL_DEFINITIONS {
+        return Err(FlyError::InvalidSymbolReference(format!(
+            "site symbol catalog exceeds {MAX_SYMBOL_DEFINITIONS} definitions"
+        )));
+    }
+    for (path, entry) in entries {
+        let descriptor = SymbolDescriptor::from_value(&entry).ok_or_else(|| {
+            FlyError::InvalidSymbolReference(format!("{path} is not a valid symbol definition"))
+        })?;
+        validate_definition(&descriptor)?;
         if catalog.contains_key(&descriptor.id) {
             return Err(FlyError::InvalidSymbolReference(format!(
                 "symbol `{}` is defined more than once",
@@ -255,6 +388,18 @@ fn strict_catalog(
             )));
         }
         catalog.insert(descriptor.id.clone(), descriptor);
+    }
+    for (id, descriptor) in &catalog {
+        for reference in symbol_references(&descriptor.components) {
+            if !catalog.contains_key(&reference) {
+                return Err(FlyError::SymbolNotFound(format!(
+                    "{reference} (referenced by symbol {id})"
+                )));
+            }
+        }
+    }
+    if let Some(cycle) = detect_symbol_cycles(&catalog).first() {
+        return Err(FlyError::SymbolCycle(cycle.clone()));
     }
     Ok(catalog)
 }
@@ -301,6 +446,16 @@ fn expand_instance(
             "symbol instance of `{symbol_id}` must carry a component id"
         )));
     };
+    if !object.children().is_empty() {
+        return Err(FlyError::InvalidSymbolReference(format!(
+            "symbol instance `{instance_id}` must be child-free at rest"
+        )));
+    }
+    validate_identifier(&instance_id).map_err(|reason| {
+        FlyError::InvalidSymbolReference(format!(
+            "symbol instance id `{instance_id}` is invalid: {reason}"
+        ))
+    })?;
 
     let mut source_ids = Vec::new();
     for component in &descriptor.components {
@@ -353,7 +508,7 @@ fn derived_id(instance_id: &str, definition_id: &str, used_ids: &BTreeSet<String
 }
 
 /// Ids of symbol definitions referenced by instances inside `components`.
-pub(crate) fn instance_references(components: &[ComponentNode]) -> Vec<String> {
+pub fn symbol_references(components: &[ComponentNode]) -> Vec<String> {
     let mut references = Vec::new();
     for component in components {
         collect_instance_references(component, &mut references);
@@ -405,7 +560,7 @@ fn walk_symbol_graph(
         return;
     };
     stack.push(id.to_string());
-    for reference in instance_references(&descriptor.components) {
+    for reference in symbol_references(&descriptor.components) {
         walk_symbol_graph(&reference, catalog, stack, cycles);
     }
     stack.pop();
@@ -515,7 +670,14 @@ mod tests {
         assert_eq!(first.children().len(), 1);
         let expanded_root = first.children()[0].as_object().expect("object");
         assert_eq!(expanded_root.id.as_deref(), Some("slot-a-cta-root"));
-        assert_eq!(expanded_root.children()[0].as_object().expect("text").id.as_deref(), Some("slot-a-cta-text"));
+        assert_eq!(
+            expanded_root.children()[0]
+                .as_object()
+                .expect("text")
+                .id
+                .as_deref(),
+            Some("slot-a-cta-text")
+        );
 
         let second = resolved.component("slot-b").expect("slot-b");
         let second_child = second.children()[0].as_object().expect("object");
@@ -553,8 +715,14 @@ mod tests {
         let cyclic = document_with(
             object("root", "wrapper", vec![instance("slot", "a")]),
             vec![
-                symbol_json("a", vec![json!({ "id": "a-1", "type": "symbol", "symbolId": "b" })]),
-                symbol_json("b", vec![json!({ "id": "b-1", "type": "symbol", "symbolId": "a" })]),
+                symbol_json(
+                    "a",
+                    vec![json!({ "id": "a-1", "type": "symbol", "symbolId": "b" })],
+                ),
+                symbol_json(
+                    "b",
+                    vec![json!({ "id": "b-1", "type": "symbol", "symbolId": "a" })],
+                ),
             ],
         );
         assert!(matches!(
@@ -577,7 +745,10 @@ mod tests {
                         "components": []
                     })],
                 ),
-                symbol_json("inner", vec![json!({ "id": "inner-1", "type": "text", "content": "in" })]),
+                symbol_json(
+                    "inner",
+                    vec![json!({ "id": "inner-1", "type": "text", "content": "in" })],
+                ),
             ],
         );
         let resolved = resolve_symbol_instances(&nested).expect("resolve");
@@ -585,7 +756,11 @@ mod tests {
         let outer_child = outer.children()[0].as_object().expect("outer-1");
         assert!(outer_child.symbol_id.is_none());
         assert_eq!(
-            outer_child.children()[0].as_object().expect("inner-1").id.as_deref(),
+            outer_child.children()[0]
+                .as_object()
+                .expect("inner-1")
+                .id
+                .as_deref(),
             Some("slot-outer-1-inner-1")
         );
     }
@@ -643,9 +818,10 @@ mod tests {
     #[test]
     fn remove_fails_closed_while_instances_reference_the_definition() {
         let mut editor = FlyEditor::new(
-            document_with(object("root", "wrapper", vec![instance("slot", "cta")]), vec![
-                symbol_json("cta", vec![plain_component_json("cta-1")]),
-            ]),
+            document_with(
+                object("root", "wrapper", vec![instance("slot", "cta")]),
+                vec![symbol_json("cta", vec![plain_component_json("cta-1")])],
+            ),
             RegistrySet::with_builtins(),
         );
         let removal = editor.apply(EditorCommand::Symbol {
@@ -658,6 +834,76 @@ mod tests {
             Err(FlyError::InvalidSymbolReference(message))
                 if message.contains("cannot remove symbol `cta`")
         ));
+    }
+
+    #[test]
+    fn conversion_replaces_selection_with_shared_instance_and_is_undoable() {
+        let document = document_with(
+            object(
+                "root",
+                "wrapper",
+                vec![object(
+                    "cta",
+                    "section",
+                    vec![object("label", "text", vec![])],
+                )],
+            ),
+            Vec::new(),
+        );
+        let mut editor = FlyEditor::new(document.clone(), RegistrySet::with_builtins());
+        let command = convert_component_to_symbol(
+            &document,
+            "cta",
+            "site-cta",
+            Some("Call to action".into()),
+        )
+        .expect("convert command");
+        editor.apply(command).expect("convert");
+        assert_eq!(
+            editor
+                .document()
+                .component("cta")
+                .unwrap()
+                .symbol_id
+                .as_deref(),
+            Some("site-cta")
+        );
+        assert!(editor.document().component("label").is_none());
+        assert_eq!(
+            SymbolDescriptor::catalog_from_document(editor.document())["site-cta"]
+                .name
+                .as_deref(),
+            Some("Call to action")
+        );
+        let resolved = resolve_symbol_instances(editor.document()).expect("resolve");
+        assert!(resolved.component("cta-cta").is_some());
+        assert!(resolved.component("cta-label").is_some());
+        editor.undo().expect("undo");
+        assert_eq!(editor.document(), &document);
+    }
+
+    #[test]
+    fn invalid_catalog_block_fails_closed() {
+        let mut document = document_with(object("root", "wrapper", vec![]), Vec::new());
+        document.project.extensions.insert(
+            FLY_SYMBOLS_FIELD.to_string(),
+            serde_json::json!({"bad": true}),
+        );
+        assert!(matches!(
+            resolve_symbol_instances(&document),
+            Err(FlyError::InvalidSymbolReference(_))
+        ));
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|item| item.code == "malformed_symbol_catalog")
+        );
     }
 
     #[test]

@@ -734,8 +734,33 @@ fn diagnostic(
 }
 
 fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
+    if document
+        .project
+        .extensions
+        .get(FLY_SYMBOLS_FIELD)
+        .is_some_and(|block| !block.is_array())
+    {
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "malformed_symbol_catalog",
+            FLY_SYMBOLS_FIELD,
+            "flySymbols must be an array",
+        ));
+    }
     let mut catalog = BTreeMap::new();
-    for (path, entry) in crate::SymbolDescriptor::entries_from_document(document) {
+    let entries = crate::SymbolDescriptor::entries_from_document(document);
+    if entries.len() > crate::MAX_SYMBOL_DEFINITIONS {
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "too_many_symbol_definitions",
+            FLY_SYMBOLS_FIELD,
+            format!(
+                "site symbol catalog exceeds {} definitions",
+                crate::MAX_SYMBOL_DEFINITIONS
+            ),
+        ));
+    }
+    for (path, entry) in entries {
         let Some(descriptor) = crate::SymbolDescriptor::from_value(&entry) else {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
@@ -785,7 +810,7 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
                 }
             }
         }
-        for reference in crate::instance_references(&descriptor.components) {
+        for reference in crate::symbol_references(&descriptor.components) {
             if !catalog.contains_key(&reference) {
                 report.diagnostics.push(diagnostic(
                     ValidationSeverity::Error,

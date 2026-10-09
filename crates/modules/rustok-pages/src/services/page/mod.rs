@@ -18,6 +18,7 @@ mod rollback;
 mod route;
 mod route_history_import;
 mod schedule;
+mod symbols;
 mod translation_apply;
 
 use rustok_content::entities::node::ContentStatus;

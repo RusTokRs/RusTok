@@ -109,6 +109,19 @@ impl PageService {
         self.upsert_body_in_tx(&txn, tenant_id, page_id, body.clone(), now)
             .await?;
         if let Some(body) = body.as_ref() {
+            // A newly created page normally has no symbol catalog. Only sync
+            // when it actually authors definitions; otherwise its empty seed
+            // must not erase site-wide definitions from other pages.
+            if !super::symbols::symbol_values_in_content(&body.content)?.is_empty() {
+                super::symbols::sync_site_symbols_in_tx(
+                    &txn,
+                    tenant_id,
+                    page_id,
+                    &body.locale,
+                    &body.content,
+                )
+                .await?;
+            }
             let body_revision = now.to_string();
             self.record_body_revision_in_tx(
                 &txn,

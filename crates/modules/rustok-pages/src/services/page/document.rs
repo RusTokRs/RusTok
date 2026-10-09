@@ -163,6 +163,17 @@ impl PageService {
                 )
                 .await?;
         }
+        // Site symbol catalog travels with every body save: the document's
+        // `flySymbols` block is the editing surface and replaces the stored
+        // catalog for this (tenant, locale) as a full set.
+        super::symbols::sync_site_symbols_in_tx(
+            &txn,
+            tenant_id,
+            page_id,
+            &body.locale,
+            &body.content,
+        )
+        .await?;
         txn.commit().await?;
 
         self.get_with_locale_fallback(
@@ -309,6 +320,8 @@ impl PageService {
                 )
                 .await?;
         }
+        // Restoring a page body must not roll back site-wide definitions from
+        // an older journal entry. The next editor read overlays the live store.
         txn.commit().await?;
 
         self.get_with_locale_fallback(

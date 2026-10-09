@@ -266,3 +266,10 @@ page_builder-translations-valuesPlaceholder =
     {"}"}
 page_builder-unbound-body = Open a consumer-owned document to start full visual authoring. Page Builder does not own document persistence.
 page_builder-unbound-title = No consumer document selected
+page_builder-panel-symbols = Site symbols
+page_builder-symbols-id = Symbol id
+page_builder-symbols-name = Name
+page_builder-symbols-convert = Convert selection
+page_builder-symbols-insert = Insert instance
+page_builder-symbols-remove = Remove definition
+page_builder-symbols-explainer = Convert a selected section into a shared symbol. After editing a definition, re-publish each page that uses it.

@@ -295,6 +295,13 @@
       "mode": "none",
       "owner": "rustok-forms",
       "reason": "Creates form submission storage as new owner storage; no server-side receiver existed before this change, so no historical submissions exist to backfill"
+    },
+    {
+      "id": "pages-site-symbols",
+      "migration": "m20261009_000003_create_site_symbols",
+      "mode": "none",
+      "owner": "rustok-pages",
+      "reason": "Creates site symbol definition storage as new owner storage; symbol instances were not expressible before this change, so no historical definitions exist to backfill"
     }
   ]
 }
