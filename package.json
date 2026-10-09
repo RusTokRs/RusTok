@@ -247,6 +247,6 @@
     "test:verify:product:relations-bundles-idempotency": "node --test scripts/verify/verify-product-relations-bundles-idempotency.test.mjs"
   },
   "dependencies": {
-    "sharp": "^0.35.4"
+    "sharp": "^0.35.5"
   }
 }
