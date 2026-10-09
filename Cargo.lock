@@ -8377,9 +8377,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.55.1"
+version = "0.58.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b68339c3d874e48151d74ffe256d93a58cffa240983cb0967d3cbaea083a44fe"
+checksum = "ea18b8d5e1469b1bdd6b349169305141316a7c26da27f239773b65c830c0f5d6"
 dependencies = [
  "ahash",
  "bytecount",
@@ -8389,12 +8389,12 @@ dependencies = [
  "fraction 0.17.0",
  "getrandom 0.3.4",
  "itoa 1.0.18",
- "jsonschema-regex 0.55.1",
+ "jsonschema-regex 0.58.6",
  "jsonschema-value",
  "num-cmp",
  "num-traits",
  "percent-encoding",
- "referencing 0.55.1",
+ "referencing 0.58.6",
  "regex",
  "serde",
  "serde_json",
@@ -8414,18 +8414,18 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-regex"
-version = "0.55.1"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6307b5b51216ec9b941b52244c74043fa0b1d6b657b56199f57cb1416d3641c5"
+checksum = "a968fffd387b2ab005bf00c1851f5d26e90df05b6f7ad609ed0d620033cca5e7"
 dependencies = [
  "regex-syntax",
 ]
 
 [[package]]
 name = "jsonschema-value"
-version = "0.55.1"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0230ac05e09c6111e96c147b75c390579f5cbd45654b980c68ac60fe17b3f129"
+checksum = "39b7670345e5ce87371339d13705dbb9276b7e3e934bbe1efa2c6734a1f65a96"
 dependencies = [
  "ahash",
  "bytecount",
@@ -13365,9 +13365,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.55.1"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a196a5b4a8a12f46b6353174df865a05d41a6055aff212ec30877492788618b6"
+checksum = "558f3855529c0a7e78a48e409fa653456e55f1b167eab4109c16a255b7727e3f"
 dependencies = [
  "ahash",
  "fluent-uri",
@@ -14445,7 +14445,7 @@ dependencies = [
  "chrono",
  "futures-util",
  "hex",
- "jsonschema 0.55.1",
+ "jsonschema 0.58.5",
  "once_cell",
  "reqwest 0.13.5",
  "rhai",
@@ -15598,7 +15598,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "hex",
- "jsonschema 0.55.1",
+ "jsonschema 0.58.5",
  "rustok-api",
  "rustok-telemetry",
  "schemars 1.2.2",
@@ -16652,7 +16652,7 @@ dependencies = [
  "ed25519-dalek",
  "futures-util",
  "hex",
- "jsonschema 0.55.1",
+ "jsonschema 0.58.5",
  "object_store 0.14.2",
  "oci-distribution",
  "pubgrub",
