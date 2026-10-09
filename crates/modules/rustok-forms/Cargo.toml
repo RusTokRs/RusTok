@@ -1,0 +1,32 @@
+[package]
+name = "rustok-forms"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Form submission intake, abuse controls and lead triage inbox"
+
+[dependencies]
+async-graphql.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
+rustok-core.workspace = true
+rustok-email.workspace = true
+rustok-events.workspace = true
+rustok-outbox.workspace = true
+rustok-web.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+utoipa = { workspace = true, features = ["uuid", "chrono"] }
+uuid.workspace = true
+
+[dev-dependencies]
+rustok-channel.workspace = true
+rustok-test-utils.workspace = true
+tokio.workspace = true

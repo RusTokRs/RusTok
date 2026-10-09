@@ -1,0 +1,32 @@
+[module]
+slug = "forms"
+name = "Forms"
+version = "0.1.0"
+description = "Form submission intake, abuse controls and lead triage inbox"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "dual_surface"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[marketplace]
+category = "content"
+tags = ["forms", "leads", "landing-pages"]
+
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+email = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "FormsModule"
+
+[provides.graphql]
+query = "graphql::FormsQuery"
+mutation = "graphql::FormsMutation"
+
+[provides.http]
+axum_router = "http::axum_router"
+
+[provides.admin_ui]
+leptos_crate = "rustok-forms-admin"
+route_segment = "forms"
+nav_label = "Forms"

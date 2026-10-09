@@ -195,6 +195,8 @@ pub fn build_registry() -> ModuleRegistry {
     let registry = registry.register(rustok_comments::CommentsModule);
     #[cfg(feature = "mod-pages")]
     let registry = registry.register(rustok_pages::PagesModule);
+    #[cfg(feature = "mod-forms")]
+    let registry = registry.register(rustok_forms::FormsModule);
     #[cfg(feature = "mod-navigation")]
     let registry = registry.register(rustok_navigation::NavigationModule);
     #[cfg(feature = "mod-page_builder")]

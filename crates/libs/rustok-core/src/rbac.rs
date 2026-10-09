@@ -199,6 +199,9 @@ static MANAGER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Permission::NODES_UPDATE,
         Permission::NODES_DELETE,
         Permission::NODES_LIST,
+        Permission::FORMS_READ,
+        Permission::FORMS_LIST,
+        Permission::FORMS_UPDATE,
     ]);
     insert_actions(
         &mut permissions,
@@ -224,6 +227,10 @@ static MANAGER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Permission::PAGES_UPDATE,
         Permission::PAGES_DELETE,
         Permission::PAGES_LIST,
+        Permission::FORMS_READ,
+        Permission::FORMS_LIST,
+        Permission::FORMS_UPDATE,
+        Permission::FORMS_MANAGE,
         Permission::BLOG_POSTS_CREATE,
         Permission::BLOG_POSTS_READ,
         Permission::BLOG_POSTS_UPDATE,
