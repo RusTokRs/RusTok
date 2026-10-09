@@ -44,7 +44,7 @@
     "public_dto_changed": false
   },
   "compatibility": {
-    "legacy_graphql_forum_storefront_topic_field_removed": false,
+    "legacy_graphql_forum_storefront_topic_field_removed": true,
     "legacy_mark_read_owner_method_removed": false,
     "module_owned_graphql_adapter_migrated": true,
     "module_owned_native_adapter_migrated": true,

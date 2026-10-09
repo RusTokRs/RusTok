@@ -1,7 +1,8 @@
 use async_graphql::{Context, FieldError, Object, Result, dataloader::DataLoader};
 use rustok_api::Permission;
 use rustok_api::graphql::{GraphQLError, require_module_enabled};
-use rustok_api::{AuthContext, TenantContext};
+use rustok_api::{AuthContext, RequestContext, TenantContext};
+use rustok_moderation_api::ModerationReasonCode;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{
     ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfilesReader,
@@ -17,7 +18,11 @@ use crate::reply_create_transport::{
 use crate::topic_create_transport::{
     ForumTopicCreateTransport, topic_create_audience_port_context,
 };
-use crate::{CategoryResponse, CategoryService, SubscriptionService};
+use crate::{
+    CategoryResponse, CategoryService, ForumReplyReadOperation, ForumReplyReadTransport,
+    ForumTopicReadOperation, ForumTopicReadTransport, SubscriptionService,
+    reply_read_audience_port_context, topic_read_audience_port_context,
+};
 
 use super::{ForumGraphqlRuntimeData, require_forum_permission, resolve_tenant_scope, types::*};
 
@@ -616,7 +621,18 @@ impl ForumContentMutation {
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
-        SubscriptionService::new(db.clone())
+        let write_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::Subscription,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
+        ctx.data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default()
+            .subscription_service(db.clone())
             .set_topic_subscription(
                 tenant_id,
                 topic_id,
@@ -624,19 +640,28 @@ impl ForumContentMutation {
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                write_context,
             )
             .await?;
 
+        let read_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::SelectedTopic,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
         let topic = super::forum_graphql_runtime(ctx)
-            .topic_service(db.clone(), event_bus.clone())
-            .get_with_locale_fallback(
+            .topic_audience_read_service(db.clone(), event_bus.clone())
+            .get_authenticated_owner_visible_with_audience_context(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                read_context,
                 topic_id,
-                resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
             )
             .await?;
@@ -681,16 +706,24 @@ impl ForumContentMutation {
             )
             .await?;
 
+        let read_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::SelectedTopic,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
         let topic = super::forum_graphql_runtime(ctx)
-            .topic_service(db.clone(), event_bus.clone())
-            .get_with_locale_fallback(
+            .topic_audience_read_service(db.clone(), event_bus.clone())
+            .get_authenticated_owner_visible_with_audience_context(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                read_context,
                 topic_id,
-                resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
             )
             .await?;
@@ -783,6 +816,102 @@ impl ForumContentMutation {
         })
     }
 
+    /// Files a user report about a forum topic with the Moderation owner.
+    /// Returns the Moderation report id. Reports require a human user who can read the topic.
+    async fn report_forum_topic(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        reason_code: String,
+        locale: Option<String>,
+    ) -> Result<Uuid> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_READ],
+            "Permission denied: forum_topics:read required",
+        )?;
+        let reason_code = parse_report_reason_code(&reason_code)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
+
+        let report_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::Report,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
+        let report_id = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default()
+            .moderation_report_service(db.clone())
+            .report_topic(
+                tenant_id,
+                topic_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+                report_context,
+                reason_code,
+            )
+            .await?;
+        Ok(report_id)
+    }
+
+    /// Files a user report about a forum reply with the Moderation owner.
+    /// Returns the Moderation report id. Reports require a human user who can read the reply.
+    async fn report_forum_reply(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        reason_code: String,
+        locale: Option<String>,
+    ) -> Result<Uuid> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_REPLIES_READ],
+            "Permission denied: forum_replies:read required",
+        )?;
+        let reason_code = parse_report_reason_code(&reason_code)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
+
+        let report_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::Report,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
+        let report_id = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default()
+            .moderation_report_service(db.clone())
+            .report_reply(
+                tenant_id,
+                reply_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+                report_context,
+                reason_code,
+            )
+            .await?;
+        Ok(report_id)
+    }
+
     async fn set_forum_topic_vote(
         &self,
         ctx: &Context<'_>,
@@ -802,6 +931,14 @@ impl ForumContentMutation {
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
+        let write_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::Vote,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
         ctx.data_opt::<ForumGraphqlRuntimeData>()
             .cloned()
             .unwrap_or_default()
@@ -813,20 +950,29 @@ impl ForumContentMutation {
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                write_context,
                 value,
             )
             .await?;
 
+        let read_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::SelectedTopic,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
         let topic = super::forum_graphql_runtime(ctx)
-            .topic_service(db.clone(), event_bus.clone())
-            .get_with_locale_fallback(
+            .topic_audience_read_service(db.clone(), event_bus.clone())
+            .get_authenticated_owner_visible_with_audience_context(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                read_context,
                 topic_id,
-                resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
             )
             .await?;
@@ -874,16 +1020,24 @@ impl ForumContentMutation {
             )
             .await?;
 
+        let read_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::SelectedTopic,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
         let topic = super::forum_graphql_runtime(ctx)
-            .topic_service(db.clone(), event_bus.clone())
-            .get_with_locale_fallback(
+            .topic_audience_read_service(db.clone(), event_bus.clone())
+            .get_authenticated_owner_visible_with_audience_context(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                read_context,
                 topic_id,
-                resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
             )
             .await?;
@@ -918,6 +1072,14 @@ impl ForumContentMutation {
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
+        let write_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::Vote,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
         ctx.data_opt::<ForumGraphqlRuntimeData>()
             .cloned()
             .unwrap_or_default()
@@ -929,20 +1091,29 @@ impl ForumContentMutation {
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                write_context,
                 value,
             )
             .await?;
 
+        let read_context = reply_read_audience_port_context(
+            ForumReplyReadTransport::Graphql,
+            ForumReplyReadOperation::SelectedReply,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
         let reply = super::forum_graphql_runtime(ctx)
-            .reply_service(db.clone(), event_bus.clone())
-            .get_with_locale_fallback(
+            .reply_audience_read_service(db.clone(), event_bus.clone())
+            .get_authenticated_owner_visible_with_audience_context(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                read_context,
                 reply_id,
-                resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
             )
             .await?;
@@ -1009,16 +1180,24 @@ impl ForumContentMutation {
             )
             .await?;
 
+        let read_context = reply_read_audience_port_context(
+            ForumReplyReadTransport::Graphql,
+            ForumReplyReadOperation::SelectedReply,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
         let reply = super::forum_graphql_runtime(ctx)
-            .reply_service(db.clone(), event_bus.clone())
-            .get_with_locale_fallback(
+            .reply_audience_read_service(db.clone(), event_bus.clone())
+            .get_authenticated_owner_visible_with_audience_context(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                read_context,
                 reply_id,
-                resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
             )
             .await?;
@@ -1097,16 +1276,24 @@ impl ForumContentMutation {
             )
             .await?;
 
+        let read_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::SelectedTopic,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
         let topic = super::forum_graphql_runtime(ctx)
-            .topic_service(db.clone(), event_bus.clone())
-            .get_with_locale_fallback(
+            .topic_audience_read_service(db.clone(), event_bus.clone())
+            .get_authenticated_owner_visible_with_audience_context(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                read_context,
                 topic_id,
-                resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
             )
             .await?;
@@ -1164,16 +1351,24 @@ impl ForumContentMutation {
             )
             .await?;
 
+        let read_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::SelectedTopic,
+            tenant_id,
+            &auth,
+            ctx.data_opt::<RequestContext>(),
+            resolved_locale.as_str(),
+        )?;
         let topic = super::forum_graphql_runtime(ctx)
-            .topic_service(db.clone(), event_bus.clone())
-            .get_with_locale_fallback(
+            .topic_audience_read_service(db.clone(), event_bus.clone())
+            .get_authenticated_owner_visible_with_audience_context(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
+                read_context,
                 topic_id,
-                resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
             )
             .await?;
@@ -1386,4 +1581,9 @@ fn map_topic(
         created_at: topic.created_at,
         updated_at: topic.updated_at,
     }
+}
+
+fn parse_report_reason_code(value: &str) -> Result<ModerationReasonCode> {
+    ModerationReasonCode::parse(value.trim())
+        .ok_or_else(|| async_graphql::Error::new("Unknown moderation reason code"))
 }

@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -91,7 +94,8 @@ async fn rename_records_one_alias_and_old_route_becomes_gone_after_delete() -> T
     insert_user(&db, tenant_id, actor_id).await?;
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
     let category_id = create_category(&db, tenant_id, admin.clone()).await?;
-    let service = TopicService::new(db.clone(), event_bus.clone());
+    let service = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let topic_id = service
         .create(
             tenant_id,

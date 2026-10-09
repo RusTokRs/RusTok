@@ -13,10 +13,12 @@ use sea_orm::DatabaseConnection;
 
 use crate::{
     ForumCategoryAudienceReadService, ForumReadModelService, ForumReplyAudienceReadService,
-    ForumSettingsProviders, ForumStorefrontReadStateService, ForumTopicAudienceReadService,
-    ForumVisibilityScopedReadStateService, ModerationService, ReplyService,
-    SharedForumAudienceFactsPort, TopicService, VoteService,
+    ForumSettingsProviders, ForumStorefrontReadStateService, ForumTopicAudienceListService,
+    ForumTopicAudienceReadService, ForumVisibilityScopedReadStateService, ModerationService,
+    ReplyService, SharedForumAudienceFactsPort, SubscriptionService, TopicService, VoteService,
 };
+use crate::moderation_report::SharedForumModerationReportPort;
+use crate::services::moderation_report::ForumModerationReportService;
 
 /// Manifest-attached Forum GraphQL runtime capabilities.
 ///
@@ -27,6 +29,7 @@ use crate::{
 #[derive(Clone, Default)]
 pub struct ForumGraphqlRuntimeData {
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    moderation_report: Option<SharedForumModerationReportPort>,
     settings_providers: ForumSettingsProviders,
     attachment_hold_media: Option<Arc<dyn MediaAssetReadPort>>,
     notification_reconciliation: Option<Arc<dyn NotificationInboxReconciliationInspectPort>>,
@@ -52,6 +55,7 @@ pub fn attach_schema_data(
 
     Ok(ForumGraphqlRuntimeData {
         audience_facts: inputs.shared_get::<SharedForumAudienceFactsPort>(),
+        moderation_report: inputs.shared_get::<SharedForumModerationReportPort>(),
         settings_providers,
         attachment_hold_media,
         notification_reconciliation,
@@ -97,8 +101,32 @@ impl ForumGraphqlRuntimeData {
         service.with_settings_providers(self.settings_providers.clone())
     }
 
+    pub(crate) fn moderation_report_service(
+        &self,
+        db: DatabaseConnection,
+    ) -> ForumModerationReportService {
+        ForumModerationReportService::new(
+            db,
+            self.audience_facts.clone(),
+            self.moderation_report.clone(),
+        )
+    }
+
     pub(crate) fn vote_service(&self, db: DatabaseConnection) -> VoteService {
-        VoteService::new(db).with_settings_providers(self.settings_providers.clone())
+        let service =
+            VoteService::new(db).with_settings_providers(self.settings_providers.clone());
+        match self.audience_facts.clone() {
+            Some(facts) => service.with_audience_facts(facts),
+            None => service,
+        }
+    }
+
+    pub(crate) fn subscription_service(&self, db: DatabaseConnection) -> SubscriptionService {
+        let service = SubscriptionService::new(db);
+        match self.audience_facts.clone() {
+            Some(facts) => service.with_audience_facts(facts),
+            None => service,
+        }
     }
 
     pub(crate) fn reply_service(
@@ -146,17 +174,46 @@ impl ForumGraphqlRuntimeData {
         }
     }
 
+    /// Tenant default page size for topic lists when a request omits `perPage`.
+    pub(crate) async fn default_topics_per_page(
+        &self,
+        tenant_id: Uuid,
+    ) -> crate::error::ForumResult<u64> {
+        self.settings_providers.default_topics_per_page(tenant_id).await
+    }
+
+    /// Tenant default page size for reply lists when a request omits `perPage`.
+    pub(crate) async fn default_replies_per_page(
+        &self,
+        tenant_id: Uuid,
+    ) -> crate::error::ForumResult<u64> {
+        self.settings_providers.default_replies_per_page(tenant_id).await
+    }
+
+    pub(crate) fn topic_audience_list_service(
+        &self,
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+    ) -> ForumTopicAudienceListService {
+        let service = match self.audience_facts.clone() {
+            Some(facts) => ForumTopicAudienceListService::with_audience_facts(db, event_bus, facts),
+            None => ForumTopicAudienceListService::new(db, event_bus),
+        };
+        service.with_settings_providers(self.settings_providers.clone())
+    }
+
     pub(crate) fn storefront_read_state_service(
         &self,
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
     ) -> ForumStorefrontReadStateService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => {
                 ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts)
             }
             None => ForumStorefrontReadStateService::new(db, event_bus),
-        }
+        };
+        service.with_settings_providers(self.settings_providers.clone())
     }
 
     pub(crate) fn visibility_scoped_read_state_service(

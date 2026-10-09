@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -99,6 +102,7 @@ async fn create_topic(
     security: SecurityContext,
 ) -> TestResult<Uuid> {
     Ok(TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -125,6 +129,7 @@ async fn create_approved_reply(
     security: SecurityContext,
 ) -> TestResult<Uuid> {
     let reply = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,

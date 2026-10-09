@@ -8,6 +8,7 @@ use rustok_outbox::TransactionalEventBus;
 use crate::audience::SharedForumAudienceFactsPort;
 use crate::dto::{ListRepliesFilter, ReplyListItem, ReplyPage, ReplyResponse};
 use crate::error::{ForumError, ForumResult};
+use crate::services::pending_visibility::can_see_pending;
 use crate::state_machine::ReplyStatus;
 
 use super::rbac::enforce_scope;
@@ -61,6 +62,11 @@ impl ForumReplyAudienceReadService {
         enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
         let locale = required_context_locale(&context)?;
         let reply = self.reply_service.find_reply(tenant_id, reply_id).await?;
+        if reply.status == ReplyStatus::Pending
+            && !can_see_pending(&security, Resource::ForumReplies, reply.author_id)
+        {
+            return Err(ForumError::ReplyNotFound(reply_id));
+        }
         let viewer = ForumTopicAudienceViewer::authenticated(security.clone(), context)?;
         if !self
             .visibility
@@ -94,6 +100,11 @@ impl ForumReplyAudienceReadService {
             Err(ForumError::ReplyNotFound(_)) => return Ok(None),
             Err(error) => return Err(error),
         };
+        if reply.status == ReplyStatus::Pending
+            && !can_see_pending(&security, Resource::ForumReplies, reply.author_id)
+        {
+            return Ok(None);
+        }
         if statuses.is_some_and(|allowed| !allowed.contains(&reply.status)) {
             return Ok(None);
         }
@@ -136,6 +147,11 @@ impl ForumReplyAudienceReadService {
             Err(ForumError::ReplyNotFound(_)) => return Ok(None),
             Err(error) => return Err(error),
         };
+        if reply.status == ReplyStatus::Pending
+            && !can_see_pending(&security, Resource::ForumReplies, reply.author_id)
+        {
+            return Ok(None);
+        }
         if statuses.is_some_and(|allowed| !allowed.contains(&reply.status)) {
             return Ok(None);
         }

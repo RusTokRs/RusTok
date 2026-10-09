@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -92,6 +95,7 @@ async fn create_topic(
     channel_slugs: Option<Vec<String>>,
 ) -> Uuid {
     TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -273,7 +277,8 @@ async fn storefront_topic_facade_is_guarded_by_the_exact_owner_scope() {
     )
     .await;
 
-    let topic_service = TopicService::new(db.clone(), event_bus);
+    let topic_service = TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let page = topic_service
         .list_storefront_visible_with_locale_fallback(
             tenant_id,

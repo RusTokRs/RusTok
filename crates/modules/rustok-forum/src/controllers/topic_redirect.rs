@@ -13,7 +13,10 @@ use rustok_api::{
 use rustok_web::HttpResult;
 use uuid::Uuid;
 
-use crate::ListTopicsFilter;
+use crate::{
+    ForumTopicReadOperation, ForumTopicReadTransport, ListTopicsFilter,
+    topic_read_audience_port_context,
+};
 
 use super::ForumHttpRuntime;
 
@@ -72,12 +75,23 @@ pub(crate) async fn redirect_merged_topic(
         .locale
         .as_deref()
         .unwrap_or(request_context.locale.as_str());
-    let canonical_topic = service
-        .get_with_locale_fallback(
+    // The redirect target is only disclosed when the caller may read the canonical
+    // topic through the owner audience boundary.
+    let audience_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::SelectedTopic,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        locale,
+    )
+    .map_err(super::map_forum_error)?;
+    let canonical_topic = super::topics::topic_audience_read_service(&runtime)
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             security,
+            audience_context,
             resolution.canonical_topic_id,
-            locale,
             Some(tenant.default_locale.as_str()),
         )
         .await
@@ -303,8 +317,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn merged_source_redirects_privately_while_target_uses_existing_handler() -> TestResult<()>
-    {
+    async fn merged_source_redirects_privately_target_uses_existing_handler() -> TestResult<()> {
         let (db, event_bus) = setup().await?;
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();

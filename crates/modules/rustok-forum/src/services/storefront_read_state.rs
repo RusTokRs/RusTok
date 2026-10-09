@@ -15,6 +15,7 @@ use crate::dto::{
 };
 use crate::entities::{forum_reply, forum_topic, forum_topic_revision};
 use crate::error::{ForumError, ForumResult};
+use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::rbac::enforce_scope;
 use crate::services::read_model::ForumReadModelService;
 use crate::services::read_tracking::{
@@ -49,6 +50,7 @@ pub struct ForumStorefrontReadStateService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    settings: ForumSettingsProviders,
 }
 
 impl ForumStorefrontReadStateService {
@@ -73,7 +75,15 @@ impl ForumStorefrontReadStateService {
             db,
             event_bus,
             audience_facts,
+            settings: ForumSettingsProviders::default(),
         }
+    }
+
+    /// Applies tenant settings to every topic read this composition performs, so
+    /// public unread lists follow the same list flags as the owner list services.
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.settings = settings;
+        self
     }
 
     /// Selects one exact authenticated audience-visible storefront page before
@@ -93,7 +103,8 @@ impl ForumStorefrontReadStateService {
                 facts,
             ),
             None => ForumTopicAudienceListService::new(self.db.clone(), self.event_bus.clone()),
-        };
+        }
+        .with_settings_providers(self.settings.clone());
         let page = service
             .list_authenticated_storefront_visible_with_audience_context(
                 tenant_id,
@@ -124,6 +135,7 @@ impl ForumStorefrontReadStateService {
             )));
         }
         let page = TopicService::new(self.db.clone(), self.event_bus.clone())
+            .with_settings_providers(self.settings.clone())
             .list_storefront_visible_with_locale_fallback(
                 tenant_id,
                 security.clone(),
@@ -223,6 +235,7 @@ impl ForumStorefrontReadStateService {
         channel_slug: Option<&str>,
     ) -> ForumResult<ForumTopicReadState> {
         let visible = TopicService::new(self.db.clone(), self.event_bus.clone())
+            .with_settings_providers(self.settings.clone())
             .get_storefront_visible_with_locale_fallback(
                 tenant_id,
                 security.clone(),

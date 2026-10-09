@@ -12,7 +12,23 @@ use std::time::Instant;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::{ListTopicsFilter, SubscriptionService, TopicListItemPage, TopicResponse};
+use crate::{
+    ForumTopicAudienceListService, ForumTopicAudienceReadService, ForumTopicReadOperation,
+    ForumTopicReadTransport, ListTopicsFilter, TopicListItemPage, TopicResponse,
+    topic_read_audience_port_context,
+};
+
+/// REST query for the topic list. `per_page` stays optional so an omitted value resolves to
+/// the tenant's `topics_per_page` setting instead of a transport constant.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct ListTopicsQuery {
+    pub category_id: Option<uuid::Uuid>,
+    pub status: Option<crate::TopicStatus>,
+    pub locale: Option<String>,
+    /// Opaque cursor returned as `next_cursor` by the previous page.
+    pub after: Option<String>,
+    pub per_page: Option<u64>,
+}
 
 #[derive(Debug, Clone, Copy, Deserialize, IntoParams, ToSchema)]
 pub struct PaginationParams {
@@ -38,7 +54,7 @@ impl PaginationParams {
 }
 
 fn clamp_per_page(per_page: u64) -> u64 {
-    per_page.min(100)
+    crate::dto::bounded_forum_read_limit(Some(per_page))
 }
 
 fn default_page() -> u64 {
@@ -57,7 +73,7 @@ fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
     get,
     path = "/api/forum/topics",
     tag = "forum",
-    params(ListTopicsFilter),
+    params(ListTopicsQuery),
     responses(
         (status = 200, description = "One keyset page of topics", body = TopicListItemPage),
         (status = 401, description = "Unauthorized"),
@@ -69,7 +85,7 @@ pub async fn list_topics(
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
-    Query(mut filter): Query<ListTopicsFilter>,
+    Query(query): Query<ListTopicsQuery>,
 ) -> HttpResult<Json<TopicListItemPage>> {
     ensure_forum_permission(
         &auth,
@@ -77,16 +93,40 @@ pub async fn list_topics(
         "Permission denied: forum_topics:list required",
     )?;
 
-    filter.locale = filter.locale.or(Some(request_context.locale.clone()));
-    let requested_limit = Some(filter.per_page);
-    let effective_limit = clamp_per_page(filter.per_page);
-    filter.per_page = effective_limit;
-    let service = runtime.topic_service();
+    let requested_limit = query.per_page;
+    let effective_limit = match requested_limit {
+        Some(value) => clamp_per_page(value),
+        None => runtime
+            .settings_providers
+            .default_topics_per_page(tenant.id)
+            .await
+            .map_err(crate::controllers::map_forum_error)?,
+    };
+    let filter = ListTopicsFilter {
+        category_id: query.category_id,
+        status: query.status,
+        locale: query.locale.or(Some(request_context.locale.clone())),
+        after: query.after,
+        per_page: effective_limit,
+    };
+    let audience_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::TopicList,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        filter
+            .locale
+            .as_deref()
+            .unwrap_or(tenant.default_locale.as_str()),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
     let list_started_at = Instant::now();
-    let page = service
-        .list_with_locale_fallback(
+    let page = topic_audience_list_service(&runtime)
+        .list_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            audience_context,
             filter,
             Some(tenant.default_locale.as_str()),
         )
@@ -111,6 +151,33 @@ pub async fn list_topics(
         items: page.items,
         next_cursor: page.next_cursor,
     }))
+}
+
+pub(super) fn topic_audience_read_service(
+    runtime: &crate::controllers::ForumHttpRuntime,
+) -> ForumTopicAudienceReadService {
+    match runtime.audience_facts.clone() {
+        Some(facts) => ForumTopicAudienceReadService::with_audience_facts(
+            runtime.db_clone(),
+            runtime.event_bus(),
+            facts,
+        ),
+        None => ForumTopicAudienceReadService::new(runtime.db_clone(), runtime.event_bus()),
+    }
+}
+
+fn topic_audience_list_service(
+    runtime: &crate::controllers::ForumHttpRuntime,
+) -> ForumTopicAudienceListService {
+    let service = match runtime.audience_facts.clone() {
+        Some(facts) => ForumTopicAudienceListService::with_audience_facts(
+            runtime.db_clone(),
+            runtime.event_bus(),
+            facts,
+        ),
+        None => ForumTopicAudienceListService::new(runtime.db_clone(), runtime.event_bus()),
+    };
+    service.with_settings_providers(runtime.settings_providers.clone())
 }
 
 #[cfg(test)]
@@ -166,13 +233,21 @@ pub async fn get_topic(
     let locale = filter
         .locale
         .unwrap_or_else(|| request_context.locale.clone());
-    let topic = runtime
-        .topic_service()
-        .get_with_locale_fallback(
+    let audience_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::SelectedTopic,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let topic = topic_audience_read_service(&runtime)
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            audience_context,
             id,
-            &locale,
             Some(tenant.default_locale.as_str()),
         )
         .await
@@ -267,19 +342,42 @@ pub async fn set_topic_vote(
         "Permission denied: forum_topics:read required",
     )?;
 
+    let write_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::Vote,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
     runtime
         .vote_service()
-        .set_topic_vote(tenant.id, topic_id, forum_security(&auth), value)
+        .set_topic_vote(
+            tenant.id,
+            topic_id,
+            forum_security(&auth),
+            write_context,
+            value,
+        )
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = runtime
-        .topic_service()
-        .get_with_locale_fallback(
+    let read_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::SelectedTopic,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let topic = topic_audience_read_service(&runtime)
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            read_context,
             topic_id,
-            request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
@@ -317,13 +415,21 @@ pub async fn clear_topic_vote(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = runtime
-        .topic_service()
-        .get_with_locale_fallback(
+    let read_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::SelectedTopic,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let topic = topic_audience_read_service(&runtime)
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            read_context,
             topic_id,
-            request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
@@ -355,18 +461,36 @@ pub async fn subscribe_topic(
         "Permission denied: forum_topics:read required",
     )?;
 
-    SubscriptionService::new(runtime.db_clone())
-        .set_topic_subscription(tenant.id, topic_id, forum_security(&auth))
+    let write_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::Subscription,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    runtime
+        .subscription_service()
+        .set_topic_subscription(tenant.id, topic_id, forum_security(&auth), write_context)
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = runtime
-        .topic_service()
-        .get_with_locale_fallback(
+    let read_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::SelectedTopic,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let topic = topic_audience_read_service(&runtime)
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            read_context,
             topic_id,
-            request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
@@ -398,18 +522,27 @@ pub async fn unsubscribe_topic(
         "Permission denied: forum_topics:read required",
     )?;
 
-    SubscriptionService::new(runtime.db_clone())
+    runtime
+        .subscription_service()
         .clear_topic_subscription(tenant.id, topic_id, forum_security(&auth))
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = runtime
-        .topic_service()
-        .get_with_locale_fallback(
+    let read_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::SelectedTopic,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let topic = topic_audience_read_service(&runtime)
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            read_context,
             topic_id,
-            request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await

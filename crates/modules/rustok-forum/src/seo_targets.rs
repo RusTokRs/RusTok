@@ -16,8 +16,9 @@ use uuid::Uuid;
 use crate::constants::topic_status;
 use crate::state_machine::TopicStatus;
 use crate::{
-    CategoryListItem, CategoryResponse, CategoryService, ForumError, ForumResult, ListTopicsFilter,
-    TopicListItem, TopicResponse, TopicService,
+    CategoryListItem, CategoryResponse, CategoryService, ForumError, ForumResult,
+    ForumTopicAudienceListService, ForumTopicAudienceReadService, ListTopicsFilter, TopicListItem,
+    TopicResponse, TopicService,
 };
 
 const BULK_FETCH_SIZE: u64 = 48;
@@ -210,18 +211,36 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetLoadRequest<'_>,
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
-        let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let topic = optional_topic(
-            service
-                .get_with_locale_fallback(
-                    request.tenant_id,
-                    SecurityContext::system(),
-                    request.target_id,
-                    request.locale,
-                    Some(request.default_locale),
-                )
-                .await,
-        )?;
+        let topic = match request.scope {
+            // Public SEO metadata follows the storefront audience contract: base visibility
+            // plus every inherited category layer and the topic-local layer.
+            SeoTargetLoadScope::PublicRoute => ForumTopicAudienceReadService::new(
+                runtime.db.clone(),
+                runtime.event_bus.clone(),
+            )
+            .get_public_storefront_visible_with_locale_fallback(
+                request.tenant_id,
+                request.target_id,
+                request.locale,
+                Some(request.default_locale),
+                request.channel_slug,
+            )
+            .await?,
+            SeoTargetLoadScope::Authoring => {
+                let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
+                optional_topic(
+                    service
+                        .get_with_locale_fallback(
+                            request.tenant_id,
+                            SecurityContext::system(),
+                            request.target_id,
+                            request.locale,
+                            Some(request.default_locale),
+                        )
+                        .await,
+                )?
+            }
+        };
         let Some(topic) = topic else {
             return Ok(None);
         };
@@ -272,10 +291,12 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         request: SeoTargetBulkPageRequest<'_>,
     ) -> AnyResult<SeoBulkSummaryPage> {
         let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
+        // SEO summaries are public: the public read context hides pending topics and restricted
+        // categories, as the storefront does. The system context would list held topics.
         let page = service
             .list_with_locale_fallback(
                 request.tenant_id,
-                SecurityContext::system(),
+                SecurityContext::public_read(),
                 ListTopicsFilter {
                     category_id: None,
                     status: None,
@@ -313,14 +334,17 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         request: SeoTargetSitemapRequest<'_>,
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
         let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
+        // Sitemap candidates are public: the owner list applies the storefront audience
+        // contract before pagination, so restricted topics never reach the sitemap.
+        let audience_list =
+            ForumTopicAudienceListService::new(runtime.db.clone(), runtime.event_bus.clone());
         let mut after: Option<String> = None;
         let mut candidates = Vec::new();
 
         loop {
-            let page = service
-                .list_storefront_visible_with_locale_fallback(
+            let page = audience_list
+                .list_public_storefront_visible_with_locale_fallback(
                     request.tenant_id,
-                    SecurityContext::system(),
                     ListTopicsFilter {
                         category_id: None,
                         status: Some(TopicStatus::Open),

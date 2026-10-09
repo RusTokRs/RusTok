@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use flex::attached;
@@ -243,7 +246,8 @@ async fn category_list_exposes_requested_effective_and_available_locales() {
 async fn topic_list_exposes_requested_effective_and_available_locales() {
     let (db, event_bus, _events, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db, event_bus);
+    let topic_service = TopicService::new(db, event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
 
     let category = category_service
@@ -336,7 +340,8 @@ async fn topic_list_exposes_requested_effective_and_available_locales() {
 async fn topic_resolves_localized_flex_metadata_from_attached_values() {
     let (db, event_bus, _events, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus);
+    let topic_service = TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
 
     let string_field_type = serde_json::to_value(FieldType::Text)
@@ -495,7 +500,8 @@ async fn topic_resolves_localized_flex_metadata_from_attached_values() {
 async fn topic_create_applies_shared_defaults_and_persists_localized_attached_values() {
     let (db, event_bus, _events, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus);
+    let topic_service = TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
 
     let string_field_type = serde_json::to_value(FieldType::Text)
@@ -621,7 +627,8 @@ async fn topic_create_applies_shared_defaults_and_persists_localized_attached_va
 async fn topic_create_rejects_missing_required_localized_custom_field() {
     let (db, event_bus, _events, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus);
+    let topic_service = TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
 
     let string_field_type = serde_json::to_value(FieldType::Text)

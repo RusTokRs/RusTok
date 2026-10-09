@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -100,6 +103,7 @@ async fn visible_topic_summary_and_current_mark_share_owner_policy() {
 
     let category = create_category(&db, tenant_id, author.clone(), "storefront-read-state").await;
     let topic = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             author.clone(),
@@ -117,6 +121,7 @@ async fn visible_topic_summary_and_current_mark_share_owner_policy() {
         .await
         .expect("topic should be created");
     ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             author,
@@ -208,6 +213,7 @@ async fn channel_restricted_topic_cannot_be_enriched_or_marked_outside_its_chann
     let reader = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
     let category = create_category(&db, tenant_id, author.clone(), "restricted-channel").await;
     let topic = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             author,

@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -22,7 +25,8 @@ async fn sqlite_enforces_unique_positive_reply_positions() -> TestResult<()> {
     apply_migrations(&db).await?;
     let seed = seed_forum(&db).await?;
 
-    let service = ReplyService::new(db.clone(), event_bus(db.clone()));
+    let service = ReplyService::new(db.clone(), event_bus(db.clone()))
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     for index in 0..3 {
         service
             .create(

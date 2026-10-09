@@ -1,4 +1,5 @@
 use super::category_audience::lock_category_tree_in_tx;
+use super::edit_window::enforce_author_edit_window;
 use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::topic_tag_lock::{lock_active_topic_tag_write_in_tx, lock_topic_tag_scopes_in_tx};
 use crate::dto::{CreateTopicCommandInput, UpdateTopicCommandInput};
@@ -38,10 +39,14 @@ impl TopicService {
         let (input, quote_inputs) = input.into_parts();
         enforce_scope(&security, Resource::ForumTopics, Action::Create)?;
         validate_topic_title(&input.title)?;
+        let content_limits = ForumContentLimits::resolve(&self.settings, tenant_id).await?;
+        content_limits.validate_title(&input.title)?;
         let locale = normalize_locale(&input.locale)?;
         let normalized_tags = normalize_tags(&input.tags);
         validate_normalized_topic_tags(&normalized_tags)?;
         let document = crate::richtext::normalize_discussion(input.body)?;
+        let plain_text = crate::richtext::project_discussion(document.clone())?.plain_text;
+        content_limits.validate_body(&plain_text)?;
         let stored_body = crate::richtext::serialize_discussion(document.clone())?;
         let prepared_custom_fields = self
             .prepare_topic_custom_fields_for_create(tenant_id, &locale, input.metadata.clone())
@@ -82,6 +87,26 @@ impl TopicService {
             input.category_id,
         )
         .await?;
+        super::posting_rate::enforce_new_topic_rate_in_tx(
+            &txn,
+            tenant_id,
+            &security,
+            content_limits.new_topic_rate_limit_seconds(),
+        )
+        .await?;
+        // Tenant pre-moderation holds a new topic as `Pending`. The per-category `moderated` flag
+        // holds replies only, so it does not hold topics. Approval moves the topic to `Open`
+        // through the moderation owner. See `DECISIONS/2026-10-09-forum-topic-pre-moderation.md`.
+        let pre_moderation_enabled = self
+            .settings
+            .module_settings_in_tx(&txn, tenant_id)
+            .await?
+            .pre_moderation_enabled;
+        let status = if pre_moderation_enabled {
+            TopicStatus::Pending
+        } else {
+            TopicStatus::Open
+        };
 
         let now = Utc::now();
         forum_topic::ActiveModel {
@@ -89,7 +114,7 @@ impl TopicService {
             tenant_id: Set(tenant_id),
             category_id: Set(input.category_id),
             author_id: Set(security.user_id),
-            status: Set(TopicStatus::Open),
+            status: Set(status),
             metadata: Set(prepared_custom_fields
                 .metadata
                 .clone()
@@ -184,6 +209,19 @@ impl TopicService {
             Resource::ForumTopics,
             Action::Update,
             topic.author_id,
+        )?;
+        let max_edit_window_minutes = self
+            .settings
+            .module_settings(tenant_id)
+            .await?
+            .max_edit_window_minutes;
+        enforce_author_edit_window(
+            &security,
+            Resource::ForumTopics,
+            topic.author_id,
+            topic.created_at,
+            max_edit_window_minutes,
+            chrono::Utc::now(),
         )?;
         let expected_updated_at = topic.updated_at;
         let prepared_custom_fields = if let Some(metadata) = input.metadata.clone() {

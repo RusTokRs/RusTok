@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -143,6 +146,7 @@ async fn create_topic(
     suffix: &str,
 ) -> Uuid {
     TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -173,6 +177,7 @@ async fn create_reply(
     suffix: &str,
 ) -> Uuid {
     ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,

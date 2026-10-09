@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -115,6 +118,7 @@ async fn create_fixture(
         .await?
         .id;
     let source_topic_id = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             admin.clone(),
@@ -131,7 +135,8 @@ async fn create_fixture(
         )
         .await?
         .id;
-    let replies = ReplyService::new(db.clone(), event_bus.clone());
+    let replies = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let external_parent_id = replies
         .create(
             tenant_id,

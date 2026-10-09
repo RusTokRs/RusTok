@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -98,6 +101,7 @@ async fn create_topic(
     suffix: &str,
 ) -> Uuid {
     TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -231,7 +235,8 @@ async fn topic_reply_create_layer_narrows_categories_and_clears_locally() {
     assert_eq!(category_denial.denied_by_category_id, Some(category));
     assert_eq!(category_denial.evaluated_layers, 1);
 
-    let replies = ReplyService::new(db.clone(), event_bus.clone());
+    let replies = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     replies
         .create(
             tenant_id,

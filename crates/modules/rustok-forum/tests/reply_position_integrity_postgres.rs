@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 mod support;
 
 use std::sync::Arc;
@@ -150,7 +153,8 @@ async fn create_concurrent_replies(
         let db = context.peer().await?;
         let barrier = barrier.clone();
         handles.push(tokio::spawn(async move {
-            let service = ReplyService::new(db.clone(), event_bus(db));
+            let service = ReplyService::new(db.clone(), event_bus(db))
+                .with_settings_providers(posting_cooldown::zero_cooldown_providers());
             barrier.wait().await;
             service
                 .create(

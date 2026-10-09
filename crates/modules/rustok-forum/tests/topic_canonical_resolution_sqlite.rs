@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -92,6 +95,7 @@ async fn create_topic(
     key: &str,
 ) -> TestResult<Uuid> {
     Ok(TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -192,7 +196,8 @@ async fn merged_topic_ids_resolve_to_one_visible_canonical_target() -> TestResul
         )
         .await?;
 
-    let service = TopicService::new(db.clone(), event_bus);
+    let service = TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let resolution_a = service
         .resolve_canonical_topic(tenant_id, admin.clone(), topic_a)
         .await?;

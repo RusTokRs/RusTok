@@ -241,22 +241,36 @@ pub async fn preview_forum_page_builder_widget(
 
         let (host, event_bus) = runtime()?;
         require_forum_module_enabled(&host, tenant.id).await?;
-        let response = rustok_forum::ForumWidgetPreviewService::new(host.db_clone(), event_bus)
-            .preview(
-                tenant.id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                &request_context.locale,
-                Some(tenant.default_locale.as_str()),
-                rustok_forum::PreviewForumWidgetInput {
-                    widget_type: request.widget_type,
-                    props: request.props,
-                },
-            )
-            .await
-            .map_err(|error| ServerFnError::new(error.to_string()))?;
+        let audience = rustok_forum::topic_read_audience_port_context(
+            rustok_forum::ForumTopicReadTransport::NativeServer,
+            rustok_forum::ForumTopicReadOperation::WidgetPreview,
+            tenant.id,
+            &auth,
+            Some(&request_context),
+            request_context.locale.as_str(),
+        )
+        .map_err(|error| ServerFnError::new(error.to_string()))?;
+        let audience_facts = host.shared_get::<rustok_forum::SharedForumAudienceFactsPort>();
+        let response = rustok_forum::ForumWidgetPreviewService::new(
+            host.db_clone(),
+            event_bus,
+            audience_facts,
+        )
+        .preview(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            audience,
+            Some(tenant.default_locale.as_str()),
+            rustok_forum::PreviewForumWidgetInput {
+                widget_type: request.widget_type,
+                props: request.props,
+            },
+        )
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))?;
 
         serde_json::to_value(response).map_err(|error| {
             ServerFnError::new(format!(

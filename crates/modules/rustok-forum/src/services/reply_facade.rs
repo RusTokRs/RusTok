@@ -46,7 +46,7 @@ impl ReplyService {
         Self::with_optional_audience_facts(db, event_bus, Some(facts_port))
     }
 
-    pub(crate) fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
         self.inner = self.inner.with_settings_providers(settings);
         self
     }
