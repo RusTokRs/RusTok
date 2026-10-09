@@ -272,4 +272,4 @@ page_builder-symbols-name = Name
 page_builder-symbols-convert = Convert selection
 page_builder-symbols-insert = Insert instance
 page_builder-symbols-remove = Remove definition
-page_builder-symbols-explainer = Convert a selected section into a shared symbol. After editing a definition, re-publish each page that uses it.
+page_builder-symbols-explainer = Convert a selected section into a shared symbol. After editing a definition, reload, save, review, and re-publish each page that uses it.

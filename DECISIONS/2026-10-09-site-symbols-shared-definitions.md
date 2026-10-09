@@ -59,12 +59,15 @@ and whose instances re-issue on publish.**
    closed. Pages publish resolves before `sanitize_static_landing_project`;
    the admin canvas and previews resolve before rendering.
 5. **Re-issue semantics.** Definitions resolve freshly at every publish.
-   Editing a definition and re-publishing a page re-issues that page's
-   occurrences; already published artifacts stay immutable until their page is
-   re-published (the reviewed-publish contract and policy-free serving are
-   untouched). A `siteSymbolUsage` report lists pages whose current bodies
-   reference a symbol so operators know what to re-issue. Bulk automatic
-   re-publish is a non-goal for this iteration.
+   Editing a definition and then reloading, saving, reviewing and publishing
+   each dependent page re-issues its occurrences; already published artifacts
+   stay immutable until that explicit publish. Reviewed publish compares the
+   stored body's definition snapshot with the current site catalog and fails
+   closed on drift (including when a scheduled publish executes after a symbol
+   edit); this prevents unreviewed global content from slipping into artifacts.
+   A `siteSymbolUsage` report lists pages whose current bodies reference a
+   symbol so operators know what to re-issue. Bulk automatic re-publish is a
+   non-goal for this iteration.
 6. **Editor commands.** `EditorCommand::Symbol { command: SymbolCommand }`
    with `SymbolCommand::Upsert { symbol: Value }` and
    `SymbolCommand::Remove { symbol_id }`, applied like `AssetCommand`.

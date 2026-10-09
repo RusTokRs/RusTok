@@ -131,6 +131,7 @@ impl PageService {
         let mut builder_sources = builder_sources;
         for (locale, content) in builder_sources.iter_mut() {
             let symbols = site_symbols.get(locale).cloned().unwrap_or_default();
+            super::symbols::assert_reviewed_symbol_snapshot(content, &symbols)?;
             *content = super::symbols::apply_site_symbols_to_content(content, &symbols)?;
         }
         let project_values = parse_builder_project_values(&builder_sources)?;

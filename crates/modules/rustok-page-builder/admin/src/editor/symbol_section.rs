@@ -42,7 +42,7 @@ pub(crate) fn SymbolSection(runtime: AdminEditorRuntime) -> impl IntoView {
     let explainer = t(
         locale.as_deref(),
         "page_builder.symbols.explainer",
-        "Convert a selected section into a shared symbol. After editing a definition, re-publish each page that uses it.",
+        "Convert a selected section into a shared symbol. After editing a definition, reload, save, review, and re-publish each page that uses it.",
     );
 
     let symbol_id = RwSignal::new(String::new());

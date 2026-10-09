@@ -101,6 +101,22 @@ fn catalog_revision(symbols: &[Value]) -> PagesResult<String> {
     Ok(format!("{:x}", Sha256::digest(bytes)))
 }
 
+/// A reviewed publish may only expand the exact definition snapshot present
+/// in the body that the editor saved/reviewed. A later site-wide edit (including
+/// after a schedule was queued) must be explicitly loaded, saved and reviewed
+/// for this page before it can be published.
+pub(super) fn assert_reviewed_symbol_snapshot(content: &str, current: &[Value]) -> PagesResult<()> {
+    if content_has_symbol_instances(content)? {
+        let saved = symbol_values_in_content(content)?;
+        if catalog_revision(&saved)? != catalog_revision(current)? {
+            return Err(PagesError::validation(
+                "Site symbols changed since this page was saved; reload, save and re-review before publishing",
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Expands every symbol instance into its definition content.
 ///
 /// Instance-free documents return their exact input bytes; documents with
@@ -458,6 +474,20 @@ mod tests {
         let content = project_with(Some(json!([{ "id": "cta", "components": [] }])), json!([]));
         let resolved = resolve_content_symbols(&content).expect("resolve");
         assert_eq!(resolved, content);
+    }
+
+    #[test]
+    fn reviewed_publish_rejects_definition_drift() {
+        let old = json!({ "id": "cta", "components": [{ "id": "copy", "type": "text", "content": "old" }] });
+        let new = json!({ "id": "cta", "components": [{ "id": "copy", "type": "text", "content": "new" }] });
+        let content = project_with(
+            Some(json!([old.clone()])),
+            json!([{ "id": "slot", "type": "symbol", "symbolId": "cta" }]),
+        );
+        assert!(assert_reviewed_symbol_snapshot(&content, &[old]).is_ok());
+        assert!(assert_reviewed_symbol_snapshot(&content, &[new]).is_err());
+        let unlinked = project_with(None, json!([]));
+        assert!(assert_reviewed_symbol_snapshot(&unlinked, &[]).is_ok());
     }
 
     #[test]

@@ -125,8 +125,11 @@ These are gaps in what the runtime actually does, not accepted design:
   catalog token before replacing stored definitions (definitions are site-wide immediately;
   they have no draft cycle of their own). Restore does not roll back the global catalog.
   Editor reads and reviewed publish merge the stored catalog back (store wins)
-  and publish fails closed on unknown references or cycles; already published artifacts
-  update only when their page is re-published. `siteSymbolUsage` (GraphQL)
+  and publish fails closed on unknown references, cycles or a definition snapshot
+  newer than the saved page body. Editors must reload, save and re-review a page
+  after a shared symbol changes; scheduled publishes also fail closed on drift.
+  Already published artifacts update only when their page is re-published.
+  `siteSymbolUsage` (GraphQL)
   lists pages to re-issue, including nested symbol dependencies. **Pending pieces:**
   a usage UI, per-instance overrides, bulk re-publish, and a SQLite integration
   suite for the catalog sync (helper-level unit

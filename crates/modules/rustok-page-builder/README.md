@@ -29,8 +29,9 @@
 - The browser editor now has a Site symbols panel: convert a selected component
   into a shared definition and insert references through `EditorCommand`.
   `rustok-pages` synchronizes the catalog per tenant/locale and expands current
-  definitions on reviewed publish; previously published artifacts never change
-  until their page is explicitly re-published. The usage query is available via
+  definitions on reviewed publish. A page must be reloaded, saved and re-reviewed
+  after shared definitions change; previously published artifacts never change
+  until that page is explicitly re-published. The usage query is available via
   `siteSymbolUsage` GraphQL, but usage is not yet displayed in this panel;
   per-instance overrides and bulk re-publish are not implemented (see
   `DECISIONS/2026-10-09-site-symbols-shared-definitions.md`).
