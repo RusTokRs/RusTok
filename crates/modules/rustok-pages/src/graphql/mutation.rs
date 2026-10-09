@@ -16,7 +16,8 @@ use crate::{
     PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT, PAGE_ROLLBACK_OPERATION_INTEGRITY,
     PAGE_ROLLBACK_REQUIRES_PUBLISHED, PAGE_ROLLBACK_TARGET_UNAVAILABLE, PageBodyInput,
     PageBodyRevisionInput, PageService, PageTranslationInput, PagesError, PatchPageMetadataInput,
-    PublishPageInput, ReviewedPagePublishRuntimeInput, RollbackPageInput, SavePageDocumentInput,
+    PublishPageInput, RestorePageBodyRevisionInput, ReviewedPagePublishRuntimeInput,
+    RollbackPageInput, SavePageDocumentInput,
 };
 
 use super::types::*;
@@ -127,6 +128,55 @@ impl PagesMutation {
                     body: page_body_input(input.body),
                 },
             )
+            .await
+            .map(Into::into)
+            .map_err(map_pages_error)
+    }
+
+    async fn restore_page_body_revision(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: RestoreGqlPageBodyRevisionInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlPage> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_pages_permission(ctx, Permission::PAGES_UPDATE)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        PageService::new(db.clone(), event_bus.clone())
+            .restore_body_revision(
+                tenant_id,
+                page_security(&auth),
+                id,
+                RestorePageBodyRevisionInput {
+                    expected_revision: input.expected_revision,
+                    revision_id: input.revision_id,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(map_pages_error)
+    }
+
+    async fn duplicate_page(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlPage> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_pages_permission(ctx, Permission::PAGES_CREATE)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        PageService::new(db.clone(), event_bus.clone())
+            .duplicate_page(tenant_id, page_security(&auth), id)
             .await
             .map(Into::into)
             .map_err(map_pages_error)

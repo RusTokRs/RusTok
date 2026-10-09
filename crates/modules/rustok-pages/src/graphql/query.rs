@@ -192,6 +192,34 @@ impl PagesQuery {
 
         Ok(GqlPageList { items, total })
     }
+
+    /// Append-only body-revision journal metadata for one page locale, newest first.
+    ///
+    /// Editor state: the service rejects readers without page update authority.
+    async fn page_body_revisions(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        locale: String,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Vec<GqlPageBodyRevision>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let security = request_security_context(ctx);
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = query_tenant_id(
+            tenant,
+            ctx.data_opt::<AuthContext>().map(|auth| auth.tenant_id),
+            tenant_id,
+        )?;
+
+        PageService::new(db.clone(), event_bus.clone())
+            .body_revision_history(tenant_id, security, id, &locale)
+            .await
+            .map(|revisions| revisions.into_iter().map(Into::into).collect())
+            .map_err(|err| async_graphql::Error::new(err.to_string()))
+    }
 }
 
 fn query_tenant_id(

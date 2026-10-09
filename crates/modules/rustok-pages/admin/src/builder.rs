@@ -32,7 +32,6 @@ use rustok_page_builder::service::{
 #[cfg(feature = "ssr")]
 use std::time::Duration;
 
-const PAGE_PUBLISHED_DOCUMENT_IMMUTABLE: &str = "PAGE_PUBLISHED_DOCUMENT_IMMUTABLE";
 const REVISION_CONFLICT: &str = "REVISION_CONFLICT";
 #[cfg(feature = "ssr")]
 const PAGE_BUILDER_PORT_DEADLINE: Duration = Duration::from_secs(15);
@@ -411,10 +410,8 @@ fn page_builder_permissions_for_role(role: &str) -> Vec<Permission> {
 #[cfg(feature = "ssr")]
 fn facade_service_error(error: PageBuilderServiceError) -> PageBuilderAdminFacadeError {
     let message = error.to_string();
-    for code in [PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, REVISION_CONFLICT] {
-        if message.contains(code) {
-            return PageBuilderAdminFacadeError::with_stable_code(message, code);
-        }
+    if message.contains(REVISION_CONFLICT) {
+        return PageBuilderAdminFacadeError::with_stable_code(message, REVISION_CONFLICT);
     }
     PageBuilderAdminFacadeError::new(message)
 }
@@ -494,11 +491,6 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         .ok_or_else(|| {
             PageBuilderServiceError::Runtime("Pages document no longer exists".into())
         })?;
-        if current_page.status.eq_ignore_ascii_case("published") {
-            return Err(PageBuilderServiceError::Validation(format!(
-                "{PAGE_PUBLISHED_DOCUMENT_IMMUTABLE}: published page documents are immutable"
-            )));
-        }
         let current_revision = page_revision(&current_page);
         if revision_id != current_revision {
             return Err(PageBuilderServiceError::Validation(format!(

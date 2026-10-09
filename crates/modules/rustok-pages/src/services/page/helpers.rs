@@ -16,11 +16,15 @@ use rustok_content::{available_locales_from, entities::node::ContentStatus};
 use rustok_events::DomainEvent;
 use rustok_page_builder::{PAGE_BUILDER_DOCUMENT_FORMAT, validate_page_builder_document};
 
-use crate::dto::{PageBodyInput, PageBodyResponse, PageTranslationInput, PageTranslationResponse};
-use crate::entities::{page, page_body, page_channel_visibility, page_translation};
+use crate::dto::{
+    PageBodyInput, PageBodyResponse, PageBodyState, PageTranslationInput, PageTranslationResponse,
+};
+use crate::entities::{
+    page, page_body, page_body_draft, page_channel_visibility, page_translation,
+};
 use crate::error::{PagesError, PagesResult};
 
-use super::{PageTransition, PreparedPageBody, ResolvedTranslationRecord};
+use super::{PageTransition, PreparedPageBody, ResolvedTranslationRecord, WorkingBody};
 
 pub(super) fn validate_page_translations(translations: &[PageTranslationInput]) -> PagesResult<()> {
     if translations.is_empty() {
@@ -176,8 +180,47 @@ pub(super) fn body_for_locale<'a>(
         .find(|body| locale_tags_match(body.locale.as_str(), locale))
 }
 
+pub(super) fn body_for_locale_draft<'a>(
+    drafts: &'a [page_body_draft::Model],
+    locale: &str,
+) -> Option<&'a page_body_draft::Model> {
+    drafts
+        .iter()
+        .find(|draft| locale_tags_match(draft.locale.as_str(), locale))
+}
+
+/// Current bodies overlaid by drafts, one working copy per locale, ordered by locale.
+pub(super) fn merge_working_bodies(
+    bodies: &[page_body::Model],
+    drafts: &[page_body_draft::Model],
+) -> Vec<WorkingBody> {
+    let mut working: Vec<WorkingBody> = bodies.iter().map(WorkingBody::from).collect();
+    for draft in drafts {
+        match working.iter_mut().find(|item| item.locale == draft.locale) {
+            Some(slot) => *slot = WorkingBody::from(draft),
+            None => working.push(WorkingBody::from(draft)),
+        }
+    }
+    working.sort_by(|left, right| left.locale.cmp(&right.locale));
+    working
+}
+
+/// Canonical body-revision timestamp.
+///
+/// Body revision tokens are the stored `updated_at` string of a working copy. Truncating to
+/// microseconds at write time keeps the written value, the stored round-trip and therefore the
+/// token identical on every backend (PostgreSQL `timestamptz` stores microseconds, while
+/// `Utc::now()` carries nanoseconds).
+pub(super) fn body_revision_timestamp(
+    now: chrono::DateTime<chrono::Utc>,
+) -> sea_orm::DateTimeWithTimeZone {
+    chrono::DateTime::from_timestamp_micros(now.timestamp_micros())
+        .expect("a current timestamp always fits in the chrono range")
+        .into()
+}
+
 pub(super) fn collect_builder_sources(
-    existing_bodies: &[page_body::Model],
+    existing_bodies: &[WorkingBody],
     candidate: Option<&PreparedPageBody>,
     include_existing: bool,
 ) -> BTreeMap<String, String> {
@@ -416,7 +459,7 @@ pub(super) fn page_translation_response(
     }
 }
 
-pub(super) fn page_body_response(body: &page_body::Model) -> PageBodyResponse {
+pub(super) fn page_body_response(body: &WorkingBody, state: PageBodyState) -> PageBodyResponse {
     let content_json = if body.format == PAGE_BUILDER_DOCUMENT_FORMAT {
         serde_json::from_str(&body.content).ok()
     } else {
@@ -428,6 +471,7 @@ pub(super) fn page_body_response(body: &page_body::Model) -> PageBodyResponse {
         format: body.format.clone(),
         content_json,
         updated_at: body.updated_at.to_string(),
+        state,
     }
 }
 

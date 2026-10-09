@@ -17,14 +17,14 @@ use rustok_page_builder::{
 use rustok_tenant::TenantService;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
-    DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    DbBackend, EntityTrait, QueryFilter, QuerySelect, TransactionTrait,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::dto::{PageBodyRevisionInput, PublishPageInput, PublishPageResult};
-use crate::entities::{page, page_body, page_builder_scenario_baseline, page_publish_operation};
+use crate::entities::{page, page_builder_scenario_baseline, page_publish_operation};
 use crate::error::{PagesError, PagesResult};
 use crate::services::PageBuilderArtifactService;
 use crate::services::page_builder_artifact::CompiledLandingArtifact;
@@ -36,7 +36,7 @@ use super::helpers::{
     apply_transition, collect_builder_sources, enforce_expected_version, is_builder_enabled,
     is_builder_publish_enabled, next_page_version, normalize_locale,
 };
-use super::{PAGE_KIND, PageService, PageTransition};
+use super::{PAGE_KIND, PageService, PageTransition, WorkingBody};
 
 const PAGE_PUBLISH_OPERATION_FORMAT: &str = "page_publish_operation_v1";
 const MAX_PUBLISH_IDEMPOTENCY_KEY_BYTES: usize = 191;
@@ -106,7 +106,9 @@ impl PageService {
         }
 
         enforce_expected_version(Some(input.expected_version), existing_page.version)?;
-        let current_bodies = load_bodies_for_reviewed_publish(&txn, tenant_id, page_id).await?;
+        let current_bodies = self
+            .load_working_bodies_in_tx(&txn, tenant_id, page_id)
+            .await?;
         let current_revisions = body_revision_snapshot(&current_bodies);
         if current_revisions != expected_body_revisions {
             return Err(document_revision_conflict(
@@ -114,6 +116,11 @@ impl PageService {
                 format_body_revisions(&current_revisions),
             ));
         }
+
+        // Fold unpublished working copies into their current bodies before artifact binding,
+        // which addresses the current body row of each locale.
+        self.promote_drafts_in_tx(&txn, tenant_id, page_id, security.user_id)
+            .await?;
 
         let builder_sources =
             require_builder_sources(collect_builder_sources(&current_bodies, None, true))?;
@@ -397,24 +404,6 @@ fn ensure_evaluation_allowed(evaluation: RuntimeScenarioReleaseEvaluation) -> Pa
     )))
 }
 
-async fn load_bodies_for_reviewed_publish(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    page_id: Uuid,
-) -> PagesResult<Vec<page_body::Model>> {
-    let query = || {
-        page_body::Entity::find()
-            .filter(page_body::Column::TenantId.eq(tenant_id))
-            .filter(page_body::Column::PageId.eq(page_id))
-            .order_by_asc(page_body::Column::Locale)
-    };
-    Ok(match txn.get_database_backend() {
-        DbBackend::Sqlite => query().all(txn).await?,
-        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().all(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
-    })
-}
-
 async fn find_publish_operation_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -563,7 +552,7 @@ fn normalize_expected_body_revisions(
     Ok(normalized)
 }
 
-fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot {
+fn body_revision_snapshot(bodies: &[WorkingBody]) -> BodyRevisionSnapshot {
     let mut revisions = bodies
         .iter()
         .map(|body| (body.locale.clone(), body.updated_at.to_string()))

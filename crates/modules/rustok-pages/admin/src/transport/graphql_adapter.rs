@@ -16,11 +16,14 @@ use crate::model::{
 pub type ApiError = GraphqlHttpError;
 
 const PAGES_QUERY: &str = "query PagesAdmin($filter: ListGqlPagesFilter) { pages(filter: $filter) { total items { id status template title slug updatedAt } } }";
-const PAGE_QUERY: &str = "query PageAdmin($id: UUID!, $locale: String) { page(id: $id, locale: $locale) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt } } }";
+const PAGE_QUERY: &str = "query PageAdmin($id: UUID!, $locale: String) { page(id: $id, locale: $locale) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt state } } }";
 const PAGE_BUILDER_SCENARIO_BASELINE_QUERY: &str = "query PageBuilderScenarioBaseline($pageId: UUID!) { pageBuilderScenarioBaseline(pageId: $pageId) { baseline } }";
+const PAGE_BODY_REVISIONS_QUERY: &str = "query PageBodyRevisions($id: UUID!, $locale: String!) { pageBodyRevisions(id: $id, locale: $locale) { id locale source bodyRevision createdAt createdBy } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id version status updatedAt translation { locale title slug } } }";
-const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt } } }";
-const SAVE_PAGE_DOCUMENT_MUTATION: &str = "mutation SavePageDocument($id: UUID!, $input: SaveGqlPageDocumentInput!) { savePageDocument(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } } }";
+const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt state } } }";
+const SAVE_PAGE_DOCUMENT_MUTATION: &str = "mutation SavePageDocument($id: UUID!, $input: SaveGqlPageDocumentInput!) { savePageDocument(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } } }";
+const RESTORE_PAGE_BODY_REVISION_MUTATION: &str = "mutation RestorePageBodyRevision($id: UUID!, $input: RestoreGqlPageBodyRevisionInput!) { restorePageBodyRevision(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } } }";
+const DUPLICATE_PAGE_MUTATION: &str = "mutation DuplicatePage($id: UUID!) { duplicatePage(id: $id) { id version status updatedAt translation { locale title slug } } }";
 const PUBLISH_PAGE_MUTATION: &str = "mutation PublishPage($id: UUID!, $input: PublishGqlPageInput!) { publishPage(id: $id, input: $input) { operationId pageId version idempotencyKey reviewHash sanitizedSetHash artifactSetHash replayed publishedAt } }";
 const ROLLBACK_PAGE_MUTATION: &str = "mutation RollbackPage($id: UUID!, $input: RollbackGqlPageInput!) { rollbackPage(id: $id, input: $input) { operationId pageId version idempotencyKey targetPublishOperationId sourceArtifactSetHash targetArtifactSetHash replayed rolledBackAt } }";
 const UNPUBLISH_PAGE_MUTATION: &str = "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id version status updatedAt translation { locale title slug } } }";
@@ -65,6 +68,38 @@ struct PatchPageMetadataResponse {
 struct SavePageDocumentResponse {
     #[serde(rename = "savePageDocument")]
     save_page_document: PageDetail,
+}
+
+#[derive(Debug, Deserialize)]
+struct PageBodyRevisionsResponse {
+    #[serde(rename = "pageBodyRevisions")]
+    page_body_revisions: Vec<crate::model::PageBodyRevision>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RestorePageBodyRevisionResponse {
+    #[serde(rename = "restorePageBodyRevision")]
+    restore_page_body_revision: PageDetail,
+}
+
+#[derive(Debug, Deserialize)]
+struct DuplicatePageResponse {
+    #[serde(rename = "duplicatePage")]
+    duplicate_page: PageMutationResult,
+}
+
+#[derive(Debug, Serialize)]
+struct PageBodyRevisionsVariables {
+    id: String,
+    locale: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RestorePageBodyRevisionInput {
+    #[serde(rename = "expectedRevision")]
+    expected_revision: String,
+    #[serde(rename = "revisionId")]
+    revision_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -373,6 +408,60 @@ pub async fn save_page_document(
     )
     .await?;
     Ok(response.save_page_document)
+}
+
+pub async fn fetch_page_body_revision_history(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: String,
+) -> Result<Vec<crate::model::PageBodyRevision>, ApiError> {
+    let response: PageBodyRevisionsResponse = request(
+        PAGE_BODY_REVISIONS_QUERY,
+        PageBodyRevisionsVariables { id, locale },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.page_body_revisions)
+}
+
+pub async fn restore_page_body_revision(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    expected_revision: String,
+    revision_id: String,
+) -> Result<PageDetail, ApiError> {
+    let response: RestorePageBodyRevisionResponse = request(
+        RESTORE_PAGE_BODY_REVISION_MUTATION,
+        PageWriteVariables {
+            id,
+            input: RestorePageBodyRevisionInput {
+                expected_revision,
+                revision_id,
+            },
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.restore_page_body_revision)
+}
+
+pub async fn duplicate_page(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<PageMutationResult, ApiError> {
+    let response: DuplicatePageResponse = request(
+        DUPLICATE_PAGE_MUTATION,
+        PageVariables { id, locale: None },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.duplicate_page)
 }
 
 pub async fn publish_page(

@@ -21,7 +21,7 @@ mod translation_apply;
 
 use rustok_content::entities::node::ContentStatus;
 use rustok_outbox::TransactionalEventBus;
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, DateTimeWithTimeZone};
 
 use crate::entities::page_translation;
 
@@ -49,7 +49,7 @@ pub use artifact_rebuild::{
     PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT, PAGE_ARTIFACT_REBUILD_OPERATION_FORMAT,
     PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY, PAGE_ARTIFACT_REBUILD_SOURCE_INVALID,
 };
-pub use document::{PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE};
+pub use document::{PAGE_BODY_REVISION_NOT_FOUND, PAGE_DOCUMENT_REVISION_CONFLICT};
 pub(crate) use helpers::is_page_visible_for_channel;
 pub use inline_edit::{
     DEFAULT_PAGE_INLINE_EDIT_CLOCK_SKEW_MS, DEFAULT_PAGE_INLINE_EDIT_GRANT_TTL_MS,
@@ -101,10 +101,44 @@ pub(super) struct PageResponseParts {
     pub(super) fallback_locale: Option<String>,
 }
 
+#[derive(Clone)]
 pub(super) struct PreparedPageBody {
     pub(super) locale: String,
     pub(super) content: String,
     pub(super) format: String,
+}
+
+/// The editable copy of one localized page body.
+///
+/// While a page is published the working copy is the page body draft (the current body stays
+/// the public one); every other lifecycle state edits the current body directly.
+pub(super) struct WorkingBody {
+    pub(super) locale: String,
+    pub(super) content: String,
+    pub(super) format: String,
+    pub(super) updated_at: DateTimeWithTimeZone,
+}
+
+impl From<&crate::entities::page_body::Model> for WorkingBody {
+    fn from(body: &crate::entities::page_body::Model) -> Self {
+        Self {
+            locale: body.locale.clone(),
+            content: body.content.clone(),
+            format: body.format.clone(),
+            updated_at: body.updated_at,
+        }
+    }
+}
+
+impl From<&crate::entities::page_body_draft::Model> for WorkingBody {
+    fn from(draft: &crate::entities::page_body_draft::Model) -> Self {
+        Self {
+            locale: draft.locale.clone(),
+            content: draft.content.clone(),
+            format: draft.format.clone(),
+            updated_at: draft.updated_at,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

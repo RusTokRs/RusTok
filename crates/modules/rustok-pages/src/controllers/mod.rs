@@ -20,10 +20,11 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
-    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreatePageInput, PAGE_DOCUMENT_REVISION_CONFLICT,
-    PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PageBuilderArtifactService, PageCacheScope, PageResponse,
-    PageService, PagesCacheReadRuntime, PagesError, PatchPageMetadataInput,
-    PublishedLandingArtifact, SavePageDocumentInput, page_cache_key,
+    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreatePageInput, PAGE_BODY_REVISION_NOT_FOUND,
+    PAGE_DOCUMENT_REVISION_CONFLICT, PageBodyRevisionResponse, PageBuilderArtifactService,
+    PageCacheScope, PageResponse, PageService, PagesCacheReadRuntime, PagesError,
+    PatchPageMetadataInput, PublishedLandingArtifact, RestorePageBodyRevisionInput,
+    SavePageDocumentInput, page_cache_key,
 };
 
 const ARTIFACT_VARY: &str = "X-Tenant-ID, X-Tenant-Slug, X-Channel-Slug, X-Channel-ID";
@@ -389,7 +390,7 @@ pub async fn patch_page_metadata(
     request_body = SavePageDocumentInput,
     responses(
         (status = 200, description = "Page document saved", body = PageResponse),
-        (status = 409, description = "Document revision conflict or published document is immutable"),
+        (status = 409, description = "Document revision conflict"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
@@ -407,6 +408,94 @@ pub async fn save_page_document(
         .await
         .map(Json)
         .map_err(map_pages_error)
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/pages/{id}/document/history",
+    tag = "pages",
+    params(
+        ("id" = Uuid, Path, description = "Page ID"),
+        PageBodyHistoryQuery,
+    ),
+    responses(
+        (status = 200, description = "Body revision journal metadata, newest first", body = [PageBodyRevisionResponse]),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn page_body_revision_history(
+    State(runtime): State<PagesHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    axum::extract::Query(locale): axum::extract::Query<PageBodyHistoryQuery>,
+) -> HttpResult<Json<Vec<PageBodyRevisionResponse>>> {
+    ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
+    PageService::new(runtime.db_clone(), runtime.event_bus())
+        .body_revision_history(tenant.id, page_security(&auth), id, &locale.locale)
+        .await
+        .map(Json)
+        .map_err(map_pages_error)
+}
+
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+pub struct PageBodyHistoryQuery {
+    pub locale: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/pages/{id}/document/restore",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    request_body = RestorePageBodyRevisionInput,
+    responses(
+        (status = 200, description = "Body revision restored", body = PageResponse),
+        (status = 404, description = "Body revision not found"),
+        (status = 409, description = "Document revision conflict"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn restore_page_body_revision(
+    State(runtime): State<PagesHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<RestorePageBodyRevisionInput>,
+) -> HttpResult<Json<PageResponse>> {
+    ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
+    PageService::new(runtime.db_clone(), runtime.event_bus())
+        .restore_body_revision(tenant.id, page_security(&auth), id, input)
+        .await
+        .map(Json)
+        .map_err(map_pages_error)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/pages/{id}/duplicate",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    responses(
+        (status = 201, description = "Page duplicated into a new draft", body = PageResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn duplicate_page(
+    State(runtime): State<PagesHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> HttpResult<(StatusCode, Json<PageResponse>)> {
+    ensure_pages_permission(&auth, Permission::PAGES_CREATE)?;
+    let page = PageService::new(runtime.db_clone(), runtime.event_bus())
+        .duplicate_page(tenant.id, page_security(&auth), id)
+        .await
+        .map_err(map_pages_error)?;
+    Ok((StatusCode::CREATED, Json(page)))
 }
 
 #[utoipa::path(
@@ -452,6 +541,18 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .route(
             "/api/admin/pages/{id}/document",
             axum::routing::put(save_page_document),
+        )
+        .route(
+            "/api/admin/pages/{id}/document/history",
+            axum::routing::get(page_body_revision_history),
+        )
+        .route(
+            "/api/admin/pages/{id}/document/restore",
+            axum::routing::post(restore_page_body_revision),
+        )
+        .route(
+            "/api/admin/pages/{id}/duplicate",
+            axum::routing::post(duplicate_page),
         )
         .with_state(state))
 }
@@ -521,13 +622,9 @@ fn map_pages_error(error: PagesError) -> HttpError {
             )
         }
         PagesError::Rich(rich)
-            if rich.error_code.as_deref() == Some(PAGE_PUBLISHED_DOCUMENT_IMMUTABLE) =>
+            if rich.error_code.as_deref() == Some(PAGE_BODY_REVISION_NOT_FOUND) =>
         {
-            HttpError::new(
-                StatusCode::CONFLICT,
-                "page_published_document_immutable",
-                message,
-            )
+            HttpError::not_found("page_body_revision_not_found", message)
         }
         PagesError::PageNotFound(_) => HttpError::not_found("page_not_found", message),
         PagesError::Forbidden(_) => HttpError::forbidden("pages_permission_denied", message),

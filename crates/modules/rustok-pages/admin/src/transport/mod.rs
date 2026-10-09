@@ -120,6 +120,40 @@ pub async fn save_page_document(
     .await
 }
 
+pub async fn fetch_page_body_revision_history(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: String,
+) -> Result<Vec<crate::model::PageBodyRevision>, TransportError> {
+    graphql_adapter::fetch_page_body_revision_history(token, tenant_slug, id, locale).await
+}
+
+pub async fn restore_page_body_revision(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    expected_revision: String,
+    revision_id: String,
+) -> Result<PageDetail, TransportError> {
+    graphql_adapter::restore_page_body_revision(
+        token,
+        tenant_slug,
+        id,
+        expected_revision,
+        revision_id,
+    )
+    .await
+}
+
+pub async fn duplicate_page(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<PageMutationResult, TransportError> {
+    graphql_adapter::duplicate_page(token, tenant_slug, id).await
+}
+
 pub async fn publish_page(
     token: Option<String>,
     tenant_slug: Option<String>,

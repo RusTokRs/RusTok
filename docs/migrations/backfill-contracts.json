@@ -274,6 +274,13 @@
       "mode": "none",
       "owner": "rustok-pages",
       "reason": "Creates empty owner storage for the scenario baseline revision journal that every baseline create/replace/delete now appends to; before this change the active row kept exactly one previous hash, no promotion history was ever recorded, and prior approvals cannot be reconstructed, so there are no rows to backfill"
+    },
+    {
+      "id": "pages-page-body-draft-and-revision-storage",
+      "migration": "m20261009_000001_create_page_body_drafts_and_revisions",
+      "mode": "none",
+      "owner": "rustok-pages",
+      "reason": "Creates page body draft working copies and the append-only body revision journal as new owner storage with tenant-scoped composite foreign keys; existing page_bodies rows are already the working copies of their pages and need no row transformation"
     }
   ]
 }
