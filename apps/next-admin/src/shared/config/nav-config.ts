@@ -107,6 +107,13 @@ const coreNavItems: NavItem[] = [
         url: '/dashboard/events',
         i18nKey: 'events',
         access: { role: 'admin' }
+      },
+      {
+        title: 'Design System',
+        url: '/dashboard/design-system',
+        i18nKey: 'designSystem',
+        shortcut: ['d', 's'],
+        access: { role: 'admin' }
       }
     ]
   },

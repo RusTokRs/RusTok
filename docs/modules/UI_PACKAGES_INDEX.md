@@ -84,6 +84,7 @@ integration. The canonical source of truth here is only manifest wiring.
 
 ### Core/Admin Surfaces
 
+- `rustok-cache` admin UI: [README](../../crates/modules/rustok-cache/admin/README.md)
 - `rustok-channel` admin UI: [README](../../crates/modules/rustok-channel/admin/README.md)
 - `rustok-index` admin UI: [README](../../crates/modules/rustok-index/admin/README.md)
 - `rustok-outbox` admin UI: [README](../../crates/modules/rustok-outbox/admin/README.md)

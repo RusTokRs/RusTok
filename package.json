@@ -7,6 +7,8 @@
     "verify:rust-constructor-arity": "node scripts/verify/verify-rust-constructor-arity.mjs",
     "test:verify:rust-constructor-arity": "node scripts/verify/verify-rust-constructor-arity.test.mjs",
     "verify:workflow-action-pins": "node scripts/verify/verify-workflow-action-pins.mjs",
+    "generate:tokens:flutter": "node scripts/generate/generate-flutter-tokens.mjs",
+    "verify:ui:parity": "node scripts/verify/verify-ui-parity.mjs",
     "audit:deps": "cargo machete",
     "audit:deadcode": "npx knip --directory apps/next-admin",
     "audit:clones": "npx jscpd crates/ apps/ --min-tokens 50",

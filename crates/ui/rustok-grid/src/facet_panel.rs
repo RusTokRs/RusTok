@@ -315,11 +315,7 @@ mod tests {
     }
 
     fn panel(facets: &[GridFacet], selection: &[&str]) -> FacetPanel {
-        FacetPanel::build(
-            facets,
-            &selected(selection),
-            &FacetPanelLabels::english(),
-        )
+        FacetPanel::build(facets, &selected(selection), &FacetPanelLabels::english())
     }
 
     #[test]
@@ -405,17 +401,18 @@ mod tests {
         );
         assert_eq!(panel.toggle("color", "red"), selected(&["size=m"]));
         assert_eq!(
-            panel.toggle("color", "red").iter().filter(|entry| *entry == "color=blue").count(),
+            panel
+                .toggle("color", "red")
+                .iter()
+                .filter(|entry| *entry == "color=blue")
+                .count(),
             0
         );
         assert_eq!(panel.toggle("   ", "blue"), panel.selected);
         assert_eq!(panel.clear_key("color"), selected(&["size=m"]));
         assert_eq!(panel.clear_key("missing"), panel.selected);
         assert!(panel.clear().is_empty());
-        assert_eq!(
-            panel.other_selection_for_key("color"),
-            vec!["size=m"]
-        );
+        assert_eq!(panel.other_selection_for_key("color"), vec!["size=m"]);
     }
 
     #[test]

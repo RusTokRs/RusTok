@@ -68,7 +68,10 @@ export function ForumTopicFork({
     })
       .then((page) => {
         if (!cancelled) {
-          setReplies(page);
+          setReplies({
+            total: page.items.length,
+            items: page.items
+          });
         }
       })
       .catch((error) => {

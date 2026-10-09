@@ -159,6 +159,27 @@ export function CategoryOverview({
       ) : (
         <div className="grid gap-6 md:grid-cols-2">
           {filteredHierarchy.map(({ category, subcategories, totalTopicCount, totalReplyCount }) => {
+function colorToBgClass(color?: string | null): string {
+  if (!color) return 'bg-primary';
+  const hex = color.trim().toLowerCase();
+  switch (hex) {
+    case '#3b82f6': return 'bg-blue-500';
+    case '#10b981': return 'bg-emerald-500';
+    case '#f59e0b': return 'bg-amber-500';
+    case '#ef4444': return 'bg-red-500';
+    case '#8b5cf6': return 'bg-violet-500';
+    case '#ec4899': return 'bg-pink-500';
+    case '#06b6d4': return 'bg-cyan-500';
+    case '#64748b': return 'bg-slate-500';
+    default: return 'bg-primary';
+  }
+}
+
+function colorToTextClass(color?: string | null): string {
+  const bg = colorToBgClass(color);
+  return bg.replace(/^bg-/, 'text-');
+}
+
             const accentColor = category.color || '#3b82f6';
 
             return (
@@ -168,8 +189,7 @@ export function CategoryOverview({
               >
                 {/* Left Accent Bar */}
                 <span
-                  className="absolute inset-y-0 left-0 w-1.5 transition-all group-hover:w-2"
-                  style={{ backgroundColor: accentColor }}
+                  className={`absolute inset-y-0 left-0 w-1.5 transition-all group-hover:w-2 ${colorToBgClass(accentColor)}`}
                 />
 
                 <div className="pl-3">
@@ -177,11 +197,7 @@ export function CategoryOverview({
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-3">
                       <div
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg font-bold shadow-sm"
-                        style={{
-                          backgroundColor: `${accentColor}18`,
-                          color: accentColor,
-                        }}
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg font-bold shadow-sm ${colorToBgClass(accentColor)}/15 ${colorToTextClass(accentColor)}`}
                       >
                         {category.icon ? category.icon : category.name.slice(0, 2).toUpperCase()}
                       </div>
@@ -236,8 +252,7 @@ export function CategoryOverview({
                               className="group/sub inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/80 px-3 py-1 text-xs font-medium text-foreground transition hover:border-primary/50 hover:bg-muted hover:shadow-sm"
                             >
                               <span
-                                className="h-2 w-2 rounded-full transition-transform group-hover/sub:scale-125"
-                                style={{ backgroundColor: subColor }}
+                                className={`h-2 w-2 rounded-full transition-transform group-hover/sub:scale-125 ${colorToBgClass(subColor)}`}
                               />
                               <span>{sub.name}</span>
                               <span className="text-[10px] text-muted-foreground">

@@ -6,10 +6,10 @@ use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
     SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
-    SeoTargetCapabilities, SeoTargetLoadRequest,
-    SeoTargetLoadScope, SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
-    SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
-    builtin_slug, populate_image_template_fields, schema,
+    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetOpenGraphRecord,
+    SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
+    SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap, builtin_slug,
+    populate_image_template_fields, schema,
 };
 use url::Url;
 

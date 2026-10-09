@@ -57,10 +57,20 @@ export function ReadingProgressBar({
         aria-valuemin={0}
         aria-valuemax={100}
       >
-        <div
-          className="h-full bg-primary transition-[width] duration-100 ease-out"
-          style={{ width: `${progress}%` }}
-        />
+        <svg
+          aria-hidden="true"
+          className="block h-full w-full"
+          preserveAspectRatio="none"
+          viewBox="0 0 100 4"
+        >
+          <rect
+            className="fill-primary transition-all duration-100 ease-out"
+            x="0"
+            y="0"
+            width={`${progress}`}
+            height="4"
+          />
+        </svg>
       </div>
 
       {/* Floating Scroll To Top Button */}

@@ -33,7 +33,7 @@ function forbid(source, marker, location) {
 const releasePath = "crates/modules/alloy/src/runner/release.rs";
 const testPath = "crates/modules/alloy/src/runner/test.rs";
 const memoryPath = "crates/modules/alloy/src/storage/memory.rs";
-const seaOrmPath = "crates/modules/alloy/src/storage/sea_orm.rs";
+const seaOrmPath = "crates/modules/alloy/src/storage/sea_orm/revisions.rs";
 
 const release = read(releasePath);
 const testRunner = read(testPath);

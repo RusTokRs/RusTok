@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use chrono::Utc;
 use rust_decimal::Decimal;
 use rustok_api::{Permission, PortContext, PortError};
 use rustok_payment::{
@@ -15,7 +14,6 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use rustok_core::generate_id;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::entities::{checkout_operation, checkout_reconciliation_action};

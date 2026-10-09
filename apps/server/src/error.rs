@@ -63,6 +63,31 @@ impl IntoResponse for Error {
             Self::BadRequest(message) | Self::Validation(message) => {
                 error_response(StatusCode::BAD_REQUEST, "bad_request", message)
             }
+            Self::Core(core_err) => match core_err {
+                rustok_core::Error::NotFound(msg) => {
+                    error_response(StatusCode::NOT_FOUND, "not_found", msg)
+                }
+                rustok_core::Error::Forbidden(msg) => {
+                    error_response(StatusCode::FORBIDDEN, "forbidden", msg)
+                }
+                rustok_core::Error::Validation(msg) => {
+                    error_response(StatusCode::BAD_REQUEST, "validation_error", msg)
+                }
+                rustok_core::Error::InvalidIdFormat(msg) => {
+                    error_response(StatusCode::BAD_REQUEST, "invalid_id_format", msg)
+                }
+                rustok_core::Error::Auth(msg) => {
+                    error_response(StatusCode::UNAUTHORIZED, "unauthorized", msg)
+                }
+                other => {
+                    tracing::error!(error = %other, "server core operation failed");
+                    error_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "internal_error",
+                        "Internal server error",
+                    )
+                }
+            },
             Self::Message(error) => {
                 tracing::error!(error = %error, "server host operation failed");
                 error_response(

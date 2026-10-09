@@ -192,7 +192,7 @@ requireMarkers(".github/workflows/api-compatibility.yml", [
   "base/scripts/verify/verify-api-compatibility.mjs",
   "--base-dir",
   "--head-dir",
-  "actions/upload-artifact@v7",
+  "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
 ]);
 forbidMarkers(".github/workflows/api-compatibility.yml", [
   'head/scripts/verify/verify-api-compatibility.mjs',

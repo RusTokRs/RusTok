@@ -8,6 +8,40 @@ use crate::core;
 use crate::i18n::t;
 use crate::model::{BlogPostDetail, BlogPostListItem};
 
+pub(super) fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
+#[component]
+pub(super) fn BlogSeoConfigError(ui_locale: Option<String>) -> impl IntoView {
+    view! {
+        <section class="m-6 rounded-2xl border border-destructive/30 bg-destructive/5 p-6">
+            <h2 class="text-lg font-semibold text-destructive">
+                {t(
+                    ui_locale.as_deref(),
+                    "blog.error.seoConfiguration",
+                    "Blog SEO configuration is unavailable",
+                )}
+            </h2>
+            <p class="mt-2 text-sm text-muted-foreground">
+                {t(
+                    ui_locale.as_deref(),
+                    "blog.error.seoTargetInvalid",
+                    "The Blog SEO target is invalid. Contact the platform administrator.",
+                )}
+            </p>
+        </section>
+    }
+}
+
 pub(super) fn blog_form_view_model(
     locale: Option<&str>,
     editing_post_id: Option<&str>,

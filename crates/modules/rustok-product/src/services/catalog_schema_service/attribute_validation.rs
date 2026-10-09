@@ -76,6 +76,7 @@ impl ProductAttributeValidationRules {
     }
 
     /// Value-level rules (existence is gated separately by `required`/`requiredLocales`).
+    #[allow(dead_code)]
     pub(crate) fn declares_value_rules(&self) -> bool {
         self.min_length.is_some()
             || self.max_length.is_some()

@@ -289,13 +289,11 @@ requireMarkers("crates/ui/rustok-ui-core/src/css.rs", [
   "bg-gradient-to-b from-sky-500 to-amber-500",
   "#fff;background:url(https://attacker.invalid/x)",
 ]);
-requireMarkers("crates/modules/rustok-forum/src/entities/forum_category.rs", [
-  "async fn before_save",
-  "ActiveValue::Set(Some(color))",
-  "normalize_category_color",
+requireMarkers("crates/modules/rustok-taxonomy/src/category_presentation.rs", [
+  "pub fn normalize_taxonomy_category_color",
   "matches!(digits.len(), 3 | 4 | 6 | 8)",
   "character.is_ascii_hexdigit()",
-  "DbErr::Custom",
+  "Category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA",
   "#fff;background:url(https://attacker.invalid/x)",
 ]);
 requireMarkers("crates/modules/rustok-forum/storefront/src/core.rs", [

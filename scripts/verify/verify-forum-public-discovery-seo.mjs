@@ -68,7 +68,7 @@ for (const marker of [
   'get_public_category_with_locale_fallback',
   'get_public_topic_with_locale_fallback',
   'async fn resolve_route(',
-  'async fn list_bulk_summaries(',
+  'async fn list_bulk_summaries_page(',
   'async fn sitemap_candidates(',
   'category_provider().load_target',
   'topic_provider().load_target',

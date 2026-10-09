@@ -64,6 +64,7 @@ index-source-empty = No replay sources registered.
 index-source-entity = Target Entity
 index-source-mode = Replay Mode
 index-source-name = Source Name
+index-storage-empty = No storage tables found.
 index-subtitle = Platform-owned cross-module relational index and query engine.
 index-tab-operations = Replay & Operations
 index-tab-overview = Overview

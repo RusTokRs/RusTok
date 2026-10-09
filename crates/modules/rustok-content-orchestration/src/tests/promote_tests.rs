@@ -3,7 +3,9 @@ use std::sync::Arc;
 use rustok_api::RichTextDocument;
 use rustok_blog::{blog_post, blog_post_tag, blog_post_translation};
 use rustok_comments::{comment, comment_thread};
-use rustok_content::{CanonicalRouteResolver, ContentOrchestrationService, PromoteTopicToPostInput};
+use rustok_content::{
+    CanonicalRouteResolver, ContentOrchestrationService, PromoteTopicToPostInput,
+};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ReplyService,
     TopicService, forum_category, forum_topic,

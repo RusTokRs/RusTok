@@ -260,9 +260,7 @@ async fn load_page_for_import(
             "Historical route import page identifier belongs to another tenant",
         ));
     }
-    let query = || {
-        page::Entity::find_by_id(page_id).filter(page::Column::TenantId.eq(tenant_id))
-    };
+    let query = || page::Entity::find_by_id(page_id).filter(page::Column::TenantId.eq(tenant_id));
     Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,

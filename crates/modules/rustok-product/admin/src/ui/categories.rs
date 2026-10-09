@@ -62,12 +62,26 @@ fn CategoryTreeGrid(
         filters.set(new_filters);
     });
 
+const fn category_indent_class(depth: usize) -> &'static str {
+    match depth {
+        0 => "pl-0",
+        1 => "pl-5",
+        2 => "pl-10",
+        3 => "pl-14",
+        4 => "pl-20",
+        5 => "pl-24",
+        6 => "pl-28",
+        7 => "pl-32",
+        _ => "pl-36",
+    }
+}
+
     let cell_renderer = Callback::new(move |(row, col_id): (CategoryTreeRowViewModel, String)| {
         match col_id.as_str() {
             "category" => {
-                let indent_px = row.depth * 20;
+                let indent_class = category_indent_class(row.depth);
                 view! {
-                    <div class="flex items-center gap-1.5" style=format!("padding-left: {}px", indent_px)>
+                    <div class=format!("flex items-center gap-1.5 {indent_class}")>
                         <span class="text-muted-foreground/60 text-xs">
                             {if row.depth == 0 { "📁" } else { "↳ 📄" }}
                         </span>

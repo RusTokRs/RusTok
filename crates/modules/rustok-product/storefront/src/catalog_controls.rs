@@ -88,11 +88,13 @@ pub fn serialize_attribute_filters(filters: &[String]) -> String {
 ///
 /// The vocabulary itself belongs to the table toolkit (`rustok_grid::facet_panel`): the storefront
 /// panel and the admin grid mutate one selection language, so neither owns a private copy.
+#[allow(dead_code)]
 pub fn parse_attribute_filter(entry: &str) -> Option<(String, String)> {
     split_selection(entry).map(|(code, value)| (code.to_string(), value.to_string()))
 }
 
 /// True when `code=value` is already part of the active attribute-filter list.
+#[allow(dead_code)]
 pub fn is_attribute_filter_selected(filters: &[String], code: &str, value: &str) -> bool {
     is_selection_selected(filters, code, value)
 }
@@ -104,6 +106,7 @@ pub fn toggle_attribute_filter(filters: &[String], code: &str, value: &str) -> V
 }
 
 /// True when `code=<any value>` is part of the active attribute-filter list.
+#[allow(dead_code)]
 pub fn has_attribute_filter_for_code(filters: &[String], code: &str) -> bool {
     has_selection_for_key(filters, code)
 }

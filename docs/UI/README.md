@@ -111,6 +111,7 @@ These three documents cover everything needed to work on a Leptos module UI pack
 your current task — you do not need to read all three at once.
 
 - [Architecture Guide](./module-package-architecture.md) — FFA principles, `core/transport/ui` split rationale, dual-path model, Dioxus-readiness, host vs module ownership. Read when designing or restructuring a package.
+- [UI Workbench Architecture](./ui-workbench-architecture.md) — FFA Design System, autonomous dev galleries in Leptos & Next.js, Flutter token codegen, and CI parity gates.
 - [Implementation Guide](./module-package-implementation.md) — concrete file structure, internal crates catalogue (`leptos-ui`, `leptos-ui-routing`, `rustok-graphql`, etc.), i18n rules, URL-selection rules, manifest wiring, forbidden patterns with code examples. Read when writing code.
 - [Verification Guide](./module-package-verification.md) — all verification commands, what each checks, execution order, common errors and fixes. Read when validating changes.
 

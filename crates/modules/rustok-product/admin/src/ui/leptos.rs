@@ -63,10 +63,8 @@ fn TypedProductAttributeField(
     empty_option_label: String,
     boolean_true_label: String,
     boolean_false_label: String,
-    #[prop(default = Default::default())]
-    saved_option_ids: Vec<String>,
-    #[prop(default = Default::default())]
-    missing_option_suffix: String,
+    #[prop(default = Default::default())] saved_option_ids: Vec<String>,
+    #[prop(default = Default::default())] missing_option_suffix: String,
 ) -> impl IntoView {
     let attribute_id = attribute.attribute_id.clone();
     let value_type = attribute.value_type.clone();
@@ -151,7 +149,7 @@ fn TypedProductAttributeField(
             let rows = options
                 .into_iter()
                 .map(|option| (option.id.clone(), option.label.clone()))
-                .chain(dangling_options.into_iter())
+                .chain(dangling_options)
                 .collect::<Vec<(String, String)>>();
             view! {
                 <div class="grid gap-2">
@@ -3231,36 +3229,34 @@ pub fn ProductVariantAxesSection(
             })
             .unwrap_or_default();
 
-        if next_rows.is_empty() {
-            if let Some(form) = form.as_ref() {
-                next_rows = form
-                    .attributes
-                    .iter()
-                    .filter(|attribute| {
-                        attribute.default_variant_axis
-                            && attribute.variant_axis_policy != "forbidden"
-                            && !attribute.options.is_empty()
-                    })
-                    .map(|attribute| VariantAxisRow {
-                        attribute_id: attribute.attribute_id.clone(),
-                        code: attribute.code.clone(),
-                        label: attribute.label.clone(),
-                        allowed_option_ids: attribute
-                            .options
-                            .iter()
-                            .map(|option| option.id.clone())
-                            .collect(),
-                        options: attribute
-                            .options
-                            .iter()
-                            .map(|option| VariantAxisOption {
-                                id: option.id.clone(),
-                                label: option.label.clone(),
-                            })
-                            .collect(),
-                    })
-                    .collect();
-            }
+        if let Some(form) = form.as_ref().filter(|_| next_rows.is_empty()) {
+            next_rows = form
+                .attributes
+                .iter()
+                .filter(|attribute| {
+                    attribute.default_variant_axis
+                        && attribute.variant_axis_policy != "forbidden"
+                        && !attribute.options.is_empty()
+                })
+                .map(|attribute| VariantAxisRow {
+                    attribute_id: attribute.attribute_id.clone(),
+                    code: attribute.code.clone(),
+                    label: attribute.label.clone(),
+                    allowed_option_ids: attribute
+                        .options
+                        .iter()
+                        .map(|option| option.id.clone())
+                        .collect(),
+                    options: attribute
+                        .options
+                        .iter()
+                        .map(|option| VariantAxisOption {
+                            id: option.id.clone(),
+                            label: option.label.clone(),
+                        })
+                        .collect(),
+                })
+                .collect();
         }
 
         next_rows
@@ -3524,7 +3520,6 @@ pub fn ProductVariantAxesSection(
                                                 let option_id = option.id.clone();
                                                 let toggle_attribute = toggle_attribute.clone();
                                                 let is_selected = selected.contains(&option.id);
-                                                let toggle_option = toggle_option;
                                                 view! {
                                                     <label class="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-muted/20 px-2 py-1 text-[11px] text-foreground">
                                                         <input

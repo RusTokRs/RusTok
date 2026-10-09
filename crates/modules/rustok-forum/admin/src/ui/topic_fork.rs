@@ -112,7 +112,6 @@ pub fn ForumTopicForkAdmin() -> impl IntoView {
         async move {
             if source_topic_id.trim().is_empty() {
                 Ok(ForumTopicForkReplyPage {
-                    total: 0,
                     items: Vec::new(),
                 })
             } else {

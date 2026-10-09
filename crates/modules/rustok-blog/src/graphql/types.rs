@@ -332,13 +332,6 @@ pub struct GqlPublicPostList {
     pub next_cursor: Option<String>,
 }
 
-#[derive(SimpleObject)]
-pub struct GqlPublicPostList {
-    pub items: Vec<GqlPostListItem>,
-    /// Present only when another page exists.
-    pub next_cursor: Option<String>,
-}
-
 #[derive(InputObject)]
 pub struct CreatePostInput {
     pub locale: String,

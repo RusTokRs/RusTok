@@ -27,6 +27,13 @@ product-attributes-outsideForm = Attribute is outside the effective form
 product-attributes-required = Required
 product-attributes-selectCategory = Select a structural category to load typed product attributes.
 product-attributes-unsupportedType = Unsupported attribute type
+product-attributes-valuesMissingOption = (not in dictionary)
+product-attributes-valuesNothingDirty = Nothing changed: typed values already match the saved state.
+product-attributes-valuesSave = Save attribute values
+product-attributes-valuesSaved = Attribute values saved
+product-attributes-valuesSaving = Saving...
+product-attributes-valuesSubtitle = Values validated against the effective category schema.
+product-attributes-valuesTitle = Typed attributes
 product-badge = product
 product-common-general = general
 product-common-inactive = inactive
@@ -72,6 +79,8 @@ product-list-createdAt = Creation date
 product-list-descending = Newest first
 product-list-empty = No products yet.
 product-list-facetsClear = Clear filters
+# plural-exempt: parenthesized bucket count is invariant in English
+product-list-facetsCount = ({ $count })
 # Bucket counts are rendered by the code-owned panel count template, not by Fluent.
 product-list-facetsEmpty = No filters are available for this catalog yet.
 product-list-facetsLabel = Filters

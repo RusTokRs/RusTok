@@ -51,7 +51,16 @@ pub async fn find_or_create(
 
     let mut tenant = new_tenant_active_model(name, slug);
     tenant.domain = sea_orm::ActiveValue::Set(domain.map(|value| value.to_string()));
-    tenant.insert(db).await
+    match tenant.insert(db).await {
+        Ok(created) => Ok(created),
+        Err(err) => {
+            if let Some(existing) = find_by_slug(db, slug).await? {
+                Ok(existing)
+            } else {
+                Err(err)
+            }
+        }
+    }
 }
 
 pub trait TenantEntityExt {

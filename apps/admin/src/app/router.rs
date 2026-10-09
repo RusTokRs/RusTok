@@ -6,9 +6,9 @@ use leptos_router::path;
 
 use crate::AdminLocaleProvider;
 use crate::pages::{
-    cache::CachePage, dashboard::Dashboard, email_settings::EmailSettingsPage,
-    installer::InstallerPage, module_admin::ModuleAdminPage, modules::Modules, not_found::NotFound,
-    workflow_detail::WorkflowDetailPage,
+    cache::CachePage, dashboard::Dashboard, design_system::DesignSystemPage,
+    email_settings::EmailSettingsPage, installer::InstallerPage, module_admin::ModuleAdminPage,
+    modules::Modules, not_found::NotFound, workflow_detail::WorkflowDetailPage,
 };
 use crate::shared::ui::LanguageToggle;
 use crate::widgets::app_shell::AppLayout;
@@ -52,6 +52,7 @@ pub fn App() -> impl IntoView {
                                 <Route path=path!("/workflows/:id") view=WorkflowDetailPage />
                                 <Route path=path!("/email") view=EmailSettingsPage />
                                 <Route path=path!("/cache") view=CachePage />
+                                <Route path=path!("/design-system") view=DesignSystemPage />
                                 <Route path=path!("/events") view=|| view! { <Redirect path="/modules/events" /> } />
                                 <Route path=path!("") view=Dashboard />
                             </ParentRoute>

@@ -278,7 +278,7 @@ export default function PostForm({
                   alt='Featured image preview'
                   className='h-full w-full object-cover'
                   onError={(e) => {
-                    (e.currentTarget as HTMLElement).style.display = 'none';
+                    (e.currentTarget as HTMLElement).classList.add('hidden');
                   }}
                 />
               </div>

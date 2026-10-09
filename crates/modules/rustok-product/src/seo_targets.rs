@@ -4,12 +4,12 @@ use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
-    SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
-    SeoBulkSummaryPage, SeoTargetAlternateRoute, SeoTargetBulkPageRequest, SeoTargetCapabilities,
-    SeoTargetLoadRequest,
-    SeoTargetLoadScope, SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
-    SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
-    builtin_slug, populate_image_template_fields, schema,
+    SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
+    SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
+    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetOpenGraphRecord,
+    SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
+    SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap, builtin_slug,
+    populate_image_template_fields, schema,
 };
 use url::Url;
 use uuid::Uuid;
@@ -213,9 +213,14 @@ async fn load_product_sitemap_candidate(
     default_locale: &str,
     product_id: Uuid,
 ) -> AnyResult<Option<SeoSitemapCandidateRecord>> {
-    let Some(product) =
-        load_product_if_present(service, tenant_id, product_id, default_locale, default_locale)
-            .await?
+    let Some(product) = load_product_if_present(
+        service,
+        tenant_id,
+        product_id,
+        default_locale,
+        default_locale,
+    )
+    .await?
     else {
         return Ok(None);
     };

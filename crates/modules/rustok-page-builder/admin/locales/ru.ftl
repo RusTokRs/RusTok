@@ -50,6 +50,7 @@ page_builder-capabilityPolicy-capability = Возможность
 page_builder-capabilityPolicy-degradationReasons = Причины деградации
 page_builder-capabilityPolicy-disabled = недоступно
 page_builder-capabilityPolicy-effective = Итог
+page_builder-capabilityPolicy-empty = Возможности не найдены
 page_builder-capabilityPolicy-enabled = доступно
 page_builder-capabilityPolicy-hostProviderPolicy = Политика провайдера host
 page_builder-capabilityPolicy-no = нет

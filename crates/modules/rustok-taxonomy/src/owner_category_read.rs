@@ -99,6 +99,36 @@ impl TaxonomyOwnerCategoryReader {
             .await?;
         Ok(hierarchy.into_iter().map(|row| row.term_id).collect())
     }
+
+    /// Loads the (term_id -> parent_term_id) mapping for the given category term IDs within a tenant.
+    pub async fn load_category_parents_in<C>(
+        connection: &C,
+        tenant_id: Uuid,
+        term_ids: &[Uuid],
+    ) -> TaxonomyResult<HashMap<Uuid, Option<Uuid>>>
+    where
+        C: ConnectionTrait,
+    {
+        if term_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let hierarchy = taxonomy_category_hierarchy::Entity::find()
+            .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_category_hierarchy::Column::TermId.is_in(term_ids.to_vec()))
+            .order_by_asc(taxonomy_category_hierarchy::Column::Position)
+            .order_by_asc(taxonomy_category_hierarchy::Column::TermId)
+            .all(connection)
+            .await?;
+        let mut map: HashMap<Uuid, Option<Uuid>> = hierarchy
+            .into_iter()
+            .map(|row| (row.term_id, row.parent_term_id))
+            .collect();
+        for &id in term_ids {
+            map.entry(id).or_insert(None);
+        }
+        Ok(map)
+    }
+
     /// Loads Category snapshots in one bounded owner read.
     ///
     /// `term_ids=None` lists the selected Category scope. `Some(ids)` restricts

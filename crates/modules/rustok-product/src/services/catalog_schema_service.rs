@@ -509,6 +509,7 @@ struct ProductAttributeWriteDefinitionRow {
     value_type: String,
     scope: String,
     is_localized: bool,
+    #[allow(dead_code)]
     validation: Value,
 }
 

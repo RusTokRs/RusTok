@@ -73,10 +73,7 @@ export function AttributesTable({
       id: 'valueType',
       header: 'Value Type',
       cell: (attr) => (
-        <Badge
-          variant='outline'
-          className='text-xs font-normal capitalize'
-        >
+        <Badge variant='outline' className='text-xs font-normal capitalize'>
           {attr.valueType.replace('_', ' ')}
         </Badge>
       )

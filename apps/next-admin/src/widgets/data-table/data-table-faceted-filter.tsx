@@ -99,10 +99,7 @@ export function DataTableFacetedFilter<
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant='outline' size='sm' className='border-dashed'>
-          {hasSelectionForKey(
-            Array.from(selectedValues),
-            facetKey
-          ) ? (
+          {hasSelectionForKey(Array.from(selectedValues), facetKey) ? (
             <div
               role='button'
               aria-label={`Clear ${title} filter`}

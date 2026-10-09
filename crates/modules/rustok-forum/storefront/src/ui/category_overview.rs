@@ -36,14 +36,12 @@ pub fn CategoryOverview(
     let mut children_map: HashMap<String, Vec<ForumCategoryListItem>> = HashMap::new();
 
     for item in &items {
-        if let Some(parent_id) = &item.parent_id {
-            if by_id.contains_key(parent_id) {
-                children_map
-                    .entry(parent_id.clone())
-                    .or_default()
-                    .push(item.clone());
-                continue;
-            }
+        if let Some(parent_id) = item.parent_id.as_ref().filter(|id| by_id.contains_key(*id)) {
+            children_map
+                .entry(parent_id.clone())
+                .or_default()
+                .push(item.clone());
+            continue;
         }
         roots.push(item.clone());
     }

@@ -626,9 +626,8 @@ fn selected_category_topic_count(
     categories: &[crate::model::ForumCategoryListItem],
     selected_category_id: Option<&str>,
 ) -> u64 {
-    let count = |item: &crate::model::ForumCategoryListItem| {
-        u64::try_from(item.topic_count).unwrap_or(0)
-    };
+    let count =
+        |item: &crate::model::ForumCategoryListItem| u64::try_from(item.topic_count).unwrap_or(0);
     match selected_category_id {
         Some(id) => categories
             .iter()

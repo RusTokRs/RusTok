@@ -16,9 +16,13 @@ use rustok_content::{
 };
 use rustok_forum::forum_topic;
 use rustok_forum::forum_topic_translation;
-use rustok_forum::services::topic_routes::{FORUM_ROUTE_PREFIX, ForumTopicRouteOwner, forum_topic_route};
+use rustok_forum::services::topic_routes::{
+    FORUM_ROUTE_PREFIX, ForumTopicRouteOwner, forum_topic_route,
+};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
+
+use crate::errors::{blog_error_to_content_error, forum_error_to_content_error};
 
 const BLOG_SLUG_PARAM: &str = "slug=";
 const FORUM_TOPIC_PARAM: &str = "topic=";
@@ -58,7 +62,9 @@ impl OwnerCanonicalRouteResolver {
             }
         }
 
-        let Some(redirect) = BlogPostRouteOwner::find_redirect(&self.db, tenant_id, route).await?
+        let Some(redirect) = BlogPostRouteOwner::find_redirect(&self.db, tenant_id, route)
+            .await
+            .map_err(blog_error_to_content_error)?
         else {
             return Ok(None);
         };
@@ -117,8 +123,9 @@ impl OwnerCanonicalRouteResolver {
             }
         }
 
-        let redirects =
-            ForumTopicRouteOwner::find_redirects(&self.db, tenant_id, route).await?;
+        let redirects = ForumTopicRouteOwner::find_redirects(&self.db, tenant_id, route)
+            .await
+            .map_err(forum_error_to_content_error)?;
         let resolved = resolve_by_locale(&redirects, locale, |redirect| redirect.locale.as_str());
         let Some(redirect) = resolved.item else {
             return Ok(None);

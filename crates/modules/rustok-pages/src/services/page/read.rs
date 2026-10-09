@@ -322,13 +322,14 @@ impl PageService {
         let has_next_page = pages.len() as u64 > limit;
         pages.truncate(limit as usize);
         let next_cursor = if has_next_page {
-            pages.last().map(PublishedPageCursor::from_page).map(|cursor| cursor.encode())
+            pages
+                .last()
+                .map(PublishedPageCursor::from_page)
+                .map(|cursor| cursor.encode())
         } else {
             None
         };
-        let items = self
-            .page_list_items(tenant_id, pages, locale, None)
-            .await?;
+        let items = self.page_list_items(tenant_id, pages, locale, None).await?;
         Ok((items, next_cursor))
     }
 

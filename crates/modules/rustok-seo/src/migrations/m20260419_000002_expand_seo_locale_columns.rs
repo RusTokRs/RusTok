@@ -8,9 +8,7 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         if manager.get_database_backend() == DbBackend::Postgres {
-            for sql in [
-                "ALTER TABLE meta_translations ALTER COLUMN locale TYPE VARCHAR(32)",
-            ] {
+            for sql in ["ALTER TABLE meta_translations ALTER COLUMN locale TYPE VARCHAR(32)"] {
                 manager
                     .get_connection()
                     .execute_raw(Statement::from_string(DbBackend::Postgres, sql.to_string()))

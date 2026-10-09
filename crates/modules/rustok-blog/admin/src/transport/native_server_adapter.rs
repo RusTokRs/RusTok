@@ -228,6 +228,7 @@ async fn blog_admin_posts_native(
     #[cfg(not(feature = "ssr"))]
     {
         let _ = locale;
+        let _ = after;
         Err(ServerFnError::new(
             "blog/admin/posts requires the `ssr` feature",
         ))

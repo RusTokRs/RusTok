@@ -50,6 +50,7 @@ page_builder-capabilityPolicy-capability = Capability
 page_builder-capabilityPolicy-degradationReasons = Degradation reasons
 page_builder-capabilityPolicy-disabled = disabled
 page_builder-capabilityPolicy-effective = Effective
+page_builder-capabilityPolicy-empty = No capabilities found
 page_builder-capabilityPolicy-enabled = enabled
 page_builder-capabilityPolicy-hostProviderPolicy = Host provider policy
 page_builder-capabilityPolicy-no = no

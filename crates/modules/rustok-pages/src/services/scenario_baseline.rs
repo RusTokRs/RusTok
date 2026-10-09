@@ -409,7 +409,9 @@ impl PageBuilderScenarioBaselineService {
             .filter(page_builder_scenario_baseline_revision::Column::PageId.eq(page_id))
             .order_by_desc(page_builder_scenario_baseline_revision::Column::CreatedAt)
             .order_by_desc(page_builder_scenario_baseline_revision::Column::Id);
-        let limit = limit.unwrap_or(MAX_BASELINE_HISTORY_LIMIT).min(MAX_BASELINE_HISTORY_LIMIT);
+        let limit = limit
+            .unwrap_or(MAX_BASELINE_HISTORY_LIMIT)
+            .min(MAX_BASELINE_HISTORY_LIMIT);
         query = query.limit(limit);
         Ok(query.all(&self.db).await?)
     }

@@ -184,10 +184,7 @@ impl ForumContentQuery {
             items.len(),
         );
 
-        Ok(ForumTopicPage {
-            items,
-            next_cursor,
-        })
+        Ok(ForumTopicPage { items, next_cursor })
     }
 
     async fn forum_category(
@@ -369,10 +366,7 @@ impl ForumContentQuery {
             items.len(),
         );
 
-        Ok(ForumReplyPage {
-            items,
-            next_cursor,
-        })
+        Ok(ForumReplyPage { items, next_cursor })
     }
 
     async fn forum_user_stats(
@@ -571,10 +565,7 @@ impl ForumContentQuery {
             items.len(),
         );
 
-        Ok(ForumTopicPage {
-            items,
-            next_cursor,
-        })
+        Ok(ForumTopicPage { items, next_cursor })
     }
 
     async fn forum_storefront_topic(
@@ -730,10 +721,7 @@ impl ForumContentQuery {
             items.len(),
         );
 
-        Ok(ForumReplyPage {
-            items,
-            next_cursor,
-        })
+        Ok(ForumReplyPage { items, next_cursor })
     }
 }
 

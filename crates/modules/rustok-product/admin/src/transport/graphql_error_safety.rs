@@ -1,7 +1,7 @@
 use rustok_graphql::GraphqlHttpError;
 use uuid::Uuid;
 
-pub(super) struct GraphqlReadContext {
+pub(crate) struct GraphqlReadContext {
     operation: &'static str,
     boundary: &'static str,
     correlation_id: String,
@@ -24,12 +24,12 @@ const PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE: &str = "Product admin service is tempor
 const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str = "Product admin request could not be completed";
 
 impl GraphqlReadContext {
-    pub(super) fn for_bootstrap(token: Option<&str>, tenant_slug: Option<&str>) -> Self {
+    pub(crate) fn for_bootstrap(token: Option<&str>, tenant_slug: Option<&str>) -> Self {
         Self::new("fetch_bootstrap", token, tenant_slug)
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn for_products(
+    pub(crate) fn for_products(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -46,7 +46,7 @@ impl GraphqlReadContext {
         context
     }
 
-    pub(super) fn for_product(
+    pub(crate) fn for_product(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -60,7 +60,8 @@ impl GraphqlReadContext {
         context
     }
 
-    pub(super) fn for_product_pricing(
+    #[allow(dead_code)]
+    pub(crate) fn for_product_pricing(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -76,7 +77,7 @@ impl GraphqlReadContext {
         context
     }
 
-    pub(super) fn for_shipping_profiles(
+    pub(crate) fn for_shipping_profiles(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -86,7 +87,7 @@ impl GraphqlReadContext {
         context
     }
 
-    pub(super) fn for_product_attributes(
+    pub(crate) fn for_product_attributes(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -101,7 +102,7 @@ impl GraphqlReadContext {
         )
     }
 
-    pub(super) fn for_attribute_schemas(
+    pub(crate) fn for_attribute_schemas(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -116,7 +117,7 @@ impl GraphqlReadContext {
         )
     }
 
-    pub(super) fn for_catalog_categories(
+    pub(crate) fn for_catalog_categories(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -131,7 +132,7 @@ impl GraphqlReadContext {
         )
     }
 
-    pub(super) fn for_effective_product_form(
+    pub(crate) fn for_effective_product_form(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -151,7 +152,7 @@ impl GraphqlReadContext {
         context
     }
 
-    pub(super) fn for_product_attribute_values(
+    pub(crate) fn for_product_attribute_values(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -202,7 +203,7 @@ impl GraphqlReadContext {
         }
     }
 
-    pub(super) fn map_error(&self, error: GraphqlHttpError) -> GraphqlHttpError {
+    pub(crate) fn map_error(&self, error: GraphqlHttpError) -> GraphqlHttpError {
         let (error_kind, code, public_error, technical_failure) = match &error {
             GraphqlHttpError::Network => (
                 "network",
@@ -309,7 +310,7 @@ impl GraphqlReadContext {
 /// public envelope stays static and the captured payload is reduced to presence
 /// and character length before it reaches structured tracing. The complete typed
 /// error is not logged by this boundary.
-pub(super) struct GraphqlMutationContext {
+pub(crate) struct GraphqlMutationContext {
     operation: &'static str,
     correlation_id: String,
     token_present: bool,
@@ -324,7 +325,7 @@ pub(super) struct GraphqlMutationContext {
 const PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY: &str = "product_admin_primary_graphql_mutations";
 
 impl GraphqlMutationContext {
-    pub(super) fn for_create_product(
+    pub(crate) fn for_create_product(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -336,7 +337,7 @@ impl GraphqlMutationContext {
         context
     }
 
-    pub(super) fn for_update_product(
+    pub(crate) fn for_update_product(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -350,7 +351,7 @@ impl GraphqlMutationContext {
         context
     }
 
-    pub(super) fn for_change_product_status(
+    pub(crate) fn for_change_product_status(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -370,7 +371,7 @@ impl GraphqlMutationContext {
         context
     }
 
-    pub(super) fn for_delete_product(
+    pub(crate) fn for_delete_product(
         token: Option<&str>,
         tenant_slug: Option<&str>,
         tenant_id: &str,
@@ -402,7 +403,7 @@ impl GraphqlMutationContext {
         }
     }
 
-    pub(super) fn map_error(&self, error: GraphqlHttpError) -> GraphqlHttpError {
+    pub(crate) fn map_error(&self, error: GraphqlHttpError) -> GraphqlHttpError {
         let (error_kind, code, public_error, technical_failure) = match &error {
             GraphqlHttpError::Network => (
                 "network",

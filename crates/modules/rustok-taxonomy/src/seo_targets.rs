@@ -7,10 +7,9 @@ use uuid::Uuid;
 use rustok_seo_targets::{
     SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
-    SeoTargetCapabilities, SeoTargetLoadRequest,
-    SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
-    SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
-    builtin_slug, schema,
+    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetOpenGraphRecord, SeoTargetProvider,
+    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug,
+    SeoTemplateFieldMap, builtin_slug, schema,
 };
 
 use crate::TaxonomyScopeType;

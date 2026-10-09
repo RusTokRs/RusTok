@@ -415,7 +415,13 @@ mod tests {
                 .as_deref(),
             Some("#a1b2c3d4")
         );
-        for value in ["red", "rgb(1 2 3)", "#ggg", "#fff;--owned:1"] {
+        for value in [
+            "red",
+            "rgb(1 2 3)",
+            "#ggg",
+            "#fff;background:url(https://attacker.invalid/x)",
+            "#fff;--owned:1",
+        ] {
             assert!(normalize_taxonomy_category_color(value).is_err());
         }
     }

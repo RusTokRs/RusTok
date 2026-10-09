@@ -2158,8 +2158,8 @@ export interface AppMessageArgs {
   'rbac-matrix-search-placeholder'?: Record<string, never>;
   'rbac.matrix.select.all'?: Record<string, never>;
   'rbac-matrix-select-all'?: Record<string, never>;
-  'rbac.matrix.selected.count': { 'selected': string | number | Date; 'total': string | number | Date };
-  'rbac-matrix-selected-count': { 'selected': string | number | Date; 'total': string | number | Date };
+  'rbac.matrix.selected.count': { 'total': string | number | Date; 'selected': string | number | Date };
+  'rbac-matrix-selected-count': { 'total': string | number | Date; 'selected': string | number | Date };
   'rbac.matrix.title'?: Record<string, never>;
   'rbac-matrix-title'?: Record<string, never>;
   'rbac.metrics.admin.roles'?: Record<string, never>;

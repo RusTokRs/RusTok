@@ -3,12 +3,12 @@ use async_trait::async_trait;
 use rustok_core::SecurityContext;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
-    SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
-    SeoBulkSummaryPage, SeoTargetAlternateRoute, SeoTargetBulkPageRequest, SeoTargetCapabilities,
-    SeoTargetLoadRequest,
-    SeoTargetLoadScope, SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
-    SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
-    builtin_slug, populate_image_template_fields, schema,
+    SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
+    SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
+    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetOpenGraphRecord,
+    SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
+    SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap, builtin_slug,
+    populate_image_template_fields, schema,
 };
 use url::Url;
 use uuid::Uuid;

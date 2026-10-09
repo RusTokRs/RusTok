@@ -146,20 +146,54 @@ export function CategoryTreeAdmin({
   ) => {
     const isFirst = index === 0;
     const isLast = index === siblings.length - 1;
-    const accentColor = node.color || '#3b82f6';
-    const depthPadding = node.depth * 28;
+function depthPaddingClass(depth: number): string {
+  switch (depth) {
+    case 0: return 'pl-0';
+    case 1: return 'pl-7';
+    case 2: return 'pl-14';
+    case 3: return 'pl-20';
+    case 4: return 'pl-28';
+    case 5: return 'pl-36';
+    default: return 'pl-40';
+  }
+}
+
+function depthConnectorLeftClass(depth: number): string {
+  switch (depth) {
+    case 1: return 'left-3';
+    case 2: return 'left-10';
+    case 3: return 'left-16';
+    case 4: return 'left-24';
+    case 5: return 'left-32';
+    default: return 'left-36';
+  }
+}
+
+function colorToBgClass(color?: string | null): string {
+  if (!color) return 'bg-primary';
+  const hex = color.trim().toLowerCase();
+  switch (hex) {
+    case '#3b82f6': return 'bg-blue-500';
+    case '#10b981': return 'bg-emerald-500';
+    case '#f59e0b': return 'bg-amber-500';
+    case '#ef4444': return 'bg-red-500';
+    case '#8b5cf6': return 'bg-violet-500';
+    case '#ec4899': return 'bg-pink-500';
+    case '#06b6d4': return 'bg-cyan-500';
+    case '#64748b': return 'bg-slate-500';
+    default: return 'bg-primary';
+  }
+}
 
     return (
       <div key={node.id} className='group relative'>
         <div
-          style={{ paddingLeft: `${depthPadding}px` }}
-          className='hover:bg-muted/30 relative transition'
+          className={`hover:bg-muted/30 relative transition ${depthPaddingClass(node.depth)}`}
         >
           {/* Depth connector guidelines */}
           {node.depth > 0 && (
             <span
-              style={{ left: `${depthPadding - 16}px` }}
-              className='border-border/80 absolute top-1/2 -mt-2 h-4 w-3 rounded-bl-md border-b-2 border-l-2'
+              className={`border-border/80 absolute top-1/2 -mt-2 h-4 w-3 rounded-bl-md border-b-2 border-l-2 ${depthConnectorLeftClass(node.depth)}`}
             />
           )}
 
@@ -168,8 +202,7 @@ export function CategoryTreeAdmin({
             <div className='flex min-w-0 flex-1 items-start gap-3 sm:items-center'>
               {/* Color Accent Pill */}
               <span
-                className='h-9 w-2 shrink-0 rounded-full'
-                style={{ backgroundColor: accentColor }}
+                className={`h-9 w-2 shrink-0 rounded-full ${colorToBgClass(node.color)}`}
               />
 
               <div className='min-w-0 flex-1'>

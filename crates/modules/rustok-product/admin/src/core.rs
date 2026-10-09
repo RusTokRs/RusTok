@@ -2477,23 +2477,21 @@ pub fn matches_attribute_schema_filter(
 ) -> bool {
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
-            ("name", FilterValue::Text(q)) => {
+            ("name", FilterValue::Text(q))
                 if !item
                     .name
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("code", FilterValue::Text(q)) => {
+            ("code", FilterValue::Text(q))
                 if !item
                     .code
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }
@@ -2583,32 +2581,29 @@ pub fn matches_product_attribute_filter(
 ) -> bool {
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
-            ("label", FilterValue::Text(q)) => {
+            ("label", FilterValue::Text(q))
                 if !item
                     .label
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("code", FilterValue::Text(q)) => {
+            ("code", FilterValue::Text(q))
                 if !item
                     .code
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("value_type", FilterValue::Text(q)) => {
+            ("value_type", FilterValue::Text(q))
                 if !item
                     .value_type
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }
@@ -2702,35 +2697,32 @@ pub fn matches_product_category_filter(
 ) -> bool {
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
-            ("category", FilterValue::Text(q)) => {
+            ("category", FilterValue::Text(q))
                 if !item
                     .category
                     .name
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("code", FilterValue::Text(q)) => {
+            ("code", FilterValue::Text(q))
                 if !item
                     .category
                     .code
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("kind", FilterValue::Text(q)) => {
+            ("kind", FilterValue::Text(q))
                 if !item
                     .category
                     .kind
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }
@@ -2820,23 +2812,21 @@ pub fn product_variant_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> 
 pub fn matches_product_variant_filter(item: &VariantRowViewModel, filters: &ColumnFilters) -> bool {
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
-            ("sku", FilterValue::Text(q)) => {
+            ("sku", FilterValue::Text(q))
                 if !item
                     .sku
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("options_summary", FilterValue::Text(q)) => {
+            ("options_summary", FilterValue::Text(q))
                 if !item
                     .options_summary
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }

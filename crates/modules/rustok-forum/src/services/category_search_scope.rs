@@ -81,20 +81,13 @@ impl ForumSearchCategoryScopeService {
             .iter()
             .map(|category| category.id)
             .collect::<Vec<_>>();
-        let hierarchy_rows = rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find()
-            .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-            .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId.is_in(tenant_category_ids.iter().copied()))
-            .order_by_asc(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::Position)
-            .order_by_asc(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId)
-            .all(&self.db)
-            .await?;
-        let mut parent_by_id = hierarchy_rows
-            .into_iter()
-            .map(|row| (row.term_id, row.parent_term_id))
-            .collect::<HashMap<_, _>>();
-        for id in &tenant_category_ids {
-            parent_by_id.entry(*id).or_insert(None);
-        }
+        let parent_by_id = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_category_parents_in(
+            &self.db,
+            tenant_id,
+            &tenant_category_ids,
+        )
+        .await
+        .map_err(crate::services::category::taxonomy_sync::map_taxonomy_error)?;
 
         let hierarchy = CategoryHierarchy::from_ordered_nodes(
             tenant_category_ids

@@ -1,9 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use chrono::Utc;
-use rustok_content::{
-    ContentError, ContentResult, MergeTopicsInput, MergeTopicsOutput,
-};
+use rustok_content::{ContentError, ContentResult, MergeTopicsInput, MergeTopicsOutput};
 use rustok_forum::services::topic_routes::forum_topic_route;
 use rustok_forum::{forum_reply, forum_topic};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseTransaction, EntityTrait};
@@ -11,8 +9,8 @@ use uuid::Uuid;
 
 use crate::bridge::OwnerRoutes;
 use crate::bridge::helpers::{
-    adjust_forum_category_counters_in_tx, find_topic_in_tx,
-    load_forum_reply_records_in_tx, load_topic_translations_in_tx, locales_from_topic_translations,
+    adjust_forum_category_counters_in_tx, find_topic_in_tx, load_forum_reply_records_in_tx,
+    load_topic_translations_in_tx, locales_from_topic_translations,
     next_forum_reply_position_in_tx, refresh_forum_topic_stats_in_tx,
     resequence_forum_topic_replies_in_tx,
 };
@@ -95,12 +93,20 @@ pub(crate) async fn merge_topics(
     for (source_topic_id, locales) in &source_locales_by_topic {
         routes
             .forum
-            .remove_redirects_to_target_in_tx(txn, tenant_id, actor_id, "forum_topic", *source_topic_id)
-            .await?;
+            .remove_redirects_to_target_in_tx(
+                txn,
+                tenant_id,
+                actor_id,
+                "forum_topic",
+                *source_topic_id,
+            )
+            .await
+            .map_err(crate::errors::forum_error_to_content_error)?;
         routes
             .forum
             .purge_topic_canonical_in_tx(txn, tenant_id, actor_id, *source_topic_id, locales)
-            .await?;
+            .await
+            .map_err(crate::errors::forum_error_to_content_error)?;
     }
     for (source_topic_id, _) in &source_locales_by_topic {
         for locale in &merge_locales {
@@ -116,7 +122,8 @@ pub(crate) async fn merge_topics(
                     target_topic.id,
                     &target_canonical,
                 )
-                .await?;
+                .await
+                .map_err(crate::errors::forum_error_to_content_error)?;
         }
     }
 

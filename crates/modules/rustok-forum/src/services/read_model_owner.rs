@@ -19,18 +19,18 @@ use crate::dto::{
     CategoryCursorPage, CategoryCursorQuery, CategoryReadModel, MAX_FORUM_CATEGORY_TREE_NODES,
     MAX_FORUM_READ_LIMIT, ReplyCursorPage, ReplyCursorQuery, ReplyReadModel, TopicCursorPage,
     TopicCursorQuery, TopicListCursor, TopicReadModel, TopicUnreadCursorPage,
-    TopicUnreadCursorQuery,
-    TopicUnreadReadModel, TopicUnreadSummaryReadModel, bounded_forum_read_limit,
+    TopicUnreadCursorQuery, TopicUnreadReadModel, TopicUnreadSummaryReadModel,
+    bounded_forum_read_limit,
 };
 use crate::entities::{
     forum_category, forum_reply, forum_reply_body, forum_solution, forum_topic,
     forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
-use crate::services::topic::{order_topic_list, topic_list_after_condition, topic_list_cursor};
 use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
+use crate::services::topic::{order_topic_list, topic_list_after_condition, topic_list_cursor};
 use crate::services::vote::VoteService;
 
 const CATEGORY_CURSOR_VERSION: &str = "c1";

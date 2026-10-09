@@ -183,10 +183,10 @@ for (const marker of [
 }
 
 for (const marker of [
-  'let trusted_opening_tag = r#"<script type="application/ld+json">"#',
-  "nonce_structured_data_scripts",
+  "render_head_html_with_nonce",
+  "csp_nonce: Option<&CspNonce>",
   "Option<Extension<CspNonce>>",
-  'assert!(rendered.contains("<script>alert(1)</script>"))',
+  'r#"<script nonce="{}" type="application/ld+json">"#',
 ]) {
   requireMarker(storefront, marker, storefrontFile);
 }

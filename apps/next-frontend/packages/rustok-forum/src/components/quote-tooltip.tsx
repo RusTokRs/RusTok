@@ -102,22 +102,24 @@ export function QuoteTooltip() {
   }
 
   return (
-    <div
-      style={{
-        top: `${position.top}px`,
-        left: `${position.left}px`,
-      }}
-      className="fixed z-50 -translate-x-1/2 animate-in fade-in zoom-in-95 duration-150"
-    >
-      <button
-        type="button"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={onQuoteClick}
-        className="flex items-center gap-1.5 rounded-full border border-border bg-foreground px-3 py-1 text-xs font-semibold text-background shadow-lg transition hover:scale-105 active:scale-95"
+    <svg className="fixed inset-0 z-50 pointer-events-none h-full w-full overflow-visible">
+      <foreignObject
+        x={Math.round(position.left - 48)}
+        y={Math.round(position.top)}
+        width="96"
+        height="36"
+        className="overflow-visible pointer-events-auto"
       >
-        <Quote className="h-3 w-3" />
-        Quote
-      </button>
-    </div>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onQuoteClick}
+          className="flex items-center gap-1.5 rounded-full border border-border bg-foreground px-3 py-1 text-xs font-semibold text-background shadow-lg transition hover:scale-105 active:scale-95"
+        >
+          <Quote className="h-3 w-3" />
+          Quote
+        </button>
+      </foreignObject>
+    </svg>
   );
 }

@@ -16,8 +16,8 @@ use uuid::Uuid;
 use crate::bridge::OwnerRoutes;
 use crate::bridge::helpers::{
     ForumReplyRecord, adjust_forum_category_counters_in_tx, find_topic_in_tx,
-    load_forum_reply_records_in_tx, load_topic_translations_in_tx,
-    locales_from_topic_translations, normalize_locale, normalize_slug, resolve_topic_translation,
+    load_forum_reply_records_in_tx, load_topic_translations_in_tx, locales_from_topic_translations,
+    normalize_locale, normalize_slug, resolve_topic_translation,
 };
 use crate::bridge::tags::{load_forum_tag_names_for_topic_in_tx, sync_blog_tags_for_post_in_tx};
 
@@ -164,15 +164,18 @@ pub(crate) async fn promote_topic_to_post(
     routes
         .forum
         .remove_redirects_to_target_in_tx(txn, tenant_id, actor_id, "forum_topic", topic.id)
-        .await?;
+        .await
+        .map_err(crate::errors::forum_error_to_content_error)?;
     routes
         .forum
         .purge_topic_canonical_in_tx(txn, tenant_id, actor_id, topic.id, &topic_locales)
-        .await?;
+        .await
+        .map_err(crate::errors::forum_error_to_content_error)?;
     routes
         .blog
         .release_slug_route_in_tx(txn, tenant_id, actor_id, &slug)
-        .await?;
+        .await
+        .map_err(crate::errors::blog_error_to_content_error)?;
     let blog_canonical = rustok_blog::canonical_post_route(&slug);
     for locale in &topic_locales {
         routes
@@ -187,7 +190,8 @@ pub(crate) async fn promote_topic_to_post(
                 post_id,
                 &blog_canonical,
             )
-            .await?;
+            .await
+            .map_err(crate::errors::forum_error_to_content_error)?;
     }
 
     Ok(PromoteTopicToPostOutput {

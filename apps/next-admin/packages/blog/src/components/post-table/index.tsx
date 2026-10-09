@@ -7,6 +7,9 @@ import type {
   StockFeatures
 } from '@tanstack/react-table';
 import Link from 'next/link';
+import { useDataTable } from '@/shared/hooks/use-data-table';
+import { DataTable } from '@/widgets/data-table/data-table';
+import { DataTableToolbar } from '@/widgets/data-table/data-table-toolbar';
 
 export interface PostTablePager {
   previousHref: string | null;
@@ -36,10 +39,7 @@ export function PostTable<
   });
 
   return (
-    <DataTable
-      table={table}
-      pagination={<CursorPagination pager={pager} />}
-    >
+    <DataTable table={table} pagination={<CursorPagination pager={pager} />}>
       <DataTableToolbar table={table} />
     </DataTable>
   );
@@ -47,7 +47,10 @@ export function PostTable<
 
 function CursorPagination({ pager }: { pager: PostTablePager }) {
   return (
-    <nav aria-label='Posts pages' className='flex items-center justify-end gap-2'>
+    <nav
+      aria-label='Posts pages'
+      className='flex items-center justify-end gap-2'
+    >
       <PagerLink href={pager.previousHref} label='Previous' />
       <PagerLink href={pager.nextHref} label='Next' />
     </nav>

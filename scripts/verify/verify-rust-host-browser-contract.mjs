@@ -207,7 +207,7 @@ requireMarkers("scripts/build/build-embedded-admin.sh", [
   'cargo install trunk --version "=0.21.14" --locked',
 ]);
 requireMarkers("apps/server/src/services/app_router.rs", [
-  'router.nest("/admin", admin_router)',
+  "dispatch_embedded_admin_fallback(admin_router, request)",
   "router.merge(storefront_router)",
   "nonce_trusted_admin_elements",
 ]);

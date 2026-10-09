@@ -26,14 +26,14 @@ interface CategoryEditorDialogProps {
 }
 
 const PRESET_COLORS = [
-  '#3b82f6', // Blue
-  '#10b981', // Emerald
-  '#f59e0b', // Amber
-  '#ef4444', // Red
-  '#8b5cf6', // Violet
-  '#ec4899', // Pink
-  '#06b6d4', // Cyan
-  '#64748b' // Slate
+  { hex: '#3b82f6', bgClass: 'bg-blue-500' },
+  { hex: '#10b981', bgClass: 'bg-emerald-500' },
+  { hex: '#f59e0b', bgClass: 'bg-amber-500' },
+  { hex: '#ef4444', bgClass: 'bg-red-500' },
+  { hex: '#8b5cf6', bgClass: 'bg-violet-500' },
+  { hex: '#ec4899', bgClass: 'bg-pink-500' },
+  { hex: '#06b6d4', bgClass: 'bg-cyan-500' },
+  { hex: '#64748b', bgClass: 'bg-slate-500' }
 ];
 
 export function CategoryEditorDialog({
@@ -334,15 +334,14 @@ export function CategoryEditorDialog({
               <div className='mt-2 flex flex-wrap gap-1.5'>
                 {PRESET_COLORS.map((c) => (
                   <button
-                    key={c}
+                    key={c.hex}
                     type='button'
-                    onClick={() => setColor(c)}
-                    className={`h-5 w-5 rounded-full border transition hover:scale-110 ${
-                      color.toLowerCase() === c.toLowerCase()
+                    onClick={() => setColor(c.hex)}
+                    className={`h-5 w-5 rounded-full border transition hover:scale-110 ${c.bgClass} ${
+                      color.toLowerCase() === c.hex.toLowerCase()
                         ? 'ring-primary ring-2 ring-offset-1'
                         : ''
                     }`}
-                    style={{ backgroundColor: c }}
                   />
                 ))}
               </div>

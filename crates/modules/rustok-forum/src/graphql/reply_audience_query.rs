@@ -101,10 +101,7 @@ impl ForumReplyAudienceQuery {
             per_page,
             items.len(),
         );
-        Ok(ForumReplyPage {
-            items,
-            next_cursor,
-        })
+        Ok(ForumReplyPage { items, next_cursor })
     }
 
     /// Exact storefront reply list through parent-topic storefront and richer
@@ -193,10 +190,7 @@ impl ForumReplyAudienceQuery {
             per_page,
             items.len(),
         );
-        Ok(ForumReplyPage {
-            items,
-            next_cursor,
-        })
+        Ok(ForumReplyPage { items, next_cursor })
     }
 
     /// Exact current Forum-owned reply revision for an already-visible,

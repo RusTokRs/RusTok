@@ -55,7 +55,10 @@ impl CatalogService {
         } else {
             None
         };
-        Ok((rows.into_iter().map(|product| product.id).collect(), next_after))
+        Ok((
+            rows.into_iter().map(|product| product.id).collect(),
+            next_after,
+        ))
     }
 
     #[instrument(skip(self))]

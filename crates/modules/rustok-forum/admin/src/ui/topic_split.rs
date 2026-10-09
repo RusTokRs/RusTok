@@ -109,7 +109,6 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
         async move {
             if source_topic_id.trim().is_empty() {
                 Ok(ForumTopicSplitReplyPage {
-                    total: 0,
                     items: Vec::new(),
                 })
             } else {

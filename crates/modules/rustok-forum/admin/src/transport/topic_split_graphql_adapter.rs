@@ -2,8 +2,8 @@ use rustok_graphql::{GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 
 use crate::topic_split_model::{
-    ForumTopicSplitCandidate, ForumTopicSplitCommand, ForumTopicSplitReceipt,
-    ForumTopicSplitReply, ForumTopicSplitReplyPage,
+    ForumTopicSplitCandidate, ForumTopicSplitCommand, ForumTopicSplitReceipt, ForumTopicSplitReply,
+    ForumTopicSplitReplyPage,
 };
 
 pub type ApiError = String;

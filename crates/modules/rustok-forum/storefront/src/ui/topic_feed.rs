@@ -113,7 +113,7 @@ pub fn ForumTopicFeed(
                     });
                 }
                 TopicFilterMode::Top => {
-                    list.sort_by(|a, b| b.reply_count.cmp(&a.reply_count));
+                    list.sort_by_key(|b| std::cmp::Reverse(b.reply_count));
                 }
                 TopicFilterMode::Unread => {
                     list.retain(|t| {

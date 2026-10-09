@@ -16,7 +16,6 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::{use_navigate, use_query_map};
-use leptos_ui::Progress;
 #[cfg(target_arch = "wasm32")]
 use leptos_use::use_interval_fn;
 use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
@@ -1691,9 +1690,6 @@ pub fn ModulesList(
                         <Show when=move || latest_build().is_some() fallback=move || view! { <p class="text-sm text-muted-foreground">"No platform builds yet. The first install, uninstall, or upgrade will queue one."</p> }>
                             {move || latest_build().map(|build| {
                                 let progress_value = build.progress.clamp(0, 100);
-                                let progress_signal =
-                                    Signal::derive(move || f64::from(progress_value));
-                                let progress_label = i18n.translate("modules.build.progress");
                                 view! {
                                     <div class="space-y-4">
                                         <div class="flex items-center justify-between gap-3">
@@ -1707,7 +1703,7 @@ pub fn ModulesList(
                                             </div>
                                             <span class="text-sm font-semibold text-card-foreground">{format!("{}%", progress_value)}</span>
                                         </div>
-                                        <Progress value=progress_signal aria_label=progress_label />
+                                        <progress class="h-2 w-full overflow-hidden rounded-full accent-primary" max="100" value=progress_value></progress>
                                         <p class="text-xs text-muted-foreground">{move || if active_build_state.get().is_some() { "Platform actions stay locked until the current build finishes.".to_string() } else { "No active build. The latest completed job is shown for context.".to_string() }}</p>
                                         <Show when=move || active_build_state.get().as_ref().is_some_and(is_build_active)>
                                             <p class="text-xs text-muted-foreground">

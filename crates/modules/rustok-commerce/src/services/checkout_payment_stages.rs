@@ -391,13 +391,13 @@ mod rustok_payment_shim {
 mod tracing_shim {
     macro_rules! error {
         ($($tokens:tt)*) => {{
-            let _ = stringify!($($tokens)*);
+            ::tracing::error!($($tokens)*);
         }};
     }
 
     macro_rules! warn_event {
         ($($tokens:tt)*) => {{
-            let _ = stringify!($($tokens)*);
+            ::tracing::warn!($($tokens)*);
         }};
     }
 

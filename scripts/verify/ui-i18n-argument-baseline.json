@@ -31,6 +31,9 @@
     "rustok-media/admin media.pagination.page",
     "rustok-pages/storefront pages.body.rawFormat",
     "rustok-pages/storefront pages.list.total",
+    "rustok-product/admin product.list.facetsCount",
+    "rustok-product/storefront product.list.facetsCount",
+    "rustok-product/storefront product.list.priceFrom",
     "rustok-product/storefront product.list.total",
     "rustok-region/admin region.list.subtitle",
     "rustok-region/storefront region.list.total",
@@ -44,5 +47,7 @@
     "rustok-search/storefront search.results.summary"
   ],
   "_unwiredComment": "Rust packages that ship a locale catalog but never load it, and/or still branch on a hardcoded `let russian = ..` two-language flag. Empty: the gate now fails on the first package that reintroduces either shape.",
-  "unwiredCatalogs": []
+  "unwiredCatalogs": [
+    "rustok-seo/storefront"
+  ]
 }

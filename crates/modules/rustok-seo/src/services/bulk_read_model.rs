@@ -78,7 +78,13 @@ impl SeoService {
         let mut after: Option<String> = None;
         loop {
             let scan = self
-                .scan_bulk_read_rows(tenant, filter, after.as_deref(), BULK_SCAN_BATCH, usize::MAX)
+                .scan_bulk_read_rows(
+                    tenant,
+                    filter,
+                    after.as_deref(),
+                    BULK_SCAN_BATCH,
+                    usize::MAX,
+                )
                 .await?;
             scanned_total += scan.scanned;
             if scanned_total > MAX_BULK_TARGETS {
@@ -201,7 +207,9 @@ impl SeoService {
             batches += 1;
             scanned += page.items.len();
 
-            let rows = self.bulk_rows_for_summaries(tenant, filter, page.items).await?;
+            let rows = self
+                .bulk_rows_for_summaries(tenant, filter, page.items)
+                .await?;
             if !rows.is_empty() || page.next_cursor.is_none() || batches >= max_batches {
                 return Ok(BulkScan {
                     rows,

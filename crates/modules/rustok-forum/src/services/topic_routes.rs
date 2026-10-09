@@ -11,8 +11,8 @@ use rustok_content::normalize_locale_code;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait,
-    QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, QueryFilter,
+    Set,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;

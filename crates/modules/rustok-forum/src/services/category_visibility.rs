@@ -207,24 +207,13 @@ impl CategoryVisibilitySnapshot {
         }
 
         let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
-        let hierarchy_rows = rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find()
-            .filter(
-                rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TenantId
-                    .eq(tenant_id),
-            )
-            .filter(
-                rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId
-                    .is_in(category_ids.iter().copied()),
-            )
-            .all(db)
-            .await?;
-        let mut parents = hierarchy_rows
-            .into_iter()
-            .map(|row| (row.term_id, row.parent_term_id))
-            .collect::<HashMap<_, _>>();
-        for id in category_ids {
-            parents.entry(id).or_insert(None);
-        }
+        let parents = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_category_parents_in(
+            db,
+            tenant_id,
+            &category_ids,
+        )
+        .await
+        .map_err(crate::services::category::taxonomy_sync::map_taxonomy_error)?;
         let mut overrides = HashMap::new();
         for policy in forum_category_policy::Entity::find()
             .filter(forum_category_policy::Column::TenantId.eq(tenant_id))

@@ -22,7 +22,7 @@ use rustok_ui_core::apply_ui_query_pairs;
 
 use crate::catalog_controls::{ProductAdminListInput, serialize_attribute_filters};
 use crate::i18n::t;
-use crate::model::{AdminCatalogFacet, AdminCatalogFacetValue};
+use crate::model::AdminCatalogFacet;
 
 /// Maps owner-counted admin facets into the shared grid facet contract.
 ///
@@ -263,7 +263,7 @@ fn build_facet_href(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::ProductCatalogSearchOptions;
+    use crate::model::{AdminCatalogFacetValue, ProductCatalogSearchOptions};
 
     fn controls(filters: &[&str]) -> ProductAdminListInput {
         ProductAdminListInput {
@@ -346,7 +346,7 @@ mod tests {
             color.values[1].href,
             "/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc&attribute_filters=color%3Dred%3Bcolor%3Dblue"
         );
-        assert_eq!(panel.facets[1].unbounded_hint.is_some(), true);
+        assert!(panel.facets[1].unbounded_hint.is_some());
         assert_eq!(panel.facets[1].clear_href, None);
         assert_eq!(
             panel.clear_href.as_deref(),

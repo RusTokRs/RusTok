@@ -26,7 +26,7 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let tenant_id = parts
             .tenant_context()
-            .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "Tenant context missing"))?
+            .ok_or((StatusCode::BAD_REQUEST, "Tenant context missing"))?
             .id;
         let ctx = ServerRuntimeContext::from_ref(state);
         let registry = ctx.shared_get::<ModuleRegistry>().ok_or((

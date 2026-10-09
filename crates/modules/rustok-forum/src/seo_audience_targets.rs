@@ -3,9 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{Result as AnyResult, anyhow};
 use async_trait::async_trait;
 use rustok_seo_targets::{
-    SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
-    SeoBulkSummaryPage, SeoTargetAlternateRoute, SeoTargetBulkPageRequest, SeoTargetCapabilities,
-    SeoTargetLoadRequest,
+    SeoBulkSummaryPage, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
+    SeoTargetAlternateRoute, SeoTargetBulkPageRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
     SeoTargetLoadScope, SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
     SeoTargetSitemapRequest, SeoTargetSlug,
 };

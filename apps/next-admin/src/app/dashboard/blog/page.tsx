@@ -45,7 +45,8 @@ export default async function Page(props: PageProps) {
       >
         <PostsPage
           searchParams={{
-            page: searchParams.page as string | undefined,
+            after: searchParams.after as string | undefined,
+            history: searchParams.history as string | undefined,
             perPage: searchParams.perPage as string | undefined,
             title: searchParams.title as string | undefined,
             status: searchParams.status as string | undefined

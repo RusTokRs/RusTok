@@ -681,8 +681,9 @@ requireAll("crates/modules/rustok-comments/src/entities/comment_thread.rs", [
   "self.last_commented_at = Set(latest.map(|comment| comment.created_at))",
 ]);
 requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
-  "saturating_add(u64::from(per_page).saturating_sub(1))",
-  "u32::try_from(total_pages).unwrap_or(u32::MAX)",
+  "pub next_cursor: Option<String>,",
+  "pub struct AdminPostCursor",
+  "pub fn decode(",
 ]);
 requireAll("crates/modules/rustok-blog/src/error/public.rs", [
   "let internal = matches!(rich.kind, ErrorKind::Database | ErrorKind::Internal)",

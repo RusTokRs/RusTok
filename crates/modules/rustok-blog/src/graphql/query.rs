@@ -293,71 +293,6 @@ impl BlogQuery {
         })
     }
 
-    /// Public published-post list with keyset pagination. Returns no total count.
-    async fn public_blog_posts(
-        &self,
-        ctx: &Context<'_>,
-        filter: Option<PublicPostsFilter>,
-        tenant_id: Option<Uuid>,
-    ) -> Result<GqlPublicPostList> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_public_blog_channel_enabled(ctx).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
-
-        let filter = filter.unwrap_or_default();
-        let locale = resolve_graphql_locale(ctx, filter.locale.as_deref());
-        let after = filter
-            .after
-            .as_deref()
-            .map(crate::PublishedPostCursor::decode)
-            .transpose()
-            .map_err(crate::error::public::to_graphql_error)?;
-        let query = crate::PublicPostsPageQuery {
-            category_id: filter.category_id,
-            tag: filter.tag,
-            author_id: filter.author_id,
-            locale: Some(locale.clone()),
-            per_page: filter.per_page.map(|value| value as u32),
-            after,
-        };
-
-        let service = PostService::new(db.clone(), event_bus.clone());
-        let page = service
-            .list_public_visible_keyset(
-                tenant_id,
-                query,
-                Some(tenant.default_locale.as_str()),
-                public_channel_slug(ctx).as_deref(),
-            )
-            .await
-            .map_err(crate::error::public::to_graphql_error)?;
-
-        let author_profiles = load_author_profiles_map(
-            ctx,
-            tenant_id,
-            page.items.iter().map(|item| Some(item.author_id)),
-            locale.as_str(),
-            tenant.default_locale.as_str(),
-        )
-        .await?;
-        let items = page
-            .items
-            .into_iter()
-            .map(|item| {
-                let author_profile = author_profiles.get(&item.author_id).cloned();
-                map_post_list_item(item, author_profile)
-            })
-            .collect::<Vec<_>>();
-
-        Ok(GqlPublicPostList {
-            items,
-            next_cursor: page.next_cursor.map(|cursor| cursor.encode()),
-        })
-    }
-
     async fn blog_category(
         &self,
         ctx: &Context<'_>,
@@ -517,6 +452,21 @@ fn is_post_visible_for_request(
     is_authenticated: bool,
 ) -> bool {
     is_authenticated || is_post_visible_for_channel(channel_slugs, public_channel_slug)
+}
+
+fn map_post(post: crate::PostResponse, author_profile: Option<GqlProfileSummary>) -> GqlPost {
+    let mut gql: GqlPost = post.into();
+    gql.author_profile = author_profile;
+    gql
+}
+
+fn map_post_list_item(
+    item: crate::PostSummary,
+    author_profile: Option<GqlProfileSummary>,
+) -> GqlPostListItem {
+    let mut gql: GqlPostListItem = item.into();
+    gql.author_profile = author_profile;
+    gql
 }
 
 async fn load_author_profiles_map<I>(

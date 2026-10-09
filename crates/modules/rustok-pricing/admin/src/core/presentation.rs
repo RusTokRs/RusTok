@@ -6,8 +6,7 @@ use crate::core::routing::format_channel_scope_text;
 use crate::i18n::t;
 use crate::model::{
     PricingAdjustmentPreview, PricingEffectivePrice, PricingPrice, PricingPriceListOption,
-    PricingProductDetail, PricingProductListItem, PricingProductTranslation,
-    PricingResolutionContext, PricingVariant,
+    PricingProductDetail, PricingProductTranslation, PricingResolutionContext, PricingVariant,
 };
 
 #[derive(Clone)]

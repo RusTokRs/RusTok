@@ -115,10 +115,10 @@ It is important to distinguish:
 
 ### Capability Extensions
 
-| Slug | Crate | Runtime |
-|---|---|---|
-| `ai` | `rustok-ai` | `extension` |
-| `iggy_connector` | `rustok-iggy-connector` | `extension` |
+| Slug | Crate | Runtime | Required |
+|---|---|---|---|
+| `ai` | `rustok-ai` | `extension` | true |
+| `iggy_connector` | `rustok-iggy-connector` | `extension` | false |
 <!-- @generated:module-topology-end -->
 
 Capability extensions are deployment-scoped, globally active when compiled and are

@@ -34,11 +34,21 @@ export function TimelineScroller({
 
       <div className="flex flex-col items-center py-1">
         <span className="text-xs font-bold text-foreground">{currentPost}</span>
-        <div className="my-1.5 h-16 w-1 rounded-full bg-muted">
-          <div
-            className="w-full rounded-full bg-primary transition-all duration-300"
-            style={{ height: `${percentage}%` }}
-          />
+        <div className="my-1.5 h-16 w-1 overflow-hidden rounded-full bg-muted">
+          <svg
+            aria-hidden="true"
+            className="block h-full w-full"
+            preserveAspectRatio="none"
+            viewBox="0 0 4 100"
+          >
+            <rect
+              className="fill-primary transition-all duration-300"
+              x="0"
+              y="0"
+              width="4"
+              height={`${percentage}`}
+            />
+          </svg>
         </div>
         <span className="text-[10px] text-muted-foreground">{totalPosts}</span>
       </div>

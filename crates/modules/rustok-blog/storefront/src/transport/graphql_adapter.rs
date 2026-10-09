@@ -23,7 +23,7 @@ struct StorefrontBlogResponse {
 struct StorefrontBlogVariables {
     #[serde(rename = "postSlug")]
     post_slug: String,
-    filter: PostsFilter,
+    filter: PublicPostsFilter,
     locale: Option<String>,
     #[serde(rename = "commentsPage")]
     comments_page: u64,

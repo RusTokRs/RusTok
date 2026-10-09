@@ -56,12 +56,15 @@ export function CategoriesTable({ categories }: CategoriesTableProps) {
       id: 'category',
       header: 'Category',
       headerClassName: 'w-[350px]',
-      cell: (cat) => {
+const indentScale = ['pl-0', 'pl-5', 'pl-10', 'pl-14', 'pl-20', 'pl-24', 'pl-28', 'pl-32'];
+function categoryIndentClass(d: number): string {
+  return indentScale[Math.min(d, indentScale.length - 1)] ?? 'pl-36';
+}
+
         const depth = getDepth(cat);
         return (
           <div
-            className='flex items-center gap-2'
-            style={{ paddingLeft: `${depth * 20}px` }}
+            className={`flex items-center gap-2 ${categoryIndentClass(depth)}`}
           >
             {depth > 0 ? (
               <CornerDownRight className='text-muted-foreground h-3.5 w-3.5 flex-shrink-0' />

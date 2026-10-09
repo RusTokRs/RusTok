@@ -4,8 +4,8 @@ use uuid::Uuid;
 
 use rustok_api::Patch;
 use rustok_blog::{
-    CategoryService as BlogCategoryService, CreateCategoryInput, CreatePostInput, PostService,
-    UpdatePostInput,
+    CategoryService as BlogCategoryService, CreateCategoryInput, CreatePostInput,
+    ListCategoriesFilter, PostService, UpdatePostInput,
     ports::{blog_post, blog_post_translation},
 };
 use rustok_core::SecurityContext;
@@ -28,22 +28,25 @@ pub async fn import_blog_categories(
     let mut created = 0;
     let mut skipped = 0;
 
-    for (pos, cat) in categories.iter().enumerate() {
-        // Idempotency: check if category already exists in taxonomy term translations
-        let existing = rustok_taxonomy::entities::taxonomy_term_translation::Entity::find()
-            .filter(
-                rustok_taxonomy::entities::taxonomy_term_translation::Column::TenantId
-                    .eq(tenant_id),
-            )
-            .filter(
-                rustok_taxonomy::entities::taxonomy_term_translation::Column::Slug.eq(&cat.slug),
-            )
-            .one(db)
-            .await?;
+    let (existing_items, _) = cat_service
+        .list(
+            tenant_id,
+            security.clone(),
+            ListCategoriesFilter {
+                locale: Some(locale.to_string()),
+                ..Default::default()
+            },
+        )
+        .await?;
+    let mut existing_slugs: HashMap<String, Uuid> = existing_items
+        .into_iter()
+        .map(|item| (item.slug, item.id))
+        .collect();
 
-        if let Some(translation) = existing {
+    for (pos, cat) in categories.iter().enumerate() {
+        if let Some(&existing_id) = existing_slugs.get(&cat.slug) {
             tracing::info!(slug = %cat.slug, "Blog category already exists, reusing ID");
-            slug_to_id.insert(cat.slug.clone(), translation.term_id);
+            slug_to_id.insert(cat.slug.clone(), existing_id);
             skipped += 1;
             continue;
         }
@@ -65,6 +68,7 @@ pub async fn import_blog_categories(
             .await?;
 
         slug_to_id.insert(cat.slug.clone(), id);
+        existing_slugs.insert(cat.slug.clone(), id);
         created += 1;
     }
 

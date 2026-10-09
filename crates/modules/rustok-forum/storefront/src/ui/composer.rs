@@ -11,16 +11,11 @@ pub struct ComposerQuote {
     pub snippet: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum ComposerMode {
+    #[default]
     Reply,
     Topic,
-}
-
-impl Default for ComposerMode {
-    fn default() -> Self {
-        Self::Reply
-    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -367,10 +362,8 @@ pub fn ForumComposer(
                                         class="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow transition hover:bg-primary/90 disabled:opacity-60"
                                         on:click=move |_| {
                                             let st = composer.get();
-                                            if let Some(ref cb) = on_submitted {
-                                                if let Some(t_id) = st.topic_id {
-                                                    cb.run(t_id);
-                                                }
+                                            if let (Some(cb), Some(t_id)) = (on_submitted.as_ref(), st.topic_id) {
+                                                cb.run(t_id);
                                             }
                                             composer.update(|c| c.reset());
                                         }

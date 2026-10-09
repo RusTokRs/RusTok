@@ -743,10 +743,10 @@ async fn load_facet_total(
         )
         .cond_where(products_condition.clone());
     let statement = db.get_database_backend().build(&query);
-    let row = FacetCountRow::find_by_statement(statement)
-        .one(db)
-        .await?;
-    Ok(row.map(|row| std::cmp::Ord::max(row.product_count, 0) as u64).unwrap_or(0))
+    let row = FacetCountRow::find_by_statement(statement).one(db).await?;
+    Ok(row
+        .map(|row| std::cmp::Ord::max(row.product_count, 0) as u64)
+        .unwrap_or(0))
 }
 
 async fn load_facet_buckets(
@@ -795,7 +795,12 @@ async fn load_facet_buckets(
                 .all(db)
                 .await?
                 .into_iter()
-                .map(|row| (row.option_id.to_string(), std::cmp::Ord::max(row.product_count, 0) as u64))
+                .map(|row| {
+                    (
+                        row.option_id.to_string(),
+                        std::cmp::Ord::max(row.product_count, 0) as u64,
+                    )
+                })
                 .collect::<Vec<_>>()
         }
         AttributeValueType::Boolean => {

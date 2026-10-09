@@ -3,7 +3,7 @@ use rustok_ui_core::normalize_optional_ui_text;
 use crate::i18n::t;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ProductAdminListInput {
+pub struct ProductAdminListInput {
     pub search: Option<String>,
     pub status: Option<String>,
     pub category_id: Option<String>,

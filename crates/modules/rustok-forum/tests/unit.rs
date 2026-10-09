@@ -69,7 +69,7 @@ fn typed_statuses_preserve_existing_wire_values() {
 fn list_topics_filter_serde_defaults() {
     // serde defaults (page=1, per_page=20) apply during JSON deserialization.
     let filter: ListTopicsFilter = serde_json::from_str("{}").expect("deserialise empty object");
-    assert_eq!(filter.page, 1);
+    assert!(filter.after.is_none());
     assert_eq!(filter.per_page, 20);
     assert!(filter.category_id.is_none());
     assert!(filter.status.is_none());

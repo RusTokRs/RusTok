@@ -102,6 +102,7 @@ pub mod storefront_read_state {
 }
 pub mod subscription;
 mod topic {
+    use sea_orm::QuerySelect;
     include!("topic_import.rs");
     include!("topic.rs");
     include!("topic_locale_enumeration.rs");

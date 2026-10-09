@@ -198,4 +198,4 @@ impl CategoryProjectionOwnerService {
 }
 
 #[path = "category_taxonomy_sync.rs"]
-pub(super) mod taxonomy_sync;
+pub(crate) mod taxonomy_sync;

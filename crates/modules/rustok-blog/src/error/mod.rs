@@ -262,9 +262,9 @@ impl From<rustok_taxonomy::TaxonomyError> for BlogError {
         use rustok_taxonomy::TaxonomyError;
         match value {
             TaxonomyError::Database(err) => Self::Database(err),
-            TaxonomyError::Internal(message) => {
-                Self::Invariant(format!("Taxonomy dependency failed: {message}"))
-            }
+            TaxonomyError::Internal(message) => Self::Invariant(format!(
+                "Taxonomy dependency failed: {message}"
+            )),
             TaxonomyError::Forbidden(message) => Self::Forbidden(message),
             TaxonomyError::Validation(message) => Self::Validation(message),
             TaxonomyError::DuplicateCanonicalKey(message)

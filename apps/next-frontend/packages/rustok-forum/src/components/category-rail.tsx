@@ -12,6 +12,22 @@ interface CategoryRailProps {
   baseHref?: string;
 }
 
+function colorToBgClass(color?: string | null): string {
+  if (!color) return 'bg-primary';
+  const hex = color.trim().toLowerCase();
+  switch (hex) {
+    case '#3b82f6': return 'bg-blue-500';
+    case '#10b981': return 'bg-emerald-500';
+    case '#f59e0b': return 'bg-amber-500';
+    case '#ef4444': return 'bg-red-500';
+    case '#8b5cf6': return 'bg-violet-500';
+    case '#ec4899': return 'bg-pink-500';
+    case '#06b6d4': return 'bg-cyan-500';
+    case '#64748b': return 'bg-slate-500';
+    default: return 'bg-primary';
+  }
+}
+
 export function CategoryRail({
   categories,
   total,
@@ -87,8 +103,7 @@ export function CategoryRail({
               }`}
             >
               <span
-                className="absolute inset-y-0 left-0 w-1.5"
-                style={{ backgroundColor: accentColor }}
+                className={`absolute inset-y-0 left-0 w-1.5 ${colorToBgClass(category.color)}`}
               />
               <div className="pl-3">
                 <div className="flex items-start justify-between gap-3">

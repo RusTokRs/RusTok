@@ -302,8 +302,16 @@ export async function listForumTopicReplies(
   // Split and fork need every reply, so walk the keyset cursor to the end.
   const items: ForumTopicSplitReplyPage['items'] = [];
   let after: string | null = null;
+
+  type ForumRepliesQueryResult = {
+    forumReplies: {
+      nextCursor: string | null;
+      items: ForumTopicSplitReplyPage['items'];
+    };
+  };
+
   for (;;) {
-    const data = await graphqlRequest<
+    const data: ForumRepliesQueryResult = await graphqlRequest<
       {
         tenantId: string;
         topicId: string;
@@ -311,7 +319,7 @@ export async function listForumTopicReplies(
         after: string | null;
         perPage: number;
       },
-      { forumReplies: { nextCursor: string | null; items: ForumTopicSplitReplyPage['items'] } }
+      ForumRepliesQueryResult
     >(
       query,
       {

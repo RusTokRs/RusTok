@@ -51,8 +51,15 @@ impl ContentOrchestrationBridge for ServerContentOrchestrationBridge {
         actor_id: Option<Uuid>,
         input: &PromoteTopicToPostInput,
     ) -> ContentResult<PromoteTopicToPostOutput> {
-        promote::promote_topic_to_post(&self.taxonomy, &self.routes, txn, tenant_id, actor_id, input)
-            .await
+        promote::promote_topic_to_post(
+            &self.taxonomy,
+            &self.routes,
+            txn,
+            tenant_id,
+            actor_id,
+            input,
+        )
+        .await
     }
 
     async fn demote_post_to_topic(
@@ -62,8 +69,15 @@ impl ContentOrchestrationBridge for ServerContentOrchestrationBridge {
         actor_id: Option<Uuid>,
         input: &DemotePostToTopicInput,
     ) -> ContentResult<DemotePostToTopicOutput> {
-        demote::demote_post_to_topic(&self.taxonomy, &self.routes, txn, tenant_id, actor_id, input)
-            .await
+        demote::demote_post_to_topic(
+            &self.taxonomy,
+            &self.routes,
+            txn,
+            tenant_id,
+            actor_id,
+            input,
+        )
+        .await
     }
 
     async fn split_topic(

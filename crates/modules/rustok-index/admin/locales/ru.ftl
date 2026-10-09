@@ -64,6 +64,7 @@ index-source-empty = Источники replay не зарегистрирова
 index-source-entity = Целевая сущность
 index-source-mode = Режим replay
 index-source-name = Имя источника
+index-storage-empty = Таблицы хранилища не найдены.
 index-subtitle = Платформенный кросс-модульный реляционный движок индексирования и запросов.
 index-tab-operations = Replay и синхронизация
 index-tab-overview = Обзор

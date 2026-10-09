@@ -9,24 +9,12 @@ use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use super::components::{
-    BlogEditBanner, BlogPostFormSetters, BlogPostsTable, apply_post_to_form,
-    blog_form_copy_view_model, blog_form_view_model, reset_form,
+    BlogEditBanner, BlogPostFormSetters, BlogPostsTable, BlogSeoConfigError, apply_post_to_form,
+    blog_form_copy_view_model, blog_form_view_model, local_resource, reset_form,
 };
 use super::richtext::BlogRichTextEditor;
 use crate::i18n::t;
 use crate::{core, transport};
-
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
-where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
-{
-    LocalResource::new(move || fetcher(source()))
-}
 
 #[component]
 pub fn BlogAdmin() -> impl IntoView {
@@ -37,25 +25,7 @@ pub fn BlogAdmin() -> impl IntoView {
     let seo_target_kind = match SeoTargetSlug::new(seo_builtin_slug::BLOG_POST) {
         Ok(target_kind) => target_kind,
         Err(_) => {
-            return view! {
-                <section class="m-6 rounded-2xl border border-destructive/30 bg-destructive/5 p-6">
-                    <h2 class="text-lg font-semibold text-destructive">
-                        {t(
-                            ui_locale.as_deref(),
-                            "blog.error.seoConfiguration",
-                            "Blog SEO configuration is unavailable",
-                        )}
-                    </h2>
-                    <p class="mt-2 text-sm text-muted-foreground">
-                        {t(
-                            ui_locale.as_deref(),
-                            "blog.error.seoTargetInvalid",
-                            "The Blog SEO target is invalid. Contact the platform administrator.",
-                        )}
-                    </p>
-                </section>
-            }
-            .into_any();
+            return view! { <BlogSeoConfigError ui_locale=ui_locale.clone() /> }.into_any();
         }
     };
     let selected_post_query = use_route_query_value(AdminQueryKey::PostId.as_str());

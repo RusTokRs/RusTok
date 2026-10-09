@@ -684,6 +684,7 @@ modules-error-load = Failed to load modules
 # RBAC Management
 rbac-title = Roles & Permissions
 rbac-subtitle = Manage access control, system roles, custom roles, and fine-grained permissions across all platform modules.
+# plural-exempt: parenthesized count label needs no agreement
 rbac-tab-roles = Roles ({ $count })
 rbac-tab-permissions = Permissions Catalog
 rbac-btn-create-role = Create Role
@@ -709,8 +710,13 @@ rbac-action-edit = Edit Role & Permissions
 rbac-action-assign = Assign to User
 rbac-action-delete = Delete Role
 rbac-action-hide-perms = Hide permissions
-rbac-action-view-perms = View { $count } permissions
+rbac-action-view-perms =
+    { $count ->
+        [one] View 1 permission
+       *[other] View { $count } permissions
+    }
 rbac-perms-granted-for = Granted Permissions for { $name }:
+# plural-exempt: adjectival 'N total' is invariant in English
 rbac-perms-total = { $count } total
 rbac-system-protected-tooltip = System roles cannot be deleted
 rbac-superadmin-locked-notice = Super Administrator possesses full immutable platform authority. All permissions are granted and cannot be restricted.
@@ -726,7 +732,11 @@ rbac-matrix-title = Permission Matrix
 rbac-matrix-search-placeholder = Filter modules or permissions...
 rbac-matrix-select-all = Select All
 rbac-matrix-clear-all = Clear All
-rbac-matrix-selected-count = { $selected } of { $total } permissions selected
+rbac-matrix-selected-count =
+    { $total ->
+        [one] { $selected } of 1 permission selected
+       *[other] { $selected } of { $total } permissions selected
+    }
 rbac-matrix-module-all = Select All in Module
 rbac-matrix-module-none = Deselect All in Module
 

@@ -11,13 +11,8 @@
 //! idempotency identity in `transport` and are re-exported here so the mounted
 //! surface has one import path.
 
-#[path = "transport/graphql_error_safety.rs"]
-mod graphql_error_safety;
-#[path = "transport/graphql_fallback_mutation_error_safety.rs"]
-mod graphql_fallback_mutation_error_safety;
-#[path = "transport/graphql_fallback_mutations.rs"]
-mod graphql_fallback_mutations;
-pub(crate) use graphql_fallback_mutations::{
+use crate::transport::graphql_error_safety;
+pub(crate) use crate::transport::graphql_fallback_mutations::{
     bind_category_attribute, bind_schema_attribute, clear_detached_product_attribute_values,
     create_attribute_schema, create_catalog_category, create_category_attribute_group,
     create_product_attribute, create_product_attribute_option,
@@ -30,13 +25,9 @@ use rustok_ui_core::UiRouteContext;
 
 use crate::catalog_controls::{ProductAdminListInput, build_product_admin_list_input};
 use crate::model::{
-    BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategoryDraft,
-    CatalogCategoryList, CategoryAttributeGroupDraft, ProductAdminBootstrap, ProductAttributeDraft,
-    ProductAttributeList, ProductAttributeOptionDraft, ProductAttributeSchemaDraft,
-    ProductAttributeSchemaGroupDraft, ProductAttributeSchemaList, ProductAttributeValueItem,
-    ProductAttributeValuePatchDraft, ProductCatalogSearchOptions, ProductDetail, ProductDraft,
-    ProductEffectiveForm, ProductList, ProductPricingDetail, SetCategorySchemaModeDraft,
-    ShippingProfileList,
+    CatalogCategoryList, ProductAdminBootstrap, ProductAttributeList, ProductAttributeSchemaList,
+    ProductAttributeValueItem, ProductCatalogSearchOptions, ProductDetail, ProductDraft,
+    ProductEffectiveForm, ProductList, ProductPricingDetail, ShippingProfileList,
 };
 use crate::transport as legacy;
 
@@ -272,6 +263,7 @@ pub(crate) async fn fetch_product(
         .map_err(|error| context.map_error(error))
 }
 
+#[allow(dead_code)]
 pub(crate) async fn fetch_product_pricing(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -488,6 +480,5 @@ pub(crate) async fn delete_product(
 
 /// Image and variant writes keep their retry identity in the private gateway.
 pub(crate) use legacy::{
-    add_product_image, create_product_variant, delete_product_image, delete_product_variant,
-    reorder_product_images, set_variant_axes, update_product_image, update_product_variant,
+    add_product_image, delete_product_image, set_variant_axes, update_product_variant,
 };

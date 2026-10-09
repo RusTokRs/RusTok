@@ -3,7 +3,6 @@
 pub mod forum_attachment_relation;
 pub mod forum_attachment_relation_head;
 pub mod forum_audience_mention;
-pub mod forum_topic_route;
 pub mod forum_category;
 pub mod forum_category_audience_channel;
 pub mod forum_category_audience_group;
@@ -60,6 +59,7 @@ pub mod forum_topic_reply_create_audience_policy;
 pub mod forum_topic_reply_create_audience_role;
 pub mod forum_topic_reply_create_audience_user;
 pub mod forum_topic_revision;
+pub mod forum_topic_route;
 pub mod forum_topic_subscription;
 pub mod forum_topic_tag;
 pub mod forum_topic_translation;

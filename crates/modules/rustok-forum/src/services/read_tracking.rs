@@ -377,15 +377,17 @@ async fn category_subtree_ids_in_tx(
     }
 
     let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
-    let hierarchy_rows = rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find()
-        .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-        .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId.is_in(category_ids.iter().copied()))
-        .all(txn)
-        .await?;
+    let parents = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_category_parents_in(
+        txn,
+        tenant_id,
+        &category_ids,
+    )
+    .await
+    .map_err(crate::services::category::taxonomy_sync::map_taxonomy_error)?;
     let mut children = HashMap::<Uuid, Vec<Uuid>>::new();
-    for row in hierarchy_rows {
-        if let Some(parent_id) = row.parent_term_id {
-            children.entry(parent_id).or_default().push(row.term_id);
+    for (term_id, parent_id) in parents {
+        if let Some(parent_id) = parent_id {
+            children.entry(parent_id).or_default().push(term_id);
         }
     }
 

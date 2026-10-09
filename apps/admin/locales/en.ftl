@@ -410,16 +410,7 @@ workflows-failures = Failures
 workflows-templates = Templates
 workflows-versions = Versions
 workflows-restore = Restore
-cache-title = Cache
-cache-eyebrow = Infrastructure
-cache-subtitle = Cache backend health and configuration
-cache-health-title = Cache Backend Status
-cache-health-backend = Backend
-cache-health-configured = Redis configured
-cache-health-healthy = Redis healthy
-cache-health-error = Error
-cache-yes = Yes
-cache-no = No
+
 cache-settings-title = Cache Configuration
 cache-settings-description = Select cache storage engine and connection parameters
 cache-settings-mode = Cache Mode

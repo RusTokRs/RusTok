@@ -5,7 +5,8 @@ version = "0.1.0"
 description = "Centralised bounded cache capability — Redis lifecycle/timeouts, weighted fallback, atomic compare-and-set, invalidation and anti-stampede loading."
 ownership = "first_party"
 trust_level = "core"
-ui_classification = "dual_surface"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
 
 [crate]
 entry_type = "CacheModule"

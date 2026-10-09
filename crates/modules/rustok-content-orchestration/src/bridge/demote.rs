@@ -2,8 +2,8 @@ use chrono::Utc;
 use rustok_blog::{blog_post, blog_post_tag, blog_post_translation};
 use rustok_comments::{comment, comment_thread};
 use rustok_content::{
-    ContentError, ContentResult, DemotePostToTopicInput,
-    DemotePostToTopicOutput, resolve_by_locale_with_fallback,
+    ContentError, ContentResult, DemotePostToTopicInput, DemotePostToTopicOutput,
+    resolve_by_locale_with_fallback,
 };
 use rustok_forum::{TopicStatus, forum_topic, forum_topic_translation};
 use rustok_taxonomy::TaxonomyService;
@@ -13,13 +13,13 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::bridge::helpers::{
-    adjust_forum_category_counters_in_tx, ensure_forum_category_exists_in_tx,
-    normalize_locale, refresh_forum_topic_stats_in_tx, resequence_forum_topic_replies_in_tx,
-};
 use crate::bridge::OwnerRoutes;
-use rustok_forum::services::topic_routes::forum_topic_route;
+use crate::bridge::helpers::{
+    adjust_forum_category_counters_in_tx, ensure_forum_category_exists_in_tx, normalize_locale,
+    refresh_forum_topic_stats_in_tx, resequence_forum_topic_replies_in_tx,
+};
 use crate::bridge::tags::{load_blog_tag_names_for_post_in_tx, sync_forum_tags_for_topic_in_tx};
+use rustok_forum::services::topic_routes::forum_topic_route;
 
 pub(crate) async fn demote_post_to_topic(
     taxonomy: &TaxonomyService,
@@ -138,11 +138,13 @@ pub(crate) async fn demote_post_to_topic(
     routes
         .blog
         .remove_post_routes_in_tx(txn, tenant_id, actor_id, post.id, &post.slug)
-        .await?;
+        .await
+        .map_err(crate::errors::blog_error_to_content_error)?;
     routes
         .forum
         .remove_redirects_to_target_in_tx(txn, tenant_id, actor_id, "blog_post", post.id)
-        .await?;
+        .await
+        .map_err(crate::errors::forum_error_to_content_error)?;
     routes
         .blog
         .redirect_source_route_in_tx(
@@ -154,7 +156,8 @@ pub(crate) async fn demote_post_to_topic(
             topic_id,
             &forum_topic_route(topic_id),
         )
-        .await?;
+        .await
+        .map_err(crate::errors::blog_error_to_content_error)?;
 
     Ok(DemotePostToTopicOutput {
         post_id: post.id,

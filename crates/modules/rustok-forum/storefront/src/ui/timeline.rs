@@ -27,11 +27,21 @@ pub fn TimelineScroller(
 
             <div class="flex flex-col items-center py-1">
                 <span class="text-xs font-bold text-foreground">{current_post}</span>
-                <div class="my-1.5 h-16 w-1 rounded-full bg-muted">
-                    <div
-                        class="w-full rounded-full bg-primary transition-all duration-300"
-                        style=format!("height: {percentage}%")
-                    />
+                <div class="my-1.5 h-16 w-1 overflow-hidden rounded-full bg-muted">
+                    <svg
+                        aria-hidden="true"
+                        class="block h-full w-full"
+                        preserveAspectRatio="none"
+                        viewBox="0 0 4 100"
+                    >
+                        <rect
+                            class="fill-primary transition-all duration-300"
+                            x="0"
+                            y="0"
+                            width="4"
+                            height=format!("{percentage}")
+                        />
+                    </svg>
                 </div>
                 <span class="text-[10px] text-muted-foreground">{total_posts}</span>
             </div>

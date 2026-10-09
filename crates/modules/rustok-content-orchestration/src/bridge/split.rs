@@ -1,19 +1,17 @@
 use std::collections::HashSet;
 
 use chrono::Utc;
-use rustok_content::{
-    ContentError, ContentResult, SplitTopicInput, SplitTopicOutput,
-};
+use rustok_content::{ContentError, ContentResult, SplitTopicInput, SplitTopicOutput};
 use rustok_forum::{forum_reply, forum_topic, forum_topic_translation};
 use rustok_taxonomy::TaxonomyService;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseTransaction};
 use uuid::Uuid;
 
 use crate::bridge::helpers::{
-    adjust_forum_category_counters_in_tx, find_topic_in_tx,
-    load_forum_reply_records_in_tx, load_topic_translations_in_tx,
-    normalize_locale, normalize_slug, refresh_forum_topic_stats_in_tx,
-    resequence_forum_topic_replies_in_tx, resolve_topic_translation,
+    adjust_forum_category_counters_in_tx, find_topic_in_tx, load_forum_reply_records_in_tx,
+    load_topic_translations_in_tx, normalize_locale, normalize_slug,
+    refresh_forum_topic_stats_in_tx, resequence_forum_topic_replies_in_tx,
+    resolve_topic_translation,
 };
 use crate::bridge::tags::{load_forum_tag_names_for_topic_in_tx, sync_forum_tags_for_topic_in_tx};
 

@@ -112,11 +112,11 @@ function renderOverviewTables({ core, optional, extensions }) {
   lines.push('');
   lines.push('### Capability Extensions');
   lines.push('');
-  lines.push('| Slug | Crate | Runtime |');
-  lines.push('|---|---|---|');
+  lines.push('| Slug | Crate | Runtime | Required |');
+  lines.push('|---|---|---|---|');
 
   for (const mod of extensions) {
-    lines.push(`| \`${mod.slug}\` | \`${mod.crateName}\` | \`${mod.runtime}\` |`);
+    lines.push(`| \`${mod.slug}\` | \`${mod.crateName}\` | \`${mod.runtime}\` | ${mod.isRequired} |`);
   }
 
   lines.push('<!-- @generated:module-topology-end -->');

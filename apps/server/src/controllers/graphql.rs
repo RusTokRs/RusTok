@@ -90,7 +90,6 @@ async fn graphql_handler(
     headers: HeaderMap,
     json_request: Result<Json<async_graphql::Request>, JsonRejection>,
 ) -> Response {
-    tracing::info!(">>> graphql_handler reached! <<<");
     let Json(req) = match json_request {
         Ok(request) => request,
         Err(rejection) => return graphql_json_rejection_response(rejection),
@@ -194,7 +193,6 @@ fn persisted_query_hash(req: &async_graphql::Request) -> Option<&str> {
 }
 
 async fn graphql_playground() -> impl axum::response::IntoResponse {
-    tracing::info!(">>> graphql_playground reached! <<<");
     axum::response::Html(async_graphql::http::playground_source(
         GraphQLPlaygroundConfig::new("/api/graphql").subscription_endpoint("/api/graphql/ws"),
     ))

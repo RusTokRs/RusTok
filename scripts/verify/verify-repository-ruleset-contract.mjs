@@ -239,11 +239,19 @@ function runSelfTest() {
     const contractFile = path.join(fixtureRoot, "contract.json");
     fs.writeFileSync(contractFile, JSON.stringify(contract));
     assert.equal(readJsonFile(contractFile, "contract").schema_version, 1);
-    fs.symlinkSync("contract.json", path.join(fixtureRoot, "contract-link.json"));
-    assert.throws(
-      () => readJsonFile(path.join(fixtureRoot, "contract-link.json"), "contract"),
-      /regular non-symlink file/,
-    );
+    try {
+      fs.symlinkSync("contract.json", path.join(fixtureRoot, "contract-link.json"));
+      assert.throws(
+        () => readJsonFile(path.join(fixtureRoot, "contract-link.json"), "contract"),
+        /regular non-symlink file/,
+      );
+    } catch (symlinkError) {
+      if (process.platform === "win32" && symlinkError.code === "EPERM") {
+        // Windows unprivileged environment without developer mode cannot create symlinks
+      } else {
+        throw symlinkError;
+      }
+    }
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }

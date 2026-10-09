@@ -57,6 +57,7 @@ blog-table-draft = черновик
 blog-table-edit = Редактировать
 blog-table-editing = Редактируется
 blog-table-empty = Пока нет постов. Создайте первый через форму пакета модуля.
+blog-table-loadMore = Загрузить ещё
 blog-table-locale = Локаль
 blog-table-noExcerpt = Нет краткого описания
 blog-table-publish = Опубликовать

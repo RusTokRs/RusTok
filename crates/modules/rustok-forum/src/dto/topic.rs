@@ -182,7 +182,9 @@ impl TopicListCursor {
 
     pub fn decode(value: &str) -> ForumResult<Self> {
         let invalid = || ForumError::Validation("Forum topic list cursor is invalid".to_string());
-        let bytes = URL_SAFE_NO_PAD.decode(value.trim()).map_err(|_| invalid())?;
+        let bytes = URL_SAFE_NO_PAD
+            .decode(value.trim())
+            .map_err(|_| invalid())?;
         let raw = String::from_utf8(bytes).map_err(|_| invalid())?;
         let parts: Vec<&str> = raw.split('|').collect();
         let [version, is_pinned, last_reply_at, updated_at, id] = parts.as_slice() else {

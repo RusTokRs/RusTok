@@ -13,6 +13,7 @@
 ))]
 pub mod graphql;
 
+pub(crate) mod errors;
 pub mod runtime;
 
 #[cfg(all(
@@ -22,11 +23,7 @@ pub mod runtime;
     feature = "mod-comments"
 ))]
 mod bridge;
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum"
-))]
+#[cfg(all(feature = "mod-content", feature = "mod-blog", feature = "mod-forum"))]
 mod route_resolver;
 
 pub use runtime::{SharedContentOrchestrationService, build_content_orchestration_service};
@@ -46,11 +43,7 @@ pub use runtime::content_orchestration_from_shared;
     feature = "mod-comments"
 ))]
 pub use bridge::ServerContentOrchestrationBridge;
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum"
-))]
+#[cfg(all(feature = "mod-content", feature = "mod-blog", feature = "mod-forum"))]
 pub use route_resolver::OwnerCanonicalRouteResolver;
 
 #[cfg(all(

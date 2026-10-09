@@ -410,16 +410,7 @@ workflows-failures = Ошибки
 workflows-templates = Шаблоны
 workflows-versions = Версии
 workflows-restore = Восстановить
-cache-title = Кэш
-cache-eyebrow = Инфраструктура
-cache-subtitle = Состояние и конфигурация кэш-бэкенда
-cache-health-title = Состояние кэш-бэкенда
-cache-health-backend = Бэкенд
-cache-health-configured = Redis настроен
-cache-health-healthy = Redis подключён
-cache-health-error = Ошибка
-cache-yes = Да
-cache-no = Нет
+
 cache-settings-title = Конфигурация кэша
 cache-settings-description = Выберите режим работы кэша и параметры подключения
 cache-settings-mode = Режим кэширования

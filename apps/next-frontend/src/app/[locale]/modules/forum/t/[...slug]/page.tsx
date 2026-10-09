@@ -156,7 +156,7 @@ export default async function ForumTopicPage({ params }: TopicPageProps) {
           topicId={topic.id}
           initialTopic={topic}
           initialReplies={repliesData.items}
-          initialRepliesTotal={repliesData.total}
+          initialRepliesTotal={topic.replyCount}
         />
       </div>
     </main>

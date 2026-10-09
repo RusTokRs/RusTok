@@ -70,6 +70,7 @@ struct StorefrontAttributeValueOptionRow {
     value_id: Uuid,
     option_id: Uuid,
     option_code: String,
+    #[allow(dead_code)]
     option_position: i32,
 }
 

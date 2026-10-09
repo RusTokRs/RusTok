@@ -141,16 +141,24 @@ function runSelfTest() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rustok-migration-approval-"));
   try {
     fs.writeFileSync(path.join(fixtureRoot, "target.txt"), "policy");
-    fs.symlinkSync("target.txt", path.join(fixtureRoot, "link.txt"));
-    fs.symlinkSync("missing.txt", path.join(fixtureRoot, "dangling.txt"));
-    assert.deepEqual(fileState(fixtureRoot, "link.txt"), {
-      kind: "symlink",
-      target: "target.txt",
-    });
-    assert.deepEqual(fileState(fixtureRoot, "dangling.txt"), {
-      kind: "symlink",
-      target: "missing.txt",
-    });
+    try {
+      fs.symlinkSync("target.txt", path.join(fixtureRoot, "link.txt"));
+      fs.symlinkSync("missing.txt", path.join(fixtureRoot, "dangling.txt"));
+      assert.deepEqual(fileState(fixtureRoot, "link.txt"), {
+        kind: "symlink",
+        target: "target.txt",
+      });
+      assert.deepEqual(fileState(fixtureRoot, "dangling.txt"), {
+        kind: "symlink",
+        target: "missing.txt",
+      });
+    } catch (symlinkError) {
+      if (process.platform === "win32" && symlinkError.code === "EPERM") {
+        // Windows unprivileged environment without developer mode cannot create symlinks
+      } else {
+        throw symlinkError;
+      }
+    }
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }

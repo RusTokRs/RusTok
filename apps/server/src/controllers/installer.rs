@@ -13,6 +13,7 @@ use rustok_installer::{
 use rustok_installer_persistence::{InstallStepReceiptItem, InstallerPersistenceService};
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::common::settings::is_production_environment;
@@ -476,7 +477,10 @@ fn require_setup_token(headers: &HeaderMap) -> Result<()> {
                 .and_then(|value| value.strip_prefix("Bearer "))
         });
 
-    if provided.is_some_and(|value| value == expected) {
+    let is_valid = provided
+        .is_some_and(|value| bool::from(value.as_bytes().ct_eq(expected.as_bytes())));
+
+    if is_valid {
         Ok(())
     } else {
         Err(forbidden_error("invalid installer setup token"))

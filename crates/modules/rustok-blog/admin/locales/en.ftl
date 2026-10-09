@@ -57,6 +57,7 @@ blog-table-draft = draft
 blog-table-edit = Edit
 blog-table-editing = Editing
 blog-table-empty = No posts yet. Create the first one from the module package form.
+blog-table-loadMore = Load more
 blog-table-locale = Locale
 blog-table-noExcerpt = No excerpt
 blog-table-publish = Publish

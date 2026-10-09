@@ -1,6 +1,6 @@
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    Order, QueryFilter, QueryOrder, Select, Set, TransactionTrait,
+    Order, QueryFilter, QueryOrder, QuerySelect, Select, Set, TransactionTrait,
     sea_query::{Query, SelectStatement},
 };
 use std::collections::HashMap;
