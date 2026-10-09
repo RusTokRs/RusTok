@@ -47,9 +47,12 @@ wraps the document during review/publish. The accepted [page layout and menu
 link decision](../../../../DECISIONS/2026-10-09-page-layouts-and-menu-page-links.md)
 specifies the Pages-owned versioned template and host-resolved menu target.
 The additive catalog, revision-guarded service and GraphQL authoring operations
-exist, but templates are **not yet used by preview or publish**: selecting a
-`pages.template` string does not wrap a page. There is no layout editor,
-existing-label cutover, menu page-target writer or host route adapter.
+exist. `previewPageTemplateDocument` produces a sanitized, non-persistent
+composition of a supplied document and its exact-locale layout. The editor does
+not yet call this preview; templates are **not used by reviewed publish**:
+selecting a `pages.template` string does not change the served page. There is
+no layout editor, existing-label cutover, menu page-target writer or host route
+adapter.
 Site symbols still require manual re-review and
 re-publication of dependent pages after a shared edit.
 

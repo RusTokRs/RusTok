@@ -61,6 +61,54 @@ impl PageTemplateService {
             .into_iter().map(TryInto::try_into).collect()
     }
 
+    /// Preview a selected layout against a supplied Fly document without saving
+    /// or modifying a published artifact. The canonical symbol catalog wins;
+    /// static publish sanitization is applied before returning the projection.
+    pub async fn preview_document(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        key: &str,
+        locale: &str,
+        document: &str,
+    ) -> PagesResult<serde_json::Value> {
+        require_all(security, Action::Manage)?;
+        if document.len() > 2 * 1024 * 1024 {
+            return Err(PagesError::validation("Template preview document exceeds 2 MiB"));
+        }
+        let locale = normalize_locale(locale)?;
+        let (header, footer) = if key == "default" {
+            (Vec::new(), Vec::new())
+        } else {
+            let key = normalize_key(key)?;
+            let row = page_template::Entity::find_by_id((tenant_id, locale.clone(), key))
+                .one(&self.db)
+                .await?
+                .ok_or_else(|| PagesError::validation("Page template is not defined for this locale"))?;
+            let record = PageTemplateRecord::try_from(row)?;
+            (record.header_symbol_ids, record.footer_symbol_ids)
+        };
+        let symbols = site_symbol::Entity::find()
+            .filter(site_symbol::Column::TenantId.eq(tenant_id))
+            .filter(site_symbol::Column::Locale.eq(&locale))
+            .order_by_asc(site_symbol::Column::SymbolId)
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|row| row.content)
+            .collect::<Vec<_>>();
+        let composed = crate::services::page::compose_layout_document(
+            document, &header, &footer, &symbols
+        )?;
+        let project: serde_json::Value = serde_json::from_str(&composed)
+            .map_err(|error| PagesError::validation(format!("Cannot decode layout preview: {error}")))?;
+        let sanitized = rustok_page_builder::sanitize_static_landing_project(&project)
+            .map_err(|error| PagesError::validation(format!("Unsafe layout preview: {error}")))?;
+        sanitized.verify_integrity()
+            .map_err(|error| PagesError::validation(format!("Invalid layout preview: {error}")))?;
+        Ok(sanitized.project_data().clone())
+    }
+
     /// Create with `expected_revision = None`; update with the exact observed revision.
     /// References are checked under the same catalog writer lock as symbol edits.
     pub async fn save(&self, tenant_id: Uuid, security: &SecurityContext, key: &str, locale: &str, header: Vec<String>, footer: Vec<String>, expected_revision: Option<i64>) -> PagesResult<PageTemplateRecord> {

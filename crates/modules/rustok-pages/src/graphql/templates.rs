@@ -40,6 +40,26 @@ pub struct PageTemplateQuery;
 
 #[Object]
 impl PageTemplateQuery {
+    /// Returns a sanitized, one-page layout projection; never saves the input
+    /// body or alters a published artifact. No locale fallback is applied.
+    async fn preview_page_template_document(
+        &self,
+        ctx: &Context<'_>,
+        key: String,
+        locale: String,
+        document: String,
+        tenant_id: Option<Uuid>,
+    ) -> Result<String> {
+        require_module_enabled(ctx, "pages").await?;
+        let (tenant_id, security) = scope(ctx, tenant_id, Permission::PAGES_MANAGE)?;
+        let project = PageTemplateService::new(ctx.data::<DatabaseConnection>()?.clone())
+            .preview_document(tenant_id, &security, &key, &locale, &document)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        serde_json::to_string(&project)
+            .map_err(|err| async_graphql::Error::new(err.to_string()))
+    }
+
     async fn page_templates(&self, ctx: &Context<'_>, locale: String, tenant_id: Option<Uuid>) -> Result<Vec<GqlPageTemplate>> {
         require_module_enabled(ctx, "pages").await?;
         let (tenant_id, security) = scope(ctx, tenant_id, Permission::PAGES_READ)?;

@@ -9,6 +9,8 @@ mod inline_edit;
 mod inline_edit_feature;
 mod inline_edit_runtime;
 mod lifecycle;
+mod layout;
+pub(crate) use layout::compose_layout_document;
 mod metadata;
 mod persistence;
 pub(crate) mod publish_manifest;

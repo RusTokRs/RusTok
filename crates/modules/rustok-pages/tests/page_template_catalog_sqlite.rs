@@ -66,6 +66,26 @@ async fn catalog_is_tenant_and_exact_locale_scoped_with_revision_cas() -> TestRe
 }
 
 #[tokio::test]
+async fn preview_resolves_layout_without_writing_the_source() -> TestResult<()> {
+    let db = fixture().await?;
+    let tenant = Uuid::new_v4();
+    let service = PageTemplateService::new(db.clone());
+    let actor = SecurityContext::system();
+    symbol(&db, tenant, "en", "header").await?;
+    service.save(tenant, &actor, "site", "en", vec!["header".into()], vec![], None).await?;
+    let source = json!({"pages":[{"id":"home","flyPageMeta":{"title":"Home","description":"Preview","slug":"home"},"component":{"id":"root","type":"wrapper","components":[{"id":"body","type":"text","content":"Body"}]}}]}).to_string();
+    let project = service.preview_document(tenant, &actor, "site", "en", &source).await?;
+    assert_eq!(project["pages"][0]["component"]["components"][0]["tagName"], "header");
+    assert_eq!(project["pages"][0]["component"]["components"][1]["content"], "Body");
+    assert!(project.get("flySymbols").is_none());
+    assert!(service.preview_document(tenant, &actor, "site", "ru", &source).await.is_err());
+    let unsafe_source = source.replace("\"type\":\"text\"", "\"type\":\"iframe\"");
+    assert!(service.preview_document(tenant, &actor, "site", "en", &unsafe_source).await.is_err());
+    assert_eq!(source, json!({"pages":[{"id":"home","flyPageMeta":{"title":"Home","description":"Preview","slug":"home"},"component":{"id":"root","type":"wrapper","components":[{"id":"body","type":"text","content":"Body"}]}}]}).to_string());
+    Ok(())
+}
+
+#[tokio::test]
 async fn authoring_requires_tenant_wide_authority() -> TestResult<()> {
     let db = fixture().await?;
     let tenant = Uuid::new_v4();
