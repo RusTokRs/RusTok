@@ -324,6 +324,8 @@ pub struct ComponentObject {
     pub tag_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    #[serde(rename = "symbolId", default, skip_serializing_if = "Option::is_none")]
+    pub symbol_id: Option<String>,
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub attributes: Map<String, Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -343,6 +345,7 @@ impl Default for ComponentObject {
             component_type: None,
             tag_name: None,
             provider: None,
+            symbol_id: None,
             attributes: Map::new(),
             style: None,
             traits: Vec::new(),

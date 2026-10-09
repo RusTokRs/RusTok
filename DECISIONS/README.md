@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-10-09](./2026-10-09-site-symbols-shared-definitions.md) | Site symbols: shared component definitions with instance re-issue | Accepted | In progress | Extends [Multilingual content contract](./2026-03-28-multilingual-content-contract.md), [Page body working copies: draft revisions and body revision journal](./2026-10-09-page-body-draft-and-revision-history.md) |
 | [2026-10-09](./2026-10-09-scheduled-page-publishing.md) | Scheduled page publishing | Accepted | Implemented | Extends [Multilingual content contract](./2026-03-28-multilingual-content-contract.md), [Page body working copies: draft revisions and body revision journal](./2026-10-09-page-body-draft-and-revision-history.md) |
 | [2026-10-09](./2026-10-09-page-builder-media-asset-provider.md) | Page Builder media asset provider and srcset-safe static path | Accepted | Implemented | Extends [Multilingual content contract](./2026-03-28-multilingual-content-contract.md) |
 | [2026-10-09](./2026-10-09-page-body-draft-and-revision-history.md) | Page body working copies: draft revisions and body revision journal | Accepted | Implemented | Extends [Multilingual content contract](./2026-03-28-multilingual-content-contract.md) |

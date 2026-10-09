@@ -16,6 +16,17 @@ pub enum AssetCommand {
     Remove { asset_id: String },
 }
 
+/// Project-level symbol definition operations.
+///
+/// Instances are ordinary `Insert` commands of a `symbol`-type component that
+/// carries `symbolId`; these commands only manage definitions.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum SymbolCommand {
+    Upsert { symbol: Value },
+    Remove { symbol_id: String },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum EditorCommand {
@@ -41,6 +52,9 @@ pub enum EditorCommand {
     },
     Asset {
         command: AssetCommand,
+    },
+    Symbol {
+        command: SymbolCommand,
     },
     StyleRule {
         command: StyleRuleCommand,
