@@ -31,43 +31,63 @@ The UI Workbench follows RusToK FFA principles ([`docs/UI/module-package-archite
                       │    CANONICAL DESIGN SYSTEM TOKENS    │
                       │  • UI/tokens/tokens.json             │
                       │  • UI/tokens/base.css                │
+                      │  • crates/ui/rustok-ui (tokens/types)│
                       └──────────────────┬───────────────────┘
                                          │
-         ┌───────────────────────────────┼───────────────────────────────┐
-         ▼                               ▼                               ▼
-┌─────────────────┐             ┌─────────────────┐             ┌─────────────────┐
-│   Rust / WASM   │             │   Next.js / TS  │             │  Flutter / Dart │
-│  (Leptos Host)  │             │  (Next-Admin)   │             │  (Mobile Host)  │
-├─────────────────┤             ├─────────────────┤             ├─────────────────┤
-│ • UI/leptos/    │             │ • shared/ui/    │             │ • Dart tokens:  │
-│ • /design-system│             │ • /dashboard/   │             │   rustok_tokens │
-│   route in      │             │   design-system │             │ • Code generator│
-│   apps/admin    │             │   in next-admin │             │   script        │
-└─────────────────┘             └─────────────────┘             └─────────────────┘
+         ┌───────────────────┬───────────┴───────────┬───────────────────┐
+         ▼                   ▼                       ▼                   ▼
+┌─────────────────┐ ┌─────────────────┐     ┌─────────────────┐ ┌─────────────────┐
+│  Leptos / WASM  │ │  Dioxus / RSX   │     │   Next.js / TS  │ │  Flutter / Dart │
+│  (Leptos Host)  │ │ (Desktop / Web) │     │  (Next-Admin)   │ │  (Mobile Host)  │
+├─────────────────┤ ├─────────────────┤     ├─────────────────┤ ├─────────────────┤
+│ • rustok-ui-    │ │ • rustok-ui-    │     │ • shared/ui/    │ │ • Dart tokens:  │
+│   leptos        │ │   dioxus        │     │   shadcn        │ │   rustok_tokens │
+│ • /design-system│ │ • apps/         │     │ • /dashboard/   │ │ • Code generator│
+│   in apps/admin │ │   dioxus-admin  │     │   design-system │ │   script        │
+└─────────────────┘ └─────────────────┘     └─────────────────┘ └─────────────────┘
 ```
 
 ---
 
-## 3. Host Implementations
+## 3. Multi-Framework Implementations (FFA)
 
 ### Next.js Host (`apps/next-admin`)
 - **Route:** `/dashboard/design-system`
 - **Features:**
   - Interactive Button Inspector with dynamic props (variant, size, disabled, loading).
-  - Code generator snippet preview (Next.js TSX and Leptos Rust).
+  - Pure TSX code snippet generator with clipboard copy.
   - Component baseline matrix (Buttons, Badges, Inputs, Switches, Checkboxes, Alerts).
-  - Composite recipes (Confirm Delete Dialog, Filter & Search Toolbar, Save Action Bar).
+  - 4 Composite recipes:
+    1. Confirm Delete Dialog (Destructive action guard)
+    2. Resource Filter Toolbar (Search & Tag filter bar)
+    3. Save Action Toolbar (Dirty state and loading spinner simulation)
+    4. Entity Summary Card (Product/resource summary with status, metrics, and actions)
 
 ### Leptos Host (`apps/admin`)
 - **Route:** `/design-system`
 - **Features:**
   - Native WASM rendering of `leptos_ui` / `rustok_ui_leptos` primitives.
-  - Interactive reactive signal playground.
+  - Interactive reactive signal playground for Buttons and Form Controls (Input, Textarea, Switch, Checkbox).
   - Parity-verified matrix matching the Next.js visual states.
+  - 4 Composite recipes matching the Next.js host with zero JavaScript bridges.
 
-### Flutter Support (`rustok_mobile`)
+### Dioxus Adapter (`crates/ui/rustok-ui/dioxus` & `apps/dioxus-admin`)
+- Native Dioxus 0.6 component suite wrapping shared `rustok-ui` tokens and contracts.
+- Includes `Button`, `Badge`, `Card`, `Input`, `Checkbox`, `Switch`, `Alert`, `Separator`, etc.
+- Provides identical styling and headless behavior for desktop (Tao/Wry) and web shells.
+
+### Flutter Support (`rustok_mobile/packages/app_ui_kit`)
 - **Tokens Generator:** `npm run generate:tokens:flutter` (via [`scripts/generate/generate-flutter-tokens.mjs`](../../scripts/generate/generate-flutter-tokens.mjs)).
-- Generates `UI/tokens/rustok_tokens.g.dart` providing `RusTokRadius`, `RusTokSpacing`, and `RusTokColors` for Flutter theme extensions without external runtime overhead.
+- Generates `rustok_tokens.g.dart` providing `RusTokRadius`, `RusTokSpacing`, and `RusTokColors`.
+- **Component Kit:**
+  - `RusTokButton`: 6 variants, 3 sizes, loading and disabled states.
+  - `RusTokBadge`: 6 variants matching web design tokens.
+  - `RusTokCard`: Compound card layout (`Header`, `Title`, `Description`, `Content`, `Footer`).
+  - `RusTokInput`: Text field with token styling, error states, and prefix/suffix support.
+  - `RusTokCheckbox`: Token-styled checkbox with checkmark.
+  - `RusTokSwitch`: Token-styled animated toggle switch.
+  - `RusTokSeparator`: Horizontal and vertical divider lines.
+  - `RusTokAvatar`: Profile/entity avatar with image and text fallback.
 
 ---
 
@@ -79,6 +99,8 @@ npm run verify:ui:parity
 ```
 This script checks:
 1. `UI/tokens/tokens.json` structure and CSS variable parity in `base.css`.
-2. Generated Dart tokens freshness.
+2. Generated Dart tokens freshness and correctness.
 3. Enum parity between Rust `ButtonVariant` and React `buttonVariants`.
-4. Existence and mounting of Workbench routes in both admin hosts.
+4. Rust adapter completeness across Dioxus and Leptos (`Button`, `Badge`, `Card`, `Input`, `Checkbox`, `Switch`).
+5. Flutter component kit completeness in `app_ui_kit`.
+6. Existence and mounting of Workbench routes and full composite recipe sets in both admin hosts.

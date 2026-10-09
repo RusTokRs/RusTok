@@ -11,7 +11,8 @@
 use leptos::prelude::*;
 use leptos_ui::{
     Alert, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent,
-    CardDescription, CardHeader, CardTitle, Size,
+    CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Input, Separator, Size, Switch,
+    Textarea,
 };
 
 #[component]
@@ -23,11 +24,20 @@ pub fn DesignSystemPage() -> impl IntoView {
     let (loading, set_loading) = signal(false);
     let (button_text, set_button_text) = signal("Save Changes".to_string());
 
-    // Search query signal for filter recipe
+    // Form controls interactive signals
+    let (form_input, set_form_input) = signal("admin@rustok.dev".to_string());
+    let (form_input_invalid, set_form_input_invalid) = signal(false);
+    let (form_switch, set_form_switch) = signal(true);
+    let (form_checkbox, set_form_checkbox) = signal(true);
+    let (form_notes, set_form_notes) = signal("Initial telemetry and module configuration notes.".to_string());
+
+    // Recipe signals
+    let (confirm_open, set_confirm_open) = signal(false);
+    let (deleted_status, set_deleted_status) = signal(false);
     let (search_query, set_search_query) = signal(String::new());
     let (active_filter, set_active_filter) = signal("all".to_string());
 
-    // Save bar signal
+    // Save bar signals
     let (is_saving, set_is_saving) = signal(false);
     let (save_success, set_save_success) = signal(false);
 
@@ -285,14 +295,132 @@ pub fn DesignSystemPage() -> impl IntoView {
                 </div>
             </section>
 
+            <Separator />
+
+            // Form Controls & Inputs
+            <section class="space-y-6">
+                <h2 class="text-xl font-semibold tracking-tight text-foreground">
+                    "Form Controls & Inputs"
+                </h2>
+                <div class="grid gap-6 md:grid-cols-2">
+                    // Text Inputs & Textarea
+                    <Card>
+                        <CardHeader>
+                            <CardTitle class="text-base">"Text Fields"</CardTitle>
+                            <CardDescription>
+                                "Single-line Input and multi-line Textarea controls with live reactive signals."
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent class="space-y-4">
+                            <div class="space-y-1.5">
+                                <div class="flex items-center justify-between">
+                                    <label class="font-medium text-xs text-muted-foreground">"Primary Email"</label>
+                                    <button
+                                        type="button"
+                                        class="text-xs text-primary hover:underline cursor-pointer"
+                                        on:click=move |_| set_form_input_invalid.update(|v| *v = !*v)
+                                    >
+                                        {move || if form_input_invalid.get() { "Clear Error" } else { "Simulate Error" }}
+                                    </button>
+                                </div>
+                                {move || view! {
+                                    <Input
+                                        placeholder="admin@rustok.dev"
+                                        value=Some(form_input)
+                                        set_value=Some(set_form_input)
+                                        invalid=form_input_invalid.get()
+                                    />
+                                }}
+                                {move || form_input_invalid.get().then(|| view! {
+                                    <p class="text-xs text-destructive">"Invalid email format: must belong to authorized tenant domain."</p>
+                                })}
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <label class="font-medium text-xs text-muted-foreground">"Configuration Notes"</label>
+                                <Textarea
+                                    rows=3
+                                    placeholder="Enter operational notes..."
+                                    value=Some(form_notes)
+                                    set_value=Some(set_form_notes)
+                                />
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <label class="font-medium text-xs text-muted-foreground">"Disabled Identifier"</label>
+                                <Input
+                                    disabled=true
+                                    placeholder="System managed identifier"
+                                    value=Some(signal("mod_core_01jx".to_string()).0)
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    // Switches & Checkboxes
+                    <Card>
+                        <CardHeader>
+                            <CardTitle class="text-base">"Toggles & Checkboxes"</CardTitle>
+                            <CardDescription>
+                                "Binary selection controls connected to reactive WASM signals."
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent class="space-y-6">
+                            <div class="flex items-center justify-between rounded-lg border border-border p-3">
+                                <div class="space-y-0.5">
+                                    <span class="text-sm font-medium text-foreground">"Telemetry Streaming"</span>
+                                    <p class="text-xs text-muted-foreground">
+                                        "Stream real-time trace events to OpenTelemetry endpoint."
+                                    </p>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xs font-mono text-muted-foreground">
+                                        {move || if form_switch.get() { "ACTIVE" } else { "OFF" }}
+                                    </span>
+                                    <Switch
+                                        checked=Some(form_switch)
+                                        set_checked=Some(set_form_switch)
+                                    />
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between rounded-lg border border-border p-3">
+                                <div class="space-y-0.5">
+                                    <span class="text-sm font-medium text-foreground">"Automatic Re-indexing"</span>
+                                    <p class="text-xs text-muted-foreground">
+                                        "Update full-text search projection on entity mutations."
+                                    </p>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xs font-mono text-muted-foreground">
+                                        {move || if form_checkbox.get() { "CHECKED" } else { "UNCHECKED" }}
+                                    </span>
+                                    <Checkbox
+                                        checked=Some(form_checkbox)
+                                        set_checked=Some(set_form_checkbox)
+                                    />
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
+                                <Badge variant=BadgeVariant::Outline>"FFA State"</Badge>
+                                <span>"Both controls use native Rust signals with zero external JS runtime."</span>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            </section>
+
+            <Separator />
+
             // Composite Recipes
             <section class="space-y-6">
                 <h2 class="text-xl font-semibold tracking-tight text-foreground">
                     "Composite Pattern Recipes (FFA)"
                 </h2>
 
-                <div class="grid gap-6 lg:grid-cols-3">
-                    // Recipe 1: Confirm Delete Dialog Mockup
+                <div class="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
+                    // Recipe 1: Confirm Delete Dialog
                     <Card>
                         <CardHeader>
                             <CardTitle class="text-base">"Confirm Action Dialog"</CardTitle>
@@ -302,16 +430,61 @@ pub fn DesignSystemPage() -> impl IntoView {
                             <p class="text-sm text-muted-foreground">
                                 "Composite dialog layout with cancel and destructive confirmation buttons."
                             </p>
-                            <div class="rounded-lg border border-destructive/20 bg-destructive/5 p-4 space-y-3">
-                                <h4 class="font-semibold text-sm text-foreground">"Are you sure?"</h4>
-                                <p class="text-xs text-muted-foreground">
-                                    "This will invalidate cache entries and revoke associated credentials."
-                                </p>
-                                <div class="flex justify-end gap-2 pt-2">
-                                    <Button variant=ButtonVariant::Outline size=Size::Sm>"Cancel"</Button>
-                                    <Button variant=ButtonVariant::Destructive size=Size::Sm>"Confirm Delete"</Button>
-                                </div>
-                            </div>
+                            {move || {
+                                if confirm_open.get() {
+                                    view! {
+                                        <div class="rounded-lg border border-destructive/20 bg-destructive/5 p-4 space-y-3">
+                                            <h4 class="font-semibold text-sm text-foreground">"Are you sure?"</h4>
+                                            <p class="text-xs text-muted-foreground">
+                                                "This will invalidate cache entries and revoke associated credentials."
+                                            </p>
+                                            <div class="flex justify-end gap-2 pt-2">
+                                                <Button
+                                                    variant=ButtonVariant::Outline
+                                                    size=Size::Sm
+                                                    on_click=Box::new(move || set_confirm_open.set(false))
+                                                >
+                                                    "Cancel"
+                                                </Button>
+                                                <Button
+                                                    variant=ButtonVariant::Destructive
+                                                    size=Size::Sm
+                                                    on_click=Box::new(move || {
+                                                        set_confirm_open.set(false);
+                                                        set_deleted_status.set(true);
+                                                    })
+                                                >
+                                                    "Confirm Delete"
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <div class="space-y-2">
+                                            <Button
+                                                variant=ButtonVariant::Destructive
+                                                size=Size::Sm
+                                                on_click=Box::new(move || {
+                                                    set_deleted_status.set(false);
+                                                    set_confirm_open.set(true);
+                                                })
+                                            >
+                                                "Delete Module"
+                                            </Button>
+                                            {move || {
+                                                deleted_status.get().then(|| {
+                                                    view! {
+                                                        <div class="rounded-md bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+                                                            "Module deleted successfully."
+                                                        </div>
+                                                    }
+                                                })
+                                            }}
+                                        </div>
+                                    }.into_any()
+                                }
+                            }}
                         </CardContent>
                     </Card>
 
@@ -330,27 +503,42 @@ pub fn DesignSystemPage() -> impl IntoView {
                                 class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                             />
                             <div class="flex gap-1.5">
-                                <Badge
-                                    variant=if active_filter.get() == "all" { BadgeVariant::Default } else { BadgeVariant::Outline }
-                                    class="cursor-pointer"
+                                <button
+                                    type="button"
+                                    class="focus:outline-none"
                                     on:click=move |_| set_active_filter.set("all".to_string())
                                 >
-                                    "All"
-                                </Badge>
-                                <Badge
-                                    variant=if active_filter.get() == "active" { BadgeVariant::Default } else { BadgeVariant::Outline }
-                                    class="cursor-pointer"
+                                    <Badge
+                                        variant=if active_filter.get() == "all" { BadgeVariant::Default } else { BadgeVariant::Outline }
+                                        class="cursor-pointer"
+                                    >
+                                        "All"
+                                    </Badge>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="focus:outline-none"
                                     on:click=move |_| set_active_filter.set("active".to_string())
                                 >
-                                    "Active"
-                                </Badge>
-                                <Badge
-                                    variant=if active_filter.get() == "draft" { BadgeVariant::Default } else { BadgeVariant::Outline }
-                                    class="cursor-pointer"
+                                    <Badge
+                                        variant=if active_filter.get() == "active" { BadgeVariant::Default } else { BadgeVariant::Outline }
+                                        class="cursor-pointer"
+                                    >
+                                        "Active"
+                                    </Badge>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="focus:outline-none"
                                     on:click=move |_| set_active_filter.set("draft".to_string())
                                 >
-                                    "Draft"
-                                </Badge>
+                                    <Badge
+                                        variant=if active_filter.get() == "draft" { BadgeVariant::Default } else { BadgeVariant::Outline }
+                                        class="cursor-pointer"
+                                    >
+                                        "Draft"
+                                    </Badge>
+                                </button>
                             </div>
                         </CardContent>
                     </Card>
@@ -368,14 +556,29 @@ pub fn DesignSystemPage() -> impl IntoView {
                                     <span class="text-xs font-medium text-foreground">"Unsaved changes"</span>
                                 </div>
                                 <div class="flex gap-2">
-                                    <Button variant=ButtonVariant::Outline size=Size::Sm>"Reset"</Button>
+                                    <Button
+                                        variant=ButtonVariant::Outline
+                                        size=Size::Sm
+                                        disabled=is_saving.get()
+                                        on_click=Box::new(move || {
+                                            set_save_success.set(false);
+                                        })
+                                    >
+                                        "Reset"
+                                    </Button>
                                     <Button
                                         size=Size::Sm
                                         loading=is_saving.get()
                                         on_click=Box::new(move || {
                                             set_is_saving.set(true);
-                                            set_save_success.set(true);
-                                            set_is_saving.set(false);
+                                            set_save_success.set(false);
+                                            leptos::prelude::set_timeout(
+                                                move || {
+                                                    set_is_saving.set(false);
+                                                    set_save_success.set(true);
+                                                },
+                                                std::time::Duration::from_millis(800),
+                                            );
                                         })
                                     >
                                         "Save"
@@ -392,6 +595,44 @@ pub fn DesignSystemPage() -> impl IntoView {
                                 })
                             }}
                         </CardContent>
+                    </Card>
+
+                    // Recipe 4: Entity Summary Card
+                    <Card>
+                        <CardHeader>
+                            <div class="flex items-start justify-between">
+                                <div class="space-y-1">
+                                    <CardTitle class="text-base">"RusToK Core"</CardTitle>
+                                    <CardDescription>"E-Commerce Engine"</CardDescription>
+                                </div>
+                                <Badge variant=BadgeVariant::Success class="font-mono text-xs">
+                                    "Healthy"
+                                </Badge>
+                            </div>
+                        </CardHeader>
+                        <CardContent class="space-y-3">
+                            <p class="text-xs text-muted-foreground">
+                                "High-throughput transactional core managing inventory, checkout, and tenant boundaries."
+                            </p>
+                            <div class="grid grid-cols-2 gap-2 rounded-md bg-muted/40 p-2 text-xs">
+                                <div>
+                                    <span class="text-muted-foreground block">"Version"</span>
+                                    <span class="font-semibold text-foreground">"v0.8.21"</span>
+                                </div>
+                                <div>
+                                    <span class="text-muted-foreground block">"Uptime"</span>
+                                    <span class="font-semibold text-foreground">"99.98%"</span>
+                                </div>
+                            </div>
+                        </CardContent>
+                        <CardFooter class="flex justify-between border-t border-border pt-3">
+                            <Button variant=ButtonVariant::Outline size=Size::Sm>
+                                "Logs"
+                            </Button>
+                            <Button size=Size::Sm>
+                                "Manage"
+                            </Button>
+                        </CardFooter>
                     </Card>
                 </div>
             </section>
