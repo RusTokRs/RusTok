@@ -52,6 +52,21 @@ pub struct GqlPageBodyRevision {
 }
 
 #[derive(Clone, Debug, SimpleObject)]
+pub struct GqlPagePublishSchedule {
+    pub id: Uuid,
+    pub page_id: Uuid,
+    pub publish_at: String,
+    pub state: String,
+    pub attempts: i32,
+    pub last_error_code: Option<String>,
+    pub last_error_message: Option<String>,
+    pub publish_operation_id: Option<Uuid>,
+    pub created_by: Option<Uuid>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
 pub struct GqlPageListItem {
     pub id: Uuid,
     pub status: String,
@@ -262,6 +277,24 @@ impl From<crate::PageBodyRevisionResponse> for GqlPageBodyRevision {
             body_revision: r.body_revision,
             created_at: r.created_at,
             created_by: r.created_by,
+        }
+    }
+}
+
+impl From<crate::PagePublishScheduleResponse> for GqlPagePublishSchedule {
+    fn from(r: crate::PagePublishScheduleResponse) -> Self {
+        Self {
+            id: r.id,
+            page_id: r.page_id,
+            publish_at: r.publish_at,
+            state: r.state.as_str().to_string(),
+            attempts: r.attempts,
+            last_error_code: r.last_error_code,
+            last_error_message: r.last_error_message,
+            publish_operation_id: r.publish_operation_id,
+            created_by: r.created_by,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
         }
     }
 }

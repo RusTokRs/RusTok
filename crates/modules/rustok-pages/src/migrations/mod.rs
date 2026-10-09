@@ -20,6 +20,7 @@ mod m20260807_000015_create_page_artifact_binding_replacements;
 // middle of the plan instead of appending one.
 mod m20261008_000001_create_scenario_baseline_revision_history;
 mod m20261009_000001_create_page_body_drafts_and_revisions;
+mod m20261009_000002_create_page_publish_jobs;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -45,6 +46,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260807_000015_create_page_artifact_binding_replacements::Migration),
         Box::new(m20261008_000001_create_scenario_baseline_revision_history::Migration),
         Box::new(m20261009_000001_create_page_body_drafts_and_revisions::Migration),
+        Box::new(m20261009_000002_create_page_publish_jobs::Migration),
     ]
 }
 

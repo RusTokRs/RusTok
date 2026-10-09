@@ -7,7 +7,7 @@ mod scenario_release_adapter;
 
 use crate::model::{
     CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageMetadataPatch,
-    PageMutationResult, PagePublicationResult,
+    PageMutationResult, PagePublicationResult, PagePublishSchedule,
 };
 use rustok_page_builder::health::ProviderHealthSnapshot;
 use rustok_page_builder::rollout::BuilderCapabilityFlags;
@@ -152,6 +152,31 @@ pub async fn duplicate_page(
     id: String,
 ) -> Result<PageMutationResult, TransportError> {
     graphql_adapter::duplicate_page(token, tenant_slug, id).await
+}
+
+pub async fn fetch_page_publish_schedule(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<Option<PagePublishSchedule>, TransportError> {
+    graphql_adapter::fetch_page_publish_schedule(token, tenant_slug, id).await
+}
+
+pub async fn schedule_page_publish(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    publish_at: String,
+) -> Result<PagePublishSchedule, TransportError> {
+    graphql_adapter::schedule_page_publish(token, tenant_slug, id, publish_at).await
+}
+
+pub async fn cancel_page_publish(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<PagePublishSchedule, TransportError> {
+    graphql_adapter::cancel_page_publish(token, tenant_slug, id).await
 }
 
 pub async fn publish_page(

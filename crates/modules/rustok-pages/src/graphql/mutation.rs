@@ -17,7 +17,7 @@ use crate::{
     PAGE_ROLLBACK_REQUIRES_PUBLISHED, PAGE_ROLLBACK_TARGET_UNAVAILABLE, PageBodyInput,
     PageBodyRevisionInput, PageService, PageTranslationInput, PagesError, PatchPageMetadataInput,
     PublishPageInput, RestorePageBodyRevisionInput, ReviewedPagePublishRuntimeInput,
-    RollbackPageInput, SavePageDocumentInput,
+    RollbackPageInput, SavePageDocumentInput, SchedulePagePublishInput,
 };
 
 use super::types::*;
@@ -157,6 +157,64 @@ impl PagesMutation {
                     revision_id: input.revision_id,
                 },
             )
+            .await
+            .map(Into::into)
+            .map_err(map_pages_error)
+    }
+
+    /// Captures one reviewed publish command for later execution at `publish_at`.
+    ///
+    /// A pending schedule is rewritten in place; the stored command is replayed unchanged
+    /// by the publish sweep and fails on content drift instead of publishing unreviewed
+    /// content.
+    async fn schedule_page_publish(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: PublishGqlPageInput,
+        publish_at: String,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlPagePublishSchedule> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth =
+            require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        PageService::new(db.clone(), event_bus.clone())
+            .schedule_publish(
+                tenant_id,
+                page_security(&auth),
+                id,
+                SchedulePagePublishInput {
+                    publish_at,
+                    command: publish_page_input(input),
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(map_pages_error)
+    }
+
+    /// Cancels the pending scheduled publication of one page.
+    async fn cancel_page_publish(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlPagePublishSchedule> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth =
+            require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        PageService::new(db.clone(), event_bus.clone())
+            .cancel_scheduled_publish(tenant_id, page_security(&auth), id)
             .await
             .map(Into::into)
             .map_err(map_pages_error)

@@ -21,6 +21,10 @@ channel visibility, deterministic published landing artifacts and page routes.
   rows per (page, locale), and restore journaled revisions under working-copy CAS.
 - Duplicate pages into new draft pages: current bodies and channel visibility are
   copied, titles/metadata are kept, and each locale gets a `-copy[-N]` slug suffix.
+- Schedule reviewed publications: `page_publish_jobs` captures the exact reviewed
+  publish command at scheduling time and a bounded sweep replays due commands
+  through `publish_reviewed` as a system actor (see
+  [`DECISIONS/2026-10-09-scheduled-page-publishing.md`](../../../DECISIONS/2026-10-09-scheduled-page-publishing.md)).
 - Expose module-owned GraphQL and REST adapters.
 - Accept one Page Builder body input through the typed `document` field without
   a caller-selected format or parallel serialized-content field, persist the
@@ -69,6 +73,7 @@ compatibility or drop migration is retained.
 
 - `PagesModule`
 - `PageService`
+- `PagePublishScheduler`
 - `PageBuilderArtifactService`
 - `PageBuilderScenarioBaselineService`
 - `graphql::PagesQuery`
@@ -85,6 +90,21 @@ and the 2026-10-09 functional audit
 ([`docs/audits/pages-page-builder-functional-audit-2026-10-09.md`](../../../docs/audits/pages-page-builder-functional-audit-2026-10-09.md)).
 These are gaps in what the runtime actually does, not accepted design:
 
+- **Wave 2 scheduled publishing (G-3 of the 2026-10-09 audit) is implemented**: editors
+  schedule/cancel a publication (`pagePublishSchedule`, `schedulePagePublish`,
+  `cancelPagePublish`; REST `/api/admin/pages/{id}/publish-schedule`; admin schedule
+  panel) and a Pages-owned job queue executes due schedules through the idempotent
+  `publish_reviewed` command (see
+  [`DECISIONS/2026-10-09-scheduled-page-publishing.md`](../../../DECISIONS/2026-10-09-scheduled-page-publishing.md)).
+  Behaviour notes: the reviewed command (version, body revision tokens, review hash) is
+  captured at scheduling time and replayed unchanged, so content edited after scheduling
+  intentionally fails the job with `PAGE_DOCUMENT_REVISION_CONFLICT` instead of publishing
+  unreviewed content — reschedule after re-review. Deterministic failures are terminal;
+  unknown errors retry up to 5 attempts. Scheduling needs `pages:publish`; execution is a
+  system-actor publish whose job row keeps `created_by` attribution. **Hosts must run
+  `PagePublishScheduler` (or `process_due_publish_jobs`) for schedules to fire.** Runtime
+  coverage lives in `tests/page_publish_scheduler_sqlite.rs` (SQLite); the Postgres suites
+  and the full cargo verification matrix remain CI's authority for this change.
 - **Wave 1 of the 2026-10-09 audit is implemented** (draft saving on published pages,
   the append-only body revision journal with restore, and page duplication; see
   [`DECISIONS/2026-10-09-page-body-draft-and-revision-history.md`](../../../DECISIONS/2026-10-09-page-body-draft-and-revision-history.md)).

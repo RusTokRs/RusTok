@@ -513,7 +513,7 @@ fn publish_result_from_record(
     })
 }
 
-fn normalize_idempotency_key(value: &str) -> PagesResult<String> {
+pub(super) fn normalize_idempotency_key(value: &str) -> PagesResult<String> {
     let normalized = value.trim();
     if normalized.is_empty() || normalized.len() > MAX_PUBLISH_IDEMPOTENCY_KEY_BYTES {
         return Err(PagesError::validation(format!(
@@ -523,7 +523,7 @@ fn normalize_idempotency_key(value: &str) -> PagesResult<String> {
     Ok(normalized.to_string())
 }
 
-fn normalize_expected_body_revisions(
+pub(super) fn normalize_expected_body_revisions(
     revisions: Vec<PageBodyRevisionInput>,
 ) -> PagesResult<BodyRevisionSnapshot> {
     if revisions.is_empty() {
@@ -626,6 +626,13 @@ fn enforce_max(label: &str, actual: usize, maximum: usize) -> PagesResult<()> {
         )));
     }
     Ok(())
+}
+
+/// Validates one reviewed runtime exactly as the interactive publish path does.
+pub(super) fn validate_reviewed_runtime(
+    runtime: crate::dto::ReviewedPagePublishRuntimeInput,
+) -> PagesResult<PageBuilderReviewedPublishRuntime> {
+    runtime.try_into().map_err(review_contract_error)
 }
 
 fn review_contract_error(error: impl std::fmt::Display) -> PagesError {

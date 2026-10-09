@@ -281,6 +281,13 @@
       "mode": "none",
       "owner": "rustok-pages",
       "reason": "Creates page body draft working copies and the append-only body revision journal as new owner storage with tenant-scoped composite foreign keys; existing page_bodies rows are already the working copies of their pages and need no row transformation"
+    },
+    {
+      "id": "pages-page-publish-job-queue",
+      "migration": "m20261009_000002_create_page_publish_jobs",
+      "mode": "none",
+      "owner": "rustok-pages",
+      "reason": "Creates the scheduled page publishing job queue as new owner storage; publishing was immediate-only before this change, so no historical scheduled publications exist to backfill"
     }
   ]
 }

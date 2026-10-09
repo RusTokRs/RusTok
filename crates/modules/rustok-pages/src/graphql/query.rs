@@ -220,6 +220,33 @@ impl PagesQuery {
             .map(|revisions| revisions.into_iter().map(Into::into).collect())
             .map_err(|err| async_graphql::Error::new(err.to_string()))
     }
+
+    /// Most recent scheduled publication job of one page, whatever its state.
+    ///
+    /// `null` means the page was never scheduled.
+    async fn page_publish_schedule(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<GqlPagePublishSchedule>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let security = request_security_context(ctx);
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = query_tenant_id(
+            tenant,
+            ctx.data_opt::<AuthContext>().map(|auth| auth.tenant_id),
+            tenant_id,
+        )?;
+
+        PageService::new(db.clone(), event_bus.clone())
+            .page_publish_schedule(tenant_id, security, id)
+            .await
+            .map(|schedule| schedule.map(Into::into))
+            .map_err(|err| async_graphql::Error::new(err.to_string()))
+    }
 }
 
 fn query_tenant_id(

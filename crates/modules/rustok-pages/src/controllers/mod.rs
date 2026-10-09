@@ -21,10 +21,11 @@ use uuid::Uuid;
 
 use crate::{
     CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreatePageInput, PAGE_BODY_REVISION_NOT_FOUND,
-    PAGE_DOCUMENT_REVISION_CONFLICT, PageBodyRevisionResponse, PageBuilderArtifactService,
-    PageCacheScope, PageResponse, PageService, PagesCacheReadRuntime, PagesError,
-    PatchPageMetadataInput, PublishedLandingArtifact, RestorePageBodyRevisionInput,
-    SavePageDocumentInput, page_cache_key,
+    PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISH_SCHEDULE_NOT_FOUND, PageBodyRevisionResponse,
+    PageBuilderArtifactService, PageCacheScope, PagePublishScheduleResponse, PageResponse,
+    PageService, PagesCacheReadRuntime, PagesError, PatchPageMetadataInput,
+    PublishedLandingArtifact, RestorePageBodyRevisionInput, SavePageDocumentInput,
+    SchedulePagePublishInput, page_cache_key,
 };
 
 const ARTIFACT_VARY: &str = "X-Tenant-ID, X-Tenant-Slug, X-Channel-Slug, X-Channel-ID";
@@ -496,6 +497,93 @@ pub async fn duplicate_page(
         .await
         .map_err(map_pages_error)?;
     Ok((StatusCode::CREATED, Json(page)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/pages/{id}/publish-schedule",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    responses(
+        (status = 200, description = "Most recent scheduled publication job", body = PagePublishScheduleResponse),
+        (status = 404, description = "The page has no publish schedule"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn page_publish_schedule(
+    State(runtime): State<PagesHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> HttpResult<Json<PagePublishScheduleResponse>> {
+    ensure_pages_permission(&auth, Permission::PAGES_READ)?;
+    PageService::new(runtime.db_clone(), runtime.event_bus())
+        .page_publish_schedule(tenant.id, page_security(&auth), id)
+        .await
+        .map_err(map_pages_error)?
+        .map(Json)
+        .ok_or_else(|| {
+            HttpError::not_found(
+                PAGE_PUBLISH_SCHEDULE_NOT_FOUND,
+                format!("Page `{id}` has no publish schedule"),
+            )
+        })
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/pages/{id}/publish-schedule",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    request_body = SchedulePagePublishInput,
+    responses(
+        (status = 200, description = "Publication scheduled (a pending schedule is rewritten in place)", body = PagePublishScheduleResponse),
+        (status = 400, description = "Invalid schedule time or publish command"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn schedule_page_publish(
+    State(runtime): State<PagesHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<SchedulePagePublishInput>,
+) -> HttpResult<Json<PagePublishScheduleResponse>> {
+    ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
+    PageService::new(runtime.db_clone(), runtime.event_bus())
+        .schedule_publish(tenant.id, page_security(&auth), id, input)
+        .await
+        .map(Json)
+        .map_err(map_pages_error)
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/pages/{id}/publish-schedule",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    responses(
+        (status = 200, description = "Pending scheduled publication canceled", body = PagePublishScheduleResponse),
+        (status = 404, description = "The page has no publish schedule"),
+        (status = 409, description = "The schedule is not pending and cannot be canceled"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn cancel_page_publish(
+    State(runtime): State<PagesHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> HttpResult<Json<PagePublishScheduleResponse>> {
+    ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
+    PageService::new(runtime.db_clone(), runtime.event_bus())
+        .cancel_scheduled_publish(tenant.id, page_security(&auth), id)
+        .await
+        .map(Json)
+        .map_err(map_pages_error)
 }
 
 #[utoipa::path(

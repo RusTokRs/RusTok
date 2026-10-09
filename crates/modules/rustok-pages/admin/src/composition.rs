@@ -618,6 +618,12 @@ fn PageWorkspace(
                 tenant
                 refresh_generation
             />
+            <PublishSchedulePanel
+                page_id=page.id.clone()
+                token
+                tenant
+                refresh_generation
+            />
         </div>
     }
 }
@@ -758,6 +764,160 @@ fn BodyRevisionHistory(
                     })
                 }}
             </Suspense>
+        </section>
+    }
+}
+
+#[component]
+fn PublishSchedulePanel(
+    page_id: String,
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    refresh_generation: RwSignal<u64>,
+) -> impl IntoView {
+    let busy = RwSignal::new(false);
+    let error = RwSignal::new(None::<String>);
+    let publish_at_input = RwSignal::new(String::new());
+    let schedule_token = token;
+    let schedule_tenant = tenant;
+    let fetch_page_id = page_id.clone();
+    let schedule = LocalResource::new(move || {
+        let page_id = fetch_page_id.clone();
+        let token = schedule_token.get();
+        let tenant = schedule_tenant.get();
+        let _generation = refresh_generation.get();
+        async move {
+            transport::fetch_page_publish_schedule(token, tenant, page_id)
+                .await
+                .map_err(|error| error.to_string())
+        }
+    });
+
+    let schedule_page_id = page_id.clone();
+    let schedule_action = Callback::new(move |_| {
+        let page_id = schedule_page_id.clone();
+        let token = token.get_untracked();
+        let tenant = tenant.get_untracked();
+        let value = publish_at_input.get_untracked().trim().to_string();
+        if value.is_empty() {
+            error.set(Some("Choose a publication time first".to_string()));
+            return;
+        }
+        // datetime-local values carry no timezone; the panel documents UTC semantics.
+        let publish_at = if value.len() == 16 {
+            format!("{value}:00Z")
+        } else if value.len() == 19 {
+            format!("{value}Z")
+        } else {
+            value
+        };
+        busy.set(true);
+        error.set(None);
+        spawn_local(async move {
+            match transport::schedule_page_publish(token, tenant, page_id, publish_at).await {
+                Ok(_) => {
+                    refresh_generation.update(|generation| *generation = generation.wrapping_add(1))
+                }
+                Err(failure) => error.set(Some(failure.to_string())),
+            }
+            busy.set(false);
+        });
+    });
+
+    let cancel_page_id = page_id;
+    let cancel_action = Callback::new(move |_| {
+        let page_id = cancel_page_id.clone();
+        let token = token.get_untracked();
+        let tenant = tenant.get_untracked();
+        busy.set(true);
+        error.set(None);
+        spawn_local(async move {
+            match transport::cancel_page_publish(token, tenant, page_id).await {
+                Ok(_) => {
+                    refresh_generation.update(|generation| *generation = generation.wrapping_add(1))
+                }
+                Err(failure) => error.set(Some(failure.to_string())),
+            }
+            busy.set(false);
+        });
+    });
+
+    view! {
+        <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <h2 class="font-semibold text-card-foreground">"Scheduled publish"</h2>
+                <span class="text-xs text-muted-foreground">
+                    "the reviewed command captured here is replayed unchanged at the due time (UTC)"
+                </span>
+            </div>
+            {move || error.get().map(|message| view! {
+                <div class="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+                    {message}
+                </div>
+            })}
+            <Suspense fallback=|| view! {
+                <div class="h-10 animate-pulse rounded-lg bg-muted" aria-label="Loading publish schedule"></div>
+            }>
+                {move || {
+                    schedule.get().map(|result| match result {
+                        Ok(None) => view! {
+                            <p class="text-sm text-muted-foreground">
+                                "No publication scheduled for this page."
+                            </p>
+                        }.into_any(),
+                        Ok(Some(job)) => {
+                            let pending = job.state == "scheduled";
+                            let detail = match (&job.last_error_code, &job.last_error_message) {
+                                (Some(code), Some(message)) => {
+                                    format!("attempts {} · {}: {}", job.attempts, code, message)
+                                }
+                                _ => format!("attempts {}", job.attempts),
+                            };
+                            view! {
+                                <div class="rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                                    <div class="font-medium text-foreground">
+                                        {format!("{} · publish at {}", job.state, job.publish_at)}
+                                    </div>
+                                    <div class="mt-1 text-xs text-muted-foreground">{detail}</div>
+                                    <Show when=move || pending>
+                                        <button
+                                            type="button"
+                                            class="mt-2 rounded-lg border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                                            disabled=move || busy.get()
+                                            title="Cancel the pending scheduled publication"
+                                            on:click=move |_| cancel_action.run(())
+                                        >
+                                            "Cancel schedule"
+                                        </button>
+                                    </Show>
+                                </div>
+                            }.into_any()
+                        }
+                        Err(message) => view! {
+                            <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+                                {message}
+                            </div>
+                        }.into_any(),
+                    })
+                }}
+            </Suspense>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                    type="datetime-local"
+                    class="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    placeholder="Publication time (UTC)"
+                    on:input=move |event| publish_at_input.set(event_target_value(&event))
+                />
+                <button
+                    type="button"
+                    class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+                    disabled=move || busy.get()
+                    title="Schedule the reviewed publish of the current page state"
+                    on:click=schedule_action
+                >
+                    "Schedule publish"
+                </button>
+            </div>
         </section>
     }
 }

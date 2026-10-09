@@ -231,6 +231,67 @@ pub struct RollbackPageResult {
     pub rolled_back_at: String,
 }
 
+/// Execution state of one scheduled page publication job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PagePublishJobState {
+    Scheduled,
+    Executing,
+    Published,
+    Canceled,
+    Failed,
+}
+
+impl PagePublishJobState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Scheduled => "scheduled",
+            Self::Executing => "executing",
+            Self::Published => "published",
+            Self::Canceled => "canceled",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "scheduled" => Some(Self::Scheduled),
+            "executing" => Some(Self::Executing),
+            "published" => Some(Self::Published),
+            "canceled" => Some(Self::Canceled),
+            "failed" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+
+/// One scheduled reviewed page publication.
+///
+/// `command` is captured at scheduling time and replayed unchanged at the due time; see
+/// the scheduled page publishing decision record for the drift semantics.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PagePublishScheduleResponse {
+    pub id: Uuid,
+    pub page_id: Uuid,
+    pub publish_at: String,
+    pub state: PagePublishJobState,
+    pub attempts: i32,
+    pub last_error_code: Option<String>,
+    pub last_error_message: Option<String>,
+    pub publish_operation_id: Option<Uuid>,
+    pub created_by: Option<Uuid>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// One schedule request: when to publish plus the exact reviewed publish command.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SchedulePagePublishInput {
+    /// RFC 3339 timestamp truncated to microseconds.
+    pub publish_at: String,
+    pub command: PublishPageInput,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, utoipa::IntoParams)]
 pub struct ListPagesFilter {
     pub status: Option<ContentStatus>,

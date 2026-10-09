@@ -70,6 +70,29 @@ pub struct PageBodyRevision {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PagePublishSchedule {
+    pub id: String,
+    #[serde(rename = "pageId")]
+    pub page_id: String,
+    #[serde(rename = "publishAt")]
+    pub publish_at: String,
+    pub state: String,
+    pub attempts: i32,
+    #[serde(rename = "lastErrorCode")]
+    pub last_error_code: Option<String>,
+    #[serde(rename = "lastErrorMessage")]
+    pub last_error_message: Option<String>,
+    #[serde(rename = "publishOperationId")]
+    pub publish_operation_id: Option<String>,
+    #[serde(rename = "createdBy")]
+    pub created_by: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PageDetail {
     pub id: String,
     pub version: i32,

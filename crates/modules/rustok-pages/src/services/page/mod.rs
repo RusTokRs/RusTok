@@ -17,6 +17,7 @@ mod reviewed_publish;
 mod rollback;
 mod route;
 mod route_history_import;
+mod schedule;
 mod translation_apply;
 
 use rustok_content::entities::node::ContentStatus;
@@ -74,6 +75,11 @@ pub use route_history_import::{
     ImportPageRouteHistoryInput, MAX_PAGE_ROUTE_HISTORY_IMPORT_ITEMS,
     PAGE_ROUTE_HISTORY_IMPORT_CONFLICT, PageRouteHistoryImportItem, PageRouteHistoryImportResult,
     PageRouteHistoryImportService,
+};
+pub use schedule::{
+    MAX_PAGE_PUBLISH_JOB_ATTEMPTS, MAX_PAGE_PUBLISH_JOBS_PER_SWEEP,
+    PAGE_PUBLISH_SCHEDULE_NOT_CANCELABLE, PAGE_PUBLISH_SCHEDULE_NOT_FOUND,
+    PAGE_PUBLISH_SCHEDULE_TIME_INVALID, PagePublishScheduler,
 };
 pub(crate) use translation_apply::ApplyExactPageMetadataTranslationInput;
 
