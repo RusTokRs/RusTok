@@ -12,6 +12,11 @@ interface CategoriesTableProps {
   categories: CatalogCategorySummary[];
 }
 
+const indentScale = ['pl-0', 'pl-5', 'pl-10', 'pl-14', 'pl-20', 'pl-24', 'pl-28', 'pl-32'];
+function categoryIndentClass(d: number): string {
+  return indentScale[Math.min(d, indentScale.length - 1)] ?? 'pl-36';
+}
+
 export function CategoriesTable({ categories }: CategoriesTableProps) {
   const [search, setSearch] = React.useState('');
 
@@ -56,11 +61,7 @@ export function CategoriesTable({ categories }: CategoriesTableProps) {
       id: 'category',
       header: 'Category',
       headerClassName: 'w-[350px]',
-const indentScale = ['pl-0', 'pl-5', 'pl-10', 'pl-14', 'pl-20', 'pl-24', 'pl-28', 'pl-32'];
-function categoryIndentClass(d: number): string {
-  return indentScale[Math.min(d, indentScale.length - 1)] ?? 'pl-36';
-}
-
+      cell: (cat) => {
         const depth = getDepth(cat);
         return (
           <div
