@@ -1059,8 +1059,16 @@ fn PagesFlyBuilder(
                 },
             );
 
+            let media_provider_token = token;
+            let media_provider_tenant = tenant;
+            let asset_provider = transport::pages_media_asset_provider(
+                move || media_provider_token.get_untracked(),
+                move || media_provider_tenant.get_untracked(),
+            );
+
             let mut host = PageBuilderAdminHostContext::new(controller)
                 .with_facade(facade)
+                .with_asset_provider(asset_provider)
                 .with_contribution_assembly(contribution_assembly)
                 .with_editor_capability_policy(editor_policy)
                 .with_runtime_context(runtime_context)

@@ -24,3 +24,17 @@
 - mounted by `apps/admin` through generated manifest composition;
 - delegates canonical project semantics to `fly`, presentation state to `fly-ui`, and browser/Leptos lifecycle to `fly-leptos`;
 - aligned with the central rollout plan in `docs/modules/page-builder-implementation-plan.md`.
+
+## Known Limitations
+- The admin asset section browses and uploads media through a host-bound
+  `AssetProviderPort`. The `rustok-pages` builder host binds the port to
+  `rustok-media` admin dispatchers (auth context is captured by the host
+  adapter); hosts that never bind the port keep the manual asset form only.
+- The media panel renders on `wasm32` builds only (it uses the browser File
+  APIs); SSR renders the manual asset form without the panel.
+- `srcset`/`sizes` pass static validation in `static_publish_policy` (bounded
+  grammar, cap-covered by the policy hash). The default policy still bans
+  `srcset`; operators opt in per policy. After the policy hash changes, exact
+  rebuild of earlier retained sanitized sources reports hash drift until the
+  page is re-published (fail-closed by design, see
+  `DECISIONS/2026-10-09-page-builder-media-asset-provider.md`).

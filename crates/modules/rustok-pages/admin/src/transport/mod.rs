@@ -1,9 +1,12 @@
+mod asset_provider_adapter;
 mod builder_rollout_adapter;
 mod graphql_adapter;
 #[cfg(target_arch = "wasm32")]
 mod rollback_retry_adapter;
 mod scenario_baseline_cas_adapter;
 mod scenario_release_adapter;
+
+pub use asset_provider_adapter::pages_media_asset_provider;
 
 use crate::model::{
     CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageMetadataPatch,
