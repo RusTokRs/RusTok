@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -85,7 +88,8 @@ async fn create_topic_with_revision_and_two_public_replies(
         )
         .await
         .expect("category should be created");
-    let topics = TopicService::new(db.clone(), event_bus.clone());
+    let topics = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let topic = topics
         .create(
             tenant_id,
@@ -122,7 +126,8 @@ async fn create_topic_with_revision_and_two_public_replies(
         .await
         .expect("topic edit should create an immutable revision");
 
-    let replies = ReplyService::new(db.clone(), event_bus.clone());
+    let replies = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     for content in ["First", "Second"] {
         replies
             .create(

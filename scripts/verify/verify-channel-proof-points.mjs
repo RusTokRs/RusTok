@@ -133,7 +133,6 @@ assertAll('crates/modules/rustok-forum/src/graphql/mod.rs', [
 assertAll('crates/modules/rustok-forum/src/graphql/query_runtime.rs', [
   'require_public_forum_channel_enabled(ctx)',
   'public_channel_slug(ctx)',
-  'is_topic_visible_for_channel',
   'async fn forum_storefront_replies(',
   'list_public_storefront_visible_with_locale_fallback',
   'Some(&PUBLIC_REPLY_STATUSES)',

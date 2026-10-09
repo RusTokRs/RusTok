@@ -1,3 +1,5 @@
+use super::pending_visibility::topic_pending_condition;
+
 impl TopicService {
     #[instrument(skip(self, security, hidden_category_ids))]
     pub(crate) async fn list_with_locale_fallback_and_hidden_categories(
@@ -28,6 +30,7 @@ impl TopicService {
             select = select
                 .filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()));
         }
+        select = select.filter(topic_pending_condition(&security));
 
         let page = self.fetch_topic_keyset_page(select, &filter).await?;
         let items = self
@@ -75,6 +78,14 @@ impl TopicService {
                 .filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()));
         }
         select = apply_tenant_scoped_storefront_channel_filter(select, tenant_id, channel_slug);
+        let show_locked_topics_in_lists = self
+            .settings
+            .module_settings(tenant_id)
+            .await?
+            .show_locked_topics_in_lists;
+        if !show_locked_topics_in_lists {
+            select = select.filter(forum_topic::Column::IsLocked.eq(false));
+        }
 
         let page = self.fetch_topic_keyset_page(select, &filter).await?;
         let items = self

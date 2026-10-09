@@ -6,8 +6,13 @@ use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_web::HttpResult;
 use uuid::Uuid;
 
-use crate::TopicResponse;
 use crate::moderation_transport::{ForumModerationTransport, moderation_audience_port_context};
+use crate::{
+    ForumTopicReadOperation, ForumTopicReadTransport, TopicResponse,
+    topic_read_audience_port_context,
+};
+
+use super::topics::topic_audience_read_service;
 
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
@@ -55,13 +60,21 @@ pub async fn mark_topic_solution(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = runtime
-        .topic_service()
-        .get_with_locale_fallback(
+    let read_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::SelectedTopic,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let topic = topic_audience_read_service(&runtime)
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            read_context,
             topic_id,
-            request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
@@ -107,13 +120,21 @@ pub async fn clear_topic_solution(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = runtime
-        .topic_service()
-        .get_with_locale_fallback(
+    let read_context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::SelectedTopic,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let topic = topic_audience_read_service(&runtime)
+        .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
+            read_context,
             topic_id,
-            request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await

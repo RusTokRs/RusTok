@@ -7,7 +7,7 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource};
+use rustok_api::{Action, PortContext, Resource};
 use rustok_core::SecurityContext;
 
 use crate::dto::{
@@ -16,6 +16,7 @@ use crate::dto::{
 use crate::entities::{forum_topic, forum_topic_subscription};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
+use crate::services::topic_write_audience::topic_write_audience_allows;
 use crate::services::topic_subscription_lock::{
     lock_active_topic_subscription_write_in_tx, lock_topic_subscription_scopes_in_tx,
 };
@@ -28,17 +29,19 @@ use super::helpers::{
 };
 
 impl SubscriptionService {
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, security, context))]
     pub async fn set_topic_subscription(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
         security: SecurityContext,
+        context: PortContext,
     ) -> ForumResult<()> {
         self.update_topic_subscription(
             tenant_id,
             topic_id,
             security,
+            context,
             UpdateForumSubscriptionInput::watching(),
         )
         .await?;
@@ -54,15 +57,17 @@ impl SubscriptionService {
     ) -> ForumResult<()> {
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
-        self.find_topic(tenant_id, topic_id).await?;
+        // No existence or audience probe here: clearing only removes the caller's own row, and
+        // a missing or hidden topic must not produce a different outcome. Transports read the
+        // topic through the owner audience path afterwards, which reports both as not found.
         let existing = self
             .find_topic_subscription(tenant_id, topic_id, user_id)
             .await?;
         if let Some(existing) = existing {
-            self.update_topic_subscription(
+            self.write_topic_subscription(
                 tenant_id,
                 topic_id,
-                security,
+                user_id,
                 UpdateForumSubscriptionInput {
                     level: ForumSubscriptionLevel::Normal,
                     notify_mentions: None,
@@ -103,16 +108,45 @@ impl SubscriptionService {
         )
     }
 
-    #[instrument(skip(self, security, input))]
+    /// Writes the caller's topic subscription after the owner audience gate allows the
+    /// topic. Missing and audience-denied topics both return `TopicNotFound`.
+    #[instrument(skip(self, security, context, input))]
     pub async fn update_topic_subscription(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
         security: SecurityContext,
+        context: PortContext,
         input: UpdateForumSubscriptionInput,
     ) -> ForumResult<ForumSubscriptionResponse> {
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
+        if !topic_write_audience_allows(
+            &self.db,
+            self.audience_facts.clone(),
+            tenant_id,
+            topic_id,
+            &security,
+            context,
+        )
+        .await?
+        {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
+        self.write_topic_subscription(tenant_id, topic_id, user_id, input)
+            .await
+    }
+
+    /// Persists the subscription row. Callers own the authorization decision: the update
+    /// path checks topic audience first, and the clear path intentionally does not, so a
+    /// caller who lost access to a topic can still remove their own subscription.
+    async fn write_topic_subscription(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        user_id: Uuid,
+        input: UpdateForumSubscriptionInput,
+    ) -> ForumResult<ForumSubscriptionResponse> {
         let preferences = resolve_preferences(&input);
         let txn = self.db.begin().await?;
         lock_active_topic_subscription_write_in_tx(&txn, tenant_id, topic_id).await?;

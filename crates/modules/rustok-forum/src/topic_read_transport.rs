@@ -31,6 +31,10 @@ pub enum ForumTopicReadOperation {
     MarkRead,
     MarkCategoryRead,
     MarkAllRead,
+    Vote,
+    Subscription,
+    WidgetPreview,
+    Report,
 }
 
 impl ForumTopicReadOperation {
@@ -41,6 +45,10 @@ impl ForumTopicReadOperation {
             Self::MarkRead => "mark-read",
             Self::MarkCategoryRead => "mark-category-read",
             Self::MarkAllRead => "mark-all-read",
+            Self::Vote => "vote",
+            Self::Subscription => "subscription",
+            Self::WidgetPreview => "widget-preview",
+            Self::Report => "report",
         }
     }
 }

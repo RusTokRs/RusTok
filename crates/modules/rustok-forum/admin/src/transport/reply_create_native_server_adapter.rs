@@ -4,7 +4,8 @@ use crate::model::{ReplyDraft, ReplyListItem};
 
 #[cfg(feature = "ssr")]
 use super::native_server_support::{
-    parse_uuid, require_forum_module_enabled, require_permission, require_tenant_scope, runtime,
+    forum_settings_providers, parse_uuid, require_forum_module_enabled, require_permission,
+    require_tenant_scope, runtime,
 };
 
 #[server(prefix = "/api/fn", endpoint = "forum/reply-create")]
@@ -36,7 +37,9 @@ pub(super) async fn create_reply_native(
             .as_deref()
             .map(|value| parse_uuid(value, "parent_reply_id"))
             .transpose()?;
+        let settings = forum_settings_providers(&host)?;
         let reply = rustok_forum::ReplyService::new(host.db_clone(), event_bus)
+            .with_settings_providers(settings)
             .create(
                 tenant.id,
                 rustok_core::SecurityContext::from_permission_snapshot(

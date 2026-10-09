@@ -8,6 +8,7 @@ pub mod topic_status {
     pub const OPEN: &str = "open";
     pub const CLOSED: &str = "closed";
     pub const ARCHIVED: &str = "archived";
+    pub const PENDING: &str = "pending";
 }
 
 /// Reply statuses.

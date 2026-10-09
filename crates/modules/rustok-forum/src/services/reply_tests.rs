@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use crate::services::engagement_mode::providers_without_posting_cooldown;
+
     use crate::{
         CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
         ListRepliesFilter, ReplyService, TopicService, migrations,
@@ -89,6 +91,7 @@ mod tests {
             .expect("category should be created");
 
         let topic = TopicService::new(db.clone(), event_bus.clone())
+            .with_settings_providers(providers_without_posting_cooldown())
             .create(
                 tenant_id,
                 security.clone(),
@@ -106,7 +109,8 @@ mod tests {
             .await
             .expect("topic should be created");
 
-        let service = ReplyService::new(db.clone(), event_bus.clone());
+        let service = ReplyService::new(db.clone(), event_bus.clone())
+            .with_settings_providers(providers_without_posting_cooldown());
         for content in ["first", "second", "third"] {
             service
                 .create(

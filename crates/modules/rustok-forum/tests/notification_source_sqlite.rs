@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -82,6 +85,7 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
     }
 
     let topic = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             admin.clone(),
@@ -206,6 +210,7 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
     }
 
     let deleted_topic = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             admin.clone(),
@@ -247,6 +252,7 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
     );
 
     let restricted_topic = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             admin.clone(),

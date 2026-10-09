@@ -1,5 +1,9 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
+use rustok_api::{PortActor, PortContext};
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumError, ForumModule,
@@ -65,7 +69,8 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
 async fn category_and_topic_subscriptions_round_trip_through_read_paths() {
     let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus.clone());
+    let topic_service = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let subscription_service = SubscriptionService::new(db);
 
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -114,7 +119,12 @@ async fn category_and_topic_subscriptions_round_trip_through_read_paths() {
         .await
         .expect("category subscription should be set");
     subscription_service
-        .set_topic_subscription(tenant_id, topic.id, viewer.clone())
+        .set_topic_subscription(
+            tenant_id,
+            topic.id,
+            viewer.clone(),
+            write_context(tenant_id, &viewer),
+        )
         .await
         .expect("topic subscription should be set");
 
@@ -193,7 +203,8 @@ async fn category_and_topic_subscriptions_round_trip_through_read_paths() {
 async fn subscriptions_require_authenticated_user_context() {
     let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus.clone());
+    let topic_service = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let subscription_service = SubscriptionService::new(db);
 
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -240,8 +251,23 @@ async fn subscriptions_require_authenticated_user_context() {
     assert!(matches!(category_err, ForumError::Forbidden(_)));
 
     let topic_err = subscription_service
-        .set_topic_subscription(tenant_id, topic.id, SecurityContext::system())
+        .set_topic_subscription(
+            tenant_id,
+            topic.id,
+            SecurityContext::system(),
+            write_context(tenant_id, &SecurityContext::system()),
+        )
         .await
         .expect_err("subscription without user should fail");
     assert!(matches!(topic_err, ForumError::Forbidden(_)));
+}
+
+/// Builds the exact user port context used by vote and subscription writes in tests.
+fn write_context(tenant_id: Uuid, security: &SecurityContext) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(security.user_id.unwrap_or_else(Uuid::nil).to_string()),
+        "en",
+        "test-audience-write",
+    )
 }

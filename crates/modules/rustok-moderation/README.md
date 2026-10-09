@@ -117,7 +117,9 @@ The current source provides:
   host-composition and Forum revision/effect/concurrency evidence retained in the repository;
 - source boundary guards under `scripts/verify/`.
 
-The bounded FORUM-19 producer integration is complete. Remaining source/product work includes
+The bounded FORUM-19 producer integration is complete. Forum user reports on topics and replies enter
+through the Forum-owned `ForumModerationReportPort`, which the host composes onto `submit_report`; see
+`DECISIONS/2026-10-09-forum-user-reports-via-moderation.md`. Remaining source/product work includes
 transactional/public Moderation application event contracts, the Groups membership-scoped
 expiry reference adapter and later accepted producer adapters, broader module-owned admin UI,
 versioned policies, appeals, automated providers and capability-scoped sanctions. Unsupported

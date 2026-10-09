@@ -79,6 +79,11 @@ pub(crate) async fn promote_topic_to_post(
     let post_status = match topic.status {
         TopicStatus::Archived => "archived",
         TopicStatus::Open | TopicStatus::Closed => "published",
+        TopicStatus::Pending => {
+            return Err(ContentError::validation(
+                "Forum topic awaiting moderation cannot be promoted to a Blog post",
+            ));
+        }
     };
 
     blog_post::ActiveModel {

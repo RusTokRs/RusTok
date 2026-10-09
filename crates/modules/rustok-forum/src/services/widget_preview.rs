@@ -1,23 +1,26 @@
-use rustok_api::{Action, Resource};
+use rustok_api::{Action, PortContext, Resource};
 use rustok_core::{PermissionScope, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::audience::SharedForumAudienceFactsPort;
 use crate::dto::{
     ForumReplyStreamWidgetPreview, ForumTopicDetailWidgetPreview, ForumTopicListWidgetPreview,
     ForumWidgetPreviewPayload, ForumWidgetPreviewResponse, ListRepliesFilter,
     PreviewForumWidgetInput, ValidateForumWidgetPropsInput,
 };
 use crate::error::{ForumError, ForumResult};
-use crate::services::topic::TopicService as TopicPersistenceService;
-use crate::services::topic_visibility::ForumTopicVisibilityService;
+use crate::services::topic::WidgetTopicListQuery;
 use crate::services::widget_contract::{
     FORUM_WIDGET_CONTRACT_VERSION, FORUM_WIDGET_TYPE_REPLY_STREAM, FORUM_WIDGET_TYPE_TOPIC_DETAIL,
     FORUM_WIDGET_TYPE_TOPIC_LIST, ForumWidgetContractService,
 };
-use crate::services::{ReplyService, TopicService};
+use crate::services::{
+    ForumReplyAudienceReadService, ForumTopicAudienceReadService,
+    ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService, TopicService,
+};
 use crate::state_machine::ReplyStatus;
 
 const TOPIC_DETAIL_PREVIEW_REPLIES: u64 = 20;
@@ -33,26 +36,47 @@ const MODERATOR_PREVIEW_REPLY_STATUSES: [ReplyStatus; 5] = [
 /// Forum owner runtime for Page Builder widget previews.
 ///
 /// All widget configuration crosses `ForumWidgetContractService` first. Data then comes only from
-/// Forum owner read services under the caller's exact security snapshot. The service never accepts
-/// tenant or actor identity inside widget props.
+/// Forum owner audience reads for the caller's exact `PortContext`. Every topic, reply, and list
+/// the preview returns is checked against the parent topic's owner audience, so a preview cannot
+/// show content that the caller cannot read through the owner transports. The service never
+/// accepts tenant or actor identity inside widget props.
 pub struct ForumWidgetPreviewService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    audience_facts: Option<SharedForumAudienceFactsPort>,
 }
 
 impl ForumWidgetPreviewService {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+    /// `audience_facts` must be the host-published facts port when one is installed. Without
+    /// it, any layer that needs trust, Channel, or group facts is denied (fail closed).
+    pub fn new(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        audience_facts: Option<SharedForumAudienceFactsPort>,
+    ) -> Self {
+        Self {
+            db,
+            event_bus,
+            audience_facts,
+        }
     }
 
+    /// Previews one widget for an authenticated caller.
+    ///
+    /// `audience` is the exact read context built by the transport from the authenticated
+    /// principal. Its locale is the request locale. A `locale` prop on a topic-detail widget
+    /// overrides it for that widget only.
     pub async fn preview(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
-        locale: &str,
+        audience: PortContext,
         fallback_locale: Option<&str>,
         input: PreviewForumWidgetInput,
     ) -> ForumResult<ForumWidgetPreviewResponse> {
+        // Rejects public or non-user security and any actor/tenant mismatch before any data read.
+        ForumTopicAudienceViewer::authenticated(security.clone(), audience.clone())?;
+
         let validation =
             ForumWidgetContractService::validate_props(ValidateForumWidgetPropsInput {
                 widget_type: input.widget_type,
@@ -76,7 +100,7 @@ impl ForumWidgetPreviewService {
                 self.preview_topic_list(
                     tenant_id,
                     security,
-                    locale,
+                    &audience,
                     fallback_locale,
                     &normalized_props,
                 )
@@ -86,7 +110,7 @@ impl ForumWidgetPreviewService {
                 self.preview_topic_detail(
                     tenant_id,
                     security,
-                    locale,
+                    &audience,
                     fallback_locale,
                     &normalized_props,
                 )
@@ -96,7 +120,7 @@ impl ForumWidgetPreviewService {
                 self.preview_reply_stream(
                     tenant_id,
                     security,
-                    locale,
+                    &audience,
                     fallback_locale,
                     &normalized_props,
                 )
@@ -119,11 +143,37 @@ impl ForumWidgetPreviewService {
         })
     }
 
+    fn visibility_service(&self) -> ForumTopicAudienceVisibilityService {
+        ForumTopicAudienceVisibilityService::new(self.db.clone(), self.audience_facts.clone())
+    }
+
+    fn topic_audience_read_service(&self) -> ForumTopicAudienceReadService {
+        match self.audience_facts.clone() {
+            Some(facts) => ForumTopicAudienceReadService::with_audience_facts(
+                self.db.clone(),
+                self.event_bus.clone(),
+                facts,
+            ),
+            None => ForumTopicAudienceReadService::new(self.db.clone(), self.event_bus.clone()),
+        }
+    }
+
+    fn reply_audience_read_service(&self) -> ForumReplyAudienceReadService {
+        match self.audience_facts.clone() {
+            Some(facts) => ForumReplyAudienceReadService::with_audience_facts(
+                self.db.clone(),
+                self.event_bus.clone(),
+                facts,
+            ),
+            None => ForumReplyAudienceReadService::new(self.db.clone(), self.event_bus.clone()),
+        }
+    }
+
     async fn preview_topic_list(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
-        locale: &str,
+        audience: &PortContext,
         fallback_locale: Option<&str>,
         props: &Value,
     ) -> ForumResult<ForumTopicListWidgetPreview> {
@@ -132,21 +182,21 @@ impl ForumWidgetPreviewService {
         let per_page = required_u64(props, "per_page")?;
         let include_pinned = required_bool(props, "include_pinned")?;
         let sort = required_string(props, "sort")?;
-        let hidden_category_ids = ForumTopicVisibilityService::new(self.db.clone())
-            .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
-            .await?;
-        let (items, total) = TopicPersistenceService::new(self.db.clone(), self.event_bus.clone())
-            .list_widget_preview_with_locale_fallback_and_hidden_categories(
+        let visibility = self.visibility_service();
+        let (items, total) = TopicService::new(self.db.clone(), self.event_bus.clone())
+            .list_widget_preview_owner_visible(
                 tenant_id,
                 security,
-                category_id,
-                page,
-                per_page,
-                include_pinned,
-                sort,
-                locale,
+                audience.clone(),
+                &visibility,
+                WidgetTopicListQuery {
+                    category_id,
+                    page,
+                    per_page,
+                    include_pinned,
+                    sort,
+                },
                 fallback_locale,
-                &hidden_category_ids,
             )
             .await?;
 
@@ -164,7 +214,7 @@ impl ForumWidgetPreviewService {
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
-        locale: &str,
+        audience: &PortContext,
         fallback_locale: Option<&str>,
         props: &Value,
     ) -> ForumResult<ForumTopicDetailWidgetPreview> {
@@ -174,25 +224,32 @@ impl ForumWidgetPreviewService {
             .get("locale")
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty())
-            .unwrap_or(locale);
-        let topic = TopicService::new(self.db.clone(), self.event_bus.clone())
-            .get_with_locale_fallback(
+            .unwrap_or(audience.locale.as_str())
+            .to_string();
+        let mut context = audience.clone();
+        context.locale = requested_locale.clone();
+
+        let topic = self
+            .topic_audience_read_service()
+            .get_authenticated_owner_visible_with_audience_context(
                 tenant_id,
                 security.clone(),
+                context.clone(),
                 topic_id,
-                requested_locale,
                 fallback_locale,
             )
             .await?;
 
         let (replies, next_cursor) = if include_replies {
-            let page = ReplyService::new(self.db.clone(), self.event_bus.clone())
-                .list_response_for_topic_by_statuses_with_locale_fallback(
+            let page = self
+                .reply_audience_read_service()
+                .list_response_authenticated_owner_visible_with_audience_context(
                     tenant_id,
                     security,
+                    context,
                     topic_id,
                     ListRepliesFilter {
-                        locale: Some(requested_locale.to_string()),
+                        locale: Some(requested_locale),
                         after: None,
                         per_page: TOPIC_DETAIL_PREVIEW_REPLIES,
                     },
@@ -217,7 +274,7 @@ impl ForumWidgetPreviewService {
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
-        locale: &str,
+        audience: &PortContext,
         fallback_locale: Option<&str>,
         props: &Value,
     ) -> ForumResult<ForumReplyStreamWidgetPreview> {
@@ -231,13 +288,15 @@ impl ForumWidgetPreviewService {
         let per_page = required_u64(props, "per_page")?;
         let approved_only = required_bool(props, "approved_only")?;
         let statuses = reply_stream_preview_statuses(approved_only, &security)?;
-        let page = ReplyService::new(self.db.clone(), self.event_bus.clone())
-            .list_response_for_topic_by_statuses_with_locale_fallback(
+        let page = self
+            .reply_audience_read_service()
+            .list_response_authenticated_owner_visible_with_audience_context(
                 tenant_id,
                 security,
+                audience.clone(),
                 topic_id,
                 ListRepliesFilter {
-                    locale: Some(locale.to_string()),
+                    locale: Some(audience.locale.clone()),
                     after,
                     per_page,
                 },

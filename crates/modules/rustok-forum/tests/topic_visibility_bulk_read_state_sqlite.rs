@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use chrono::{Duration, Utc};
@@ -100,6 +103,7 @@ async fn create_topic(
     channel_slug: &str,
 ) -> Uuid {
     TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,

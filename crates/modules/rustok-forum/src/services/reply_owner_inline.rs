@@ -1,4 +1,5 @@
 use crate::dto::{CreateReplyCommandInput, UpdateReplyCommandInput};
+use crate::services::content_limits::ForumContentLimits;
 
 impl ReplyService {
     pub(crate) const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize = 512;
@@ -51,6 +52,9 @@ impl ReplyService {
         enforce_scope(&security, Resource::ForumReplies, Action::Create)?;
         let locale = normalize_locale(&input.locale)?;
         let document = crate::richtext::normalize_discussion(input.content)?;
+        let content_limits = ForumContentLimits::resolve(&self.settings, tenant_id).await?;
+        content_limits
+            .validate_body(&crate::richtext::project_discussion(document.clone())?.plain_text)?;
         let stored_body = crate::richtext::serialize_discussion(document.clone())?;
         // UUIDv7: the reply list keyset orders by (created_at, id), so ids must be time-ordered.
         let reply_id = Uuid::now_v7();
@@ -87,6 +91,7 @@ impl ReplyService {
         match topic.status {
             TopicStatus::Closed => return Err(ForumError::TopicClosed),
             TopicStatus::Archived => return Err(ForumError::TopicArchived),
+            TopicStatus::Pending => return Err(ForumError::TopicAwaitingModeration),
             TopicStatus::Open => {}
         }
         if topic.is_locked {
@@ -108,8 +113,22 @@ impl ReplyService {
             }
         }
 
+        super::posting_rate::enforce_new_reply_rate_in_tx(
+            &txn,
+            tenant_id,
+            &security,
+            content_limits.new_reply_rate_limit_seconds(),
+        )
+        .await?;
         let position = allocate_reply_position_in_tx(&txn, tenant_id, topic_id).await?;
-        let status = if category.moderated {
+        // Pre-moderation holds a new reply when the category or the tenant requires review. Tenant
+        // pre-moderation also holds new topics, see `TopicService::create_with_inline_relations`.
+        let pre_moderation_enabled = self
+            .settings
+            .module_settings_in_tx(&txn, tenant_id)
+            .await?
+            .pre_moderation_enabled;
+        let status = if category.moderated || pre_moderation_enabled {
             ReplyStatus::Pending
         } else {
             ReplyStatus::Approved

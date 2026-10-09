@@ -32,7 +32,7 @@ use super::mention_relation::MentionRelationService;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
-use super::rbac::{enforce_owned_scope, enforce_scope};
+use super::rbac::{enforce_author_deletion_policy, enforce_owned_scope, enforce_scope};
 use super::reply;
 use super::topic_owner::TopicService;
 use super::user_stats::UserStatsService;
@@ -59,6 +59,7 @@ pub struct ReplyService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     relations: MentionRelationService,
+    settings: ForumSettingsProviders,
     inner: reply::ReplyService,
 }
 
@@ -67,13 +68,15 @@ impl ReplyService {
         Self {
             inner: reply::ReplyService::new(db.clone(), event_bus.clone()),
             relations: MentionRelationService::new(db.clone()),
+            settings: ForumSettingsProviders::default(),
             db,
             event_bus,
         }
     }
 
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
-        self.inner = self.inner.with_settings_providers(settings);
+        self.inner = self.inner.with_settings_providers(settings.clone());
+        self.settings = settings;
         self
     }
 
@@ -160,6 +163,12 @@ impl ReplyService {
             Resource::ForumReplies,
             Action::Delete,
             existing.author_id,
+        )?;
+        let settings = self.settings.module_settings(tenant_id).await?;
+        enforce_author_deletion_policy(
+            &security,
+            Resource::ForumReplies,
+            settings.allow_user_content_deletion,
         )?;
 
         let txn = self.db.begin().await?;

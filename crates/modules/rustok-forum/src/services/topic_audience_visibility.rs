@@ -1,4 +1,4 @@
-use rustok_api::{PortActorKind, PortContext};
+use rustok_api::{PortActorKind, PortContext, Resource};
 use rustok_core::{SecurityActorKind, SecurityContext};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -8,6 +8,8 @@ use crate::audience::{
     ForumAudienceFactsResolver, SharedForumAudienceFactsPort,
 };
 use crate::error::{ForumError, ForumResult};
+use crate::state_machine::TopicStatus;
+use crate::services::pending_visibility::can_see_pending;
 use crate::services::topic_audience::{find_topic, load_policy_for_topic};
 use crate::services::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
 
@@ -19,6 +21,11 @@ pub struct ForumTopicAudienceViewer {
 }
 
 impl ForumTopicAudienceViewer {
+    /// The security context the viewer was built with. Pre-moderation checks read it.
+    pub(crate) fn security(&self) -> &SecurityContext {
+        &self.security
+    }
+
     pub fn public() -> Self {
         Self {
             security: SecurityContext::public_read(),
@@ -136,8 +143,27 @@ impl ForumTopicAudienceVisibilityService {
         {
             return Ok(false);
         }
+        if !self.pending_topic_visible(tenant_id, topic_id, viewer).await? {
+            return Ok(false);
+        }
 
         self.policy_allows(tenant_id, topic_id, viewer).await
+    }
+
+    /// A pending topic is visible only to its author and to moderators.
+    async fn pending_topic_visible(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        viewer: &ForumTopicAudienceViewer,
+    ) -> ForumResult<bool> {
+        let topic = match find_topic(&self.db, tenant_id, topic_id).await {
+            Ok(topic) => topic,
+            Err(ForumError::TopicNotFound(_)) => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        Ok(topic.status != TopicStatus::Pending
+            || can_see_pending(viewer.security(), Resource::ForumTopics, topic.author_id))
     }
 
     async fn policy_allows(

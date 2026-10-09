@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -114,8 +117,10 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
         .await
         .expect("category should be created");
 
-    let topics = TopicService::new(db.clone(), event_bus.clone());
-    let replies = ReplyService::new(db.clone(), event_bus.clone());
+    let topics = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
+    let replies = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let moderation = ModerationService::new(db.clone(), event_bus);
     let read_state = ForumTopicReadStateService::new(db.clone());
     let projection = ForumReadModelService::new(db.clone());
@@ -427,7 +432,8 @@ async fn late_approval_below_read_position_becomes_unread() {
         )
         .await
         .expect("moderated category should be created");
-    let topics = TopicService::new(db.clone(), event_bus.clone());
+    let topics = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let topic_id = create_topic(
         &topics,
         tenant_id,
@@ -436,7 +442,8 @@ async fn late_approval_below_read_position_becomes_unread() {
         "Late approval topic",
     )
     .await;
-    let replies = ReplyService::new(db.clone(), event_bus.clone());
+    let replies = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let first_pending = replies
         .create(
             tenant_id,

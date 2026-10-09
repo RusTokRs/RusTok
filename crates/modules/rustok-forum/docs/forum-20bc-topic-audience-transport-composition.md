@@ -16,10 +16,9 @@ and both authenticated mark-read transports, through the exact
   Channel, or Groups fact providers. Authenticated requests use the exact
   `PortContext` and the host-published `SharedForumAudienceFactsPort` when a
   still-required richer selector needs it.
-- The storefront GraphQL adapter now requests
-  `forumStorefrontAudienceTopic`. The older compatibility
-  `forumStorefrontTopic` field remains available but is no longer the
-  module-owned storefront selected-topic call site.
+- The storefront GraphQL adapter requests `forumStorefrontAudienceTopic`. The
+  older anonymous `forumStorefrontTopic` field has been removed from the GraphQL
+  runtime (see `DECISIONS/2026-10-09-forum-topic-owner-audience-read.md`).
 - The native server function constructs the same public or authenticated owner
   service from `HostRuntimeContext` and uses it for both an explicitly selected
   topic and the first topic selected from the current list response.
@@ -28,8 +27,9 @@ and both authenticated mark-read transports, through the exact
   mark-read transports both call this method with the same trusted context and
   optional facts capability.
 - Missing, closed, route-channel denied, category-audience denied, topic-local
-  denied, and absent topics remain non-oracular. Replies are not requested or
-  returned when the exact selected-topic decision is unavailable.
+  denied, and absent topics remain non-oracular.
+  Replies are not requested or returned when the exact selected-topic decision
+  is unavailable.
 
 ## Compatibility and degraded mode
 
@@ -40,9 +40,9 @@ need an optional provider. A still-required trust, Channel, or Groups fact fails
 closed when the host capability is absent.
 
 The legacy `ForumStorefrontReadStateService::mark_topic_read_current_visible`
-and the legacy GraphQL `forumStorefrontTopic` compatibility field remain for
-consumers that have not yet migrated. New module-owned storefront selected-topic
-and mark-read paths do not use them.
+remains for consumers that have not yet migrated. New module-owned storefront
+selected-topic and mark-read paths do not use it. The legacy GraphQL
+`forumStorefrontTopic` field is removed, not kept as a compatibility wrapper.
 
 ## Explicitly not delivered
 

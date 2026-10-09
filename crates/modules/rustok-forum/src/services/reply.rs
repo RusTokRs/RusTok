@@ -23,6 +23,7 @@ use crate::error::{ForumError, ForumResult};
 use crate::richtext::project_stored_discussion;
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::engagement_mode::ForumSettingsProviders;
+use crate::services::pending_visibility::reply_pending_condition;
 use crate::services::vote::{VoteService, VoteSummary};
 use crate::state_machine::ReplyStatus;
 
@@ -109,7 +110,7 @@ impl ReplyService {
             items: replies,
             next_cursor,
         } = self
-            .fetch_reply_page(tenant_id, topic_id, &filter, None)
+            .fetch_reply_page(tenant_id, topic_id, &filter, None, &security)
             .await?;
         let solution_reply_id = self
             .load_solution_reply_id_for_topic(tenant_id, topic_id)
@@ -183,7 +184,7 @@ impl ReplyService {
             items: replies,
             next_cursor,
         } = self
-            .fetch_reply_page(tenant_id, topic_id, &filter, statuses)
+            .fetch_reply_page(tenant_id, topic_id, &filter, statuses, &security)
             .await?;
         let solution_reply_id = self
             .load_solution_reply_id_for_topic(tenant_id, topic_id)
@@ -300,17 +301,22 @@ impl ReplyService {
 
     /// Keyset page of replies ordered `(created_at ASC, id ASC)`. Fetches one extra row
     /// to learn whether another page exists, so the list never counts rows.
+    ///
+    /// Pending replies of other authors are excluded for every caller that is not a moderator,
+    /// including callers that request explicit statuses.
     async fn fetch_reply_page(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
         filter: &ListRepliesFilter,
         statuses: Option<&[ReplyStatus]>,
+        security: &SecurityContext,
     ) -> ForumResult<ReplyPage<forum_reply::Model>> {
         let per_page = filter.per_page.max(1);
         let mut query = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
-            .filter(forum_reply::Column::TopicId.eq(topic_id));
+            .filter(forum_reply::Column::TopicId.eq(topic_id))
+            .filter(reply_pending_condition(security));
 
         if let Some(statuses) = statuses
             && !statuses.is_empty()

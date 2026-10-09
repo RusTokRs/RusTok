@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -95,7 +98,8 @@ async fn create_category(
 async fn topic_tags_are_synced_into_forum_topic_tags_without_legacy_json() {
     let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus);
+    let topic_service = TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
 
     let category = create_category(&category_service, tenant_id, admin.clone()).await;
@@ -156,7 +160,8 @@ async fn topic_tags_are_synced_into_forum_topic_tags_without_legacy_json() {
 async fn topic_tag_sync_reuses_existing_global_taxonomy_term() {
     let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus);
+    let topic_service = TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let taxonomy_service = TaxonomyService::new(db.clone());
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
 

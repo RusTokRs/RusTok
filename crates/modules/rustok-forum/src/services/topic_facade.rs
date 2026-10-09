@@ -15,6 +15,7 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
 
 use super::engagement_mode::ForumSettingsProviders;
+use super::pending_visibility::can_see_pending;
 use super::rbac::enforce_scope;
 use super::topic_canonical_resolution::{
     ForumTopicCanonicalResolution, ForumTopicCanonicalResolutionService,
@@ -47,7 +48,7 @@ impl TopicService {
         Self::with_optional_audience_facts(db, event_bus, Some(facts_port))
     }
 
-    pub(crate) fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
         self.inner = self.inner.with_settings_providers(settings);
         self
     }
@@ -221,12 +222,17 @@ impl TopicService {
             .inner
             .get_with_locale_fallback(
                 tenant_id,
-                security,
+                security.clone(),
                 resolution.canonical_topic_id,
                 locale,
                 fallback_locale,
             )
             .await?;
+        if response.status == TopicStatus::Pending.to_string()
+            && !can_see_pending(&security, Resource::ForumTopics, response.author_id)
+        {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
         Ok((resolution, require_localized_topic_response(response)?))
     }
 

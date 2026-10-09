@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -19,6 +22,7 @@ async fn sqlite_enforces_locked_and_moderated_reply_semantics() -> TestResult<()
 
     let locked = seed_forum(&db, false, true).await?;
     let locked_result = ReplyService::new(db.clone(), event_bus(db.clone()))
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             locked.tenant_id,
             customer_security(locked.author_id),
@@ -33,6 +37,7 @@ async fn sqlite_enforces_locked_and_moderated_reply_semantics() -> TestResult<()
     let moderated = seed_forum(&db, true, false).await?;
     let bus = event_bus(db.clone());
     let reply = ReplyService::new(db.clone(), bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             moderated.tenant_id,
             customer_security(moderated.author_id),

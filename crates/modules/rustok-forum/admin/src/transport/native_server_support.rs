@@ -59,6 +59,26 @@ pub(super) fn runtime() -> Result<
     Ok((host, event_bus))
 }
 
+/// Builds the Forum settings providers from the host runtime, so native writes apply tenant limits.
+/// A host without the static settings readers fails the request instead of using defaults.
+#[cfg(feature = "ssr")]
+pub(super) fn forum_settings_providers(
+    host: &rustok_api::HostRuntimeContext,
+) -> Result<rustok_forum::ForumSettingsProviders, ServerFnError> {
+    match (
+        host.shared_get::<rustok_api::SharedStaticModuleSettingsReader>(),
+        host.shared_get::<rustok_api::SharedStaticModuleSettingsTransactionReader>(),
+    ) {
+        (Some(reader), Some(transactional_reader)) => Ok(
+            rustok_forum::ForumSettingsProviders::default()
+                .with_static_readers(reader, transactional_reader),
+        ),
+        _ => Err(ServerFnError::new(
+            "Forum admin requires static module settings readers in host runtime context",
+        )),
+    }
+}
+
 #[cfg(feature = "ssr")]
 pub(super) fn parse_uuid(value: &str, field: &'static str) -> Result<uuid::Uuid, ServerFnError> {
     uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new(format!("Invalid {field}")))
