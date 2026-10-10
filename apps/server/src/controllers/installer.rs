@@ -216,9 +216,10 @@ async fn apply(
                 }
             }
             Err(error) => {
+                let error_message = format!("installer apply failed: {error}");
                 tracing::error!(%error, %job_id, "Installer apply job failed");
                 if let Err(update_error) = persistence
-                    .finish_http_job_failed(job_id, "installer apply failed")
+                    .finish_http_job_failed(job_id, &error_message)
                     .await
                 {
                     tracing::error!(
@@ -528,3 +529,95 @@ pub fn router() -> crate::routes::ServerRouter {
         .route("/api/install/preflight", post(preflight))
         .route("/api/install/apply", post(apply))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    #[test]
+    fn installer_schema_missing_detects_common_relational_errors() {
+        let postgres_missing = sea_orm::DbErr::Custom(
+            "relation \"install_sessions\" does not exist".to_string(),
+        );
+        assert!(installer_schema_missing(&postgres_missing));
+
+        let sqlite_missing = sea_orm::DbErr::Custom(
+            "no such table: install_sessions".to_string(),
+        );
+        assert!(installer_schema_missing(&sqlite_missing));
+
+        let other_error = sea_orm::DbErr::Custom(
+            "connection refused".to_string(),
+        );
+        assert!(!installer_schema_missing(&other_error));
+    }
+
+    #[test]
+    fn install_job_status_response_maps_model_states() {
+        let job_id = Uuid::new_v4();
+        let now = Utc::now();
+        let model = rustok_installer_persistence::entities::install_http_job::Model {
+            id: job_id,
+            status: "succeeded".to_string(),
+            submitted_at: now,
+            started_at: now,
+            finished_at: Some(now),
+            session_id: Some(Uuid::new_v4()),
+            tenant_id: Some(Uuid::new_v4()),
+            output: None,
+            error_message: None,
+        };
+
+        let response = install_job_status_response(model).expect("maps succeeded status");
+        assert_eq!(response.job_id, job_id);
+        assert!(matches!(response.status, InstallJobState::Succeeded));
+        assert!(response.error.is_none());
+    }
+
+    #[test]
+    fn install_job_status_response_maps_failed_model_with_error_message() {
+        let job_id = Uuid::new_v4();
+        let now = Utc::now();
+        let model = rustok_installer_persistence::entities::install_http_job::Model {
+            id: job_id,
+            status: "failed".to_string(),
+            submitted_at: now,
+            started_at: now,
+            finished_at: Some(now),
+            session_id: None,
+            tenant_id: None,
+            output: None,
+            error_message: Some("installer apply failed: invalid topology".to_string()),
+        };
+
+        let response = install_job_status_response(model).expect("maps failed status");
+        assert_eq!(response.job_id, job_id);
+        assert!(matches!(response.status, InstallJobState::Failed));
+        assert_eq!(
+            response.error.as_deref(),
+            Some("installer apply failed: invalid topology")
+        );
+    }
+
+    #[test]
+    fn install_job_status_response_rejects_unknown_status() {
+        let now = Utc::now();
+        let model = rustok_installer_persistence::entities::install_http_job::Model {
+            id: Uuid::new_v4(),
+            status: "corrupted_state".to_string(),
+            submitted_at: now,
+            started_at: now,
+            finished_at: None,
+            session_id: None,
+            tenant_id: None,
+            output: None,
+            error_message: None,
+        };
+
+        let result = install_job_status_response(model);
+        assert!(result.is_err());
+    }
+}
+

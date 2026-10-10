@@ -5336,3 +5336,17 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.159` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
 - **Next primary iteration:** continue through remaining `apps/server` REST controllers (`artifact_http.rs`, `installer.rs`, `mcp.rs`, `oauth_metadata.rs`) and server function routing.
 
+### FS-22.06.160 Assessment — Installer HTTP controller failure diagnostic retention and state coverage
+
+- **Base:** commit `c04f05c8e` on dedicated branch `codex/audit-server-bootstrap-and-host`.
+- **Primary scope:** `apps/server/src/controllers/installer.rs`.
+- **Invariant map:** Durable background installer jobs must retain concrete, actionable failure reasons upon execution errors; client inspection of `/api/install/jobs/{job_id}` must receive descriptive error details rather than losing diagnostics to an opaque static string; relational missing-schema heuristics must reliably recognize uninitialized table states across supported database drivers; setup token checks and plan execution barriers must remain fail-closed.
+- **Confirmed finding INSTALLER-22.06.160-01:** in `apps/server/src/controllers/installer.rs::apply`, the background execution task passed hardcoded static string `"installer apply failed"` to `persistence.finish_http_job_failed(job_id, "installer apply failed")`, discarding the typed `InstallExecutionError` returned by `executor.apply`. When clients later queried `/api/install/jobs/{job_id}`, the persisted `error` field provided no information on why the installation failed.
+- **Remediation:**
+  1. Updated the failure branch in `apply` to preserve and persist `format!("installer apply failed: {error}")`, storing actionable diagnostics in durable storage.
+  2. Added unit tests for `installer_schema_missing` across PostgreSQL and SQLite error formats.
+  3. Added unit tests for `install_job_status_response` verifying status mapping, failure error message projection, and rejection of invalid states.
+- **Status:** `FS-22.06.160` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
+- **Next primary iteration:** continue through `apps/server` REST controllers (`artifact_http.rs`, `mcp.rs`, `oauth_metadata.rs`).
+
+
