@@ -312,6 +312,8 @@ rustok-fulfillment = { path = "crates/modules/rustok-fulfillment" }
 rustok-fulfillment-storefront = { path = "crates/modules/rustok-fulfillment/storefront" }
 rustok-blog = { path = "crates/modules/rustok-blog" }
 rustok-content = { path = "crates/modules/rustok-content" }
+rustok-content-portability-api = { path = "crates/libs/rustok-content-portability-api" }
+rustok-content-portability = { path = "crates/libs/rustok-content-portability" }
 rustok-content-orchestration = { path = "crates/modules/rustok-content-orchestration" }
 rustok-pages = { path = "crates/modules/rustok-pages" }
 rustok-navigation = { path = "crates/modules/rustok-navigation" }
@@ -373,6 +375,10 @@ rustok-email = { path = "crates/modules/rustok-email" }
 rustok-outbox = { path = "crates/modules/rustok-outbox" }
 rustok-notifications-api = { path = "crates/modules/rustok-notifications-api" }
 rustok-notifications = { path = "crates/modules/rustok-notifications" }
+rustok-newsletter-api = { path = "crates/modules/rustok-newsletter-api" }
+rustok-newsletter = { path = "crates/modules/rustok-newsletter" }
+rustok-newsletter-api = { path = "crates/modules/rustok-newsletter-api" }
+rustok-newsletter = { path = "crates/modules/rustok-newsletter" }
 rustok-iggy = { path = "crates/modules/rustok-iggy" }
 rustok-iggy-connector = { path = "crates/modules/rustok-iggy-connector" }
 rustok-forum = { path = "crates/modules/rustok-forum" }

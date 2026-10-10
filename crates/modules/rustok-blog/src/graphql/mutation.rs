@@ -463,6 +463,298 @@ impl BlogMutation {
 
         Ok(true)
     }
+
+    async fn create_preview_token(
+        &self,
+        ctx: &Context<'_>,
+        input: CreatePreviewTokenInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlPreviewToken> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_POSTS_UPDATE],
+            "Permission denied: blog_posts:update required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        let service = crate::services::PreviewTokenService::new(db.clone(), event_bus.clone());
+        let token = service
+            .create_token(
+                tenant_id,
+                input.post_id,
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+                input.ttl_hours,
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(GqlPreviewToken {
+            id: token.id,
+            token: token.token,
+            post_id: token.post_id,
+            expires_at: token.expires_at.to_rfc3339(),
+            created_at: token.created_at.to_rfc3339(),
+        })
+    }
+
+    async fn revoke_preview_token(
+        &self,
+        ctx: &Context<'_>,
+        token_id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_POSTS_UPDATE],
+            "Permission denied: blog_posts:update required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        let service = crate::services::PreviewTokenService::new(db.clone(), event_bus.clone());
+        service
+            .revoke_token(
+                tenant_id,
+                token_id,
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(true)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // BULK OPERATIONS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Publish multiple posts at once. Only posts in Draft status will be published.
+    async fn bulk_publish_posts(
+        &self,
+        ctx: &Context<'_>,
+        input: BulkOperationInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlBulkOperationResult> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_POSTS_PUBLISH],
+            "Permission denied: blog_posts:publish required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        let service = PostService::new(db.clone(), event_bus.clone());
+        let security = rustok_core::security_context_from_access_token(
+            auth.user_id,
+            &auth.grant_type,
+            &auth.permissions,
+        );
+        let result = service
+            .bulk_transition_posts(
+                tenant_id,
+                &input.post_ids,
+                crate::BlogPostStatus::Published,
+                security,
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(result.into())
+    }
+
+    /// Unpublish multiple posts at once. Only posts in Published status will be unpublished.
+    async fn bulk_unpublish_posts(
+        &self,
+        ctx: &Context<'_>,
+        input: BulkOperationInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlBulkOperationResult> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_POSTS_PUBLISH],
+            "Permission denied: blog_posts:publish required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        let service = PostService::new(db.clone(), event_bus.clone());
+        let security = rustok_core::security_context_from_access_token(
+            auth.user_id,
+            &auth.grant_type,
+            &auth.permissions,
+        );
+        let result = service
+            .bulk_transition_posts(
+                tenant_id,
+                &input.post_ids,
+                crate::BlogPostStatus::Draft,
+                security,
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(result.into())
+    }
+
+    /// Archive multiple posts at once. Only posts in Published status will be archived.
+    async fn bulk_archive_posts(
+        &self,
+        ctx: &Context<'_>,
+        input: BulkOperationInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlBulkOperationResult> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_POSTS_PUBLISH],
+            "Permission denied: blog_posts:publish required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        let service = PostService::new(db.clone(), event_bus.clone());
+        let security = rustok_core::security_context_from_access_token(
+            auth.user_id,
+            &auth.grant_type,
+            &auth.permissions,
+        );
+        let result = service
+            .bulk_transition_posts(
+                tenant_id,
+                &input.post_ids,
+                crate::BlogPostStatus::Archived,
+                security,
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(result.into())
+    }
+
+    /// Pin a post to the top of public listings. Only published posts can be pinned.
+    async fn pin_post(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_POSTS_UPDATE],
+            "Permission denied: blog_posts:update required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        let service = PostService::new(db.clone(), event_bus.clone());
+        service
+            .pin_post(
+                tenant_id,
+                id,
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(true)
+    }
+
+    /// Unpin a post from the top of public listings.
+    async fn unpin_post(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_POSTS_UPDATE],
+            "Permission denied: blog_posts:update required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        let service = PostService::new(db.clone(), event_bus.clone());
+        service
+            .unpin_post(
+                tenant_id,
+                id,
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(true)
+    }
+
+    /// Delete multiple posts at once. Only posts in Draft or Archived status can be deleted.
+    async fn bulk_delete_posts(
+        &self,
+        ctx: &Context<'_>,
+        input: BulkOperationInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlBulkOperationResult> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_POSTS_DELETE],
+            "Permission denied: blog_posts:delete required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        let service = PostService::new(db.clone(), event_bus.clone());
+        let security = rustok_core::security_context_from_access_token(
+            auth.user_id,
+            &auth.grant_type,
+            &auth.permissions,
+        );
+        let result = service
+            .bulk_delete_posts(tenant_id, &input.post_ids, security)
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(result.into())
+    }
 }
 
 fn mutation_tenant_id(

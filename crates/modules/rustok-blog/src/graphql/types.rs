@@ -116,6 +116,9 @@ pub struct GqlPost {
     pub created_at: String,
     pub updated_at: String,
     pub published_at: Option<String>,
+    pub scheduled_at: Option<String>,
+    pub is_pinned: bool,
+    pub pinned_at: Option<String>,
     pub tags: Vec<String>,
     pub featured_image_url: Option<String>,
     pub seo_title: Option<String>,
@@ -313,6 +316,9 @@ pub struct GqlPostListItem {
     pub category_name: Option<String>,
     pub created_at: String,
     pub published_at: Option<String>,
+    pub scheduled_at: Option<String>,
+    pub is_pinned: bool,
+    pub pinned_at: Option<String>,
     pub tags: Vec<String>,
     pub featured_image_url: Option<String>,
     pub channel_slugs: Vec<String>,
@@ -346,6 +352,8 @@ pub struct CreatePostInput {
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
     pub channel_slugs: Option<Vec<String>>,
+    pub scheduled_at: Option<String>,
+    pub is_pinned: Option<bool>,
 }
 
 #[derive(InputObject)]
@@ -371,6 +379,8 @@ pub struct UpdatePostInput {
     pub seo_description: MaybeUndefined<String>,
     pub channel_slugs: Option<Vec<String>>,
     pub version: i32,
+    pub scheduled_at: MaybeUndefined<String>,
+    pub is_pinned: Option<bool>,
 }
 
 /// Filter for the public, cursor-paginated post list.
@@ -422,6 +432,9 @@ impl From<PostResponse> for GqlPost {
             created_at: post.created_at.to_rfc3339(),
             updated_at: post.updated_at.to_rfc3339(),
             published_at: post.published_at.map(|value| value.to_rfc3339()),
+            scheduled_at: post.scheduled_at.map(|value| value.to_rfc3339()),
+            is_pinned: post.is_pinned,
+            pinned_at: post.pinned_at.map(|value| value.to_rfc3339()),
             tags: post.tags,
             featured_image_url: post.featured_image_url,
             seo_title: post.seo_title,
@@ -503,6 +516,9 @@ impl From<PostSummary> for GqlPostListItem {
             category_name: item.category_name,
             created_at: item.created_at.to_rfc3339(),
             published_at: item.published_at.map(|value| value.to_rfc3339()),
+            scheduled_at: item.scheduled_at.map(|value| value.to_rfc3339()),
+            is_pinned: item.is_pinned,
+            pinned_at: item.pinned_at.map(|value| value.to_rfc3339()),
             tags: item.tags,
             featured_image_url: item.featured_image_url,
             channel_slugs: item.channel_slugs,
@@ -526,6 +542,12 @@ impl From<CreatePostInput> for DomainCreatePostInput {
             seo_description: input.seo_description,
             channel_slugs: input.channel_slugs,
             metadata: None,
+            scheduled_at: input.scheduled_at.and_then(|value| {
+                chrono::DateTime::parse_from_rfc3339(&value)
+                    .ok()
+                    .map(|value| value.with_timezone(&chrono::Utc))
+            }),
+            is_pinned: input.is_pinned,
         }
     }
 }
@@ -546,6 +568,8 @@ impl From<UpdatePostInput> for DomainUpdatePostInput {
             channel_slugs: input.channel_slugs,
             metadata: None,
             version: input.version,
+            scheduled_at: graphql_patch_datetime(input.scheduled_at),
+            is_pinned: input.is_pinned,
         }
     }
 }
@@ -719,6 +743,81 @@ fn graphql_patch<T>(value: MaybeUndefined<T>) -> Patch<T> {
     }
 }
 
+fn graphql_patch_datetime(value: MaybeUndefined<String>) -> Patch<chrono::DateTime<chrono::Utc>> {
+    match value {
+        MaybeUndefined::Undefined => Patch::Keep,
+        MaybeUndefined::Null => Patch::Clear,
+        MaybeUndefined::Value(value) => {
+            if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(&value) {
+                Patch::Set(parsed.with_timezone(&chrono::Utc))
+            } else {
+                Patch::Keep
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// PREVIEW TOKEN TYPES
+// ═══════════════════════════════════════════════════════════════════════
+
+#[derive(SimpleObject)]
+pub struct GqlPreviewToken {
+    pub id: Uuid,
+    pub token: String,
+    pub post_id: Uuid,
+    pub expires_at: String,
+    pub created_at: String,
+}
+
+#[derive(InputObject)]
+pub struct CreatePreviewTokenInput {
+    pub post_id: Uuid,
+    /// Token TTL in hours. Default: 168 (7 days). Max: 720 (30 days).
+    pub ttl_hours: Option<i64>,
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// BULK OPERATION TYPES
+// ═══════════════════════════════════════════════════════════════════════
+
+#[derive(InputObject)]
+pub struct BulkOperationInput {
+    pub post_ids: Vec<Uuid>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlBulkOperationResult {
+    pub succeeded: i32,
+    pub failed: i32,
+    pub succeeded_ids: Vec<Uuid>,
+    pub failures: Vec<GqlBulkOperationFailure>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlBulkOperationFailure {
+    pub post_id: Uuid,
+    pub reason: String,
+}
+
+impl From<crate::dto::BulkOperationResult> for GqlBulkOperationResult {
+    fn from(result: crate::dto::BulkOperationResult) -> Self {
+        Self {
+            succeeded: result.succeeded as i32,
+            failed: result.failed as i32,
+            succeeded_ids: result.succeeded_ids,
+            failures: result
+                .failures
+                .into_iter()
+                .map(|f| GqlBulkOperationFailure {
+                    post_id: f.post_id,
+                    reason: f.reason,
+                })
+                .collect(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{DomainUpdatePostInput, UpdatePostInput};
@@ -742,6 +841,8 @@ mod tests {
             seo_description: MaybeUndefined::Undefined,
             channel_slugs: None,
             version: 1,
+            scheduled_at: MaybeUndefined::Undefined,
+            is_pinned: None,
         };
         let domain: DomainUpdatePostInput = input.into();
         assert_eq!(domain.content, Some(canonical));
@@ -763,6 +864,8 @@ mod tests {
             seo_description: MaybeUndefined::Null,
             channel_slugs: Some(vec!["web".to_string()]),
             version: 7,
+            scheduled_at: MaybeUndefined::Undefined,
+            is_pinned: None,
         };
         let domain: DomainUpdatePostInput = input.into();
         assert_eq!(domain.content, Some(canonical));
@@ -807,6 +910,9 @@ mod tests {
             created_at: String::new(),
             updated_at: String::new(),
             published_at: None,
+            scheduled_at: None,
+            is_pinned: false,
+            pinned_at: None,
             tags: Vec::new(),
             featured_image_url: None,
             seo_title: None,

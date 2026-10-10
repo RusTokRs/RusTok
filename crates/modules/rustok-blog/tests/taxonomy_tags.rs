@@ -96,6 +96,8 @@ async fn post_tags_create_blog_scoped_taxonomy_terms_and_usage_counts() {
                 seo_description: None,
                 channel_slugs: None,
                 metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await
@@ -176,6 +178,8 @@ async fn tag_list_is_bounded_by_database_pagination_and_preserves_zero_use_modul
                 seo_description: None,
                 channel_slugs: None,
                 metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await
@@ -199,6 +203,8 @@ async fn tag_list_is_bounded_by_database_pagination_and_preserves_zero_use_modul
                 seo_description: None,
                 channel_slugs: None,
                 metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await
@@ -285,6 +291,8 @@ async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
                 seo_description: None,
                 channel_slugs: None,
                 metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await
@@ -398,6 +406,8 @@ async fn post_read_does_not_resurrect_metadata_tags_after_relations_are_removed(
                 seo_description: None,
                 channel_slugs: None,
                 metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await
@@ -443,6 +453,8 @@ async fn tag_update_commits_dictionary_change_and_blog_reindex_together() {
                 seo_description: None,
                 channel_slugs: None,
                 metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await
@@ -528,6 +540,8 @@ async fn tag_update_rolls_back_when_blog_reindex_outbox_write_fails() {
                 seo_description: None,
                 channel_slugs: None,
                 metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await
@@ -614,6 +628,8 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
                 seo_description: None,
                 channel_slugs: None,
                 metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await

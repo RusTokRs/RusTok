@@ -1,0 +1,24 @@
+[package]
+name = "rustok-revisions-backup"
+version = "0.1.0"
+edition = "2021"
+description = "Backup and restore utility for rustok-revisions"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "revbackup"
+path = "src/main.rs"
+
+[dependencies]
+rustok-revisions = { path = "../rustok-revisions", features = ["seaorm"] }
+sea-orm = { version = "2.0", features = ["runtime-tokio-rustls", "sqlx-postgres"] }
+tokio = { version = "1.0", features = ["full"] }
+clap = { version = "4.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+anyhow = "1.0"
+colored = "2.0"
+indicatif = "0.17"
+flate2 = "1.0"

@@ -9,6 +9,7 @@ pub(crate) mod category_taxonomy_sync;
 mod comment;
 mod comment_projection;
 mod post;
+pub(crate) mod preview_token;
 mod rbac;
 mod tag;
 mod taxonomy_translation_owner;
@@ -24,6 +25,7 @@ pub use post::{
 pub(crate) use post::{is_post_visible_for_channel, load_post_subject_snapshot};
 pub use tag::TagService;
 pub use taxonomy_translation_owner::BlogTaxonomyTranslationOwner;
+pub use preview_token::{PreviewToken, PreviewTokenService};
 
 #[cfg(test)]
 mod tag_tenant_integrity_tests;

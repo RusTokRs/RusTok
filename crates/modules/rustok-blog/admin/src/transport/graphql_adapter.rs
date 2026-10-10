@@ -7,8 +7,8 @@ use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostList};
 
 pub type ApiError = GraphqlHttpError;
 
-const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt status createdAt publishedAt } } }";
-const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt tags featuredImageUrl seoTitle seoDescription version } }";
+const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt status createdAt publishedAt scheduledAt } } }";
+const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt scheduledAt tags featuredImageUrl seoTitle seoDescription version } }";
 const CREATE_POST_MUTATION: &str =
     "mutation CreatePost($input: CreatePostInput!) { createPost(input: $input) }";
 const UPDATE_POST_MUTATION: &str = "mutation UpdatePost($id: UUID!, $input: UpdatePostInput!) { updatePost(id: $id, input: $input) }";
@@ -99,6 +99,10 @@ struct CreatePostInput {
     seo_title: Option<String>,
     #[serde(rename = "seoDescription")]
     seo_description: Option<String>,
+    #[serde(rename = "scheduledAt")]
+    scheduled_at: Option<String>,
+    #[serde(rename = "isPinned", skip_serializing_if = "Option::is_none")]
+    is_pinned: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,6 +121,8 @@ struct UpdatePostInput {
     seo_title: Option<String>,
     #[serde(rename = "seoDescription", skip_serializing_if = "Option::is_none")]
     seo_description: Option<String>,
+    #[serde(rename = "isPinned", skip_serializing_if = "Option::is_none")]
+    is_pinned: Option<bool>,
     version: i32,
 }
 
@@ -214,6 +220,8 @@ pub async fn create_post(
                 featured_image_url: None,
                 seo_title: None,
                 seo_description: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         },
         token.clone(),

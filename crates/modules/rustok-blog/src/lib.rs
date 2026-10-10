@@ -21,13 +21,13 @@ pub mod services;
 pub use controllers::openapi;
 pub use domain::{richtext, state_machine};
 pub use dto::{
-    ArchivePostInput, CategoryListItem, CategoryListResponse, CategoryResponse, CommentListItem,
-    CommentResponse, CreateCategoryInput, CreateCommentInput, CreatePostInput, CreateTagInput,
-    ListCategoriesFilter, ListCommentsFilter, ListTagsFilter, ModerateCommentInput,
-    ModerateCommentStatus, PostListQuery, PostListResponse, PostResponse, PostSortField,
-    PostSortOrder, PostSummary, PublicPostPage, PublicPostsPageQuery, PublishedPostCursor,
-    TagListItem, TagResponse, UpdateCategoryInput, UpdateCommentInput, UpdatePostInput,
-    UpdateTagInput,
+    ArchivePostInput, BulkOperationFailure, BulkOperationResult, CategoryListItem,
+    CategoryListResponse, CategoryResponse, CommentListItem, CommentResponse, CreateCategoryInput,
+    CreateCommentInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
+    ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery, PostListResponse,
+    PostResponse, PostSortField, PostSortOrder, PostSummary, PublicPostPage, PublicPostsPageQuery,
+    PublishedPostCursor, TagListItem, TagResponse, UpdateCategoryInput, UpdateCommentInput,
+    UpdatePostInput, UpdateTagInput,
 };
 pub use error::{BlogError, BlogPublicError, BlogResult};
 pub use graphql::{BlogMutation, BlogQuery};
@@ -45,7 +45,8 @@ pub use ports::{blog_category, blog_post, blog_post_tag, blog_post_translation};
 pub use rustok_comments_api::CommentsThreadPort;
 pub use services::{
     BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner, CANONICAL_POST_ROUTE_LOCALE,
-    CategoryService, CommentService, PostService, TagService, canonical_post_route,
+    CategoryService, CommentService, PostService, PreviewToken, PreviewTokenService, TagService,
+    canonical_post_route,
 };
 pub use state_machine::{
     Archived, BlogPost, BlogPostStatus, CommentStatus, Draft, Published, ToBlogPostStatus,

@@ -74,6 +74,7 @@ moderation = { crate = "rustok-moderation", source = "path", path = "crates/modu
 blog = { crate = "rustok-blog", source = "path", path = "crates/modules/rustok-blog", depends_on = ["content", "outbox", "taxonomy", "channel"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/modules/rustok-forum", depends_on = ["content", "media", "taxonomy"] }
 notifications = { crate = "rustok-notifications", source = "path", path = "crates/modules/rustok-notifications", depends_on = ["outbox"] }
+newsletter = { crate = "rustok-newsletter", source = "path", path = "crates/modules/rustok-newsletter", depends_on = ["email", "outbox"] }
 comments = { crate = "rustok-comments", source = "path", path = "crates/modules/rustok-comments" }
 pages = { crate = "rustok-pages", source = "path", path = "crates/modules/rustok-pages", depends_on = ["content", "outbox", "page_builder"] }
 navigation = { crate = "rustok-navigation", source = "path", path = "crates/modules/rustok-navigation", depends_on = ["channel", "outbox"] }
