@@ -5362,5 +5362,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.161` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
 - **Next primary iteration:** continue through remaining `apps/server` controllers (`mcp.rs`, `oauth_metadata.rs`, `flex.rs`).
 
+### FS-22.06.162 Assessment — OAuth authorization server metadata development issuer relaxation (RFC 8414)
+
+- **Base:** commit `3142588a7` on dedicated branch `codex/audit-server-bootstrap-and-host`.
+- **Primary scope:** `apps/server/src/controllers/oauth_metadata.rs`.
+- **Invariant map:** The RFC 8414 / OpenID Connect metadata documents (`/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`) must enforce HTTPS issuer URLs for remote domains to prevent credential interception, while accommodating standard local development environments (`http://localhost:*`, `http://127.0.0.1:*`) per RFC 8414 §2; queries, fragments, userinfo, and non-root paths must remain strictly prohibited.
+- **Confirmed finding OAUTH-22.06.162-01:** `parse_metadata_issuer` rejected all non-HTTPS issuer schemes unconditionally (`url.scheme() != "https"`). Local developers running `rustok-server` locally with default local configurations (`http://localhost:3000` or `http://127.0.0.1:3000`) experienced failures when calling `/.well-known/oauth-authorization-server` or `/.well-known/openid-configuration`.
+- **Remediation:**
+  1. Updated `parse_metadata_issuer` in `apps/server/src/controllers/oauth_metadata.rs` to allow `http` when the host is `localhost` or `127.0.0.1`, matching RFC 8414 §2 exceptions for local development/testing.
+  2. Retained strict HTTPS validation for all other hosts/domains, as well as strict rejections of userinfo, query, fragment, and path components.
+  3. Added unit tests verifying acceptance of `http://localhost:3000`, `http://localhost:8080/`, and `http://127.0.0.1:3000`.
+- **Status:** `FS-22.06.162` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
+- **Next primary iteration:** continue through remaining `apps/server` controllers (`mcp.rs`, `flex.rs`).
+
+
 
 

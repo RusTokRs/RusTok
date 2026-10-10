@@ -102,9 +102,11 @@ fn parse_metadata_issuer(issuer: &str) -> Result<Url, Error> {
     let url = Url::parse(issuer)
         .map_err(|_| Error::Message("OAuth metadata requires an absolute issuer URL".into()))?;
 
-    if url.scheme() != "https" || url.host_str().is_none() {
+    let is_local_http = url.scheme() == "http"
+        && matches!(url.host_str(), Some("localhost") | Some("127.0.0.1"));
+    if (url.scheme() != "https" && !is_local_http) || url.host_str().is_none() {
         return Err(Error::Message(
-            "OAuth metadata requires an HTTPS issuer URL".into(),
+            "OAuth metadata requires an HTTPS issuer URL (or http://localhost for local development)".into(),
         ));
     }
 
@@ -207,5 +209,18 @@ mod tests {
                 "email_verified".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn metadata_accepts_localhost_and_loopback_http_issuers() {
+        for local_issuer in [
+            "http://localhost:3000",
+            "http://localhost:8080/",
+            "http://127.0.0.1:3000",
+        ] {
+            let metadata = metadata_for_issuer(local_issuer).expect("local issuer should be accepted");
+            assert!(metadata.authorization_endpoint.contains("/api/oauth/authorize"));
+            assert!(metadata.token_endpoint.contains("/api/oauth/token"));
+        }
     }
 }
