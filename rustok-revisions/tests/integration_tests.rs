@@ -1,6 +1,5 @@
 //! Integration tests for rustok-revisions.
 
-use chrono::Utc;
 use rustok_revisions::{
     ChangeSource, Revisionable, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
     RetentionPolicy, SeaOrmBackend,

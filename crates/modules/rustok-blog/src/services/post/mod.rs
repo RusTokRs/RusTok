@@ -62,7 +62,9 @@ struct ResolvedTranslationRecord<'a> {
     effective_locale: String,
 }
 
+mod bulk;
 mod commands;
+mod pin;
 mod queries;
 mod repository;
 mod routes;

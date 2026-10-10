@@ -26,7 +26,7 @@ mod translation_apply;
 
 use rustok_content::entities::node::ContentStatus;
 use rustok_outbox::TransactionalEventBus;
-use sea_orm::{DatabaseConnection, DateTimeWithTimeZone};
+use sea_orm::{DatabaseConnection, prelude::DateTimeWithTimeZone};
 
 use crate::entities::page_translation;
 

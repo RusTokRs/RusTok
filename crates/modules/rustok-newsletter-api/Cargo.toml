@@ -15,8 +15,7 @@ chrono = { workspace = true }
 rustok-api = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
-thiserror.workspace = true
-uuid.workspace = true
-
-[dev-dependencies]
 serde_json.workspace = true
+thiserror.workspace = true
+utoipa.workspace = true
+uuid.workspace = true

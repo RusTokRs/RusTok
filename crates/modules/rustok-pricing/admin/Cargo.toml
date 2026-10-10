@@ -65,4 +65,5 @@ rustok-taxonomy.workspace = true
 rustok-test-utils.workspace = true
 rustok-tenant.workspace = true
 sea-orm.workspace = true
+sea-orm-migration.workspace = true
 tokio.workspace = true

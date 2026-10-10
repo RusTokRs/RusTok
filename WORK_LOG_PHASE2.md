@@ -117,7 +117,7 @@
 - **REST endpoints:** 2
 
 ### Документация
-- `DECISIONS/2026-10-09-blog-featured-pinned-posts.md` — architectural decision record
+- `crates/modules/rustok-blog/docs/2026-10-09-blog-featured-pinned-posts.md` — feature design document
 
 ---
 

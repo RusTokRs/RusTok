@@ -1,14 +1,14 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use rustok_api::{Permission, UserRole};
-use rustok_core::{MigrationSource, SecurityContext};
-use rustok_forms::dto::{FormSubmissionState, ListFormSubmissionsFilter};
-use rustok_forms::{FormsModule, FormsService};
+use rustok_api::Permission;
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_forms_module::dto::{FormSubmissionState, ListFormSubmissionsFilter};
+use rustok_forms_module::{FormsModule, FormsService};
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use sea_orm::{
-    ColumnTrait, ConnectOptions, Database, DatabaseConnection, DbBackend, EntityTrait,
-    PaginatorTrait, QueryFilter, Statement,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    EntityTrait, PaginatorTrait, QueryFilter, Statement,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use serde_json::{Map, Value, json};
@@ -60,7 +60,7 @@ async fn honeypot_capture_is_stored_as_spam_without_notification_event() -> Test
     assert_eq!(stored.len(), 1);
     assert_eq!(stored[0].state, FormSubmissionState::Spam);
     assert!(
-        !stored[0].payload.contains_key("website"),
+        stored[0].payload.get("website").is_none(),
         "honeypot field must not be stored in the payload"
     );
     assert_eq!(

@@ -1,5 +1,5 @@
 use async_graphql::{
-    Context, ErrorExtensions, FieldError, InputObject, Object, Result, SimpleObject,
+    Context, FieldError, InputObject, Object, Result, SimpleObject,
 };
 use rustok_api::graphql::{GraphQLError, require_module_enabled};
 use rustok_api::{AuthContext, Permission, TenantContext, has_any_effective_permission};
@@ -56,6 +56,7 @@ pub struct UpdateGqlFormSubmissionStateInput {
     pub state: String,
 }
 
+#[derive(Default)]
 pub struct FormsQuery;
 
 #[Object]
@@ -101,6 +102,7 @@ impl FormsQuery {
     }
 }
 
+#[derive(Default)]
 pub struct FormsMutation;
 
 #[Object]

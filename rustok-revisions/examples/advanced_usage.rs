@@ -7,7 +7,6 @@
 //! - Batch operations
 //! - Advanced diff analysis
 
-use chrono::Utc;
 use rustok_revisions::{
     ChangeSource, Revisionable, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
     RetentionPolicy, SeaOrmBackend,

@@ -2,7 +2,7 @@
 
 use crate::{CsvFormatHandler, JsonFormatHandler, read_file, write_file};
 use rustok_content_portability_api::{
-    BatchImportResult, ExportContext, ExportResult, Format, FormatOptions, ImportContext,
+    ExportContext, ExportResult, Format, FormatOptions, ImportContext,
     PortabilityError,
 };
 use serde::{de::DeserializeOwned, Serialize};
@@ -18,7 +18,7 @@ impl ImportService {
     }
 
     /// Import items from a JSON file.
-    #[instrument(skip(context), fields(tenant_id = %context.tenant_id, format = %context.format))]
+    #[instrument(skip(context, path), fields(tenant_id = %context.tenant_id, format = %context.format))]
     pub async fn import_json_file<T: DeserializeOwned>(
         path: impl AsRef<Path>,
         context: ImportContext,
@@ -35,7 +35,7 @@ impl ImportService {
     }
 
     /// Import items from a CSV file.
-    #[instrument(skip(context), fields(tenant_id = %context.tenant_id, format = %context.format))]
+    #[instrument(skip(context, path), fields(tenant_id = %context.tenant_id, format = %context.format))]
     pub async fn import_csv_file<T: DeserializeOwned>(
         path: impl AsRef<Path>,
         context: ImportContext,
@@ -81,7 +81,7 @@ impl ExportService {
     }
 
     /// Export items to a JSON file.
-    #[instrument(skip(items, context), fields(tenant_id = %context.tenant_id, format = %context.format, count = items.len()))]
+    #[instrument(skip(path, items, context), fields(tenant_id = %context.tenant_id, format = %context.format, count = items.len()))]
     pub async fn export_json_file<T: Serialize>(
         path: impl AsRef<Path>,
         items: &[T],
@@ -110,7 +110,7 @@ impl ExportService {
     }
 
     /// Export items to a CSV file.
-    #[instrument(skip(items, context), fields(tenant_id = %context.tenant_id, format = %context.format, count = items.len()))]
+    #[instrument(skip(path, items, context), fields(tenant_id = %context.tenant_id, format = %context.format, count = items.len()))]
     pub async fn export_csv_file<T: Serialize>(
         path: impl AsRef<Path>,
         items: &[T],

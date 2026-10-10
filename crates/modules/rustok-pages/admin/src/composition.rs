@@ -913,7 +913,7 @@ fn PublishSchedulePanel(
                     class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
                     disabled=move || busy.get()
                     title="Schedule the reviewed publish of the current page state"
-                    on:click=schedule_action
+                    on:click=move |_| schedule_action.run(())
                 >
                     "Schedule publish"
                 </button>

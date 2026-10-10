@@ -106,7 +106,7 @@ pub mod storefront_read_state {
     include!("storefront_read_state_bulk.rs");
 }
 pub mod subscription;
-mod topic {
+pub(crate) mod topic {
     use sea_orm::QuerySelect;
     include!("topic_import.rs");
     include!("topic.rs");

@@ -12,6 +12,7 @@ crate-type = ["rlib"]
 default = []
 hydrate = ["leptos/hydrate"]
 ssr = ["leptos/ssr"]
+csr = ["leptos/csr"]
 
 [dependencies]
 leptos.workspace = true

@@ -66,6 +66,7 @@ pub(super) fn register(
     let cache = ensure_cache_service(runtime_ctx);
     let store: Arc<dyn PublicCommentsSnapshotStore> =
         Arc::new(ServerBlogPublicCommentsSnapshotStore::new(cache));
+    runtime_ctx.shared_insert(Arc::clone(&store));
     extensions.insert(store);
 }
 

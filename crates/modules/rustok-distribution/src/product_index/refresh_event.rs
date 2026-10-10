@@ -121,6 +121,7 @@ impl<T> ProductIndexRefreshDelivery<T> {
                 acknowledgement_token,
             } => {
                 ensure_product_id(product_id)?;
+                ensure_variant_id(variant_id)?;
                 let key = EntityKey {
                     tenant_id,
                     schema: product_variant_schema_ref()?,
@@ -228,6 +229,14 @@ fn ensure_product_id(product_id: Uuid) -> Result<(), ProductIndexRefreshDelivery
     }
 }
 
+fn ensure_variant_id(variant_id: Uuid) -> Result<(), ProductIndexRefreshDeliveryError> {
+    if variant_id.is_nil() {
+        Err(ProductIndexRefreshDeliveryError::NilVariantId)
+    } else {
+        Ok(())
+    }
+}
+
 fn invalid_contract(error: DomainError) -> rustok_core::Error {
     rustok_core::Error::Validation(format!(
         "selected Product Index refresh contract is invalid: {error}"
@@ -238,6 +247,8 @@ fn invalid_contract(error: DomainError) -> rustok_core::Error {
 pub enum ProductIndexRefreshDeliveryError {
     #[error("Product Index refresh product UUID cannot be nil")]
     NilProductId,
+    #[error("Product Index refresh variant UUID cannot be nil")]
+    NilVariantId,
     #[error("Product Index refresh target contract is invalid")]
     InvalidContract(#[from] DomainError),
     #[error("Product Index source refresh delivery is invalid")]
@@ -334,6 +345,24 @@ mod tests {
         assert!(matches!(
             result,
             Err(ProductIndexRefreshDeliveryError::NilProductId)
+        ));
+    }
+
+    #[test]
+    fn variant_delivery_rejects_nil_variant_id() {
+        let result = ProductIndexRefreshDelivery::variant(
+            Uuid::from_u128(11),
+            Uuid::from_u128(21),
+            Uuid::from_u128(31),
+            Uuid::nil(),
+            9,
+            (),
+        )
+        .into_index_delivery();
+
+        assert!(matches!(
+            result,
+            Err(ProductIndexRefreshDeliveryError::NilVariantId)
         ));
     }
 

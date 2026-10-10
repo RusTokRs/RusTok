@@ -213,7 +213,7 @@ pub(super) fn merge_working_bodies(
 /// `Utc::now()` carries nanoseconds).
 pub(super) fn body_revision_timestamp(
     now: chrono::DateTime<chrono::Utc>,
-) -> sea_orm::DateTimeWithTimeZone {
+) -> sea_orm::prelude::DateTimeWithTimeZone {
     chrono::DateTime::from_timestamp_micros(now.timestamp_micros())
         .expect("a current timestamp always fits in the chrono range")
         .into()

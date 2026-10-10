@@ -228,7 +228,7 @@ impl PageService {
     #[instrument(skip(self))]
     pub async fn process_due_publish_jobs_as_of(
         &self,
-        now: sea_orm::DateTimeWithTimeZone,
+        now: sea_orm::prelude::DateTimeWithTimeZone,
         limit: u64,
     ) -> PagesResult<u64> {
         let limit = limit.clamp(1, MAX_PAGE_PUBLISH_JOBS_PER_SWEEP);
@@ -355,7 +355,7 @@ impl PageService {
     }
 }
 
-fn parse_schedule_time(value: &str) -> PagesResult<sea_orm::DateTimeWithTimeZone> {
+fn parse_schedule_time(value: &str) -> PagesResult<sea_orm::prelude::DateTimeWithTimeZone> {
     let parsed = chrono::DateTime::parse_from_rfc3339(value.trim()).map_err(|error| {
         schedule_time_invalid(format!("publish_at must be an RFC 3339 timestamp: {error}"))
     })?;

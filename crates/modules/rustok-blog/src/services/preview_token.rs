@@ -12,7 +12,7 @@ use crate::entities::blog_preview_token;
 use crate::error::{BlogError, BlogResult};
 use crate::services::post::PostService;
 use crate::services::rbac::enforce_owned_scope;
-use crate::dto::post::PostResponse;
+use crate::PostResponse;
 use rustok_outbox::TransactionalEventBus;
 
 /// Default token TTL: 7 days
@@ -208,10 +208,8 @@ impl PreviewTokenService {
 /// Generate a cryptographically random preview token.
 /// Format: 32 bytes of randomness, base64url-encoded (43 chars).
 fn generate_preview_token() -> String {
-    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-    use rand::RngCore;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 
-    let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    let bytes: [u8; 32] = rand::random();
     URL_SAFE_NO_PAD.encode(bytes)
 }

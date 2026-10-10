@@ -8,6 +8,8 @@ use crate::model::{
     PricingAdjustmentPreview, PricingEffectivePrice, PricingPrice, PricingPriceListOption,
     PricingProductDetail, PricingProductTranslation, PricingResolutionContext, PricingVariant,
 };
+#[cfg(test)]
+use crate::model::PricingProductListItem;
 
 #[derive(Clone)]
 pub(crate) struct PricingSummary {

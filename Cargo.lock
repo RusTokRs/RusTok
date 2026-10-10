@@ -14385,6 +14385,7 @@ dependencies = [
  "rustok-customer-admin",
  "rustok-events-admin",
  "rustok-forms",
+ "rustok-forms-admin",
  "rustok-forum-admin",
  "rustok-fulfillment-admin",
  "rustok-graphql",
@@ -14795,6 +14796,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "proptest",
+ "rand 0.10.3",
  "rustok-api",
  "rustok-channel",
  "rustok-comments",
@@ -15421,6 +15423,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-content-portability"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "csv",
+ "rustok-content-portability-api",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-content-portability-api"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-core"
 version = "0.1.0"
 dependencies = [
@@ -15527,6 +15558,7 @@ dependencies = [
  "rustok-customer",
  "rustok-email",
  "rustok-events-module",
+ "rustok-forms-module",
  "rustok-forum",
  "rustok-fulfillment",
  "rustok-groups",
@@ -15661,11 +15693,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-forms-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos",
+ "leptos-auth",
+ "rustok-graphql",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-forms-leptos"
 version = "0.1.0"
 dependencies = [
  "leptos",
  "rustok-forms",
+]
+
+[[package]]
+name = "rustok-forms-module"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "async-trait",
+ "axum",
+ "chrono",
+ "hex",
+ "rustok-api",
+ "rustok-channel",
+ "rustok-core",
+ "rustok-email",
+ "rustok-events",
+ "rustok-outbox",
+ "rustok-test-utils",
+ "rustok-web",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "uuid",
 ]
 
 [[package]]
@@ -16014,6 +16087,7 @@ dependencies = [
  "rustok-ui-i18n",
  "sea-orm",
  "serde",
+ "serde_json",
  "tracing",
  "uuid",
 ]
@@ -16768,6 +16842,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-newsletter"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-email",
+ "rustok-events",
+ "rustok-newsletter-api",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-newsletter-api"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-notifications"
 version = "0.1.0"
 dependencies = [
@@ -16961,6 +17073,7 @@ dependencies = [
  "fly-leptos",
  "fly-ui",
  "fly-web",
+ "js-sys",
  "leptos",
  "rustok-grid",
  "rustok-grid-leptos",
@@ -16972,6 +17085,7 @@ dependencies = [
  "thiserror 2.0.21",
  "uuid",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 
@@ -16998,6 +17112,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "fly",
+ "hex",
  "rustok-api",
  "rustok-channel",
  "rustok-content",
@@ -17039,6 +17154,7 @@ dependencies = [
  "leptos-ui-routing",
  "rustok-api",
  "rustok-graphql",
+ "rustok-media-admin",
  "rustok-page-builder",
  "rustok-page-builder-admin",
  "rustok-ui-core",
@@ -17200,6 +17316,7 @@ dependencies = [
  "rustok-ui-i18n",
  "rustok-ui-transport",
  "sea-orm",
+ "sea-orm-migration",
  "serde",
  "serde_json",
  "tokio",
@@ -18048,6 +18165,7 @@ dependencies = [
  "rustok-distribution",
  "rustok-email",
  "rustok-events",
+ "rustok-forms-module",
  "rustok-forum",
  "rustok-fulfillment",
  "rustok-groups",
@@ -18072,6 +18190,7 @@ dependencies = [
  "rustok-modules",
  "rustok-modules-translation",
  "rustok-navigation",
+ "rustok-newsletter",
  "rustok-notifications",
  "rustok-order",
  "rustok-outbox",

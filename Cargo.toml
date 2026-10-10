@@ -82,6 +82,14 @@ members = [
     "ops/benches",
     "xtask",
 ]
+exclude = [
+    "rustok-revisions",
+    "rustok-revisions-derive",
+    "rustok-revisions-cli",
+    "rustok-revisions-monitoring",
+    "rustok-revisions-backup",
+    "crates/integration/rustok-content-revisions",
+]
 
 [patch.crates-io]
 utoipa-swagger-ui-vendored = { path = "crates/utils/utoipa-swagger-ui-vendored" }
@@ -272,7 +280,7 @@ rig-vertexai = "=0.42.0"
 rustok-core = { path = "crates/libs/rustok-core" }
 rustok-modules = { path = "crates/modules/rustok-modules", default-features = false }
 rustok-events = { path = "crates/libs/rustok-events" }
-rustok-forms = { path = "crates/modules/rustok-forms" }
+rustok-forms-module = { path = "crates/modules/rustok-forms" }
 rustok-forms-admin = { path = "crates/modules/rustok-forms/admin" }
 rustok-events-module = { path = "crates/modules/rustok-events-module" }
 rustok-commerce-foundation = { path = "crates/modules/rustok-commerce-foundation" }
@@ -378,8 +386,6 @@ rustok-email = { path = "crates/modules/rustok-email" }
 rustok-outbox = { path = "crates/modules/rustok-outbox" }
 rustok-notifications-api = { path = "crates/modules/rustok-notifications-api" }
 rustok-notifications = { path = "crates/modules/rustok-notifications" }
-rustok-newsletter-api = { path = "crates/modules/rustok-newsletter-api" }
-rustok-newsletter = { path = "crates/modules/rustok-newsletter" }
 rustok-newsletter-api = { path = "crates/modules/rustok-newsletter-api" }
 rustok-newsletter = { path = "crates/modules/rustok-newsletter" }
 rustok-iggy = { path = "crates/modules/rustok-iggy" }

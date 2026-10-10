@@ -1072,6 +1072,13 @@ impl RootMutation {
                 "Artifact tenant lifecycle revision is outside the GraphQL range",
             )
         })?;
+        if let Ok(runtime_ctx) =
+            ctx.data::<crate::services::server_runtime_context::ServerRuntimeContext>()
+        {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
+        }
         Ok(ArtifactTenantLifecycle {
             installation_id,
             enabled,
@@ -1109,6 +1116,14 @@ impl RootMutation {
             })
             .await
             .map_err(map_artifact_installation_lifecycle_error)?;
+
+        if let Ok(runtime_ctx) =
+            ctx.data::<crate::services::server_runtime_context::ServerRuntimeContext>()
+        {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
+        }
 
         Ok(ArtifactActivation {
             installation_id,
@@ -1152,6 +1167,14 @@ impl RootMutation {
             .await
             .map_err(map_artifact_installation_lifecycle_error)?;
 
+        if let Ok(runtime_ctx) =
+            ctx.data::<crate::services::server_runtime_context::ServerRuntimeContext>()
+        {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
+        }
+
         Ok(ArtifactDeactivation {
             installation_id,
             operation_id: result.operation_id,
@@ -1188,6 +1211,14 @@ impl RootMutation {
             })
             .await
             .map_err(map_artifact_installation_lifecycle_error)?;
+
+        if let Ok(runtime_ctx) =
+            ctx.data::<crate::services::server_runtime_context::ServerRuntimeContext>()
+        {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
+        }
 
         Ok(ArtifactUninstall {
             installation_id,
@@ -1338,6 +1369,12 @@ impl RootMutation {
             .await
             .map_err(map_artifact_settings_recovery_error)?;
 
+        if let Ok(runtime_ctx) = ctx.data::<ServerRuntimeContext>() {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
+        }
+
         Ok(ArtifactSettingsPurgeReceipt {
             purge_operation_id: result.purge_operation_id,
             recovery_point_id: result.recovery_point_id,
@@ -1387,6 +1424,12 @@ impl RootMutation {
             .await
             .map_err(map_artifact_settings_recovery_error)?;
 
+        if let Ok(runtime_ctx) = ctx.data::<ServerRuntimeContext>() {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
+        }
+
         Ok(ArtifactSettingsRestoreReceipt {
             restore_operation_id: result.restore_operation_id,
             recovery_point_id: result.recovery_point_id,
@@ -1431,6 +1474,12 @@ impl RootMutation {
             })
             .await
             .map_err(map_artifact_data_purge_error)?;
+
+        if let Ok(runtime_ctx) = ctx.data::<ServerRuntimeContext>() {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
+        }
 
         Ok(ArtifactDataPurgeReceipt {
             namespace_revision: i64::try_from(result.namespace_revision).map_err(|_| {
@@ -1514,6 +1563,12 @@ impl RootMutation {
         )
         .await
         .map_err(map_module_operation_recovery_error)?;
+
+        if let Ok(runtime_ctx) = ctx.data::<ServerRuntimeContext>() {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
+        }
 
         TenantModule::try_from(module).map_err(|_| {
             <FieldError as GraphQLError>::internal_error(
@@ -1637,6 +1692,18 @@ impl RootMutation {
             }
         })?;
 
+        if let Ok(runtime_ctx) = ctx.data::<ServerRuntimeContext>() {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
+            let bus = event_bus_from_context(runtime_ctx);
+            let _ = bus.publish_envelope(rustok_events::EventEnvelope::new(
+                tenant.id,
+                Some(auth.user_id),
+                rustok_events::DomainEvent::TenantUpdated { tenant_id: tenant.id },
+            ));
+        }
+
         TenantModule::try_from(module).map_err(|_| {
             <FieldError as GraphQLError>::internal_error(
                 "Static module lifecycle revision is outside the GraphQL range",
@@ -1673,6 +1740,12 @@ impl RootMutation {
             })
             .await
             .map_err(crate::graphql::transition_lifecycle::map_transition_service_error)?;
+
+        if let Ok(runtime_ctx) = ctx.data::<ServerRuntimeContext>() {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
+        }
 
         Ok(rustok_api::ModuleTransitionCheckpointView::from(receipt.checkpoint).into())
     }

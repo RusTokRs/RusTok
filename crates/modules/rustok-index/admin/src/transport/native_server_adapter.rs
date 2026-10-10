@@ -85,61 +85,123 @@ pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnErr
             },
         ];
 
-        let schemas = vec![
-            IndexSchemaSnapshot {
-                module: "catalog".to_string(),
-                entity: "product".to_string(),
-                version: 4,
-                fingerprint: "a9d8f37b019e42ac8e51df2a68c091bc".to_string(),
-                field_count: 12,
-                link_count: 2,
-                owner_module: "rustok-distribution".to_string(),
-            },
-            IndexSchemaSnapshot {
-                module: "catalog".to_string(),
-                entity: "variant".to_string(),
-                version: 2,
-                fingerprint: "e481b94d7620a3bc95cf1032df785612".to_string(),
-                field_count: 8,
-                link_count: 1,
-                owner_module: "rustok-distribution".to_string(),
-            },
-            IndexSchemaSnapshot {
-                module: "catalog".to_string(),
-                entity: "sales_channel".to_string(),
-                version: 1,
-                fingerprint: "67df890123ab45cdef78901234567890".to_string(),
-                field_count: 4,
-                link_count: 0,
-                owner_module: "rustok-distribution".to_string(),
-            },
-            IndexSchemaSnapshot {
-                module: "social_graph".to_string(),
-                entity: "privacy".to_string(),
-                version: 1,
-                fingerprint: "01bc23de45fa678901bc23de45fa6789".to_string(),
-                field_count: 5,
-                link_count: 0,
-                owner_module: "rustok-social-graph".to_string(),
-            },
-        ];
+        let db = leptos::prelude::use_context::<rustok_api::HostRuntimeContext>()
+            .map(|ctx| ctx.db_clone())
+            .or_else(leptos::prelude::use_context::<sea_orm::DatabaseConnection>);
+
+        let mut schemas = Vec::new();
+        if let Some(ref conn) = db {
+            use sea_orm::{ConnectionTrait, DbBackend, Statement};
+            let backend = conn.get_database_backend();
+            let schema_query = match backend {
+                DbBackend::Sqlite => {
+                    "SELECT module_name, entity_name, schema_version, schema_fingerprint, schema_json FROM index_schemas WHERE tenant_id = ?1 AND status = 'active' ORDER BY module_name, entity_name, schema_version DESC"
+                }
+                _ => {
+                    "SELECT module_name, entity_name, schema_version, schema_fingerprint, schema_json FROM index_schemas WHERE tenant_id = $1 AND status = 'active' ORDER BY module_name, entity_name, schema_version DESC"
+                }
+            };
+            if let Ok(rows) = conn
+                .query_all_raw(Statement::from_sql_and_values(
+                    backend,
+                    schema_query,
+                    vec![tenant.id.into()],
+                ))
+                .await
+            {
+                for row in rows {
+                    if let (Ok(module_name), Ok(entity_name), Ok(schema_version), Ok(fingerprint), Ok(schema_json)) = (
+                        row.try_get::<String>("", "module_name"),
+                        row.try_get::<String>("", "entity_name"),
+                        row.try_get::<i32>("", "schema_version"),
+                        row.try_get::<String>("", "schema_fingerprint"),
+                        row.try_get::<serde_json::Value>("", "schema_json"),
+                    ) {
+                        let field_count = schema_json
+                            .get("fields")
+                            .and_then(|v| v.as_array())
+                            .map_or(0, |a| a.len());
+                        let link_count = schema_json
+                            .get("links")
+                            .and_then(|v| v.as_array())
+                            .map_or(0, |a| a.len());
+                        let owner_module = match module_name.as_str() {
+                            "rustok-product" | "rustok-channel" => "rustok-distribution".to_string(),
+                            "rustok-social-graph" => "rustok-social-graph".to_string(),
+                            other => other.to_string(),
+                        };
+                        schemas.push(IndexSchemaSnapshot {
+                            module: module_name,
+                            entity: entity_name,
+                            version: schema_version.max(1) as u32,
+                            fingerprint,
+                            field_count,
+                            link_count,
+                            owner_module,
+                        });
+                    }
+                }
+            }
+        }
+
+        if schemas.is_empty() {
+            schemas = vec![
+                IndexSchemaSnapshot {
+                    module: "rustok-product".to_string(),
+                    entity: "product".to_string(),
+                    version: 4,
+                    fingerprint: "a9d8f37b019e42ac8e51df2a68c091bc".to_string(),
+                    field_count: 12,
+                    link_count: 2,
+                    owner_module: "rustok-distribution".to_string(),
+                },
+                IndexSchemaSnapshot {
+                    module: "rustok-product".to_string(),
+                    entity: "product_variant".to_string(),
+                    version: 2,
+                    fingerprint: "e481b94d7620a3bc95cf1032df785612".to_string(),
+                    field_count: 13,
+                    link_count: 0,
+                    owner_module: "rustok-distribution".to_string(),
+                },
+                IndexSchemaSnapshot {
+                    module: "rustok-channel".to_string(),
+                    entity: "sales_channel".to_string(),
+                    version: 1,
+                    fingerprint: "67df890123ab45cdef78901234567890".to_string(),
+                    field_count: 4,
+                    link_count: 0,
+                    owner_module: "rustok-distribution".to_string(),
+                },
+                IndexSchemaSnapshot {
+                    module: "rustok-social-graph".to_string(),
+                    entity: "relation".to_string(),
+                    version: 1,
+                    fingerprint: "01bc23de45fa678901bc23de45fa6789".to_string(),
+                    field_count: 3,
+                    link_count: 0,
+                    owner_module: "rustok-social-graph".to_string(),
+                },
+            ];
+        }
 
         let registered_sources = vec![
             IndexSourceDescriptorSnapshot {
                 name: "product-postgres-primary".to_string(),
-                entity: "catalog.product".to_string(),
+                entity: "rustok-product.product".to_string(),
+                mode: "scan_and_load".to_string(),
+            },
+            IndexSourceDescriptorSnapshot {
+                name: "product-variant-postgres-primary".to_string(),
+                entity: "rustok-product.product_variant".to_string(),
                 mode: "scan_and_load".to_string(),
             },
             IndexSourceDescriptorSnapshot {
                 name: "sales-channel-postgres-primary".to_string(),
-                entity: "catalog.sales_channel".to_string(),
+                entity: "rustok-channel.sales_channel".to_string(),
                 mode: "scan_and_load".to_string(),
             },
         ];
-
-        let db = leptos::prelude::use_context::<rustok_api::HostRuntimeContext>()
-            .map(|ctx| ctx.db_clone())
-            .or_else(leptos::prelude::use_context::<sea_orm::DatabaseConnection>);
 
         let mut inbox_metrics = IndexInboxMetricsSnapshot::default();
         let mut job_metrics = IndexJobMetricsSnapshot::default();

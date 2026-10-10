@@ -72,6 +72,7 @@ graph TD
         OPT_BLOG["blog"]
         OPT_FORUM["forum"]
         OPT_NOTIFICATIONS["notifications"]
+        OPT_NEWSLETTER["newsletter"]
         OPT_COMMENTS["comments"]
         OPT_PAGES["pages"]
         OPT_NAVIGATION["navigation"]

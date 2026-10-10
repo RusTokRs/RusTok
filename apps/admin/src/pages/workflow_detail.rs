@@ -73,7 +73,7 @@ pub fn WorkflowDetailPage() -> impl IntoView {
     view! {
         <section class="flex flex-1 flex-col p-4 md:px-6">
             <div class="mb-4">
-                <A href="/workflows" attr:class="text-sm text-muted-foreground hover:text-foreground">
+                <A href="/modules/workflow" attr:class="text-sm text-muted-foreground hover:text-foreground">
                     "← " {i18n.translate("workflows.back")}
                 </A>
             </div>
@@ -120,12 +120,6 @@ pub fn WorkflowDetailPage() -> impl IntoView {
                                             </div>
                                             <div class="flex items-center gap-2">
                                                 <StatusBadge status=wf.status.clone() />
-                                                <A
-                                                    href=format!("/workflows/{}/edit", wf.id)
-                                                    attr:class="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-                                                >
-                                                    {i18n.translate("workflows.edit")}
-                                                </A>
                                             </div>
                                         </div>
 

@@ -7,7 +7,6 @@
 //! - Compare revisions
 //! - Restore to a previous revision
 
-use chrono::Utc;
 use rustok_revisions::{
     ChangeSource, Revisionable, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
     RetentionPolicy, SeaOrmBackend,
@@ -142,7 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Total revisions: {}", revisions.len());
     for rev in &revisions {
         println!(
-            "  #{} - {} - {:?} - {}",
+            "  #{} - {:?} - {:?} - {}",
             rev.revision_number,
             rev.event,
             rev.created_at,

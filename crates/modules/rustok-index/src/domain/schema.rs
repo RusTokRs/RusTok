@@ -123,22 +123,36 @@ impl IndexSchema {
         Ok(())
     }
 
+    /// Returns the schema normalized to canonical form with fields and links
+    /// sorted by name.
+    pub fn canonical(&self) -> Self {
+        let mut fields = self.fields.clone();
+        fields.sort_by(|left, right| left.name.cmp(&right.name));
+        let mut links = self.links.clone();
+        links.sort_by(|left, right| left.name.cmp(&right.name));
+        Self {
+            reference: self.reference.clone(),
+            locale_mode: self.locale_mode,
+            fields,
+            links,
+        }
+    }
+
     /// Stable digest of the schema contract.
     ///
     /// Field and link declaration order is ignored. Composite-link field order
     /// is preserved because it defines key-column correspondence.
     pub fn fingerprint(&self) -> Result<SchemaFingerprint, DomainError> {
         self.validate()?;
+        let canonical = self.canonical();
 
         let mut hasher = Sha256::new();
         write_bytes(&mut hasher, b"rustok-index-schema-v1");
-        write_schema_ref(&mut hasher, &self.reference);
-        hasher.update([locale_mode_tag(self.locale_mode)]);
+        write_schema_ref(&mut hasher, &canonical.reference);
+        hasher.update([locale_mode_tag(canonical.locale_mode)]);
 
-        let mut fields = self.fields.iter().collect::<Vec<_>>();
-        fields.sort_by(|left, right| left.name.cmp(&right.name));
-        write_len(&mut hasher, fields.len());
-        for field in fields {
+        write_len(&mut hasher, canonical.fields.len());
+        for field in &canonical.fields {
             write_str(&mut hasher, field.name.as_str());
             hasher.update([value_type_tag(field.value_type)]);
             hasher.update([field_cardinality_tag(field.cardinality)]);
@@ -150,10 +164,8 @@ impl IndexSchema {
             ]);
         }
 
-        let mut links = self.links.iter().collect::<Vec<_>>();
-        links.sort_by(|left, right| left.name.cmp(&right.name));
-        write_len(&mut hasher, links.len());
-        for link in links {
+        write_len(&mut hasher, canonical.links.len());
+        for link in &canonical.links {
             write_str(&mut hasher, link.name.as_str());
             write_schema_ref(&mut hasher, &link.target_schema);
             hasher.update([link_cardinality_tag(link.cardinality)]);

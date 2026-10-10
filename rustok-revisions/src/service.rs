@@ -27,7 +27,7 @@ impl RevisionService {
         tenant_id: Uuid,
         content_id: Uuid,
         locale: &str,
-        old_content: &T,
+        _old_content: &T,
         new_content: &T,
         user_id: Uuid,
         tracker: &RevisionTracker,
@@ -199,7 +199,7 @@ impl RevisionService {
     }
 
     /// Restore content to a previous revision.
-    pub async fn restore_revision<T: Revisionable>(
+    pub async fn restore_revision<T: Revisionable + serde::de::DeserializeOwned>(
         &self,
         tenant_id: Uuid,
         content_id: Uuid,

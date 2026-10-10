@@ -20,10 +20,11 @@ rustok-events.workspace = true
 rustok-newsletter-api.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
-serde.workspace = true
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+utoipa = { workspace = true, features = ["uuid", "chrono"] }
 uuid.workspace = true
 
 [dev-dependencies]

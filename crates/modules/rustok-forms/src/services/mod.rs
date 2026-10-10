@@ -248,7 +248,7 @@ impl FormsService {
         form_id: &str,
         identity: &str,
     ) -> FormsResult<()> {
-        let window_start: sea_orm::DateTimeWithTimeZone =
+        let window_start: sea_orm::prelude::DateTimeWithTimeZone =
             (Utc::now() - ChronoDuration::minutes(FORM_SUBMIT_RATE_WINDOW_MINUTES)).into();
         let recent = form_submission::Entity::find()
             .filter(form_submission::Column::TenantId.eq(tenant_id))
@@ -318,7 +318,7 @@ fn hash_identity(identity: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"rustok-forms-ip-hash-v1:");
     hasher.update(identity.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 fn normalize_locale(locale: Option<&str>) -> String {

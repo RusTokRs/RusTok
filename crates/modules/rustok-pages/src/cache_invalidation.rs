@@ -356,6 +356,12 @@ impl PageCacheInvalidationEventHandler {
             DomainEvent::NodeDeleted { node_id, kind } if kind == PAGES_CACHE_ENTITY_KIND => {
                 (*node_id, PageCacheInvalidationCause::Deleted)
             }
+            DomainEvent::NodeTranslationUpdated { node_id, .. } => {
+                (*node_id, PageCacheInvalidationCause::Updated)
+            }
+            DomainEvent::BodyUpdated { node_id, .. } => {
+                (*node_id, PageCacheInvalidationCause::Updated)
+            }
             _ => return Ok(None),
         };
         PageCacheInvalidationRequest::new(
@@ -384,6 +390,9 @@ impl EventHandler for PageCacheInvalidationEventHandler {
                 | DomainEvent::NodeUnpublished { kind, .. }
                 | DomainEvent::NodeDeleted { kind, .. }
                 if kind == PAGES_CACHE_ENTITY_KIND
+        ) || matches!(
+            event,
+            DomainEvent::NodeTranslationUpdated { .. } | DomainEvent::BodyUpdated { .. }
         )
     }
 

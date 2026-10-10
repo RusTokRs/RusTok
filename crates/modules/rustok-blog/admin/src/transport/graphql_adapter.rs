@@ -255,6 +255,7 @@ pub async fn update_post(
                 featured_image_url: None,
                 seo_title: None,
                 seo_description: None,
+                is_pinned: None,
                 version: draft.version.ok_or_else(|| {
                     GraphqlHttpError::Graphql(
                         "Blog post revision is missing; reload before saving".into(),

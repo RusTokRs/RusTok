@@ -1,5 +1,5 @@
 [package]
-name = "rustok-forms"
+name = "rustok-forms-module"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,6 +21,7 @@ sea-orm-migration.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sha2.workspace = true
+hex.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 utoipa = { workspace = true, features = ["uuid", "chrono"] }

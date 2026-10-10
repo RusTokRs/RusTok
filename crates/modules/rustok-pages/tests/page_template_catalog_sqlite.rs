@@ -6,7 +6,7 @@ use rustok_core::{MigrationSource, SecurityContext};
 use rustok_pages::entities::site_symbol;
 use rustok_pages::{PageTemplateService, PagesModule};
 use sea_orm::{ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Set};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use serde_json::json;
 use uuid::Uuid;
 

@@ -236,6 +236,27 @@ impl TopicService {
         Ok((resolution, require_localized_topic_response(response)?))
     }
 
+    pub(crate) async fn list_widget_preview_owner_visible(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        context: PortContext,
+        visibility: &super::topic_audience_visibility::ForumTopicAudienceVisibilityService,
+        query: super::topic::WidgetTopicListQuery<'_>,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+        self.inner
+            .list_widget_preview_owner_visible(
+                tenant_id,
+                security,
+                context,
+                visibility,
+                query,
+                fallback_locale,
+            )
+            .await
+    }
+
     pub async fn get_storefront_visible_with_locale_fallback(
         &self,
         tenant_id: Uuid,

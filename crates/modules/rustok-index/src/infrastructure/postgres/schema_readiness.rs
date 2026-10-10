@@ -7,7 +7,9 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{PersistedSchemaReadinessFailure, SchemaFingerprint, SchemaRef, SchemaRegistry};
+use crate::{
+    IndexSchema, PersistedSchemaReadinessFailure, SchemaFingerprint, SchemaRef, SchemaRegistry,
+};
 
 pub const MAX_INDEX_SCHEMA_READINESS_SCHEMAS: usize = 64;
 
@@ -132,7 +134,8 @@ impl PostgresIndexSchemaReadinessStore {
             let registered = registry
                 .get(reference)
                 .ok_or_else(|| IndexSchemaReadinessError::SchemaNotInRegistry(reference.clone()))?;
-            let schema_json = serde_json::to_value(&registered.schema)
+            let canonical = registered.schema.canonical();
+            let schema_json = serde_json::to_value(&canonical)
                 .map_err(|error| IndexSchemaReadinessError::Storage(error.to_string()))?;
             let key = schema_key(reference);
             expected.insert(
@@ -179,11 +182,22 @@ impl PostgresIndexSchemaReadinessStore {
                 continue;
             };
 
+            let canonical_persisted_json = serde_json::from_value::<IndexSchema>(persisted.schema_json.clone())
+                .ok()
+                .and_then(|s| serde_json::to_value(s.canonical()).ok());
+            let contract_matches = if persisted.schema_json == expected_schema.schema_json {
+                true
+            } else if let Some(ref persisted_norm) = canonical_persisted_json {
+                persisted_norm == &expected_schema.schema_json
+            } else {
+                false
+            };
+
             let reason = if persisted.status != "active" {
                 Some(PersistedSchemaReadinessFailure::Inactive)
             } else if persisted.fingerprint != expected_schema.fingerprint.to_string() {
                 Some(PersistedSchemaReadinessFailure::FingerprintMismatch)
-            } else if persisted.schema_json != expected_schema.schema_json {
+            } else if !contract_matches {
                 Some(PersistedSchemaReadinessFailure::ContractMismatch)
             } else {
                 None

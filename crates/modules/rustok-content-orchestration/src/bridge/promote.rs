@@ -113,6 +113,9 @@ pub(crate) async fn promote_topic_to_post(
         } else {
             None
         }),
+        scheduled_at: Set(None),
+        is_pinned: Set(false),
+        pinned_at: Set(None),
         comment_count: Set(active_comments),
         version: Set(1),
     }

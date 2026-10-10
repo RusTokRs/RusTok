@@ -1,7 +1,6 @@
 //! Diff computation for revisions.
 
 use serde_json::{json, Value};
-use uuid::Uuid;
 
 use crate::{Revision, RevisionDiff, RevisionError};
 

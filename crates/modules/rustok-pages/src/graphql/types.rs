@@ -263,7 +263,7 @@ impl From<crate::PageBodyResponse> for GqlPageBody {
             format: r.format,
             content_json: r.content_json,
             updated_at: r.updated_at,
-            state: page_body_state_str(&r.state),
+            state: page_body_state_str(&r.state).to_string(),
         }
     }
 }

@@ -98,7 +98,7 @@ fn catalog_revision(symbols: &[Value]) -> PagesResult<String> {
     let bytes = serde_json::to_vec(&entries).map_err(|error| {
         PagesError::validation(format!("unable to encode site symbol catalog: {error}"))
     })?;
-    Ok(format!("{:x}", Sha256::digest(bytes)))
+    Ok(hex::encode(Sha256::digest(bytes)))
 }
 
 /// A reviewed publish may only expand the exact definition snapshot present
@@ -323,7 +323,7 @@ pub(crate) async fn lock_site_symbol_catalog_in_tx<C: ConnectionTrait>(
         let digest = Sha256::digest(identity.as_bytes());
         let key = i64::from_be_bytes(digest[..8].try_into().expect("SHA-256 output has 32 bytes"));
         let sql = format!("SELECT pg_advisory_xact_lock({key})");
-        conn.query_one(Statement::from_string(DatabaseBackend::Postgres, sql))
+        conn.query_one_raw(Statement::from_string(DatabaseBackend::Postgres, sql))
             .await?;
     }
     Ok(())

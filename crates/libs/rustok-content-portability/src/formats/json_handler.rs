@@ -1,7 +1,6 @@
 //! JSON format handler.
 
-use async_trait::async_trait;
-use rustok_content_portability_api::{Format, FormatOptions, PortabilityError};
+use rustok_content_portability_api::{FormatOptions, PortabilityError};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// JSON format handler for import/export operations.
@@ -23,7 +22,7 @@ impl JsonFormatHandler {
     }
 
     /// Serialize to JSON bytes.
-    pub fn serialize<T: Serialize>(
+    pub fn serialize<T: Serialize + ?Sized>(
         value: &T,
         options: &FormatOptions,
     ) -> Result<Vec<u8>, PortabilityError> {

@@ -1,4 +1,5 @@
 use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Tracks which subscribers belong to which segments.

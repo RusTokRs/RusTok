@@ -13,6 +13,9 @@ fn sample_list_item(id: &str) -> BlogPostListItem {
         status: "draft".to_string(),
         created_at: "2026-06-14T00:00:00Z".to_string(),
         published_at: None,
+        scheduled_at: None,
+        is_pinned: false,
+        pinned_at: None,
     }
 }
 
@@ -126,6 +129,9 @@ fn editor_form_state_maps_empty_and_loaded_post_without_ui_runtime() {
         created_at: "2026-06-13T00:00:00Z".to_string(),
         updated_at: "2026-06-13T00:00:00Z".to_string(),
         published_at: Some("2026-06-13T00:00:00Z".to_string()),
+        scheduled_at: None,
+        is_pinned: false,
+        pinned_at: None,
         tags: vec!["news".to_string(), "release".to_string()],
         featured_image_url: None,
         seo_title: None,
@@ -354,6 +360,9 @@ fn table_row_view_model_composes_row_policy_without_ui_runtime() {
             status: "published".to_string(),
             created_at: "2026-06-13T00:00:00Z".to_string(),
             published_at: Some("2026-06-13T00:00:00Z".to_string()),
+            scheduled_at: None,
+            is_pinned: false,
+            pinned_at: None,
         },
         Some("post-1"),
         Some("publish:post-1"),

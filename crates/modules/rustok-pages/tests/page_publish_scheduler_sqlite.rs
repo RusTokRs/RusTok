@@ -133,12 +133,13 @@ impl Fixture {
     }
 
     async fn job(&self, page_id: Uuid) -> TestResult<page_publish_job::Model> {
-        page_publish_job::Entity::find()
+        let job = page_publish_job::Entity::find()
             .filter(page_publish_job::Column::TenantId.eq(self.tenant_id))
             .filter(page_publish_job::Column::PageId.eq(page_id))
             .one(&self.db)
             .await?
-            .ok_or_else(|| std::io::Error::other("publish job is missing"))
+            .ok_or_else(|| std::io::Error::other("publish job is missing"))?;
+        Ok(job)
     }
 }
 
@@ -177,10 +178,7 @@ async fn scheduled_publish_executes_the_captured_command_once() -> TestResult<()
         .one(&fixture.db)
         .await?
         .ok_or_else(|| std::io::Error::other("page is missing"))?;
-    assert_eq!(
-        page.status,
-        rustok_content::entities::node::ContentStatus::Published
-    );
+    assert_eq!(page.status, "published");
 
     // A second sweep must not re-execute the completed job.
     let again = fixture

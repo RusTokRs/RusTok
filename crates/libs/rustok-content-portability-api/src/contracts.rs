@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Context for import operations.
-#[derive(Debug, Clone)]
+/// Context for import operations.
+#[derive(Clone)]
 pub struct ImportContext {
     /// Tenant ID for multi-tenant isolation.
     pub tenant_id: Uuid,
@@ -21,6 +22,19 @@ pub struct ImportContext {
     pub progress_callback: Option<ProgressCallback>,
     /// Timestamp when import started.
     pub started_at: DateTime<Utc>,
+}
+
+impl std::fmt::Debug for ImportContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImportContext")
+            .field("tenant_id", &self.tenant_id)
+            .field("user_id", &self.user_id)
+            .field("format", &self.format)
+            .field("continue_on_error", &self.continue_on_error)
+            .field("progress_callback", &self.progress_callback.as_ref().map(|_| "<callback>"))
+            .field("started_at", &self.started_at)
+            .finish()
+    }
 }
 
 impl ImportContext {
@@ -47,7 +61,7 @@ impl ImportContext {
 }
 
 /// Context for export operations.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ExportContext {
     /// Tenant ID for multi-tenant isolation.
     pub tenant_id: Uuid,
@@ -61,6 +75,19 @@ pub struct ExportContext {
     pub progress_callback: Option<ProgressCallback>,
     /// Timestamp when export started.
     pub started_at: DateTime<Utc>,
+}
+
+impl std::fmt::Debug for ExportContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExportContext")
+            .field("tenant_id", &self.tenant_id)
+            .field("user_id", &self.user_id)
+            .field("format", &self.format)
+            .field("filters", &self.filters)
+            .field("progress_callback", &self.progress_callback.as_ref().map(|_| "<callback>"))
+            .field("started_at", &self.started_at)
+            .finish()
+    }
 }
 
 impl ExportContext {
@@ -257,7 +284,7 @@ impl<T> ExportResult<T> {
 /// }
 /// ```
 #[async_trait]
-pub trait ContentImporter<Source, Target>: Send + Sync {
+pub trait ContentImporter<Source: Send + 'static, Target: Send + 'static>: Send + Sync {
     /// Import a single item.
     async fn import(
         &self,
@@ -339,7 +366,7 @@ pub trait ContentImporter<Source, Target>: Send + Sync {
 /// }
 /// ```
 #[async_trait]
-pub trait ContentExporter<Source, Target>: Send + Sync {
+pub trait ContentExporter<Source: Send + 'static, Target: Send + 'static>: Send + Sync {
     /// Export a single item.
     async fn export(
         &self,
@@ -354,7 +381,8 @@ pub trait ContentExporter<Source, Target>: Send + Sync {
         context: ExportContext,
     ) -> Result<ExportResult<Target>, PortabilityError> {
         let start = std::time::Instant::now();
-        let mut exported = Vec::with_capacity(sources.len());
+        let total = sources.len();
+        let mut exported = Vec::with_capacity(total);
 
         for (index, source) in sources.into_iter().enumerate() {
             match self.export(source, context.clone()).await {
@@ -368,7 +396,7 @@ pub trait ContentExporter<Source, Target>: Send + Sync {
             }
 
             if let Some(ref callback) = context.progress_callback {
-                callback(index + 1, sources.len());
+                callback(index + 1, total);
             }
         }
 

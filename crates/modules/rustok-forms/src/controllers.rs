@@ -17,7 +17,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::dto::{
-    FormSubmissionResponse, FormSubmissionState, ListFormSubmissionsFilter, SubmitFormResponse,
+    FormSubmissionResponse, ListFormSubmissionsFilter, SubmitFormResponse,
     UpdateFormSubmissionStateInput,
 };
 use crate::error::{FORM_SUBMIT_PAYLOAD_INVALID, FormsError, FormsResult};
@@ -182,14 +182,15 @@ async fn submit_form_fields(
         )
         .await;
     match result {
-        Ok(response) => Ok((StatusCode::ACCEPTED, Json(response))),
+        Ok(response) => Ok((StatusCode::ACCEPTED, Json(response)).into_response()),
         Err(error) => {
             let rich: rustok_core::error::RichError = error.into();
             if rich.error_code.as_deref() == Some("FORM_SUBMIT_RATE_LIMITED") {
                 Ok((
                     StatusCode::TOO_MANY_REQUESTS,
                     Json(serde_json::json!({ "error": "FORM_SUBMIT_RATE_LIMITED" })),
-                ))
+                )
+                    .into_response())
             } else {
                 Err(HttpError::from(FormsError::Rich(Box::new(rich))))
             }

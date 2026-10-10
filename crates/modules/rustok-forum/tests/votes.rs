@@ -526,7 +526,7 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
         .await
         .expect("topic internal voting should resume when Forum selects voting");
     vote_service
-        .set_reply_vote(tenant_id, reply.id, voter, write_context(tenant_id, &voter), -1)
+        .set_reply_vote(tenant_id, reply.id, voter.clone(), write_context(tenant_id, &voter), -1)
         .await
         .expect("reply internal voting should resume when Forum selects voting");
 }

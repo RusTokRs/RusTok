@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::{ContentFetchRequest, ContentSourceSlug, NewsletterContentItem};
@@ -28,9 +31,9 @@ pub trait NewsletterContentProvider: Send + Sync {
 /// The newsletter module uses this registry to discover available content
 /// sources at runtime. Source modules register themselves during their
 /// runtime-extension registration phase.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ContentProviderRegistry {
-    providers: Vec<Box<dyn NewsletterContentProvider>>,
+    providers: Vec<Arc<dyn NewsletterContentProvider>>,
 }
 
 impl ContentProviderRegistry {
@@ -40,11 +43,15 @@ impl ContentProviderRegistry {
         }
     }
 
-    pub fn register(&mut self, provider: Box<dyn NewsletterContentProvider>) {
+    pub fn register(&mut self, provider: Arc<dyn NewsletterContentProvider>) {
         self.providers.push(provider);
     }
 
-    pub fn providers(&self) -> &[Box<dyn NewsletterContentProvider>] {
+    pub fn register_boxed(&mut self, provider: Box<dyn NewsletterContentProvider>) {
+        self.providers.push(Arc::from(provider));
+    }
+
+    pub fn providers(&self) -> &[Arc<dyn NewsletterContentProvider>] {
         &self.providers
     }
 
@@ -57,5 +64,32 @@ impl ContentProviderRegistry {
 
     pub fn source_slugs(&self) -> Vec<ContentSourceSlug> {
         self.providers.iter().map(|p| p.source_slug()).collect()
+    }
+
+    /// Fetch content items across all registered providers that match the given slugs.
+    pub async fn fetch_for_sources(
+        &self,
+        tenant_id: Uuid,
+        source_slugs: &[ContentSourceSlug],
+        locale: Option<String>,
+        since: Option<DateTime<Utc>>,
+        limit_per_source: usize,
+    ) -> Result<Vec<NewsletterContentItem>, crate::NewsletterApiError> {
+        let mut all_items = Vec::new();
+        for slug in source_slugs {
+            if let Some(provider) = self.find(slug) {
+                let req = ContentFetchRequest {
+                    tenant_id,
+                    source_slug: slug.clone(),
+                    locale: locale.clone(),
+                    since,
+                    limit: limit_per_source,
+                };
+                let items = provider.fetch_content(req).await?;
+                all_items.extend(items);
+            }
+        }
+        all_items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+        Ok(all_items)
     }
 }

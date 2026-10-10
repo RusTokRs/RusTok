@@ -38,7 +38,6 @@ pub async fn file_size(path: impl AsRef<Path>) -> Result<u64, PortabilityError> 
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
-    use std::io::Write;
 
     #[tokio::test]
     async fn read_and_write_file() {

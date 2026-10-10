@@ -23,7 +23,6 @@ rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-profiles-api.workspace = true
 rustok-reactions-api = { path = "../rustok-reactions-api" }
-rustok-content-revisions = { path = "../../integration/rustok-content-revisions" }
 rustok-seo-targets.workspace = true
 rustok-taxonomy.workspace = true
 rustok-telemetry.workspace = true

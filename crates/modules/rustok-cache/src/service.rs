@@ -164,6 +164,15 @@ impl CacheService {
         backends.entry(key).or_insert(backend).clone()
     }
 
+    /// Clears cached backend instances so newly requested configurations or credentials rebuild backends.
+    pub fn clear_shared_backends(&self) {
+        let mut backends = self
+            .shared_backends
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        backends.clear();
+    }
+
     /// Returns `true` if a Redis connection is available.
     pub fn has_redis(&self) -> bool {
         #[cfg(feature = "redis-cache")]

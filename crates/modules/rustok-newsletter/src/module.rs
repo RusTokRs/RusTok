@@ -35,8 +35,8 @@ impl RusToKModule for NewsletterModule {
         ModuleKind::Optional
     }
 
-    fn dependencies(&self) -> Vec<&'static str> {
-        vec!["email", "outbox"]
+    fn dependencies(&self) -> &[&'static str] {
+        &["email", "outbox"]
     }
 
     async fn health(&self) -> HealthStatus {

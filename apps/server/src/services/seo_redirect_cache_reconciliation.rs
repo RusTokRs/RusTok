@@ -276,8 +276,8 @@ async fn poll_redirect_cache_changes(
     batch_limit: u64,
     max_pages_per_poll: usize,
 ) -> rustok_seo::SeoResult<()> {
-    let current_count = rustok_seo::services::redirect_cache_change_count(db).await?;
     let mut processed = 0_u64;
+    let mut reached_stream_end = false;
 
     for _ in 0..max_pages_per_poll {
         let changes =
@@ -292,31 +292,40 @@ async fn poll_redirect_cache_changes(
         processed = processed.saturating_add(page_len);
 
         if page_len < batch_limit {
+            reached_stream_end = true;
             break;
         }
         tokio::task::yield_now().await;
     }
 
-    let expected_count = observed_count.saturating_add(processed);
-    if current_count != expected_count {
-        tracing::warn!(
-            observed_count = *observed_count,
-            current_count,
-            processed,
-            "SEO redirect cursor/count gap detected; clearing and reseeding cache"
-        );
-        rustok_telemetry::metrics::record_event_error("seo.redirect.cache", "cursor_gap_recovery");
-        state.healthy.store(false, Ordering::Release);
-        (*cursor, *observed_count) = seed_redirect_cache_state(db, invalidator).await?;
-        state
-            .observed_count
-            .store(*observed_count, Ordering::Release);
-        state.healthy.store(true, Ordering::Release);
-        return Ok(());
+    *observed_count = observed_count.saturating_add(processed);
+    state.observed_count.store(*observed_count, Ordering::Release);
+
+    if reached_stream_end {
+        let current_count = rustok_seo::services::redirect_cache_change_count(db).await?;
+        if current_count != *observed_count {
+            // Check if the difference is explained by forward changes that arrived concurrently.
+            let forward_changes =
+                rustok_seo::services::redirect_cache_changes_after(db, cursor.as_ref(), 1).await?;
+            if forward_changes.is_empty() {
+                tracing::warn!(
+                    observed_count = *observed_count,
+                    current_count,
+                    processed,
+                    "SEO redirect cursor/count gap detected; clearing and reseeding cache"
+                );
+                rustok_telemetry::metrics::record_event_error("seo.redirect.cache", "cursor_gap_recovery");
+                state.healthy.store(false, Ordering::Release);
+                (*cursor, *observed_count) = seed_redirect_cache_state(db, invalidator).await?;
+                state
+                    .observed_count
+                    .store(*observed_count, Ordering::Release);
+                state.healthy.store(true, Ordering::Release);
+                return Ok(());
+            }
+        }
     }
 
-    *observed_count = current_count;
-    state.observed_count.store(current_count, Ordering::Release);
     Ok(())
 }
 

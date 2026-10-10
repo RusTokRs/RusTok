@@ -74,7 +74,7 @@ pub use tracker::{RevisionTracker, RevisionTrackerBuilder};
 pub use traits::{RevisionConfig, Revisionable, RetentionPolicy};
 
 #[cfg(feature = "seaorm")]
-pub use seaorm_backend::SeaOrmBackend;
+pub use seaorm_backend::{RevisionEntity, SeaOrmBackend};
 
 // Re-export derive macro if feature is enabled
 #[cfg(feature = "derive")]

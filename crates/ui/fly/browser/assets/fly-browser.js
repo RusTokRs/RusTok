@@ -1150,7 +1150,6 @@ export class FlyBrowserAdapter {
     if (this.csrfToken) headers["x-csrf-token"] = this.csrfToken;
     if (this.accessToken) {
       headers.authorization = `Bearer ${this.accessToken}`;
-      headers["x-fly-access-token"] = this.accessToken;
     }
     if (this.tenantSlug) headers["x-tenant-slug"] = this.tenantSlug;
 

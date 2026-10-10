@@ -104,7 +104,7 @@ rustok-notifications = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
 rustok-pages = { workspace = true, optional = true }
 rustok-navigation = { workspace = true, optional = true }
-rustok-forms = { workspace = true, optional = true }
+rustok-forms = { path = "../rustok-forms", package = "rustok-forms-module", optional = true }
 rustok-page-builder = { workspace = true, optional = true }
 rustok-taxonomy = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }

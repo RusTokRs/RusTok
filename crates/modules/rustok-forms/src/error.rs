@@ -60,6 +60,12 @@ impl From<sea_orm::DbErr> for FormsError {
     }
 }
 
+impl From<rustok_core::Error> for FormsError {
+    fn from(error: rustok_core::Error) -> Self {
+        Self::Rich(Box::new(error.into()))
+    }
+}
+
 impl From<FormsError> for RichError {
     fn from(error: FormsError) -> Self {
         match error {

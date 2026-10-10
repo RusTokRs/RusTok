@@ -3,11 +3,13 @@
 //! These ports implement the contracts defined in `rustok-newsletter-api`
 //! and provide stable, transport-neutral interfaces for external consumers.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
 use rustok_newsletter_api::{
-    CampaignStatus, ContentFetchRequest, ContentSourceSlug, NewsletterApiError,
-    NewsletterCampaignPort, NewsletterContentItem, NewsletterSubscriberPort, SubscriberStatus,
+    ContentProviderRegistry, ContentSourceSlug, NewsletterCampaignPort, NewsletterContentItem,
+    NewsletterSubscriberPort, SubscriberStatus,
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -37,15 +39,27 @@ impl NewsletterSubscriberPort for SubscriberPortImpl {
     ) -> Result<Uuid, PortError> {
         let service = SubscriberService::new(self.db.clone());
         let input = SubscribeInput {
-            email,
+            email: email.clone(),
             name,
             locale: None,
         };
-        let response = service
-            .subscribe(tenant_id, input)
-            .await
-            .map_err(map_newsletter_error)?;
-        Ok(response.id)
+        match service.subscribe(tenant_id, input).await {
+            Ok(response) => Ok(response.id),
+            Err(crate::NewsletterError::DuplicateSubscriber(_)) => {
+                let existing = service
+                    .find_by_email(tenant_id, &email)
+                    .await
+                    .map_err(map_newsletter_error)?
+                    .ok_or_else(|| PortError {
+                        kind: rustok_api::PortErrorKind::Conflict,
+                        code: "newsletter.duplicate_subscriber".to_string(),
+                        message: format!("subscriber already exists: {email}"),
+                        retryable: false,
+                    })?;
+                Ok(existing.id)
+            }
+            Err(err) => Err(map_newsletter_error(err)),
+        }
     }
 
     async fn confirm(
@@ -92,11 +106,25 @@ impl NewsletterSubscriberPort for SubscriberPortImpl {
 /// Port implementation for campaign operations.
 pub struct CampaignPortImpl {
     db: DatabaseConnection,
+    content_registry: Option<Arc<ContentProviderRegistry>>,
 }
 
 impl CampaignPortImpl {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            content_registry: None,
+        }
+    }
+
+    pub fn with_content_registry(
+        db: DatabaseConnection,
+        content_registry: Arc<ContentProviderRegistry>,
+    ) -> Self {
+        Self {
+            db,
+            content_registry: Some(content_registry),
+        }
     }
 }
 
@@ -161,13 +189,34 @@ impl NewsletterCampaignPort for CampaignPortImpl {
     async fn fetch_campaign_content(
         &self,
         _context: PortContext,
-        _tenant_id: Uuid,
-        _campaign_id: Uuid,
+        tenant_id: Uuid,
+        campaign_id: Uuid,
     ) -> Result<Vec<NewsletterContentItem>, PortError> {
-        // Content aggregation is handled by the ContentProviderRegistry during
-        // campaign rendering. This port method is reserved for future use when
-        // campaigns need to pre-fetch and cache content items.
-        Ok(Vec::new())
+        let Some(registry) = &self.content_registry else {
+            return Ok(Vec::new());
+        };
+
+        let service = CampaignService::new(self.db.clone());
+        let campaign = service
+            .get(tenant_id, campaign_id)
+            .await
+            .map_err(map_newsletter_error)?;
+
+        let slugs: Vec<ContentSourceSlug> = campaign
+            .content_sources
+            .iter()
+            .filter_map(|s| ContentSourceSlug::new(s).ok())
+            .collect();
+
+        registry
+            .fetch_for_sources(tenant_id, &slugs, None, None, 10)
+            .await
+            .map_err(|err| PortError {
+                kind: rustok_api::PortErrorKind::Unavailable,
+                code: "newsletter.content_fetch_failed".to_string(),
+                message: err.to_string(),
+                retryable: true,
+            })
     }
 }
 
@@ -212,13 +261,13 @@ fn map_newsletter_error(error: crate::NewsletterError) -> PortError {
             retryable: true,
         },
         crate::NewsletterError::Database(err) => PortError {
-            kind: PortErrorKind::Internal,
+            kind: PortErrorKind::Unavailable,
             code: "newsletter.database".to_string(),
             message: err.to_string(),
             retryable: true,
         },
         crate::NewsletterError::Api(err) => PortError {
-            kind: PortErrorKind::Internal,
+            kind: PortErrorKind::InvariantViolation,
             code: "newsletter.api".to_string(),
             message: err.to_string(),
             retryable: false,

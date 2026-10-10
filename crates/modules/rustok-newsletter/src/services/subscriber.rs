@@ -1,8 +1,8 @@
 use chrono::Utc;
 use rustok_newsletter_api::SubscriberStatus;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    QueryFilter,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
+    ModelTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -180,9 +180,9 @@ impl SubscriberService {
         if let Some(search) = &query.search {
             let search_pattern = format!("%{}%", search);
             find = find.filter(
-                subscriber::Column::Email
-                    .like(&search_pattern)
-                    .or(subscriber::Column::Name.like(&search_pattern)),
+                Condition::any()
+                    .add(subscriber::Column::Email.like(&search_pattern))
+                    .add(subscriber::Column::Name.like(&search_pattern)),
             );
         }
 
@@ -190,7 +190,6 @@ impl SubscriberService {
 
         let items: Vec<SubscriberSummary> = find
             .order_by_desc(subscriber::Column::SubscribedAt)
-            .into_partial_select()
             .offset(Some((page - 1) * per_page))
             .limit(Some(per_page))
             .all(&self.db)
@@ -221,6 +220,21 @@ impl SubscriberService {
     ) -> NewsletterResult<SubscriberResponse> {
         let subscriber = self.find_subscriber(tenant_id, subscriber_id).await?;
         self.to_response(subscriber)
+    }
+
+    /// Find a subscriber by email within a tenant.
+    pub async fn find_by_email(
+        &self,
+        tenant_id: Uuid,
+        email: &str,
+    ) -> NewsletterResult<Option<SubscriberResponse>> {
+        let email = email.trim().to_lowercase();
+        let subscriber = Subscriber::find()
+            .filter(subscriber::Column::TenantId.eq(tenant_id))
+            .filter(subscriber::Column::Email.eq(&email))
+            .one(&self.db)
+            .await?;
+        subscriber.map(|s| self.to_response(s)).transpose()
     }
 
     /// Delete a subscriber permanently.
@@ -264,24 +278,15 @@ impl SubscriberService {
 }
 
 fn parse_status(value: &str) -> NewsletterResult<SubscriberStatus> {
-    match value {
-        "pending" => Ok(SubscriberStatus::Pending),
-        "active" => Ok(SubscriberStatus::Active),
-        "unsubscribed" => Ok(SubscriberStatus::Unsubscribed),
-        "suppressed" => Ok(SubscriberStatus::Suppressed),
-        other => Err(NewsletterError::validation(format!(
-            "unknown subscriber status: {other}"
-        ))),
-    }
+    value
+        .parse()
+        .map_err(|e: rustok_newsletter_api::NewsletterApiError| {
+            NewsletterError::validation(e.to_string())
+        })
 }
 
 fn status_to_string(status: SubscriberStatus) -> String {
-    match status {
-        SubscriberStatus::Pending => "pending".to_string(),
-        SubscriberStatus::Active => "active".to_string(),
-        SubscriberStatus::Unsubscribed => "unsubscribed".to_string(),
-        SubscriberStatus::Suppressed => "suppressed".to_string(),
-    }
+    status.as_str().to_string()
 }
 
 fn generate_confirm_token() -> String {

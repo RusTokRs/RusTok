@@ -146,6 +146,7 @@ impl AlloyMutation {
             .get(saved.id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        runtime.engine.invalidate(&script.name);
 
         Ok(script.into())
     }
@@ -406,6 +407,7 @@ impl AlloyMutation {
             .save(script)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        runtime.engine.invalidate(&saved.name);
 
         Ok(saved.into())
     }
@@ -434,6 +436,7 @@ impl AlloyMutation {
             .save(script)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        runtime.engine.invalidate(&saved.name);
 
         Ok(saved.into())
     }
@@ -460,6 +463,7 @@ impl AlloyMutation {
             .save(script)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        runtime.engine.invalidate(&saved.name);
 
         Ok(saved.into())
     }
@@ -486,6 +490,7 @@ impl AlloyMutation {
             .save(script)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        runtime.engine.invalidate(&saved.name);
 
         Ok(saved.into())
     }
@@ -514,6 +519,7 @@ impl AlloyMutation {
             .save(script)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        runtime.engine.invalidate(&saved.name);
 
         Ok(saved.into())
     }

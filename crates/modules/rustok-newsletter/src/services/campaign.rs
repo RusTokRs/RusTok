@@ -2,7 +2,7 @@ use chrono::Utc;
 use rustok_newsletter_api::CampaignStatus;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    QueryFilter,
+    ModelTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -185,7 +185,6 @@ impl CampaignService {
 
         let items: Vec<CampaignSummary> = find
             .order_by_desc(campaign::Column::CreatedAt)
-            .into_partial_select()
             .offset(Some((page - 1) * per_page))
             .limit(Some(per_page))
             .all(&self.db)
@@ -274,26 +273,15 @@ impl CampaignService {
 }
 
 fn parse_status(value: &str) -> NewsletterResult<CampaignStatus> {
-    match value {
-        "draft" => Ok(CampaignStatus::Draft),
-        "scheduled" => Ok(CampaignStatus::Scheduled),
-        "sending" => Ok(CampaignStatus::Sending),
-        "sent" => Ok(CampaignStatus::Sent),
-        "cancelled" => Ok(CampaignStatus::Cancelled),
-        other => Err(NewsletterError::validation(format!(
-            "unknown campaign status: {other}"
-        ))),
-    }
+    value
+        .parse()
+        .map_err(|e: rustok_newsletter_api::NewsletterApiError| {
+            NewsletterError::validation(e.to_string())
+        })
 }
 
 fn status_to_string(status: CampaignStatus) -> String {
-    match status {
-        CampaignStatus::Draft => "draft".to_string(),
-        CampaignStatus::Scheduled => "scheduled".to_string(),
-        CampaignStatus::Sending => "sending".to_string(),
-        CampaignStatus::Sent => "sent".to_string(),
-        CampaignStatus::Cancelled => "cancelled".to_string(),
-    }
+    status.as_str().to_string()
 }
 
 fn validate_campaign_input(title: &str, subject: &str) -> NewsletterResult<()> {

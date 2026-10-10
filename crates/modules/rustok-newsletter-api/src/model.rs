@@ -39,7 +39,7 @@ impl std::fmt::Display for ContentSourceSlug {
 }
 
 /// A single content item that a source module provides for newsletter inclusion.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NewsletterContentItem {
     /// Stable identifier within the source (e.g., blog post UUID).
     pub source_id: Uuid,
@@ -62,7 +62,7 @@ pub struct NewsletterContentItem {
 }
 
 /// Request to fetch recent content items from a source module.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContentFetchRequest {
     pub tenant_id: Uuid,
     pub source_slug: ContentSourceSlug,
@@ -72,7 +72,7 @@ pub struct ContentFetchRequest {
 }
 
 /// Subscriber status in the newsletter system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SubscriberStatus {
     /// Registered but email not yet confirmed.
@@ -85,8 +85,41 @@ pub enum SubscriberStatus {
     Suppressed,
 }
 
+impl SubscriberStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Active => "active",
+            Self::Unsubscribed => "unsubscribed",
+            Self::Suppressed => "suppressed",
+        }
+    }
+}
+
+impl std::fmt::Display for SubscriberStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for SubscriberStatus {
+    type Err = NewsletterApiError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(Self::Pending),
+            "active" => Ok(Self::Active),
+            "unsubscribed" => Ok(Self::Unsubscribed),
+            "suppressed" => Ok(Self::Suppressed),
+            other => Err(NewsletterApiError::InvalidStatus(format!(
+                "unknown subscriber status: {other}"
+            ))),
+        }
+    }
+}
+
 /// Campaign lifecycle status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CampaignStatus {
     Draft,
@@ -96,11 +129,48 @@ pub enum CampaignStatus {
     Cancelled,
 }
 
+impl CampaignStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Scheduled => "scheduled",
+            Self::Sending => "sending",
+            Self::Sent => "sent",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+impl std::fmt::Display for CampaignStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for CampaignStatus {
+    type Err = NewsletterApiError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "draft" => Ok(Self::Draft),
+            "scheduled" => Ok(Self::Scheduled),
+            "sending" => Ok(Self::Sending),
+            "sent" => Ok(Self::Sent),
+            "cancelled" => Ok(Self::Cancelled),
+            other => Err(NewsletterApiError::InvalidStatus(format!(
+                "unknown campaign status: {other}"
+            ))),
+        }
+    }
+}
+
 /// API-level errors for newsletter contracts.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum NewsletterApiError {
     #[error("invalid slug: {0}")]
     InvalidSlug(String),
+    #[error("invalid status: {0}")]
+    InvalidStatus(String),
     #[error("provider not found: {0}")]
     ProviderNotFound(String),
     #[error("content fetch failed: {0}")]

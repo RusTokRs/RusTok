@@ -101,10 +101,11 @@ It is important to distinguish:
 | `blog` | `rustok-blog` | `content`, `outbox`, `taxonomy`, `channel` |
 | `forum` | `rustok-forum` | `content`, `media`, `taxonomy` |
 | `notifications` | `rustok-notifications` | `outbox` |
+| `newsletter` | `rustok-newsletter` | `email`, `outbox` |
 | `comments` | `rustok-comments` | — |
 | `pages` | `rustok-pages` | `content`, `outbox`, `page_builder` |
 | `navigation` | `rustok-navigation` | `channel`, `outbox` |
-| `forms` | `rustok-forms` | `outbox`, `email` |
+| `forms` | `rustok-forms-module` | `outbox`, `email` |
 | `page_builder` | `rustok-page-builder` | — |
 | `taxonomy` | `rustok-taxonomy` | `content`, `outbox` |
 | `media` | `rustok-media` | `outbox` |

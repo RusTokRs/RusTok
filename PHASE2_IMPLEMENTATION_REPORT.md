@@ -86,7 +86,7 @@
 - [`docs/architecture/content-portability.md`](./docs/architecture/content-portability.md)
 
 **Blog Enhancements:**
-- [`DECISIONS/2026-10-09-blog-featured-pinned-posts.md`](./DECISIONS/2026-10-09-blog-featured-pinned-posts.md)
+- [`crates/modules/rustok-blog/docs/2026-10-09-blog-featured-pinned-posts.md`](./crates/modules/rustok-blog/docs/2026-10-09-blog-featured-pinned-posts.md)
 
 ## Реализованные компоненты
 
@@ -233,7 +233,7 @@
 **Architecture Decisions:**
 1. `docs/architecture/decisions/2026-10-09-newsletter-module-architecture.md`
 2. `docs/architecture/content-portability.md`
-3. `DECISIONS/2026-10-09-blog-featured-pinned-posts.md`
+3. `crates/modules/rustok-blog/docs/2026-10-09-blog-featured-pinned-posts.md`
 
 **Implementation Plans:**
 1. `crates/modules/rustok-newsletter/docs/implementation-plan.md`

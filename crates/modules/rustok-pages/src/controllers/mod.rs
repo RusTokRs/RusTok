@@ -440,7 +440,7 @@ pub async fn page_body_revision_history(
         .map_err(map_pages_error)
 }
 
-#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams, utoipa::ToSchema)]
 pub struct PageBodyHistoryQuery {
     pub locale: String,
 }

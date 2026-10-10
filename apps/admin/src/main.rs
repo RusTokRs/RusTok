@@ -43,7 +43,6 @@ async fn main() {
     ) -> Result<Json<PagesBrowserIntentResponse>, (StatusCode, Json<Value>)> {
         let auth = auth_snapshot_from_headers(&headers);
         let token = bearer_token(&headers)
-            .or_else(|| compatibility_token(&headers))
             .or_else(|| auth.session.as_ref().map(|session| session.token.clone()))
             .ok_or_else(|| {
                 auth_error(
@@ -101,9 +100,6 @@ async fn main() {
             .map(ToString::to_string)
     }
 
-    fn compatibility_token(headers: &HeaderMap) -> Option<String> {
-        header_value(headers, "x-fly-access-token")
-    }
 
     fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
         headers

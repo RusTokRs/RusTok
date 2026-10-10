@@ -94,7 +94,9 @@ impl TenantCacheGenerationTransport {
     }
 
     async fn publish_generation_if_needed(&self, envelope: &EventEnvelope) -> Result<()> {
-        let Some(tenant_id) = tenant_cache_event_tenant_id(&envelope.event) else {
+        let Some(tenant_id) =
+            tenant_cache_event_tenant_id(&envelope.event, Some(envelope.tenant_id))
+        else {
             return Ok(());
         };
 
@@ -183,13 +185,25 @@ impl EventTransport for TenantCacheGenerationTransport {
     }
 }
 
-fn tenant_cache_event_tenant_id(event: &DomainEvent) -> Option<uuid::Uuid> {
+fn tenant_cache_event_tenant_id(
+    event: &DomainEvent,
+    envelope_tenant_id: Option<uuid::Uuid>,
+) -> Option<uuid::Uuid> {
     match event {
         DomainEvent::TenantCreated { tenant_id }
         | DomainEvent::TenantUpdated { tenant_id }
         | DomainEvent::TenantModuleToggled { tenant_id, .. }
         | DomainEvent::LocaleEnabled { tenant_id, .. }
-        | DomainEvent::LocaleDisabled { tenant_id, .. } => Some(*tenant_id),
+        | DomainEvent::LocaleDisabled { tenant_id, .. }
+        | DomainEvent::ModuleArtifactTenantEnabled { tenant_id, .. }
+        | DomainEvent::ModuleArtifactTenantDisabled { tenant_id, .. }
+        | DomainEvent::ModuleArtifactDataPurged { tenant_id, .. }
+        | DomainEvent::ModuleArtifactSettingsPurged { tenant_id, .. }
+        | DomainEvent::ModuleArtifactSettingsRestored { tenant_id, .. } => Some(*tenant_id),
+        DomainEvent::ModuleArtifactActivated { .. }
+        | DomainEvent::ModuleArtifactRolledBack { .. }
+        | DomainEvent::ModuleTransitionFinalized { .. }
+        | DomainEvent::PlatformSettingsChanged { .. } => envelope_tenant_id,
         _ => None,
     }
 }
@@ -197,13 +211,18 @@ fn tenant_cache_event_tenant_id(event: &DomainEvent) -> Option<uuid::Uuid> {
 #[derive(Clone)]
 struct TenantCacheGenerationListener {
     cache: CacheService,
+    effective_policy_cache: Option<rustok_modules::ModuleEffectivePolicyCache>,
     tracker: BoundedCacheInvalidationGapTracker,
 }
 
 impl TenantCacheGenerationListener {
-    fn new(cache: CacheService) -> Self {
+    fn new(
+        cache: CacheService,
+        effective_policy_cache: Option<rustok_modules::ModuleEffectivePolicyCache>,
+    ) -> Self {
         Self {
             cache,
+            effective_policy_cache,
             tracker: BoundedCacheInvalidationGapTracker::default(),
         }
     }
@@ -284,6 +303,13 @@ impl TenantCacheGenerationListener {
             }
         }
 
+        if let Some(policy_cache) = &self.effective_policy_cache {
+            if let Ok(tenant_id) = uuid::Uuid::parse_str(&event.key) {
+                policy_cache.invalidate_tenant(tenant_id);
+            }
+        }
+        self.cache.clear_shared_backends();
+
         rustok_telemetry::metrics::record_event_dispatch_latency_ms(
             "tenant_cache_generation",
             "tenant.cache.generation",
@@ -331,7 +357,8 @@ pub async fn start_tenant_cache_generation_listener(
 
     let redis_required = cache.redis_configuration_present();
     let state = TenantCacheGenerationListenerState::new(redis_required);
-    let listener = TenantCacheGenerationListener::new(cache.clone());
+    let listener =
+        TenantCacheGenerationListener::new(cache.clone(), Some(ctx.effective_policy_cache()));
     match listener.recover_shared_generation().await {
         Ok(_) if !redis_required => state.mark_local_healthy().await,
         Ok(_) => state.mark_reconciliation_healthy().await,
@@ -515,7 +542,8 @@ mod tests {
     }
 
     fn tenant_event(event: DomainEvent) -> EventEnvelope {
-        let tenant_id = tenant_cache_event_tenant_id(&event).unwrap();
+        let tenant_id =
+            tenant_cache_event_tenant_id(&event, None).unwrap_or_else(|| Uuid::from_u128(42));
         EventEnvelope::new(tenant_id, None, event)
     }
 
@@ -538,8 +566,60 @@ mod tests {
                 tenant_id,
                 locale: "en".to_string(),
             },
+            DomainEvent::ModuleArtifactTenantEnabled {
+                installation_id: Uuid::new_v4(),
+                tenant_id,
+                revision: 1,
+            },
+            DomainEvent::ModuleArtifactTenantDisabled {
+                installation_id: Uuid::new_v4(),
+                tenant_id,
+                revision: 2,
+            },
+            DomainEvent::ModuleArtifactDataPurged {
+                tenant_id,
+                module_slug: "blog".to_string(),
+                data_contract_revision: 1,
+                namespace_revision: 1,
+                purged_records: 10,
+            },
+            DomainEvent::ModuleArtifactSettingsPurged {
+                recovery_point_id: Uuid::new_v4(),
+                tenant_id,
+                installation_id: Uuid::new_v4(),
+                settings_instance_id: Uuid::new_v4(),
+                tombstone_revision: 1,
+            },
+            DomainEvent::ModuleArtifactSettingsRestored {
+                recovery_point_id: Uuid::new_v4(),
+                tenant_id,
+                target_installation_id: Some(Uuid::new_v4()),
+                settings_instance_id: Uuid::new_v4(),
+            },
+            DomainEvent::ModuleArtifactActivated {
+                installation_id: Uuid::new_v4(),
+                predecessor_installation_id: None,
+                revision: 1,
+            },
+            DomainEvent::ModuleArtifactRolledBack {
+                installation_id: Uuid::new_v4(),
+                target_installation_id: Uuid::new_v4(),
+            },
+            DomainEvent::ModuleTransitionFinalized {
+                operation_id: Uuid::new_v4(),
+                module_slug: "blog".to_string(),
+                revision: 1,
+                released_holds: 0,
+            },
+            DomainEvent::PlatformSettingsChanged {
+                category: "general".to_string(),
+                changed_by: Uuid::new_v4(),
+            },
         ] {
-            assert_eq!(tenant_cache_event_tenant_id(&event), Some(tenant_id));
+            assert_eq!(
+                tenant_cache_event_tenant_id(&event, Some(tenant_id)),
+                Some(tenant_id)
+            );
         }
     }
 
@@ -689,7 +769,7 @@ mod tests {
             current
         );
 
-        let listener = TenantCacheGenerationListener::new(CacheService::from_url(None));
+        let listener = TenantCacheGenerationListener::new(CacheService::from_url(None), None);
         listener
             .tracker
             .seed(TENANT_CACHE_GENERATION_CHANNEL, current)
@@ -708,7 +788,7 @@ mod tests {
         let _guard = generation_test_lock().lock().await;
         bind_tenant_backend_generations().unwrap();
         let cache = CacheService::from_url(None);
-        let listener = TenantCacheGenerationListener::new(cache.clone());
+        let listener = TenantCacheGenerationListener::new(cache.clone(), None);
         let base = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
             .unwrap()
             .generation;
@@ -766,7 +846,7 @@ mod tests {
         let _guard = generation_test_lock().lock().await;
         bind_tenant_backend_generations().unwrap();
         let cache = CacheService::from_url(Some("://invalid-redis-url"));
-        let listener = TenantCacheGenerationListener::new(cache);
+        let listener = TenantCacheGenerationListener::new(cache, None);
         assert!(listener.recover_shared_generation().await.is_err());
     }
 }

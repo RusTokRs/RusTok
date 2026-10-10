@@ -364,6 +364,7 @@ async fn blog_admin_update_post_native(
                         ServerFnError::new("Blog post revision is missing; reload before saving")
                     })?,
                     scheduled_at: rustok_api::Patch::Keep,
+                    is_pinned: None,
                 },
             )
             .await
@@ -664,6 +665,8 @@ fn map_post_list_item(post: rustok_blog::PostSummary) -> BlogPostListItem {
         created_at: post.created_at.to_rfc3339(),
         published_at: post.published_at.map(|value| value.to_rfc3339()),
         scheduled_at: post.scheduled_at.map(|value| value.to_rfc3339()),
+        is_pinned: post.is_pinned,
+        pinned_at: post.pinned_at.map(|value| value.to_rfc3339()),
     }
 }
 
@@ -684,6 +687,8 @@ fn map_post_detail(post: rustok_blog::PostResponse) -> BlogPostDetail {
         updated_at: post.updated_at.to_rfc3339(),
         published_at: post.published_at.map(|value| value.to_rfc3339()),
         scheduled_at: post.scheduled_at.map(|value| value.to_rfc3339()),
+        is_pinned: post.is_pinned,
+        pinned_at: post.pinned_at.map(|value| value.to_rfc3339()),
         tags: post.tags,
         featured_image_url: post.featured_image_url,
         seo_title: post.seo_title,

@@ -23,17 +23,6 @@ query = "graphql::NewsletterQuery"
 mutation = "graphql::NewsletterMutation"
 runtime_data_factory = "graphql::attach_schema_data"
 
-[provides.admin_ui]
-leptos_crate = "rustok-newsletter-admin"
-route_segment = "newsletter"
-nav_label = "Newsletter"
-nav_group = "marketing"
-nav_order = 50
-
-[provides.admin_ui.i18n]
-default_locale = "en"
-supported_locales = ["en", "ru"]
-leptos_locales_path = "admin/locales"
 
 [fba.provider]
 registry = "contracts/newsletter-fba-registry.json"

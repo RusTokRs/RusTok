@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use uuid::Uuid;
 
 use rustok_api::{
     SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,

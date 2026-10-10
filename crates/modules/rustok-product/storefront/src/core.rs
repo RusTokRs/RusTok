@@ -1017,7 +1017,10 @@ pub fn build_pricing_href(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ProductDetail, ProductPrice, ProductPricingContext, ProductTranslation};
+    use crate::model::{
+        ProductAttribute, ProductAttributeValue, ProductDetail, ProductImage, ProductPrice,
+        ProductPricingContext, ProductTranslation,
+    };
 
     fn catalog_controls_with_attribute_filters(filters: &[&str]) -> CatalogListInput {
         CatalogListInput {

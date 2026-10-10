@@ -332,10 +332,13 @@ impl<'a> SeaOrmInstallerBootstrapPorts<'a> {
                 demo_customer_password: (plan.seed_profile == SeedProfile::Dev)
                     .then(|| "dev-password-123".to_string()),
                 actor: actor.to_string(),
+                seed_data_path: None,
+                continue_on_content_error: false,
             },
             self,
             self,
             self,
+            None,
         )
         .await
         .map_err(execution_error)?;

@@ -215,7 +215,8 @@ fn registration_contract(
     let fingerprint = schema
         .fingerprint()
         .map_err(|error| SchemaRegistrationError::InvalidSchema(error.to_string()))?;
-    let schema_json = serde_json::to_value(schema)
+    let canonical = schema.canonical();
+    let schema_json = serde_json::to_value(&canonical)
         .map_err(|error| SchemaRegistrationError::InvalidSchema(error.to_string()))?;
     Ok((fingerprint, schema_json))
 }
@@ -291,7 +292,17 @@ fn resolve_existing_schema(
             "stored schema has unsupported status".to_owned(),
         ));
     }
-    if existing.fingerprint != fingerprint.to_string() || existing.schema_json != *schema_json {
+    let existing_canonical_json = serde_json::from_value::<IndexSchema>(existing.schema_json.clone())
+        .ok()
+        .and_then(|s| serde_json::to_value(s.canonical()).ok());
+    let contract_matches = if existing.schema_json == *schema_json {
+        true
+    } else if let Some(ref existing_norm) = existing_canonical_json {
+        existing_norm == schema_json
+    } else {
+        false
+    };
+    if existing.fingerprint != fingerprint.to_string() || !contract_matches {
         return Err(SchemaRegistrationError::VersionConflict {
             reference: schema.reference.clone(),
         });

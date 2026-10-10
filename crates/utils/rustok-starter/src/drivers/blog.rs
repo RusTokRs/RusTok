@@ -128,6 +128,8 @@ pub async fn import_blog_posts(
                         seo_description: post.excerpt.clone(),
                         channel_slugs: None,
                         metadata: None,
+                        scheduled_at: None,
+                        is_pinned: None,
                     },
                 )
                 .await?;
@@ -172,6 +174,8 @@ pub async fn import_blog_posts(
                     channel_slugs: None,
                     metadata: None,
                     version: current_version,
+                    scheduled_at: Patch::Keep,
+                    is_pinned: None,
                 };
 
                 post_service

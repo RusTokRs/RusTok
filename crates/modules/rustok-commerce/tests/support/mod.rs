@@ -39,6 +39,7 @@ use rustok_taxonomy::entities::{
 };
 use rustok_tenant::entities::tenant_module;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbBackend, Schema, Statement};
+use sea_orm_migration::SchemaManager;
 
 pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     if db.get_database_backend() != DbBackend::Sqlite {
@@ -56,7 +57,7 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     .await;
 
     rustok_outbox::migration::create_owner_operation_receipts_table(
-        &sea_orm_migration::SchemaManager::new(db),
+        &SchemaManager::new(db),
     )
     .await
     .ok();

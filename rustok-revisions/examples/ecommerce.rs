@@ -5,7 +5,6 @@
 //! - Orders with status changes
 //! - Customer profiles with address history
 
-use chrono::Utc;
 use rustok_revisions::{
     ChangeSource, Revisionable, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
     RetentionPolicy, SeaOrmBackend,
@@ -385,7 +384,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "  Revision #{} - ${:.2} - {} - {}",
                     rev.revision_number,
                     price.as_f64().unwrap_or(0.0),
-                    format!("{:?}", rev.source),
+                    format!("{:?}", rev.metadata.source),
                     rev.created_at.format("%Y-%m-%d %H:%M:%S")
                 );
             }
