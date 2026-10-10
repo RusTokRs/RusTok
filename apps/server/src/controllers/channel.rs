@@ -9,9 +9,10 @@ use rustok_api::Permission;
 use rustok_channel::{
     AvailableChannelModuleItem, AvailableChannelOauthAppItem, BindChannelModuleInput,
     BindChannelOauthAppInput, ChannelBootstrapResponse, ChannelResponse, ChannelService,
-    ChannelTargetResponse, CreateChannelInput, CreateChannelTargetInput,
+    ChannelTargetResponse, CreateChannelInput, CreateChannelRequest, CreateChannelTargetInput,
     ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest, UpdateChannelTargetInput,
-    create_resolution_policy_set_input, create_resolution_rule_input, update_resolution_rule_input,
+    create_channel_input, create_resolution_policy_set_input, create_resolution_rule_input,
+    update_resolution_rule_input,
 };
 use rustok_core::ModuleRegistry;
 use rustok_web::json_response;
@@ -88,18 +89,13 @@ async fn create_channel(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
-    Json(input): Json<CreateChannelInput>,
+    Json(input): Json<CreateChannelRequest>,
 ) -> Result<Response> {
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
 
     let service = ChannelService::new(ctx.db_clone());
     let channel = service
-        .create_channel(CreateChannelInput {
-            tenant_id: tenant.id,
-            slug: input.slug,
-            name: input.name,
-            settings: input.settings,
-        })
+        .create_channel(create_channel_input(tenant.id, input))
         .await
         .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
@@ -607,5 +603,23 @@ mod tests {
         )))
         .into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn create_channel_request_converts_with_tenant_isolation() {
+        let tenant_id = Uuid::new_v4();
+        let request: rustok_channel::CreateChannelRequest = serde_json::from_str(
+            r#"{"slug":"online-store","name":"Online Store"}"#,
+        )
+        .expect("valid create channel request JSON");
+
+        assert_eq!(request.slug, "online-store");
+        assert_eq!(request.name, "Online Store");
+        assert!(request.settings.is_none());
+
+        let input = rustok_channel::create_channel_input(tenant_id, request);
+        assert_eq!(input.tenant_id, tenant_id);
+        assert_eq!(input.slug, "online-store");
+        assert_eq!(input.name, "Online Store");
     }
 }

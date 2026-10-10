@@ -5320,3 +5320,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.05.28` complete and integrated into `main` via PR #4554, squash merge `7258ae8a46763cfb58ee4f05943729d158422375`.
 - **Post-merge reconciliation:** refreshed `main` at `7258ae8a46763cfb58ee4f05943729d158422375`; the merge commit has parent `2eb60a5c0108d10c625a71ea6061d748a9c9476e` and contains the expected `apps/server/src/services/app_runtime.rs` plus ledger update. No concurrent `main` changes required reconciliation.
 - **Next primary iteration:** continue with the next unchecked GraphQL composition module from the living ledger without widening scope.
+
+### FS-22.06.159 Assessment — Channel REST controller tenant isolation & CreateChannelRequest DTO contract
+
+- **Base:** commit `5e3622fa6` on dedicated branch `codex/audit-server-bootstrap-and-host`.
+- **Primary scope:** `apps/server/src/controllers/channel.rs`, `crates/modules/rustok-channel/src/dto/mod.rs`, `crates/modules/rustok-channel/src/lib.rs`.
+- **Invariant map:** Channel creation requests over REST HTTP must not fail deserialization when client payload omits `tenant_id`; the authenticated tenant identity must be extracted strictly from `CurrentTenant` and injected into the service input; module boundaries must preserve tenant isolation and fail closed against cross-tenant spoofing; backwards compatibility for internal callers instantiating `CreateChannelInput` directly must be preserved.
+- **Confirmed finding CHANNEL-22.06.159-01:** `apps/server/src/controllers/channel.rs` accepted `Json<CreateChannelInput>`, but `CreateChannelInput` lacked a default for `tenant_id: Uuid`. When REST/HTTP clients sent `{ "slug": "...", "name": "..." }` omitting `tenant_id`, Axum rejected the request with a deserialization error before the handler could execute. The handler subsequently overwrote `tenant_id: tenant.id` from `CurrentTenant`, proving that `tenant_id` was an internal concern and should not be required in the incoming request payload.
+- **Remediation:**
+  1. Added `#[serde(default)]` to `pub tenant_id: Uuid` on `CreateChannelInput` in `crates/modules/rustok-channel/src/dto/mod.rs` so any payload omitting `tenant_id` deserializes without error.
+  2. Introduced explicit `CreateChannelRequest` DTO and conversion helper `create_channel_input(tenant_id, request)` with `From<CreateChannelInput>` implementation in `rustok-channel`.
+  3. Exported `CreateChannelRequest` and `create_channel_input` from `crates/modules/rustok-channel/src/lib.rs`.
+  4. Updated `create_channel` handler in `apps/server/src/controllers/channel.rs` to accept `Json<CreateChannelRequest>` and construct the domain input via `create_channel_input(tenant.id, input)`.
+  5. Added unit tests verifying `CreateChannelRequest` conversion, omitted `tenant_id` deserialization fallback, and tenant isolation binding in both `rustok-channel` and `apps/server`.
+- **Status:** `FS-22.06.159` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
+- **Next primary iteration:** continue through remaining `apps/server` REST controllers (`artifact_http.rs`, `installer.rs`, `mcp.rs`, `oauth_metadata.rs`) and server function routing.
+

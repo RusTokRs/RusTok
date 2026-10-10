@@ -8,11 +8,39 @@ use crate::resolution::TargetSurface;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateChannelInput {
+    #[serde(default)]
     pub tenant_id: Uuid,
     pub slug: String,
     pub name: String,
     pub settings: Option<Value>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateChannelRequest {
+    pub slug: String,
+    pub name: String,
+    pub settings: Option<Value>,
+}
+
+pub fn create_channel_input(tenant_id: Uuid, input: CreateChannelRequest) -> CreateChannelInput {
+    CreateChannelInput {
+        tenant_id,
+        slug: input.slug,
+        name: input.name,
+        settings: input.settings,
+    }
+}
+
+impl From<CreateChannelInput> for CreateChannelRequest {
+    fn from(input: CreateChannelInput) -> Self {
+        Self {
+            slug: input.slug,
+            name: input.name,
+            settings: input.settings,
+        }
+    }
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateChannelTargetInput {
@@ -383,4 +411,39 @@ mod tests {
         assert_eq!(payload.surface.as_deref(), Some("http"));
         assert_eq!(payload.locale.as_deref(), Some("en_us"));
     }
+
+    #[test]
+    fn create_channel_request_converts_to_create_channel_input() {
+        let tenant_id = Uuid::new_v4();
+        let request: super::CreateChannelRequest = serde_json::from_str(
+            r#"{"slug":"main","name":"Main Channel","settings":{"currency":"RUB"}}"#,
+        )
+        .expect("valid JSON for CreateChannelRequest");
+
+        assert_eq!(request.slug, "main");
+        assert_eq!(request.name, "Main Channel");
+        assert!(request.settings.is_some());
+
+        let input = super::create_channel_input(tenant_id, request.clone());
+        assert_eq!(input.tenant_id, tenant_id);
+        assert_eq!(input.slug, "main");
+        assert_eq!(input.name, "Main Channel");
+
+        let converted_back: super::CreateChannelRequest = input.into();
+        assert_eq!(converted_back.slug, "main");
+        assert_eq!(converted_back.name, "Main Channel");
+    }
+
+    #[test]
+    fn create_channel_input_deserializes_with_default_tenant_id_when_omitted() {
+        let input: super::CreateChannelInput =
+            serde_json::from_str(r#"{"slug":"retail","name":"Retail"}"#)
+                .expect("omitted tenant_id defaults cleanly");
+
+        assert_eq!(input.tenant_id, Uuid::nil());
+        assert_eq!(input.slug, "retail");
+        assert_eq!(input.name, "Retail");
+        assert!(input.settings.is_none());
+    }
 }
+
