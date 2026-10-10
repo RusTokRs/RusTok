@@ -2,8 +2,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `fd0df50e6537ad38fc708cbaebff1917ea5d9880`  
-**Active branch:** `main`
+**Current main SHA:** `0662943e954c8fa02b28f04064245b116e101802`  
+**Active branch:** `codex/audit-server-bootstrap-and-host`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
 
@@ -506,6 +506,22 @@ Hard limits for every iteration:
 - **Implementation status:** complete and integrated into `main` via PR #4577, squash merge `ecc88fb90869b61dd22be93800e27fb03a506697`.
 - **Post-merge reconciliation:** refreshed `main` at `ecc88fb90869b61dd22be93800e27fb03a506697`; comparison against recorded base `38cea9fb78ed8527be4bd9f152c66d18040d9d86` is exactly one merged commit with the expected marketplace registry controller, Swagger registration/test, and ledger pre-finding change set. The merged tree contains the artifact-download OpenAPI operation and corrected registry auth/failure contracts.
 - **Status:** `FS-22.06.07` complete; maintainer/CI verification remains explicitly required.
+
+- [x] **FS-22.06.08 — `apps/server/src/host.rs` & `apps/server/src/controllers/channel.rs`** — host configuration error observability, 12-factor port/binding overrides, and channel collection route canonicalization.
+
+### FS-22.06.08 Assessment — `apps/server/src/host.rs` & `apps/server/src/controllers/channel.rs`
+
+- **Base:** refreshed `main` at `0662943e954c8fa02b28f04064245b116e101802`; dedicated branch `codex/audit-server-bootstrap-and-host`.
+- **Primary scope:** Host runtime configuration resolution, error presentation on config IO/YAML failures, container runtime port and binding environment variable overrides, and REST channel router collection route compatibility.
+- **Invariant map:** configuration errors must display actionable file paths; runtime binding must fail closed if an invalid port is supplied in the environment; channel collections must accept canonical REST non-slashed requests while retaining trailing-slash compatibility.
+- **Confirmed finding HOST-22.06.08-01:** `load_config` returned opaque `Error::Io` or `Error::Yaml` without path context, producing diagnostics like `No such file or directory` without indicating which config file was being loaded.
+- **Remediation:** added explicit error formatting including `path.display()` on both read and parse failures.
+- **Confirmed finding HOST-22.06.08-02:** `host::run` bound strictly to YAML values, ignoring standard container runtime port (`PORT`, `RUSTOK_PORT`) and binding (`RUSTOK_BINDING`, `HOST`) environment variables.
+- **Remediation:** added `resolve_server_endpoint` supporting environment overrides with fail-closed port number validation. Added unit test coverage for default and environment override paths.
+- **Confirmed finding CHANNEL-22.06.08-01:** `controllers/channel.rs` mounted only `/api/channels/`, rejecting canonical REST `/api/channels` requests.
+- **Remediation:** dual-mounted `/api/channels` alongside `/api/channels/` matching the convention used in `controllers/users.rs`.
+- **Verification:** repository source inspection, CodeGraph call-flow exploration, and branch diff review. Maintainer build and test execution remain required per repo policy.
+- **Status:** `FS-22.06.08` complete on branch `codex/audit-server-bootstrap-and-host`.
 
 
 ### FS-22.06.03 Assessment — `apps/server/src/controllers/oauth.rs`

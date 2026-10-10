@@ -101,8 +101,8 @@ pub async fn run() -> Result<()> {
     )
     .await?;
 
-    let listener =
-        tokio::net::TcpListener::bind((config.server.binding.as_str(), config.server.port)).await?;
+    let (binding, port) = resolve_server_endpoint(&config.server)?;
+    let listener = tokio::net::TcpListener::bind((binding.as_str(), port)).await?;
     let address = listener.local_addr()?;
     tracing::info!(%address, "RusTok Axum host listening");
 
@@ -367,8 +367,34 @@ async fn load_config() -> Result<HostConfig> {
         })
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config"));
     let path = config_dir.join(format!("{environment}.yaml"));
-    let raw = tokio::fs::read_to_string(&path).await?;
-    serde_yaml::from_str(&raw).map_err(Error::Yaml)
+    let raw = tokio::fs::read_to_string(&path)
+        .await
+        .map_err(|error| {
+            Error::Message(format!(
+                "failed to read configuration file at '{}': {error}",
+                path.display()
+            ))
+        })?;
+    serde_yaml::from_str(&raw).map_err(|error| {
+        Error::Message(format!(
+            "failed to parse configuration file at '{}': {error}",
+            path.display()
+        ))
+    })
+}
+
+fn resolve_server_endpoint(config: &ServerConfig) -> Result<(String, u16)> {
+    let binding = std::env::var("RUSTOK_BINDING")
+        .or_else(|_| std::env::var("HOST"))
+        .unwrap_or_else(|_| config.binding.clone());
+    let port = if let Ok(port_str) = std::env::var("RUSTOK_PORT").or_else(|_| std::env::var("PORT")) {
+        port_str.trim().parse::<u16>().map_err(|error| {
+            Error::BadRequest(format!("Invalid port '{port_str}' in environment: {error}"))
+        })?
+    } else {
+        config.port
+    };
+    Ok((binding, port))
 }
 
 async fn shutdown_signal(runtime_ctx: ServerRuntimeContext) {
@@ -535,5 +561,32 @@ mod tests {
             false,
         )
         .expect("development allows dev credentials");
+    }
+
+    #[test]
+    fn resolve_server_endpoint_uses_config_defaults() {
+        let config = super::ServerConfig {
+            binding: "127.0.0.1".to_string(),
+            port: 5150,
+        };
+        let (binding, port) = super::resolve_server_endpoint(&config).expect("resolves defaults");
+        assert_eq!(binding, "127.0.0.1");
+        assert_eq!(port, 5150);
+    }
+
+    #[test]
+    fn resolve_server_endpoint_rejects_invalid_port() {
+        unsafe {
+            std::env::set_var("PORT", "not-a-port");
+        }
+        let config = super::ServerConfig {
+            binding: "127.0.0.1".to_string(),
+            port: 5150,
+        };
+        let error = super::resolve_server_endpoint(&config).expect_err("invalid port must fail");
+        assert!(error.to_string().contains("Invalid port"));
+        unsafe {
+            std::env::remove_var("PORT");
+        }
     }
 }

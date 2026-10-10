@@ -508,6 +508,7 @@ async fn invalidate_channel_resolution_cache(ctx: &ServerRuntimeContext, tenant_
 pub fn router() -> crate::routes::ServerRouter {
     axum::Router::new()
         .route("/api/channels/bootstrap", get(bootstrap))
+        .route("/api/channels", post(create_channel))
         .route("/api/channels/", post(create_channel))
         .route(
             "/api/channels/{channel_id}/default",
