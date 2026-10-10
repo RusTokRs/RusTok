@@ -5375,6 +5375,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.162` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
 - **Next primary iteration:** continue through remaining `apps/server` controllers (`mcp.rs`, `flex.rs`).
 
+### FS-22.06.163 Assessment — MCP controller RFC 6750 Bearer token parsing and collection route parity (MCP & Flex)
+
+- **Base:** commit `b2a605588` on dedicated branch `codex/audit-server-bootstrap-and-host`.
+- **Primary scope:** `apps/server/src/controllers/mcp.rs`, `apps/server/src/controllers/flex.rs`.
+- **Invariant map:** MCP HTTP authentication header parsing must comply with RFC 6750 §2.1 and RFC 7235 §2.1; bearer authentication schemes are case-insensitive (`Bearer`, `bearer`, `BEARER`) and tolerant of arbitrary inter-token ASCII whitespace; missing or non-Bearer schemes must fail closed; REST collection endpoints for MCP (`/api/mcp/clients`, `/api/mcp/scaffold-drafts`, `/api/mcp/audit`) and standalone Flex (`/api/v1/flex/schemas`, `/api/v1/flex/schemas/{schema_id}/entries`) must support trailing-slash requests alongside canonical non-slashed paths for client/proxy compatibility.
+- **Confirmed finding MCP-22.06.163-01:** `apps/server/src/controllers/mcp.rs::bearer_token_from_headers` used strict, case-sensitive `strip_prefix("Bearer ")`. Clients submitting standard lowercase `Authorization: bearer <token>` or mixed-case headers were rejected with HTTP 401 Unauthorized during session bootstrap and tool call execution when `plaintext_token` was omitted from request body.
+- **Confirmed finding ROUTE-22.06.163-02:** Collection routes in `mcp.rs` (`/api/mcp/clients`, `/api/mcp/scaffold-drafts`, `/api/mcp/audit`) and `flex.rs` (`/api/v1/flex/schemas`, `/api/v1/flex/schemas/{schema_id}/entries`) were mounted only without trailing slash, causing HTTP 404 for standard client requests sending trailing slashes.
+- **Remediation:**
+  1. Replaced `strip_prefix("Bearer ")` with case-insensitive, whitespace-tolerant `parse_bearer_token` using `split_once(' ')` and `scheme.eq_ignore_ascii_case("bearer")`.
+  2. Dual-mounted trailing-slash collection routes in both `apps/server/src/controllers/mcp.rs` and `apps/server/src/controllers/flex.rs`.
+  3. Added unit tests verifying case-insensitive bearer parsing and whitespace tolerance across all variants (`Bearer`, `bearer`, `BEARER`, extra spaces, non-Bearer rejection).
+- **Status:** `FS-22.06.163` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
+- **Next primary iteration:** continue audit to shared library foundation `crates/libs/rustok-api` (FS-23).
+
+
 
 
 

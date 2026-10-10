@@ -333,11 +333,19 @@ pub fn router() -> crate::routes::ServerRouter {
             get(list_schemas).post(create_schema),
         )
         .route(
+            "/api/v1/flex/schemas/",
+            get(list_schemas).post(create_schema),
+        )
+        .route(
             "/api/v1/flex/schemas/{schema_id}",
             get(get_schema).patch(update_schema).delete(delete_schema),
         )
         .route(
             "/api/v1/flex/schemas/{schema_id}/entries",
+            get(list_entries).post(create_entry),
+        )
+        .route(
+            "/api/v1/flex/schemas/{schema_id}/entries/",
             get(list_entries).post(create_entry),
         )
         .route(

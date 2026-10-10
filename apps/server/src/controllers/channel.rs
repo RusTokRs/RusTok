@@ -9,7 +9,7 @@ use rustok_api::Permission;
 use rustok_channel::{
     AvailableChannelModuleItem, AvailableChannelOauthAppItem, BindChannelModuleInput,
     BindChannelOauthAppInput, ChannelBootstrapResponse, ChannelResponse, ChannelService,
-    ChannelTargetResponse, CreateChannelInput, CreateChannelRequest, CreateChannelTargetInput,
+    ChannelTargetResponse, CreateChannelRequest, CreateChannelTargetInput,
     ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest, UpdateChannelTargetInput,
     create_channel_input, create_resolution_policy_set_input, create_resolution_rule_input,
     update_resolution_rule_input,

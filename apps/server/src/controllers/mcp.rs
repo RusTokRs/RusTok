@@ -916,6 +916,7 @@ pub fn router() -> crate::routes::ServerRouter {
         .route("/api/mcp/runtime/tools/call", post(call_remote_tool))
         .route("/api/mcp/runtime/tools/stream", post(stream_remote_tool))
         .route("/api/mcp/clients", get(list_clients).post(create_client))
+        .route("/api/mcp/clients/", get(list_clients).post(create_client))
         .route("/api/mcp/clients/{id}", get(get_client))
         .route("/api/mcp/clients/{id}/rotate-token", post(rotate_token))
         .route("/api/mcp/clients/{id}/policy", put(update_policy))
@@ -925,22 +926,34 @@ pub fn router() -> crate::routes::ServerRouter {
             "/api/mcp/scaffold-drafts",
             get(list_scaffold_drafts).post(stage_scaffold_draft),
         )
+        .route(
+            "/api/mcp/scaffold-drafts/",
+            get(list_scaffold_drafts).post(stage_scaffold_draft),
+        )
         .route("/api/mcp/scaffold-drafts/{id}", get(get_scaffold_draft))
         .route(
             "/api/mcp/scaffold-drafts/{id}/apply",
             post(apply_scaffold_draft),
         )
         .route("/api/mcp/audit", get(list_audit_events))
+        .route("/api/mcp/audit/", get(list_audit_events))
 }
 
 fn bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {
     headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
+        .and_then(parse_bearer_token)
         .map(ToOwned::to_owned)
+}
+
+fn parse_bearer_token(value: &str) -> Option<&str> {
+    let (scheme, token) = value.trim().split_once(' ')?;
+    if !scheme.eq_ignore_ascii_case("bearer") {
+        return None;
+    }
+    let token = token.trim();
+    (!token.is_empty()).then_some(token)
 }
 
 fn map_mcp_authority_error(
@@ -1123,5 +1136,17 @@ mod tests {
         };
 
         assert!(remote_alloy_authoring_identity(&binding).is_err());
+    }
+
+    #[test]
+    fn parses_bearer_tokens_case_insensitively_with_whitespace_tolerance() {
+        assert_eq!(parse_bearer_token("Bearer token-123"), Some("token-123"));
+        assert_eq!(parse_bearer_token("bearer token-456"), Some("token-456"));
+        assert_eq!(parse_bearer_token("BEARER token-789"), Some("token-789"));
+        assert_eq!(parse_bearer_token("  Bearer   token-abc  "), Some("token-abc"));
+        assert_eq!(parse_bearer_token("Basic token-123"), None);
+        assert_eq!(parse_bearer_token("Bearer"), None);
+        assert_eq!(parse_bearer_token("Bearer   "), None);
+        assert_eq!(parse_bearer_token(""), None);
     }
 }
