@@ -37,6 +37,33 @@ pub struct GqlPageBody {
     pub format: String,
     pub content_json: Option<Value>,
     pub updated_at: String,
+    /// `current` or `draft`; `draft` is the unpublished working copy of a published page.
+    pub state: String,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct GqlPageBodyRevision {
+    pub id: Uuid,
+    pub locale: String,
+    pub source: String,
+    pub body_revision: String,
+    pub created_at: String,
+    pub created_by: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct GqlPagePublishSchedule {
+    pub id: Uuid,
+    pub page_id: Uuid,
+    pub publish_at: String,
+    pub state: String,
+    pub attempts: i32,
+    pub last_error_code: Option<String>,
+    pub last_error_message: Option<String>,
+    pub publish_operation_id: Option<Uuid>,
+    pub created_by: Option<Uuid>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -103,6 +130,12 @@ pub struct PatchGqlPageMetadataInput {
 pub struct SaveGqlPageDocumentInput {
     pub expected_revision: String,
     pub body: GqlPageBodyInput,
+}
+
+#[derive(InputObject)]
+pub struct RestoreGqlPageBodyRevisionInput {
+    pub expected_revision: String,
+    pub revision_id: Uuid,
 }
 
 #[derive(InputObject)]
@@ -230,6 +263,38 @@ impl From<crate::PageBodyResponse> for GqlPageBody {
             format: r.format,
             content_json: r.content_json,
             updated_at: r.updated_at,
+            state: page_body_state_str(&r.state),
+        }
+    }
+}
+
+impl From<crate::PageBodyRevisionResponse> for GqlPageBodyRevision {
+    fn from(r: crate::PageBodyRevisionResponse) -> Self {
+        Self {
+            id: r.id,
+            locale: r.locale,
+            source: r.source.as_str().to_string(),
+            body_revision: r.body_revision,
+            created_at: r.created_at,
+            created_by: r.created_by,
+        }
+    }
+}
+
+impl From<crate::PagePublishScheduleResponse> for GqlPagePublishSchedule {
+    fn from(r: crate::PagePublishScheduleResponse) -> Self {
+        Self {
+            id: r.id,
+            page_id: r.page_id,
+            publish_at: r.publish_at,
+            state: r.state.as_str().to_string(),
+            attempts: r.attempts,
+            last_error_code: r.last_error_code,
+            last_error_message: r.last_error_message,
+            publish_operation_id: r.publish_operation_id,
+            created_by: r.created_by,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
         }
     }
 }
@@ -254,5 +319,12 @@ fn content_status_str(status: &rustok_content::entities::node::ContentStatus) ->
         ContentStatus::Draft => "draft".to_string(),
         ContentStatus::Published => "published".to_string(),
         ContentStatus::Archived => "archived".to_string(),
+    }
+}
+
+fn page_body_state_str(state: &crate::PageBodyState) -> &'static str {
+    match state {
+        crate::PageBodyState::Current => "current",
+        crate::PageBodyState::Draft => "draft",
     }
 }

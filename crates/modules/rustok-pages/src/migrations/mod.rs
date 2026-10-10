@@ -19,6 +19,10 @@ mod m20260807_000015_create_page_artifact_binding_replacements;
 // migration plan is name-sorted, so registering the old name would have inserted an entry in the
 // middle of the plan instead of appending one.
 mod m20261008_000001_create_scenario_baseline_revision_history;
+mod m20261009_000001_create_page_body_drafts_and_revisions;
+mod m20261009_000002_create_page_publish_jobs;
+mod m20261009_000003_create_site_symbols;
+mod m20261009_000004_create_page_templates;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -43,6 +47,10 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260806_000014_add_translation_target_support::Migration),
         Box::new(m20260807_000015_create_page_artifact_binding_replacements::Migration),
         Box::new(m20261008_000001_create_scenario_baseline_revision_history::Migration),
+        Box::new(m20261009_000001_create_page_body_drafts_and_revisions::Migration),
+        Box::new(m20261009_000002_create_page_publish_jobs::Migration),
+        Box::new(m20261009_000003_create_site_symbols::Migration),
+        Box::new(m20261009_000004_create_page_templates::Migration),
     ]
 }
 

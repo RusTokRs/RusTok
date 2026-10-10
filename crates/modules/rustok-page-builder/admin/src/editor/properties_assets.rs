@@ -15,6 +15,8 @@ pub fn PropertiesAssetsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         let style_runtime = runtime.clone();
         let asset_gate_runtime = runtime.clone();
         let asset_runtime = runtime.clone();
+        let symbol_gate_runtime = runtime.clone();
+        let symbol_runtime = runtime.clone();
         let diagnostics_runtime = runtime;
 
         view! {

@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
+    TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use tracing::instrument;
@@ -16,7 +16,7 @@ use rustok_events::DomainEvent;
 use rustok_tenant::TenantService;
 
 use crate::dto::PageResponse;
-use crate::entities::{page, page_body, page_translation};
+use crate::entities::{page, page_body, page_body_draft, page_body_revision, page_translation};
 use crate::error::{
     FEATURE_BUILDER_ENABLED, FEATURE_BUILDER_PREVIEW_ENABLED, FEATURE_BUILDER_PROPERTIES_ENABLED,
     PagesError, PagesResult,
@@ -30,7 +30,7 @@ use super::helpers::{
     is_builder_preview_enabled, is_builder_properties_enabled, next_page_version, transition_event,
 };
 use super::route::{record_delete_route_tombstones_in_tx, record_published_route_snapshots_in_tx};
-use super::{PAGE_KIND, PageService, PageTransition};
+use super::{PAGE_KIND, PageService, PageTransition, WorkingBody};
 
 pub const PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED: &str = "PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED";
 
@@ -65,7 +65,7 @@ impl PageService {
         )?;
         enforce_expected_version(expected_version, observed.version)?;
 
-        let bodies = self.load_bodies(tenant_id, page_id).await?;
+        let bodies = self.load_working_bodies(tenant_id, page_id).await?;
         if !collect_builder_sources(&bodies, None, true).is_empty() {
             return Err(builder_reviewed_publish_required());
         }
@@ -233,6 +233,16 @@ impl PageService {
             .filter(page_body::Column::PageId.eq(page_id))
             .exec(&txn)
             .await?;
+        page_body_draft::Entity::delete_many()
+            .filter(page_body_draft::Column::TenantId.eq(tenant_id))
+            .filter(page_body_draft::Column::PageId.eq(page_id))
+            .exec(&txn)
+            .await?;
+        page_body_revision::Entity::delete_many()
+            .filter(page_body_revision::Column::TenantId.eq(tenant_id))
+            .filter(page_body_revision::Column::PageId.eq(page_id))
+            .exec(&txn)
+            .await?;
         page_translation::Entity::delete_many()
             .filter(page_translation::Column::TenantId.eq(tenant_id))
             .filter(page_translation::Column::PageId.eq(page_id))
@@ -274,7 +284,9 @@ impl PageService {
         )?;
 
         if transition == PageTransition::Publish {
-            let current_bodies = load_bodies_for_publish(&txn, tenant_id, page_id).await?;
+            let current_bodies = self
+                .load_working_bodies_in_tx(&txn, tenant_id, page_id)
+                .await?;
             if !collect_builder_sources(&current_bodies, None, true).is_empty() {
                 return Err(builder_reviewed_publish_required());
             }
@@ -290,6 +302,11 @@ impl PageService {
             record_published_route_snapshots_in_tx(&txn, tenant_id, page_id, &existing.status)
                 .await?;
         }
+
+        // Unpublish/archive fold the unpublished working copy into the current body so the
+        // page keeps exactly one editable copy after the transition.
+        self.promote_drafts_in_tx(&txn, tenant_id, page_id, security.user_id)
+            .await?;
 
         let now = Utc::now();
         let next_version = next_page_version(page_id, existing.version)?;
@@ -386,25 +403,7 @@ fn builder_reviewed_publish_required() -> PagesError {
     ))
 }
 
-async fn load_bodies_for_publish(
-    txn: &sea_orm::DatabaseTransaction,
-    tenant_id: Uuid,
-    page_id: Uuid,
-) -> PagesResult<Vec<page_body::Model>> {
-    let query = || {
-        page_body::Entity::find()
-            .filter(page_body::Column::TenantId.eq(tenant_id))
-            .filter(page_body::Column::PageId.eq(page_id))
-            .order_by_asc(page_body::Column::Locale)
-    };
-    Ok(match txn.get_database_backend() {
-        DbBackend::Sqlite => query().all(txn).await?,
-        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().all(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
-    })
-}
-
-fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot {
+fn body_revision_snapshot(bodies: &[WorkingBody]) -> BodyRevisionSnapshot {
     let mut revisions = bodies
         .iter()
         .map(|body| {

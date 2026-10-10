@@ -179,7 +179,7 @@ for (const forbidden of [
 
 requireMarkers('adminCargo', [
   'default = ["ssr", "browser-js"]',
-  'browser-js = ["dep:wasm-bindgen", "dep:web-sys"]',
+  'browser-js = [\n  "dep:wasm-bindgen",\n  "dep:wasm-bindgen-futures",\n  "dep:js-sys",\n  "dep:web-sys",\n]',
   'wasm-client = ["fly-leptos/wasm-client", "browser-js"]',
   'fly-browser = { path = "../../../ui/fly/browser" }',
   'fly-leptos = { path = "../../../ui/fly/leptos", default-features = false }',

@@ -61,10 +61,17 @@ const FORBIDDEN_ATTRIBUTES: &[&str] = &[
     "background",
     "ping",
     "srcdoc",
-    "srcset",
     "style",
     "xlink:href",
 ];
+
+/// `srcset` is deliberately absent from [`FORBIDDEN_ATTRIBUTES`]: responsive image
+/// candidates are validated per URL by [`validate_srcset`], with exactly the rule this
+/// policy applies to image `src` values minus `data:` payloads (their base64 bodies
+/// collide with the candidate comma grammar). A blanket ban would refuse the same
+/// image that `src` accepts — the incoherence this policy already refused for CSS
+/// references. An operator who re-adds `"srcset"` to `forbidden_attributes` still
+/// gets the blanket ban: the configuration is honoured over the default.
 
 const URL_ATTRIBUTES: &[&str] = &[
     "action",
@@ -118,6 +125,8 @@ pub struct PageBuilderStaticPublishPolicy {
     pub max_css_value_bytes: usize,
     pub max_content_bytes: usize,
     pub max_media_query_bytes: usize,
+    pub max_srcset_candidates: usize,
+    pub max_sizes_entries: usize,
     pub allowed_tags: Vec<String>,
     pub dangerous_component_types: Vec<String>,
     pub forbidden_attributes: Vec<String>,
@@ -137,6 +146,8 @@ impl Default for PageBuilderStaticPublishPolicy {
             max_css_value_bytes: 16 * 1_024,
             max_content_bytes: 1024 * 1024,
             max_media_query_bytes: 256,
+            max_srcset_candidates: 16,
+            max_sizes_entries: 16,
             allowed_tags: strings(ALLOWED_TAGS),
             dangerous_component_types: strings(DANGEROUS_COMPONENT_TYPES),
             forbidden_attributes: strings(FORBIDDEN_ATTRIBUTES),
@@ -161,6 +172,8 @@ impl PageBuilderStaticPublishPolicy {
             || self.max_css_value_bytes == 0
             || self.max_content_bytes == 0
             || self.max_media_query_bytes == 0
+            || self.max_srcset_candidates == 0
+            || self.max_sizes_entries == 0
         {
             return Err(PageBuilderStaticPublishPolicyError::Integrity(
                 "static publish policy limits must be positive".to_string(),
@@ -531,6 +544,47 @@ fn validate_attribute(
         );
     }
 
+    if name == "srcset" {
+        if !value.is_string() {
+            reject(
+                diagnostics,
+                "landing_attribute_not_scalar",
+                path,
+                format!("attribute `{raw_name}` must contain a scalar value"),
+            );
+            return;
+        }
+        if let Err(reason) = validate_srcset(&scalar, policy) {
+            reject(
+                diagnostics,
+                "landing_srcset_rejected",
+                path,
+                format!("srcset is rejected: {reason}"),
+            );
+        }
+        return;
+    }
+    if name == "sizes" {
+        if !value.is_string() {
+            reject(
+                diagnostics,
+                "landing_attribute_not_scalar",
+                path,
+                format!("attribute `{raw_name}` must contain a scalar value"),
+            );
+            return;
+        }
+        if let Err(reason) = validate_sizes(&scalar, policy) {
+            reject(
+                diagnostics,
+                "landing_sizes_rejected",
+                path,
+                format!("sizes is rejected: {reason}"),
+            );
+        }
+        return;
+    }
+
     if policy.url_attributes.iter().any(|url| url == &name) {
         if !value.is_string() {
             reject(
@@ -872,6 +926,261 @@ fn relative_url_allowed(value: &str) -> bool {
     }
     let scheme_boundary = value.find(['/', '?', '#']).unwrap_or(value.len());
     !value[..scheme_boundary].contains(':')
+}
+
+/// Validates one `srcset` value as a bounded candidate list.
+///
+/// Every candidate URL passes the same rule as an image `src`
+/// ([`UrlKind::ResourceImage`]) except that `data:` payloads are refused: their
+/// base64 bodies contain commas, which collide with the candidate grammar. The
+/// per-candidate check is the safety boundary; the counts here are only limits.
+fn validate_srcset(
+    value: &str,
+    policy: &PageBuilderStaticPublishPolicy,
+) -> Result<(), &'static str> {
+    let mut candidates = 0usize;
+    let mut descriptors = BTreeSet::new();
+    let mut family: Option<&'static str> = None;
+    for raw_part in value.split(',') {
+        let part = raw_part.trim();
+        if part.is_empty() {
+            return Err("value contains an empty candidate");
+        }
+        candidates += 1;
+        if candidates > policy.max_srcset_candidates {
+            return Err("value exceeds the candidate limit");
+        }
+        let mut tokens = part.split_whitespace();
+        let Some(url) = tokens.next() else {
+            return Err("candidate URL is empty");
+        };
+        let descriptor = tokens.next();
+        if tokens.next().is_some() {
+            return Err("candidate has unexpected trailing tokens");
+        }
+        if url.starts_with("data:") {
+            return Err("data: URLs are not allowed in srcset candidates");
+        }
+        if let Err(reason) = validate_url(url, UrlKind::ResourceImage, policy) {
+            return Err(reason);
+        }
+        let (candidate_family, normalized) = match descriptor {
+            None => ("x", "1x".to_string()),
+            Some(descriptor) => {
+                let family = parse_srcset_descriptor(descriptor)
+                    .ok_or("candidate descriptor must be <N>w or <N>x")?;
+                (family, descriptor.to_string())
+            }
+        };
+        match family {
+            None => family = Some(candidate_family),
+            Some(seen) if seen == candidate_family => {}
+            Some(_) => return Err("width and density descriptors must not be mixed"),
+        }
+        if !descriptors.insert(normalized) {
+            return Err("candidate descriptors must be unique");
+        }
+    }
+    if candidates == 0 {
+        return Err("value is empty");
+    }
+    Ok(())
+}
+
+/// Returns the descriptor family (`w` or `x`) for a syntactically valid descriptor.
+fn parse_srcset_descriptor(descriptor: &str) -> Option<&'static str> {
+    if let Some(rest) = descriptor.strip_suffix('w') {
+        if !rest.is_empty()
+            && rest.len() <= 6
+            && rest.bytes().all(|byte| byte.is_ascii_digit())
+            && rest.parse::<u32>().is_ok_and(|width| width >= 1)
+        {
+            return Some("w");
+        }
+        return None;
+    }
+    let rest = descriptor.strip_suffix('x')?;
+    let (whole, fraction) = match rest.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (rest, None),
+    };
+    if whole.is_empty() || whole.len() > 3 || !whole.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    if let Some(fraction) = fraction {
+        if fraction.is_empty()
+            || fraction.len() > 3
+            || !fraction.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return None;
+        }
+    }
+    Some("x")
+}
+
+/// Validates one `sizes` value as a bounded list of `[media-condition ]<length>`.
+///
+/// The grammar is a deliberately strict subset of the CSS `sizes` attribute:
+/// parenthesized media-condition groups joined by `and`/`or`, and one unit length
+/// per entry. Anything outside the subset is rejected rather than guessed at.
+fn validate_sizes(
+    value: &str,
+    policy: &PageBuilderStaticPublishPolicy,
+) -> Result<(), &'static str> {
+    let mut entries = 0usize;
+    for raw_part in value.split(',') {
+        let part = raw_part.trim();
+        if part.is_empty() {
+            return Err("value contains an empty entry");
+        }
+        entries += 1;
+        if entries > policy.max_sizes_entries {
+            return Err("value exceeds the entry limit");
+        }
+        validate_sizes_entry(part, policy)?;
+    }
+    if entries == 0 {
+        return Err("value is empty");
+    }
+    Ok(())
+}
+
+fn validate_sizes_entry(
+    entry: &str,
+    policy: &PageBuilderStaticPublishPolicy,
+) -> Result<(), &'static str> {
+    let split_at = entry.rfind(char::is_whitespace);
+    let (condition, length) = match split_at {
+        Some(index) => (entry[..index].trim(), entry[index..].trim()),
+        None => ("", entry),
+    };
+    if length.is_empty() {
+        return Err("entry is missing its source size");
+    }
+    if !is_sizes_length(length) {
+        return Err("entry source size must be a number with a length unit");
+    }
+    validate_sizes_condition(condition, policy)
+}
+
+fn is_sizes_length(value: &str) -> bool {
+    const UNITS: &[&str] = &["px", "em", "rem", "vw", "vh", "ch", "vmin", "vmax", "%"];
+    for unit in UNITS {
+        if let Some(rest) = value.strip_suffix(unit) {
+            return is_sizes_number(rest);
+        }
+    }
+    false
+}
+
+fn is_sizes_number(value: &str) -> bool {
+    let (whole, fraction) = match value.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (value, None),
+    };
+    if whole.is_empty() || whole.len() > 6 || !whole.bytes().all(|byte| byte.is_ascii_digit()) {
+        return false;
+    }
+    match fraction {
+        Some(fraction) => {
+            !fraction.is_empty()
+                && fraction.len() <= 3
+                && fraction.bytes().all(|byte| byte.is_ascii_digit())
+        }
+        None => true,
+    }
+}
+
+fn validate_sizes_condition(
+    condition: &str,
+    policy: &PageBuilderStaticPublishPolicy,
+) -> Result<(), &'static str> {
+    if condition.is_empty() {
+        return Ok(());
+    }
+    if condition.len() > policy.max_media_query_bytes {
+        return Err("media condition exceeds the byte limit");
+    }
+    let mut rest = condition.trim();
+    if let Some(tail) = rest.strip_prefix("not") {
+        if !tail.starts_with(|character: char| character.is_whitespace()) {
+            return Err("media condition `not` must be followed by whitespace");
+        }
+        rest = tail.trim_start();
+    }
+    loop {
+        let Some(after_open) = rest.strip_prefix('(') else {
+            return Err("media condition groups must be parenthesized");
+        };
+        let Some(close_offset) = after_open.find(')') else {
+            return Err("media condition has an unbalanced group");
+        };
+        validate_sizes_condition_group(&after_open[..close_offset])?;
+        let tail = after_open[close_offset + 1..].trim_start();
+        if tail.is_empty() {
+            return Ok(());
+        }
+        let (word, after_word) = split_leading_word(tail);
+        if word != "and" && word != "or" {
+            return Err("media condition groups must be joined by `and` or `or`");
+        }
+        rest = after_word.trim_start();
+        if rest.is_empty() {
+            return Err("media condition must not end with a joiner");
+        }
+    }
+}
+
+fn split_leading_word(value: &str) -> (&str, &str) {
+    let end = value
+        .find(|character: char| !character.is_ascii_lowercase())
+        .unwrap_or(value.len());
+    (&value[..end], &value[end..])
+}
+
+fn validate_sizes_condition_group(inner: &str) -> Result<(), &'static str> {
+    let inner = inner.trim();
+    if inner.is_empty() {
+        return Err("media condition group is empty");
+    }
+    let (feature, value) = match inner.split_once(':') {
+        Some((feature, value)) => (feature.trim(), Some(value.trim())),
+        None => (inner, None),
+    };
+    if feature.is_empty()
+        || feature.len() > 32
+        || !feature.starts_with(|character: char| character.is_ascii_lowercase())
+        || !feature
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return Err("media condition feature name is not allowed");
+    }
+    if let Some(value) = value {
+        validate_sizes_condition_value(value)?;
+    }
+    Ok(())
+}
+
+fn validate_sizes_condition_value(value: &str) -> Result<(), &'static str> {
+    const UNITS: &[&str] = &["px", "em", "rem", "%", "vw", "vh", "ch", "dpi"];
+    if value.is_empty() {
+        return Err("media condition value is empty");
+    }
+    for unit in UNITS {
+        if let Some(rest) = value.strip_suffix(unit) {
+            if is_sizes_number(rest) {
+                return Ok(());
+            }
+            return Err("media condition numeric value is invalid");
+        }
+    }
+    if value.bytes().all(|byte| byte.is_ascii_lowercase() || byte == b'-')
+        && value.starts_with(|character: char| character.is_ascii_lowercase())
+    {
+        return Ok(());
+    }
+    Err("media condition value must be a keyword or a number with a known unit")
 }
 
 fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool {
@@ -1283,5 +1592,152 @@ mod tests {
         for value in ["expression(alert(1))", "@import 'x'", "color:red;}", "a<b"] {
             assert!(!safe_css_value(value, &policy), "accepted {value}");
         }
+    }
+
+    #[test]
+    fn validated_srcset_and_sizes_pass_the_static_policy() {
+        let policy = PageBuilderStaticPublishPolicy::default();
+        assert!(validate_srcset(
+            "https://cdn.example.com/hero-480.webp 480w, https://cdn.example.com/hero-960.webp 960w, /hero.webp 1200w",
+            &policy
+        )
+        .is_ok());
+        assert!(validate_srcset("hero.webp 1x, hero@2x.webp 2x", &policy).is_ok());
+        assert!(validate_srcset("/hero.webp", &policy).is_ok(), "bare candidate");
+        assert!(validate_sizes("(min-width: 480px) 45vw, 100vw", &policy).is_ok());
+        assert!(validate_sizes("(orientation: landscape) and (min-width: 40em) 300px, 100vw", &policy)
+            .is_ok());
+        assert!(validate_sizes("100vw", &policy).is_ok(), "condition-free entry");
+
+        let document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "components": [{
+                "id": "hero",
+                "type": "image",
+                "tagName": "img",
+                "attributes": {
+                    "src": "https://cdn.example.com/hero.webp",
+                    "srcset": "https://cdn.example.com/hero-480.webp 480w, https://cdn.example.com/hero-960.webp 960w",
+                    "sizes": "(min-width: 480px) 45vw, 100vw",
+                    "alt": "Hero"
+                }
+            }]
+        }));
+        validate_static_publish_document(&document).expect("responsive image document");
+    }
+
+    #[test]
+    fn srcset_rejects_unsafe_and_malformed_candidates() {
+        let policy = PageBuilderStaticPublishPolicy::default();
+        for value in [
+            "javascript:alert(1) 1x",
+            "data:image/png;base64,AAAA 1x",
+            "https://cdn.example.com/hero.webp 480w, javascript:alert(1) 960w",
+            "https://cdn.example.com/a.webp 480w, https://cdn.example.com/b.webp 480w",
+            "https://cdn.example.com/a.webp 480w, https://cdn.example.com/b.webp 2x",
+            "https://cdn.example.com/a.webp 480w, https://cdn.example.com/b.webp",
+            "https://cdn.example.com/hero.webp 0w",
+            "https://cdn.example.com/hero.webp 1.5w",
+            "https://cdn.example.com/hero.webp 1x 2x",
+            "https://cdn.example.com/hero.webp 1e2x",
+            "",
+            ", https://cdn.example.com/hero.webp 1x",
+            "//cdn.example.com/hero.webp 1x",
+        ] {
+            assert!(
+                validate_srcset(value, &policy).is_err(),
+                "accepted hostile srcset {value}"
+            );
+        }
+        let mut bounded = PageBuilderStaticPublishPolicy::default();
+        bounded.max_srcset_candidates = 1;
+        assert!(validate_srcset("/a.webp 1x, /b.webp 2x", &bounded).is_err());
+    }
+
+    #[test]
+    fn sizes_rejects_unsafe_and_malformed_values() {
+        let policy = PageBuilderStaticPublishPolicy::default();
+        for value in [
+            "calc(100% - 20px)",
+            "min-width: 480px 300px",
+            "(min-width: 480px) auto",
+            "(min-width: 480px) 300pt",
+            "(min-width: 480px",
+            "min-width: 480px) 300px",
+            "() 300px",
+            "(min-width: 480px) and 300px",
+            "(min-width: 480px) and",
+            "not screen (min-width: 480px) 300px",
+            "(min-width: expression(alert(1))) 300px",
+            "100vw 200px",
+            "",
+        ] {
+            assert!(
+                validate_sizes(value, &policy).is_err(),
+                "accepted hostile sizes {value}"
+            );
+        }
+        let mut bounded = PageBuilderStaticPublishPolicy::default();
+        bounded.max_sizes_entries = 1;
+        assert!(validate_sizes("100vw, 50vw", &bounded).is_err());
+    }
+
+    #[test]
+    fn an_operator_may_keep_the_blanket_srcset_ban() {
+        // Explicit configuration outranks the coherent default.
+        let mut policy = PageBuilderStaticPublishPolicy::default();
+        policy.forbidden_attributes.push("srcset".to_string());
+        assert!(
+            validate_srcset(
+                "https://cdn.example.com/hero-480.webp 480w",
+                &PageBuilderStaticPublishPolicy::default()
+            )
+            .is_ok(),
+            "the coherent default validates the same value"
+        );
+        let mut diagnostics = Vec::new();
+        let attributes = json!({
+            "src": "https://cdn.example.com/hero.webp",
+            "srcset": "https://cdn.example.com/hero-480.webp 480w"
+        })
+        .as_object()
+        .cloned()
+        .expect("attributes");
+        for (raw_name, value) in &attributes {
+            validate_attribute(raw_name, value, "attributes.test", &policy, &mut diagnostics);
+        }
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "landing_attribute_forbidden"),
+            "operator blanket ban must refuse srcset"
+        );
+    }
+
+    #[test]
+    fn srcset_rejections_carry_dedicated_diagnostics() {
+        let document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "components": [{
+                "id": "hero",
+                "type": "image",
+                "tagName": "img",
+                "attributes": {
+                    "src": "https://cdn.example.com/hero.webp",
+                    "srcset": "javascript:alert(1) 1x",
+                    "sizes": "calc(100% - 20px)"
+                }
+            }]
+        }));
+        let error = validate_static_publish_document(&document).expect_err("unsafe responsive image");
+        let codes = error
+            .diagnostics()
+            .iter()
+            .map(|diagnostic| diagnostic.code.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(codes.contains("landing_srcset_rejected"));
+        assert!(codes.contains("landing_sizes_rejected"));
     }
 }

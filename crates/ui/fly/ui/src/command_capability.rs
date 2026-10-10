@@ -51,7 +51,8 @@ impl CommandCapabilityRequirement {
             EditorCommand::Select { .. } => {}
             EditorCommand::Insert { .. }
             | EditorCommand::Remove { .. }
-            | EditorCommand::Move { .. } => self.insert(EditorCapability::Edit),
+            | EditorCommand::Move { .. }
+            | EditorCommand::Symbol { .. } => self.insert(EditorCapability::Edit),
             EditorCommand::Patch { patch, .. } => self.extend_component_patch(patch),
             EditorCommand::Asset { .. } => self.insert(EditorCapability::Assets),
             EditorCommand::StyleRule { .. } => self.insert(EditorCapability::Styles),

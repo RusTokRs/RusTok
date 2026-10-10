@@ -173,6 +173,15 @@ pub fn render_page(
     selection: &PageSelection,
     policy: &RenderPolicy,
 ) -> FlyResult<RenderedPage> {
+    // Resolve references before rendering, including for non-runtime previews.
+    // Published materialization has already resolved them; the fast path keeps
+    // its document and hash identity untouched.
+    let resolved = if crate::document_has_symbol_instances(document) {
+        Some(crate::resolve_symbol_instances(document)?)
+    } else {
+        None
+    };
+    let document = resolved.as_ref().unwrap_or(document);
     let (page_index, page) = resolve_page(document, selection)?;
     let root = page
         .component
@@ -430,7 +439,7 @@ fn safe_tag(component: &ComponentObject) -> &'static str {
         .tag_name
         .as_deref()
         .unwrap_or_else(|| match component.component_type() {
-            "wrapper" | "container" | "row" | "column" | "grid" | "spacer" => "div",
+            "wrapper" | "container" | "row" | "column" | "grid" | "spacer" | "symbol" => "div",
             "section" => "section",
             "heading" => "h2",
             "text" => "p",
