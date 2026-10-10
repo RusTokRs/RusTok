@@ -326,8 +326,8 @@ pub fn DesignSystemPage() -> impl IntoView {
                                 {move || view! {
                                     <Input
                                         placeholder="admin@rustok.dev"
-                                        value=Some(form_input)
-                                        set_value=Some(set_form_input)
+                                        value=form_input
+                                        set_value=set_form_input
                                         invalid=form_input_invalid.get()
                                     />
                                 }}
@@ -341,8 +341,8 @@ pub fn DesignSystemPage() -> impl IntoView {
                                 <Textarea
                                     rows=3
                                     placeholder="Enter operational notes..."
-                                    value=Some(form_notes)
-                                    set_value=Some(set_form_notes)
+                                    value=form_notes
+                                    set_value=set_form_notes
                                 />
                             </div>
 
@@ -351,7 +351,7 @@ pub fn DesignSystemPage() -> impl IntoView {
                                 <Input
                                     disabled=true
                                     placeholder="System managed identifier"
-                                    value=Some(signal("mod_core_01jx".to_string()).0)
+                                    value=signal("mod_core_01jx".to_string()).0
                                 />
                             </div>
                         </CardContent>
@@ -378,8 +378,8 @@ pub fn DesignSystemPage() -> impl IntoView {
                                         {move || if form_switch.get() { "ACTIVE" } else { "OFF" }}
                                     </span>
                                     <Switch
-                                        checked=Some(form_switch)
-                                        set_checked=Some(set_form_switch)
+                                        checked=form_switch
+                                        set_checked=set_form_switch
                                     />
                                 </div>
                             </div>
@@ -396,8 +396,8 @@ pub fn DesignSystemPage() -> impl IntoView {
                                         {move || if form_checkbox.get() { "CHECKED" } else { "UNCHECKED" }}
                                     </span>
                                     <Checkbox
-                                        checked=Some(form_checkbox)
-                                        set_checked=Some(set_form_checkbox)
+                                        checked=form_checkbox
+                                        set_checked=set_form_checkbox
                                     />
                                 </div>
                             </div>

@@ -2133,7 +2133,7 @@ mod tests {
         }
 
         assert_eq!(
-            CheckoutExecutionAdmission::unchanged(CheckoutExecutionAdmission::Open).epoch_delta(),
+            AdmissionWrite::unchanged(CheckoutExecutionAdmission::Open).epoch_delta(),
             0
         );
         assert_eq!(

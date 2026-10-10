@@ -971,6 +971,7 @@ fn normalize_bounded(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustok_core::generate_id;
 
     fn request(action: CheckoutReconciliationAction) -> CheckoutReconciliationActionRequest {
         CheckoutReconciliationActionRequest {

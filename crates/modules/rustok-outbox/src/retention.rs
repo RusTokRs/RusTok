@@ -275,7 +275,7 @@ mod tests {
     async fn migration_creates_the_retention_index() {
         let db = test_db().await;
         let indexes: Vec<String> = db
-            .query_all(sea_orm::Statement::from_string(
+            .query_all_raw(sea_orm::Statement::from_string(
                 db.get_database_backend(),
                 "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'sys_events'"
                     .to_string(),

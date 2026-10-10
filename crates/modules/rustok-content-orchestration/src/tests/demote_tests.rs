@@ -116,7 +116,7 @@ async fn demote_post_to_topic_moves_comments_and_registers_redirects() {
     let orchestration = ContentOrchestrationService::new(
         db.clone(),
         events.clone(),
-        Arc::new(ServerContentOrchestrationBridge::new(db.clone())),
+        Arc::new(ServerContentOrchestrationBridge::new(db.clone(), events.clone())),
     );
     let demoted = match orchestration
         .demote_post_to_topic(

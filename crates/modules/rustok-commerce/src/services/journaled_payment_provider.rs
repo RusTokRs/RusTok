@@ -437,6 +437,9 @@ mod tests {
             updated_at: now.into(),
             provider_completed_at: None,
             committed_at: None,
+            admission_epoch: 0,
+            admission_refusal_code: None,
+            admission_refused_at: None,
         };
         assert!(matches!(
             persisted_provider_result(&operation),

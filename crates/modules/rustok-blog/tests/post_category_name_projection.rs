@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use rustok_blog::{
-    BlogModule, BlogPostStatus, CategoryService, CreateCategoryInput, CreatePostInput,
-    PostListQuery, PostService, PublicPostsPageQuery,
+    BlogModule, CategoryService, CreateCategoryInput, CreatePostInput, PostListQuery,
+    PostService, PublicPostsPageQuery,
 };
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
@@ -122,7 +122,6 @@ async fn post_category_name_projects_across_detail_and_list_paths() {
             admin,
             PostListQuery {
                 locale: Some("fr".to_string()),
-                page: Some(1),
                 per_page: Some(10),
                 ..Default::default()
             },
