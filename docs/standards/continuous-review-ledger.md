@@ -5403,6 +5403,22 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-23.01` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
 - **Next primary iteration:** continue audit of `crates/libs/rustok-api` (FS-23.02: context extractors, error boundaries, permissions, and port contracts).
 
+### FS-23.02 Assessment — Shared API Auth scope matching, permission vocabulary parity, and Tenant RBAC diagnostics
+
+- **Base:** commit `a2c190e23` on dedicated branch `codex/audit-server-bootstrap-and-host`.
+- **Primary scope:** `crates/libs/rustok-api/src/context/auth.rs`, `crates/libs/rustok-api/src/permissions.rs`, `crates/libs/rustok-api/src/tenant_rbac.rs`.
+- **Invariant map:** OAuth scope resolution in `AuthContext::require_scope` must handle multi-segment resource namespaces (`ai:providers:*`, `ai:tasks:text:*`) identically to canonical `oauth_scope::scope_matches`; platform `Permission` taxonomy and `permission_constants!` must provide complete typed constant coverage across all platform `Resource` variants without forcing caller ad-hoc constructors; string parsing for `Permission`, `Resource`, and `Action` must be resilient to surrounding whitespace; `TenantRbacCatalogError` must emit balanced Markdown/diagnostic backticks; tenant-scoped RBAC role and permission validation must strictly enforce catalog membership.
+- **Confirmed finding AUTHSCOPE-23.02-01:** `auth.rs` defined a duplicate, non-namespace-aware `scope_matches` implementation that split only on the first colon (`requested.split(':').next()`). Multi-segment scopes such as `ai:providers:*` failed to match `ai:providers:read` in `AuthContext::require_scope`, rejecting authorized OAuth requests.
+- **Confirmed finding PERMISSION-23.02-02:** `permission_constants!` omitted constants for platform resources `Categories`, `Discounts`, `Media`, `Comments`, `Webhooks`, `Translations`, `TranslationMemory`, and `TranslationGlossaries`, forcing modules to construct ad-hoc instances (`Permission::new(...)`). Additionally, `Permission::from_str`, `Resource::from_str`, and `Action::from_str` lacked whitespace tolerance, rejecting valid configuration/input strings containing surrounding whitespace.
+- **Confirmed finding TENANTRBAC-23.02-03:** `TenantRbacCatalogError::UnknownRole` and `UnknownPermission` had unclosed backticks in error format strings (`for tenant `{tenant_id}]`), producing malformed diagnostics.
+- **Remediation:**
+  1. Replaced redundant `auth.rs::scope_matches` with `pub use super::oauth_scope::scope_matches;`. Added regression tests verifying `AuthContext::require_scope` multi-segment namespace wildcards.
+  2. Added missing typed constants (`CATEGORIES_*`, `DISCOUNTS_*`, `MEDIA_*`, `COMMENTS_*`, `WEBHOOKS_*`, `TRANSLATIONS_*`, `TRANSLATION_MEMORY_*`, `TRANSLATION_GLOSSARIES_*`) to `permission_constants!`.
+  3. Added `.trim()` support across `Permission::from_str`, `Resource::from_str`, and `Action::from_str`. Added comprehensive unit tests covering canonical strings, AI multi-segment tasks, whitespace tolerance, and Serde roundtrips.
+  4. Balanced backticks in `TenantRbacCatalogError` format strings and added unit tests for error display and catalog assignment validation.
+- **Status:** `FS-23.02` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
+- **Next primary iteration:** move to background processing, event delivery, outbox, and telemetry (FS-24).
+
 
 
 

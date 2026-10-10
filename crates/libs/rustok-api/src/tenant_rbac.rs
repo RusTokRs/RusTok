@@ -21,9 +21,9 @@ pub struct TenantRbacPermission {
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum TenantRbacCatalogError {
-    #[error("role `{slug}` is not available for tenant `{tenant_id}")]
+    #[error("role `{slug}` is not available for tenant `{tenant_id}`")]
     UnknownRole { tenant_id: Uuid, slug: String },
-    #[error("permission `{slug}` is not available for tenant `{tenant_id}")]
+    #[error("permission `{slug}` is not available for tenant `{tenant_id}`")]
     UnknownPermission { tenant_id: Uuid, slug: String },
 }
 
@@ -76,3 +76,100 @@ pub trait TenantRbacCatalog: Send + Sync {
 /// Cloneable generic runtime-extension value for the platform RBAC catalog.
 #[derive(Clone)]
 pub struct SharedTenantRbacCatalog(pub Arc<dyn TenantRbacCatalog>);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct MockCatalog;
+
+    impl TenantRbacCatalog for MockCatalog {
+        fn roles(&self, _tenant_id: Uuid) -> Vec<TenantRbacRole> {
+            vec![TenantRbacRole {
+                slug: "admin".to_string(),
+                display_name: "Administrator".to_string(),
+                permission_slugs: vec!["products:read".to_string()],
+            }]
+        }
+
+        fn permissions(&self, _tenant_id: Uuid) -> Vec<TenantRbacPermission> {
+            vec![TenantRbacPermission {
+                slug: "products:read".to_string(),
+                display_name: "Read Products".to_string(),
+            }]
+        }
+    }
+
+    #[test]
+    fn validate_assignment_accepts_catalog_roles_and_permissions() {
+        let catalog = MockCatalog;
+        let tenant_id = Uuid::new_v4();
+
+        let result = catalog.validate_assignment(
+            tenant_id,
+            &["admin".to_string()],
+            &["products:read".to_string()],
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_assignment_rejects_unknown_role() {
+        let catalog = MockCatalog;
+        let tenant_id = Uuid::new_v4();
+
+        let result = catalog.validate_assignment(
+            tenant_id,
+            &["superadmin".to_string()],
+            &["products:read".to_string()],
+        );
+        assert_eq!(
+            result,
+            Err(TenantRbacCatalogError::UnknownRole {
+                tenant_id,
+                slug: "superadmin".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn validate_assignment_rejects_unknown_permission() {
+        let catalog = MockCatalog;
+        let tenant_id = Uuid::new_v4();
+
+        let result = catalog.validate_assignment(
+            tenant_id,
+            &["admin".to_string()],
+            &["unknown:manage".to_string()],
+        );
+        assert_eq!(
+            result,
+            Err(TenantRbacCatalogError::UnknownPermission {
+                tenant_id,
+                slug: "unknown:manage".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn error_display_formats_balanced_backticks() {
+        let tenant_id = Uuid::nil();
+        let role_err = TenantRbacCatalogError::UnknownRole {
+            tenant_id,
+            slug: "operator".to_string(),
+        };
+        assert_eq!(
+            role_err.to_string(),
+            format!("role `operator` is not available for tenant `{tenant_id}`")
+        );
+
+        let perm_err = TenantRbacCatalogError::UnknownPermission {
+            tenant_id,
+            slug: "orders:delete".to_string(),
+        };
+        assert_eq!(
+            perm_err.to_string(),
+            format!("permission `orders:delete` is not available for tenant `{tenant_id}`")
+        );
+    }
+}

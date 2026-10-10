@@ -132,7 +132,7 @@ impl FromStr for Resource {
     type Err = String;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
+        match value.trim() {
             "users" => Ok(Self::Users),
             "tenants" => Ok(Self::Tenants),
             "modules" => Ok(Self::Modules),
@@ -242,7 +242,7 @@ impl FromStr for Action {
     type Err = String;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
+        match value.trim() {
             "create" => Ok(Self::Create),
             "read" => Ok(Self::Read),
             "update" => Ok(Self::Update),
@@ -279,12 +279,13 @@ impl FromStr for Permission {
     type Err = String;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        let (resource, action) = value
+        let trimmed = value.trim();
+        let (resource, action) = trimmed
             .rsplit_once(':')
             .ok_or_else(|| "Missing action".to_string())?;
         Ok(Self {
-            resource: Resource::from_str(resource)?,
-            action: Action::from_str(action)?,
+            resource: Resource::from_str(resource.trim())?,
+            action: Action::from_str(action.trim())?,
         })
     }
 }
@@ -525,5 +526,136 @@ impl Permission {
         WORKFLOWS_MANAGE => (Workflows, Manage),
         WORKFLOW_EXECUTIONS_READ => (WorkflowExecutions, Read),
         WORKFLOW_EXECUTIONS_LIST => (WorkflowExecutions, List),
+        CATEGORIES_CREATE => (Categories, Create),
+        CATEGORIES_READ => (Categories, Read),
+        CATEGORIES_UPDATE => (Categories, Update),
+        CATEGORIES_DELETE => (Categories, Delete),
+        CATEGORIES_LIST => (Categories, List),
+        CATEGORIES_MANAGE => (Categories, Manage),
+        DISCOUNTS_CREATE => (Discounts, Create),
+        DISCOUNTS_READ => (Discounts, Read),
+        DISCOUNTS_UPDATE => (Discounts, Update),
+        DISCOUNTS_DELETE => (Discounts, Delete),
+        DISCOUNTS_LIST => (Discounts, List),
+        DISCOUNTS_MANAGE => (Discounts, Manage),
+        MEDIA_CREATE => (Media, Create),
+        MEDIA_READ => (Media, Read),
+        MEDIA_UPDATE => (Media, Update),
+        MEDIA_DELETE => (Media, Delete),
+        MEDIA_LIST => (Media, List),
+        MEDIA_MANAGE => (Media, Manage),
+        COMMENTS_CREATE => (Comments, Create),
+        COMMENTS_READ => (Comments, Read),
+        COMMENTS_UPDATE => (Comments, Update),
+        COMMENTS_DELETE => (Comments, Delete),
+        COMMENTS_LIST => (Comments, List),
+        COMMENTS_MODERATE => (Comments, Moderate),
+        COMMENTS_MANAGE => (Comments, Manage),
+        WEBHOOKS_CREATE => (Webhooks, Create),
+        WEBHOOKS_READ => (Webhooks, Read),
+        WEBHOOKS_UPDATE => (Webhooks, Update),
+        WEBHOOKS_DELETE => (Webhooks, Delete),
+        WEBHOOKS_LIST => (Webhooks, List),
+        WEBHOOKS_MANAGE => (Webhooks, Manage),
+        TRANSLATIONS_CREATE => (Translations, Create),
+        TRANSLATIONS_READ => (Translations, Read),
+        TRANSLATIONS_UPDATE => (Translations, Update),
+        TRANSLATIONS_DELETE => (Translations, Delete),
+        TRANSLATIONS_LIST => (Translations, List),
+        TRANSLATIONS_RESOLVE => (Translations, Resolve),
+        TRANSLATIONS_PUBLISH => (Translations, Publish),
+        TRANSLATIONS_IMPORT => (Translations, Import),
+        TRANSLATIONS_EXPORT => (Translations, Export),
+        TRANSLATIONS_RUN => (Translations, Run),
+        TRANSLATIONS_MANAGE => (Translations, Manage),
+        TRANSLATION_MEMORY_CREATE => (TranslationMemory, Create),
+        TRANSLATION_MEMORY_READ => (TranslationMemory, Read),
+        TRANSLATION_MEMORY_UPDATE => (TranslationMemory, Update),
+        TRANSLATION_MEMORY_DELETE => (TranslationMemory, Delete),
+        TRANSLATION_MEMORY_LIST => (TranslationMemory, List),
+        TRANSLATION_MEMORY_IMPORT => (TranslationMemory, Import),
+        TRANSLATION_MEMORY_EXPORT => (TranslationMemory, Export),
+        TRANSLATION_MEMORY_MANAGE => (TranslationMemory, Manage),
+        TRANSLATION_GLOSSARIES_CREATE => (TranslationGlossaries, Create),
+        TRANSLATION_GLOSSARIES_READ => (TranslationGlossaries, Read),
+        TRANSLATION_GLOSSARIES_UPDATE => (TranslationGlossaries, Update),
+        TRANSLATION_GLOSSARIES_DELETE => (TranslationGlossaries, Delete),
+        TRANSLATION_GLOSSARIES_LIST => (TranslationGlossaries, List),
+        TRANSLATION_GLOSSARIES_IMPORT => (TranslationGlossaries, Import),
+        TRANSLATION_GLOSSARIES_EXPORT => (TranslationGlossaries, Export),
+        TRANSLATION_GLOSSARIES_MANAGE => (TranslationGlossaries, Manage),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_permission_from_str_canonical() {
+        let perm: Permission = "products:read".parse().expect("parse products:read");
+        assert_eq!(perm, Permission::PRODUCTS_READ);
+        assert_eq!(perm.to_string(), "products:read");
+
+        let manage: Permission = "settings:manage".parse().expect("parse settings:manage");
+        assert_eq!(manage, Permission::SETTINGS_MANAGE);
+    }
+
+    #[test]
+    fn parse_permission_wildcard_manage() {
+        let perm: Permission = "users:*".parse().expect("parse users:*");
+        assert_eq!(perm, Permission::USERS_MANAGE);
+    }
+
+    #[test]
+    fn parse_permission_multisegment_ai_resource() {
+        let perm: Permission = "ai:tasks:text:run".parse().expect("parse ai:tasks:text:run");
+        assert_eq!(perm, Permission::AI_TASKS_TEXT_RUN);
+        assert_eq!(perm.to_string(), "ai:tasks:text:run");
+
+        let provider_manage: Permission = "ai:providers:manage".parse().expect("parse ai:providers:manage");
+        assert_eq!(provider_manage, Permission::AI_PROVIDERS_MANAGE);
+    }
+
+    #[test]
+    fn parse_permission_whitespace_tolerant() {
+        let perm: Permission = "  products:read \t".parse().expect("parse with whitespace");
+        assert_eq!(perm, Permission::PRODUCTS_READ);
+
+        let perm2: Permission = "categories : list".parse().expect("parse with inner whitespace");
+        assert_eq!(perm2, Permission::CATEGORIES_LIST);
+    }
+
+    #[test]
+    fn parse_permission_rejects_malformed_inputs() {
+        assert!("".parse::<Permission>().is_err());
+        assert!("nocolon".parse::<Permission>().is_err());
+        assert!("unknown_resource:read".parse::<Permission>().is_err());
+        assert!("products:invalid_action".parse::<Permission>().is_err());
+    }
+
+    #[test]
+    fn missing_constants_have_correct_resource_and_action() {
+        assert_eq!(Permission::CATEGORIES_READ.resource, Resource::Categories);
+        assert_eq!(Permission::CATEGORIES_READ.action, Action::Read);
+        assert_eq!(Permission::CATEGORIES_MANAGE.action, Action::Manage);
+
+        assert_eq!(Permission::DISCOUNTS_MANAGE.resource, Resource::Discounts);
+        assert_eq!(Permission::MEDIA_MANAGE.resource, Resource::Media);
+        assert_eq!(Permission::COMMENTS_MODERATE.resource, Resource::Comments);
+        assert_eq!(Permission::COMMENTS_MODERATE.action, Action::Moderate);
+        assert_eq!(Permission::WEBHOOKS_MANAGE.resource, Resource::Webhooks);
+
+        assert_eq!(Permission::TRANSLATIONS_MANAGE.resource, Resource::Translations);
+        assert_eq!(Permission::TRANSLATION_MEMORY_MANAGE.resource, Resource::TranslationMemory);
+        assert_eq!(Permission::TRANSLATION_GLOSSARIES_MANAGE.resource, Resource::TranslationGlossaries);
+    }
+
+    #[test]
+    fn serde_json_roundtrip() {
+        let perm = Permission::TRANSLATIONS_PUBLISH;
+        let serialized = serde_json::to_string(&perm).expect("serialize");
+        let deserialized: Permission = serde_json::from_str(&serialized).expect("deserialize");
+        assert_eq!(perm, deserialized);
     }
 }

@@ -7,29 +7,7 @@ use axum::{
 use std::collections::HashSet;
 use uuid::Uuid;
 
-/// Check if a requested scope is allowed by the granted scope list.
-///
-/// Supports:
-/// - exact matches like `catalog:read`
-/// - resource wildcards like `catalog:*`
-/// - global wildcard `*:*`
-pub fn scope_matches(allowed: &[String], requested: &str) -> bool {
-    for allowed_scope in allowed {
-        if allowed_scope == "*:*" {
-            return true;
-        }
-        if allowed_scope == requested {
-            return true;
-        }
-        if let Some(prefix) = allowed_scope.strip_suffix(":*")
-            && let Some(req_prefix) = requested.split(':').next()
-            && prefix == req_prefix
-        {
-            return true;
-        }
-    }
-    false
-}
+pub use super::oauth_scope::scope_matches;
 
 /// Apply the OAuth maximum-authority boundary to an RBAC permission snapshot.
 ///
@@ -401,12 +379,33 @@ mod tests {
     }
 
     #[test]
+    fn require_scope_oauth_multisegment_namespace_wildcards() {
+        let ctx = make_auth_ctx(
+            Some(Uuid::new_v4()),
+            vec!["ai:providers:*".to_string(), "catalog:*".to_string()],
+        );
+        assert!(ctx.require_scope("ai:providers:read").is_ok());
+        assert!(ctx.require_scope("ai:providers:write").is_ok());
+        assert!(ctx.require_scope("catalog:read").is_ok());
+        assert!(ctx.require_scope("ai:tasks:text:run").is_err());
+        assert!(ctx.require_scope("ai2:providers:read").is_err());
+    }
+
+    #[test]
     fn scope_matches_exact_and_wildcard_forms() {
-        let allowed = vec!["catalog:*".to_string(), "orders:read".to_string()];
+        let allowed = vec![
+            "catalog:*".to_string(),
+            "orders:read".to_string(),
+            "ai:providers:*".to_string(),
+        ];
         assert!(scope_matches(&allowed, "catalog:read"));
         assert!(scope_matches(&allowed, "catalog:write"));
         assert!(scope_matches(&allowed, "orders:read"));
         assert!(!scope_matches(&allowed, "orders:write"));
+        assert!(scope_matches(&allowed, "ai:providers:read"));
+        assert!(scope_matches(&allowed, "ai:providers:write"));
+        assert!(!scope_matches(&allowed, "ai:tasks:read"));
+        assert!(!scope_matches(&allowed, "ai2:providers:read"));
     }
 
     #[test]
