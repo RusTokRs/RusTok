@@ -18,6 +18,7 @@ members = [
     "crates/utils/*",
     "crates/workers/*",
     "crates/modules/*",
+    "crates/modules/rustok-forms/admin",
     "crates/modules/rustok-seo/admin",
     "crates/modules/rustok-seo/render",
     "crates/modules/rustok-seo/storefront",
@@ -271,6 +272,8 @@ rig-vertexai = "=0.42.0"
 rustok-core = { path = "crates/libs/rustok-core" }
 rustok-modules = { path = "crates/modules/rustok-modules", default-features = false }
 rustok-events = { path = "crates/libs/rustok-events" }
+rustok-forms = { path = "crates/modules/rustok-forms" }
+rustok-forms-admin = { path = "crates/modules/rustok-forms/admin" }
 rustok-events-module = { path = "crates/modules/rustok-events-module" }
 rustok-commerce-foundation = { path = "crates/modules/rustok-commerce-foundation" }
 rustok-commerce = { path = "crates/modules/rustok-commerce", default-features = false }

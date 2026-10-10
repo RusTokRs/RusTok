@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -102,6 +105,7 @@ async fn mention_description_and_audience_use_the_exact_recipient_for_topics_and
         .await
         .expect("category should be created");
     let topic = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             admin.clone(),
@@ -121,6 +125,7 @@ async fn mention_description_and_audience_use_the_exact_recipient_for_topics_and
         .await
         .expect("topic should be created");
     let reply = ReplyService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             admin.clone(),

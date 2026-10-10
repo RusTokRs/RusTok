@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 mod support;
 
 use std::sync::Arc;
@@ -528,7 +531,8 @@ async fn forum_06_locked_topic_rejects_reply_creation() -> TestResult<()> {
     };
     let outcome = async {
         let seed = seed_forum(&context, false, true).await?;
-        let service = ReplyService::new(context.db.clone(), event_bus(context.db.clone()));
+        let service = ReplyService::new(context.db.clone(), event_bus(context.db.clone()))
+            .with_settings_providers(posting_cooldown::zero_cooldown_providers());
         let result = service
             .create(
                 seed.tenant_id,
@@ -555,7 +559,8 @@ async fn forum_06_pending_reply_does_not_change_public_counters() -> TestResult<
     };
     let outcome = async {
         let seed = seed_forum(&context, true, false).await?;
-        let service = ReplyService::new(context.db.clone(), event_bus(context.db.clone()));
+        let service = ReplyService::new(context.db.clone(), event_bus(context.db.clone()))
+            .with_settings_providers(posting_cooldown::zero_cooldown_providers());
         let reply = service
             .create(
                 seed.tenant_id,
@@ -608,7 +613,8 @@ async fn forum_06_pending_reply_does_not_emit_public_replied_event() -> TestResu
     };
     let outcome = async {
         let seed = seed_forum(&context, true, false).await?;
-        let service = ReplyService::new(context.db.clone(), event_bus(context.db.clone()));
+        let service = ReplyService::new(context.db.clone(), event_bus(context.db.clone()))
+            .with_settings_providers(posting_cooldown::zero_cooldown_providers());
         service
             .create(
                 seed.tenant_id,
@@ -793,7 +799,8 @@ async fn create_concurrent_replies(
         let barrier = barrier.clone();
         let seed = *seed;
         handles.push(tokio::spawn(async move {
-            let service = ReplyService::new(db.clone(), event_bus(db));
+            let service = ReplyService::new(db.clone(), event_bus(db))
+                .with_settings_providers(posting_cooldown::zero_cooldown_providers());
             barrier.wait().await;
             service
                 .create(

@@ -78,14 +78,18 @@ try {
   const tokens = JSON.parse(raw);
   const dartCode = generateDartCode(tokens);
 
-  const outputPath = process.argv[2] === '--output' && process.argv[3]
-    ? resolve(process.cwd(), process.argv[3])
-    : defaultOutputPath;
+  const primaryOutput = defaultOutputPath;
+  const mobileKitOutput = resolve(rootDir, 'rustok_mobile/packages/app_ui_kit/lib/tokens/rustok_tokens.g.dart');
 
-  mkdirSync(dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, dartCode, 'utf-8');
+  const targets = process.argv[2] === '--output' && process.argv[3]
+    ? [resolve(process.cwd(), process.argv[3])]
+    : [primaryOutput, mobileKitOutput];
 
-  console.log(`[RusToK Codegen] Successfully generated Flutter tokens -> ${outputPath}`);
+  for (const target of targets) {
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, dartCode, 'utf-8');
+    console.log(`[RusToK Codegen] Successfully generated Flutter tokens -> ${target}`);
+  }
 } catch (err) {
   console.error('[RusToK Codegen] Error generating Flutter tokens:', err);
   process.exit(1);

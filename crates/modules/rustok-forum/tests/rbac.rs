@@ -1,5 +1,9 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
+use rustok_api::{Action, Permission, Resource};
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumError,
@@ -91,11 +95,14 @@ async fn create_category(
 async fn customer_permissions_are_enforced_in_forum_services() {
     let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus.clone());
-    let reply_service = ReplyService::new(db, event_bus);
+    let topic_service = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
+    let reply_service = ReplyService::new(db, event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
 
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
     let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+    let other_customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
 
     let denied_category = category_service
         .create(
@@ -141,7 +148,7 @@ async fn customer_permissions_are_enforced_in_forum_services() {
         .update(
             tenant_id,
             topic.id,
-            customer.clone(),
+            other_customer.clone(),
             UpdateTopicInput {
                 locale: "en".to_string(),
                 title: Some("Edited".to_string()),
@@ -152,8 +159,25 @@ async fn customer_permissions_are_enforced_in_forum_services() {
             },
         )
         .await
-        .expect_err("customer should not update topics");
+        .expect_err("another customer should not update the topic");
     assert!(matches!(denied_topic_update, ForumError::Forbidden(_)));
+
+    topic_service
+        .update(
+            tenant_id,
+            topic.id,
+            customer.clone(),
+            UpdateTopicInput {
+                locale: "en".to_string(),
+                title: Some("Edited by author".to_string()),
+                body: None,
+                metadata: None,
+                tags: None,
+                channel_slugs: None,
+            },
+        )
+        .await
+        .expect("author should update own topic");
 
     let reply = reply_service
         .create(
@@ -173,20 +197,34 @@ async fn customer_permissions_are_enforced_in_forum_services() {
         .update(
             tenant_id,
             reply.id,
-            customer.clone(),
+            other_customer,
             UpdateReplyInput {
                 locale: "en".to_string(),
                 content: Some(rustok_api::RichTextDocument::single_paragraph("Edited")),
             },
         )
         .await
-        .expect_err("customer should not update replies");
+        .expect_err("another customer should not update the reply");
     assert!(matches!(denied_reply_update, ForumError::Forbidden(_)));
 
+    reply_service
+        .update(
+            tenant_id,
+            reply.id,
+            customer.clone(),
+            UpdateReplyInput {
+                locale: "en".to_string(),
+                content: Some(rustok_api::RichTextDocument::single_paragraph("Edited by author")),
+            },
+        )
+        .await
+        .expect("author should update own reply");
+
+    // Author deletion is off by default (`allow_user_content_deletion = false`).
     let denied_reply_delete = reply_service
         .delete(tenant_id, reply.id, customer.clone())
         .await
-        .expect_err("customer should not delete replies");
+        .expect_err("author deletion should be disabled by default");
     assert!(matches!(denied_reply_delete, ForumError::Forbidden(_)));
 
     let page = topic_service
@@ -212,8 +250,10 @@ async fn customer_permissions_are_enforced_in_forum_services() {
 async fn moderation_requires_moderate_scope() {
     let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus.clone());
-    let reply_service = ReplyService::new(db.clone(), event_bus.clone());
+    let topic_service = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
+    let reply_service = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let moderation_service = ModerationService::new(db, event_bus);
 
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -288,4 +328,165 @@ async fn moderation_requires_moderate_scope() {
         .hide_reply(tenant_id, reply.id, topic.id, manager)
         .await
         .expect("manager should moderate replies");
+}
+
+async fn create_forum_topic(
+    topic_service: &TopicService,
+    tenant_id: Uuid,
+    category_id: Uuid,
+    author: SecurityContext,
+    slug: &str,
+) -> Uuid {
+    topic_service
+        .create(
+            tenant_id,
+            author,
+            CreateTopicInput {
+                locale: "en".to_string(),
+                category_id,
+                title: format!("Topic {slug}"),
+                slug: Some(slug.to_string()),
+                body: rustok_api::RichTextDocument::single_paragraph("Body"),
+                metadata: serde_json::json!({}),
+                tags: vec![],
+                channel_slugs: None,
+            },
+        )
+        .await
+        .expect("topic should be created")
+        .id
+}
+
+#[tokio::test]
+async fn author_topic_deletion_follows_the_tenant_policy_and_staff_are_not_affected() {
+    let (db, event_bus, tenant_id) = setup().await;
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let category =
+        create_category(&CategoryService::new(db.clone()), tenant_id, admin.clone()).await;
+    let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+    let other_customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+
+    // Policy off (default): the author is refused, another customer is refused.
+    let closed = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
+    let own_topic =
+        create_forum_topic(&closed, tenant_id, category.id, author.clone(), "own-closed").await;
+    let denied = closed
+        .delete(tenant_id, own_topic, author.clone())
+        .await
+        .expect_err("author deletion should be disabled by default");
+    assert!(matches!(denied, ForumError::Forbidden(_)));
+    let denied_other = closed
+        .delete(tenant_id, own_topic, other_customer)
+        .await
+        .expect_err("another customer must never delete the topic");
+    assert!(matches!(denied_other, ForumError::Forbidden(_)));
+
+    // Policy on: the author deletes own topic.
+    let open = TopicService::new(db.clone(), event_bus.clone()).with_settings_providers(
+        posting_cooldown::zero_cooldown_providers_with(
+            serde_json::json!({ "allow_user_content_deletion": true }),
+        ),
+    );
+    open.delete(tenant_id, own_topic, author.clone())
+        .await
+        .expect("author should delete own topic when the policy allows it");
+
+    // Policy off again: the admin still deletes through staff permission.
+    let staff_topic =
+        create_forum_topic(&closed, tenant_id, category.id, author, "staff-target").await;
+    closed
+        .delete(tenant_id, staff_topic, admin)
+        .await
+        .expect("administrators are not limited by the author policy");
+}
+
+#[tokio::test]
+async fn author_reply_deletion_follows_the_tenant_policy() {
+    let (db, event_bus, tenant_id) = setup().await;
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let category =
+        create_category(&CategoryService::new(db.clone()), tenant_id, admin.clone()).await;
+    let topic_service = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
+    let topic =
+        create_forum_topic(&topic_service, tenant_id, category.id, admin, "reply-policy").await;
+
+    let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+    let reply_service = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
+    let reply = reply_service
+        .create(
+            tenant_id,
+            author.clone(),
+            topic,
+            CreateReplyInput {
+                locale: "en".to_string(),
+                content: rustok_api::RichTextDocument::single_paragraph("Reply"),
+                parent_reply_id: None,
+            },
+        )
+        .await
+        .expect("reply should be created");
+
+    let denied = reply_service
+        .delete(tenant_id, reply.id, author.clone())
+        .await
+        .expect_err("author reply deletion should be disabled by default");
+    assert!(matches!(denied, ForumError::Forbidden(_)));
+
+    let open = ReplyService::new(db, event_bus).with_settings_providers(
+        posting_cooldown::zero_cooldown_providers_with(
+            serde_json::json!({ "allow_user_content_deletion": true }),
+        ),
+    );
+    open.delete(tenant_id, reply.id, author)
+        .await
+        .expect("author should delete own reply when the policy allows it");
+}
+
+#[tokio::test]
+async fn update_only_role_edits_its_own_topic_and_never_deletes_it() {
+    let (db, event_bus, tenant_id) = setup().await;
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let category =
+        create_category(&CategoryService::new(db.clone()), tenant_id, admin.clone()).await;
+    let author_id = Uuid::new_v4();
+    let author = SecurityContext::new(UserRole::Customer, Some(author_id));
+    // The tenant allows author deletion, so the refusal below comes from the missing permission.
+    let topics = TopicService::new(db.clone(), event_bus.clone()).with_settings_providers(
+        posting_cooldown::zero_cooldown_providers_with(
+            serde_json::json!({ "allow_user_content_deletion": true }),
+        ),
+    );
+    let topic_id =
+        create_forum_topic(&topics, tenant_id, category.id, author, "update-only").await;
+
+    let update_only = SecurityContext::from_permissions(
+        UserRole::Customer,
+        Some(author_id),
+        [Permission::new(Resource::ForumTopics, Action::Update)],
+    );
+    topics
+        .update(
+            tenant_id,
+            topic_id,
+            update_only.clone(),
+            UpdateTopicInput {
+                locale: "en".to_string(),
+                title: Some("Edited by the author".to_string()),
+                body: None,
+                metadata: None,
+                tags: None,
+                channel_slugs: None,
+            },
+        )
+        .await
+        .expect("a role with Update edits its own topic");
+
+    let denied = topics
+        .delete(tenant_id, topic_id, update_only)
+        .await
+        .expect_err("a role without Delete must not delete its own topic");
+    assert!(matches!(denied, ForumError::Forbidden(_)));
 }

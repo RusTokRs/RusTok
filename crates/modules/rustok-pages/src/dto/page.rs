@@ -47,12 +47,84 @@ pub struct PatchPageMetadataInput {
 
 /// Current visual-document write contract.
 ///
-/// The expected revision is the current body `updated_at` value, or
-/// `page:<page_id>:initial` while the locale has no body yet.
+/// The expected revision is the working-copy `updated_at` value (the page body draft while
+/// the page is published, otherwise the current body), or `page:<page_id>:initial` while
+/// the locale has no working copy yet.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SavePageDocumentInput {
     pub expected_revision: String,
     pub body: PageBodyInput,
+}
+
+/// Restores one journaled body revision into the working copy of its locale.
+///
+/// The expected revision follows the same working-copy contract as
+/// [`SavePageDocumentInput::expected_revision`].
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RestorePageBodyRevisionInput {
+    pub expected_revision: String,
+    pub revision_id: Uuid,
+}
+
+/// Which copy of a localized body a [`PageBodyResponse`] carries.
+///
+/// `current` is the publicly served body; `draft` is the unpublished working copy that only
+/// update-capable readers can observe while the page is published.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PageBodyState {
+    Current,
+    Draft,
+}
+
+/// Mutation that produced one journaled body revision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PageBodyRevisionSource {
+    Create,
+    Save,
+    DraftSave,
+    Promote,
+    Restore,
+    Duplicate,
+}
+
+impl PageBodyRevisionSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Create => "create",
+            Self::Save => "save",
+            Self::DraftSave => "draft_save",
+            Self::Promote => "promote",
+            Self::Restore => "restore",
+            Self::Duplicate => "duplicate",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "create" => Some(Self::Create),
+            "save" => Some(Self::Save),
+            "draft_save" => Some(Self::DraftSave),
+            "promote" => Some(Self::Promote),
+            "restore" => Some(Self::Restore),
+            "duplicate" => Some(Self::Duplicate),
+            _ => None,
+        }
+    }
+}
+
+/// Metadata of one append-only body revision.
+///
+/// History never exposes stored body content; restoring uses `revision_id`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PageBodyRevisionResponse {
+    pub id: Uuid,
+    pub locale: String,
+    pub source: PageBodyRevisionSource,
+    pub body_revision: String,
+    pub created_at: String,
+    pub created_by: Option<Uuid>,
 }
 
 /// One exact localized document revision reviewed by the publish actor.
@@ -159,6 +231,67 @@ pub struct RollbackPageResult {
     pub rolled_back_at: String,
 }
 
+/// Execution state of one scheduled page publication job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PagePublishJobState {
+    Scheduled,
+    Executing,
+    Published,
+    Canceled,
+    Failed,
+}
+
+impl PagePublishJobState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Scheduled => "scheduled",
+            Self::Executing => "executing",
+            Self::Published => "published",
+            Self::Canceled => "canceled",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "scheduled" => Some(Self::Scheduled),
+            "executing" => Some(Self::Executing),
+            "published" => Some(Self::Published),
+            "canceled" => Some(Self::Canceled),
+            "failed" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+
+/// One scheduled reviewed page publication.
+///
+/// `command` is captured at scheduling time and replayed unchanged at the due time; see
+/// the scheduled page publishing decision record for the drift semantics.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PagePublishScheduleResponse {
+    pub id: Uuid,
+    pub page_id: Uuid,
+    pub publish_at: String,
+    pub state: PagePublishJobState,
+    pub attempts: i32,
+    pub last_error_code: Option<String>,
+    pub last_error_message: Option<String>,
+    pub publish_operation_id: Option<Uuid>,
+    pub created_by: Option<Uuid>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// One schedule request: when to publish plus the exact reviewed publish command.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SchedulePagePublishInput {
+    /// RFC 3339 timestamp truncated to microseconds.
+    pub publish_at: String,
+    pub command: PublishPageInput,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, utoipa::IntoParams)]
 pub struct ListPagesFilter {
     pub status: Option<ContentStatus>,
@@ -246,7 +379,9 @@ pub struct PageBodyResponse {
     pub content: String,
     pub format: String,
     pub content_json: Option<Value>,
+    /// Working-copy revision token of this body state.
     pub updated_at: String,
+    pub state: PageBodyState,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

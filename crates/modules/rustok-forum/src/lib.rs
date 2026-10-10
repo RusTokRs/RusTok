@@ -29,6 +29,7 @@ pub mod mentions {
     include!("mentions.rs");
 }
 pub mod migrations;
+pub mod moderation_report;
 mod moderation_subject;
 mod moderation_transport;
 pub mod notification_recipient;
@@ -74,7 +75,12 @@ pub use import_resolution::*;
 pub use import_tombstone_preparation::*;
 pub use import_write_preparation::*;
 pub use mentions::*;
+pub use moderation_report::{
+    FORUM_MODERATION_REPORT_CAPABILITY, ForumModerationReportCommand, ForumModerationReportPort,
+    SharedForumModerationReportPort,
+};
 pub use moderation_subject::{FORUM_MODERATION_MODULE, ForumModerationSubjectAdapterFactory};
+pub use services::moderation_report::ForumModerationReportService;
 pub use notification_recipient::{
     FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY,
     FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY_UNAVAILABLE, ForumNotificationRecipientContext,

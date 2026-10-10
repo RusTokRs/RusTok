@@ -108,6 +108,46 @@ impl ForumTopicAudienceReadService {
         .await
     }
 
+    /// Exact authenticated owner read for one selected topic.
+    ///
+    /// Owner reads keep closed and archived topics readable to authorized callers
+    /// (no open-status or route-channel requirement), but the inherited category
+    /// floor and every richer category/topic audience layer are enforced against the
+    /// canonical topic whose content is returned. Missing and denied topics both
+    /// resolve as `TopicNotFound` so the denial reason is not observable.
+    pub async fn get_authenticated_owner_visible_with_audience_context(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        context: PortContext,
+        topic_id: Uuid,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<TopicResponse> {
+        enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
+        let locale = context.locale.trim().to_string();
+        if locale.is_empty() {
+            return Err(ForumError::Validation(
+                "Forum topic audience read context locale is unavailable".to_string(),
+            ));
+        }
+        let viewer = ForumTopicAudienceViewer::authenticated(security.clone(), context)?;
+        let resolution = self
+            .topic_service
+            .resolve_canonical_topic(tenant_id, security.clone(), topic_id)
+            .await?;
+        if !self
+            .visibility
+            .is_topic_owner_visible(tenant_id, resolution.canonical_topic_id, &viewer)
+            .await?
+        {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
+
+        self.topic_service
+            .get_with_locale_fallback(tenant_id, security, topic_id, &locale, fallback_locale)
+            .await
+    }
+
     async fn get_visible(
         &self,
         tenant_id: Uuid,
@@ -123,6 +163,31 @@ impl ForumTopicAudienceReadService {
             .visibility
             .is_topic_visible(tenant_id, topic_id, channel_slug, viewer)
             .await?
+        {
+            return Ok(None);
+        }
+
+        // The returned content may come from a canonical topic after a merge redirect.
+        // The storefront audience must hold for that topic too, not only for the request id.
+        let resolution = match self
+            .topic_service
+            .resolve_canonical_topic(tenant_id, security.clone(), topic_id)
+            .await
+        {
+            Ok(resolution) => resolution,
+            Err(ForumError::TopicNotFound(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        if resolution.canonical_topic_id != topic_id
+            && !self
+                .visibility
+                .is_topic_visible(
+                    tenant_id,
+                    resolution.canonical_topic_id,
+                    channel_slug,
+                    viewer,
+                )
+                .await?
         {
             return Ok(None);
         }

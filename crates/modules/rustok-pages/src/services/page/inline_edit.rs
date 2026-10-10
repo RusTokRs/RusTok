@@ -16,12 +16,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::entities::{page_body, page_translation};
+use crate::entities::page_translation;
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::enforce_owned_scope;
 
 use super::PageService;
-use super::document::{ensure_document_is_mutable, page_document_revision};
+use super::WorkingBody;
+use super::document::page_document_revision;
 use super::helpers::normalize_locale;
 
 pub const PAGE_INLINE_EDIT_GRANT_INVALID: &str = "PAGE_INLINE_EDIT_GRANT_INVALID";
@@ -413,7 +414,6 @@ impl PageService {
                 "Authenticated user authority is required for inline editing",
             ));
         }
-        ensure_document_is_mutable(&page)?;
         let locale = normalize_locale(locale)?;
         let translation_exists = page_translation::Entity::find()
             .filter(page_translation::Column::TenantId.eq(tenant_id))
@@ -427,17 +427,20 @@ impl PageService {
                 "Inline edit locale does not have a matching page translation",
             ));
         }
-        let body = page_body::Entity::find()
-            .filter(page_body::Column::TenantId.eq(tenant_id))
-            .filter(page_body::Column::PageId.eq(page_id))
-            .filter(page_body::Column::Locale.eq(&locale))
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| {
-                inline_edit_document_unavailable(
-                    "Inline editing requires an existing localized page body",
-                )
-            })?;
+        // Inline editing always works on the working copy: the page body draft while the page
+        // is published, otherwise the current body.
+        let drafts = self.load_drafts(tenant_id, page_id).await?;
+        let bodies = self.load_bodies(tenant_id, page_id).await?;
+        let working = super::helpers::body_for_locale_draft(&drafts, locale.as_str())
+            .map(WorkingBody::from)
+            .or_else(|| {
+                super::helpers::body_for_locale(&bodies, locale.as_str()).map(WorkingBody::from)
+            });
+        let Some(body) = working else {
+            return Err(inline_edit_document_unavailable(
+                "Inline editing requires an existing localized page body",
+            ));
+        };
         if body.format != PAGE_BUILDER_DOCUMENT_FORMAT {
             return Err(inline_edit_document_unavailable(
                 "Inline editing accepts only the current Fly/GrapesJS document format",

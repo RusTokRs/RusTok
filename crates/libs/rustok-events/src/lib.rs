@@ -3,6 +3,7 @@
 mod blog_comments_schedule_audit;
 mod checkout_operation;
 mod contract;
+mod forms_submission;
 mod forum_mention;
 mod forum_search_projection;
 mod marketplace_listing;
@@ -35,6 +36,9 @@ pub use checkout_operation::{
 };
 pub use contract::{
     ContractEventEnvelope, ContractEventPayload, EventContract, EventContractEnvelopeError,
+};
+pub use forms_submission::{
+    FORMS_SUBMISSION_EVENT_SCHEMAS, FormSubmissionEvent, forms_submission_event_schema,
 };
 pub use forum_mention::{
     FORUM_MENTION_EVENT_SCHEMAS, ForumMentionEvent, forum_mention_event_schema,
@@ -92,6 +96,7 @@ pub fn event_schema(event_type: &str) -> Option<&'static EventSchema> {
         .or_else(|| checkout_operation_event_schema(event_type))
         .or_else(|| forum_mention_event_schema(event_type))
         .or_else(|| forum_search_projection_event_schema(event_type))
+        .or_else(|| forms_submission_event_schema(event_type))
         .or_else(|| marketplace_listing_event_schema(event_type))
         .or_else(|| marketplace_seller_event_schema(event_type))
         .or_else(|| product_index_refresh_event_schema(event_type))

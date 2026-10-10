@@ -1,5 +1,9 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
+use rustok_api::{PortActor, PortContext};
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::entities::forum_domain_event;
 use rustok_forum::{
@@ -64,8 +68,10 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
 async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
     let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
-    let topic_service = TopicService::new(db.clone(), event_bus.clone());
-    let reply_service = ReplyService::new(db.clone(), event_bus);
+    let topic_service = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
+    let reply_service = ReplyService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let subscriptions = SubscriptionService::new(db.clone());
 
     let author_id = Uuid::new_v4();
@@ -122,7 +128,7 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
         .update_topic_subscription(
             tenant_id,
             topic.id,
-            admin.clone(),
+            admin.clone(), write_context(tenant_id, &admin),
             UpdateForumSubscriptionInput {
                 level: ForumSubscriptionLevel::Muted,
                 notify_mentions: Some(true),
@@ -145,7 +151,7 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
         .update_topic_subscription(
             tenant_id,
             topic.id,
-            admin.clone(),
+            admin.clone(), write_context(tenant_id, &admin),
             UpdateForumSubscriptionInput {
                 level: ForumSubscriptionLevel::Watching,
                 notify_mentions: None,
@@ -267,4 +273,14 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
         .expect("mute event should be present");
     assert_eq!(mute_event.schema_version, 1);
     assert_eq!(mute_event.payload["revision"], 2);
+}
+
+/// Builds the exact user port context used by vote and subscription writes in tests.
+fn write_context(tenant_id: Uuid, security: &SecurityContext) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(security.user_id.unwrap_or_else(Uuid::nil).to_string()),
+        "en",
+        "test-audience-write",
+    )
 }

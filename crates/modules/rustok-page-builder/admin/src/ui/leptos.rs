@@ -1,6 +1,9 @@
 use crate::editor::{AdminCanvas, AdminShell};
 use crate::i18n::t;
-use crate::{AdminCanvasController, PageBuilderAdminFacade, PageBuilderContributionHostContext};
+use crate::{
+    AdminCanvasController, AssetProviderPort, PageBuilderAdminFacade,
+    PageBuilderContributionHostContext,
+};
 use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
@@ -28,6 +31,7 @@ use std::sync::Arc;
 pub struct PageBuilderAdminHostContext {
     pub controller: AdminCanvasController,
     pub facade: Option<Arc<dyn PageBuilderAdminFacade>>,
+    pub asset_provider: Option<Arc<dyn AssetProviderPort>>,
     pub trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     pub contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
     pub editor_capabilities: Option<CapabilityState>,
@@ -46,6 +50,7 @@ impl PageBuilderAdminHostContext {
         Self {
             controller,
             facade: None,
+            asset_provider: None,
             trait_schemas: None,
             contribution_assembly: None,
             editor_capabilities: None,
@@ -62,6 +67,12 @@ impl PageBuilderAdminHostContext {
 
     pub fn with_facade(mut self, facade: Arc<dyn PageBuilderAdminFacade>) -> Self {
         self.facade = Some(facade);
+        self
+    }
+
+    /// Binds the host media library integration consumed by the Assets panel.
+    pub fn with_asset_provider(mut self, asset_provider: Arc<dyn AssetProviderPort>) -> Self {
+        self.asset_provider = Some(asset_provider);
         self
     }
 
@@ -165,6 +176,7 @@ pub fn PageBuilderAdmin() -> impl IntoView {
             <PageBuilderAdminWithController
                 controller=context.controller
                 facade=context.facade
+                asset_provider=context.asset_provider
                 trait_schemas=context.trait_schemas
                 contribution_assembly=context.contribution_assembly
                 editor_capabilities=context.editor_capabilities
@@ -215,6 +227,7 @@ pub fn PageBuilderAdmin() -> impl IntoView {
 pub fn PageBuilderAdminWithController(
     mut controller: AdminCanvasController,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
+    #[prop(optional_no_strip)] asset_provider: Option<Arc<dyn AssetProviderPort>>,
     trait_schemas: Option<Arc<TraitSchemaRegistry>>,
     #[prop(optional_no_strip)] mut contribution_assembly: Option<Arc<ContributionAssemblyResult>>,
     #[prop(optional_no_strip)] editor_capabilities: Option<CapabilityState>,
@@ -239,6 +252,10 @@ pub fn PageBuilderAdminWithController(
         "page_builder.editorSubtitle",
         "Full Fly authoring surface. Persistence remains owned by the consumer module facade.",
     );
+
+    if let Some(asset_provider) = asset_provider {
+        provide_context(asset_provider);
+    }
 
     if let Some(extension_host) =
         use_context::<PageBuilderContributionHostContext>().filter(|host| !host.is_empty())

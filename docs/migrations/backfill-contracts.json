@@ -274,6 +274,41 @@
       "mode": "none",
       "owner": "rustok-pages",
       "reason": "Creates empty owner storage for the scenario baseline revision journal that every baseline create/replace/delete now appends to; before this change the active row kept exactly one previous hash, no promotion history was ever recorded, and prior approvals cannot be reconstructed, so there are no rows to backfill"
+    },
+    {
+      "id": "pages-page-body-draft-and-revision-storage",
+      "migration": "m20261009_000001_create_page_body_drafts_and_revisions",
+      "mode": "none",
+      "owner": "rustok-pages",
+      "reason": "Creates page body draft working copies and the append-only body revision journal as new owner storage with tenant-scoped composite foreign keys; existing page_bodies rows are already the working copies of their pages and need no row transformation"
+    },
+    {
+      "id": "pages-page-publish-job-queue",
+      "migration": "m20261009_000002_create_page_publish_jobs",
+      "mode": "none",
+      "owner": "rustok-pages",
+      "reason": "Creates the scheduled page publishing job queue as new owner storage; publishing was immediate-only before this change, so no historical scheduled publications exist to backfill"
+    },
+    {
+      "id": "forms-submission-storage",
+      "migration": "m20261009_000003_create_form_submissions",
+      "mode": "none",
+      "owner": "rustok-forms",
+      "reason": "Creates form submission storage as new owner storage; no server-side receiver existed before this change, so no historical submissions exist to backfill"
+    },
+    {
+      "id": "pages-site-symbols",
+      "migration": "m20261009_000003_create_site_symbols",
+      "mode": "none",
+      "owner": "rustok-pages",
+      "reason": "Creates site symbol definition storage as new owner storage; symbol instances were not expressible before this change, so no historical definitions exist to backfill"
+    },
+    {
+      "id": "pages-page-template-catalog",
+      "migration": "m20261009_000004_create_page_templates",
+      "mode": "none",
+      "owner": "rustok-pages",
+      "reason": "Adds an empty Pages-owned layout catalog without changing existing pages.template labels or published artifacts; default remains a virtual empty layout and non-default legacy labels require an explicit operator audit before publish enforcement"
     }
   ]
 }

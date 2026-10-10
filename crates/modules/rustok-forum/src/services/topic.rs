@@ -51,7 +51,10 @@ use crate::entities::{
     forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
-use crate::richtext::{normalize_discussion, project_stored_discussion, serialize_discussion};
+use crate::richtext::{
+    normalize_discussion, project_discussion, project_stored_discussion, serialize_discussion,
+};
+use crate::services::content_limits::ForumContentLimits;
 use crate::services::category::CategoryService;
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::subscription::SubscriptionService;
@@ -802,6 +805,15 @@ impl TopicService {
         input: TopicTranslationUpsertInput,
     ) -> ForumResult<()> {
         let TopicTranslationUpsertInput { title, body } = input;
+        // Only caller-supplied values are checked. A seed copied from another locale is skipped.
+        let content_limits =
+            ForumContentLimits::resolve_in_tx(&self.settings, txn, tenant_id).await?;
+        if let Some(title) = title.as_deref() {
+            content_limits.validate_title(title)?;
+        }
+        if let Some(body) = body.as_ref() {
+            content_limits.validate_body(&project_discussion(body.clone())?.plain_text)?;
+        }
         let existing = forum_topic_translation::Entity::find()
             .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_translation::Column::TopicId.eq(topic_id))

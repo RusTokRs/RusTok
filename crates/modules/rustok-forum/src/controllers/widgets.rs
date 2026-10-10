@@ -4,9 +4,9 @@ use rustok_api::{AuthContext, RequestContext, TenantContext, has_any_effective_p
 use rustok_web::{HttpError, HttpResult};
 
 use crate::{
-    ForumWidgetCatalogResponse, ForumWidgetContractService, ForumWidgetPreviewResponse,
-    ForumWidgetPreviewService, ForumWidgetPropsValidationResponse, PreviewForumWidgetInput,
-    ValidateForumWidgetPropsInput,
+    ForumTopicReadOperation, ForumTopicReadTransport, ForumWidgetCatalogResponse,
+    ForumWidgetContractService, ForumWidgetPreviewResponse, ForumWidgetPropsValidationResponse,
+    PreviewForumWidgetInput, ValidateForumWidgetPropsInput, topic_read_audience_port_context,
 };
 
 #[utoipa::path(
@@ -90,14 +90,24 @@ pub async fn preview_widget(
         "Permission denied: forum_topics:read required",
     )?;
 
-    let response = ForumWidgetPreviewService::new(runtime.db_clone(), runtime.event_bus())
+    let audience = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::WidgetPreview,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let response = runtime
+        .widget_preview_service()
         .preview(
             tenant.id,
             rustok_core::SecurityContext::from_permission_snapshot(
                 Some(auth.user_id),
                 &auth.permissions,
             ),
-            &request_context.locale,
+            audience,
             Some(tenant.default_locale.as_str()),
             input,
         )

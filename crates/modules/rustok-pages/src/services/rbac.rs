@@ -45,9 +45,22 @@ pub(crate) fn can_read_non_public_pages(security: &SecurityContext) -> bool {
         )
 }
 
+/// Unpublished working copies (page body drafts) are editor state.
+///
+/// Only update-capable principals may observe them; customers and public readers always
+/// see the current body. The same scope-reduction rule as
+/// [`can_read_non_public_pages`] applies.
+pub(crate) fn can_read_draft_bodies(security: &SecurityContext) -> bool {
+    !matches!(security.role, rustok_core::UserRole::Customer)
+        && !matches!(
+            security.get_scope(Resource::Pages, Action::Update),
+            PermissionScope::None
+        )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::can_read_non_public_pages;
+    use super::{can_read_draft_bodies, can_read_non_public_pages};
     use rustok_api::Permission;
     use rustok_core::{SecurityContext, UserRole};
 
@@ -73,5 +86,29 @@ mod tests {
             [Permission::PAGES_READ],
         );
         assert!(!can_read_non_public_pages(&customer));
+    }
+
+    #[test]
+    fn only_update_capable_non_customers_read_draft_bodies() {
+        let read_only = SecurityContext::from_permissions(
+            UserRole::Manager,
+            Some(uuid::Uuid::new_v4()),
+            [Permission::PAGES_READ],
+        );
+        assert!(!can_read_draft_bodies(&read_only));
+
+        let editor = SecurityContext::from_permissions(
+            UserRole::Manager,
+            Some(uuid::Uuid::new_v4()),
+            [Permission::PAGES_READ, Permission::PAGES_UPDATE],
+        );
+        assert!(can_read_draft_bodies(&editor));
+
+        let customer = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(uuid::Uuid::new_v4()),
+            [Permission::PAGES_UPDATE],
+        );
+        assert!(!can_read_draft_bodies(&customer));
     }
 }

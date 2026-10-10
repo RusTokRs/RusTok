@@ -24,3 +24,27 @@
 - mounted by `apps/admin` through generated manifest composition;
 - delegates canonical project semantics to `fly`, presentation state to `fly-ui`, and browser/Leptos lifecycle to `fly-leptos`;
 - aligned with the central rollout plan in `docs/modules/page-builder-implementation-plan.md`.
+
+## Known Limitations
+- The browser editor now has a Site symbols panel: convert a selected component
+  into a shared definition and insert references through `EditorCommand`.
+  `rustok-pages` synchronizes the catalog per tenant/locale and expands current
+  definitions on reviewed publish. A page must be reloaded, saved and re-reviewed
+  after shared definitions change; previously published artifacts never change
+  until that page is explicitly re-published. The usage query is available via
+  `siteSymbolUsage` GraphQL, but usage is not yet displayed in this panel;
+  per-instance overrides and bulk re-publish are not implemented (see
+  `DECISIONS/2026-10-09-site-symbols-shared-definitions.md`).
+- The admin asset section browses and uploads media through a host-bound
+  `AssetProviderPort`. The `rustok-pages` builder host binds the port to
+  `rustok-media` admin dispatchers (auth context is captured by the host
+  adapter); hosts that never bind the port keep the manual asset form only.
+- The media panel renders on `wasm32` builds only (it uses the browser File
+  APIs); SSR renders the manual asset form without the panel.
+- `srcset`/`sizes` pass static validation in `static_publish_policy` (bounded
+  grammar, cap-covered by the policy hash). The default policy permits validated
+  `srcset`; operators can explicitly ban it through `forbidden_attributes`.
+  After the policy hash changes, exact
+  rebuild of earlier retained sanitized sources reports hash drift until the
+  page is re-published (fail-closed by design, see
+  `DECISIONS/2026-10-09-page-builder-media-asset-provider.md`).

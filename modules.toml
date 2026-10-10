@@ -78,6 +78,7 @@ newsletter = { crate = "rustok-newsletter", source = "path", path = "crates/modu
 comments = { crate = "rustok-comments", source = "path", path = "crates/modules/rustok-comments" }
 pages = { crate = "rustok-pages", source = "path", path = "crates/modules/rustok-pages", depends_on = ["content", "outbox", "page_builder"] }
 navigation = { crate = "rustok-navigation", source = "path", path = "crates/modules/rustok-navigation", depends_on = ["channel", "outbox"] }
+forms = { crate = "rustok-forms", source = "path", path = "crates/modules/rustok-forms", depends_on = ["outbox", "email"] }
 page_builder = { crate = "rustok-page-builder", source = "path", path = "crates/modules/rustok-page-builder" }
 taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/modules/rustok-taxonomy", depends_on = ["content", "outbox"] }
 media = { crate = "rustok-media", source = "path", path = "crates/modules/rustok-media", depends_on = ["outbox"] }
@@ -93,4 +94,4 @@ ai = { crate = "rustok-ai", source = "path", path = "crates/modules/rustok-ai", 
 iggy_connector = { crate = "rustok-iggy-connector", source = "path", path = "crates/modules/rustok-iggy-connector", runtime = "extension" }
 
 [settings]
-default_enabled = ["content", "cart", "customer", "product", "product_relations", "brand", "product_bundles", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "navigation", "page_builder"]
+default_enabled = ["content", "cart", "customer", "product", "product_relations", "brand", "product_bundles", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "navigation", "page_builder", "forms"]

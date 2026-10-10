@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -43,7 +46,8 @@ async fn owner_reply_commands_enforce_lock_moderation_and_soft_delete() {
     )
     .await;
 
-    let service = ReplyService::new(db.clone(), event_bus(db.clone()));
+    let service = ReplyService::new(db.clone(), event_bus(db.clone()))
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let owner = SecurityContext::new(UserRole::Manager, Some(author_id));
     let locked_error = service
         .create(
@@ -117,6 +121,7 @@ async fn owner_topic_delete_redacts_thread_and_preserves_revisions() {
 
     let owner = SecurityContext::new(UserRole::Manager, Some(author_id));
     let reply = ReplyService::new(db.clone(), event_bus(db.clone()))
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             owner.clone(),
@@ -128,7 +133,8 @@ async fn owner_topic_delete_redacts_thread_and_preserves_revisions() {
     assert_eq!(reply.status, "approved");
     assert_eq!(topic_reply_count(&db, topic_id).await, 1);
 
-    let service = TopicService::new(db.clone(), event_bus(db.clone()));
+    let service = TopicService::new(db.clone(), event_bus(db.clone()))
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     service
         .delete(tenant_id, topic_id, owner.clone())
         .await
@@ -170,9 +176,11 @@ async fn owner_topic_restore_rehydrates_closed_locked_solution_thread() {
 
     let owner = SecurityContext::new(UserRole::Manager, Some(author_id));
     let moderator = SecurityContext::new(UserRole::Admin, Some(moderator_id));
-    let reply_service = ReplyService::new(db.clone(), event_bus(db.clone()));
+    let reply_service = ReplyService::new(db.clone(), event_bus(db.clone()))
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let moderation_service = ModerationService::new(db.clone(), event_bus(db.clone()));
-    let topic_service = TopicService::new(db.clone(), event_bus(db.clone()));
+    let topic_service = TopicService::new(db.clone(), event_bus(db.clone()))
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
 
     let reply = reply_service
         .create(
@@ -285,11 +293,13 @@ async fn owner_topic_restore_rejects_merged_source_topic() {
     assert!(!topic_deleted(&db, source_topic_id).await);
 
     TopicService::new(db.clone(), event_bus(db.clone()))
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .delete(tenant_id, source_topic_id, admin.clone())
         .await
         .expect("merged source topic should be explicitly soft-deletable");
 
     let restore = TopicService::new(db.clone(), event_bus(db.clone()))
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .restore(tenant_id, source_topic_id, admin)
         .await
         .expect_err("merged source topic must never be restored");

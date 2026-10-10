@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -95,6 +98,7 @@ async fn create_topic(
     slug: &str,
 ) -> Uuid {
     TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -123,6 +127,7 @@ async fn create_reply(
     content: &str,
 ) -> Uuid {
     ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -224,7 +229,8 @@ async fn inherited_authenticated_floor_guards_topic_and_reply_owner_reads() {
         .await
         .expect("parent category should narrow to authenticated viewers");
 
-    let topics = TopicService::new(db.clone(), event_bus.clone());
+    let topics = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let page = topics
         .list_with_locale_fallback(tenant_id, public.clone(), topic_filter(), Some("en"))
         .await
@@ -283,7 +289,8 @@ async fn inherited_authenticated_floor_guards_topic_and_reply_owner_reads() {
         restricted_topic
     );
 
-    let replies = ReplyService::new(db, event_bus);
+    let replies = ReplyService::new(db, event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     assert_eq!(
         replies
             .get_with_locale_fallback(tenant_id, public.clone(), public_reply, "en", Some("en"),)

@@ -52,6 +52,44 @@ pub struct PageBody {
     pub content_json: Option<Value>,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
+    /// `current` or `draft`; `draft` is the unpublished working copy of a published page.
+    pub state: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PageBodyRevision {
+    pub id: String,
+    pub locale: String,
+    pub source: String,
+    #[serde(rename = "bodyRevision")]
+    pub body_revision: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "createdBy")]
+    pub created_by: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PagePublishSchedule {
+    pub id: String,
+    #[serde(rename = "pageId")]
+    pub page_id: String,
+    #[serde(rename = "publishAt")]
+    pub publish_at: String,
+    pub state: String,
+    pub attempts: i32,
+    #[serde(rename = "lastErrorCode")]
+    pub last_error_code: Option<String>,
+    #[serde(rename = "lastErrorMessage")]
+    pub last_error_message: Option<String>,
+    #[serde(rename = "publishOperationId")]
+    pub publish_operation_id: Option<String>,
+    #[serde(rename = "createdBy")]
+    pub created_by: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

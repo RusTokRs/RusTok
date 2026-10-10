@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -106,6 +109,7 @@ async fn create_topic(
     tags: &[&str],
 ) -> TestResult<Uuid> {
     Ok(TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -180,6 +184,7 @@ async fn merge_tag_reconciliation_is_atomic_idempotent_and_preserves_relation_id
         .await?;
 
     let stale_service_update = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .update(
             tenant_id,
             source_topic_id,

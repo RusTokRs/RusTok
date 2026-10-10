@@ -66,17 +66,9 @@ export default function DesignSystemPage() {
     setTimeout(() => setCopiedSnippet(null), 2000);
   };
 
-  // Snippets
+  // TSX Code Snippet
   const nextSnippet = `<Button variant="${btnVariant}" size="${btnSize}"${btnDisabled ? ' disabled' : ''}>
   ${btnLoading ? '<Spinner className="mr-2 h-4 w-4 animate-spin" />' : ''}${btnText}
-</Button>`;
-
-  const leptosSnippet = `<Button
-    variant=ButtonVariant::${btnVariant.charAt(0).toUpperCase() + btnVariant.slice(1)}
-    size=Size::${btnSize === 'default' ? 'Md' : btnSize.charAt(0).toUpperCase() + btnSize.slice(1)}
-    disabled=${btnDisabled}
->
-    "${btnText}"
 </Button>`;
 
   const handleSimulateSave = () => {
@@ -228,38 +220,23 @@ export default function DesignSystemPage() {
             <CardFooter className='bg-muted/10 flex-col items-stretch gap-3 border-t p-4'>
               <div className='flex items-center justify-between'>
                 <span className='text-muted-foreground text-xs font-semibold uppercase'>
-                  Export Code Snippet
+                  TSX Code Snippet
                 </span>
-                <div className='flex gap-2'>
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    className='h-7 text-xs'
-                    onClick={() => handleCopy(nextSnippet, 'next')}
-                  >
-                    {copiedSnippet === 'next' ? (
-                      <Check className='mr-1 h-3.5 w-3.5 text-green-500' />
-                    ) : (
-                      <Copy className='mr-1 h-3.5 w-3.5' />
-                    )}
-                    Next.js (TSX)
-                  </Button>
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    className='h-7 text-xs'
-                    onClick={() => handleCopy(leptosSnippet, 'leptos')}
-                  >
-                    {copiedSnippet === 'leptos' ? (
-                      <Check className='mr-1 h-3.5 w-3.5 text-green-500' />
-                    ) : (
-                      <Copy className='mr-1 h-3.5 w-3.5' />
-                    )}
-                    Leptos (Rust)
-                  </Button>
-                </div>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  className='h-7 text-xs'
+                  onClick={() => handleCopy(nextSnippet, 'next')}
+                >
+                  {copiedSnippet === 'next' ? (
+                    <Check className='mr-1 h-3.5 w-3.5 text-green-500' />
+                  ) : (
+                    <Copy className='mr-1 h-3.5 w-3.5' />
+                  )}
+                  Copy TSX
+                </Button>
               </div>
-              <pre className='overflow-x-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100 dark:bg-black'>
+              <pre className='overflow-x-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100 dark:bg-black font-mono'>
                 <code>{nextSnippet}</code>
               </pre>
             </CardFooter>
@@ -417,7 +394,7 @@ export default function DesignSystemPage() {
           </h2>
         </div>
 
-        <div className='grid gap-6 lg:grid-cols-3'>
+        <div className='grid gap-6 lg:grid-cols-2 xl:grid-cols-4'>
           {/* Recipe 1: Confirm Delete Dialog */}
           <Card>
             <CardHeader>
@@ -538,6 +515,46 @@ export default function DesignSystemPage() {
                 </div>
               )}
             </CardContent>
+          </Card>
+
+          {/* Recipe 4: Entity Summary Card */}
+          <Card>
+            <CardHeader>
+              <div className='flex items-start justify-between'>
+                <div className='space-y-1'>
+                  <CardTitle className='text-base'>RusToK Core</CardTitle>
+                  <CardDescription>E-Commerce Engine</CardDescription>
+                </div>
+                <Badge
+                  variant='outline'
+                  className='border-green-500/30 font-mono text-xs text-green-700 dark:text-green-400'
+                >
+                  Healthy
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-muted-foreground text-xs'>
+                High-throughput transactional core managing inventory,
+                checkout, and tenant boundaries.
+              </p>
+              <div className='bg-muted/40 grid grid-cols-2 gap-2 rounded-md p-2 text-xs'>
+                <div>
+                  <span className='text-muted-foreground block'>Version</span>
+                  <span className='font-semibold'>v0.8.21</span>
+                </div>
+                <div>
+                  <span className='text-muted-foreground block'>Uptime</span>
+                  <span className='font-semibold'>99.98%</span>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className='border-t flex justify-between pt-3'>
+              <Button variant='outline' size='sm'>
+                Logs
+              </Button>
+              <Button size='sm'>Manage</Button>
+            </CardFooter>
           </Card>
         </div>
       </section>
