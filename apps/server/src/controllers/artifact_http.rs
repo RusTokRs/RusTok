@@ -42,7 +42,9 @@ async fn dispatch_http(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response> {
-    ensure_json_content_type(&headers)?;
+    if !(body.is_empty() && (method == Method::GET || method == Method::DELETE)) {
+        ensure_json_content_type(&headers)?;
+    }
     let method = module_http_method(&method).ok_or(Error::NotFound)?;
     let path = wildcard_path;
     if path.is_empty() {
@@ -195,6 +197,10 @@ fn artifact_json_response<T: serde::Serialize>(value: T) -> Response {
 }
 
 fn parse_artifact_http_body(body: &[u8], max_body_bytes: u64) -> Result<serde_json::Value> {
+    if body.is_empty() {
+        return Ok(serde_json::Value::Null);
+    }
+
     if body.len() as u64 > max_body_bytes {
         return Err(http_error(rustok_web::HttpError::new(
             StatusCode::PAYLOAD_TOO_LARGE,
@@ -306,6 +312,10 @@ mod tests {
         let valid = br#"{"ok":true}"#;
         let parsed = parse_artifact_http_body(valid, 64).expect("valid JSON body");
         assert_eq!(parsed["ok"], true);
+
+        let empty = b"";
+        let parsed_empty = parse_artifact_http_body(empty, 64).expect("empty body parses to null");
+        assert_eq!(parsed_empty, serde_json::Value::Null);
     }
 
     #[test]

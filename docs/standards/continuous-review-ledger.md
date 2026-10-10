@@ -5349,4 +5349,18 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.160` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
 - **Next primary iteration:** continue through `apps/server` REST controllers (`artifact_http.rs`, `mcp.rs`, `oauth_metadata.rs`).
 
+### FS-22.06.161 Assessment — Artifact HTTP controller empty body and Content-Type negotiation
+
+- **Base:** commit `6a8cc41f5` on dedicated branch `codex/audit-server-bootstrap-and-host`.
+- **Primary scope:** `apps/server/src/controllers/artifact_http.rs`.
+- **Invariant map:** Admitted artifact HTTP bindings must adhere to standard HTTP/REST semantics (RFC 7231 / RFC 9110); bodyless requests (such as standard GET/DELETE calls) must not be rejected with 415 Unsupported Media Type merely because they omit an unnecessary `Content-Type: application/json` header; empty request bodies must evaluate to JSON `null` rather than failing body deserialization; requests with non-empty payloads must continue to strictly require `application/json` and enforce `max_body_bytes`.
+- **Confirmed finding ARTIFACTHTTP-22.06.161-01:** `dispatch_http` unconditionally called `ensure_json_content_type(&headers)?` and `parse_artifact_http_body(&body, ...)` for all HTTP methods including GET. If a standard HTTP client made a bodyless GET request to an artifact HTTP binding without a `Content-Type` header, it was rejected with `415 Unsupported Media Type`. If the client provided the header with an empty body, `serde_json::from_slice(b"")` failed with `400 Bad Request ("Request body must be valid JSON")`. This rendered artifact HTTP GET bindings unusable via standard HTTP GET calls.
+- **Remediation:**
+  1. Updated `dispatch_http` to bypass `ensure_json_content_type` when `body.is_empty()` and method is GET or DELETE.
+  2. Updated `parse_artifact_http_body` to return `Ok(serde_json::Value::Null)` when `body.is_empty()`.
+  3. Added unit tests verifying `parse_artifact_http_body` parses empty byte slices to `Value::Null` while continuing to enforce raw size limits and valid JSON syntax on non-empty payloads.
+- **Status:** `FS-22.06.161` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
+- **Next primary iteration:** continue through remaining `apps/server` controllers (`mcp.rs`, `oauth_metadata.rs`, `flex.rs`).
+
+
 
