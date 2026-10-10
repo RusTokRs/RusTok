@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -126,7 +129,8 @@ async fn add_two_public_replies_and_revision(
     author: SecurityContext,
     reader: SecurityContext,
 ) {
-    let replies = ReplyService::new(db.clone(), event_bus.clone());
+    let replies = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     for content in ["First reply", "Second reply"] {
         replies
             .create(
@@ -143,6 +147,7 @@ async fn add_two_public_replies_and_revision(
             .expect("public reply should be created");
     }
     TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .update(
             tenant_id,
             topic_id,
@@ -251,7 +256,8 @@ async fn category_and_all_read_are_bounded_resumable_and_scope_safe() {
     )
     .await;
 
-    let topics = TopicService::new(db.clone(), event_bus.clone());
+    let topics = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let root_topic = create_topic(&topics, tenant_id, root, author.clone(), "Root topic").await;
     let child_topic_one =
         create_topic(&topics, tenant_id, child, author.clone(), "Child topic one").await;
@@ -412,7 +418,8 @@ async fn repeated_topic_mark_clears_late_approval_without_regression() {
         true,
     )
     .await;
-    let topics = TopicService::new(db.clone(), event_bus.clone());
+    let topics = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let topic_id = create_topic(
         &topics,
         tenant_id,
@@ -421,7 +428,8 @@ async fn repeated_topic_mark_clears_late_approval_without_regression() {
         "Late approval topic",
     )
     .await;
-    let replies = ReplyService::new(db.clone(), event_bus.clone());
+    let replies = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let first_pending = replies
         .create(
             tenant_id,

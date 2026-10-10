@@ -9,6 +9,7 @@ mod ssr_actions_forms_browser_tests;
 #[cfg(test)]
 mod ssr_assets_browser_tests;
 
+pub mod asset_provider;
 pub mod browser_intent;
 mod capability_access;
 pub mod consumer_properties;
@@ -28,6 +29,11 @@ pub mod ui;
 
 pub const BROWSER_CAPABILITY_DENIAL_CODE: &str = "FLY_CAPABILITY_DENIED";
 
+pub use asset_provider::{
+    AssetProviderError, AssetProviderItem, AssetProviderLibraryFuture, AssetProviderLibraryPage,
+    AssetProviderPort, AssetProviderUploadFuture, RUSTOK_MEDIA_ASSET_PROVIDER,
+    builtin_asset_provider_definitions, media_provider_asset_value,
+};
 pub use browser_intent::{
     BrowserIntentDispatchError, BrowserIntentDispatchResult, BrowserIntentEffect,
     dispatch_browser_intent,

@@ -33,15 +33,32 @@ fn document_and_metadata_services_cannot_cross_write() {
     assert!(!document.contains("replace_channel_visibility_in_tx"));
     assert!(!document.contains("active.version"));
     assert!(document.contains("PAGE_DOCUMENT_REVISION_CONFLICT"));
-    assert!(document.contains("PAGE_PUBLISHED_DOCUMENT_IMMUTABLE"));
+    assert!(document.contains("PAGE_BODY_REVISION_NOT_FOUND"));
+    assert!(!document.contains("PAGE_PUBLISHED_DOCUMENT_IMMUTABLE"));
+}
+
+#[test]
+fn published_pages_save_to_the_body_draft_working_copy() {
+    let document = include_str!("../src/services/page/document.rs");
+    let persistence = include_str!("../src/services/page/persistence.rs");
+    let read = include_str!("../src/services/page/read.rs");
+
+    assert!(document.contains("upsert_draft_in_tx"));
+    assert!(document.contains("PageBodyRevisionSource::DraftSave"));
+    assert!(document.contains("PageBodyRevisionSource::Restore"));
+    assert!(persistence.contains("promote_drafts_in_tx"));
+    assert!(persistence.contains("MAX_PAGE_BODY_REVISIONS_PER_BODY"));
+    assert!(read.contains("load_drafts"));
+    assert!(!read.contains("PAGE_PUBLISHED_DOCUMENT_IMMUTABLE"));
 }
 
 #[test]
 fn non_builder_publish_checks_locked_document_revisions_before_transition() {
     let lifecycle = include_str!("../src/services/page/lifecycle.rs");
+    let persistence = include_str!("../src/services/page/persistence.rs");
     let load = lifecycle
-        .find("load_bodies_for_publish")
-        .expect("publish must load locked bodies");
+        .find("load_working_bodies_in_tx")
+        .expect("publish must load locked working bodies");
     let builder_guard = lifecycle
         .find("collect_builder_sources(&current_bodies")
         .expect("non-builder publish must reject Page Builder bodies");
@@ -52,7 +69,7 @@ fn non_builder_publish_checks_locked_document_revisions_before_transition() {
         .find("apply_transition(&mut active")
         .expect("publish must apply the lifecycle transition");
 
-    assert!(lifecycle.contains("lock_exclusive"));
+    assert!(persistence.contains("lock_exclusive"));
     assert!(load < builder_guard);
     assert!(builder_guard < revision_check);
     assert!(revision_check < transition);
@@ -77,7 +94,7 @@ fn multilingual_storage_remains_language_agnostic() {
 fn current_fly_tree_remains_the_only_document_authority() {
     let builder = include_str!("../admin/src/builder.rs");
     assert!(builder.contains("save_page_document"));
-    assert!(builder.contains("PAGE_PUBLISHED_DOCUMENT_IMMUTABLE"));
+    assert!(!builder.contains("PAGE_PUBLISHED_DOCUMENT_IMMUTABLE"));
     assert!(!builder.contains("update_page("));
     assert!(!builder.contains("PageDraftFormInput"));
     assert!(!builder.contains("frames[0].component"));

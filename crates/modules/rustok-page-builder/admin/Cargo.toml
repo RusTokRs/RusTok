@@ -10,7 +10,12 @@ crate-type = ["rlib"]
 
 [features]
 default = ["ssr", "browser-js"]
-browser-js = ["dep:wasm-bindgen", "dep:web-sys"]
+browser-js = [
+  "dep:wasm-bindgen",
+  "dep:wasm-bindgen-futures",
+  "dep:js-sys",
+  "dep:web-sys",
+]
 wasm-client = ["fly-leptos/wasm-client", "browser-js"]
 csr = ["leptos/csr", "wasm-client", "rustok-grid-leptos/csr"]
 hydrate = ["leptos/hydrate", "wasm-client", "rustok-grid-leptos/hydrate"]
@@ -38,9 +43,15 @@ uuid.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
 web-sys = { version = "0.3", optional = true, features = [
   "Element",
+  "Event",
   "EventTarget",
+  "File",
+  "FileList",
+  "HtmlInputElement",
   "KeyboardEvent",
   "PointerEvent",
   "Storage",

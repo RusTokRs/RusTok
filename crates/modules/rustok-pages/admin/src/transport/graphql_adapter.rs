@@ -16,11 +16,17 @@ use crate::model::{
 pub type ApiError = GraphqlHttpError;
 
 const PAGES_QUERY: &str = "query PagesAdmin($filter: ListGqlPagesFilter) { pages(filter: $filter) { total items { id status template title slug updatedAt } } }";
-const PAGE_QUERY: &str = "query PageAdmin($id: UUID!, $locale: String) { page(id: $id, locale: $locale) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt } } }";
+const PAGE_QUERY: &str = "query PageAdmin($id: UUID!, $locale: String) { page(id: $id, locale: $locale) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt state } } }";
 const PAGE_BUILDER_SCENARIO_BASELINE_QUERY: &str = "query PageBuilderScenarioBaseline($pageId: UUID!) { pageBuilderScenarioBaseline(pageId: $pageId) { baseline } }";
+const PAGE_BODY_REVISIONS_QUERY: &str = "query PageBodyRevisions($id: UUID!, $locale: String!) { pageBodyRevisions(id: $id, locale: $locale) { id locale source bodyRevision createdAt createdBy } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id version status updatedAt translation { locale title slug } } }";
-const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt } } }";
-const SAVE_PAGE_DOCUMENT_MUTATION: &str = "mutation SavePageDocument($id: UUID!, $input: SaveGqlPageDocumentInput!) { savePageDocument(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } } }";
+const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt state } } }";
+const SAVE_PAGE_DOCUMENT_MUTATION: &str = "mutation SavePageDocument($id: UUID!, $input: SaveGqlPageDocumentInput!) { savePageDocument(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } } }";
+const RESTORE_PAGE_BODY_REVISION_MUTATION: &str = "mutation RestorePageBodyRevision($id: UUID!, $input: RestoreGqlPageBodyRevisionInput!) { restorePageBodyRevision(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } } }";
+const DUPLICATE_PAGE_MUTATION: &str = "mutation DuplicatePage($id: UUID!) { duplicatePage(id: $id) { id version status updatedAt translation { locale title slug } } }";
+const PAGE_PUBLISH_SCHEDULE_QUERY: &str = "query PagePublishSchedule($id: UUID!) { pagePublishSchedule(id: $id) { id pageId publishAt state attempts lastErrorCode lastErrorMessage publishOperationId createdBy createdAt updatedAt } }";
+const SCHEDULE_PAGE_PUBLISH_MUTATION: &str = "mutation SchedulePagePublish($id: UUID!, $input: PublishGqlPageInput!, $publishAt: String!) { schedulePagePublish(id: $id, input: $input, publishAt: $publishAt) { id pageId publishAt state attempts lastErrorCode lastErrorMessage publishOperationId createdBy createdAt updatedAt } }";
+const CANCEL_PAGE_PUBLISH_MUTATION: &str = "mutation CancelPagePublish($id: UUID!) { cancelPagePublish(id: $id) { id pageId publishAt state attempts lastErrorCode lastErrorMessage publishOperationId createdBy createdAt updatedAt } }";
 const PUBLISH_PAGE_MUTATION: &str = "mutation PublishPage($id: UUID!, $input: PublishGqlPageInput!) { publishPage(id: $id, input: $input) { operationId pageId version idempotencyKey reviewHash sanitizedSetHash artifactSetHash replayed publishedAt } }";
 const ROLLBACK_PAGE_MUTATION: &str = "mutation RollbackPage($id: UUID!, $input: RollbackGqlPageInput!) { rollbackPage(id: $id, input: $input) { operationId pageId version idempotencyKey targetPublishOperationId sourceArtifactSetHash targetArtifactSetHash replayed rolledBackAt } }";
 const UNPUBLISH_PAGE_MUTATION: &str = "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id version status updatedAt translation { locale title slug } } }";
@@ -68,6 +74,38 @@ struct SavePageDocumentResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct PageBodyRevisionsResponse {
+    #[serde(rename = "pageBodyRevisions")]
+    page_body_revisions: Vec<crate::model::PageBodyRevision>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RestorePageBodyRevisionResponse {
+    #[serde(rename = "restorePageBodyRevision")]
+    restore_page_body_revision: PageDetail,
+}
+
+#[derive(Debug, Deserialize)]
+struct DuplicatePageResponse {
+    #[serde(rename = "duplicatePage")]
+    duplicate_page: PageMutationResult,
+}
+
+#[derive(Debug, Serialize)]
+struct PageBodyRevisionsVariables {
+    id: String,
+    locale: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RestorePageBodyRevisionInput {
+    #[serde(rename = "expectedRevision")]
+    expected_revision: String,
+    #[serde(rename = "revisionId")]
+    revision_id: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct PublishPageResponse {
     #[serde(rename = "publishPage")]
     publish_page: PublishPageReceipt,
@@ -89,6 +127,32 @@ struct UnpublishPageResponse {
 struct DeletePageResponse {
     #[serde(rename = "deletePage")]
     delete_page: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct PagePublishScheduleResponse {
+    #[serde(rename = "pagePublishSchedule")]
+    page_publish_schedule: Option<crate::model::PagePublishSchedule>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SchedulePagePublishResponse {
+    #[serde(rename = "schedulePagePublish")]
+    schedule_page_publish: crate::model::PagePublishSchedule,
+}
+
+#[derive(Debug, Deserialize)]
+struct CancelPagePublishResponse {
+    #[serde(rename = "cancelPagePublish")]
+    cancel_page_publish: crate::model::PagePublishSchedule,
+}
+
+#[derive(Debug, Serialize)]
+struct SchedulePagePublishVariables {
+    id: String,
+    input: PublishPageInput,
+    #[serde(rename = "publishAt")]
+    publish_at: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,6 +181,7 @@ struct PageWriteVariables<T> {
 #[derive(Debug, Serialize)]
 struct PageVariables {
     id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     locale: Option<String>,
 }
 
@@ -375,17 +440,126 @@ pub async fn save_page_document(
     Ok(response.save_page_document)
 }
 
-pub async fn publish_page(
+pub async fn fetch_page_body_revision_history(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-) -> Result<PublishPageReceipt, ApiError> {
-    let page = fetch_page(token.clone(), tenant_slug.clone(), id.clone())
+    locale: String,
+) -> Result<Vec<crate::model::PageBodyRevision>, ApiError> {
+    let response: PageBodyRevisionsResponse = request(
+        PAGE_BODY_REVISIONS_QUERY,
+        PageBodyRevisionsVariables { id, locale },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.page_body_revisions)
+}
+
+pub async fn restore_page_body_revision(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    expected_revision: String,
+    revision_id: String,
+) -> Result<PageDetail, ApiError> {
+    let response: RestorePageBodyRevisionResponse = request(
+        RESTORE_PAGE_BODY_REVISION_MUTATION,
+        PageWriteVariables {
+            id,
+            input: RestorePageBodyRevisionInput {
+                expected_revision,
+                revision_id,
+            },
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.restore_page_body_revision)
+}
+
+pub async fn duplicate_page(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<PageMutationResult, ApiError> {
+    let response: DuplicatePageResponse = request(
+        DUPLICATE_PAGE_MUTATION,
+        PageVariables { id, locale: None },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.duplicate_page)
+}
+
+pub async fn fetch_page_publish_schedule(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<Option<crate::model::PagePublishSchedule>, ApiError> {
+    let response: PagePublishScheduleResponse = request(
+        PAGE_PUBLISH_SCHEDULE_QUERY,
+        PageVariables { id, locale: None },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.page_publish_schedule)
+}
+
+pub async fn schedule_page_publish(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    publish_at: String,
+) -> Result<crate::model::PagePublishSchedule, ApiError> {
+    let input = build_reviewed_publish_command(token.clone(), tenant_slug.clone(), &id).await?;
+    let response: SchedulePagePublishResponse = request(
+        SCHEDULE_PAGE_PUBLISH_MUTATION,
+        SchedulePagePublishVariables {
+            id,
+            input,
+            publish_at,
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.schedule_page_publish)
+}
+
+pub async fn cancel_page_publish(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<crate::model::PagePublishSchedule, ApiError> {
+    let response: CancelPagePublishResponse = request(
+        CANCEL_PAGE_PUBLISH_MUTATION,
+        PageVariables { id, locale: None },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.cancel_page_publish)
+}
+
+/// Builds the exact reviewed publish command from the current page state.
+///
+/// Immediate publish and scheduled publish share this construction, so a scheduled job
+/// replays precisely the command the editor reviewed.
+async fn build_reviewed_publish_command(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: &str,
+) -> Result<PublishPageInput, ApiError> {
+    let page = fetch_page(token.clone(), tenant_slug.clone(), id.to_string())
         .await?
         .ok_or_else(|| GraphqlHttpError::Graphql("Page was not found".to_string()))?;
     let revisions = fetch_page_body_revisions(token.clone(), tenant_slug.clone(), &page).await?;
     let baseline =
-        fetch_page_builder_scenario_baseline(token.clone(), tenant_slug.clone(), id.clone())
+        fetch_page_builder_scenario_baseline(token.clone(), tenant_slug.clone(), id.to_string())
             .await?
             .ok_or_else(|| {
                 GraphqlHttpError::Graphql(
@@ -393,7 +567,7 @@ pub async fn publish_page(
                         .to_string(),
                 )
             })?;
-    let selected_scenario_id = load_publish_scenario_selection(&id, &baseline.baseline_hash)
+    let selected_scenario_id = load_publish_scenario_selection(id, &baseline.baseline_hash)
         .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
     let scenario = resolve_publish_scenario(&baseline, selected_scenario_id.as_deref())
         .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
@@ -412,23 +586,28 @@ pub async fn publish_page(
         })
         .collect::<Vec<_>>();
     let idempotency_key = publish_idempotency_key(&page, &revisions, &reviewed)?;
+    Ok(PublishPageInput {
+        expected_version: page.version,
+        expected_body_revisions,
+        idempotency_key,
+        runtime: ReviewedPagePublishRuntimeInput {
+            format: reviewed.format,
+            scenario_id: reviewed.scenario_id,
+            context: reviewed.context,
+            review_hash: reviewed.review_hash,
+        },
+    })
+}
 
+pub async fn publish_page(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<PublishPageReceipt, ApiError> {
+    let input = build_reviewed_publish_command(token.clone(), tenant_slug.clone(), &id).await?;
     let response: PublishPageResponse = request(
         PUBLISH_PAGE_MUTATION,
-        PageWriteVariables {
-            id,
-            input: PublishPageInput {
-                expected_version: page.version,
-                expected_body_revisions,
-                idempotency_key,
-                runtime: ReviewedPagePublishRuntimeInput {
-                    format: reviewed.format,
-                    scenario_id: reviewed.scenario_id,
-                    context: reviewed.context,
-                    review_hash: reviewed.review_hash,
-                },
-            },
-        },
+        PageWriteVariables { id, input },
         token,
         tenant_slug,
     )

@@ -1,4 +1,8 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::collections::BTreeMap;
+use rustok_api::{PortActor, PortContext};
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -105,6 +109,7 @@ async fn create_topic(
     key: &str,
 ) -> TestResult<Uuid> {
     Ok(TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -174,6 +179,10 @@ async fn merge_vote_reconciliation_is_atomic_idempotent_and_target_authoritative
             tenant_id,
             source_topic_id,
             SecurityContext::new(UserRole::Admin, Some(source_only_user)),
+            write_context(
+                tenant_id,
+                &SecurityContext::new(UserRole::Admin, Some(source_only_user)),
+            ),
             1,
         )
         .await?;
@@ -182,6 +191,10 @@ async fn merge_vote_reconciliation_is_atomic_idempotent_and_target_authoritative
             tenant_id,
             target_topic_id,
             SecurityContext::new(UserRole::Admin, Some(target_only_user)),
+            write_context(
+                tenant_id,
+                &SecurityContext::new(UserRole::Admin, Some(target_only_user)),
+            ),
             -1,
         )
         .await?;
@@ -190,6 +203,10 @@ async fn merge_vote_reconciliation_is_atomic_idempotent_and_target_authoritative
             tenant_id,
             source_topic_id,
             SecurityContext::new(UserRole::Admin, Some(equal_user)),
+            write_context(
+                tenant_id,
+                &SecurityContext::new(UserRole::Admin, Some(equal_user)),
+            ),
             1,
         )
         .await?;
@@ -198,6 +215,10 @@ async fn merge_vote_reconciliation_is_atomic_idempotent_and_target_authoritative
             tenant_id,
             target_topic_id,
             SecurityContext::new(UserRole::Admin, Some(equal_user)),
+            write_context(
+                tenant_id,
+                &SecurityContext::new(UserRole::Admin, Some(equal_user)),
+            ),
             1,
         )
         .await?;
@@ -206,6 +227,10 @@ async fn merge_vote_reconciliation_is_atomic_idempotent_and_target_authoritative
             tenant_id,
             source_topic_id,
             SecurityContext::new(UserRole::Admin, Some(conflict_user)),
+            write_context(
+                tenant_id,
+                &SecurityContext::new(UserRole::Admin, Some(conflict_user)),
+            ),
             1,
         )
         .await?;
@@ -214,6 +239,10 @@ async fn merge_vote_reconciliation_is_atomic_idempotent_and_target_authoritative
             tenant_id,
             target_topic_id,
             SecurityContext::new(UserRole::Admin, Some(conflict_user)),
+            write_context(
+                tenant_id,
+                &SecurityContext::new(UserRole::Admin, Some(conflict_user)),
+            ),
             -1,
         )
         .await?;
@@ -246,6 +275,10 @@ async fn merge_vote_reconciliation_is_atomic_idempotent_and_target_authoritative
             tenant_id,
             source_topic_id,
             SecurityContext::new(UserRole::Admin, Some(source_only_user)),
+            write_context(
+                tenant_id,
+                &SecurityContext::new(UserRole::Admin, Some(source_only_user)),
+            ),
             -1,
         )
         .await;
@@ -552,4 +585,14 @@ async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult
         .await?
         .ok_or("scalar row missing")?;
     Ok(row.try_get("", "value")?)
+}
+
+/// Builds the exact user port context used by vote and subscription writes in tests.
+fn write_context(tenant_id: Uuid, security: &SecurityContext) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(security.user_id.unwrap_or_else(Uuid::nil).to_string()),
+        "en",
+        "test-audience-write",
+    )
 }

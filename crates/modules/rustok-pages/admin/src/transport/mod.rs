@@ -1,3 +1,4 @@
+mod asset_provider_adapter;
 mod builder_rollout_adapter;
 mod graphql_adapter;
 #[cfg(target_arch = "wasm32")]
@@ -5,9 +6,11 @@ mod rollback_retry_adapter;
 mod scenario_baseline_cas_adapter;
 mod scenario_release_adapter;
 
+pub use asset_provider_adapter::pages_media_asset_provider;
+
 use crate::model::{
     CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageMetadataPatch,
-    PageMutationResult, PagePublicationResult,
+    PageMutationResult, PagePublicationResult, PagePublishSchedule,
 };
 use rustok_page_builder::health::ProviderHealthSnapshot;
 use rustok_page_builder::rollout::BuilderCapabilityFlags;
@@ -118,6 +121,65 @@ pub async fn save_page_document(
         project_data,
     )
     .await
+}
+
+pub async fn fetch_page_body_revision_history(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: String,
+) -> Result<Vec<crate::model::PageBodyRevision>, TransportError> {
+    graphql_adapter::fetch_page_body_revision_history(token, tenant_slug, id, locale).await
+}
+
+pub async fn restore_page_body_revision(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    expected_revision: String,
+    revision_id: String,
+) -> Result<PageDetail, TransportError> {
+    graphql_adapter::restore_page_body_revision(
+        token,
+        tenant_slug,
+        id,
+        expected_revision,
+        revision_id,
+    )
+    .await
+}
+
+pub async fn duplicate_page(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<PageMutationResult, TransportError> {
+    graphql_adapter::duplicate_page(token, tenant_slug, id).await
+}
+
+pub async fn fetch_page_publish_schedule(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<Option<PagePublishSchedule>, TransportError> {
+    graphql_adapter::fetch_page_publish_schedule(token, tenant_slug, id).await
+}
+
+pub async fn schedule_page_publish(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    publish_at: String,
+) -> Result<PagePublishSchedule, TransportError> {
+    graphql_adapter::schedule_page_publish(token, tenant_slug, id, publish_at).await
+}
+
+pub async fn cancel_page_publish(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<PagePublishSchedule, TransportError> {
+    graphql_adapter::cancel_page_publish(token, tenant_slug, id).await
 }
 
 pub async fn publish_page(

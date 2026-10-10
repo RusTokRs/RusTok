@@ -17,7 +17,7 @@ use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{ForumTopicAudienceListService, TopicListItem};
+use crate::TopicListItem;
 
 use super::{ForumTopicPage, types::*};
 
@@ -59,11 +59,18 @@ impl ForumStorefrontAudienceTopicsQuery {
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let request = ctx.data_opt::<RequestContext>();
         let requested_limit = per_page.map(|value| value.max(0) as u64);
-        let per_page = crate::dto::bounded_forum_read_limit(requested_limit);
+        let per_page = match requested_limit {
+            Some(value) => crate::dto::bounded_forum_read_limit(Some(value)),
+            None => super::forum_graphql_runtime(ctx)
+                .default_topics_per_page(tenant_id)
+                .await
+                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
+        };
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let list_started_at = Instant::now();
-        let page = ForumTopicAudienceListService::new(db.clone(), event_bus.clone())
+        let page = super::forum_graphql_runtime(ctx)
+            .topic_audience_list_service(db.clone(), event_bus.clone())
             .list_public_storefront_visible_with_locale_fallback(
                 tenant_id,
                 crate::ListTopicsFilter {

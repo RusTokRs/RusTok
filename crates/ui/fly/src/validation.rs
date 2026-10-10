@@ -3,10 +3,10 @@ use crate::{
     AssetCatalog, AssetPolicy, PageMetadata, ProjectDocument, RegistrySet, StyleRuleCatalog,
     StyleRuleScope, normalize_slug, validate_runtime_extensions,
 };
-use crate::{ComponentChildren, ComponentIndex, ComponentNode, ComponentObject};
+use crate::{ComponentChildren, ComponentIndex, ComponentNode, ComponentObject, FLY_SYMBOLS_FIELD};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -104,6 +104,7 @@ pub fn validate_project(
     validate_components(document, registries, limits, &mut report);
     validate_assets(document, &mut report);
     validate_style_rules(document, &index, &mut report);
+    validate_symbols(document, &mut report);
 
     if report.node_count > limits.maximum_nodes {
         report.diagnostics.push(ValidationDiagnostic {
@@ -730,6 +731,140 @@ fn diagnostic(
         path: path.into(),
         message: message.into(),
     }
+}
+
+fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
+    if document
+        .project
+        .extensions
+        .get(FLY_SYMBOLS_FIELD)
+        .is_some_and(|block| !block.is_array())
+    {
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "malformed_symbol_catalog",
+            FLY_SYMBOLS_FIELD,
+            "flySymbols must be an array",
+        ));
+    }
+    let mut catalog = BTreeMap::new();
+    let entries = crate::SymbolDescriptor::entries_from_document(document);
+    if entries.len() > crate::MAX_SYMBOL_DEFINITIONS {
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "too_many_symbol_definitions",
+            FLY_SYMBOLS_FIELD,
+            format!(
+                "site symbol catalog exceeds {} definitions",
+                crate::MAX_SYMBOL_DEFINITIONS
+            ),
+        ));
+    }
+    for (path, entry) in entries {
+        let Some(descriptor) = crate::SymbolDescriptor::from_value(&entry) else {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "malformed_symbol_definition",
+                &path,
+                "symbol definition must be an object with a non-empty id and components",
+            ));
+            continue;
+        };
+        if let Err(reason) = crate::validate_identifier(&descriptor.id) {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "invalid_symbol_id",
+                &path,
+                format!("symbol id `{}` is invalid: {reason}", descriptor.id),
+            ));
+        }
+        if catalog.insert(descriptor.id.clone(), descriptor).is_some() {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "duplicate_symbol_id",
+                &path,
+                "symbol id is defined more than once",
+            ));
+        }
+    }
+    for (symbol_id, descriptor) in &catalog {
+        let mut ids = BTreeSet::new();
+        for component in &descriptor.components {
+            let mut collected = Vec::new();
+            component.collect_ids(&mut collected);
+            for id in collected {
+                if crate::validate_identifier(&id).is_err() {
+                    report.diagnostics.push(diagnostic(
+                        ValidationSeverity::Error,
+                        "invalid_symbol_component_id",
+                        format!("{FLY_SYMBOLS_FIELD}({symbol_id})"),
+                        format!("symbol component id `{id}` is not a valid identifier"),
+                    ));
+                } else if !ids.insert(id.clone()) {
+                    report.diagnostics.push(diagnostic(
+                        ValidationSeverity::Error,
+                        "duplicate_symbol_component_id",
+                        format!("{FLY_SYMBOLS_FIELD}({symbol_id})"),
+                        format!("symbol contains duplicate component id `{id}`"),
+                    ));
+                }
+            }
+        }
+        for reference in crate::symbol_references(&descriptor.components) {
+            if !catalog.contains_key(&reference) {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "symbol_reference_missing",
+                    format!("{FLY_SYMBOLS_FIELD}({symbol_id})"),
+                    format!("symbol definition references missing symbol `{reference}`"),
+                ));
+            }
+        }
+    }
+    for cycle in crate::symbol_reference_cycles(document) {
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "symbol_cycle",
+            FLY_SYMBOLS_FIELD,
+            format!("symbol definitions form a reference cycle: {cycle}"),
+        ));
+    }
+    document.project.visit_components(|component, _, path| {
+        let Some(symbol_id) = component.symbol_id.as_deref() else {
+            return;
+        };
+        if crate::validate_identifier(symbol_id).is_err() {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "invalid_symbol_id",
+                path,
+                format!("symbol reference `{symbol_id}` is not a valid identifier"),
+            ));
+        } else if !catalog.contains_key(symbol_id) {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "symbol_reference_missing",
+                path,
+                format!("component references missing symbol `{symbol_id}`"),
+            ));
+        }
+        if component.id.is_none() {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "symbol_instance_without_id",
+                path,
+                "symbol instance must carry a component id",
+            ));
+        }
+        if !component.children().is_empty() {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "symbol_instance_with_children",
+                path,
+                "symbol instance must not carry children at rest; definition content is expanded at resolution",
+            ));
+        }
+    });
 }
 
 #[cfg(test)]

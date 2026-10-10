@@ -40,7 +40,8 @@ const formSchema = z.object({
   featuredImageUrl: z.string().url().optional().or(z.literal('')),
   seoTitle: z.string().optional(),
   seoDescription: z.string().optional(),
-  publish: z.boolean().default(false)
+  publish: z.boolean().default(false),
+  scheduledAt: z.string().optional()
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -102,7 +103,10 @@ export default function PostForm({
     featuredImageUrl: initialData?.featuredImageUrl ?? '',
     seoTitle: initialData?.seoTitle ?? '',
     seoDescription: initialData?.seoDescription ?? '',
-    publish: false
+    publish: false,
+    scheduledAt: initialData?.scheduledAt
+      ? new Date(initialData.scheduledAt).toISOString().slice(0, 16)
+      : ''
   };
 
   const form = useForm<FormValues>({
@@ -152,7 +156,10 @@ export default function PostForm({
             featuredImageUrl: values.featuredImageUrl || undefined,
             seoTitle: values.seoTitle || undefined,
             seoDescription: values.seoDescription || undefined,
-            version: initialData.version
+            version: initialData.version,
+            scheduledAt: values.scheduledAt
+              ? new Date(values.scheduledAt).toISOString()
+              : null
           },
           gqlOpts
         );
@@ -171,7 +178,10 @@ export default function PostForm({
             channelSlugs: channelSlugs.length > 0 ? channelSlugs : undefined,
             featuredImageUrl: values.featuredImageUrl || undefined,
             seoTitle: values.seoTitle || undefined,
-            seoDescription: values.seoDescription || undefined
+            seoDescription: values.seoDescription || undefined,
+            scheduledAt: values.scheduledAt
+              ? new Date(values.scheduledAt).toISOString()
+              : undefined
           },
           gqlOpts
         );
@@ -307,6 +317,21 @@ export default function PostForm({
               label='Publish immediately'
             />
           )}
+
+          <div>
+            <label className='block text-sm font-medium mb-1'>
+              Schedule publication (optional)
+            </label>
+            <input
+              type='datetime-local'
+              className='w-full rounded-md border border-input bg-background px-3 py-2 text-sm'
+              {...form.register('scheduledAt')}
+              disabled={form.watch('publish')}
+            />
+            <p className='text-xs text-muted-foreground mt-1'>
+              Leave empty to save as draft. Set a future date to schedule automatic publication.
+            </p>
+          </div>
 
           <Button type='submit' disabled={form.formState.isSubmitting}>
             {initialData ? 'Update Post' : 'Create Post'}

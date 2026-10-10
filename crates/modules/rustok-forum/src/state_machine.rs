@@ -26,6 +26,8 @@
 /// - Closed   → Open     (reopen)
 /// - Closed   → Archived (archive)
 /// - Archived → Open     (reopen)
+/// - Pending  → Open     (approve after pre-moderation)
+/// - Pending  → Archived (reject after pre-moderation)
 use std::fmt;
 
 use sea_orm::entity::prelude::*;
@@ -61,6 +63,9 @@ pub enum TopicStatus {
     Closed,
     #[sea_orm(string_value = "archived")]
     Archived,
+    /// Held by pre-moderation. Visible only to the author and moderators until approved.
+    #[sea_orm(string_value = "pending")]
+    Pending,
 }
 
 impl TopicStatus {
@@ -70,6 +75,7 @@ impl TopicStatus {
             topic_status::OPEN => Some(Self::Open),
             topic_status::CLOSED => Some(Self::Closed),
             topic_status::ARCHIVED => Some(Self::Archived),
+            topic_status::PENDING => Some(Self::Pending),
             _ => None,
         }
     }
@@ -80,6 +86,7 @@ impl TopicStatus {
             Self::Open => topic_status::OPEN,
             Self::Closed => topic_status::CLOSED,
             Self::Archived => topic_status::ARCHIVED,
+            Self::Pending => topic_status::PENDING,
         }
     }
 
@@ -92,6 +99,8 @@ impl TopicStatus {
                 | (Self::Closed, Self::Open)
                 | (Self::Closed, Self::Archived)
                 | (Self::Archived, Self::Open)
+                | (Self::Pending, Self::Open)
+                | (Self::Pending, Self::Archived)
         )
     }
 
@@ -306,6 +315,7 @@ mod tests {
             TopicStatus::Open,
             TopicStatus::Closed,
             TopicStatus::Archived,
+            TopicStatus::Pending,
         ] {
             let s = status.as_str();
             assert_eq!(TopicStatus::from_str_value(s), Some(status));
@@ -336,6 +346,16 @@ mod tests {
         assert!(!TopicStatus::Archived.can_transition_to(&TopicStatus::Archived));
         // Archived → Closed is invalid (must reopen first)
         assert!(!TopicStatus::Archived.can_transition_to(&TopicStatus::Closed));
+    }
+
+    #[test]
+    fn pending_topic_transitions_only_approve_or_reject() {
+        assert!(TopicStatus::Pending.can_transition_to(&TopicStatus::Open));
+        assert!(TopicStatus::Pending.can_transition_to(&TopicStatus::Archived));
+        assert!(!TopicStatus::Pending.can_transition_to(&TopicStatus::Closed));
+        assert!(!TopicStatus::Pending.can_transition_to(&TopicStatus::Pending));
+        assert!(!TopicStatus::Open.can_transition_to(&TopicStatus::Pending));
+        assert!(!TopicStatus::Archived.can_transition_to(&TopicStatus::Pending));
     }
 
     #[test]

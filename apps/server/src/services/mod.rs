@@ -67,6 +67,8 @@ pub mod forum_audience_group_facts;
 pub mod forum_notification_recipient_context;
 #[cfg(feature = "mod-forum")]
 pub mod forum_posting_policy_facts;
+#[cfg(all(feature = "mod-forum", feature = "mod-moderation"))]
+pub mod forum_moderation_report;
 #[cfg(feature = "mod-forum")]
 #[path = "forum_search_category_scope.rs"]
 mod forum_search_category_scope;
@@ -193,6 +195,15 @@ pub mod module_event_dispatcher {
             extensions.insert(category_scope);
             extensions.insert(owner_revision);
             extensions.insert(result_eligibility);
+        }
+
+        #[cfg(all(feature = "mod-forum", feature = "mod-moderation"))]
+        {
+            extensions.insert(
+                crate::services::forum_moderation_report::ServerForumModerationReportPort::shared(
+                    db.clone(),
+                ),
+            );
         }
 
         #[cfg(feature = "mod-flex")]

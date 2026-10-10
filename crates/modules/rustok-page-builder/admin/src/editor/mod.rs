@@ -49,6 +49,8 @@ mod ssr_localized_metadata;
 mod ssr_translations;
 #[cfg(target_arch = "wasm32")]
 mod style_section;
+#[cfg(target_arch = "wasm32")]
+mod symbol_section;
 mod toolbar;
 mod trait_panel;
 

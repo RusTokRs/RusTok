@@ -39,6 +39,12 @@ pub enum FlyError {
     AssetNotFound(String),
     #[error("asset reference is invalid: {0}")]
     InvalidAssetReference(String),
+    #[error("symbol `{0}` was not found")]
+    SymbolNotFound(String),
+    #[error("symbol reference is invalid: {0}")]
+    InvalidSymbolReference(String),
+    #[error("symbol reference cycle contains `{0}`")]
+    SymbolCycle(String),
     #[error("style rule `{0}` was not found")]
     StyleRuleNotFound(String),
     #[error("trait `{trait_id}` value is invalid: {message}")]

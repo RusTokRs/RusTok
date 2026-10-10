@@ -75,6 +75,7 @@ graph TD
         OPT_COMMENTS["comments"]
         OPT_PAGES["pages"]
         OPT_NAVIGATION["navigation"]
+        OPT_FORMS["forms"]
         OPT_PAGE_BUILDER["page_builder"]
         OPT_TAXONOMY["taxonomy"]
         OPT_MEDIA["media"]

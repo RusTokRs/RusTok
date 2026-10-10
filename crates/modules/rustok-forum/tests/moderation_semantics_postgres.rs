@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 mod support;
 
 use std::sync::Arc;
@@ -20,6 +23,7 @@ async fn postgres_enforces_locked_and_moderated_reply_semantics() -> TestResult<
     let outcome = async {
         let locked = seed_forum(&context, false, true).await?;
         let locked_result = ReplyService::new(context.db.clone(), event_bus(context.db.clone()))
+            .with_settings_providers(posting_cooldown::zero_cooldown_providers())
             .create(
                 locked.tenant_id,
                 customer_security(locked.author_id),
@@ -34,6 +38,7 @@ async fn postgres_enforces_locked_and_moderated_reply_semantics() -> TestResult<
         let moderated = seed_forum(&context, true, false).await?;
         let bus = event_bus(context.db.clone());
         let reply = ReplyService::new(context.db.clone(), bus.clone())
+            .with_settings_providers(posting_cooldown::zero_cooldown_providers())
             .create(
                 moderated.tenant_id,
                 customer_security(moderated.author_id),

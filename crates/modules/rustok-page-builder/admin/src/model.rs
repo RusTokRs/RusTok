@@ -26,7 +26,14 @@ impl AdminCanvasController {
             return Err(AdminCanvasError::InvalidPageId);
         }
         let document = GrapesJsCodec::decode_value(project_data)?;
-        let editor = FlyEditor::new(document, RegistrySet::with_builtins());
+        let mut registries = RegistrySet::with_builtins();
+        for definition in crate::asset_provider::builtin_asset_provider_definitions() {
+            registries
+                .asset_providers
+                .register(definition)
+                .expect("builtin asset provider ids are valid and unique");
+        }
+        let editor = FlyEditor::new(document, registries);
         let mut ui = FlyUiStateMachine::new(Presentation::Full);
         let summaries = editor.document().page_summaries();
         let active_page_index = summaries

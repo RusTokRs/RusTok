@@ -91,6 +91,7 @@ pub use secrets::{
 };
 #[cfg(feature = "seed-runtime")]
 pub use seed::{
+    SeedContentError, SeedContentOutcome, SeedContentPort, SeedContentRequest,
     SeedExecutionError, SeedExecutionOutcome, SeedExecutionRequest, SeedIdentityPort,
     SeedModulePort, SeedPrincipalPort, SeedRolePort, SeedTenant, SeedTenantPort, SeedTenantRequest,
     SeedUser, SeedUserRequest, execute_seed_profile,

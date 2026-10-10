@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_api::HostRuntimeContext;
@@ -60,7 +63,8 @@ async fn notification_source_rechecks_category_and_topic_richer_visibility() {
         .await
         .expect("category watcher should be stored");
 
-    let topic_service = TopicService::new(db.clone(), event_bus);
+    let topic_service = TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let topic_narrowed = topic_service
         .create(
             tenant_id,

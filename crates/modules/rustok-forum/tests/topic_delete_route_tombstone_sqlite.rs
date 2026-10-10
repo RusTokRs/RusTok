@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -92,6 +95,7 @@ async fn delete_records_gone_route_before_soft_delete() -> TestResult<()> {
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
     let category_id = create_category(&db, tenant_id, admin.clone()).await?;
     let topic_id = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             admin.clone(),
@@ -116,6 +120,7 @@ async fn delete_records_gone_route_before_soft_delete() -> TestResult<()> {
     let short_id = canonical.short_id.clone();
 
     TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .delete(tenant_id, topic_id, admin)
         .await?;
 

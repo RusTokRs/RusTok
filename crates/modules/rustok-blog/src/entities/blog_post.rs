@@ -18,6 +18,9 @@ pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
     pub archived_at: Option<DateTimeWithTimeZone>,
+    pub scheduled_at: Option<DateTimeWithTimeZone>,
+    pub is_pinned: bool,
+    pub pinned_at: Option<DateTimeWithTimeZone>,
     pub comment_count: i32,
     pub version: i32,
 }

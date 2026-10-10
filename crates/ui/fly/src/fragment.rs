@@ -185,7 +185,7 @@ fn collect_component_asset_references(
     }
 }
 
-fn reset_remapped_style_rule_identity(style: &mut Value, mapping: &BTreeMap<String, String>) {
+pub(crate) fn reset_remapped_style_rule_identity(style: &mut Value, mapping: &BTreeMap<String, String>) {
     let Some(object) = style.as_object_mut() else {
         return;
     };

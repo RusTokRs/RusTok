@@ -299,6 +299,13 @@ pub enum DomainEvent {
     BlogPostDeleted {
         post_id: Uuid,
     },
+    BlogPostScheduled {
+        post_id: Uuid,
+        scheduled_at: String,
+    },
+    BlogPostScheduleCancelled {
+        post_id: Uuid,
+    },
 
     // COMMENT EVENTS
     CommentCreated {
@@ -1034,6 +1041,8 @@ impl DomainEvent {
             Self::BlogPostUpdated { .. } => "blog.post.updated",
             Self::BlogPostArchived { .. } => "blog.post.archived",
             Self::BlogPostDeleted { .. } => "blog.post.deleted",
+            Self::BlogPostScheduled { .. } => "blog.post.scheduled",
+            Self::BlogPostScheduleCancelled { .. } => "blog.post.schedule_cancelled",
 
             Self::CommentCreated { .. } => "comment.created",
             Self::CommentUpdated { .. } => "comment.updated",
@@ -1273,6 +1282,8 @@ impl DomainEvent {
             Self::BlogPostUpdated { .. } => 1,
             Self::BlogPostArchived { .. } => 1,
             Self::BlogPostDeleted { .. } => 1,
+            Self::BlogPostScheduled { .. } => 1,
+            Self::BlogPostScheduleCancelled { .. } => 1,
 
             Self::CommentCreated { .. } => 1,
             Self::CommentUpdated { .. } => 1,
@@ -1421,6 +1432,8 @@ impl DomainEvent {
                 | Self::BlogPostUpdated { .. }
                 | Self::BlogPostArchived { .. }
                 | Self::BlogPostDeleted { .. }
+                | Self::BlogPostScheduled { .. }
+                | Self::BlogPostScheduleCancelled { .. }
                 | Self::ForumTopicCreated { .. }
                 | Self::ForumTopicReplied { .. }
                 | Self::ForumTopicStatusChanged { .. }

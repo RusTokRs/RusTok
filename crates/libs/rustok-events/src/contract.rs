@@ -7,10 +7,10 @@ use uuid::Uuid;
 
 use crate::{
     BlogCommentsDelegationScheduleAuditEvent, CheckoutOperationEvent, DomainEvent, EventEnvelope,
-    EventValidationError, ForumMentionEvent, ForumSearchProjectionEvent, MarketplaceListingEvent,
-    MarketplaceSellerEvent, ProductIndexRefreshEvent, RbacArtifactPermissionEvent,
-    RbacRoleMutationEvent, ReactionsEvent, SocialGraphRelationEvent, TranslationWorkflowEvent,
-    ValidateEvent,
+    EventValidationError, FormSubmissionEvent, ForumMentionEvent, ForumSearchProjectionEvent,
+    MarketplaceListingEvent, MarketplaceSellerEvent, ProductIndexRefreshEvent,
+    RbacArtifactPermissionEvent, RbacRoleMutationEvent, ReactionsEvent, SocialGraphRelationEvent,
+    TranslationWorkflowEvent, ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -46,6 +46,8 @@ pub enum ContractEventPayload {
     ForumMention(ForumMentionEvent),
     #[serde(rename = "forum_search_projection")]
     ForumSearchProjection(ForumSearchProjectionEvent),
+    #[serde(rename = "forms_submission")]
+    FormSubmission(FormSubmissionEvent),
     #[serde(rename = "marketplace_listing")]
     MarketplaceListing(MarketplaceListingEvent),
     #[serde(rename = "marketplace_seller")]
@@ -72,6 +74,7 @@ impl ContractEventPayload {
             Self::CheckoutOperation(event) => event.event_type(),
             Self::ForumMention(event) => event.event_type(),
             Self::ForumSearchProjection(event) => event.event_type(),
+            Self::FormSubmission(event) => event.event_type(),
             Self::MarketplaceListing(event) => event.event_type(),
             Self::MarketplaceSeller(event) => event.event_type(),
             Self::ProductIndexRefresh(event) => event.event_type(),
@@ -90,6 +93,7 @@ impl ContractEventPayload {
             Self::CheckoutOperation(event) => event.schema_version(),
             Self::ForumMention(event) => event.schema_version(),
             Self::ForumSearchProjection(event) => event.schema_version(),
+            Self::FormSubmission(event) => event.schema_version(),
             Self::MarketplaceListing(event) => event.schema_version(),
             Self::MarketplaceSeller(event) => event.schema_version(),
             Self::ProductIndexRefresh(event) => event.schema_version(),
@@ -110,6 +114,7 @@ impl ValidateEvent for ContractEventPayload {
             Self::CheckoutOperation(event) => event.validate(),
             Self::ForumMention(event) => event.validate(),
             Self::ForumSearchProjection(event) => event.validate(),
+            Self::FormSubmission(event) => event.validate(),
             Self::MarketplaceListing(event) => event.validate(),
             Self::MarketplaceSeller(event) => event.validate(),
             Self::ProductIndexRefresh(event) => event.validate(),

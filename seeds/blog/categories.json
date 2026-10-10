@@ -1,0 +1,27 @@
+[
+  {
+    "name": "Technology",
+    "slug": "technology",
+    "description": "Latest tech news, tutorials, and insights"
+  },
+  {
+    "name": "Business",
+    "slug": "business",
+    "description": "Business strategies, market trends, and entrepreneurship"
+  },
+  {
+    "name": "Lifestyle",
+    "slug": "lifestyle",
+    "description": "Tips for better living, health, and wellness"
+  },
+  {
+    "name": "Programming",
+    "slug": "programming",
+    "description": "Coding tutorials, best practices, and development tools"
+  },
+  {
+    "name": "Design",
+    "slug": "design",
+    "description": "UI/UX design, graphics, and creative inspiration"
+  }
+]

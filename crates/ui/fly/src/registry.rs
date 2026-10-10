@@ -80,6 +80,7 @@ fn validate_registry_id(id: &str) -> FlyResult<()> {
         "checkbox",
         "submit",
         "raw_html",
+        "symbol",
     ];
     if id.is_empty() || (!id.contains('.') && !BUILT_INS.contains(&id)) {
         return Err(FlyError::InvalidRegistryId(id.to_string()));
@@ -296,7 +297,15 @@ pub fn builtin_component_definitions() -> Vec<ComponentDefinition> {
             };
             let accepts_any_child = matches!(
                 id,
-                "wrapper" | "section" | "container" | "row" | "column" | "grid" | "media" | "form"
+                "wrapper"
+                    | "section"
+                    | "container"
+                    | "row"
+                    | "column"
+                    | "grid"
+                    | "media"
+                    | "form"
+                    | "symbol"
             );
             ComponentDefinition {
                 id: id.to_string(),
@@ -312,7 +321,7 @@ pub fn builtin_component_definitions() -> Vec<ComponentDefinition> {
 pub fn builtin_blocks() -> Vec<BlockDefinition> {
     let mut blocks = builtin_component_ids()
         .into_iter()
-        .filter(|id| !matches!(*id, "wrapper" | "list_item" | "label" | "option"))
+        .filter(|id| !matches!(*id, "wrapper" | "list_item" | "label" | "option" | "symbol"))
         .map(|id| BlockDefinition {
             id: id.to_string(),
             label: humanize_id(id),
@@ -374,6 +383,7 @@ fn builtin_component_ids() -> Vec<&'static str> {
         "checkbox",
         "submit",
         "raw_html",
+        "symbol",
     ]
 }
 

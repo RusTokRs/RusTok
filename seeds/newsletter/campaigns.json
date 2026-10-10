@@ -1,0 +1,37 @@
+[
+  {
+    "title": "Weekly Tech Digest",
+    "subject": "This Week in Tech - Latest Updates",
+    "preheader": "Stay updated with the latest tech news and tutorials",
+    "content_sources": ["blog"],
+    "status": "draft"
+  },
+  {
+    "title": "Product Updates Newsletter",
+    "subject": "New Features Released This Month",
+    "preheader": "Check out what's new in our platform",
+    "content_sources": ["commerce"],
+    "status": "draft"
+  },
+  {
+    "title": "Community Highlights",
+    "subject": "Top Discussions from Our Forum",
+    "preheader": "See what the community is talking about",
+    "content_sources": ["forum"],
+    "status": "draft"
+  },
+  {
+    "title": "Monthly Business Insights",
+    "subject": "Business Trends and Strategies",
+    "preheader": "Expert insights for your business growth",
+    "content_sources": ["blog"],
+    "status": "draft"
+  },
+  {
+    "title": "Special Offers",
+    "subject": "Exclusive Deals Just for You",
+    "preheader": "Don't miss these limited-time offers",
+    "content_sources": ["commerce"],
+    "status": "draft"
+  }
+]

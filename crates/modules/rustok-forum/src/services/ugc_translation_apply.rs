@@ -497,6 +497,8 @@ fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::services::engagement_mode::providers_without_posting_cooldown;
+
     use std::sync::Arc;
 
     use rustok_core::SecurityContext;
@@ -584,7 +586,8 @@ mod tests {
             )
             .await
             .expect("category should be created");
-        let topic_service = TopicService::new(db.clone(), bus.clone());
+        let topic_service = TopicService::new(db.clone(), bus.clone())
+            .with_settings_providers(providers_without_posting_cooldown());
         let topic = topic_service
             .create(
                 tenant_id,
@@ -602,7 +605,8 @@ mod tests {
             )
             .await
             .expect("topic should be created");
-        let reply_service = ReplyService::new(db.clone(), bus);
+        let reply_service = ReplyService::new(db.clone(), bus)
+            .with_settings_providers(providers_without_posting_cooldown());
         let reply = reply_service
             .create(
                 tenant_id,

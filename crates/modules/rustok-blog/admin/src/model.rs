@@ -22,6 +22,12 @@ pub struct BlogPostListItem {
     pub created_at: String,
     #[serde(rename = "publishedAt")]
     pub published_at: Option<String>,
+    #[serde(rename = "scheduledAt")]
+    pub scheduled_at: Option<String>,
+    #[serde(rename = "isPinned", default)]
+    pub is_pinned: bool,
+    #[serde(rename = "pinnedAt")]
+    pub pinned_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -46,6 +52,12 @@ pub struct BlogPostDetail {
     pub updated_at: String,
     #[serde(rename = "publishedAt")]
     pub published_at: Option<String>,
+    #[serde(rename = "scheduledAt")]
+    pub scheduled_at: Option<String>,
+    #[serde(rename = "isPinned", default)]
+    pub is_pinned: bool,
+    #[serde(rename = "pinnedAt")]
+    pub pinned_at: Option<String>,
     pub tags: Vec<String>,
     #[serde(rename = "featuredImageUrl")]
     pub featured_image_url: Option<String>,

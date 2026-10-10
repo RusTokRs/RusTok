@@ -12,17 +12,21 @@ use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_content::entities::node::ContentStatus;
 use rustok_core::SecurityContext;
 
-use crate::dto::{ListPagesFilter, PageListItem, PageResponse};
-use crate::entities::{page, page_body, page_channel_visibility, page_translation};
+use crate::dto::{ListPagesFilter, PageBodyState, PageListItem, PageResponse};
+use crate::entities::{
+    page, page_body, page_body_draft, page_channel_visibility, page_translation,
+};
 use crate::error::{PagesError, PagesResult};
-use crate::services::rbac::{can_read_non_public_pages, enforce_scope};
+use crate::services::rbac::{
+    can_read_draft_bodies, can_read_non_public_pages, enforce_owned_scope, enforce_scope,
+};
 
 use super::helpers::{
-    apply_public_page_channel_filter, available_locales, body_for_locale, normalize_locale,
-    normalize_slug, page_body_response, page_translation_response, resolve_translation_record,
-    status_to_storage, storage_to_status,
+    apply_public_page_channel_filter, available_locales, body_for_locale, body_for_locale_draft,
+    merge_working_bodies, normalize_locale, normalize_slug, page_body_response,
+    page_translation_response, resolve_translation_record, status_to_storage, storage_to_status,
 };
-use super::{PageResponseParts, PageService};
+use super::{PageResponseParts, PageService, WorkingBody};
 
 impl PageService {
     #[instrument(skip(self))]
@@ -57,16 +61,26 @@ impl PageService {
         let channel_slugs = self.load_channel_slugs(tenant_id, page_id).await?;
         let translations = self.load_translations(tenant_id, page_id).await?;
         let bodies = self.load_bodies(tenant_id, page_id).await?;
+        let include_drafts = can_read_draft_bodies(&security);
+        let drafts = if include_drafts {
+            self.load_drafts(tenant_id, page_id).await?
+        } else {
+            Vec::new()
+        };
         self.build_page_response(
+            &security,
             page,
             translations,
             bodies,
+            drafts,
+            include_drafts,
             PageResponseParts {
                 channel_slugs,
                 locale,
                 fallback_locale,
             },
         )
+        .await
     }
 
     #[instrument(skip(self))]
@@ -103,15 +117,19 @@ impl PageService {
         let translations = self.load_translations(tenant_id, page.id).await?;
         let bodies = self.load_bodies(tenant_id, page.id).await?;
         self.build_page_response(
+            &security,
             page,
             translations,
             bodies,
+            Vec::new(),
+            false,
             PageResponseParts {
                 channel_slugs,
                 locale: requested_locale,
                 fallback_locale: normalized_fallback_locale,
             },
         )
+        .await
         .map(Some)
     }
 
@@ -428,11 +446,37 @@ impl PageService {
             .await?)
     }
 
-    fn build_page_response(
+    pub(super) async fn load_drafts(
         &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<Vec<page_body_draft::Model>> {
+        Ok(page_body_draft::Entity::find()
+            .filter(page_body_draft::Column::TenantId.eq(tenant_id))
+            .filter(page_body_draft::Column::PageId.eq(page_id))
+            .all(&self.db)
+            .await?)
+    }
+
+    /// Working copies of every locale (current bodies overlaid by drafts).
+    pub(super) async fn load_working_bodies(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<Vec<WorkingBody>> {
+        let bodies = self.load_bodies(tenant_id, page_id).await?;
+        let drafts = self.load_drafts(tenant_id, page_id).await?;
+        Ok(merge_working_bodies(&bodies, &drafts))
+    }
+
+    async fn build_page_response(
+        &self,
+        security: &SecurityContext,
         page: page::Model,
         translations: Vec<page_translation::Model>,
         bodies: Vec<page_body::Model>,
+        drafts: Vec<page_body_draft::Model>,
+        include_drafts: bool,
         parts: PageResponseParts,
     ) -> PagesResult<PageResponse> {
         let translation = resolve_translation_record(
@@ -440,10 +484,35 @@ impl PageService {
             parts.locale.as_str(),
             parts.fallback_locale.as_deref(),
         );
-        let response_body = translation
-            .translation
-            .and_then(|_| body_for_locale(&bodies, translation.effective_locale.as_str()))
-            .map(page_body_response);
+        let mut response_body = translation.translation.and_then(|_| {
+            let locale = translation.effective_locale.as_str();
+            if include_drafts && let Some(draft) = body_for_locale_draft(&drafts, locale) {
+                return Some(page_body_response(
+                    &WorkingBody::from(draft),
+                    PageBodyState::Draft,
+                ));
+            }
+            body_for_locale(&bodies, locale)
+                .map(|body| page_body_response(&WorkingBody::from(body), PageBodyState::Current))
+        });
+        // The site symbol catalog is shared across pages: the document's embedded
+        // `flySymbols` block is a working cache and the stored catalog wins on
+        // every read, so operators always edit the current definitions.
+        if include_drafts
+            && enforce_owned_scope(security, Resource::Pages, Action::Update, page.author_id)
+                .is_ok()
+            && let Some(response_body) = response_body.as_mut()
+        {
+            let symbols = super::symbols::load_site_symbols_by_locale(&self.db, page.tenant_id)
+                .await?
+                .remove(&response_body.locale)
+                .unwrap_or_default();
+            let merged = super::symbols::replace_symbol_block(&response_body.content, symbols)?;
+            if merged != response_body.content {
+                response_body.content_json = serde_json::from_str(&merged).ok();
+                response_body.content = merged;
+            }
+        }
         let effective_locale = translation
             .translation
             .map(|_| translation.effective_locale.clone());

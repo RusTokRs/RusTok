@@ -14,10 +14,8 @@ interface ForumModuleSettingsFieldsProps {
 interface ForumFormValues {
   use_reactions: boolean;
   allow_downvotes: boolean;
-  allow_anonymous_reading: boolean;
+  allow_user_content_deletion: boolean;
   pre_moderation_enabled: boolean;
-  submodule_subscriptions_enabled: boolean;
-  submodule_moderation_enabled: boolean;
   topics_per_page: number;
   replies_per_page: number;
   min_topic_title_length: number;
@@ -26,7 +24,7 @@ interface ForumFormValues {
 
 /**
  * Forum-owned settings UI. Exposes key Discourse/NodeBB-style configuration
- * for posting limits, engagement modes, moderation policies, and submodules.
+ * for posting limits, engagement modes, and moderation policies.
  */
 export function ForumModuleSettingsFields({
   settingsText,
@@ -40,26 +38,20 @@ export function ForumModuleSettingsFields({
         return {
           use_reactions: false,
           allow_downvotes: true,
-          allow_anonymous_reading: true,
+          allow_user_content_deletion: false,
           pre_moderation_enabled: false,
-          submodule_subscriptions_enabled: true,
-          submodule_moderation_enabled: true,
           topics_per_page: 20,
           replies_per_page: 20,
-          min_topic_title_length: 5,
-          max_topic_title_length: 150
+          min_topic_title_length: 1,
+          max_topic_title_length: 255
         };
       }
       return {
         use_reactions:
           parsed.use_reactions === true || parsed.useReactions === true,
         allow_downvotes: parsed.allow_downvotes !== false,
-        allow_anonymous_reading: parsed.allow_anonymous_reading !== false,
+        allow_user_content_deletion: parsed.allow_user_content_deletion === true,
         pre_moderation_enabled: parsed.pre_moderation_enabled === true,
-        submodule_subscriptions_enabled:
-          parsed.submodule_subscriptions_enabled !== false,
-        submodule_moderation_enabled:
-          parsed.submodule_moderation_enabled !== false,
         topics_per_page:
           typeof parsed.topics_per_page === 'number'
             ? parsed.topics_per_page
@@ -71,24 +63,22 @@ export function ForumModuleSettingsFields({
         min_topic_title_length:
           typeof parsed.min_topic_title_length === 'number'
             ? parsed.min_topic_title_length
-            : 5,
+            : 1,
         max_topic_title_length:
           typeof parsed.max_topic_title_length === 'number'
             ? parsed.max_topic_title_length
-            : 150
+            : 255
       };
     } catch {
       return {
         use_reactions: false,
         allow_downvotes: true,
-        allow_anonymous_reading: true,
+        allow_user_content_deletion: false,
         pre_moderation_enabled: false,
-        submodule_subscriptions_enabled: true,
-        submodule_moderation_enabled: true,
         topics_per_page: 20,
         replies_per_page: 20,
-        min_topic_title_length: 5,
-        max_topic_title_length: 150
+        min_topic_title_length: 1,
+        max_topic_title_length: 255
       };
     }
   }, [settingsText]);
@@ -149,23 +139,27 @@ export function ForumModuleSettingsFields({
             disabled={disabled}
             onChange={(e) =>
               updateFields({
-                min_topic_title_length: Number(e.target.value) || 5
+                min_topic_title_length: Number(e.target.value) || 1
               })
             }
             className='h-8 text-xs'
           />
         </div>
         <div className='space-y-1.5'>
-          <label className='text-xs font-medium'>Max title length</label>
+          <label className='text-xs font-medium'>
+            Max title length (0 = no limit)
+          </label>
           <Input
             type='number'
-            min={50}
-            max={300}
+            min={0}
             value={values.max_topic_title_length}
             disabled={disabled}
             onChange={(e) =>
               updateFields({
-                max_topic_title_length: Number(e.target.value) || 150
+                max_topic_title_length:
+                  e.target.value === ''
+                    ? 255
+                    : Math.max(0, Number(e.target.value))
               })
             }
             className='h-8 text-xs'
@@ -210,10 +204,28 @@ export function ForumModuleSettingsFields({
 
         <div className='bg-muted/20 flex items-center justify-between rounded-lg border p-3'>
           <div className='space-y-0.5 pr-4'>
+            <label className='text-xs font-medium'>Allow Author Deletion</label>
+            <p className='text-muted-foreground text-[11px]'>
+              Let topic and reply authors delete their own content. Moderators
+              are not affected.
+            </p>
+          </div>
+          <Switch
+            checked={values.allow_user_content_deletion}
+            disabled={disabled}
+            onCheckedChange={(checked) =>
+              updateFields({ allow_user_content_deletion: checked })
+            }
+          />
+        </div>
+
+        <div className='bg-muted/20 flex items-center justify-between rounded-lg border p-3'>
+          <div className='space-y-0.5 pr-4'>
             <label className='text-xs font-medium'>Pre-moderation</label>
             <p className='text-muted-foreground text-[11px]'>
               Hold newly submitted topics and replies for moderator review
-              before publishing.
+              before publishing. Held items are visible only to their author
+              and to moderators.
             </p>
           </div>
           <Switch
@@ -221,42 +233,6 @@ export function ForumModuleSettingsFields({
             disabled={disabled}
             onCheckedChange={(checked) =>
               updateFields({ pre_moderation_enabled: checked })
-            }
-          />
-        </div>
-
-        <div className='bg-muted/20 flex items-center justify-between rounded-lg border p-3'>
-          <div className='space-y-0.5 pr-4'>
-            <label className='text-xs font-medium'>Anonymous Reading</label>
-            <p className='text-muted-foreground text-[11px]'>
-              Allow unauthenticated guest visitors to view public forum
-              categories.
-            </p>
-          </div>
-          <Switch
-            checked={values.allow_anonymous_reading}
-            disabled={disabled}
-            onCheckedChange={(checked) =>
-              updateFields({ allow_anonymous_reading: checked })
-            }
-          />
-        </div>
-
-        <div className='bg-muted/20 flex items-center justify-between rounded-lg border p-3'>
-          <div className='space-y-0.5 pr-4'>
-            <label className='text-xs font-medium'>
-              Subscription Levels Submodule
-            </label>
-            <p className='text-muted-foreground text-[11px]'>
-              Enable Watching, Tracking, Normal, and Muted notification levels
-              for categories/topics.
-            </p>
-          </div>
-          <Switch
-            checked={values.submodule_subscriptions_enabled}
-            disabled={disabled}
-            onCheckedChange={(checked) =>
-              updateFields({ submodule_subscriptions_enabled: checked })
             }
           />
         </div>

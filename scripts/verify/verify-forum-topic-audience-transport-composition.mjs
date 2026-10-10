@@ -142,6 +142,11 @@ rejectText(
   "{ forumStorefrontTopic(tenantId:",
   "module-owned GraphQL adapter still requests the legacy selected-topic field",
 );
+rejectText(
+  graphqlRuntime,
+  "async fn forum_storefront_topic(",
+  "legacy anonymous forumStorefrontTopic field must not be exposed by the GraphQL runtime",
+);
 
 for (const marker of [
   "ForumTopicAudienceReadService::with_audience_facts",
@@ -150,7 +155,7 @@ for (const marker of [
   "ForumTopicReadOperation::SelectedTopic",
   "ForumTopicReadOperation::MarkRead",
   ".mark_topic_read_current_audience_visible(",
-  "if selected_topic.is_some()",
+  "&& selected_topic.is_some()",
 ]) {
   requireText(nativeAdapter, marker, `native storefront adapter is missing ${marker}`);
 }

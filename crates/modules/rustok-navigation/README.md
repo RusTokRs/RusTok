@@ -25,7 +25,16 @@ Own localized navigation menus and deterministic tenant/channel/slot bindings.
 
 Navigation depends on Channel for current-channel scope and on Outbox only for
 the shared durable owner-operation receipt ledger. It does not depend on Pages;
-menu items store public URLs rather than owner-specific page identifiers.
+menu items currently store public URLs rather than owner-specific page identifiers.
+The accepted [page-link decision](../../../DECISIONS/2026-10-09-page-layouts-and-menu-page-links.md)
+adds identity-based page targets and host-composed Pages route resolution without
+making Navigation depend on Pages. This target is not yet implemented.
+
+## Known Limitations
+
+Current menu links are static URLs; a published Page slug change does not update
+a Navigation menu. Until the route reader, writes and all public transports are
+wired together, do not store an empty URL as a page reference.
 
 Translation consumes Navigation only through `rustok-translation-targets` and
 the owner provider. It never reads or writes Navigation tables directly. Locale

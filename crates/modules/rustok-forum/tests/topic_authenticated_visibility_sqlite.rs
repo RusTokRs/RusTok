@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -95,6 +98,7 @@ async fn create_topic(
     slug: &str,
 ) -> Uuid {
     TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -199,7 +203,8 @@ async fn inherited_authenticated_categories_filter_before_storefront_pagination(
         vec![restricted_topic, public_topic]
     );
 
-    let topics = TopicService::new(db.clone(), event_bus);
+    let topics = TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     let page = topics
         .list_storefront_visible_with_locale_fallback(
             tenant_id,

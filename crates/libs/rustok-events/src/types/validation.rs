@@ -446,6 +446,19 @@ impl ValidateEvent for DomainEvent {
                 }
                 Ok(())
             }
+            Self::BlogPostScheduled {
+                post_id,
+                scheduled_at,
+            } => {
+                validators::validate_not_nil_uuid("post_id", post_id)?;
+                validators::validate_not_empty("scheduled_at", scheduled_at)?;
+                validators::validate_max_length("scheduled_at", scheduled_at, 64)?;
+                Ok(())
+            }
+            Self::BlogPostScheduleCancelled { post_id } => {
+                validators::validate_not_nil_uuid("post_id", post_id)?;
+                Ok(())
+            }
 
             // ════════════════════════════════════════════════════════════════
             // COMMENT EVENTS

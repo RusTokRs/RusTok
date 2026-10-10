@@ -22,6 +22,8 @@ impl PostService {
             seo_description,
             channel_slugs,
             metadata,
+            scheduled_at,
+            is_pinned,
         } = input;
 
         validate_title(&title)?;
@@ -75,6 +77,24 @@ impl PostService {
             BlogPostStatus::Draft
         };
 
+        // Validate scheduled_at: must be in the future and cannot be set with publish=true
+        let scheduled_at_db = if let Some(scheduled) = scheduled_at {
+            if publish {
+                return Err(BlogError::validation(
+                    "Cannot set scheduled_at when publish is true",
+                ));
+            }
+            let scheduled_utc = scheduled.with_timezone(&chrono::Utc);
+            if scheduled_utc <= now {
+                return Err(BlogError::validation(
+                    "scheduled_at must be in the future",
+                ));
+            }
+            Some(scheduled.fixed_offset())
+        } else {
+            None
+        };
+
         let slug_for_error = slug.clone();
         blog_post::ActiveModel {
             id: Set(post_id),
@@ -89,6 +109,9 @@ impl PostService {
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
             archived_at: Set(None),
+            scheduled_at: Set(scheduled_at_db),
+            is_pinned: Set(is_pinned.unwrap_or(false)),
+            pinned_at: Set(None),
             comment_count: Set(0),
             version: Set(1),
         }
@@ -154,6 +177,21 @@ impl PostService {
             .await
             .map_err(BlogError::from)?;
 
+        if let Some(scheduled) = scheduled_at {
+            self.event_bus
+                .publish_in_tx(
+                    &txn,
+                    tenant_id,
+                    security.user_id,
+                    DomainEvent::BlogPostScheduled {
+                        post_id,
+                        scheduled_at: scheduled.to_rfc3339(),
+                    },
+                )
+                .await
+                .map_err(BlogError::from)?;
+        }
+
         txn.commit().await.map_err(BlogError::from)?;
         Ok(post_id)
     }
@@ -189,6 +227,8 @@ impl PostService {
             channel_slugs,
             metadata,
             version,
+            scheduled_at,
+            is_pinned,
         } = input;
 
         if post.version != version {
@@ -275,7 +315,9 @@ impl PostService {
             || category_id.is_changed()
             || featured_image_url.is_changed()
             || normalized_channels.is_some()
-            || metadata_changed;
+            || metadata_changed
+            || scheduled_at.is_changed()
+            || is_pinned.is_some();
         let has_relation_change = tags.is_some();
         if !has_owner_change && !has_translation_change && !has_relation_change {
             return Err(BlogError::validation("No Blog post changes were supplied"));
@@ -348,6 +390,41 @@ impl PostService {
                 blog_post::Column::Metadata,
                 sea_orm::sea_query::Expr::value(next_metadata),
             );
+        }
+        match scheduled_at {
+            Patch::Keep => {}
+            Patch::Set(scheduled) => {
+                let scheduled_utc = scheduled.with_timezone(&chrono::Utc);
+                if scheduled_utc <= now {
+                    return Err(BlogError::validation(
+                        "scheduled_at must be in the future",
+                    ));
+                }
+                update = update.col_expr(
+                    blog_post::Column::ScheduledAt,
+                    sea_orm::sea_query::Expr::value(Some(scheduled.fixed_offset())),
+                );
+            }
+            Patch::Clear => {
+                update = update.col_expr(
+                    blog_post::Column::ScheduledAt,
+                    sea_orm::sea_query::Expr::value(Option::<chrono::DateTime<chrono::FixedOffset>>::None),
+                );
+            }
+        }
+        if let Some(pinned) = is_pinned {
+            let pinned_at = if pinned { Some(now) } else { None };
+            update = update
+                .col_expr(
+                    blog_post::Column::IsPinned,
+                    sea_orm::sea_query::Expr::value(pinned),
+                )
+                .col_expr(
+                    blog_post::Column::PinnedAt,
+                    sea_orm::sea_query::Expr::value(
+                        pinned_at.map(|t| t.fixed_offset()),
+                    ),
+                );
         }
 
         let normalized_slug_for_error = normalized_slug.clone();
@@ -445,6 +522,36 @@ impl PostService {
             .publish_in_tx(&txn, tenant_id, security.user_id, event)
             .await
             .map_err(BlogError::from)?;
+
+        // Publish schedule events if scheduled_at was changed
+        match scheduled_at {
+            Patch::Set(scheduled) => {
+                self.event_bus
+                    .publish_in_tx(
+                        &txn,
+                        tenant_id,
+                        security.user_id,
+                        DomainEvent::BlogPostScheduled {
+                            post_id,
+                            scheduled_at: scheduled.to_rfc3339(),
+                        },
+                    )
+                    .await
+                    .map_err(BlogError::from)?;
+            }
+            Patch::Clear => {
+                self.event_bus
+                    .publish_in_tx(
+                        &txn,
+                        tenant_id,
+                        security.user_id,
+                        DomainEvent::BlogPostScheduleCancelled { post_id },
+                    )
+                    .await
+                    .map_err(BlogError::from)?;
+            }
+            Patch::Keep => {}
+        }
 
         txn.commit().await.map_err(BlogError::from)?;
         Ok(())
@@ -710,6 +817,58 @@ impl PostService {
         txn.commit().await.map_err(BlogError::from)?;
         Ok(())
     }
+
+    /// Publish all scheduled posts whose scheduled_at time has passed.
+    /// This method is called by the scheduler worker.
+    pub async fn publish_scheduled_posts(&self) -> BlogResult<Vec<(Uuid, Uuid)>> {
+        let now = chrono::Utc::now();
+        
+        // Find all draft posts with scheduled_at in the past
+        let posts = blog_post::Entity::find()
+            .filter(blog_post::Column::Status.eq("draft"))
+            .filter(blog_post::Column::ScheduledAt.is_not_null())
+            .filter(blog_post::Column::ScheduledAt.lte(now))
+            .all(&self.db)
+            .await
+            .map_err(BlogError::from)?;
+
+        let mut published = Vec::new();
+
+        for post in posts {
+            let txn = self.db.begin().await.map_err(BlogError::from)?;
+            
+            // Use the same transition logic as manual publish
+            apply_status_transition_in_tx(
+                &txn,
+                post.tenant_id,
+                post.id,
+                post.version,
+                BlogPostStatus::Published,
+                Some(now),
+                None,
+            )
+            .await?;
+
+            // Publish the BlogPostPublished event
+            self.event_bus
+                .publish_in_tx(
+                    &txn,
+                    post.tenant_id,
+                    None, // System actor
+                    DomainEvent::BlogPostPublished {
+                        post_id: post.id,
+                        author_id: Some(post.author_id),
+                    },
+                )
+                .await
+                .map_err(BlogError::from)?;
+
+            txn.commit().await.map_err(BlogError::from)?;
+            published.push((post.tenant_id, post.id));
+        }
+
+        Ok(published)
+    }
 }
 
 fn ensure_transition(current: BlogPostStatus, next: BlogPostStatus) -> BlogResult<()> {
@@ -733,7 +892,7 @@ async fn apply_status_transition_in_tx(
     archived_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> BlogResult<()> {
     let now = chrono::Utc::now();
-    let result = blog_post::Entity::update_many()
+    let mut update = blog_post::Entity::update_many()
         .col_expr(
             blog_post::Column::Status,
             sea_orm::sea_query::Expr::value(status_to_storage(next).to_string()),
@@ -753,7 +912,17 @@ async fn apply_status_transition_in_tx(
         .col_expr(
             blog_post::Column::Version,
             sea_orm::sea_query::Expr::value(PostService::next_persisted_version(expected_version)?),
-        )
+        );
+
+    // Clear scheduled_at when publishing (whether manually or by scheduler)
+    if next == BlogPostStatus::Published {
+        update = update.col_expr(
+            blog_post::Column::ScheduledAt,
+            sea_orm::sea_query::Expr::value(Option::<chrono::DateTime<chrono::FixedOffset>>::None),
+        );
+    }
+
+    let result = update
         .filter(blog_post::Column::Id.eq(post_id))
         .filter(blog_post::Column::TenantId.eq(tenant_id))
         .filter(blog_post::Column::Version.eq(expected_version))
@@ -769,3 +938,141 @@ async fn apply_status_transition_in_tx(
 
     Ok(())
 }
+
+impl PostService {
+    /// Bulk transition multiple posts to a target status.
+    ///
+    /// Each post is processed independently. Posts that cannot be transitioned
+    /// (wrong current status, permission denied, etc.) are recorded as failures
+    /// but do not abort the entire operation.
+    pub async fn bulk_transition_posts(
+        &self,
+        tenant_id: Uuid,
+        post_ids: &[Uuid],
+        target_status: BlogPostStatus,
+        security: SecurityContext,
+    ) -> Result<BulkOperationResult> {
+        let mut result = BulkOperationResult::new();
+
+        for &post_id in post_ids {
+            match self.transition_post(tenant_id, post_id, target_status, security.clone()).await {
+                Ok(()) => result.record_success(post_id),
+                Err(e) => result.record_failure(post_id, e.to_string()),
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Bulk delete multiple posts.
+    ///
+    /// Only posts in Draft or Archived status can be deleted. Published posts
+    /// must be unpublished first. Each post is processed independently.
+    pub async fn bulk_delete_posts(
+        &self,
+        tenant_id: Uuid,
+        post_ids: &[Uuid],
+        security: SecurityContext,
+    ) -> Result<BulkOperationResult> {
+        let mut result = BulkOperationResult::new();
+
+        for &post_id in post_ids {
+            match self.delete_post(tenant_id, post_id, security.clone()).await {
+                Ok(()) => result.record_success(post_id),
+                Err(e) => result.record_failure(post_id, e.to_string()),
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Transition a single post to a target status (internal helper for bulk operations).
+    async fn transition_post(
+        &self,
+        tenant_id: Uuid,
+        post_id: Uuid,
+        target_status: BlogPostStatus,
+        security: SecurityContext,
+    ) -> Result<()> {
+        match target_status {
+            BlogPostStatus::Published => {
+                self.publish_post(tenant_id, post_id, security).await
+            }
+            BlogPostStatus::Draft => {
+                self.unpublish_post(tenant_id, post_id, security).await
+            }
+            BlogPostStatus::Archived => {
+                self.archive_post(tenant_id, post_id, security, None).await
+            }
+        }
+    }
+}
+
+    /// Pin a post to the top of public listings.
+    /// Only published posts can be pinned.
+    #[instrument(skip(self, security))]
+    pub async fn pin_post(
+        &self,
+        tenant_id: Uuid,
+        post_id: Uuid,
+        security: SecurityContext,
+    ) -> BlogResult<()> {
+        self.set_pinned(tenant_id, post_id, security, true).await
+    }
+
+    /// Unpin a post from the top of public listings.
+    #[instrument(skip(self, security))]
+    pub async fn unpin_post(
+        &self,
+        tenant_id: Uuid,
+        post_id: Uuid,
+        security: SecurityContext,
+    ) -> BlogResult<()> {
+        self.set_pinned(tenant_id, post_id, security, false).await
+    }
+
+    async fn set_pinned(
+        &self,
+        tenant_id: Uuid,
+        post_id: Uuid,
+        security: SecurityContext,
+        pinned: bool,
+    ) -> BlogResult<()> {
+        enforce_scope(&security, Resource::BlogPosts, Action::Update)?;
+        let post = self.find_post(tenant_id, post_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Update,
+            post.author_id,
+        )?;
+
+        // Only published posts can be pinned
+        if pinned && storage_to_status(&post.status)? != BlogPostStatus::Published {
+            return Err(BlogError::validation("Only published posts can be pinned"));
+        }
+
+        let now = chrono::Utc::now();
+        let pinned_at = if pinned { Some(now) } else { None };
+
+        blog_post::Entity::update_many()
+            .col_expr(
+                blog_post::Column::IsPinned,
+                sea_orm::sea_query::Expr::value(pinned),
+            )
+            .col_expr(
+                blog_post::Column::PinnedAt,
+                sea_orm::sea_query::Expr::value(pinned_at.map(|t| t.into())),
+            )
+            .col_expr(
+                blog_post::Column::UpdatedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .filter(blog_post::Column::Id.eq(post_id))
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .exec(&self.db)
+            .await
+            .map_err(BlogError::Database)?;
+
+        Ok(())
+    }

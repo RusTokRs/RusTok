@@ -500,7 +500,32 @@ fn PageWorkspace(
         });
     };
 
+    let duplicate_page_id = page.id.clone();
+    let duplicate_writer = query_writer.clone();
+    let duplicate_action = move |_| {
+        let page_id = duplicate_page_id.clone();
+        let token = token.get_untracked();
+        let tenant = tenant.get_untracked();
+        let writer = duplicate_writer.clone();
+        action_busy.set(Some("duplicate".to_string()));
+        action_error.set(None);
+        spawn_local(async move {
+            match transport::duplicate_page(token, tenant, page_id).await {
+                Ok(duplicated) => {
+                    writer.replace_value(AdminQueryKey::PageId.as_str(), duplicated.id.clone());
+                    refresh_generation
+                        .update(|generation| *generation = generation.wrapping_add(1));
+                }
+                Err(error) => action_error.set(Some(error.to_string())),
+            }
+            action_busy.set(None);
+        });
+    };
+
     let page_for_builder = page.clone();
+    let history_page_id = page.id.clone();
+    let history_locale = locale.clone();
+    let history_revision = revision.clone();
     view! {
         <div class="space-y-4">
             <section class="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -523,6 +548,15 @@ fn PageWorkspace(
                             on:click=move |_| publish_action.run(!is_published)
                         >
                             {if is_published { "Unpublish" } else { "Publish" }}
+                        </button>
+                        <button
+                            type="button"
+                            class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+                            disabled=move || action_busy.get().is_some()
+                            title="Copy this page into a new draft, including its current bodies and channel visibility"
+                            on:click=duplicate_action
+                        >
+                            "Duplicate"
                         </button>
                         <button
                             type="button"
@@ -555,24 +589,41 @@ fn PageWorkspace(
 
 
             {if is_published {
-                view! { <PublishedDocumentLocked /> }.into_any()
-            } else {
                 view! {
-                    <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
-                        <PagesFlyBuilder
-                            page=page_for_builder
-                            baseline
-                            release_status
-                            provider_status
-                            token
-                            tenant
-                            default_locale
-                            draft_token
-                            refresh_generation
-                        />
-                    </section>
+                    <div class="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="status">
+                        "Published page: editor saves go to the unpublished body draft. The live page keeps serving the current body until the next publish; unpublishing folds the draft into the current body."
+                    </div>
                 }.into_any()
+            } else {
+                view! { <div /> }.into_any()
             }}
+            <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                <PagesFlyBuilder
+                    page=page_for_builder
+                    baseline
+                    release_status
+                    provider_status
+                    token
+                    tenant
+                    default_locale
+                    draft_token
+                    refresh_generation
+                />
+            </section>
+            <BodyRevisionHistory
+                page_id=history_page_id
+                locale=history_locale
+                expected_revision=history_revision
+                token
+                tenant
+                refresh_generation
+            />
+            <PublishSchedulePanel
+                page_id=page.id.clone()
+                token
+                tenant
+                refresh_generation
+            />
         </div>
     }
 }
@@ -588,22 +639,284 @@ fn MetadataItem(label: &'static str, value: String) -> impl IntoView {
 }
 
 #[component]
-fn PublishedDocumentLocked() -> impl IntoView {
+fn BodyRevisionHistory(
+    page_id: String,
+    locale: String,
+    expected_revision: String,
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    refresh_generation: RwSignal<u64>,
+) -> impl IntoView {
+    let busy = RwSignal::new(false);
+    let error = RwSignal::new(None::<String>);
+    let history_token = token;
+    let history_tenant = tenant;
+    let history_page_id = page_id.clone();
+    let history_locale = locale.clone();
+    let history = LocalResource::new(move || {
+        let page_id = history_page_id.clone();
+        let locale = history_locale.clone();
+        let token = history_token.get();
+        let tenant = history_tenant.get();
+        let _generation = refresh_generation.get();
+        async move {
+            transport::fetch_page_body_revision_history(token, tenant, page_id, locale)
+                .await
+                .map_err(|error| error.to_string())
+        }
+    });
+
+    let restore_page_id = page_id;
+    let restore_expected = expected_revision;
+    let restore = Callback::new(move |revision_id: String| {
+        let page_id = restore_page_id.clone();
+        let expected_revision = restore_expected.clone();
+        let token = token.get_untracked();
+        let tenant = tenant.get_untracked();
+        busy.set(true);
+        error.set(None);
+        spawn_local(async move {
+            match transport::restore_page_body_revision(
+                token,
+                tenant,
+                page_id,
+                expected_revision,
+                revision_id,
+            )
+            .await
+            {
+                Ok(_) => {
+                    refresh_generation.update(|generation| *generation = generation.wrapping_add(1))
+                }
+                Err(error_message) => error.set(Some(error_message.to_string())),
+            }
+            busy.set(false);
+        });
+    });
+
     view! {
-        <section
-            class="rounded-2xl border border-amber-300/60 bg-amber-50 px-6 py-8 text-amber-950 shadow-sm"
-            role="status"
-        >
-            <div class="max-w-3xl">
-                <div class="text-xs font-semibold uppercase tracking-wide">
-                    "Published document locked"
+        <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <h2 class="font-semibold text-card-foreground">"Body revision history"</h2>
+                <span class="text-xs text-muted-foreground">
+                    "append-only journal, newest first"
+                </span>
+            </div>
+            {move || error.get().map(|message| view! {
+                <div class="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+                    {message}
                 </div>
-                <h3 class="mt-2 text-lg font-semibold">
-                    "Unpublish before editing the Fly document"
-                </h3>
-                <p class="mt-2 text-sm leading-6">
-                    "The published artifact remains immutable and the editable Fly host is not mounted. Use Unpublish above, edit and save the draft, then publish the new revision explicitly."
-                </p>
+            })}
+            <Suspense fallback=|| view! {
+                <div class="space-y-2" aria-label="Loading body revision history">
+                    <div class="h-10 animate-pulse rounded-lg bg-muted"></div>
+                    <div class="h-10 animate-pulse rounded-lg bg-muted"></div>
+                </div>
+            }>
+                {move || {
+                    history.get().map(|result| match result {
+                        Ok(revisions) if revisions.is_empty() => view! {
+                            <p class="text-sm text-muted-foreground">
+                                "No journaled body revisions for this locale yet."
+                            </p>
+                        }.into_any(),
+                        Ok(revisions) => view! {
+                            <ul class="space-y-2">
+                                {revisions
+                                    .into_iter()
+                                    .map(|revision| {
+                                        let revision_id = revision.id.clone();
+                                        let restore = restore.clone();
+                                        view! {
+                                            <li class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                                                <div class="min-w-0">
+                                                    <div class="truncate font-medium text-foreground">
+                                                        {format!("{} · {}", revision.created_at, revision.source)}
+                                                    </div>
+                                                    <div class="truncate text-xs text-muted-foreground">
+                                                        {format!(
+                                                            "revision {} · {}",
+                                                            revision.body_revision,
+                                                            revision.created_by.as_deref().unwrap_or("system"),
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                                                    disabled=move || busy.get()
+                                                    title="Restore this body revision into the working copy"
+                                                    on:click=move |_| restore.run(revision_id.clone())
+                                                >
+                                                    "Restore"
+                                                </button>
+                                            </li>
+                                        }
+                                    })
+                                    .collect_view()}
+                            </ul>
+                        }.into_any(),
+                        Err(message) => view! {
+                            <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+                                {message}
+                            </div>
+                        }.into_any(),
+                    })
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+#[component]
+fn PublishSchedulePanel(
+    page_id: String,
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    refresh_generation: RwSignal<u64>,
+) -> impl IntoView {
+    let busy = RwSignal::new(false);
+    let error = RwSignal::new(None::<String>);
+    let publish_at_input = RwSignal::new(String::new());
+    let schedule_token = token;
+    let schedule_tenant = tenant;
+    let fetch_page_id = page_id.clone();
+    let schedule = LocalResource::new(move || {
+        let page_id = fetch_page_id.clone();
+        let token = schedule_token.get();
+        let tenant = schedule_tenant.get();
+        let _generation = refresh_generation.get();
+        async move {
+            transport::fetch_page_publish_schedule(token, tenant, page_id)
+                .await
+                .map_err(|error| error.to_string())
+        }
+    });
+
+    let schedule_page_id = page_id.clone();
+    let schedule_action = Callback::new(move |_| {
+        let page_id = schedule_page_id.clone();
+        let token = token.get_untracked();
+        let tenant = tenant.get_untracked();
+        let value = publish_at_input.get_untracked().trim().to_string();
+        if value.is_empty() {
+            error.set(Some("Choose a publication time first".to_string()));
+            return;
+        }
+        // datetime-local values carry no timezone; the panel documents UTC semantics.
+        let publish_at = if value.len() == 16 {
+            format!("{value}:00Z")
+        } else if value.len() == 19 {
+            format!("{value}Z")
+        } else {
+            value
+        };
+        busy.set(true);
+        error.set(None);
+        spawn_local(async move {
+            match transport::schedule_page_publish(token, tenant, page_id, publish_at).await {
+                Ok(_) => {
+                    refresh_generation.update(|generation| *generation = generation.wrapping_add(1))
+                }
+                Err(failure) => error.set(Some(failure.to_string())),
+            }
+            busy.set(false);
+        });
+    });
+
+    let cancel_page_id = page_id;
+    let cancel_action = Callback::new(move |_| {
+        let page_id = cancel_page_id.clone();
+        let token = token.get_untracked();
+        let tenant = tenant.get_untracked();
+        busy.set(true);
+        error.set(None);
+        spawn_local(async move {
+            match transport::cancel_page_publish(token, tenant, page_id).await {
+                Ok(_) => {
+                    refresh_generation.update(|generation| *generation = generation.wrapping_add(1))
+                }
+                Err(failure) => error.set(Some(failure.to_string())),
+            }
+            busy.set(false);
+        });
+    });
+
+    view! {
+        <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <h2 class="font-semibold text-card-foreground">"Scheduled publish"</h2>
+                <span class="text-xs text-muted-foreground">
+                    "the reviewed command captured here is replayed unchanged at the due time (UTC)"
+                </span>
+            </div>
+            {move || error.get().map(|message| view! {
+                <div class="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+                    {message}
+                </div>
+            })}
+            <Suspense fallback=|| view! {
+                <div class="h-10 animate-pulse rounded-lg bg-muted" aria-label="Loading publish schedule"></div>
+            }>
+                {move || {
+                    schedule.get().map(|result| match result {
+                        Ok(None) => view! {
+                            <p class="text-sm text-muted-foreground">
+                                "No publication scheduled for this page."
+                            </p>
+                        }.into_any(),
+                        Ok(Some(job)) => {
+                            let pending = job.state == "scheduled";
+                            let detail = match (&job.last_error_code, &job.last_error_message) {
+                                (Some(code), Some(message)) => {
+                                    format!("attempts {} · {}: {}", job.attempts, code, message)
+                                }
+                                _ => format!("attempts {}", job.attempts),
+                            };
+                            view! {
+                                <div class="rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                                    <div class="font-medium text-foreground">
+                                        {format!("{} · publish at {}", job.state, job.publish_at)}
+                                    </div>
+                                    <div class="mt-1 text-xs text-muted-foreground">{detail}</div>
+                                    <Show when=move || pending>
+                                        <button
+                                            type="button"
+                                            class="mt-2 rounded-lg border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                                            disabled=move || busy.get()
+                                            title="Cancel the pending scheduled publication"
+                                            on:click=move |_| cancel_action.run(())
+                                        >
+                                            "Cancel schedule"
+                                        </button>
+                                    </Show>
+                                </div>
+                            }.into_any()
+                        }
+                        Err(message) => view! {
+                            <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+                                {message}
+                            </div>
+                        }.into_any(),
+                    })
+                }}
+            </Suspense>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                    type="datetime-local"
+                    class="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    placeholder="Publication time (UTC)"
+                    on:input=move |event| publish_at_input.set(event_target_value(&event))
+                />
+                <button
+                    type="button"
+                    class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+                    disabled=move || busy.get()
+                    title="Schedule the reviewed publish of the current page state"
+                    on:click=schedule_action
+                >
+                    "Schedule publish"
+                </button>
             </div>
         </section>
     }
@@ -746,8 +1059,16 @@ fn PagesFlyBuilder(
                 },
             );
 
+            let media_provider_token = token;
+            let media_provider_tenant = tenant;
+            let asset_provider = transport::pages_media_asset_provider(
+                move || media_provider_token.get_untracked(),
+                move || media_provider_tenant.get_untracked(),
+            );
+
             let mut host = PageBuilderAdminHostContext::new(controller)
                 .with_facade(facade)
+                .with_asset_provider(asset_provider)
                 .with_contribution_assembly(contribution_assembly)
                 .with_editor_capability_policy(editor_policy)
                 .with_runtime_context(runtime_context)

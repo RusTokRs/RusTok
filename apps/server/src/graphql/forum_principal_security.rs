@@ -33,7 +33,10 @@ impl ForumOperationPolicy {
 
 fn field_policy(name: &str) -> ForumOperationPolicy {
     let human_only = matches!(name, "createForumTopic" | "createForumReply")
-        || (name.contains("Forum") && (name.contains("Vote") || name.contains("Subscription")));
+        || (name.contains("Forum")
+            && ["Vote", "Subscription", "Report"]
+                .iter()
+                .any(|part| name.contains(part)));
     let topic_moderation = matches!(
         name,
         "updateForumTopic"

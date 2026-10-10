@@ -26,7 +26,7 @@ use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthoriz
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
-use super::rbac::{enforce_owned_scope, enforce_scope};
+use super::rbac::{enforce_author_deletion_policy, enforce_owned_scope, enforce_scope};
 use super::topic;
 use super::topic_route::{
     ForumTopicRouteService, ForumTopicSlugRenameResult, RenameForumTopicSlugInput,
@@ -44,6 +44,7 @@ pub struct TopicService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     inner: topic::TopicService,
+    settings: ForumSettingsProviders,
 }
 
 impl TopicService {
@@ -52,11 +53,13 @@ impl TopicService {
             inner: topic::TopicService::new(db.clone(), event_bus.clone()),
             db,
             event_bus,
+            settings: ForumSettingsProviders::default(),
         }
     }
 
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
-        self.inner = self.inner.with_settings_providers(settings);
+        self.inner = self.inner.with_settings_providers(settings.clone());
+        self.settings = settings;
         self
     }
 
@@ -164,6 +167,12 @@ impl TopicService {
             Resource::ForumTopics,
             Action::Delete,
             existing.author_id,
+        )?;
+        let settings = self.settings.module_settings(tenant_id).await?;
+        enforce_author_deletion_policy(
+            &security,
+            Resource::ForumTopics,
+            settings.allow_user_content_deletion,
         )?;
 
         let txn = self.db.begin().await?;

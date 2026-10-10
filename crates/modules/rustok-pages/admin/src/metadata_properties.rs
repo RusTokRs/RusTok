@@ -405,6 +405,7 @@ mod tests {
                     }]
                 })),
                 updated_at: "2026-07-23T00:00:00Z".to_string(),
+                state: "current".to_string(),
             }),
         }
     }

@@ -265,6 +265,9 @@ impl PostService {
                 channel_slugs: channel_slugs_map.get(&post.id).cloned().unwrap_or_default(),
                 comment_count: post.comment_count as i64,
                 published_at: post.published_at.map(Into::into),
+                scheduled_at: post.scheduled_at.map(Into::into),
+                is_pinned: post.is_pinned,
+                pinned_at: post.pinned_at.map(Into::into),
                 created_at: post.created_at.into(),
             });
         }
@@ -373,6 +376,9 @@ impl PostService {
                 channel_slugs: channel_slugs_map.get(&post.id).cloned().unwrap_or_default(),
                 comment_count: post.comment_count as i64,
                 published_at: post.published_at.map(Into::into),
+                scheduled_at: post.scheduled_at.map(Into::into),
+                is_pinned: post.is_pinned,
+                pinned_at: post.pinned_at.map(Into::into),
                 created_at: post.created_at.into(),
             });
         }
@@ -449,6 +455,8 @@ impl PostService {
 
         select = apply_public_post_channel_filter(select, tenant_id, channel_slug);
         let mut posts = select
+            .order_by_desc(blog_post::Column::IsPinned)
+            .order_by_desc(blog_post::Column::PinnedAt)
             .order_by_desc(blog_post::Column::PublishedAt)
             .order_by_desc(blog_post::Column::Id)
             .limit(per_page + 1)
@@ -661,6 +669,9 @@ impl PostService {
             created_at: post.created_at.into(),
             updated_at: post.updated_at.into(),
             published_at: post.published_at.map(Into::into),
+            scheduled_at: post.scheduled_at.map(Into::into),
+            is_pinned: post.is_pinned,
+            pinned_at: post.pinned_at.map(Into::into),
             version: post.version,
         })
     }

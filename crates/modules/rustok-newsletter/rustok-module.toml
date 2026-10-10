@@ -1,0 +1,43 @@
+[module]
+slug = "newsletter"
+name = "Newsletter"
+version = "0.1.0"
+description = "Subscriber management, campaign lifecycle, content aggregation, and email delivery orchestration"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "admin_only"
+
+[marketplace]
+category = "communication"
+tags = ["newsletter", "email", "campaigns", "subscribers"]
+
+[dependencies]
+email = { version_req = ">=0.1.0" }
+outbox = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "NewsletterModule"
+
+[provides.graphql]
+query = "graphql::NewsletterQuery"
+mutation = "graphql::NewsletterMutation"
+runtime_data_factory = "graphql::attach_schema_data"
+
+[provides.admin_ui]
+leptos_crate = "rustok-newsletter-admin"
+route_segment = "newsletter"
+nav_label = "Newsletter"
+nav_group = "marketing"
+nav_order = 50
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[fba.provider]
+registry = "contracts/newsletter-fba-registry.json"
+contract_version = "newsletter.campaign.v1"
+runtime_profile = "embedded_native"
+fallback_profiles = ["embedded_disabled_noop"]
+degraded_modes = ["skip_disabled_provider"]

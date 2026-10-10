@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
@@ -92,6 +95,7 @@ async fn create_topic(
     slug: &str,
 ) -> TestResult<Uuid> {
     Ok(TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -185,6 +189,7 @@ async fn current_alias_and_tombstone_routes_resolve_without_slug_identity() -> T
     assert_eq!(wrong_slug.alias_id, None);
 
     TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .delete(tenant_id, source_topic_id, admin)
         .await?;
 

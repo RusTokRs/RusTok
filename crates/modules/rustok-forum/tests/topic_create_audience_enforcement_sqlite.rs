@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -257,7 +260,8 @@ async fn topic_create_command_enforces_inherited_audience_before_writes() {
         .await
         .expect("explicit deny topic-create layer should persist");
 
-    let ordinary = TopicService::new(db.clone(), event_bus.clone());
+    let ordinary = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
     ordinary
         .create(
             tenant_id,
@@ -327,7 +331,8 @@ async fn topic_create_command_enforces_inherited_audience_before_writes() {
         active_user_id: allowed_admin_id,
         requests: requests.clone(),
     });
-    let composed = TopicService::with_audience_facts(db.clone(), event_bus.clone(), facts_port);
+    let composed = TopicService::with_audience_facts(db.clone(), event_bus.clone(), facts_port)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
 
     assert!(matches!(
         composed

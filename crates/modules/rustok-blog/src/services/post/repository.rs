@@ -24,7 +24,7 @@ impl PostService {
         )))
     }
 
-    pub(super) async fn find_post(
+    pub(crate) async fn find_post(
         &self,
         tenant_id: Uuid,
         post_id: Uuid,

@@ -1,3 +1,6 @@
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
+
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -106,6 +109,7 @@ async fn create_topic(
     key: &str,
 ) -> TestResult<Uuid> {
     Ok(TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -136,6 +140,7 @@ async fn create_reply(
     parent_reply_id: Option<Uuid>,
 ) -> TestResult<Uuid> {
     Ok(ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .create(
             tenant_id,
             security,
@@ -402,10 +407,12 @@ async fn topic_merge_transfers_source_only_solution_and_preserves_target_only_so
     );
     assert_reply_location(&db, tenant_id, source_reply_id, target_topic_id, 1, None).await?;
     let target_read = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .get(tenant_id, admin.clone(), target_topic_id, "en")
         .await?;
     assert_eq!(target_read.solution_reply_id, Some(source_reply_id));
     let moved_reply_read = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
         .get(tenant_id, admin.clone(), source_reply_id, "en")
         .await?;
     assert!(moved_reply_read.is_solution);

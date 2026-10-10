@@ -37,6 +37,8 @@ mod category_search_scope {
 mod category_topic_create_audience;
 mod category_visibility;
 mod counter_reconciliation;
+mod content_limits;
+mod edit_window;
 mod engagement_mode;
 pub mod event;
 mod solution_reconciliation;
@@ -55,6 +57,7 @@ mod mention_relation_tests {
     include!("relation_quote_input_tests.rs");
 }
 mod moderation_owner;
+pub mod moderation_report;
 pub mod moderation {
     pub use super::moderation_owner::ModerationService;
 }
@@ -63,8 +66,10 @@ mod posting_policy;
 mod posting_policy_approved_facts;
 mod posting_policy_create_window_facts;
 mod posting_policy_evaluator;
+mod pending_visibility;
 mod posting_policy_facts;
 mod posting_policy_reading_facts;
+mod posting_rate;
 pub(crate) mod projection_invalidation;
 mod public_discovery;
 mod quote_command;
@@ -118,6 +123,7 @@ mod topic_audience_list;
 mod topic_audience_lock;
 mod topic_audience_read;
 mod topic_audience_visibility;
+mod topic_write_audience;
 mod topic_canonical_resolution;
 mod topic_create_audience_authorization;
 mod topic_route;
