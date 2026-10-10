@@ -243,6 +243,8 @@ async fn post_lifecycle_uses_blog_owned_tables() {
                 seo_description: None,
                 channel_slugs: None,
                 metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await
@@ -300,6 +302,8 @@ async fn customer_cannot_create_or_read_draft_posts() {
                 seo_description: None,
                 channel_slugs: None,
                 metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await
@@ -324,6 +328,8 @@ async fn customer_cannot_create_or_read_draft_posts() {
                 seo_description: None,
                 channel_slugs: None,
                 metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await
@@ -384,6 +390,8 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
                 seo_description: None,
                 channel_slugs: Some(vec![" Web ".to_string(), "mobile".to_string()]),
                 metadata: Some(serde_json::json!({"custom": "value"})),
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await
@@ -418,6 +426,8 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
                 channel_slugs: Some(vec!["storefront".to_string()]),
                 metadata: Some(serde_json::json!({"custom": "next"})),
                 version: created.version,
+                scheduled_at: Patch::Keep,
+                is_pinned: None,
             },
         )
         .await
@@ -473,6 +483,8 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
                     seo_description: None,
                     channel_slugs,
                     metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
                 },
             )
             .await

@@ -104,6 +104,8 @@ async fn post_category_name_projects_across_detail_and_list_paths() {
                 seo_description: None,
                 channel_slugs: None,
                 metadata: None,
+                scheduled_at: None,
+                is_pinned: None,
             },
         )
         .await

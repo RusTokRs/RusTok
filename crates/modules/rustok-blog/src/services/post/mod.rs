@@ -27,7 +27,7 @@ use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
 
 use crate::dto::{
-    AdminPostCursor, CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder,
+    AdminPostCursor, BulkOperationResult, CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder,
     PostSummary, PublicPostPage, PublicPostsPageQuery, PublishedPostCursor,
     PublishedPostScanPage, UpdatePostInput,
 };

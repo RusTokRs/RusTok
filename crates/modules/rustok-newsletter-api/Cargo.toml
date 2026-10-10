@@ -1,0 +1,22 @@
+[package]
+name = "rustok-newsletter-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Neutral newsletter content provider and subscriber port contracts"
+
+[features]
+default = ["server"]
+server = ["dep:async-trait", "rustok-api/runtime", "dep:rustok-core"]
+
+[dependencies]
+async-trait = { workspace = true, optional = true }
+chrono = { workspace = true }
+rustok-api = { workspace = true, optional = true }
+rustok-core = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

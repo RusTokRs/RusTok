@@ -22,6 +22,7 @@ export interface PostSummary {
   authorId: string | null;
   createdAt: string;
   publishedAt: string | null;
+  scheduledAt: string | null;
 }
 
 export interface PostResponse {
@@ -41,6 +42,7 @@ export interface PostResponse {
   version: number;
   createdAt: string;
   publishedAt: string | null;
+  scheduledAt: string | null;
   tags: string[];
   featuredImageUrl: string | null;
   seoTitle: string | null;
@@ -75,6 +77,7 @@ export interface CreatePostInput {
   seoTitle?: string;
   seoDescription?: string;
   channelSlugs?: string[];
+  scheduledAt?: string;
 }
 
 export interface UpdatePostInput {
@@ -91,6 +94,7 @@ export interface UpdatePostInput {
   seoDescription?: string;
   channelSlugs?: string[];
   version: number;
+  scheduledAt?: string | null;
 }
 
 // ---------- GraphQL queries & mutations ----------
@@ -107,6 +111,8 @@ query Posts($tenantId: UUID!, $filter: PostsFilter) {
       authorId
       createdAt
       publishedAt
+    scheduledAt
+      scheduledAt
     }
     nextCursor
   }
@@ -135,6 +141,7 @@ query Post($tenantId: UUID!, $id: UUID!) {
     version
     createdAt
     publishedAt
+    scheduledAt
     tags
     featuredImageUrl
     seoTitle

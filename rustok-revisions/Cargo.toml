@@ -1,0 +1,37 @@
+[package]
+name = "rustok-revisions"
+version = "0.1.0"
+edition = "2021"
+description = "Content revision history library for Rust applications"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/RusTokRs/RusTok"
+keywords = ["revision", "history", "versioning", "audit", "tracking"]
+categories = ["database", "web-programming"]
+
+[features]
+default = []
+derive = ["rustok-revisions-derive"]
+seaorm = ["sea-orm", "sea-orm-migration"]
+
+[dependencies]
+# Core dependencies
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+tracing = "0.1"
+
+# Optional dependencies
+rustok-revisions-derive = { path = "../rustok-revisions-derive", optional = true }
+sea-orm = { version = "2.0", features = ["runtime-tokio-rustls", "sqlx-postgres", "macros"], optional = true }
+sea-orm-migration = { version = "2.0", features = ["runtime-tokio-rustls", "sqlx-postgres"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["full"] }
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[bench]]
+name = "benchmarks"
+harness = false

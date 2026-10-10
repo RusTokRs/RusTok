@@ -395,6 +395,29 @@ impl BlogQuery {
             total,
         })
     }
+
+    async fn post_by_preview_token(
+        &self,
+        ctx: &Context<'_>,
+        token: String,
+        locale: Option<String>,
+    ) -> Result<Option<GqlPost>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+
+        let service = crate::services::PreviewTokenService::new(db.clone(), event_bus.clone());
+        let post = service
+            .get_post_by_token(&token, &locale)
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        match post {
+            Some(post) => Ok(Some(map_post(post, None))),
+            None => Ok(None),
+        }
+    }
 }
 
 fn query_tenant_id(

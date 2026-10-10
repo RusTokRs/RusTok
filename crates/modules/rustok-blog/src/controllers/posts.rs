@@ -406,3 +406,119 @@ pub async fn restore_post(
         .await
         .map_err(crate::error::public::to_http_error)
 }
+
+/// Get a post by preview token (unauthenticated)
+#[utoipa::path(
+    get,
+    path = "/api/blog/preview/{token}",
+    tag = "blog",
+    params(
+        ("token" = String, Path, description = "Preview token"),
+        ("locale" = Option<String>, Query, description = "Requested locale")
+    ),
+    responses(
+        (status = 200, description = "Post preview", body = PostResponse),
+        (status = 404, description = "Token invalid, expired, or post not found")
+    )
+)]
+pub async fn preview_post(
+    State(runtime): State<BlogHttpRuntime>,
+    Path(token): Path<String>,
+    Query(params): Query<PreviewQueryParams>,
+) -> HttpResult<Json<PostResponse>> {
+    let locale = params.locale.unwrap_or_else(|| "en".to_string());
+    let service = crate::services::PreviewTokenService::new(runtime.db_clone(), runtime.event_bus());
+    let post = service
+        .get_post_by_token(&token, &locale)
+        .await
+        .map_err(crate::error::public::to_http_error)?;
+
+    match post {
+        Some(post) => Ok(Json(post)),
+        None => Err(HttpError::new(
+            StatusCode::NOT_FOUND,
+            "PREVIEW_NOT_FOUND",
+            "Preview token is invalid, expired, or post not found",
+        )),
+    }
+}
+
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+pub struct PreviewQueryParams {
+    pub locale: Option<String>,
+}
+
+/// Pin a blog post to the top of public listings
+#[utoipa::path(
+    post,
+    path = "/api/blog/posts/{id}/pin",
+    tag = "blog",
+    params(
+        ("id" = Uuid, Path, description = "Post ID")
+    ),
+    responses(
+        (status = 200, description = "Post pinned"),
+        (status = 404, description = "Post not found"),
+        (status = 400, description = "Only published posts can be pinned"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn pin_post(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> HttpResult<()> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
+    ensure_blog_permission(
+        &tenant,
+        &auth,
+        &[Permission::BLOG_POSTS_UPDATE],
+        "Permission denied: blog_posts:update required",
+    )?;
+
+    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
+    service
+        .pin_post(tenant.id, id, security_context(&auth))
+        .await
+        .map_err(crate::error::public::to_http_error)?;
+    Ok(())
+}
+
+/// Unpin a blog post from the top of public listings
+#[utoipa::path(
+    post,
+    path = "/api/blog/posts/{id}/unpin",
+    tag = "blog",
+    params(
+        ("id" = Uuid, Path, description = "Post ID")
+    ),
+    responses(
+        (status = 200, description = "Post unpinned"),
+        (status = 404, description = "Post not found"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn unpin_post(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> HttpResult<()> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
+    ensure_blog_permission(
+        &tenant,
+        &auth,
+        &[Permission::BLOG_POSTS_UPDATE],
+        "Permission denied: blog_posts:update required",
+    )?;
+
+    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
+    service
+        .unpin_post(tenant.id, id, security_context(&auth))
+        .await
+        .map_err(crate::error::public::to_http_error)?;
+    Ok(())
+}

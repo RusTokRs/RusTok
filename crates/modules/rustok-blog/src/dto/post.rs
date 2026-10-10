@@ -31,6 +31,8 @@ pub struct CreatePostInput {
     pub seo_description: Option<String>,
     pub channel_slugs: Option<Vec<String>>,
     pub metadata: Option<Value>,
+    pub scheduled_at: Option<DateTime<Utc>>,
+    pub is_pinned: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -61,6 +63,10 @@ pub struct UpdatePostInput {
     pub channel_slugs: Option<Vec<String>>,
     pub metadata: Option<Value>,
     pub version: i32,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[schema(value_type = Option<String>)]
+    pub scheduled_at: Patch<DateTime<Utc>>,
+    pub is_pinned: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -92,6 +98,14 @@ pub struct PostResponse {
     /// First publication time. Set on the first publish and kept across
     /// unpublish, archive and restore; `None` only if the post was never published.
     pub published_at: Option<DateTime<Utc>>,
+    /// Scheduled publication time. When set on a Draft post, the scheduler
+    /// worker publishes it automatically once this timestamp is reached.
+    /// `None` when no schedule is active.
+    pub scheduled_at: Option<DateTime<Utc>>,
+    /// Whether the post is pinned to the top of public listings.
+    pub is_pinned: bool,
+    /// When the post was pinned. `None` if not pinned.
+    pub pinned_at: Option<DateTime<Utc>>,
     pub version: i32,
 }
 
@@ -116,6 +130,8 @@ mod tests {
             seo_description: None,
             channel_slugs: None,
             metadata: None,
+            scheduled_at: None,
+            is_pinned: None,
         };
         let encoded = serde_json::to_value(input).expect("serialize");
         assert_eq!(encoded["content"]["type"], "doc");
@@ -144,6 +160,10 @@ pub struct PostSummary {
     /// First publication time. Set on the first publish and kept across
     /// unpublish, archive and restore; `None` only if the post was never published.
     pub published_at: Option<DateTime<Utc>>,
+    /// Scheduled publication time. Present on Draft posts with an active schedule.
+    pub scheduled_at: Option<DateTime<Utc>>,
+    pub is_pinned: bool,
+    pub pinned_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -384,3 +404,47 @@ pub struct PublishedPostScanPage {
     pub next_after: Option<Uuid>,
 }
 
+
+/// Result of a bulk operation on blog posts.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BulkOperationResult {
+    /// Number of posts that were successfully processed.
+    pub succeeded: u32,
+    /// Number of posts that failed (wrong status, permission denied, etc.).
+    pub failed: u32,
+    /// IDs of posts that were successfully processed.
+    pub succeeded_ids: Vec<Uuid>,
+    /// IDs of posts that failed, with reasons.
+    pub failures: Vec<BulkOperationFailure>,
+}
+
+/// A single failure in a bulk operation.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BulkOperationFailure {
+    pub post_id: Uuid,
+    pub reason: String,
+}
+
+impl BulkOperationResult {
+    pub fn new() -> Self {
+        Self {
+            succeeded: 0,
+            failed: 0,
+            succeeded_ids: Vec::new(),
+            failures: Vec::new(),
+        }
+    }
+
+    pub fn record_success(&mut self, post_id: Uuid) {
+        self.succeeded += 1;
+        self.succeeded_ids.push(post_id);
+    }
+
+    pub fn record_failure(&mut self, post_id: Uuid, reason: impl Into<String>) {
+        self.failed += 1;
+        self.failures.push(BulkOperationFailure {
+            post_id,
+            reason: reason.into(),
+        });
+    }
+}

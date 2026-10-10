@@ -16,6 +16,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+#### Newsletter Module (M-9)
+- **New standalone module `rustok-newsletter`** for cross-domain email campaign management
+- `rustok-newsletter-api` crate with contracts:
+  - `NewsletterContentProvider` trait for source modules (blog, forum, commerce)
+  - `SubscriberPort` and `CampaignPort` typed ports
+  - Shared types: `ContentSourceSlug`, `SubscriberStatus`, `CampaignStatus`
+- `rustok-newsletter` implementation crate (29 files):
+  - Domain: subscriber/campaign lifecycle state machines with validated transitions
+  - Services: `SubscriberService` (subscribe, confirm, unsubscribe, update, delete) and `CampaignService` (create, update, schedule, cancel, delete)
+  - Entities: 3 tables (`newsletter_subscribers`, `newsletter_campaigns`, `newsletter_subscriptions`)
+  - Migration `m20261009_000040_create_newsletter_tables` with 6 indexes
+  - GraphQL: 4 queries + 10 mutations for subscriber and campaign management
+  - Ports: typed port implementations following platform contracts
+  - Module registration: `rustok-module.toml`, workspace integration
+- Architecture: Newsletter aggregates content from blog/forum/commerce via `NewsletterContentProvider` trait (inversion of control pattern)
+
+#### Content Portability Platform (M-7)
+- **New platform capability** for unified content import/export across all modules
+- `rustok-content-portability-api` crate with contracts:
+  - `ContentImporter<Source, Target>` and `ContentExporter<Source, Target>` traits
+  - Format descriptors: JSON, CSV, WordPress XML, Markdown, Custom
+  - Context types: `ImportContext`, `ExportContext` with tenant isolation
+  - Result types: `ImportResult<T>`, `BatchImportResult<T>`, `ExportResult<T>`
+  - Validation framework: `ValidationResult`, `FieldValidation`, `validate_fields!` macro
+  - Progress tracking: `ProgressCallback` for batch operations
+- `rustok-content-portability` implementation crate:
+  - `JsonFormatHandler`: JSON parse/serialize with pretty-print option
+  - `CsvFormatHandler`: CSV parse/serialize with custom delimiters and headers
+  - `ImportService`: import from JSON/CSV files and bytes
+  - `ExportService`: export to JSON/CSV files and bytes
+  - File I/O helpers: `read_file`, `write_file`, `file_exists`, `file_size`
+  - Comprehensive unit tests for all components
+- Architecture: Platform capability (support crate), not tenant-toggled module, following `rustok-api`/`rustok-core` pattern
+
+#### Blog Module Enhancements (M-5)
+- **Featured/Pinned Posts** feature:
+  - Migration `m20261009_000035_add_blog_post_pinned`: `is_pinned` boolean + `pinned_at` timestamp with composite index
+  - Entity fields: `is_pinned: bool`, `pinned_at: Option<DateTimeWithTimeZone>`
+  - DTO: `is_pinned` in `CreatePostInput`/`UpdatePostInput`, `is_pinned`+`pinned_at` in `PostResponse`/`PostSummary`
+  - Service: `pin_post`, `unpin_post`, `set_pinned` methods with validation (only published posts can be pinned)
+  - Queries: public listing sorts by `is_pinned DESC, pinned_at DESC, published_at DESC, id DESC`
+  - GraphQL: `isPinned: Boolean!`, `pinnedAt: String`, `pinPost(id)`, `unpinPost(id)` mutations
+  - REST: `POST /api/blog/posts/{id}/pin` and `POST /api/blog/posts/{id}/unpin` endpoints
+  - All test files updated with `is_pinned: None` field
+
+### Added (continued)
 - Blog post slug redirects use the shared canonical URL registry of `rustok-content`
   (`canonical_url` / `url_alias`) through `CanonicalUrlWriter`. Renaming a post keeps its old
   route as an alias, public reads resolve it to the current post, a new post may take a retired
