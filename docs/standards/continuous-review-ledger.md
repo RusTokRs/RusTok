@@ -5389,6 +5389,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.163` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
 - **Next primary iteration:** continue audit to shared library foundation `crates/libs/rustok-api` (FS-23).
 
+### FS-23.01 Assessment — Shared API RequestContext correlation ID validation, bounding, and sanitization
+
+- **Base:** commit `3df463cb1` on dedicated branch `codex/audit-server-bootstrap-and-host`.
+- **Primary scope:** `crates/libs/rustok-api/src/request.rs`, `crates/libs/rustok-api/src/lib.rs`.
+- **Invariant map:** Inbound correlation identifiers from `x-correlation-id` and `x-request-id` headers must be strictly validated and bounded before inclusion in `RequestContext`; correlation IDs propagate into structured tracing, audit logs, and downstream service calls; unbounded values or characters like CRLF/newlines create log injection and amplification hazards; invalid, oversized, or missing values must cleanly fall back to server-generated UUIDv4 strings.
+- **Confirmed finding REQUESTCTX-23.01-01:** `RequestContext::from_request_parts` accepted raw header values for `x-correlation-id` or `x-request-id` without length limits or character validation (`filter(|value| !value.is_empty())`). An untrusted caller could supply multi-kilobyte strings or control characters that flowed directly into request context and downstream logging pipelines.
+- **Remediation:**
+  1. Extracted and exported `extract_correlation_id(headers: &HeaderMap) -> String` and `is_valid_correlation_id(value: &str) -> bool`.
+  2. Enforced maximum length bound of 128 ASCII bytes and restricted allowed character set to alphanumeric and safe delimiter symbols (`-`, `_`, `.`, `:`, `+`).
+  3. Replaced inline extraction in `RequestContext::from_request_parts` with `extract_correlation_id(&parts.headers)`.
+  4. Added unit tests for correlation ID boundary validation, oversized rejection, whitespace/CRLF rejection, and fallback to fresh UUIDs on invalid inputs.
+- **Status:** `FS-23.01` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
+- **Next primary iteration:** continue audit of `crates/libs/rustok-api` (FS-23.02: context extractors, error boundaries, permissions, and port contracts).
+
+
 
 
 

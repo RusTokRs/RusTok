@@ -94,15 +94,7 @@ where
             ));
         }
 
-        let correlation_id = parts
-            .headers
-            .get("x-correlation-id")
-            .or_else(|| parts.headers.get("x-request-id"))
-            .and_then(|value| value.to_str().ok())
-            .map(|value| value.trim())
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let correlation_id = extract_correlation_id(&parts.headers);
 
         Ok(RequestContext {
             tenant_id,
@@ -115,6 +107,30 @@ where
             correlation_id,
         })
     }
+}
+
+/// Validate incoming correlation identifiers.
+/// Must be non-empty, bounded to 128 ASCII bytes, and contain only safe,
+/// visible header characters (alphanumeric, -, _, ., :, +).
+pub fn is_valid_correlation_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '+'))
+}
+
+/// Extract and sanitize correlation/request identifier from headers.
+/// Falls back to a fresh UUID if header is absent, malformed, or exceeds bounds.
+pub fn extract_correlation_id(headers: &HeaderMap) -> String {
+    headers
+        .get("x-correlation-id")
+        .or_else(|| headers.get("x-request-id"))
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| is_valid_correlation_id(value))
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| Uuid::new_v4().to_string())
 }
 
 pub fn resolve_request_locale(
@@ -493,5 +509,29 @@ mod tests {
         let (parts, _) = request.into_parts();
 
         assert_eq!(extract_requested_locale(&parts).as_deref(), Some("de-DE"));
+    }
+
+    #[test]
+    fn validates_and_bounds_correlation_id() {
+        assert!(is_valid_correlation_id("abc-123_XYZ.456"));
+        assert!(is_valid_correlation_id("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"));
+        assert!(!is_valid_correlation_id(""));
+        assert!(!is_valid_correlation_id(&"a".repeat(129)));
+        assert!(!is_valid_correlation_id("id with spaces"));
+        assert!(!is_valid_correlation_id("id\nwith\nnewlines"));
+        assert!(!is_valid_correlation_id("id\r\nCRLF"));
+    }
+
+    #[test]
+    fn extract_correlation_id_falls_back_on_oversized_or_malformed_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-correlation-id", "my-valid-id-123".parse().unwrap());
+        assert_eq!(extract_correlation_id(&headers), "my-valid-id-123");
+
+        let mut headers_malformed = HeaderMap::new();
+        headers_malformed.insert("x-correlation-id", "invalid id with spaces".parse().unwrap());
+        let extracted = extract_correlation_id(&headers_malformed);
+        assert_ne!(extracted, "invalid id with spaces");
+        assert!(Uuid::parse_str(&extracted).is_ok());
     }
 }
