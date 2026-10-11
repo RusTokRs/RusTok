@@ -1,8 +1,8 @@
 name: Arena debug (Fly build probe)
 
-# TEMPORARY debugging workflow for the arena/37f687be-rustok session: CI logs are not
-# downloadable from this environment, so the failing compiler output is posted as a pull
-# request comment, which is readable through the API. Delete before the PR is merged.
+# TEMPORARY debugging workflow for the arena/37f687be-rustok session: CI job logs are not
+# downloadable from this environment, so the failing compiler output is posted as a pull request
+# comment, which is readable through the API. Delete before the PR is merged.
 
 on:
   push:
@@ -17,41 +17,30 @@ jobs:
   fly:
     name: Probe fly
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
           toolchain: "1.96.0"
-      - name: cargo check -p fly --all-targets
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Probe fly
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
-          cargo check -p fly --all-targets > /tmp/probe.txt 2>&1
-          echo "### exit=$?" >> /tmp/probe.txt
-          tail -c 60000 /tmp/probe.txt > /tmp/tail.txt
-          { echo "probe: \`cargo check -p fly --all-targets\`"; echo '```'; cat /tmp/tail.txt; echo '```'; } > /tmp/comment.txt
-          gh pr comment 4602 --body-file /tmp/comment.txt
-
-  fly-no-default:
-    name: Probe fly without platform i18n
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
-        with:
-          toolchain: "1.96.0"
-      - name: cargo check -p fly --no-default-features --all-targets
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set +e
-          cargo check -p fly --no-default-features --all-targets > /tmp/probe.txt 2>&1
-          echo "### exit=$?" >> /tmp/probe.txt
-          tail -c 60000 /tmp/probe.txt > /tmp/tail.txt
-          { echo "probe: \`cargo check -p fly --no-default-features --all-targets\`"; echo '```'; cat /tmp/tail.txt; echo '```'; } > /tmp/comment.txt
+          : > /tmp/probe.txt
+          for cmd in \
+            "cargo check -p fly --all-targets" \
+            "cargo check -p fly --no-default-features --all-targets" \
+            "cargo test -p fly --all-targets --quiet"
+          do
+            echo "### $cmd" >> /tmp/probe.txt
+            $cmd >> /tmp/probe.txt 2>&1
+            echo "### exit=$?" >> /tmp/probe.txt
+          done
+          tail -c 40000 /tmp/probe.txt > /tmp/tail.txt
+          { echo "probe: fly ($(git rev-parse --short HEAD))"; echo '```'; cat /tmp/tail.txt; echo '```'; } > /tmp/comment.txt
           gh pr comment 4602 --body-file /tmp/comment.txt
 
   adapters:
@@ -63,17 +52,51 @@ jobs:
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
           toolchain: "1.96.0"
-      - name: cargo check adapters
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Probe adapters
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           : > /tmp/probe.txt
-          for cmd in "cargo check -p fly-leptos --all-targets" "cargo check -p fly-dioxus --all-targets" "cargo check -p fly-ui -p fly-web --all-targets"; do
+          for cmd in \
+            "cargo check -p fly-ui -p fly-web --all-targets" \
+            "cargo check -p fly-leptos -p fly-dioxus --all-targets" \
+            "cargo check -p fly-leptos -p fly-dioxus --all-targets --no-default-features"
+          do
             echo "### $cmd" >> /tmp/probe.txt
             $cmd >> /tmp/probe.txt 2>&1
             echo "### exit=$?" >> /tmp/probe.txt
           done
-          tail -c 60000 /tmp/probe.txt > /tmp/tail.txt
-          { echo "probe: adapter checks"; echo '```'; cat /tmp/tail.txt; echo '```'; } > /tmp/comment.txt
+          tail -c 40000 /tmp/probe.txt > /tmp/tail.txt
+          { echo "probe: adapters ($(git rev-parse --short HEAD))"; echo '```'; cat /tmp/tail.txt; echo '```'; } > /tmp/comment.txt
+          gh pr comment 4602 --body-file /tmp/comment.txt
+
+  host:
+    name: Probe host wiring
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Probe host wiring
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          : > /tmp/probe.txt
+          for cmd in \
+            "cargo check -p rustok-page-builder --all-targets" \
+            "cargo check -p rustok-page-builder-storefront --lib" \
+            "cargo test -p rustok-page-builder-admin --lib --quiet"
+          do
+            echo "### $cmd" >> /tmp/probe.txt
+            $cmd >> /tmp/probe.txt 2>&1
+            echo "### exit=$?" >> /tmp/probe.txt
+          done
+          tail -c 40000 /tmp/probe.txt > /tmp/tail.txt
+          { echo "probe: host wiring ($(git rev-parse --short HEAD))"; echo '```'; cat /tmp/tail.txt; echo '```'; } > /tmp/comment.txt
           gh pr comment 4602 --body-file /tmp/comment.txt
