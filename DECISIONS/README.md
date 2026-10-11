@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-10-11](./2026-10-11-notifications-outbox-intake-decoder-claims.md) | Notifications outbox intake selects by decoder claims instead of a module event list | Accepted | In progress | Extends [Queue runtime source of truth: outbox](./2026-03-11-queue-runtime-source-of-truth-outbox.md), [Forum topic owner audience read](./2026-10-09-forum-topic-owner-audience-read.md) |
 | [2026-10-09](./2026-10-09-site-symbols-shared-definitions.md) | Site symbols: shared component definitions with instance re-issue | Accepted | In progress | Extends [Multilingual content contract](./2026-03-28-multilingual-content-contract.md), [Page body working copies: draft revisions and body revision journal](./2026-10-09-page-body-draft-and-revision-history.md) |
 | [2026-10-09](./2026-10-09-scheduled-page-publishing.md) | Scheduled page publishing | Accepted | Implemented | Extends [Multilingual content contract](./2026-03-28-multilingual-content-contract.md), [Page body working copies: draft revisions and body revision journal](./2026-10-09-page-body-draft-and-revision-history.md) |
 | [2026-10-09](./2026-10-09-page-layouts-and-menu-page-links.md) | Page layouts and owner-resolved menu page links | Accepted | In progress | Extends [Site symbols](./2026-10-09-site-symbols-shared-definitions.md), [Multilingual content contract](./2026-03-28-multilingual-content-contract.md) |

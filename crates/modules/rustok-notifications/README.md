@@ -444,6 +444,13 @@ immutable relation and current topic/reply visibility. Moderator audience expans
 deferred until a bounded owner directory
 port exists.
 
+Outbox intake does not know this vocabulary: `pending_outbox_event_ids` builds its
+`event_type` pre-filter from `NotificationOutboxEnvelopeDecoder::accepted_event_types`,
+which the host decoder implements to match its own decode arms. A claim list an
+executor leaves empty selects every committed row and relies on decode-time
+filtering. See
+[`DECISIONS/2026-10-11-notifications-outbox-intake-decoder-claims.md`](../../../DECISIONS/2026-10-11-notifications-outbox-intake-decoder-claims.md).
+
 Notifications remains outside `settings.default_enabled`; producer commands
 continue to succeed when the module is absent or disabled.
 
@@ -452,6 +459,10 @@ continue to succeed when the module is absent or disabled.
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
 - bounded moderator-directory expansion;
+- reply notifications: `rustok-forum` publishes `forum.topic.replied` but its
+  provider supports only the two types above, so topic subscribers are not notified
+  about replies. Enabling it is provider-side work (recipient set, per-recipient
+  audience recheck, and a localized template), not an intake change;
 - tenant-wide scheduled reconciliation and payload redaction;
 - channel delivery enqueue with delivery-time authorization;
 - PostgreSQL cursor/lease contention evidence and worker health/lag metrics;

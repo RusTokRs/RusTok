@@ -87,6 +87,16 @@ impl NotificationOutboxEnvelopeDecoder for ServerNotificationOutboxEnvelopeDecod
             _ => Err(NotificationError::InvalidEvent),
         }
     }
+
+    fn accepted_event_types(&self) -> Vec<String> {
+        // One list for the decode arms above: the Notifications intake never names
+        // a module event type, and a new Forum notification type reaches intake as
+        // soon as the host decodes it.
+        vec![
+            FORUM_TOPIC_CREATED.to_string(),
+            FORUM_USER_MENTION_ADDED.to_string(),
+        ]
+    }
 }
 
 pub struct NotificationOutboxIntakeWorkerHandle {
