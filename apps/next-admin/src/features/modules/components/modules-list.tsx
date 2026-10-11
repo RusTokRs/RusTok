@@ -2,10 +2,12 @@
 
 import {
   IconBolt,
+  IconLayoutGrid,
   IconPackage,
   IconRefresh,
   IconShieldLock,
-  IconShoppingBag
+  IconShoppingBag,
+  IconTable
 } from '@tabler/icons-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from '@rustok/next-fluent';
@@ -32,12 +34,18 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/shared/ui/shadcn/select';
+import { Switch } from '@/shared/ui/shadcn/switch';
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger
 } from '@/shared/ui/shadcn/tabs';
+import {
+  DataTableEmptyState,
+  DataTableStatic
+} from '@/widgets/data-table/data-table-static';
+import type { DataTableStaticColumn } from '@/widgets/data-table/data-table-static';
 
 import {
   getActiveBuild,
@@ -254,6 +262,11 @@ export function ModulesList({
   );
   const [loading, setLoading] = useState<string | null>(null);
   const [platformLoading, setPlatformLoading] = useState<string | null>(null);
+  const [installedViewMode, setInstalledViewMode] = useState<'grid' | 'table'>('grid');
+  const [moduleSort, setModuleSort] = useState<{
+    columnId: string;
+    direction: 'asc' | 'desc';
+  } | null>({ columnId: 'module', direction: 'asc' });
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -760,6 +773,277 @@ export function ModulesList({
     }
   };
 
+  const handleModuleSort = (columnId: string) => {
+    setModuleSort((prev) => {
+      if (prev?.columnId === columnId) {
+        return prev.direction === 'asc'
+          ? { columnId, direction: 'desc' }
+          : null;
+      }
+      return { columnId, direction: 'asc' };
+    });
+  };
+
+  const allInstalledModules = useMemo(() => {
+    const list = [...coreModules, ...installedOptionalModules];
+    if (!moduleSort) return list;
+    return [...list].sort((a, b) => {
+      let cmp = 0;
+      if (moduleSort.columnId === 'module') {
+        cmp = a.name.localeCompare(b.name);
+      } else if (moduleSort.columnId === 'kind') {
+        cmp = a.kind.localeCompare(b.kind);
+      } else if (moduleSort.columnId === 'version') {
+        cmp = a.version.localeCompare(b.version);
+      }
+      return moduleSort.direction === 'asc' ? cmp : -cmp;
+    });
+  }, [coreModules, installedOptionalModules, moduleSort]);
+
+  const buildHistoryColumns: DataTableStaticColumn<BuildJob>[] = useMemo(
+    () => [
+      {
+        id: 'job',
+        header: 'Job / Target',
+        cell: (build) => (
+          <div className='space-y-1 py-1'>
+            <p className='text-sm font-medium'>
+              {build.modulesDelta || build.reason || build.id}
+            </p>
+            <p className='text-muted-foreground text-xs'>
+              {formatBuildSummary(build)}
+            </p>
+            {build.errorMessage && (
+              <p className='text-destructive text-xs'>
+                {build.errorMessage}
+              </p>
+            )}
+          </div>
+        )
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        cell: (build) => (
+          <Badge
+            variant={
+              build.status === 'completed'
+                ? 'secondary'
+                : build.status === 'failed'
+                  ? 'destructive'
+                  : 'outline'
+            }
+          >
+            {humanizeLabel(build.status)}
+          </Badge>
+        )
+      },
+      {
+        id: 'stage',
+        header: 'Stage & Progress',
+        cell: (build) => (
+          <div className='min-w-[120px] space-y-1 text-xs'>
+            <div className='flex items-center justify-between gap-2'>
+              <span className='text-muted-foreground'>{humanizeLabel(build.stage)}</span>
+              <span className='font-mono font-medium'>{build.progress}%</span>
+            </div>
+            <Progress value={build.progress} className='h-1.5 w-full' />
+          </div>
+        )
+      },
+      {
+        id: 'createdAt',
+        header: 'Created At',
+        cell: (build) => (
+          <p className='text-muted-foreground text-xs whitespace-nowrap'>
+            {formatTimestamp(build.createdAt)}
+          </p>
+        )
+      },
+      {
+        id: 'logs',
+        header: 'Logs',
+        cell: (build) =>
+          build.logsUrl ? (
+            <a
+              className='text-primary text-xs underline-offset-4 hover:underline whitespace-nowrap'
+              href={build.logsUrl}
+              target='_blank'
+              rel='noreferrer'
+            >
+              Open logs
+            </a>
+          ) : (
+            <span className='text-muted-foreground text-xs'>—</span>
+          )
+      }
+    ],
+    []
+  );
+
+  const installedModulesColumns: DataTableStaticColumn<ModuleInfo>[] = useMemo(
+    () => [
+      {
+        id: 'module',
+        header: 'Module',
+        sortable: true,
+        cell: (module) => (
+          <div className='space-y-0.5 py-1'>
+            <div className='flex items-center gap-2'>
+              <span className='text-sm font-medium'>{module.name}</span>
+              <code className='rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground'>
+                {module.moduleSlug}
+              </code>
+            </div>
+            <p className='text-xs text-muted-foreground line-clamp-1'>
+              {module.description}
+            </p>
+          </div>
+        )
+      },
+      {
+        id: 'kind',
+        header: 'Type',
+        sortable: true,
+        cell: (module) => (
+          <Badge
+            variant={module.kind === 'core' ? 'secondary' : 'outline'}
+            className='text-xs whitespace-nowrap'
+          >
+            {module.kind === 'core' ? t('badge.core') : 'Optional'}
+          </Badge>
+        )
+      },
+      {
+        id: 'version',
+        header: 'Version',
+        sortable: true,
+        cell: (module) => {
+          const installed = installedMap.get(module.moduleSlug);
+          const hasUpdate = Boolean(
+            installed?.version &&
+              module.version &&
+              installed.version !== module.version
+          );
+          return (
+            <div className='space-y-0.5 text-xs whitespace-nowrap'>
+              <span className='font-mono'>
+                v{installed?.version ?? module.version}
+              </span>
+              {hasUpdate && (
+                <div>
+                  <Badge
+                    variant='outline'
+                    className='text-[10px] text-amber-600 border-amber-300'
+                  >
+                    Update v{module.version}
+                  </Badge>
+                </div>
+              )}
+            </div>
+          );
+        }
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        cell: (module) => {
+          const isCore = module.kind === 'core';
+          const isInstalled = isCore || installedSet.has(module.moduleSlug);
+          const tenantEnabled = isCore || (isInstalled && module.enabled);
+          if (isCore) {
+            return (
+              <Badge variant='secondary' className='text-xs whitespace-nowrap'>
+                {t('always_active')}
+              </Badge>
+            );
+          }
+          return (
+            <div className='flex items-center gap-2'>
+              <Switch
+                checked={tenantEnabled}
+                disabled={
+                  loading === module.moduleSlug ||
+                  platformLoading === module.moduleSlug ||
+                  !isInstalled
+                }
+                onCheckedChange={(checked) =>
+                  handleToggle(module.moduleSlug, checked)
+                }
+              />
+              <span className='text-xs text-muted-foreground'>
+                {tenantEnabled ? t('enabled') : t('disabled')}
+              </span>
+            </div>
+          );
+        }
+      },
+      {
+        id: 'actions',
+        header: 'Actions',
+        cell: (module) => {
+          const isCore = module.kind === 'core';
+          return (
+            <div className='flex items-center justify-end gap-1.5 whitespace-nowrap'>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='h-8 px-2 text-xs'
+                onClick={() => handleInspect(module.moduleSlug)}
+              >
+                Details
+              </Button>
+              <Button
+                variant='outline'
+                size='sm'
+                className='h-8 px-2 text-xs'
+                onClick={() => {
+                  const existing = tenantSettingsMap.get(module.moduleSlug);
+                  setSettingsDialog({
+                    open: true,
+                    slug: module.moduleSlug,
+                    settings: existing?.settings ?? '{}',
+                    revision:
+                      existing?.revision ?? module.lifecycleRevision ?? 0
+                  });
+                }}
+              >
+                Settings
+              </Button>
+              {!isCore && (
+                <Button
+                  variant='outline'
+                  size='sm'
+                  className='h-8 px-2 text-xs text-destructive hover:text-destructive'
+                  disabled={
+                    Boolean(activeBuild) || platformLoading === module.moduleSlug
+                  }
+                  onClick={() => handleUninstall(module.moduleSlug)}
+                >
+                  {platformLoading === module.moduleSlug
+                    ? 'Queueing...'
+                    : 'Uninstall'}
+                </Button>
+              )}
+            </div>
+          );
+        }
+      }
+    ],
+    [
+      activeBuild,
+      handleInspect,
+      handleToggle,
+      handleUninstall,
+      installedMap,
+      installedSet,
+      loading,
+      platformLoading,
+      t,
+      tenantSettingsMap
+    ]
+  );
+
   return (
     <div className='space-y-8'>
       {loadErrors.length > 0 && (
@@ -1141,143 +1425,151 @@ export function ModulesList({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className='space-y-3'>
-                {buildHistory.length > 0 ? (
-                  buildHistory.map((build) => (
-                    <div
-                      key={build.id}
-                      className='flex items-center justify-between gap-3 rounded-lg border px-3 py-2'
-                    >
-                      <div className='space-y-1'>
-                        <p className='text-sm font-medium'>
-                          {build.modulesDelta || build.reason || build.id}
-                        </p>
-                        <p className='text-muted-foreground text-xs'>
-                          {formatBuildSummary(build)}
-                        </p>
-                        {build.errorMessage && (
-                          <p className='text-destructive text-xs'>
-                            {build.errorMessage}
-                          </p>
-                        )}
-                        <div className='flex flex-wrap items-center gap-2 text-xs'>
-                          {build.logsUrl && (
-                            <a
-                              className='text-primary underline-offset-4 hover:underline'
-                              href={build.logsUrl}
-                              target='_blank'
-                              rel='noreferrer'
-                            >
-                              Open logs
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                      <div className='space-y-2 text-right'>
-                        <Badge variant='outline'>
-                          {humanizeLabel(build.status)}
-                        </Badge>
-                        <p className='text-muted-foreground mt-1 text-xs'>
-                          {formatTimestamp(build.createdAt)}
-                        </p>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className='text-muted-foreground text-sm'>
-                    No builds yet.
-                  </p>
-                )}
-              </div>
+              <DataTableStatic
+                rows={buildHistory}
+                columns={buildHistoryColumns}
+                getRowKey={(build: BuildJob) => build.id}
+                density='compact'
+                emptyState={<DataTableEmptyState message='No builds yet.' />}
+              />
             </CardContent>
           </Card>
 
-          <div className='space-y-3'>
+          <div className='flex items-center justify-between gap-4'>
             <div className='flex items-center gap-2'>
-              <IconShieldLock className='text-muted-foreground h-5 w-5' />
-              <h3 className='text-lg font-semibold'>{t('section.core')}</h3>
-              <Badge variant='secondary' className='text-xs'>
-                {t('always_active')}
+              <h2 className='text-lg font-semibold'>Installed Modules</h2>
+              <Badge variant='outline' className='text-xs'>
+                {coreModules.length + installedOptionalModules.length} total
               </Badge>
             </div>
-            <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
-              {coreModules.map((module) => (
-                <ModuleCard
-                  key={module.moduleSlug}
-                  module={module}
-                  catalogModule={catalogMap.get(module.moduleSlug) ?? null}
-                  loading={loading === module.moduleSlug}
-                  platformLoading={platformLoading === module.moduleSlug}
-                  platformInstalled
-                  platformBusy={Boolean(activeBuild)}
-                  platformVersion={installedMap.get(module.moduleSlug)?.version}
-                  recommendedVersion={module.version}
-                  onInspect={handleInspect}
-                  onConfigureSettings={(slug) => {
-                    const existing = tenantSettingsMap.get(slug);
-                    setSettingsDialog({
-                      open: true,
-                      slug,
-                      settings: existing?.settings ?? '{}',
-                      revision:
-                        existing?.revision ?? module.lifecycleRevision ?? 0
-                    });
-                  }}
-                />
-              ))}
+            <div className='flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5'>
+              <Button
+                variant={installedViewMode === 'grid' ? 'secondary' : 'ghost'}
+                size='sm'
+                className='h-7 px-2.5 text-xs gap-1.5'
+                onClick={() => setInstalledViewMode('grid')}
+              >
+                <IconLayoutGrid className='h-3.5 w-3.5' />
+                <span>Grid</span>
+              </Button>
+              <Button
+                variant={installedViewMode === 'table' ? 'secondary' : 'ghost'}
+                size='sm'
+                className='h-7 px-2.5 text-xs gap-1.5'
+                onClick={() => setInstalledViewMode('table')}
+              >
+                <IconTable className='h-3.5 w-3.5' />
+                <span>Table</span>
+              </Button>
             </div>
           </div>
 
-          <div className='space-y-3'>
-            <div className='flex items-center gap-2'>
-              <IconPackage className='text-muted-foreground h-5 w-5' />
-              <h3 className='text-lg font-semibold'>{t('section.optional')}</h3>
-              <Badge variant='outline' className='text-xs'>
-                {installedOptionalModules.length} installed
-              </Badge>
-            </div>
-            {installedOptionalModules.length > 0 ? (
-              <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
-                {installedOptionalModules.map((module) => (
-                  <ModuleCard
-                    key={module.moduleSlug}
-                    module={module}
-                    catalogModule={catalogMap.get(module.moduleSlug) ?? null}
-                    loading={loading === module.moduleSlug}
-                    platformLoading={platformLoading === module.moduleSlug}
-                    platformInstalled
-                    platformBusy={Boolean(activeBuild)}
-                    platformVersion={
-                      installedMap.get(module.moduleSlug)?.version
-                    }
-                    recommendedVersion={module.version}
-                    onToggle={handleToggle}
-                    onInspect={handleInspect}
-                    onUninstall={handleUninstall}
-                    onConfigureSettings={(slug) => {
-                      const existing = tenantSettingsMap.get(slug);
-                      setSettingsDialog({
-                        open: true,
-                        slug,
-                        settings: existing?.settings ?? '{}',
-                        revision:
-                          existing?.revision ?? module.lifecycleRevision ?? 0
-                      });
-                    }}
-                  />
-                ))}
+          {installedViewMode === 'table' ? (
+            <Card>
+              <CardContent className='pt-6'>
+                <DataTableStatic
+                  rows={allInstalledModules}
+                  columns={installedModulesColumns}
+                  getRowKey={(module: ModuleInfo) => module.moduleSlug}
+                  density='compact'
+                  sort={moduleSort}
+                  onSort={handleModuleSort}
+                  emptyState={
+                    <DataTableEmptyState message='No modules installed.' />
+                  }
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <div className='space-y-3'>
+                <div className='flex items-center gap-2'>
+                  <IconShieldLock className='text-muted-foreground h-5 w-5' />
+                  <h3 className='text-lg font-semibold'>{t('section.core')}</h3>
+                  <Badge variant='secondary' className='text-xs'>
+                    {t('always_active')}
+                  </Badge>
+                </div>
+                <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
+                  {coreModules.map((module) => (
+                    <ModuleCard
+                      key={module.moduleSlug}
+                      module={module}
+                      catalogModule={catalogMap.get(module.moduleSlug) ?? null}
+                      loading={loading === module.moduleSlug}
+                      platformLoading={platformLoading === module.moduleSlug}
+                      platformInstalled
+                      platformBusy={Boolean(activeBuild)}
+                      platformVersion={installedMap.get(module.moduleSlug)?.version}
+                      recommendedVersion={module.version}
+                      onInspect={handleInspect}
+                      onConfigureSettings={(slug) => {
+                        const existing = tenantSettingsMap.get(slug);
+                        setSettingsDialog({
+                          open: true,
+                          slug,
+                          settings: existing?.settings ?? '{}',
+                          revision:
+                            existing?.revision ?? module.lifecycleRevision ?? 0
+                        });
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
-            ) : (
-              <Card>
-                <CardContent className='pt-6'>
-                  <p className='text-muted-foreground text-sm'>
-                    No optional modules are installed yet. Use the Marketplace
-                    tab to queue the first install.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+
+              <div className='space-y-3'>
+                <div className='flex items-center gap-2'>
+                  <IconPackage className='text-muted-foreground h-5 w-5' />
+                  <h3 className='text-lg font-semibold'>{t('section.optional')}</h3>
+                  <Badge variant='outline' className='text-xs'>
+                    {installedOptionalModules.length} installed
+                  </Badge>
+                </div>
+                {installedOptionalModules.length > 0 ? (
+                  <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
+                    {installedOptionalModules.map((module) => (
+                      <ModuleCard
+                        key={module.moduleSlug}
+                        module={module}
+                        catalogModule={catalogMap.get(module.moduleSlug) ?? null}
+                        loading={loading === module.moduleSlug}
+                        platformLoading={platformLoading === module.moduleSlug}
+                        platformInstalled
+                        platformBusy={Boolean(activeBuild)}
+                        platformVersion={
+                          installedMap.get(module.moduleSlug)?.version
+                        }
+                        recommendedVersion={module.version}
+                        onToggle={handleToggle}
+                        onInspect={handleInspect}
+                        onUninstall={handleUninstall}
+                        onConfigureSettings={(slug) => {
+                          const existing = tenantSettingsMap.get(slug);
+                          setSettingsDialog({
+                            open: true,
+                            slug,
+                            settings: existing?.settings ?? '{}',
+                            revision:
+                              existing?.revision ?? module.lifecycleRevision ?? 0
+                          });
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className='pt-6'>
+                      <p className='text-muted-foreground text-sm'>
+                        No optional modules are installed yet. Use the Marketplace
+                        tab to queue the first install.
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value='marketplace' className='space-y-6'>

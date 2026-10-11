@@ -18045,6 +18045,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -18777,6 +18778,7 @@ dependencies = [
  "rustok-workflow",
  "serde",
  "serde_json",
+ "tracing",
  "web-sys",
 ]
 

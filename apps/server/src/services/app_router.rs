@@ -2,7 +2,7 @@ use axum::Extension;
 use axum::Router as AxumRouter;
 use axum::middleware as axum_middleware;
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
+use axum::routing::{get, post};
 use leptos::prelude::provide_context;
 use leptos_axum::handle_server_fns_with_context;
 use rustok_api::{HostRuntimeContext, HostSettingsSnapshot};
@@ -36,7 +36,7 @@ pub(crate) mod routes_codegen {
 
 #[cfg(feature = "embed-admin-assets")]
 use axum::{
-    http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG},
+    http::header::{ALLOW, CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
     response::Response as AxumResponse,
 };
 #[cfg(feature = "embed-admin-assets")]
@@ -54,16 +54,42 @@ struct AdminAssets;
 #[cfg(feature = "embed-admin")]
 pub fn build_admin_router() -> AxumRouter {
     AxumRouter::new().fallback(move |request: axum::extract::Request| async move {
+        if request.method() != axum::http::Method::GET && request.method() != axum::http::Method::HEAD {
+            return (
+                axum::http::StatusCode::METHOD_NOT_ALLOWED,
+                [(ALLOW, "GET, HEAD")],
+                "Method Not Allowed",
+            )
+                .into_response();
+        }
+
+        let is_head = request.method() == axum::http::Method::HEAD;
+        let if_none_match = request
+            .headers()
+            .get(IF_NONE_MATCH)
+            .and_then(|val| val.to_str().ok())
+            .map(|s| s.to_string());
+
         let path = request.uri().path().trim_start_matches('/');
         let path = if path.is_empty() { "index.html" } else { path };
         let csp_nonce = request.extensions().get::<CspNonce>().cloned();
 
         match AdminAssets::get(path) {
-            Some(content) => admin_asset_response(path, content.data, csp_nonce.as_ref()),
+            Some(content) => admin_asset_response(
+                path,
+                content.data,
+                csp_nonce.as_ref(),
+                if_none_match.as_deref(),
+                is_head,
+            ),
             None => match AdminAssets::get("index.html") {
-                Some(content) => {
-                    admin_asset_response("index.html", content.data, csp_nonce.as_ref())
-                }
+                Some(content) => admin_asset_response(
+                    "index.html",
+                    content.data,
+                    csp_nonce.as_ref(),
+                    if_none_match.as_deref(),
+                    is_head,
+                ),
                 None => (axum::http::StatusCode::NOT_FOUND, "Admin UI not bundled").into_response(),
             },
         }
@@ -75,6 +101,8 @@ fn admin_asset_response(
     path: &str,
     bytes: std::borrow::Cow<'static, [u8]>,
     csp_nonce: Option<&CspNonce>,
+    if_none_match: Option<&str>,
+    is_head: bool,
 ) -> AxumResponse {
     let is_document = path.ends_with("index.html");
     let raw_bytes = bytes.into_owned();
@@ -99,28 +127,70 @@ fn admin_asset_response(
     };
 
     let mime = mime_guess::from_path(path).first_or_octet_stream();
-    let mut response = ([(CONTENT_TYPE, mime.as_ref())], response_bytes.clone()).into_response();
     let cache_control = if is_document {
         "no-cache"
     } else {
         "public, max-age=31536000, immutable"
     };
 
-    response.headers_mut().insert(
+    if !is_document {
+        let digest = hex::encode(Sha256::digest(response_bytes.as_slice()));
+        let etag = format!("\"{}\"", &digest[..16]);
+
+        if let Some(inm) = if_none_match {
+            let matches = inm.split(',').map(str::trim).any(|candidate| {
+                candidate == "*" || candidate.strip_prefix("W/").unwrap_or(candidate) == etag.as_str()
+            });
+            if matches {
+                let mut response = axum::http::StatusCode::NOT_MODIFIED.into_response();
+                let headers = response.headers_mut();
+                headers.insert(
+                    CONTENT_TYPE,
+                    mime.as_ref().parse().expect("cache content-type header"),
+                );
+                headers.insert(
+                    CACHE_CONTROL,
+                    cache_control.parse().expect("cache-control header"),
+                );
+                headers.insert(ETAG, etag.parse().expect("etag header"));
+                return response;
+            }
+        }
+
+        let body = if is_head {
+            axum::body::Body::empty()
+        } else {
+            axum::body::Body::from(response_bytes)
+        };
+        let mut response = body.into_response();
+        let headers = response.headers_mut();
+        headers.insert(
+            CONTENT_TYPE,
+            mime.as_ref().parse().expect("cache content-type header"),
+        );
+        headers.insert(
+            CACHE_CONTROL,
+            cache_control.parse().expect("cache-control header"),
+        );
+        headers.insert(ETAG, etag.parse().expect("etag header"));
+        return response;
+    }
+
+    let body = if is_head {
+        axum::body::Body::empty()
+    } else {
+        axum::body::Body::from(response_bytes)
+    };
+    let mut response = body.into_response();
+    let headers = response.headers_mut();
+    headers.insert(
+        CONTENT_TYPE,
+        mime.as_ref().parse().expect("document content-type header"),
+    );
+    headers.insert(
         CACHE_CONTROL,
         cache_control.parse().expect("cache-control header"),
     );
-    // The document body carries a per-response nonce, so a stable ETag would be incorrect. Static
-    // immutable assets retain their content-derived validators.
-    if !is_document {
-        let digest = hex::encode(Sha256::digest(response_bytes.as_slice()));
-        response.headers_mut().insert(
-            ETAG,
-            format!("\"{}\"", &digest[..16])
-                .parse()
-                .expect("etag header"),
-        );
-    }
     response
 }
 
@@ -169,6 +239,43 @@ pub fn mount_application_shell(
     storefront_router: Option<AxumRouter>,
 ) -> AxumRouter {
     let router = if let Some(admin_router) = admin_router {
+        let admin_for_root = admin_router.clone();
+        let router = router
+            .route(
+                "/admin",
+                get({
+                    let admin_router = admin_for_root.clone();
+                    move |request: axum::extract::Request| {
+                        let admin_router = admin_router.clone();
+                        async move { dispatch_embedded_admin_fallback(admin_router, request).await }
+                    }
+                })
+                .head({
+                    let admin_router = admin_for_root.clone();
+                    move |request: axum::extract::Request| {
+                        let admin_router = admin_router.clone();
+                        async move { dispatch_embedded_admin_fallback(admin_router, request).await }
+                    }
+                }),
+            )
+            .route(
+                "/admin/",
+                get({
+                    let admin_router = admin_for_root.clone();
+                    move |request: axum::extract::Request| {
+                        let admin_router = admin_router.clone();
+                        async move { dispatch_embedded_admin_fallback(admin_router, request).await }
+                    }
+                })
+                .head({
+                    let admin_router = admin_for_root;
+                    move |request: axum::extract::Request| {
+                        let admin_router = admin_router.clone();
+                        async move { dispatch_embedded_admin_fallback(admin_router, request).await }
+                    }
+                }),
+            );
+
         router.fallback(move |request: axum::extract::Request| {
             let admin_router = admin_router.clone();
             async move { dispatch_embedded_admin_fallback(admin_router, request).await }
@@ -644,6 +751,81 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(root_response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn mount_application_shell_prioritizes_admin_root_over_storefront_wildcard_locale() {
+        let admin_router = AxumRouter::new().fallback(|| async { "admin-root" });
+        let storefront_router = AxumRouter::new()
+            .route("/", get(|| async { "storefront-root" }))
+            .route(
+                "/{locale}",
+                get(|axum::extract::Path(loc): axum::extract::Path<String>| async move {
+                    format!("storefront-{loc}")
+                }),
+            );
+
+        let app = mount_application_shell(
+            AxumRouter::new(),
+            Some(admin_router),
+            Some(storefront_router),
+        );
+
+        let admin_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/admin")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(admin_response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(admin_response.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+            "admin-root"
+        );
+
+        let storefront_response = app
+            .oneshot(Request::builder().uri("/en").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(storefront_response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(storefront_response.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+            "storefront-en"
+        );
+    }
+
+    #[cfg(feature = "embed-admin-assets")]
+    #[test]
+    fn admin_asset_response_supports_if_none_match() {
+        use axum::http::header::ETAG;
+
+        let content = b"console.log('asset');";
+        let ok_res = admin_asset_response(
+            "pkg/app.js",
+            std::borrow::Cow::Borrowed(content),
+            None,
+            None,
+            false,
+        );
+        assert_eq!(ok_res.status(), StatusCode::OK);
+        let etag = ok_res.headers().get(ETAG).unwrap().to_str().unwrap();
+
+        let not_modified_res = admin_asset_response(
+            "pkg/app.js",
+            std::borrow::Cow::Borrowed(content),
+            None,
+            Some(etag),
+            false,
+        );
+        assert_eq!(not_modified_res.status(), StatusCode::NOT_MODIFIED);
     }
 
     #[cfg(feature = "embed-admin-assets")]

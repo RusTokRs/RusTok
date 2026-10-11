@@ -40,6 +40,28 @@ fn require_permission(
 }
 
 #[cfg(feature = "ssr")]
+fn map_seo_error(err: rustok_seo::SeoError) -> ServerFnError {
+    match err {
+        rustok_seo::SeoError::Validation(msg) => ServerFnError::new(msg),
+        rustok_seo::SeoError::Configuration(msg) => {
+            ServerFnError::new(format!("Configuration error: {msg}"))
+        }
+        rustok_seo::SeoError::NotFound => ServerFnError::new("SEO target not found"),
+        rustok_seo::SeoError::PermissionDenied => ServerFnError::new("Permission denied"),
+        rustok_seo::SeoError::Database(db_err) => {
+            tracing::error!(%db_err, "SEO database operation failed");
+            ServerFnError::new("Internal database error")
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_db_error(db_err: sea_orm::DbErr) -> ServerFnError {
+    tracing::error!(%db_err, "SEO database query failed");
+    ServerFnError::new("Internal database error")
+}
+
+#[cfg(feature = "ssr")]
 async fn persist_seo_settings(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -50,7 +72,7 @@ async fn persist_seo_settings(
         .filter(tenant_module::Column::ModuleSlug.eq(MODULE_SLUG))
         .one(db)
         .await
-        .map_err(|err| ServerFnError::new(err.to_string()))?
+        .map_err(map_db_error)?
     else {
         return Err(ServerFnError::new(
             "Module `seo` must be configured for this tenant before saving defaults",
@@ -71,11 +93,14 @@ async fn persist_seo_settings(
 
     let mut active: tenant_module::ActiveModel = model.into();
     active.settings =
-        Set(serde_json::to_value(&settings).map_err(|err| ServerFnError::new(err.to_string()))?);
+        Set(serde_json::to_value(&settings).map_err(|err| {
+            tracing::error!(%err, "Failed to serialize SEO settings");
+            ServerFnError::new("Failed to serialize SEO settings")
+        })?);
     active
         .update(db)
         .await
-        .map_err(|err| ServerFnError::new(err.to_string()))?;
+        .map_err(map_db_error)?;
 
     Ok(settings)
 }
@@ -101,6 +126,10 @@ pub(super) async fn seo_service_from_context() -> Result<
         .await
         .map_err(ServerFnError::new)?;
 
+    if auth.tenant_id != tenant.id {
+        return Err(ServerFnError::new("Permission denied: tenant mismatch"));
+    }
+
     Ok((
         {
             let event_bus = runtime_ctx
@@ -122,7 +151,7 @@ pub(super) async fn seo_service_from_context() -> Result<
                 event_bus,
                 &extensions,
             )
-            .map_err(|err| ServerFnError::new(err.to_string()))?
+            .map_err(map_seo_error)?
         },
         auth,
         tenant,
@@ -144,7 +173,7 @@ pub(super) async fn seo_redirects_native() -> Result<Vec<SeoRedirectRecord>, Ser
             .redirects()
             .list_redirects(tenant.id)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -171,7 +200,7 @@ pub(super) async fn seo_upsert_redirect_native(
             .redirects()
             .upsert_redirect(&tenant, input)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -200,7 +229,7 @@ pub(super) async fn seo_sitemap_status_native() -> Result<SeoSitemapStatusRecord
             .sitemaps()
             .sitemap_status(&tenant)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -226,7 +255,7 @@ pub(super) async fn seo_generate_sitemaps_native() -> Result<SeoSitemapStatusRec
             .sitemaps()
             .generate_sitemaps(&tenant)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -251,7 +280,7 @@ pub(super) async fn seo_settings_native() -> Result<SeoModuleSettings, ServerFnE
             .settings()
             .load_settings(tenant.id)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -285,7 +314,7 @@ pub(super) async fn seo_save_settings_native(
             .settings()
             .load_settings(tenant.id)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -311,7 +340,7 @@ pub(super) async fn seo_robots_preview_native() -> Result<SeoRobotsPreviewRecord
             .sitemaps()
             .robots_preview(&tenant)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -341,7 +370,7 @@ pub(super) async fn seo_diagnostics_native(
             .operations()
             .diagnostics_summary(&tenant, locale.as_deref())
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -369,7 +398,7 @@ pub(super) async fn seo_bulk_items_native(
             .bulk()
             .list_bulk_items(&tenant, input)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -421,7 +450,7 @@ pub(super) async fn seo_bulk_selection_preview_native(
             .bulk()
             .preview_bulk_selection_count(&tenant, input)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -454,7 +483,7 @@ pub(super) async fn seo_bulk_jobs_native(
                 status,
             )
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -478,13 +507,13 @@ pub(super) async fn seo_bulk_job_native(
             "seo:manage required",
         )?;
         let job_id =
-            Uuid::parse_str(job_id.as_str()).map_err(|err| ServerFnError::new(err.to_string()))?;
+            Uuid::parse_str(job_id.as_str()).map_err(|_| ServerFnError::new("Invalid bulk job ID"))?;
 
         service
             .bulk()
             .bulk_job(tenant.id, job_id)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -541,7 +570,7 @@ pub(super) async fn seo_queue_bulk_apply_native(
             .bulk()
             .queue_bulk_apply(&tenant, Some(auth.user_id), input)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -565,7 +594,7 @@ pub(super) async fn seo_queue_bulk_import_native(
             .bulk()
             .queue_bulk_import(&tenant, Some(auth.user_id), input)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -593,7 +622,7 @@ pub(super) async fn seo_queue_bulk_export_native(
             .bulk()
             .queue_bulk_export(&tenant, Some(auth.user_id), input)
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -621,7 +650,7 @@ pub(super) async fn seo_index_tracking_native(
             .operations()
             .index_delivery_status(tenant.id, target_type.as_deref())
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -654,7 +683,7 @@ pub(super) async fn seo_index_repair_replay_native(
                 input.replay_historical,
             )
             .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_seo_error)
     }
     #[cfg(not(feature = "ssr"))]
     {

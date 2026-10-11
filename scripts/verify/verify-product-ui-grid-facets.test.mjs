@@ -15,7 +15,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { writeWorkspacePackageResolver } from "./lib/workspace-package-resolver.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -34,7 +34,7 @@ function runInModuleScope(body) {
     harness,
     [
       `import * as grid from "@rustok/ui-grid";`,
-      `import * as product from ${JSON.stringify(productFacetsPath)};`,
+      `import * as product from ${JSON.stringify(pathToFileURL(productFacetsPath).href)};`,
       "const checks = {};",
       body,
       "process.stdout.write(JSON.stringify(checks));",
@@ -49,7 +49,7 @@ function runInModuleScope(body) {
   try {
     const result = spawnSync(
       process.execPath,
-      ["--experimental-strip-types", "--import", register, harness],
+      ["--experimental-strip-types", "--import", pathToFileURL(register).href, harness],
       { encoding: "utf8" },
     );
     assert.equal(result.status, 0, `module harness failed: ${result.stderr || result.stdout}`);
