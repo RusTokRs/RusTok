@@ -10,7 +10,9 @@ use rustok_installer::{
     InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
     load_base_distribution_receipt, redact_install_plan,
 };
-use rustok_installer_persistence::{InstallStepReceiptItem, InstallerPersistenceService};
+use rustok_installer_persistence::{
+    InstallHttpJobModel, InstallStepReceiptItem, InstallerPersistenceService,
+};
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
@@ -397,9 +399,7 @@ async fn job_status(
     Ok(Json(install_job_status_response(job)?))
 }
 
-fn install_job_status_response(
-    job: rustok_installer_persistence::entities::install_http_job::Model,
-) -> Result<InstallJobStatusResponse> {
+fn install_job_status_response(job: InstallHttpJobModel) -> Result<InstallJobStatusResponse> {
     let status = match job.status.as_str() {
         "running" => InstallJobState::Running,
         "succeeded" => InstallJobState::Succeeded,
@@ -549,43 +549,63 @@ mod tests {
         assert!(!installer_schema_missing(&other_error));
     }
 
-    #[test]
-    fn install_job_status_response_maps_model_states() {
-        let job_id = Uuid::new_v4();
+    fn sample_http_job_model(
+        status: &str,
+        finished_at: Option<DateTime<Utc>>,
+        session_id: Option<Uuid>,
+        tenant_id: Option<Uuid>,
+        output: Option<serde_json::Value>,
+        error_message: Option<String>,
+    ) -> InstallHttpJobModel {
         let now = Utc::now();
-        let model = rustok_installer_persistence::entities::install_http_job::Model {
-            id: job_id,
-            status: "succeeded".to_string(),
+        InstallHttpJobModel {
+            id: Uuid::new_v4(),
+            status: status.to_string(),
             submitted_at: now,
             started_at: now,
-            finished_at: Some(now),
-            session_id: Some(Uuid::new_v4()),
-            tenant_id: Some(Uuid::new_v4()),
-            output: None,
-            error_message: None,
-        };
+            finished_at,
+            session_id,
+            tenant_id,
+            output,
+            error_message,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn install_job_status_response_maps_model_states() {
+        let session_id = Some(Uuid::new_v4());
+        let tenant_id = Some(Uuid::new_v4());
+        let now = Utc::now();
+        let model = sample_http_job_model(
+            "succeeded",
+            Some(now),
+            session_id,
+            tenant_id,
+            None,
+            None,
+        );
+        let job_id = model.id;
 
         let response = install_job_status_response(model).expect("maps succeeded status");
         assert_eq!(response.job_id, job_id);
         assert!(matches!(response.status, InstallJobState::Succeeded));
+        assert_eq!(response.session_id, session_id);
+        assert_eq!(response.tenant_id, tenant_id);
         assert!(response.error.is_none());
     }
 
     #[test]
     fn install_job_status_response_maps_failed_model_with_error_message() {
-        let job_id = Uuid::new_v4();
-        let now = Utc::now();
-        let model = rustok_installer_persistence::entities::install_http_job::Model {
-            id: job_id,
-            status: "failed".to_string(),
-            submitted_at: now,
-            started_at: now,
-            finished_at: Some(now),
-            session_id: None,
-            tenant_id: None,
-            output: None,
-            error_message: Some("installer apply failed: invalid topology".to_string()),
-        };
+        let model = sample_http_job_model(
+            "failed",
+            Some(Utc::now()),
+            None,
+            None,
+            None,
+            Some("installer apply failed: invalid topology".to_string()),
+        );
+        let job_id = model.id;
 
         let response = install_job_status_response(model).expect("maps failed status");
         assert_eq!(response.job_id, job_id);
@@ -598,19 +618,21 @@ mod tests {
 
     #[test]
     fn install_job_status_response_rejects_unknown_status() {
-        let now = Utc::now();
-        let model = rustok_installer_persistence::entities::install_http_job::Model {
-            id: Uuid::new_v4(),
-            status: "corrupted_state".to_string(),
-            submitted_at: now,
-            started_at: now,
-            finished_at: None,
-            session_id: None,
-            tenant_id: None,
-            output: None,
-            error_message: None,
-        };
+        let model = sample_http_job_model("corrupted_state", None, None, None, None, None);
+        let result = install_job_status_response(model);
+        assert!(result.is_err());
+    }
 
+    #[test]
+    fn install_job_status_response_rejects_invalid_output_json() {
+        let model = sample_http_job_model(
+            "succeeded",
+            Some(Utc::now()),
+            None,
+            None,
+            Some(serde_json::json!({ "unexpected": "shape" })),
+            None,
+        );
         let result = install_job_status_response(model);
         assert!(result.is_err());
     }
