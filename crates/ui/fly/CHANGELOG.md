@@ -99,6 +99,17 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **Blurring an untouched inline-edit text no longer counts as an edit.** The real-DOM adapter
+  commits on `focusout`, and it emitted a request for whatever the element contained at that
+  moment — so entering a text and leaving it unchanged still produced a request the session
+  answered with `NoContentChange`, which the host surfaces as a validation error: a stray red
+  message and a round trip for every click-through. The adapter now keeps the text it last saw in
+  each editor and stays silent while it is unchanged (a rejected request is still retryable by
+  editing again, because the baseline only moves when a request is emitted). The same pass closes
+  the gap between what the DOM can contain and what the contract accepts: the value now goes
+  through `normalize_plain_text` before it is bound, so a pasted tab, carriage return or control
+  character is reported against the element that holds it instead of failing request validation in
+  the host.
 - **A form that submits nowhere now says so.** `ComponentForm` has three mutually exclusive
   submission shapes — a native `action_url`, a provider action a host resolves, or `method: dialog`
   for a host-driven dialog — and when none is present the browser falls back to the document URL,

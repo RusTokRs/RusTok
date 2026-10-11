@@ -10,7 +10,9 @@
 - Own the two origin rules: inbound acceptance compares `event.origin` against a normalized expected origin (`normalize_expected_origin`, which accepts `OPAQUE_ORIGIN`), while outbound delivery translates an opaque destination to `*` (`outbound_target_origin`), because the platform rejects `"null"` as a `postMessage` target.
 - Implement RAII browser event listener handles (`EventListenerHandle`, `CleanupRegistry`).
 - Implement keyboard shortcut translation and resize sessions (`BrowserResizeSession`).
-- Implement authenticated real-DOM inline edit grants and request validation.
+- Implement authenticated real-DOM inline edit grants and request validation, including the
+  client-side half of the commit contract: only a changed element emits a request, and the
+  value is normalized to the plain text the grant accepts before it is bound.
 
 ## Known Limitations / Pending Implementation
 

@@ -1,124 +1,56 @@
 name: Arena debug (Fly build probe)
-
 # TEMPORARY debugging workflow for the arena/37f687be-rustok session: CI job logs are not
 # downloadable from this environment, so the failing compiler output is posted as a pull request
 # comment, which is readable through the API. Delete before the PR is merged.
-
 on:
   push:
     branches:
       - arena/37f687be-rustok
-
 permissions:
   contents: read
   pull-requests: write
-
 jobs:
-  fly:
-    name: Probe fly
+  probe:
+    name: Probe
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
         with:
           toolchain: "1.96.0"
+          components: clippy,rustfmt
+      - run: rustup target add wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - name: Probe fly
+      - name: Probe
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
-          : > /tmp/probe.txt
-          for cmd in \
-            "cargo check -p fly --all-targets" \
-            "cargo check -p fly --no-default-features --all-targets" \
-            "cargo test -p fly --all-targets --quiet"
-          do
-            echo "### $cmd" >> /tmp/probe.txt
-            $cmd >> /tmp/probe.txt 2>&1
+          probe() {
+            label="$1"; shift
+            : > /tmp/probe.txt
+            echo "### $*" >> /tmp/probe.txt
+            "$@" >> /tmp/probe.txt 2>&1
             echo "### exit=$?" >> /tmp/probe.txt
-          done
-          tail -c 40000 /tmp/probe.txt > /tmp/tail.txt
-          { echo "probe: fly ($(git rev-parse --short HEAD))"; echo '```'; cat /tmp/tail.txt; echo '```'; } > /tmp/comment.txt
-          gh pr comment 4602 --body-file /tmp/comment.txt
-
-  adapters:
-    name: Probe adapters
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
-        with:
-          toolchain: "1.96.0"
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - name: Probe adapters
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set +e
-          : > /tmp/probe.txt
-          for cmd in \
-            "cargo check -p fly-ui -p fly-web --all-targets" \
-            "cargo check -p fly-leptos -p fly-dioxus --all-targets" \
-            "cargo check -p fly-leptos -p fly-dioxus --all-targets --no-default-features"
-          do
-            echo "### $cmd" >> /tmp/probe.txt
-            $cmd >> /tmp/probe.txt 2>&1
-            echo "### exit=$?" >> /tmp/probe.txt
-          done
-          tail -c 40000 /tmp/probe.txt > /tmp/tail.txt
-          { echo "probe: adapters ($(git rev-parse --short HEAD))"; echo '```'; cat /tmp/tail.txt; echo '```'; } > /tmp/comment.txt
-          gh pr comment 4602 --body-file /tmp/comment.txt
-
-  fmt:
-    name: Probe workspace formatting
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
-        with:
-          toolchain: "1.96.0"
-          components: rustfmt
-      - name: Probe workspace formatting
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set +e
-          cargo fmt --all -- --check > /tmp/fmt.txt 2>&1
-          echo "### exit=$?" >> /tmp/fmt.txt
-          grep -c "^Diff in" /tmp/fmt.txt >> /tmp/fmt.txt 2>/dev/null
-          head -c 50000 /tmp/fmt.txt > /tmp/tail.txt
-          { echo "probe: cargo fmt --all -- --check ($(git rev-parse --short HEAD))"; echo '```'; cat /tmp/tail.txt; echo '```'; } > /tmp/comment.txt
-          gh pr comment 4602 --body-file /tmp/comment.txt
-
-  host:
-    name: Probe host wiring
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
-        with:
-          toolchain: "1.96.0"
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - name: Probe host wiring
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set +e
-          : > /tmp/probe.txt
-          for cmd in \
-            "cargo check -p rustok-page-builder --all-targets" \
-            "cargo check -p rustok-page-builder-storefront --lib" \
-            "cargo test -p rustok-page-builder-admin --lib --quiet"
-          do
-            echo "### $cmd" >> /tmp/probe.txt
-            $cmd >> /tmp/probe.txt 2>&1
-            echo "### exit=$?" >> /tmp/probe.txt
-          done
-          tail -c 40000 /tmp/probe.txt > /tmp/tail.txt
-          { echo "probe: host wiring ($(git rev-parse --short HEAD))"; echo '```'; cat /tmp/tail.txt; echo '```'; } > /tmp/comment.txt
-          gh pr comment 4602 --body-file /tmp/comment.txt
+            tail -c 20000 /tmp/probe.txt > /tmp/tail.txt
+            {
+              echo "probe: $label ($(git rev-parse --short HEAD))"
+              echo '```'
+              cat /tmp/tail.txt
+              echo '```'
+            } > /tmp/comment.txt
+            gh pr comment 4602 --body-file /tmp/comment.txt
+          }
+          probe "clippy fly" cargo clippy -p fly -p fly-ui -p fly-web -p fly-leptos -p fly-dioxus --all-targets -- -D warnings
+          probe "clippy integrations" cargo clippy -p fly-browser -p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin -p rustok-pages-storefront --lib -- -D warnings
+          probe "clippy host" cargo clippy -p rustok-page-builder -p rustok-page-builder-storefront -p rustok-forms --all-targets -- -D warnings
+          probe "wasm fly-web" cargo check --target wasm32-unknown-unknown -p fly-web --features wasm-client
+          probe "wasm fly-leptos" cargo check --target wasm32-unknown-unknown -p fly-leptos --no-default-features --features wasm-client
+          probe "wasm fly-dioxus" cargo check --target wasm32-unknown-unknown -p fly-dioxus --features web
+          probe "fly-dioxus desktop" cargo check -p fly-dioxus --features desktop
+          probe "fly-leptos no-default" cargo check -p fly-leptos --no-default-features
+          probe "pages unit tests" cargo test -p rustok-pages --lib --quiet
+          probe "admin ssr endpoint" cargo check -p rustok-admin --bin rustok-admin --no-default-features --features ssr
+          probe "pages storefront" cargo check -p rustok-pages-storefront --lib
+          probe "workspace fmt" cargo fmt --all -- --check
