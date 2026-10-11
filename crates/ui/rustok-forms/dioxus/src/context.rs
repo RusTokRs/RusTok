@@ -153,39 +153,49 @@ mod tests {
 
     #[test]
     fn test_field_context_queries() {
-        let state = Signal::new(
-            FormState::idle()
-                .with_field_error("username", "Already taken")
-                .with_field_error("username", "Too short"),
-        );
-        let form_ctx = FormContext::new(state);
-        let field_ctx = FieldContext::new("username", "username", form_ctx);
+        let mut dom = VirtualDom::new(|| {
+            let state = Signal::new(
+                FormState::idle()
+                    .with_field_error("username", "Already taken")
+                    .with_field_error("username", "Too short"),
+            );
+            let form_ctx = FormContext::new(state);
+            let field_ctx = FieldContext::new("username", "username", form_ctx);
 
-        assert!(field_ctx.is_invalid());
-        assert_eq!(field_ctx.error_message(), Some("Already taken".to_string()));
-        assert_eq!(
-            field_ctx.all_error_messages(),
-            vec!["Already taken".to_string(), "Too short".to_string()]
-        );
-        assert!(!field_ctx.is_submitting());
+            assert!(field_ctx.is_invalid());
+            assert_eq!(field_ctx.error_message(), Some("Already taken".to_string()));
+            assert_eq!(
+                field_ctx.all_error_messages(),
+                vec!["Already taken".to_string(), "Too short".to_string()]
+            );
+            assert!(!field_ctx.is_submitting());
 
-        let clean_field_ctx = FieldContext::new("email", "email", form_ctx);
-        assert!(!clean_field_ctx.is_invalid());
-        assert_eq!(clean_field_ctx.error_message(), None);
-        assert!(clean_field_ctx.all_error_messages().is_empty());
+            let clean_field_ctx = FieldContext::new("email", "email", form_ctx);
+            assert!(!clean_field_ctx.is_invalid());
+            assert_eq!(clean_field_ctx.error_message(), None);
+            assert!(clean_field_ctx.all_error_messages().is_empty());
+
+            rsx! {}
+        });
+        dom.rebuild_in_place();
     }
 
     #[test]
     fn test_field_context_dirty_tracking() {
-        let state = Signal::new(FormState::idle());
-        let dirty = Signal::new(DirtyTracker::new());
-        let form_ctx = FormContext::new(state).with_dirty_tracker(dirty);
-        let field_ctx = FieldContext::new("bio", "bio", form_ctx);
+        let mut dom = VirtualDom::new(|| {
+            let state = Signal::new(FormState::idle());
+            let dirty = Signal::new(DirtyTracker::new());
+            let form_ctx = FormContext::new(state).with_dirty_tracker(dirty);
+            let field_ctx = FieldContext::new("bio", "bio", form_ctx);
 
-        assert!(!field_ctx.is_dirty());
-        field_ctx.mark_dirty();
-        assert!(field_ctx.is_dirty());
-        field_ctx.mark_clean();
-        assert!(!field_ctx.is_dirty());
+            assert!(!field_ctx.is_dirty());
+            field_ctx.mark_dirty();
+            assert!(field_ctx.is_dirty());
+            field_ctx.mark_clean();
+            assert!(!field_ctx.is_dirty());
+
+            rsx! {}
+        });
+        dom.rebuild_in_place();
     }
 }

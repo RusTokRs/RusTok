@@ -161,6 +161,20 @@ Rules:
 - Cross-crate dependencies and imports MUST comply with `scripts/architecture_rules.toml`. When a change touches crate/layer boundaries, run `python scripts/architecture_dependency_guard.py` or the current canonical replacement documented by the verification runbook.
 - New native modules and major native-module source refactors MUST follow the canonical physical layout in `docs/backend/module-backend-implementation.md`. `rustok-blog` is the initial strict reference; enrolled reference modules MUST pass `npm run verify:module-source-layout`. Do not treat historical per-module layout as an alternate convention.
 
+### Frontend and UI architecture (Fluid Frontend Architecture — FFA)
+
+All UI applications (`apps/*`), module-owned UI packages (`crates/modules/*/admin`, `crates/modules/*/storefront`), and UI libraries (`crates/ui/*`) follow Fluid Frontend Architecture (FFA, `docs/UI/module-package-architecture.md`):
+
+1. **Symmetric FFA boundary (Zero domain logic in UI adapters):**
+   - **`core/` is framework-agnostic:** It MUST contain zero imports of UI framework types (`leptos::*`, `dioxus::*`, etc.). All domain logic, input validation rules, command/DTO construction, computable view-models, status/badge resolution, and state transitions MUST live in `core/` and be verified with pure Rust unit tests (`#[test]`) without any UI runtime.
+   - **`ui/<framework>` is strictly a render/binding adapter:** An agent or contributor MUST NOT implement validation rules, state machines, request mutations, data calculations, or domain condition branches inside framework components, signals, or templates (`view!`, `rsx!`).
+   - **Verification invariant:** If a piece of logic can be tested with `assert_eq!` on pure Rust data without a UI runtime, it MUST live in `core/`, never in the UI adapter.
+2. **Transport boundary:**
+   - UI adapters MUST NOT call raw API endpoints or backend server functions directly. They MUST access backend capabilities strictly through the module-owned `transport/` facade.
+   - Dual-path transport (monolith server functions + headless GraphQL) MUST be preserved in accordance with `docs/UI/graphql-architecture.md`.
+3. **Shared UI libraries:**
+   - Reusable visual primitives live in canonical platform libraries (`crates/ui/*`: `rustok-ui`, `rustok-forms`, `rustok-grid`, `fly`). Module UI MUST reuse these primitives and design tokens rather than inventing ad-hoc styling, custom input controls, or local form engines.
+
 ### Reuse and abstraction
 
 Reuse is driven by shared semantics and ownership, not textual similarity.
@@ -503,6 +517,6 @@ All automated agents MUST follow the complete repository governance above and ad
 5. Do not modify another agent's branch.
 6. Do not bypass hooks, policy checks, or verification by editing generated outputs only.
 7. Do not invent package-local auth, tenant, channel, locale, i18n, event, storage, or observability contracts where a platform contract already exists.
-8. Keep module-owned UI and transport boundaries aligned with docs/modules/module-authoring.md and frontend-local rules.
+8. Keep module-owned UI and transport boundaries aligned with docs/modules/module-authoring.md, FFA rules in §5, and frontend-local rules. In particular, never leak domain logic, state machines, or validation into UI framework templates, components, and signals.
 9. Do not treat required parallel platform surfaces as legacy merely because more than one transport or host exists; distinguish intentional target surfaces from obsolete duplicate implementations.
 10. Communicate concrete blockers and unverified checks explicitly rather than hiding them with stubs, fallbacks, compatibility layers, or optimistic completion claims.

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors = ["RusToK Team"]
-description = "Dioxus 0.6 DataGrid adapter for RusToK"
+description = "Dioxus 0.7 DataGrid adapter for RusToK"
 repository = "https://github.com/RusTokRs/RusTok"
 documentation = "https://docs.rs/rustok-grid-dioxus"
 readme = "README.md"
@@ -19,5 +19,5 @@ rustdoc-args = ["--cfg", "docsrs"]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-dioxus = { version = "0.6", default-features = false }
+dioxus = { workspace = true }
 rustok-grid = { workspace = true }

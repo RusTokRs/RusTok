@@ -8,7 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-//! Dioxus 0.6 component adapter for RusToK UI.
+//! Dioxus 0.7 component adapter for RusToK UI.
 
 pub mod alert;
 pub mod avatar;

@@ -15674,6 +15674,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-forms-dioxus"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+ "rustok-forms",
+ "serde",
+]
+
+[[package]]
 name = "rustok-forms-leptos"
 version = "0.1.0"
 dependencies = [
@@ -15889,6 +15898,14 @@ name = "rustok-grid"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "rustok-grid-dioxus"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+ "rustok-grid",
 ]
 
 [[package]]

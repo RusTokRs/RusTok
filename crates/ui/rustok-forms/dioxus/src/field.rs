@@ -5,7 +5,6 @@
 //! error display and accessibility attributes.
 
 use dioxus::prelude::*;
-use rustok_forms::FormState;
 
 use crate::context::{FieldContext, FormContext};
 
@@ -107,9 +106,9 @@ pub fn FormLabel(
     children: Element,
 ) -> Element {
     let field = try_use_context::<FieldContext>();
-    let for_attr = html_for.or_else(|| field.map(|f| f.id.to_string()));
+    let for_attr = html_for.or_else(|| field.as_ref().map(|f| f.id.to_string()));
 
-    let is_invalid = field.map(|f| f.is_invalid()).unwrap_or(false);
+    let is_invalid = field.as_ref().map(|f| f.is_invalid()).unwrap_or(false);
     let base = "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70";
     let error_class = if is_invalid { " text-destructive" } else { "" };
     let custom_class = class.unwrap_or_default();
@@ -181,11 +180,11 @@ pub fn FormMessage(
     let field_ctx = try_use_context::<FieldContext>();
     let form_ctx = try_use_context::<FormContext>();
 
-    let msg_id = field_ctx.map(|f| format!("{}-message", f.id));
+    let msg_id = field_ctx.as_ref().map(|f| format!("{}-message", f.id));
 
     let errors_list: Vec<String> = if let Some(m) = message {
         vec![m]
-    } else if let Some(field) = field_ctx {
+    } else if let Some(ref field) = field_ctx {
         if show_all {
             field.all_error_messages()
         } else {
@@ -248,7 +247,7 @@ pub fn FormDescription(
 }
 
 /// Alias for [`FormDescription`].
-pub type FormHelperText = FormDescription;
+pub use FormDescription as FormHelperText;
 
 // ─── FormError ──────────────────────────────────────────────────────────────
 

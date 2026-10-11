@@ -89,6 +89,7 @@ pub fn Form(
             class: "{form_class}",
             novalidate: true,
             onsubmit: move |ev| {
+                ev.prevent_default();
                 ev.stop_propagation();
                 if state.read().is_submitting {
                     return;

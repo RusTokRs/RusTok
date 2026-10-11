@@ -41,6 +41,8 @@ export interface DataTableShellProps<TData extends RowData = any> {
   skeletonColumns?: number;
   /** Rows the skeleton draws. */
   skeletonRows?: number;
+  /** Replaces the standard count-based pagination, e.g. for lists paged by cursor. */
+  pagination?: React.ReactNode;
   /** Toolbar extras (bulk actions, "new" buttons) rendered inside the standard toolbar. */
   children?: React.ReactNode;
 }
@@ -54,6 +56,7 @@ export function DataTableShell<TData extends RowData = any>({
   isLoading,
   skeletonColumns,
   skeletonRows = 5,
+  pagination,
   children
 }: DataTableShellProps<TData>) {
   const [pageSize] = useQueryState(
@@ -83,7 +86,7 @@ export function DataTableShell<TData extends RowData = any>({
   }
 
   return (
-    <DataTable table={table}>
+    <DataTable table={table} pagination={pagination}>
       <DataTableToolbar table={table}>{children}</DataTableToolbar>
     </DataTable>
   );

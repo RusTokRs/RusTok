@@ -202,7 +202,7 @@ tokio.workspace = true
 tonic = { workspace = true, features = ["tls-ring"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 axum.workspace = true
-tower.workspace = true
+tower = { workspace = true, features = ["limit"] }
 leptos.workspace = true
 leptos_axum.workspace = true
 axum-extra = { version = "0.12", features = ["typed-header"] }

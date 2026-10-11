@@ -90,8 +90,8 @@ impl AthanorRagAdapter {
     }
 
     async fn load_snapshot(&self) -> RagResult<athanor_core::CanonicalSnapshot> {
-        let root = canonical_root(&self.config.root)?;
-        let config = load_project_config(&root)?;
+        let root = canonical_root(&self.config.root).await?;
+        let config = load_project_config(&root).await?;
         let store = self
             .composition
             .init_store(&root, &config)
@@ -126,8 +126,8 @@ impl RagIngestionPort for AthanorRagAdapter {
             ));
         }
 
-        let root = canonical_root(&self.config.root)?;
-        let config = load_project_config(&root)?;
+        let root = canonical_root(&self.config.root).await?;
+        let config = load_project_config(&root).await?;
         let store = self
             .composition
             .init_store(&root, &config)
@@ -175,7 +175,7 @@ impl RagRetrievalPort for AthanorRagAdapter {
             ));
         }
 
-        let root = canonical_root(&self.config.root)?;
+        let root = canonical_root(&self.config.root).await?;
         let report = search_project_with_composition(
             SearchOptions {
                 root,
@@ -401,15 +401,19 @@ fn source_ref(external_id: &str, revision: &str, locator: Option<String>) -> Rag
     }
 }
 
-fn canonical_root(root: &Path) -> RagResult<PathBuf> {
-    root.canonicalize().map_err(provider_error)
+async fn canonical_root(root: &Path) -> RagResult<PathBuf> {
+    tokio::fs::canonicalize(root)
+        .await
+        .map_err(provider_error)
 }
 
-fn load_project_config(root: &Path) -> RagResult<ProjectConfig> {
+async fn load_project_config(root: &Path) -> RagResult<ProjectConfig> {
     let path = root.join(".athanor/config.toml");
-    if path.exists() {
-        toml::from_str(&std::fs::read_to_string(path).map_err(provider_error)?)
-            .map_err(provider_error)
+    if tokio::fs::try_exists(&path).await.unwrap_or(false) {
+        let raw = tokio::fs::read_to_string(&path)
+            .await
+            .map_err(provider_error)?;
+        toml::from_str(&raw).map_err(provider_error)
     } else {
         Ok(ProjectConfig::default())
     }

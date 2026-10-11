@@ -1,4 +1,4 @@
-//! `rustok-forms-dioxus` — Dioxus 0.6 adapter for the framework-agnostic `rustok-forms` library.
+//! `rustok-forms-dioxus` — Dioxus 0.7 adapter for the framework-agnostic `rustok-forms` library.
 //!
 //! Provides structural form layout components, accessible input controls,
 //! lifecycle-aware submit buttons, and reactive context coordination.
@@ -6,7 +6,7 @@
 //! # Overview
 //!
 //! `rustok-forms-dioxus` bridges the framework-agnostic form primitives of
-//! [`rustok-forms`](https://docs.rs/rustok-forms) with Dioxus 0.6 reactive RSX views:
+//! [`rustok-forms`](https://docs.rs/rustok-forms) with Dioxus 0.7 reactive RSX views:
 //!
 //! - **Context Coordination**: [`Form`] provides [`FormContext`], [`FormField`] provides [`FieldContext`].
 //! - **Automatic Accessibility**: Propagates `aria-invalid`, `aria-describedby`, and `aria-errormessage` IDs automatically.

@@ -2481,8 +2481,16 @@ async fn first_party_catalog_modules(
             tracing::error!("Failed to load platform composition for registry catalog");
             Error::InternalServerError
         })?;
-    let modules = ManifestManager::catalog_modules(&manifest).map_err(|_| {
-        tracing::error!("Failed to build marketplace catalog");
+    let modules = tokio::task::spawn_blocking(move || {
+        ManifestManager::catalog_modules(&manifest)
+    })
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, "Marketplace catalog worker join error");
+        Error::InternalServerError
+    })?
+    .map_err(|error| {
+        tracing::error!(%error, "Failed to build marketplace catalog");
         Error::InternalServerError
     })?;
 

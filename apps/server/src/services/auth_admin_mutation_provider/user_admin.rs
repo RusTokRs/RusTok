@@ -20,7 +20,7 @@ use sea_orm::{
 use std::{str::FromStr, sync::Arc};
 use uuid::Uuid;
 
-use crate::auth::hash_password;
+use crate::auth::hash_password_async;
 use crate::models::{sessions, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
@@ -479,7 +479,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         }
         if let Some(password) = command.password {
             active.password_hash =
-                Set(hash_password(&password).map_err(super::internal_admin_error)?);
+                Set(hash_password_async(password).await.map_err(super::internal_admin_error)?);
         }
         if let Some(metadata) = prepared.metadata {
             active.metadata = Set(metadata);

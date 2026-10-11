@@ -13,4 +13,4 @@ web = ["dep:dioxus"]
 desktop = ["dep:dioxus"]
 
 [dependencies]
-dioxus = { version = "0.6", optional = true, default-features = false }
+dioxus = { version = "0.7", optional = true, default-features = false }

@@ -6,6 +6,7 @@ use axum::http::{HeaderName, Method, StatusCode, header};
 use axum::middleware::{Next, from_fn};
 use axum::response::{IntoResponse, Response};
 use tower::ServiceBuilder;
+use tower::limit::ConcurrencyLimitLayer;
 use tower_http::compression::CompressionLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer;
@@ -15,9 +16,18 @@ use super::cors::build_cors_layer;
 
 pub const DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS: u64 = 30;
 pub const DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS: u64 = 300;
+pub const DEFAULT_HTTP_CONCURRENCY_LIMIT: usize = 512;
 
 static HTTP_REQUEST_TIMEOUT_SECS: AtomicU64 = AtomicU64::new(DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS);
 static HTTP_UPLOAD_TIMEOUT_SECS: AtomicU64 = AtomicU64::new(DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS);
+
+pub fn resolve_http_concurrency_limit() -> usize {
+    std::env::var("RUSTOK_HTTP_CONCURRENCY_LIMIT")
+        .ok()
+        .and_then(|val| val.parse::<usize>().ok())
+        .filter(|&limit| limit > 0)
+        .unwrap_or(DEFAULT_HTTP_CONCURRENCY_LIMIT)
+}
 
 /// Configures global lock-free timeout thresholds for HTTP request budgets.
 pub fn init_http_timeouts(request_secs: u64, upload_secs: u64) {
@@ -383,6 +393,7 @@ pub fn apply_http_edge_stack(
     ]);
     let compression_layer = CompressionLayer::new();
 
+    let concurrency_limit = resolve_http_concurrency_limit();
     let service_stack = ServiceBuilder::new()
         .layer(SetRequestIdLayer::new(
             x_request_id.clone(),
@@ -394,6 +405,7 @@ pub fn apply_http_edge_stack(
         .layer(from_fn(record_http_metrics))
         .layer(cors_layer)
         .layer(from_fn(adaptive_timeout))
+        .layer(ConcurrencyLimitLayer::new(concurrency_limit))
         .layer(compression_layer);
 
     router.layer(service_stack)

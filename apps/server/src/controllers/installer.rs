@@ -168,6 +168,19 @@ async fn preflight(
     }))
 }
 
+#[derive(Clone, Debug)]
+struct ActiveInstallerJobHandle(#[allow(dead_code)] Uuid);
+
+struct InstallerJobRuntimeGuard {
+    ctx: ServerRuntimeContext,
+}
+
+impl Drop for InstallerJobRuntimeGuard {
+    fn drop(&mut self) {
+        self.ctx.shared_take::<ActiveInstallerJobHandle>();
+    }
+}
+
 async fn apply(
     headers: HeaderMap,
     State(ctx): State<ServerRuntimeContext>,
@@ -175,8 +188,35 @@ async fn apply(
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
     require_setup_token(&headers)?;
     ensure_setup_not_completed(&ctx).await?;
+
+    if ctx.shared_contains::<ActiveInstallerJobHandle>() {
+        return Err(http_error(HttpError::new(
+            StatusCode::CONFLICT,
+            "installer_running",
+            "An installation job is already running",
+        )));
+    }
+
+    let persistence = InstallerPersistenceService::new(ctx.db_clone());
+    if persistence.has_running_http_job().await.unwrap_or(false) {
+        return Err(http_error(HttpError::new(
+            StatusCode::CONFLICT,
+            "installer_running",
+            "An installation job is already running",
+        )));
+    }
+
     let plan = bind_host_install_plan(&ctx, request.plan).await?;
     let job_id = rustok_core::generate_id();
+
+    if !ctx.shared_insert_if_absent(ActiveInstallerJobHandle(job_id)) {
+        return Err(http_error(HttpError::new(
+            StatusCode::CONFLICT,
+            "installer_running",
+            "An installation job is already running",
+        )));
+    }
+
     let submitted_at = Utc::now();
     let apply_options = InstallApplyOptions {
         lock_owner: request
@@ -192,21 +232,21 @@ async fn apply(
     let registry = ctx
         .shared_get::<rustok_core::ModuleRegistry>()
         .ok_or_else(|| {
+            ctx.shared_take::<ActiveInstallerJobHandle>();
             Error::Message(
                 "static module registry is unavailable before installer execution".to_string(),
             )
         })?;
     let executor = ServerInstallExecutor::new(registry);
-    let persistence = InstallerPersistenceService::new(ctx.db_clone());
-    persistence
-        .create_http_job(job_id, submitted_at)
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, %job_id, "Failed to create durable installer HTTP job");
-            internal_error("failed to create installer job")
-        })?;
+    if let Err(error) = persistence.create_http_job(job_id, submitted_at).await {
+        ctx.shared_take::<ActiveInstallerJobHandle>();
+        tracing::error!(%error, %job_id, "Failed to create durable installer HTTP job");
+        return Err(internal_error("failed to create installer job"));
+    }
 
+    let job_ctx = ctx.clone();
     tokio::spawn(async move {
+        let _guard = InstallerJobRuntimeGuard { ctx: job_ctx };
         let result = executor.apply(plan, apply_options).await;
         match result {
             Ok(output) => {

@@ -11,8 +11,8 @@ use sea_orm::{
 };
 
 use crate::auth::{
-    AuthConfig, encode_access_token, generate_refresh_token, hash_password, hash_refresh_token,
-    verify_password,
+    AuthConfig, encode_access_token, generate_refresh_token, hash_password_async,
+    hash_refresh_token, verify_password_async,
 };
 use crate::models::{sessions, users};
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -179,7 +179,9 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::EmailAlreadyExists);
         }
 
-        let password_hash = hash_password(password).map_err(AuthLifecycleError::from)?;
+        let password_hash = hash_password_async(password.to_string())
+            .await
+            .map_err(AuthLifecycleError::from)?;
 
         let mut user = users::ActiveModel::new(tenant_id, email, &password_hash);
         user.name = Set(name);
@@ -361,7 +363,10 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
 
-        if !verify_password(password, &user.password_hash).map_err(AuthLifecycleError::from)? {
+        if !verify_password_async(password.to_string(), user.password_hash.clone())
+            .await
+            .map_err(AuthLifecycleError::from)?
+        {
             return Err(AuthLifecycleError::InvalidCredentials);
         }
 
@@ -693,13 +698,19 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
 
-        if !verify_password(current_password, &initial_user.password_hash)
-            .map_err(AuthLifecycleError::from)?
+        if !verify_password_async(
+            current_password.to_string(),
+            initial_user.password_hash.clone(),
+        )
+        .await
+        .map_err(AuthLifecycleError::from)?
         {
             return Err(AuthLifecycleError::InvalidCredentials);
         }
 
-        let new_password_hash = hash_password(new_password).map_err(AuthLifecycleError::from)?;
+        let new_password_hash = hash_password_async(new_password.to_string())
+            .await
+            .map_err(AuthLifecycleError::from)?;
 
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
         let user = Self::find_user_for_password_change_in_tx(&txn, tenant_id, user_id)
@@ -879,8 +890,10 @@ impl AuthLifecycleService {
     ) -> std::result::Result<(), AuthLifecycleError> {
         let user_id = user.id;
         let mut user_active: users::ActiveModel = user.into();
-        user_active.password_hash =
-            Set(hash_password(new_password).map_err(AuthLifecycleError::from)?);
+        let new_hash = hash_password_async(new_password.to_string())
+            .await
+            .map_err(AuthLifecycleError::from)?;
+        user_active.password_hash = Set(new_hash);
         user_active
             .update(db)
             .await

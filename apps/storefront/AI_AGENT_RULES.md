@@ -90,11 +90,13 @@ Always keep both transport contracts:
 
 Do not make `#[server]` the only path for module-owned UI packages that expose public/headless-capable surfaces.
 
-### 4. Do Not Write Leptos Code in `core.rs`
+### 4. FFA Symmetry: Zero Framework in `core.rs`, Zero Domain Logic in `ui/leptos`
 
-`core.rs` and `core/` must have zero `leptos::*` imports. CI enforces this.
+The three-layer FFA contract ([AGENTS.md §5](../../AGENTS.md)) is strictly bidirectional:
 
-Never put `#[component]`, `view!`, signals, or effects in `core`.
+- **`core.rs` / `core/`**: MUST have zero `leptos::*` imports. CI enforces this. Never put `#[component]`, `view!`, signals, or effects in `core`.
+- **`ui/leptos.rs` / `ui/leptos/`**: MUST NOT contain domain or business logic. Input validation rules, command construction, price/discount math, status evaluation, and state machines MUST live in `core` and be covered by standalone `#[test]` unit tests. The Leptos adapter ONLY binds the ready `ViewModel` to DOM/design tokens and wires DOM events to callbacks.
+- **Rule of thumb**: If a rule or calculation can be tested with `assert_eq!` without a UI runtime, it belongs in `core/`, never in `ui/leptos`.
 
 ### 5. Do Not Put Module UI in Host
 
