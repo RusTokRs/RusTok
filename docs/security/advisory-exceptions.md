@@ -47,26 +47,21 @@ waiver must also fail the gate.
 | Evidence required | `cargo audit` and `cargo deny check` output, inverse dependency tree via `cargo tree -i lru` |
 | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0253.html> |
 
+## Closed Exceptions
+
 ### RUSTSEC-2026-0257 — `webbrowser` Unix `BROWSER` handling argument injection
 
 | Field | Value |
 |---|---|
-| Severity | Medium |
-| Risk | On Unix targets, handling of the `BROWSER` environment variable allows browser argument injection if `BROWSER` contains unvalidated user-controlled inputs |
-| Patched version | `webbrowser >= 1.2.2`; the transitive dependency is constrained to `webbrowser 0.8.15` by upstream `dioxus-devtools 0.6.2` |
-| Repository policy location | `deny.toml`, `.cargo/audit.toml` |
-| Accountable owner | Platform security / dependency maintainers |
-| Dependency path | Transitive dependency via `fly-dioxus` -> `dioxus` -> `dioxus-devtools 0.6.2` -> `webbrowser 0.8.15` |
-| Reachability | Unreachable in production; `webbrowser` is only invoked by Dioxus devtools during local desktop development. RusToK server runtimes and production web deployments do not invoke `webbrowser` or expose the `BROWSER` environment variable |
-| Compensating controls | RusToK backend services run headlessly without browser invocation; Dioxus devtools are isolated to local developer desktop environments with standard process execution boundaries |
-| Remediation | Upgrade `dioxus` and `dioxus-devtools` when upstream adopts `webbrowser >= 1.2.2` |
-| Approved | 2026-10-01, transitive dependency exception |
-| Expires | 2026-11-01 |
-| Evidence required | `cargo audit` and `cargo deny check` output, inverse dependency tree via `cargo tree` |
+| Original risk | On Unix targets, handling of the `BROWSER` environment variable allowed browser argument injection if `BROWSER` contained unvalidated user-controlled inputs |
+| Patched version | `webbrowser >= 1.2.2` |
+| Resolved version | `webbrowser 1.2.4` in the current `Cargo.lock`, reached through `dioxus-devtools 0.7.10` |
+| Opened | 2026-10-01 |
+| Closed | 2026-10-11 |
+| Closure reason | `dioxus` and `dioxus-devtools` were upgraded to `0.7.10`, which resolves `webbrowser 1.2.4`; the resolved package is above the patched threshold |
+| Policy cleanup | Removed from `deny.toml` and `.cargo/audit.toml` |
+| Verification | Run `node scripts/verify/verify-advisory-exceptions.mjs` and `cargo audit` |
 | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0257.html> |
-
-
-## Closed Exceptions
 
 ### RUSTSEC-2026-0235 — `rkyv` insufficient archive validation
 
