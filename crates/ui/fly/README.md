@@ -202,6 +202,12 @@ the owner of the missing half.
   provider form whose provider does not exist publishes exactly like one whose provider does. The
   gate starts rejecting only once a host supplies the catalog — that catalog is the missing half.
   Draft editing and GrapesJS round-tripping stay permissive by design.
+- **Custom actions have no runtime in this repository either.** `emit_event` and `provider_action`
+  materialize to a `<button>` carrying `data-fly-action-kind` and a JSON payload in
+  `data-fly-action`, and no crate here listens for them: on a published page such a button is
+  inert, and in the authoring canvas it is ignored by the editor's own click protocol. Those two
+  attributes are the contract a host implements (the `data-fly-*` prefix is reserved for it); Fly
+  ships the materialization, not a handler.
 - **`RICH_TEXT_PAYLOAD_FORMAT` and `RichTextPayload` are declared and unused.** They are the
   intended shape for a host rich-text editor to carry an opaque payload through a Fly field; the
   platform's rich-text path (`rustok_api::RichTextDocument`) does not go through them, and no

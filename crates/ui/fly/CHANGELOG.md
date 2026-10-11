@@ -229,3 +229,6 @@ Engineering audit remediation — see
   `InteractionCapabilityPolicy` is `Allow` for actions and forms, and no crate in this repository
   registers a capability or calls the capability-aware gate. See the *Known Limitations* section of
   `README.md`.
+- Custom actions (`emit_event`, `provider_action`) have no runtime here either: materialization
+  produces `data-fly-action-kind` plus a JSON `data-fly-action` payload, and no crate listens for
+  them, so the button is inert until a host implements the contract. Same section of `README.md`.
