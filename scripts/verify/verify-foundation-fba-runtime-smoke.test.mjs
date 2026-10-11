@@ -43,7 +43,7 @@ const tenantPolicyDrift = fixture();
 const tenantPorts = path.join(tenantPolicyDrift, 'crates/modules/rustok-tenant/src/ports.rs');
 fs.writeFileSync(
   tenantPorts,
-  fs.readFileSync(tenantPorts, 'utf8').replace('context.require_policy(PortCallPolicy::read())?;', '/* removed */')
+  fs.readFileSync(tenantPorts, 'utf8').replaceAll('context.require_policy(PortCallPolicy::read())?;', '/* removed */')
 );
 expectFailure(tenantPolicyDrift, /tenant source marker missing/);
 
