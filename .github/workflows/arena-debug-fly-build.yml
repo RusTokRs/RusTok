@@ -55,7 +55,8 @@ jobs:
             gh pr comment 4602 --body-file /tmp/comment.txt
           }
           probe "step19 clippy (exact)" cargo clippy -p fly-browser -p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin -p rustok-pages-storefront --lib -- -D warnings
-          probe "check page-builder-admin" cargo check -p rustok-page-builder-admin --lib
-          probe "check grid family" cargo check -p rustok-grid -p rustok-grid-leptos -p rustok-ui-core --all-targets
-          probe "clippy grid family" cargo clippy -p rustok-grid -p rustok-grid-leptos -p rustok-ui-core --all-targets -- -D warnings
-          probe "check product family" cargo check -p rustok-product-admin -p rustok-product-storefront --all-targets
+          probe "grid clippy default" cargo clippy -p rustok-grid -p rustok-grid-leptos -p rustok-ui-core --all-targets -- -D warnings
+          probe "grid clippy all-features" cargo clippy -p rustok-grid -p rustok-grid-leptos -p rustok-ui-core --all-targets --all-features -- -D warnings
+          probe "product clippy default" cargo clippy -p rustok-product-admin -p rustok-product-storefront --all-targets -- -D warnings
+          probe "product clippy all-features" cargo clippy -p rustok-product-admin -p rustok-product-storefront --all-targets --all-features -- -D warnings
+          probe "fmt changed files" node scripts/audit/rustfmt_check.mjs crates/ui/rustok-grid/src/pagination.rs crates/modules/rustok-product/storefront/src/core.rs

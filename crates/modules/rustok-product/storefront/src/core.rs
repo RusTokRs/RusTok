@@ -1,5 +1,8 @@
 use rustok_api::locale_tags_match;
-use rustok_ui_core::{apply_ui_query_pairs, normalize_optional_ui_text};
+use rustok_ui_core::apply_ui_query_pairs;
+// `resolve_requested_locale` is the only user, and it is an SSR-only entry point.
+#[cfg(feature = "ssr")]
+use rustok_ui_core::normalize_optional_ui_text;
 
 use rustok_grid::facet_panel::{FacetPanel, count_label as grid_count_label};
 use rustok_grid::{FacetDomain, FacetValue, GridFacet};
