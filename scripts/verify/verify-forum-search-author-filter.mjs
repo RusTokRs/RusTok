@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { containsMarker, markeredIndexes } from "./lib/forum-source-verification.mjs";
 
 const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
@@ -47,16 +48,24 @@ function parseJson(relativePath) {
   }
 }
 
+/**
+ * A guard pins what the code does, not how rustfmt happened to break the line, so markers are compared
+ * on a layout-normalized copy of the source and of the marker (`spaced`). `markeredIndexes` gives the
+ * ordering rules below the same tolerance.
+ */
 function requireAll(source, markers, label) {
   for (const marker of markers) {
-    if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
+    if (!containsMarker(source, marker)) failures.push(`${label}: missing ${marker}`);
   }
 }
 
 function rejectAll(source, markers, label) {
   for (const marker of markers) {
-    if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+    if (containsMarker(source, marker)) failures.push(`${label}: forbidden ${marker}`);
   }
+}
+function firstMarkerIndex(source, marker) {
+  return markeredIndexes(source, marker)[0] ?? -1;
 }
 
 const forumPlan = read(paths.forumPlan);
@@ -79,8 +88,10 @@ const engine = read(paths.engine);
 requireAll(
   projection,
   [
-    '"author": author::public_author_payload',
-    '"author_id": author::public_author_id',
+    "public_author_payload(author.as_ref())",
+    '"author": author_payload',
+    "public_author_id(author.as_ref())",
+    '"author_id": author_id',
   ],
   paths.projection,
 );
@@ -121,26 +132,23 @@ requireAll(
     "pub author_ids: Vec<String>",
     "document_filters: ForumStorefrontDocumentFilters",
     'normalize_uuid_values("author_ids", request.author_ids)',
-    "all_items.retain(|item| document_filters.matches(item));",
+    "all_items.retain(|item| {\n        request.document_filters.matches(item) && request.current_channel_filter.matches(item)\n    });",
     "let candidates = all_items",
     "let total = visible_items.len() as u64;",
-    ".skip(query.offset)",
-    ".take(query.limit)",
+    ".skip(request.query.offset)",
+    ".take(request.query.limit)",
     "if document_filters.is_empty()",
     "SearchDictionaryService::apply_storefront_query_rules",
   ],
   paths.execution,
 );
-if (
-  execution.indexOf("all_items.retain(|item| document_filters.matches(item));") >
-  execution.indexOf("let candidates = all_items")
-) {
+const rawTotalIndex = firstMarkerIndex(execution, "let raw_total =");
+const authorRetainIndex = firstMarkerIndex(execution, "all_items.retain(|item| {");
+const candidatesIndex = firstMarkerIndex(execution, "let candidates = all_items");
+if (authorRetainIndex > candidatesIndex) {
   failures.push(`${paths.execution}: author filter must precede owner candidates`);
 }
-if (
-  execution.indexOf("let raw_total =") >
-  execution.indexOf("all_items.retain(|item| document_filters.matches(item));")
-) {
+if (rawTotalIndex > authorRetainIndex) {
   failures.push(`${paths.execution}: raw candidate bound must precede author narrowing`);
 }
 

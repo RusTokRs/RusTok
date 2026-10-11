@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -30,6 +30,13 @@ import { TimelineScroller } from './timeline-scroller';
 import { Composer } from './composer';
 import { QuoteTooltip } from './quote-tooltip';
 import { ComposerProvider, useComposer } from '../context/composer-context';
+import { TopicStatusLabel } from './topic-status-label';
+import {
+  focusForumReplyPost,
+  isForumReplyId,
+  MAX_ANCHOR_REPLY_PAGES,
+} from './reply-anchor';
+import { useTranslations } from '@rustok/next-fluent';
 
 interface TopicDetailViewProps {
   tenantId?: string | null;
@@ -39,6 +46,10 @@ interface TopicDetailViewProps {
   initialTopic?: ForumTopicDetail | null;
   initialReplies?: ForumReplyDetail[];
   initialRepliesTotal?: number;
+  /** Cursor after `initialReplies`, so a reply deep link continues paging without refetching. */
+  initialRepliesCursor?: string | null;
+  /** Reply id addressed by `?reply=` on a search-result or notification link. */
+  focusReplyId?: string | null;
 }
 
 function TopicDetailContent({
@@ -49,7 +60,10 @@ function TopicDetailContent({
   initialTopic,
   initialReplies = [],
   initialRepliesTotal = 0,
+  initialRepliesCursor = null,
+  focusReplyId = null,
 }: TopicDetailViewProps) {
+  const forum = useTranslations('Forum');
   const { openReply } = useComposer();
 
   const [currentPost, setCurrentPost] = useState(1);
@@ -60,6 +74,11 @@ function TopicDetailContent({
   const [memberCards, setMemberCards] = useState<ForumMemberCard[]>([]);
   const [isMarkingRead, setIsMarkingRead] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  // A failed read is reported instead of being rendered as "topic not found".
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // True when `?reply=` addressed a post that stayed outside the loaded pages.
+  const [anchorMissing, setAnchorMissing] = useState(false);
+  const anchorAppliedRef = useRef(false);
 
   // Load Categories & Topic Data if not provided initially
   const loadData = useCallback(async () => {
@@ -85,12 +104,43 @@ function TopicDetailContent({
               topicId,
               locale,
             })
-          : Promise.resolve({ items: initialReplies, nextCursor: null }),
+          : Promise.resolve({ items: initialReplies, nextCursor: initialRepliesCursor }),
       ]);
 
       setCategories(catsData.items);
       if (topicData) setTopic(topicData);
-      setReplies(repliesData.items);
+
+      const anchorId = isForumReplyId(focusReplyId) ? focusReplyId : null;
+      let items = repliesData.items;
+      if (anchorId) {
+        // The thread is cursor-paged, so the linked post can sit past the page this view has:
+        // walk the same owner read forward until it is rendered, bounded so one view cannot loop.
+        let cursor = repliesData.nextCursor;
+        let pages = 1;
+        while (
+          cursor &&
+          pages < MAX_ANCHOR_REPLY_PAGES &&
+          !items.some((reply) => reply.id === anchorId)
+        ) {
+          const next = await fetchStorefrontReplies({
+            tenantId: tenantId ?? undefined,
+            tenantSlug: tenantSlug ?? undefined,
+            topicId,
+            locale,
+            after: cursor,
+          });
+          items = items.concat(next.items);
+          cursor = next.nextCursor;
+          pages += 1;
+        }
+        const anchoredIndex = items.findIndex((reply) => reply.id === anchorId);
+        setAnchorMissing(anchoredIndex < 0);
+        if (anchoredIndex >= 0) {
+          // The timeline marker follows the anchor so the reported post number stays truthful.
+          setCurrentPost(anchoredIndex + 2);
+        }
+      }
+      setReplies(items);
       // Reply count comes from the topic counter; the reply list is cursor-paged and uncounted.
       setRepliesTotal(topicData?.replyCount ?? initialRepliesTotal);
 
@@ -110,10 +160,35 @@ function TopicDetailContent({
         });
         setMemberCards(cards);
       }
+      setLoadError(null);
     } catch {
-      // Ignore load error
+      setLoadError(forum('errorLoad'));
     }
-  }, [tenantId, tenantSlug, locale, topicId, initialTopic, initialReplies, initialRepliesTotal]);
+  }, [
+    tenantId,
+    tenantSlug,
+    locale,
+    topicId,
+    initialTopic,
+    initialReplies,
+    initialRepliesTotal,
+    initialRepliesCursor,
+    focusReplyId,
+    forum,
+  ]);
+
+  // Scroll to the linked post once, after it exists in the document.
+  useEffect(() => {
+    if (anchorAppliedRef.current || !isForumReplyId(focusReplyId)) {
+      return undefined;
+    }
+    const clearHighlight = focusForumReplyPost(focusReplyId);
+    if (!clearHighlight) {
+      return undefined;
+    }
+    anchorAppliedRef.current = true;
+    return clearHighlight;
+  }, [focusReplyId, replies]);
 
   useEffect(() => {
     loadData();
@@ -130,7 +205,7 @@ function TopicDetailContent({
         locale,
       });
     } catch {
-      // Ignore
+      setLoadError(forum('errorMarkRead'));
     } finally {
       setIsMarkingRead(false);
     }
@@ -205,19 +280,35 @@ function TopicDetailContent({
 
   const category = categories.find((c) => c.id === topic?.categoryId);
 
+  if (!topic && loadError) {
+    return (
+      <div className="rounded-[1.75rem] border border-dashed border-destructive/40 p-12 text-center">
+        <h3 className="text-xl font-semibold text-card-foreground">{forum('errorLoad')}</h3>
+        <p className="mt-2 text-sm text-muted-foreground">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => void loadData()}
+          className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground shadow-xs transition hover:bg-muted"
+        >
+          {forum('retry')}
+        </button>
+      </div>
+    );
+  }
+
   if (!topic) {
     return (
       <div className="rounded-[1.75rem] border border-dashed border-border p-12 text-center">
-        <h3 className="text-xl font-semibold text-card-foreground">Topic not found</h3>
+        <h3 className="text-xl font-semibold text-card-foreground">{forum('topicNotFound')}</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          This discussion thread does not exist or may have been deleted.
+          {forum('topicNotFoundHint')}
         </p>
         <Link
           href={`/${locale}/modules/forum`}
           className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground shadow-xs transition hover:bg-muted"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Discussions
+          {forum('backToDiscussions')}
         </Link>
       </div>
     );
@@ -226,6 +317,18 @@ function TopicDetailContent({
   return (
     <MemberCardProvider cards={memberCards}>
       <div className="space-y-6">
+        {loadError && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">
+            <span>{loadError}</span>
+            <button
+              type="button"
+              onClick={() => void loadData()}
+              className="rounded-xl border border-destructive/30 px-3 py-1 font-semibold transition hover:bg-destructive/15"
+            >
+              {forum('retry')}
+            </button>
+          </div>
+        )}
         {/* Discourse/NodeBB Breadcrumbs & Header Navigation */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-4">
           <nav className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -234,7 +337,7 @@ function TopicDetailContent({
               className="inline-flex items-center gap-1.5 font-medium transition hover:text-foreground"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              Forum
+              {forum('forumIndex')}
             </Link>
             <span>/</span>
             {category ? (
@@ -245,7 +348,7 @@ function TopicDetailContent({
                 {category.name}
               </Link>
             ) : (
-              <span>Discussions</span>
+              <span>{forum('discussions')}</span>
             )}
             <span>/</span>
             <span className="max-w-xs truncate font-semibold text-foreground sm:max-w-md">
@@ -268,7 +371,7 @@ function TopicDetailContent({
               className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
             >
               <MessageSquare className="h-3.5 w-3.5" />
-              Reply
+              {forum('reply')}
             </button>
           </div>
         </div>
@@ -280,7 +383,7 @@ function TopicDetailContent({
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                  {topic.status}
+                  <TopicStatusLabel status={topic.status} />
                 </span>
                 <span
                   dir="ltr"
@@ -290,12 +393,12 @@ function TopicDetailContent({
                 </span>
                 {topic.isPinned && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                    <Pin className="h-3 w-3" /> Pinned
+                    <Pin className="h-3 w-3" /> {forum('pinned')}
                   </span>
                 )}
                 {topic.isLocked && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2.5 py-0.5 text-[11px] font-medium text-destructive">
-                    <Lock className="h-3 w-3" /> Locked
+                    <Lock className="h-3 w-3" /> {forum('locked')}
                   </span>
                 )}
               </div>
@@ -308,13 +411,13 @@ function TopicDetailContent({
                 <div className="flex items-center gap-3">
                   <AuthorBadge authorId={topic.authorId} />
                   <span className="text-xs text-muted-foreground">
-                    Posted on {new Date(topic.createdAt).toLocaleDateString()}
+                    {forum('postedOn', { date: new Date(topic.createdAt).toLocaleDateString() })}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span>
-                    <strong className="text-foreground">{repliesTotal}</strong> replies
+                    <strong className="text-foreground">{repliesTotal}</strong> {forum('repliesCount')}
                   </span>
                 </div>
               </div>
@@ -351,6 +454,11 @@ function TopicDetailContent({
             </article>
 
             {/* Replies List */}
+            {anchorMissing && (
+              <p className="rounded-xl border border-dashed border-border px-4 py-2 text-center text-[11px] text-muted-foreground">
+                {forum('linkedPostUnavailable')}
+              </p>
+            )}
             {replies.length > 0 && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -368,7 +476,7 @@ function TopicDetailContent({
                     data-target-id={reply.id}
                     data-author-handle={getAuthorHandle(reply.authorId)}
                     data-revision-id="1"
-                    className="rounded-[1.75rem] border border-border bg-card p-6 shadow-sm"
+                    className="rounded-[1.75rem] border border-border bg-card p-6 shadow-sm data-[focused=true]:border-primary/60 data-[focused=true]:ring-2 data-[focused=true]:ring-primary/40"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
                       <div className="flex items-center gap-3">
@@ -393,7 +501,7 @@ function TopicDetailContent({
                         className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
                       >
                         <ReplyIcon className="h-3 w-3" />
-                        Reply
+                        {forum('reply')}
                       </button>
                     </div>
                   </article>
@@ -403,9 +511,9 @@ function TopicDetailContent({
 
             {/* Quick Reply Trigger Bar */}
             <div className="rounded-[1.75rem] border border-dashed border-border bg-muted/20 p-6 text-center">
-              <h4 className="text-base font-semibold text-foreground">Join the conversation</h4>
+              <h4 className="text-base font-semibold text-foreground">{forum('joinTheConversation')}</h4>
               <p className="mt-1 text-xs text-muted-foreground">
-                Highlight text above to quote directly, or click reply below.
+                {forum('joinTheConversationHint')}
               </p>
               <button
                 type="button"
@@ -413,7 +521,7 @@ function TopicDetailContent({
                 className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
               >
                 <MessageSquare className="h-4 w-4" />
-                Reply to this topic
+                {forum('replyToTopic')}
               </button>
             </div>
           </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   fetchStorefrontCategories,
   fetchStorefrontTopics,
@@ -22,6 +22,8 @@ import { ThreadPanel } from './thread-panel';
 import { Composer } from './composer';
 import { QuoteTooltip } from './quote-tooltip';
 import { CategoryOverview } from './category-overview';
+import { isForumReplyId, MAX_ANCHOR_REPLY_PAGES } from './reply-anchor';
+import { useTranslations } from '@rustok/next-fluent';
 
 interface ForumSectionProps {
   tenantId?: string | null;
@@ -29,6 +31,8 @@ interface ForumSectionProps {
   locale: string;
   initialCategoryId?: string | null;
   initialTopicId?: string | null;
+  /** Reply id from `?reply=` on a notification or mention deep link. */
+  initialReplyId?: string | null;
   initialView?: 'topics' | 'categories';
 }
 
@@ -38,8 +42,10 @@ export function ForumSection({
   locale,
   initialCategoryId = null,
   initialTopicId = null,
+  initialReplyId = null,
   initialView = 'topics',
 }: ForumSectionProps) {
+  const forum = useTranslations('Forum');
   const [activeView, setActiveView] = useState<'topics' | 'categories'>(initialView);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(initialCategoryId);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(initialTopicId);
@@ -56,6 +62,19 @@ export function ForumSection({
   const [memberCards, setMemberCards] = useState<ForumMemberCard[]>([]);
   const [isMarkingRead, setIsMarkingRead] = useState(false);
   const [loading, setLoading] = useState(true);
+  // A failed read is reported instead of being rendered as an empty forum.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // One-shot deep-link anchor: `?reply=<uuid>` addresses one post inside the opened topic.
+  const [replyAnchor, setReplyAnchor] = useState<{
+    topicId: string;
+    replyId: string;
+    visible: boolean;
+  } | null>(null);
+  const pendingAnchorRef = useRef<{ topicId: string; replyId: string } | null>(
+    initialTopicId && isForumReplyId(initialReplyId)
+      ? { topicId: initialTopicId, replyId: initialReplyId }
+      : null
+  );
 
   // Load Categories
   const loadCategories = useCallback(async () => {
@@ -67,10 +86,11 @@ export function ForumSection({
       });
       setCategories(data.items);
       setCategoriesTotal(data.total);
+      setLoadError(null);
     } catch {
-      // Ignore load error
+      setLoadError(forum('errorLoad'));
     }
-  }, [tenantId, tenantSlug, locale]);
+  }, [tenantId, tenantSlug, locale, forum]);
 
   // Topics are paged by cursor and never counted; the feed count comes from the owner-provided
   // topicCount of the selected category (all categories when none is selected).
@@ -80,6 +100,7 @@ export function ForumSection({
 
   // Load Topics
   const loadTopics = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await fetchStorefrontTopics({
         tenantId: tenantId ?? undefined,
@@ -109,10 +130,13 @@ export function ForumSection({
           return Array.from(map.values());
         });
       }
+      setLoadError(null);
     } catch {
-      // Ignore
+      setLoadError(forum('errorLoad'));
+    } finally {
+      setLoading(false);
     }
-  }, [tenantId, tenantSlug, selectedCategoryId, locale]);
+  }, [tenantId, tenantSlug, selectedCategoryId, locale, forum]);
 
   // Load Selected Topic & Replies
   const loadTopicDetails = useCallback(async (topicId: string) => {
@@ -134,6 +158,38 @@ export function ForumSection({
 
       setSelectedTopic(topicData);
       setReplies(repliesData.items);
+
+      const pending = pendingAnchorRef.current;
+      if (pending && pending.topicId === topicId) {
+        pendingAnchorRef.current = null;
+        // The thread is cursor-paged, so the linked post can sit past the first page: walk the
+        // same owner read forward until it is rendered, bounded by MAX_ANCHOR_REPLY_PAGES.
+        let items = repliesData.items;
+        let cursor = repliesData.nextCursor;
+        let pages = 1;
+        while (
+          cursor &&
+          pages < MAX_ANCHOR_REPLY_PAGES &&
+          !items.some((reply) => reply.id === pending.replyId)
+        ) {
+          const next = await fetchStorefrontReplies({
+            tenantId: tenantId ?? undefined,
+            tenantSlug: tenantSlug ?? undefined,
+            topicId,
+            locale,
+            after: cursor,
+          });
+          items = items.concat(next.items);
+          cursor = next.nextCursor;
+          pages += 1;
+        }
+        setReplies(items);
+        setReplyAnchor({
+          topicId,
+          replyId: pending.replyId,
+          visible: items.some((reply) => reply.id === pending.replyId),
+        });
+      }
       // Reply count comes from the topic counter; the reply list is cursor-paged and uncounted.
       setRepliesTotal(topicData?.replyCount ?? 0);
 
@@ -157,10 +213,11 @@ export function ForumSection({
           return Array.from(map.values());
         });
       }
+      setLoadError(null);
     } catch {
-      // Ignore
+      setLoadError(forum('errorLoad'));
     }
-  }, [tenantId, tenantSlug, locale]);
+  }, [tenantId, tenantSlug, locale, forum]);
 
   useEffect(() => {
     loadCategories();
@@ -192,11 +249,19 @@ export function ForumSection({
       });
       loadTopics();
     } catch {
-      // Ignore
+      setLoadError(forum('errorMarkRead'));
     } finally {
       setIsMarkingRead(false);
     }
   }, [tenantId, tenantSlug, locale, loadTopics]);
+
+  const retryLoad = useCallback(() => {
+    void loadCategories();
+    void loadTopics();
+    if (selectedTopicId) {
+      void loadTopicDetails(selectedTopicId);
+    }
+  }, [loadCategories, loadTopics, loadTopicDetails, selectedTopicId]);
 
   // On Topic or Reply Submitted
   const handleSubmitted = useCallback((targetTopicId: string) => {
@@ -214,13 +279,13 @@ export function ForumSection({
             <div className="max-w-3xl space-y-3">
               <span className="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
                 <span className="h-2 w-2 rounded-full bg-amber-500" />
-                Forum
+                {forum('forumIndex')}
               </span>
               <h2 className="text-3xl font-semibold text-card-foreground">
-                Community threads from the module package
+                {forum('sectionSubtitle')}
               </h2>
               <p className="text-sm leading-6 text-muted-foreground">
-                A NodeBB-inspired storefront surface that reads categories, topic feed, and thread replies through the forum module&apos;s public GraphQL contract.
+                {forum('sectionDescription')}
               </p>
             </div>
 
@@ -236,7 +301,7 @@ export function ForumSection({
                 }`}
               >
                 <span>💬</span>
-                <span>Discussions</span>
+                <span>{forum('discussions')}</span>
               </button>
               <button
                 type="button"
@@ -248,10 +313,24 @@ export function ForumSection({
                 }`}
               >
                 <span>📁</span>
-                <span>Categories</span>
+                <span>{forum('categories')}</span>
               </button>
             </div>
           </div>
+
+          {/* Load failures stay visible instead of masquerading as an empty forum */}
+          {loadError && (
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">
+              <span>{loadError}</span>
+              <button
+                type="button"
+                onClick={retryLoad}
+                className="rounded-xl border border-destructive/30 px-3 py-1 font-semibold transition hover:bg-destructive/15"
+              >
+                {forum('retry')}
+              </button>
+            </div>
+          )}
 
           {/* Body: Categories Overview vs 3-Column Feed */}
           {activeView === 'categories' ? (
@@ -280,10 +359,14 @@ export function ForumSection({
               />
 
               <TopicFeed
+                isLoading={loading}
                 topics={topics}
                 total={topicsTotal}
                 selectedTopicId={selectedTopicId}
-                onSelectTopic={(tId) => setSelectedTopicId(tId)}
+                onSelectTopic={(tId) => {
+                  setSelectedTopicId(tId);
+                  setReplyAnchor(null);
+                }}
                 selectedCategoryId={selectedCategoryId}
                 locale={locale}
               />
@@ -294,6 +377,17 @@ export function ForumSection({
                 repliesTotal={repliesTotal}
                 onMarkRead={handleMarkTopicRead}
                 isMarkingRead={isMarkingRead}
+                focusReplyId={
+                  replyAnchor && replyAnchor.topicId === selectedTopicId && replyAnchor.visible
+                    ? replyAnchor.replyId
+                    : null
+                }
+                focusReplyMissing={
+                  replyAnchor !== null &&
+                  !replyAnchor.visible &&
+                  replyAnchor.topicId === selectedTopicId
+                }
+                onFocusHandled={() => setReplyAnchor(null)}
               />
             </div>
           )}

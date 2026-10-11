@@ -19,12 +19,58 @@ function read(relativePath) {
   return readFileSync(absolute, "utf8");
 }
 
+// A rule about code is not a rule about formatting: rustfmt wraps `impl Trait for Type`, long call
+// chains and multi-line `if` expressions, so markers are compared on a layout-normalized copy.
+// Normalizing removes whitespace only, never a token, so it cannot hide an absence.
+function spaced(text) {
+  return text
+    .replace(/\r?\n\s*\.\s*/g, ".")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function requireText(source, marker, message) {
-  if (!source.includes(marker)) failures.push(message);
+  if (!spaced(source).includes(spaced(marker))) failures.push(message);
 }
 
 function rejectText(source, marker, message) {
-  if (source.includes(marker)) failures.push(message);
+  if (spaced(source).includes(spaced(marker))) failures.push(message);
+}
+
+/**
+ * `services/mod.rs` composes an owner module from several `include!` files, and the moderation
+ * decisions live in the siblings (`reply_owner_inline.rs`, `topic_inline.rs`) rather than in the file
+ * the contract names. An owner rule read only that one file reported a missing rule that the module
+ * does implement, so the composition is read as the owner.
+ */
+function ownerModuleSource(modSource, name, fallbackPath) {
+  const declaration = new RegExp(`(?:^|\\n)\\s*(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+${name}\\s*(\\{|;)`);
+  const match = modSource.match(declaration);
+  if (!match) {
+    failures.push(`services/mod.rs: owner module ${name} is not composed in services/mod.rs`);
+    return read(fallbackPath);
+  }
+  if (match[1] === ";") return read(fallbackPath);
+  const open = modSource.indexOf("{", match.index);
+  let depth = 0;
+  let end = -1;
+  for (let index = open; index < modSource.length; index += 1) {
+    if (modSource[index] === "{") depth += 1;
+    else if (modSource[index] === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        end = index;
+        break;
+      }
+    }
+  }
+  const includes = [...modSource.slice(open, end).matchAll(/include!\(\s*"([^"]+)"\s*\)/g)].map(
+    (entry) => entry[1],
+  );
+  if (includes.length === 0) return read(fallbackPath);
+  return [read(fallbackPath), ...includes.map((file) => read(`crates/modules/rustok-forum/src/services/${file}`))].join(
+    "\n",
+  );
 }
 
 const contractPath =
@@ -35,12 +81,12 @@ const production = source.split("#[cfg(test)]", 1)[0];
 const topicEntity = read(contract.topic_owner_entity);
 const replyEntity = read(contract.reply_owner_entity);
 const stateMachine = read(contract.state_machine);
-const topicOwner = read(contract.topic_owner_service);
-const replyOwner = read(contract.reply_owner_service);
 const topicDelete = read(contract.topic_soft_delete_service);
 const replyDelete = read(contract.reply_soft_delete_service);
 const softDeleteOwner = read(contract.soft_delete_owner);
 const services = read(contract.service_registry);
+const topicOwner = ownerModuleSource(services, "topic", contract.topic_owner_service);
+const replyOwner = ownerModuleSource(services, "reply_owner", contract.reply_owner_service);
 const crateRoot = read(contract.crate_root);
 const host = read(contract.host_composition);
 const note = read(contract.owner_note);
@@ -161,7 +207,7 @@ for (const marker of [
   "PortActorKind::User",
   "approved_posts_statement(",
   "self.db.get_database_backend()",
-  ".query_one(statement)",
+  ".query_one_raw(statement)",
   "DbBackend::Postgres",
   "DbBackend::Sqlite",
   "FROM forum_topics topic",
@@ -189,7 +235,7 @@ for (const marker of [
   requireText(production, marker, `approved-post production source is missing ${marker}`);
 }
 
-if ((production.match(/\.query_one\(/g) ?? []).length !== 1) {
+if ((production.match(/\.query_one_raw\(/g) ?? []).length !== 1) {
   failures.push("approved-post production source must use exactly one aggregate query");
 }
 
@@ -266,10 +312,14 @@ for (const marker of [
 ]) {
   requireText(stateMachine, marker, `Forum state machine is missing ${marker}`);
 }
+// `DECISIONS/2026-10-09-forum-topic-pre-moderation.md` (Accepted) supersedes "topics are not held":
+// a new topic is published immediately unless tenant pre-moderation requires review, and the
+// per-category `moderated` flag holds replies only. The create path therefore derives the status
+// instead of hard-coding `status: Set(TopicStatus::Open)`, which is what this rule used to pin.
 requireText(
   topicOwner,
-  "status: Set(TopicStatus::Open)",
-  "topic owner must create topics in the immediately public open lifecycle state",
+  "let status = if pre_moderation_enabled { TopicStatus::Pending } else { TopicStatus::Open };",
+  "topic owner must publish new topics immediately unless tenant pre-moderation holds them",
 );
 for (const marker of [
   "let status = if category.moderated",

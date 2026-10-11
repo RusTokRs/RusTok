@@ -46,6 +46,20 @@
     "creates_delivery_attempts": false,
     "privacy_and_preferences_required_before_processing": true
   },
+  "forum_topic_reply_source": {
+    "provider": "crates/modules/rustok-forum/src/notification_source.rs",
+    "notification_type": "forum.topic.replied",
+    "journal_event_type": "forum.reply.created",
+    "source_event_identity": "reply_id",
+    "audience_stages": ["topic_subscriptions", "category_subscriptions"],
+    "explicit_topic_row_overrides_category_default": true,
+    "muted_and_reply_actor_excluded": true,
+    "reply_and_topic_visibility_rechecked_per_recipient": true,
+    "pending_reply_is_retryable": true,
+    "target_kind": "forum.reply",
+    "descriptor_identifiers_only": true,
+    "outbox_emission_requires_approved_reply": true
+  },
   "forum_user_mention_source": {
     "provider": "crates/modules/rustok-forum/src/notification_source.rs",
     "event_type": "forum.mention.user_added",
@@ -78,6 +92,7 @@
     "recipient-specific channel and group authorization",
     "delivery-attempt enqueue",
     "forum moderator audience expansion",
+    "localized template rendering for forum notification types (NOTIFY-06)",
     "PostgreSQL lease concurrency evidence",
     "worker health and lag metrics",
     "retention and reconciliation commands"

@@ -9,6 +9,15 @@ transport-neutral owner-revision source for Search. The Search-owned checkpoint,
 sealed versioned invalidation publisher and persistent consumer are now merged;
 maintainer-executed PostgreSQL, Iggy and cross-module evidence remains open.
 
+## Composition
+
+This slice delivered the owner port and its host adapter. `FORUM-23B2G2B2`
+composes it into the Search-owned checkpoint scan, which the forum inbox worker
+drives through `ForumProjectionReconciler::with_owner_revision_source`
+(`apps/server/src/services/forum_search_inbox_worker.rs`). The checkpoint scan is
+bounded by the tenant and event page limits rather than by an unbounded ledger
+read, and it never compares a revision with the Search `ingest_sequence`.
+
 ## Owner clock
 
 The authoritative revision is:

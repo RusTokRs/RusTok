@@ -40,17 +40,6 @@ pub(super) fn CategoryDndGrid(
             "forum.render.noDescription",
             "No description yet.",
         ),
-        topics_count_template: t(
-            locale.as_deref(),
-            "forum.render.topicsCount",
-            "topics: {count}",
-        ),
-        replies_count_template: t(
-            locale.as_deref(),
-            "forum.render.repliesCount",
-            "replies: {count}",
-        ),
-        icon_template: t(locale.as_deref(), "forum.render.icon", "icon: {value}"),
         editing: t(locale.as_deref(), "forum.render.editing", "Editing"),
         edit: t(locale.as_deref(), "forum.render.edit", "Edit"),
     };
@@ -159,6 +148,7 @@ pub(super) fn CategoryDndGrid(
                     &item,
                     editing_id.as_deref(),
                     busy_key.as_deref(),
+                    locale.as_deref(),
                     &category_labels,
                 );
                 let content_lang = category_card_content_lang(vm.effective_locale.as_str());

@@ -3,19 +3,24 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { containsMarker, markeredIndexes } from "./lib/forum-source-verification.mjs";
 
 const root = process.cwd();
 const read = (path) => readFileSync(resolve(root, path), "utf8");
+// These guards read production Rust and harness sources, where rustfmt is free to continue a method
+// chain on the next line; markers and the ordering indexes built from them are therefore compared on a
+// layout-normalized copy of the source instead of on one formatting of it.
 const requireAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing required marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing required marker: ${marker}`);
   }
 };
 const forbidAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(!text.includes(marker), `${label} contains forbidden marker: ${marker}`);
+    assert.ok(!containsMarker(text, marker), `${label} contains forbidden marker: ${marker}`);
   }
 };
+const markerIndex = (text, marker) => markeredIndexes(text, marker)[0] ?? -1;
 
 const contractPath =
   "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-deletion-acl-ordering-proof.json";
@@ -190,7 +195,9 @@ requireAll(
     "get_public_topic_with_locale_fallback",
     "get_public_reply_with_locale_fallback",
     "Some(&[ReplyStatus::Approved])",
-    "projected_reply",
+    // The projection binds the owner's current reply only when it exists, which is what makes a
+    // deleted or unapproved reply fail closed instead of re-projecting the payload.
+    "let Some(reply) = reply else {",
   ],
   "Forum current-state projection source",
 );
@@ -296,22 +303,16 @@ requireAll(
     "resolve_storefront_search_result_candidates",
     "let total = visible_items.len() as u64",
     "build_forum_result_facets(&visible_items)",
-    ".skip(query.offset)",
-    ".take(query.limit)",
+    ".skip(request.query.offset)",
+    ".take(request.query.limit)",
     "Forum storefront Search requires an explicit Forum-only resolved source scope",
   ],
   "production storefront eligibility ordering",
 );
-const eligibilityIndex = storefrontExecution.indexOf(
-  "resolve_storefront_search_result_candidates",
-);
-const totalIndex = storefrontExecution.indexOf(
-  "let total = visible_items.len() as u64",
-);
-const facetsIndex = storefrontExecution.indexOf(
-  "build_forum_result_facets(&visible_items)",
-);
-const offsetIndex = storefrontExecution.indexOf(".skip(query.offset)");
+const eligibilityIndex = markerIndex(storefrontExecution, "resolve_storefront_search_result_candidates");
+const totalIndex = markerIndex(storefrontExecution, "let total = visible_items.len() as u64");
+const facetsIndex = markerIndex(storefrontExecution, "build_forum_result_facets(&visible_items)");
+const offsetIndex = markerIndex(storefrontExecution, ".skip(request.query.offset)");
 assert.ok(eligibilityIndex >= 0 && eligibilityIndex < totalIndex);
 assert.ok(totalIndex >= 0 && totalIndex < facetsIndex);
 assert.ok(facetsIndex >= 0 && facetsIndex < offsetIndex);
@@ -351,7 +352,8 @@ requireAll(
     "revision N+1: forum_category",
     "owner revision N+4",
     "legacy reply-hide status root",
-    "deliberately stale `search_documents` rows",
+    // The handoff document records the fixture as "intentionally stale" rows.
+    "intentionally stale `search_documents` rows",
     "total: 0",
     "No command above was run by the implementation agent",
   ],

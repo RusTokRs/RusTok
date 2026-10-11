@@ -5,18 +5,19 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use chrono::Utc;
-use rustok_api::HostRuntimeContext;
+use rustok_api::{HostRuntimeContext, PortActor, PortContext};
 use rustok_core::{MigrationSource, ModuleRegistry, SecurityContext, UserRole};
 use rustok_forum::entities::{forum_domain_event, forum_relation_revision, forum_user_mention};
 use rustok_forum::{
-    CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, ModerationService,
-    SubscriptionService, TopicService,
+    CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumModule,
+    ForumSubscriptionLevel, ModerationService, ReplyService, SubscriptionService, TopicService,
+    UpdateForumSubscriptionInput,
 };
 use rustok_notifications::NotificationsModule;
 use rustok_notifications_api::{
-    AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationOpenAuthorization,
-    NotificationProviderError, NotificationSourceEventRef, NotificationSourceSlug,
-    NotificationTargetKind, NotificationTargetRef, NotificationTypeKey,
+    AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationAudienceCursor,
+    NotificationOpenAuthorization, NotificationProviderError, NotificationSourceEventRef,
+    NotificationSourceSlug, NotificationTargetKind, NotificationTargetRef, NotificationTypeKey,
     ResolveNotificationAudienceRequest, materialize_notification_source_registry,
     notification_source_factory_registry_from_extensions,
     notification_source_registry_from_extensions,
@@ -137,6 +138,7 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
         BTreeSet::from([
             "forum.mention.user_added".to_string(),
             "forum.topic.created".to_string(),
+            "forum.topic.replied".to_string(),
         ])
     );
 
@@ -208,6 +210,187 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
         ),
         NotificationOpenAuthorization::Unavailable => panic!("open topic should be available"),
     }
+
+    let reply = ReplyService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
+        .create(
+            tenant_id,
+            SecurityContext::new(UserRole::Customer, Some(second_recipient)),
+            topic.id,
+            CreateReplyInput {
+                locale: "en".into(),
+                content: rustok_api::RichTextDocument::single_paragraph("Reply fan-out proof"),
+                parent_reply_id: None,
+            },
+        )
+        .await
+        .expect("reply should be accepted in an unmoderated category");
+    let reply_source_event = NotificationSourceEventRef::new(
+        tenant_id,
+        reply.id,
+        NotificationSourceSlug::new("forum").expect("forum source slug"),
+        NotificationTypeKey::new("forum.topic.replied").expect("reply notification type"),
+        1,
+    )
+    .expect("reply source event reference should build");
+
+    let topic_watcher = Uuid::new_v4();
+    let suppressed_watcher = Uuid::new_v4();
+    let topic_watcher_security = SecurityContext::new(UserRole::Customer, Some(topic_watcher));
+    let suppressed_security = SecurityContext::new(UserRole::Customer, Some(suppressed_watcher));
+    subscriptions
+        .set_category_subscription(tenant_id, category.id, suppressed_security.clone())
+        .await
+        .expect("category subscription should be stored");
+    subscriptions
+        .set_topic_subscription(
+            tenant_id,
+            topic.id,
+            topic_watcher_security.clone(),
+            topic_subscription_context(tenant_id, &topic_watcher_security),
+        )
+        .await
+        .expect("topic-level watching subscription should be stored");
+    subscriptions
+        .update_topic_subscription(
+            tenant_id,
+            topic.id,
+            suppressed_security.clone(),
+            topic_subscription_context(tenant_id, &suppressed_security),
+            UpdateForumSubscriptionInput {
+                level: ForumSubscriptionLevel::Normal,
+                notify_replies: Some(false),
+                ..UpdateForumSubscriptionInput::watching()
+            },
+        )
+        .await
+        .expect("explicit topic-level preference should be stored");
+
+    let reply_descriptor = provider
+        .describe_event(DescribeNotificationRequest {
+            event: reply_source_event.clone(),
+        })
+        .await
+        .expect("reply event should be described")
+        .expect("approved reply on an open topic should be notifiable");
+    assert_eq!(
+        reply_descriptor.notification_type.as_str(),
+        "forum.topic.replied"
+    );
+    assert_eq!(reply_descriptor.template_key.as_str(), "forum.topic.replied");
+    assert_eq!(reply_descriptor.target.id, reply.id);
+    assert_eq!(
+        reply_descriptor.target.kind,
+        NotificationTargetKind::new("forum.reply").expect("reply target kind")
+    );
+    let reply_id = reply.id.to_string();
+    assert_eq!(
+        reply_descriptor.template_data.get("reply_id"),
+        Some(reply_id.as_str())
+    );
+    assert_eq!(
+        reply_descriptor.template_data.get("topic_id"),
+        Some(topic_id.as_str())
+    );
+
+    let reply_audience = provider
+        .resolve_audience(ResolveNotificationAudienceRequest {
+            event: reply_source_event.clone(),
+            descriptor: reply_descriptor.clone(),
+            cursor: None,
+            limit: 10,
+        })
+        .await
+        .expect("first reply audience page should resolve");
+    assert_eq!(
+        reply_audience
+            .recipients()
+            .iter()
+            .map(|candidate| candidate.recipient_id)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([topic_watcher]),
+        "topic-level subscriptions resolve before the owning category"
+    );
+
+    let mut reply_recipients = BTreeSet::from([topic_watcher]);
+    let mut cursor = reply_audience
+        .next_cursor()
+        .cloned()
+        .expect("the topic stage should hand off to the category stage");
+    let mut complete = false;
+    for _ in 0..8 {
+        let page = provider
+            .resolve_audience(ResolveNotificationAudienceRequest {
+                event: reply_source_event.clone(),
+                descriptor: reply_descriptor.clone(),
+                cursor: Some(cursor.clone()),
+                limit: 10,
+            })
+            .await
+            .expect("reply audience page should resolve");
+        reply_recipients.extend(
+            page.recipients()
+                .iter()
+                .map(|candidate| candidate.recipient_id),
+        );
+        match page.next_cursor() {
+            Some(next) => cursor = next.clone(),
+            None => {
+                complete = page.is_complete();
+                break;
+            }
+        }
+    }
+    assert!(complete, "the reply audience walk must terminate with a complete page");
+    assert_eq!(
+        reply_recipients,
+        BTreeSet::from([first_recipient, topic_watcher])
+    );
+    assert!(
+        !reply_recipients.contains(&suppressed_watcher),
+        "an explicit topic-level opt-out must win over the category default"
+    );
+    assert!(
+        !reply_recipients.contains(&second_recipient),
+        "the reply author must not be notified about their own reply"
+    );
+
+    let reply_authorization = provider
+        .authorize_target_open(AuthorizeNotificationTargetRequest {
+            tenant_id,
+            recipient_id: topic_watcher,
+            target: reply_descriptor.target.clone(),
+        })
+        .await
+        .expect("reply target authorization should complete");
+    match reply_authorization {
+        NotificationOpenAuthorization::Allowed { route } => assert_eq!(
+            route.as_str(),
+            format!(
+                "/modules/forum?category={}&topic={}&reply={}",
+                category.id, topic.id, reply.id
+            )
+        ),
+        NotificationOpenAuthorization::Unavailable => {
+            panic!("approved reply on an open topic should be openable")
+        }
+    }
+
+    let malformed = provider
+        .resolve_audience(ResolveNotificationAudienceRequest {
+            event: reply_source_event.clone(),
+            descriptor: reply_descriptor.clone(),
+            cursor: Some(
+                NotificationAudienceCursor::new("z:00000000-0000-0000-0000-000000000000")
+                    .expect("cursor wrapper should accept the test value"),
+            ),
+            limit: 10,
+        })
+        .await;
+    assert!(
+        matches!(malformed, Err(NotificationProviderError::InvalidEvent)),
+        "an unknown reply audience stage must fail closed instead of restarting the walk"
+    );
 
     let deleted_topic = TopicService::new(db.clone(), event_bus.clone())
         .with_settings_providers(posting_cooldown::zero_cooldown_providers())
@@ -400,6 +583,15 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
         error,
         NotificationProviderError::Internal { retryable: true }
     );
+}
+
+fn topic_subscription_context(tenant_id: Uuid, security: &SecurityContext) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(security.user_id.unwrap_or_else(Uuid::nil).to_string()),
+        "en",
+        "forum-notification-source-subscription-write",
+    )
 }
 
 fn source_event_ref(event: &forum_domain_event::Model) -> NotificationSourceEventRef {

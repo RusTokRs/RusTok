@@ -103,11 +103,20 @@ requireOrder(
   ],
   paths.topicOwner,
 );
-requireText(
-  source.topicOwnerInline,
-  'include!("topic_route_tombstone_visibility.rs")',
-  paths.topicOwnerInline,
-);
+// How the owner module pulls the implementation in is a layout detail: `include!` inside
+// `mod topic_owner { .. }` and a `#[path = ..] pub mod` declaration both keep
+// `route_tombstone_visibility` inside the internal owner module, which is what this boundary
+// actually asserts. Pinning one spelling made the guard red on a tree that satisfies it.
+if (
+  !/include!\(\s*"topic_route_tombstone_visibility\.rs"\s*\)/.test(source.topicOwnerInline) &&
+  !/#\[path\s*=\s*"topic_route_tombstone_visibility\.rs"\s*\]\s*\npub\s+mod\s+route_tombstone_visibility;/.test(
+    source.topicOwnerInline,
+  )
+) {
+  failures.push(
+    `${paths.topicOwnerInline}: topic route tombstone visibility must be composed into the owner module with include! or a #[path] module declaration`,
+  );
+}
 requireText(
   source.servicesMod,
   "ForumTopicRouteTombstoneVisibilityService",

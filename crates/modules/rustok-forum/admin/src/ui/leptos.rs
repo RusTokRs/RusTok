@@ -21,13 +21,13 @@ use crate::core::{
     forum_admin_form_error_message, forum_admin_header_view_model, forum_admin_metric_accent_class,
     forum_admin_moderator_notes_copy_labels, forum_admin_open_query_intent,
     forum_admin_placeholder_policy, forum_admin_position_value, forum_admin_reply_preview_labels,
-    forum_admin_reset_query_intent, forum_admin_saved_query_intent, forum_admin_seo_copy_labels,
-    forum_admin_sidebar_category_class, forum_admin_sidebar_copy_labels,
-    forum_admin_status_badge_class, forum_admin_tag_chips, forum_admin_title_envelope_view_model,
-    forum_admin_topic_form_labels, forum_admin_topic_stream_labels,
-    forum_admin_topic_tag_count_label, forum_admin_transport_error_message, item_busy,
-    reply_card_view_model, reply_count_label, result_item_count, selected_category_filter_label,
-    selected_query_id, topic_card_view_model, topic_category_filter,
+    forum_admin_reply_preview_shown_label, forum_admin_reset_query_intent,
+    forum_admin_saved_query_intent, forum_admin_seo_copy_labels, forum_admin_sidebar_category_class,
+    forum_admin_sidebar_copy_labels, forum_admin_status_badge_class, forum_admin_tag_chips,
+    forum_admin_title_envelope_view_model, forum_admin_topic_form_labels,
+    forum_admin_topic_stream_labels, forum_admin_topic_tag_count_label,
+    forum_admin_transport_error_message, item_busy, reply_card_view_model, result_item_count,
+    selected_category_filter_label, selected_query_id, topic_card_view_model, topic_category_filter,
 };
 use crate::i18n::t;
 use crate::locale_switch::{
@@ -1918,7 +1918,9 @@ fn TopicsPage(
         "forum.topics.filteredCategory",
         "Filtered category",
     );
-    let ready_template = t(ui_locale.as_deref(), "forum.topics.ready", "{count} ready");
+    // The tag counter is reactive, so the label resolves inside its closure with the locale cloned
+    // in; a pre-resolved template could never bind `$count`.
+    let ready_locale = ui_locale.clone();
     let sidebar_copy = forum_admin_sidebar_copy_labels(
         t(
             ui_locale.as_deref(),
@@ -2038,8 +2040,8 @@ fn TopicsPage(
             "Thread preview",
         ),
         t(ui_locale.as_deref(), "forum.topics.previewTitle", "Replies"),
-        t(ui_locale.as_deref(), "forum.topics.shown", "{count} shown"),
     );
+    let reply_preview_locale = ui_locale.clone();
     let reply_body_label = t(ui_locale.as_deref(), "forum.replies.body", "Reply content");
     let reply_body_hint = t(
         ui_locale.as_deref(),
@@ -2094,7 +2096,7 @@ fn TopicsPage(
     let sidebar_selected_category = selected_category_display;
     let heading_selected_category = selected_category_display;
     let topic_form_tag_count =
-        move || forum_admin_topic_tag_count_label(tags.get().as_str(), ready_template.as_str());
+        move || forum_admin_topic_tag_count_label(tags.get().as_str(), ready_locale.as_deref());
     let sidebar_locale = ui_locale.clone();
     let topic_feed_locale = ui_locale.clone();
     let replies_locale = ui_locale.clone();
@@ -2467,7 +2469,10 @@ fn TopicsPage(
                             <h2 class="mt-2 text-xl font-semibold text-card-foreground">{reply_preview_labels.preview_title.clone()}</h2>
                         </div>
                         <span class="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                            {move || reply_preview_labels.shown_template.replace("{count}", reply_count_label(replies.get()).to_string().as_str())}
+                            {move || forum_admin_reply_preview_shown_label(
+                                reply_preview_locale.as_deref(),
+                                replies.get(),
+                            )}
                         </span>
                     </div>
                     {move || editing_id.get().is_some().then(|| view! {
@@ -2541,17 +2546,6 @@ fn render_category_grid(
             "forum.render.noDescription",
             "No description yet.",
         ),
-        topics_count_template: t(
-            locale.as_deref(),
-            "forum.render.topicsCount",
-            "topics: {count}",
-        ),
-        replies_count_template: t(
-            locale.as_deref(),
-            "forum.render.repliesCount",
-            "replies: {count}",
-        ),
-        icon_template: t(locale.as_deref(), "forum.render.icon", "icon: {value}"),
         editing: t(locale.as_deref(), "forum.render.editing", "Editing"),
         edit: t(locale.as_deref(), "forum.render.edit", "Edit"),
     };
@@ -2565,6 +2559,7 @@ fn render_category_grid(
                         &item,
                         editing_id.as_deref(),
                         busy_key.as_deref(),
+                        locale.as_deref(),
                         &category_labels,
                     );
                     let content_lang = forum_admin_content_lang(vm.effective_locale.as_str());
@@ -2706,11 +2701,6 @@ fn render_topic_feed(
     let close_label = t(locale.as_deref(), "forum.render.close", "Close");
     let reopen_label = t(locale.as_deref(), "forum.render.reopen", "Reopen");
     let topic_labels = ForumAdminTopicRenderLabels {
-        thread_path_template: t(
-            locale.as_deref(),
-            "forum.render.threadPath",
-            "thread/{category}/{slug}",
-        ),
         opened: t(locale.as_deref(), "forum.render.opened", "Opened"),
         open_thread: t(locale.as_deref(), "forum.render.openThread", "Open thread"),
     };
@@ -2726,6 +2716,7 @@ fn render_topic_feed(
                         &item,
                         editing_id.as_deref(),
                         busy_key.as_deref(),
+                        locale.as_deref(),
                         &topic_labels,
                     );
                     let content_lang = forum_admin_content_lang(vm.effective_locale.as_str());

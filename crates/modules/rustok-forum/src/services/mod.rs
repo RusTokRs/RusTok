@@ -336,7 +336,15 @@ pub use topic_move::{
     ForumTopicMoveResult, ForumTopicMoveService, MAX_FORUM_TOPIC_MOVE_REASON_LEN,
     MoveForumTopicInput,
 };
-pub use topic_owner::route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
+// The owner implementation stays internal (`mod topic_owner`); the service is exposed through a
+// named seam, the same shape `moderation` and `read_model` use above. Re-exporting it straight from
+// the owner module made an internal owner path part of the public surface.
+pub mod route_tombstone_visibility {
+    pub use super::topic_owner::route_tombstone_visibility::{
+        ForumTopicRouteTombstoneVisibilityService,
+    };
+}
+pub use route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 pub use topic_reply_create_audience::{
     ForumTopicReplyCreateAudiencePolicy, ForumTopicReplyCreateAudiencePolicyService,
     SetForumTopicReplyCreateAudiencePolicyInput,

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync } from "node:fs";
+
+import { containsMarker, readSource } from "./lib/forum-source-verification.mjs";
 import path from "node:path";
 
 const root = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -29,12 +31,14 @@ const paths = {
 };
 
 function read(relativePath) {
-  const target = path.join(root, relativePath);
-  if (!existsSync(target)) {
-    failures.push(`${relativePath}: expected file is missing`);
-    return "";
+  // `readSource` also resolves a Rust module *directory*: the events crate keeps its domain types in
+  // `src/types/` (`mod.rs` plus submodules), so a guard naming `src/types.rs` reported the event types
+  // as missing while they were present. An absent source stays a finding, never a crash.
+  const source = readSource(root, relativePath);
+  for (const missing of source.missing) {
+    failures.push(`${missing}: expected file is missing`);
   }
-  return readFileSync(target, "utf8");
+  return source.text;
 }
 
 function parseJson(relativePath) {
@@ -48,13 +52,13 @@ function parseJson(relativePath) {
 
 function requireAll(source, markers, label) {
   for (const marker of markers) {
-    if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
+    if (!containsMarker(source, marker)) failures.push(`${label}: missing ${marker}`);
   }
 }
 
 function rejectAll(source, markers, label) {
   for (const marker of markers) {
-    if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+    if (containsMarker(source, marker)) failures.push(`${label}: forbidden ${marker}`);
   }
 }
 
@@ -205,7 +209,9 @@ rejectAll(
 requireAll(
   hostComposition,
   [
-    'mod forum_search_owner_revision {',
+    // The host declares the adapter either as an inline `mod x { .. }` block or as a `#[path]`
+    // file module; both keep one composition-root entry, which is the actual rule.
+    /(?:mod forum_search_owner_revision \{|#\[path = "forum_search_owner_revision\.rs"\]\s*mod forum_search_owner_revision;)/,
     "ServerForumProjectionOwnerRevisionSourcePort::shared",
     "extensions.insert(owner_revision);",
     "SharedForumProjectionOwnerRevisionSourcePort",
@@ -223,9 +229,12 @@ rejectAll(
   ["owner_revision", "forum_projection_revision_ledger", "forum_domain_events"],
   `${paths.searchInbox} G2B1 non-consumer boundary`,
 );
+// `search_projection_owner_checkpoints` is Search-owned storage, so its `owner_revision`
+// column and migration name are not a boundary crossing; what Search must never create is a
+// Forum-owned ledger or outbox table.
 rejectAll(
   searchMigrations,
-  ["owner_revision", "projection_owner_revision"],
+  ["forum_projection_revision_ledger", "forum_domain_events", "CREATE TABLE IF NOT EXISTS forum_"],
   `${paths.searchMigrations} checkpoint migration boundary`,
 );
 rejectAll(
@@ -241,7 +250,9 @@ requireAll(
     "forum_projection_revision_ledger.revision",
     "FORUM-23B2G2A1",
     "committed rows for one tenant are contiguous",
-    "does not connect it to the background sweeper",
+    // The source slice stops at the port; the composition rule is that the checkpoint scan of
+    // `FORUM-23B2G2B2` is what feeds the inbox worker, so the note has to name that owner.
+    "composes it into the Search-owned checkpoint scan",
     "FORUM-23B2G2B2",
     "did not run these commands",
   ],

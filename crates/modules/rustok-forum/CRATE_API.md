@@ -125,6 +125,7 @@
 - `FORUM-20AS` composes GraphQL and REST topic-create calls through exact authenticated `PortContext` values and consumes the host-published optional facts port without adding identity to DTOs.
 - Both legacy and inline-quote topic-create transports preserve the owner gate before writes; categories with local decisions remain compatible when the provider is absent.
 - The Forum manifest publishes `graphql::attach_schema_data`, while the HTTP router consumes the same `SharedForumAudienceFactsPort` from `HostRuntimeContext`.
+- `topic_create_audience_port_context` is a public owner seam, and `ForumTopicCreateTransport` carries `Graphql`, `Rest`, and `NativeServer`. A module-owned Leptos storefront SSR handler passes `NativeServer` so its write keeps the same pinned transport fact as GraphQL and REST instead of re-implementing the gate; an unknown or mismatched transport label fails closed.
 - Run `node scripts/verify/verify-forum-category-topic-create-audience-policy.mjs`, `node scripts/verify/verify-forum-topic-create-audience-enforcement.mjs`, and `node scripts/verify/verify-forum-topic-create-audience-transport-composition.mjs` after changing this boundary.
 ### Category reply-create audience policy
 - `ForumCategoryReplyCreateAudiencePolicyService` stores a separate normalized reply-create audience policy; it does not mutate category/topic visibility or the topic-create policy.
@@ -138,6 +139,7 @@
 - `FORUM-20AW` composes GraphQL and REST reply-create calls through exact authenticated `PortContext` values and reuses the host-published optional facts port without adding identity to DTOs.
 - Both legacy and inline-quote GraphQL and REST reply-create transports preserve the owner gate before writes; locally decidable policies remain compatible when the provider is absent.
 - `ForumGraphqlRuntimeData` and `ForumHttpRuntime` create `ReplyService` from the same optional `SharedForumAudienceFactsPort` already used by topic creation.
+- `reply_create_audience_port_context` is a public owner seam, and `ForumReplyCreateTransport` carries `Graphql`, `Rest`, and `NativeServer`, so the module-owned Leptos storefront SSR handler pins its transport label the same way topic creation does.
 - Run `node scripts/verify/verify-forum-category-reply-create-audience-policy.mjs`, `node scripts/verify/verify-forum-reply-create-audience-enforcement.mjs`, and `node scripts/verify/verify-forum-reply-create-audience-transport-composition.mjs` after changing this boundary.
 ### Topic reply-create audience narrowing
 - `ForumTopicReplyCreateAudiencePolicyService` stores an optional normalized topic-local reply-create layer independently from `forum_topic_audience_*` content visibility.

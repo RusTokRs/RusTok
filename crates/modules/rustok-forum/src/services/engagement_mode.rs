@@ -63,7 +63,9 @@ impl ForumSettingsProviders {
     }
 
     /// Page size for topic lists when a transport request omits `per_page`.
-    pub(crate) async fn default_topics_per_page(&self, tenant_id: Uuid) -> ForumResult<u64> {
+    /// Storefront surfaces resolve their page size through this accessor instead of
+    /// freezing a constant, so one tenant setting governs REST, GraphQL and widgets.
+    pub async fn default_topics_per_page(&self, tenant_id: Uuid) -> ForumResult<u64> {
         let settings = self.module_settings(tenant_id).await?;
         Ok(crate::dto::bounded_forum_read_limit(Some(u64::from(
             settings.topics_per_page,
@@ -71,7 +73,9 @@ impl ForumSettingsProviders {
     }
 
     /// Page size for reply lists when a transport request omits `per_page`.
-    pub(crate) async fn default_replies_per_page(&self, tenant_id: Uuid) -> ForumResult<u64> {
+    /// Consumers that build owner filters directly (no transport default to fall back
+    /// on) resolve the page size here so `replies_per_page` is never bypassed.
+    pub async fn default_replies_per_page(&self, tenant_id: Uuid) -> ForumResult<u64> {
         let settings = self.module_settings(tenant_id).await?;
         Ok(crate::dto::bounded_forum_read_limit(Some(u64::from(
             settings.replies_per_page,

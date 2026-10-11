@@ -12,27 +12,6 @@ pub struct ForumBodyProjection {
     pub plain_text: String,
 }
 
-pub fn discussion_document_from_plain_text(text: &str) -> RichTextDocument {
-    let content = text
-        .split("\n\n")
-        .filter_map(|paragraph| {
-            let paragraph = paragraph
-                .lines()
-                .map(str::trim)
-                .filter(|line| !line.is_empty())
-                .collect::<Vec<_>>()
-                .join(" ");
-            (!paragraph.is_empty()).then_some(paragraph)
-        })
-        .flat_map(|paragraph| RichTextDocument::single_paragraph(paragraph).content)
-        .collect();
-
-    RichTextDocument {
-        kind: "doc".to_string(),
-        content,
-    }
-}
-
 pub fn normalize_discussion(document: RichTextDocument) -> ForumResult<RichTextDocument> {
     validate_and_normalize(document, RichTextProfile::Discussion).map_err(map_richtext_error)
 }
@@ -63,24 +42,7 @@ fn map_richtext_error(error: RichTextError) -> ForumError {
 mod tests {
     use rustok_api::RichTextDocument;
 
-    use super::{
-        discussion_document_from_plain_text, project_discussion, project_stored_discussion,
-        serialize_discussion,
-    };
-
-    #[test]
-    fn plain_text_import_creates_canonical_discussion_paragraphs() {
-        let document = discussion_document_from_plain_text("First line\nsecond line\n\nThird");
-        assert_eq!(document.content.len(), 2);
-        assert_eq!(
-            document.content[0].content[0].text.as_deref(),
-            Some("First line second line")
-        );
-        assert_eq!(
-            document.content[1].content[0].text.as_deref(),
-            Some("Third")
-        );
-    }
+    use super::{project_discussion, project_stored_discussion, serialize_discussion};
 
     #[test]
     fn discussion_storage_and_projections_share_one_document() {

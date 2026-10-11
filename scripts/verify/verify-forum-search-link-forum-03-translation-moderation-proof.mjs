@@ -1,19 +1,23 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { containsMarker, moduleComposition, readSource } from "./lib/forum-source-verification.mjs";
+
 const root = process.cwd();
-const read = (path) => readFileSync(resolve(root, path), "utf8");
+const read = (path) => readSource(root, path).text;
+// A marker may be a string or a RegExp and is matched on a layout-normalized copy: rustfmt wraps
+// `impl Trait for Type`, method chains and receiver prefixes, and that is not a contract change.
 const requireAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing required marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing required marker: ${marker}`);
   }
 };
 const forbidAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(!text.includes(marker), `${label} contains forbidden marker: ${marker}`);
+    assert.ok(!containsMarker(text, marker), `${label} contains forbidden marker: ${marker}`);
   }
 };
 
@@ -196,7 +200,20 @@ requireAll(
   "moderation approval owner",
 );
 
-const replyOwner = read(replyOwnerPath);
+// The reply owner is `mod reply_owner { include!(...) }` in services/mod.rs, and the moderation and
+// counter decisions live in its siblings; reading only the file named here reported rules the module
+// does implement.
+const replyOwnerComposition = moduleComposition(
+  root,
+  "crates/modules/rustok-forum/src/services/mod.rs",
+  "reply_owner",
+  replyOwnerPath,
+);
+if (replyOwnerComposition.finding) assert.fail(replyOwnerComposition.finding);
+if ((replyOwnerComposition.missing ?? []).length > 0) {
+  assert.fail(`${replyOwnerComposition.missing.join(", ")},: owner module source is missing`);
+}
+const replyOwner = replyOwnerComposition.text;
 requireAll(
   replyOwner,
   [
@@ -212,7 +229,11 @@ const projectionSource = read(projectionSourcePath);
 requireAll(
   projectionSource,
   [
-    "forum_category_taxonomy_binding::Entity::find()",
+    // `forum_category_taxonomy_binding::Entity::find()` was dropped from this list on purpose: the same
+    // block requires `TaxonomyOwnerCategoryReader`, which is the canonical way to resolve category copy,
+    // `entities/mod.rs` declares no binding entity, and `verify-forum-taxonomy-category-binding.mjs`
+    // asserts the binding path stays retired - so the guard demanded a storage read its own module
+    // boundary forbids. It is checked as forbidden below instead.
     "TaxonomyOwnerCategoryReader",
     "projection.available_locales",
     "forum_topic_translation::Entity::find()",
@@ -227,7 +248,10 @@ requireAll(
 );
 forbidAll(
   projectionSource,
-  ["forum_category_translation::Entity::find()"],
+  [
+    "forum_category_translation::Entity::find()",
+    "forum_category_taxonomy_binding::Entity",
+  ],
   "Forum Search projection source",
 );
 
@@ -251,9 +275,14 @@ const plan = read(planPath);
 requireAll(
   plan,
   [
-    "| `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |",
+    // The plan keeps a source-ready slice at `in_progress` (see `## Canonical-source policy`) and its
+    // description wording is the plan's own, so the pre-state row is located by task id plus any
+    // non-`done` status. The `done` rows stay forbidden below - that is the assertion this guard needs.
+    /`FORUM-21`\s*\|\s*`(?!done`)/,
     "| `FORUM-23` | `in_progress` |",
-    "| `LINK-FORUM-03` | `planned` | Forum/index/search ordering and visibility proof. |",
+    // Same wording tolerance: the plan row reads "Forum/Search/Index ordering and visibility proof.",
+    // so the link is located by id with any non-`done` status rather than a frozen description.
+    /`LINK-FORUM-03`\s*\|\s*`(?!done`)/,
     "## `LINK-FORUM-03` — index and search",
     "Prove publish, translation, moderation approval, move, hide/delete, ACL change,",
   ],

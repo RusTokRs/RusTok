@@ -444,6 +444,13 @@ immutable relation and current topic/reply visibility. Moderator audience expans
 deferred until a bounded owner directory
 port exists.
 
+Outbox intake does not know this vocabulary: `pending_outbox_event_ids` builds its
+`event_type` pre-filter from `NotificationOutboxEnvelopeDecoder::accepted_event_types`,
+which the host decoder implements to match its own decode arms. A claim list an
+executor leaves empty selects every committed row and relies on decode-time
+filtering. See
+[`DECISIONS/2026-10-11-notifications-outbox-intake-decoder-claims.md`](../../../DECISIONS/2026-10-11-notifications-outbox-intake-decoder-claims.md).
+
 Notifications remains outside `settings.default_enabled`; producer commands
 continue to succeed when the module is absent or disabled.
 
@@ -452,6 +459,10 @@ continue to succeed when the module is absent or disabled.
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
 - bounded moderator-directory expansion;
+- localized notification templates: every Forum descriptor (topic created, topic
+  replied, user mention) carries identifiers only, so the storefront inbox renders
+  `template_key` as the body and the notification type as the title until `NOTIFY-06`
+  supplies the owner template registry and locale-aware rendering;
 - tenant-wide scheduled reconciliation and payload redaction;
 - channel delivery enqueue with delivery-time authorization;
 - PostgreSQL cursor/lease contention evidence and worker health/lag metrics;

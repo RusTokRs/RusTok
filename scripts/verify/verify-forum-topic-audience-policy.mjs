@@ -19,28 +19,70 @@ function read(relativePath) {
   return readFileSync(absolute, "utf8");
 }
 
+// Markers may be strings or regular expressions: a bare `channel::` substring also occurs inside
+// Forum's own `forum_topic_audience_channel::Entity`, which is not a dependency on the Channel module.
+function matchesMarker(source, marker) {
+  return marker instanceof RegExp ? marker.test(source) : source.includes(marker);
+}
+
 function requireText(source, marker, message) {
-  if (!source.includes(marker)) failures.push(message);
+  if (!matchesMarker(source, marker)) failures.push(message);
 }
 
 function rejectText(source, marker, message) {
-  if (source.includes(marker)) failures.push(message);
+  if (matchesMarker(source, marker)) failures.push(message);
 }
 
-function between(source, start, end, label) {
-  const startIndex = source.indexOf(start);
-  const endIndex = source.indexOf(end, startIndex + start.length);
-  if (startIndex < 0 || endIndex < 0) {
-    failures.push(`${label}: unable to isolate source block`);
-    return "";
+/**
+ * Every block in `source` that starts at `signature` and ends at its matching closing brace. The
+ * previous signature-to-sibling-function slicing broke whenever a function moved into the seam file
+ * or its neighbour was renamed, which is not a contract change.
+ */
+function blocksFor(source, signature, label) {
+  const blocks = [];
+  let from = 0;
+  for (;;) {
+    const start = source.indexOf(signature, from);
+    if (start < 0) break;
+    const open = source.indexOf("{", start);
+    if (open < 0) break;
+    let depth = 0;
+    let end = -1;
+    for (let index = open; index < source.length; index += 1) {
+      if (source[index] === "{") depth += 1;
+      else if (source[index] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          end = index;
+          break;
+        }
+      }
+    }
+    if (end < 0) break;
+    blocks.push(source.slice(start, end + 1));
+    from = end + 1;
   }
-  return source.slice(startIndex, endIndex);
+  if (blocks.length === 0) failures.push(`${label}: unable to isolate source block`);
+  return blocks;
+}
+
+function requireInAny(blocks, markers, message) {
+  if (!blocks.some((block) => markers.every((marker) => block.includes(marker)))) {
+    failures.push(message);
+  }
 }
 
 const contractPath =
   "crates/modules/rustok-forum/contracts/forum-topic-audience-policy.json";
 const contract = JSON.parse(read(contractPath) || "{}");
-const owner = read(contract.owner_file ?? "");
+// `services/mod.rs` composes the topic audience module from the shared helpers and the thin owner
+// seam (`include!` of `topic_audience.rs` + `topic_audience_owner.rs`), so the owner contract is
+// checked across both files instead of assuming one file per module.
+const ownerParts = [
+  read(contract.owner_file ?? ""),
+  read(contract.owner_seam_file ?? contract.owner_file ?? ""),
+].filter((value, index, all) => value.length > 0 && all.indexOf(value) === index);
+const owner = ownerParts.join("\n");
 const categoryOwner = read(contract.category_owner_file ?? "");
 const audience = read(contract.audience_contract_file ?? "");
 const migration = read(contract.migration_file ?? "");
@@ -188,40 +230,38 @@ for (const marker of [
 ]) {
   requireText(categoryOwner, marker, `category snapshot owner is missing ${marker}`);
 }
-const setBlock = between(
-  owner,
-  "pub async fn set(",
-  "async fn insert_roles(",
-  "topic audience owner set",
-);
-const categoryLockIndex = setBlock.indexOf("lock_category_tree_in_tx");
-const topicLockIndex = setBlock.indexOf("lock_topic_audience_in_tx");
-const categorySnapshotIndex = setBlock.indexOf("load_category_audience_policy");
-const deleteIndex = setBlock.indexOf("forum_topic_audience_policy::Entity::delete_many()");
-const policyInsertIndex = setBlock.indexOf("forum_topic_audience_policy::ActiveModel");
-const commitIndex = setBlock.indexOf("txn.commit().await?");
+// `lock_topic_audience_in_tx` never existed: the seam takes the category tree lock, then the active
+// topic write lock and the scope lock, and only then reads the category snapshot. Asserting both
+// topic locks is strictly stronger than the single name the guard asked for.
+const topicAudienceOrder = [
+  "lock_category_tree_in_tx",
+  "lock_active_topic_audience_write_in_tx",
+  "lock_topic_audience_scopes_in_tx",
+  "load_category_audience_policy",
+  "forum_topic_audience_policy::Entity::delete_many()",
+  "forum_topic_audience_policy::ActiveModel",
+  "txn.commit().await?",
+];
+// The order must hold inside one `set` implementation, whichever file the seam composes it from.
 if (
-  categoryLockIndex < 0 ||
-  topicLockIndex < 0 ||
-  categorySnapshotIndex < 0 ||
-  deleteIndex < 0 ||
-  policyInsertIndex < 0 ||
-  commitIndex < 0 ||
-  categoryLockIndex > topicLockIndex ||
-  topicLockIndex > categorySnapshotIndex ||
-  categorySnapshotIndex > deleteIndex ||
-  deleteIndex > policyInsertIndex ||
-  policyInsertIndex > commitIndex
+  !blocksFor(owner, "pub async fn set(", "topic audience owner set").some((block) => {
+    const positions = topicAudienceOrder.map((marker) => block.indexOf(marker));
+    return (
+      positions.every((position) => position >= 0) &&
+      positions.every((position, index) => index === 0 || position > positions[index - 1])
+    );
+  })
 ) {
   failures.push(
-    "topic audience owner must lock category then topic, resolve the category snapshot, and replace the local layer atomically",
+    "topic audience owner must lock the category tree, then the active topic and scope locks, resolve the category snapshot, and replace the local layer atomically",
   );
 }
+
 for (const forbidden of [
   "rustok_groups",
   "rustok_channel",
-  "groups::",
-  "channel::",
+  /(?:^|[^A-Za-z0-9_])groups::/u,
+  /(?:^|[^A-Za-z0-9_])channel::/u,
   "forum_user_stat",
   "serde_json::Value",
   "forum_category::Entity",
@@ -240,11 +280,13 @@ for (const marker of [
   requireText(audience, marker, `shared audience contract is missing ${marker}`);
 }
 for (const marker of [
-  "mod topic_audience;",
+  "mod topic_audience {",
+  'include!("topic_audience.rs");',
+  'include!("topic_audience_owner.rs");',
   "ForumTopicAudiencePolicyService",
   "SetForumTopicAudiencePolicyInput",
 ]) {
-  requireText(services, marker, `services export is missing ${marker}`);
+  requireText(services, marker, `services composition is missing ${marker}`);
 }
 for (const marker of [
   "ForumTopicAudiencePolicy",

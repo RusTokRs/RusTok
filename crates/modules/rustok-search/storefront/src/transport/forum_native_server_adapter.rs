@@ -16,6 +16,96 @@ pub async fn fetch_search(
         .map_err(ApiError::from)
 }
 
+pub async fn fetch_search_with_authors(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+) -> Result<SearchPreviewPayload, ApiError> {
+    forum_storefront_search_by_authors_native(query, locale, preset_key, filters, author_ids)
+        .await
+        .map_err(ApiError::from)
+}
+
+pub async fn fetch_search_with_filters(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    tags: Vec<String>,
+    solved: Option<bool>,
+) -> Result<SearchPreviewPayload, ApiError> {
+    forum_storefront_search_by_filters_native(query, locale, preset_key, filters, tags, solved)
+        .await
+        .map_err(ApiError::from)
+}
+
+pub async fn fetch_search_with_date_window(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    published_from: Option<String>,
+    published_to: Option<String>,
+) -> Result<SearchPreviewPayload, ApiError> {
+    forum_storefront_search_by_date_window_native(
+        query,
+        locale,
+        preset_key,
+        filters,
+        published_from,
+        published_to,
+    )
+    .await
+    .map_err(ApiError::from)
+}
+
+pub async fn fetch_search_with_current_channel(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    current_channel_only: Option<bool>,
+) -> Result<SearchPreviewPayload, ApiError> {
+    forum_storefront_search_by_current_channel_native(
+        query, locale, preset_key, filters, current_channel_only,
+    )
+    .await
+    .map_err(ApiError::from)
+}
+
+#[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search-by-current-channel")]
+async fn forum_storefront_search_by_current_channel_native(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    current_channel_only: Option<bool>,
+) -> Result<SearchPreviewPayload, ServerFnError> {
+    // The endpoint accepts no channel identity: only an explicit `true` narrows the request to the
+    // trusted current channel the owner resolves from the request context, while `false` or an
+    // absent flag keeps the unfiltered behavior, as the FORUM-23B2F4 contract requires.
+    let current_channel_only = if matches!(current_channel_only, Some(true)) {
+        Some(true)
+    } else {
+        None
+    };
+    execute_forum_storefront_search_native(
+        query,
+        locale,
+        preset_key,
+        filters,
+        Vec::new(),
+        Vec::new(),
+        None,
+        None,
+        None,
+        current_channel_only,
+    )
+    .await
+}
+
 #[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search")]
 async fn forum_storefront_search_native(
     query: String,
@@ -33,6 +123,80 @@ async fn forum_storefront_search_native(
         None,
         None,
         None,
+        None,
+    )
+    .await
+}
+
+#[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search-by-authors")]
+async fn forum_storefront_search_by_authors_native(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+) -> Result<SearchPreviewPayload, ServerFnError> {
+    execute_forum_storefront_search_native(
+        query,
+        locale,
+        preset_key,
+        filters,
+        author_ids,
+        Vec::new(),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+}
+
+#[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search-by-filters")]
+async fn forum_storefront_search_by_filters_native(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    tags: Vec<String>,
+    solved: Option<bool>,
+) -> Result<SearchPreviewPayload, ServerFnError> {
+    execute_forum_storefront_search_native(
+        query,
+        locale,
+        preset_key,
+        filters,
+        Vec::new(),
+        tags,
+        solved,
+        None,
+        None,
+        None,
+    )
+    .await
+}
+
+#[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search-by-date-window")]
+async fn forum_storefront_search_by_date_window_native(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    published_from: Option<String>,
+    published_to: Option<String>,
+) -> Result<SearchPreviewPayload, ServerFnError> {
+    // The window is one more argument list for the single forum Search execution owner: a dedicated
+    // date-window executor would have to duplicate the projection scan, the ranking profile and the
+    // visibility pass, which is exactly the drift FORUM-23B2F3 exists to prevent.
+    execute_forum_storefront_search_native(
+        query,
+        locale,
+        preset_key,
+        filters,
+        Vec::new(),
+        Vec::new(),
+        None,
+        published_from,
+        published_to,
         None,
     )
     .await

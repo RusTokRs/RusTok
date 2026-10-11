@@ -52,6 +52,10 @@ transport-local Blog route builder, or compatibility URL implementation.
   and runtime.
 - Content document tags are projected from `nodes.metadata.tags`; Search does not
   read the removed taggable join model.
+- Forum category documents carry only the ids Forum projected.
+  Search does not resolve descendants or copy Forum tree policy: a category root is
+  expanded by the Forum-owned storefront scope service before Search execution, and
+  topic/reply eligibility is resolved by Forum owners on current state.
 - Is composed by `apps/server`, `apps/admin`, and `apps/storefront` through module
   contracts rather than host-owned Search logic.
 - Keeps external engine integrations behind Search-owned connector crates.
@@ -160,9 +164,36 @@ transport-local Blog route builder, or compatibility URL implementation.
 - `node scripts/verify/verify-search-blog-projection.mjs`
 - `node scripts/verify/verify-search-blog-projection.test.mjs`
 - `node scripts/verify/verify-forum-search-exact-category-filter.mjs`
+- `node scripts/verify/verify-forum-search-storefront-scope.mjs`
+- `node scripts/verify/verify-forum-search-result-eligibility.mjs`
+- `node scripts/verify/verify-forum-search-author-filter.mjs`
+- `node scripts/verify/verify-forum-search-tag-solved-filter.mjs`
+- `node scripts/verify/verify-forum-search-locale-date-filter.mjs`
 - `cargo test -p rustok-search engine::tests::canonical_url`
 - `cargo test -p rustok-search category_filter_preserves_product_and_adds_exact_forum_scope -- --nocapture`
 - `cargo xtask module validate search`
+
+## Known Limitations / Pending Implementation
+
+The items below are verified gaps. They are not hidden behind compatibility wrappers.
+Each one has a follow-up task in
+[`docs/implementation-plan.md`](./docs/implementation-plan.md).
+
+- The Forum-only Search filters are transport-only. `forumStorefrontSearch` accepts
+  exact author, tag, solved-state, locale, inclusive published-date and trusted
+  current-channel arguments, and both storefront transports can send each family as an
+  additive operation through the single Forum-only execution owner, but no storefront
+  surface renders a control for them yet. The shared `SearchPreviewInput`/`SearchPreviewFilters`
+  model deliberately does not carry these fields, so a caller that has not landed a
+  filter keeps the base `forumStorefrontSearch(input: $input)` operation. Owner plan:
+  `FORUM-23B2F1` to `FORUM-23B2F4`.
+- Storefront query-text suggestions remain disabled because the aggregate query logs
+  cannot be channel-authorized; admin and global query suggestions are unchanged.
+  Owner plan: `FORUM-23B2E1`/`FORUM-23B2E2`.
+- Runtime evidence for the Forum projection slices is maintainer-owned and not retained:
+  PostgreSQL ordering, restart, retry, Iggy delivery and multi-process contention proofs
+  stay `source_complete_execution_pending`, and `scripts/verify/verify-forum-search-*.mjs`
+  guards assert the source contracts only.
 
 ## Docs
 

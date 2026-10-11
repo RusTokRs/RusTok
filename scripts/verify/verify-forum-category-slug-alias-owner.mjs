@@ -33,12 +33,18 @@ function read(relativePath) {
   return readFileSync(absolutePath, "utf8");
 }
 
+// A marker may be a string or a regular expression, so a rule can describe an operation instead of
+// one formatting or SQL spelling of it.
+function matchesMarker(content, marker) {
+  return marker instanceof RegExp ? marker.test(content) : content.includes(marker);
+}
+
 function requireText(content, marker, label) {
-  if (!content.includes(marker)) failures.push(`${label}: missing ${marker}`);
+  if (!matchesMarker(content, marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbidText(content, marker, label) {
-  if (content.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+  if (matchesMarker(content, marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
 const source = Object.fromEntries(
@@ -70,15 +76,20 @@ for (const marker of [
   "TaxonomyOwnerCategoryReader",
   "resolve_term_route_for_module(",
   "pub alias_id: Option<Uuid>",
-  "forum_category_taxonomy_binding",
   "ensure_active_category",
 ]) {
   requireText(source.route, marker, paths.route);
 }
+// The retired shape resolved a route by reading the category/taxonomy binding table from Forum.
+// The canonical contract is the opposite: `category_route.rs` goes through the Taxonomy owner port
+// required above, `entities/mod.rs` declares no binding entity, and
+// `verify-forum-taxonomy-category-binding.mjs` asserts the same retirement, so a runtime reference
+// to that table is now the violation rather than the requirement.
 for (const marker of [
   "category_route_alias.rs",
   "forum_category_route_aliases",
   "load_alias_route_candidates",
+  "forum_category_taxonomy_binding",
 ]) {
   forbidText(source.route, marker, paths.route);
 }
@@ -123,7 +134,9 @@ for (const marker of [
   requireText(source.contractTest, marker, paths.contractTest);
 }
 for (const marker of [
-  "DROP TABLE forum_category_route_aliases",
+  // The test drops the retired table to prove history survives without it; SeaORM-era SQL uses
+  // `DROP TABLE IF EXISTS`, which the pinned spelling did not allow for.
+  /DROP TABLE (?:IF EXISTS )?forum_category_route_aliases/,
   'slug: Some("help".to_string())',
   'slug: Some("assistance".to_string())',
   'resolve(tenant_id, "en", "support", None)',

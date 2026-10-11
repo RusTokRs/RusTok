@@ -32,6 +32,27 @@ ${deref ? "use std::ops::Deref; impl Deref for TopicService { type Target = (); 
 `;
 }
 
+function categoryFacade() {
+  return `
+pub struct CategoryService;
+impl CategoryService {
+  pub async fn create() {}
+  pub async fn get() {}
+  pub async fn get_with_locale_fallback() {}
+  pub async fn update() {}
+  pub async fn delete() {}
+  pub async fn list() {}
+  pub async fn list_with_locale_fallback() {}
+  pub async fn list_paginated_with_locale_fallback() {}
+  pub async fn tree() {}
+  pub async fn move_category() {}
+  pub async fn reorder_siblings() {}
+  pub async fn archive_subtree() {}
+  pub async fn restore_subtree() {}
+}
+`;
+}
+
 function replyFacade({ deref = false } = {}) {
   return `
 pub struct ReplyService;
@@ -61,9 +82,14 @@ function withFixture(options = {}) {
         ? "mod topic;\nmod reply;\nmod topic_owner;\nmod reply_owner;\npub use topic_owner::TopicService;\npub use reply_owner::ReplyService;\n"
         : "mod topic;\nmod reply;\nmod topic_owner;\nmod reply_owner;\nmod topic_facade;\nmod reply_facade;\npub use topic_facade::TopicService;\npub use reply_facade::ReplyService;\n",
   );
+  writeFixture(
+    root,
+    "crates/modules/rustok-forum/src/services/category_owner.rs",
+    categoryFacade(),
+  );
   writeFixture(root, "crates/modules/rustok-forum/src/services/topic_facade.rs", topicFacade(options));
   writeFixture(root, "crates/modules/rustok-forum/src/services/reply_facade.rs", replyFacade(options));
-  writeFixture(root, "crates/modules/rustok-forum/src/lib.rs", "pub use services::{ReplyService, TopicService};\n");
+  writeFixture(root, "crates/modules/rustok-forum/src/lib.rs", "pub use services::{CategoryService, ReplyService, TopicService};\n");
   if (options.externalRawImport) {
     writeFixture(
       root,

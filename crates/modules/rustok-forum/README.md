@@ -44,7 +44,8 @@
   recheck the canonical category through the exact audience and channel boundary,
   but no public category URL is mounted yet. Topic routes use
   `/{locale}/forum/t/{short_id}/{slug}` with immutable redirect/tombstone history
-  and a Rust storefront mount; ID routes remain compatibility paths.
+  and a Rust storefront mount; ID routes remain compatibility paths. The Next.js storefront serves the same prefix at
+  `src/app/[locale]/forum/t/[...slug]`, so a link the owner authors resolves on both hosts.
 - A selected merged-source ID resolves through the immutable
   `forum_topic_merge_operations` chain to the terminal retained topic.
   `GET /api/forum/topics/{id}` returns an authorization-safe `308 Permanent Redirect`
@@ -200,8 +201,25 @@ wrappers. Each one has an owner decision or a follow-up task in
   wiring decision, because each changes a read or write path.
   The unread settings removed by `DECISIONS/2026-10-09-forum-remove-unwired-module-settings.md` are no longer declared.
 - `topics_per_page` and `replies_per_page` are the default page size for REST and GraphQL list requests that omit
-  `per_page`. An explicit `per_page` is bounded to 1..=100 and wins over the setting. See
+  `per_page`. An explicit `per_page` is bounded to 1..=100 and wins over the setting. The module storefront transports
+  and the Next.js forum package omit the argument, so a configured value reaches those surfaces too; the Next.js
+  widget-preview helpers keep their documented `ForumWidgetLimit` because they render static pages. See
   [`DECISIONS/2026-10-09-forum-list-page-size-from-settings.md`](../../../DECISIONS/2026-10-09-forum-list-page-size-from-settings.md).
+- `rustok-forum-storefront` pages both lists with the owner cursor. `ForumTopicPage` and
+  `ForumReplyPage` carry `next_cursor` with `has_more` and `append_page`, so a fetched page extends
+  the list the reader is looking at instead of replacing it, and ids already rendered are skipped
+  because a keyset cursor can re-read a row a concurrent write moved into the next page. The next
+  page continues on the variant the first page came from: unread-aware and audience-only topic
+  cursors are produced by different owner services, so a principal that no longer holds
+  `forum_topics:list` gets an error on the following page instead of a silently reordered feed.
+  Both fetches omit `per_page`/`limit` so the owner applies the module settings, and both exist on
+  both transports — the GraphQL list queries and the `forum/storefront-topic-page` /
+  `forum/storefront-reply-page` `#[server]` endpoints - with no cross-transport fallback. The feed
+  header count stays the selected category's authored topic count and the paging footer reports how
+  many entries are actually loaded; the thread timeline measures the loaded window against the
+  topic's `reply_count`, never a position inside posts that were not fetched. A failed page is
+  named in the list that failed. Guarded by
+  `scripts/verify/verify-forum-storefront-cursor-paging.mjs`.
 - Topic title and post body length limits are enforced on topic create, topic update (title or body
   supplied), topic translation upsert, reply create, and reply update (content supplied). Imports and exact
   translation apply are not limited. The check counts characters of the trimmed title and of the plain text of
@@ -242,14 +260,154 @@ wrappers. Each one has an owner decision or a follow-up task in
   `ForumModerationReportPort`. Without that adapter the mutations fail closed. Not yet implemented: automatic flags
   (a `rustok-moderation` policy, not a forum setting), free-text descriptions, report rate limits, REST transport, and the storefront report
   action. See [`DECISIONS/2026-10-09-forum-user-reports-via-moderation.md`](../../../DECISIONS/2026-10-09-forum-user-reports-via-moderation.md).
-- Notifications are emitted only for topic creation and user mentions.
+- Reply notifications are delivered. `forum.topic.replied` is claimed by the host outbox
+  intake decoder, described against the approved reply, and fanned out to topic-level
+  watchers first and to the owning category's watchers second: an explicit topic-level row
+  always wins (so `Normal` with replies off suppresses the category default), `Muted` rows
+  and the reply author are never recipients, and each candidate is rechecked against that
+  recipient's current topic and reply visibility before a notification is materialized,
+  with a pending reply retried rather than dropped. Opening the notification re-authorizes
+  the reply and deep-links `/modules/forum?category=…&topic=…&reply=…`. The intake selects
+  rows from the host decoder's claimed types, so this needed no Notifications change. See
+  [`DECISIONS/2026-10-11-notifications-outbox-intake-decoder-claims.md`](../../../DECISIONS/2026-10-11-notifications-outbox-intake-decoder-claims.md).
+- Reply deep links address one post. `target_route` and the search projection emit
+  `?reply=<reply-uuid>`, and the Next.js forum section and topic page validate that id, page
+  forward through `forumStorefrontReplies` for at most 20 pages until the post is rendered, then
+  scroll to it and mark it; a reply this reader cannot see, or one past that bound, is stated as
+  absent from the loaded part of the thread instead of guessed at. The owner keeps no
+  "page containing this reply" read, so exact placement inside a very long thread costs extra
+  round trips, and the Leptos module widget has no anchor handling because no producer links to
+  it. See
+  [`DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md`](../../../DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md).
+- Notification descriptors carry identifiers only, so the Notifications storefront inbox
+  renders `forum.topic.replied` / `forum.topic.created` as the body and the notification
+  type as the title until the localized template registry (`NOTIFY-06`) lands. The forum
+  deliberately does not copy topic titles or reply text into the stored payload: reply
+  bodies and restricted topic titles would be duplicated into per-recipient rows that
+  outlive the visibility rules which currently allow them.
 - Topic move (`FORUM-21A`) has an owner service but no transport or UI.
   Topic revision history has services but no API or UI.
 - Attachment relations have a service but no transport or UI.
+- Widget list previews (`forum.topic_list`) run under owner read semantics, which
+  `DECISIONS/2026-10-09-forum-widget-preview-owner-audience.md` chose deliberately: the candidate
+  query applies no storefront display settings, so a preview lists `closed` and `pending` topics
+  that a viewer may read through the owner path but never in a storefront feed, and it ignores
+  `show_locked_topics_in_lists` even though the storefront list honors it. The preview also checks
+  the audience per candidate up to `FORUM_WIDGET_TOPIC_LIST_MAX_CANDIDATES` instead of resolving
+  facts once per batch — the follow-up that ADR records — and a larger candidate set returns a
+  validation error rather than a partial total. Page Builder gets a faithful owner read, not a
+  pixel copy of the rendered block.
+- Forum search documents carry the exact filter facts (`author`, `tags`, solved state,
+  `published_at`, `channel_slugs`) and the Search module filters on them, but neither the
+  Forum nor the Search storefront surface renders a control for author, tag, solved,
+  locale, date or current-channel filtering. The transports are additive and the owner
+  plan tracks the missing product surface under `FORUM-23B2F1` to `FORUM-23B2F4`.
 - Topic view counters and topic sort orders are not implemented. The list order is
-  fixed as pinned first, then recent activity.
-- The Next.js storefront shows the first page of topics without load-more.
-  Reply pagination has no load-more.
+  fixed as pinned first, then recent activity. `last_reply_at` is a derived
+  projection recomputed from the newest approved reply in both counter directions, so
+  an imported or restored reply cannot move a topic by a timestamp the data does not
+  carry; `updated_at` still advances with the counter write.
+- The Next.js storefront has no load-more control: the topic feed and the thread panel render the
+  first owner page, and `nextCursor` is only followed while resolving a reply deep link (see
+  `DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md`). Paging copy for that host is not
+  defined, so the two hosts are not interchangeable here.
+- The Leptos storefront composer writes real content: topics go through
+  `createForumTopicWithQuotes` (GraphQL) or `forum/storefront-topic-create`
+  (native `#[server]`) and replies through `createForumReplyWithQuotes` or
+  `forum/storefront-reply-create`, both composed onto the owner create commands
+  with the transport pinned in the audience context. The build-profile-selected
+  transport is never swapped on failure. The composer posts plain text into the
+  canonical discussion document only: tags, explicit slug, attachments, edit,
+  and inline quote-of-quote UI stay unimplemented, and the on-screen failure copy is
+  the redacted transport message because `ApiError`/`TransportError` display does
+  not leak owner reasons (`locked`, `cooldown`, audience denial) to an
+  untrusted surface. Reply and quote affordances are hidden for a locked or
+  non-`Open` topic from the topic detail the read path already returns; the owner
+  check stays authoritative. Composer quotes are forwarded as owner relations only
+  when an exact positive revision is known; the storefront reply read model carries
+  no revision and the module UI must not look one up per visible reply, so a
+  Leptos reply quote posts quoted text without a pinned relation. A pinned quote
+  needs a caller-provided revision, as the Next.js composer does.
+Only part of the module's guard family runs automatically: 13 of the 259
+  `scripts/verify/verify-forum-*.mjs` gates are wired into 8 workflows, the rest
+  execute only when someone invokes them, so a red one is not by itself evidence
+  about the tree and a green one is not evidence about a rule. `node
+  scripts/audit/verifier_status.mjs --prefix forum-` classifies the whole family
+  in one pass; measured on the 2026-10-11 tree that is 88 pass, 170 exiting with
+  their own structured finding, 1 needing `cargo`, and none throwing before
+  evaluating a rule. The throwing class is gone rather than re-labelled: three
+  gates died on their own harness or inputs.
+  `verify-forum-owner-boundary.test.mjs` built a fixture that omitted
+  `services/category_owner.rs`, which the guard it exercises requires, and the
+  attachment admission guard read `src/category_presentation.rs`, a file the
+  canonical-category cutover deleted; the first is green across all six cases, the
+  second now asserts the retired path stays removed, fails when an input is
+  missing, and checks production code only - it had also banned `Uuid::new_v4`
+  across the whole file, which only its `#[cfg(test)]` module uses. The audit tool
+  itself had been over-reporting: a guard that signals a violation with `throw new
+  Error(...)` is a verdict, not a crash. Four wired gates pinned the mid-cutover
+  source shape instead of the boundary - the read-model guard demanded the retired
+  `src/services/read_model.rs` delegate and that the owner query
+  `forum_category_taxonomy_binding` directly, and the two taxonomy guards required
+  the `ForumCategory` hierarchy columns that
+  `m20260916_000032_clean_forum_category_canonical_taxonomy` dropped. They now
+  assert the current contract (category copy only through
+  `TaxonomyOwnerCategoryReader`, locale fallback only through the shared Content
+  helper, `enforce_scope` on every read entry point, and the retired delegate,
+  binding entity and columns staying retired), so a failure means a boundary moved
+  rather than that history was rewritten. Two audience guards failed for the same
+  reason: the topic and category audience policies had been split into a helper
+  module plus a thin owner seam composed with `include!`, so a rule that isolated
+  `pub async fn set(` by slicing to the next sibling name read the wrong text,
+  `lock_topic_audience_in_tx` was a marker that never existed (the seam takes
+  `lock_active_topic_audience_write_in_tx` and
+  `lock_topic_audience_scopes_in_tx`), and an unanchored `channel::` ban matched
+  Forum's own `forum_category_audience_channel::Entity`. They now isolate
+  functions by matching braces, accept a rule satisfied in either file, and anchor
+  foreign-module paths; the topic gate is green and the category gate is left red
+  on its canonical-plan markers. One finding was real: `services/mod.rs`
+  re-exported `ForumTopicRouteTombstoneVisibilityService` straight from the
+  internal `mod topic_owner`, against the convention the same file uses for
+  owner-backed services, so that service now comes through a named seam module and
+  the public path consumers use is unchanged, which is what flipped both
+  owner-layout guards green. The topic-route tombstone guard had also pinned the
+  composition spelling itself (`include!(...)`) while
+  `services/topic_owner_inline.rs` wires that file as `#[path = ..] pub mod
+  route_tombstone_visibility;`; both spellings keep the implementation inside the
+  internal owner module, so it accepts either. The audience host-runtime guards
+  (`FORUM-20A-*`) now fail only on canonical-plan markers too:
+  `docs/implementation-plan.md` records FORUM-20 once and has neither the `##
+  FORUM-20` visibility-boundary section nor the `FORUM-20A-G` / `FORUM-20A-AU
+  provide` rows or the `## FORUM-26` heading, while their code pins pass - so the
+  adapter propagation is verified and writing those plan rows belongs to the
+  packets that own them, not to a silent documentation edit; the same
+  delivered-evidence pins account for 21 further gates whose only failures are
+  markers of delivered slices the plan does not carry and that no contract claims.
+  Two more guards were the same class of defect. The FORUM-33G reconciliation
+  guard pinned `impl NotificationInboxReconciliationInspectPortFactory for ...`
+  and a receiver chain that rustfmt had already wrapped, so it reported a missing
+  implementation that the module has; it now compares markers on a
+  layout-normalized copy and is green. The approved-posts guard read one file of
+  an owner module that `services/mod.rs` composes from four `include!` siblings -
+  the moderation decisions live in `reply_owner_inline.rs` and `topic_inline.rs` -
+  and pinned `status: Set(TopicStatus::Open)`, which the accepted topic
+  pre-moderation decision had superseded, plus a `query_one` call the adapter
+  issues as `query_one_raw`; it now reads the composition through
+  `services/mod.rs`, cites the ADR rule, and reports no code finding at all,
+  leaving only the canonical-plan markers. The category slug alias guard combined
+  both defects and one contradiction: it pinned `DROP TABLE
+  forum_category_route_aliases` while the alias-history test drops that table as
+  `DROP TABLE IF EXISTS ..`, and it required `category_route.rs` to reference
+  `forum_category_taxonomy_binding` - a runtime read of the binding table that the
+  same module's taxonomy guard asserts is retired, so the two guards demanded
+  opposite shapes and only the port-based route could satisfy both; the marker is
+  now a layout-tolerant pattern and the binding reference is a forbidden pattern.
+  Both probes bite. the completed cutover deleted (`rustfmt --check
+  crates/modules/rustok-forum/src/services/read_model.rs` in
+  `forum-read-model-category-taxonomy-copy.yml`, and `cargo test -p rustok-forum
+  --test category_taxonomy_binding`, a target that does not exist, in
+  `forum-taxonomy-category-binding.yml`); neither can pass, and retiring them is a
+  CI-owner change that must not be made from a feature branch.
 
 ## Roadmap
 

@@ -66,6 +66,7 @@ export function Composer({
   }, [state.categoryId, categories, selectedCategoryId]);
 
   const richText = useTranslations('richText');
+  const forum = useTranslations('Forum');
 
   const richTextMessages = useMemo(
     () => ({
@@ -104,14 +105,14 @@ export function Composer({
           className="text-xs font-medium text-foreground hover:underline"
         >
           {state.mode === 'reply'
-            ? `Draft: ${state.topicTitle ?? 'Reply'}`
-            : `Draft: ${state.title || 'New Topic'}`}
+            ? forum('draftTitle', { title: state.topicTitle ?? forum('newReply') })
+            : forum('draftTitle', { title: state.title || forum('newTopic') })}
         </button>
         <button
           type="button"
           onClick={expand}
           className="rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground"
-          title="Expand"
+          title={forum('expand')}
         >
           <Maximize2 className="h-3.5 w-3.5" />
         </button>
@@ -119,7 +120,7 @@ export function Composer({
           type="button"
           onClick={close}
           className="rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground"
-          title="Close"
+          title={forum('close')}
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -131,12 +132,12 @@ export function Composer({
     event.preventDefault();
 
     if (!richTextDocumentHasText(state.document)) {
-      setError('Please enter your message before posting.');
+      setError(forum('errorEmptyMessage'));
       return;
     }
 
     if (state.mode === 'topic' && !state.title.trim()) {
-      setError('Please provide a topic title.');
+      setError(forum('errorMissingTitle'));
       return;
     }
 
@@ -166,12 +167,12 @@ export function Composer({
           reset();
           onSubmitted?.(tId);
         } else {
-          setError('Failed to create reply.');
+          setError(forum('errorReplyFailed'));
         }
       } else if (state.mode === 'topic') {
         const cId = state.categoryId || selectedCategoryId || categories[0]?.id;
         if (!cId) {
-          setError('Please select a category.');
+          setError(forum('errorMissingCategory'));
           setSubmitting(false);
           return;
         }
@@ -198,11 +199,11 @@ export function Composer({
           reset();
           onSubmitted?.(createdTopicId);
         } else {
-          setError('Failed to create topic.');
+          setError(forum('errorTopicFailed'));
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred while posting.');
+      setError(err instanceof Error ? err.message : forum('errorGeneric'));
     } finally {
       setSubmitting(false);
     }
@@ -229,7 +230,7 @@ export function Composer({
               type="button"
               onClick={minimize}
               className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-background hover:text-foreground"
-              title="Minimize"
+              title={forum('minimize')}
             >
               <Minus className="h-4 w-4" />
             </button>
@@ -237,7 +238,7 @@ export function Composer({
               type="button"
               onClick={close}
               className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-background hover:text-foreground"
-              title="Close"
+              title={forum('close')}
             >
               <X className="h-4 w-4" />
             </button>
@@ -251,7 +252,7 @@ export function Composer({
             <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-[1fr_200px]">
               <input
                 type="text"
-                placeholder="Topic title..."
+                placeholder={forum('topicTitlePlaceholder')}
                 value={state.title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="rounded-xl border border-border bg-background px-3.5 py-2 text-sm font-medium text-foreground outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
@@ -308,7 +309,7 @@ export function Composer({
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              Write
+              {forum('write')}
             </button>
             <button
               type="button"
@@ -319,7 +320,7 @@ export function Composer({
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              Preview
+              {forum('preview')}
             </button>
           </div>
 
@@ -328,7 +329,7 @@ export function Composer({
             {activeTab === 'write' ? (
               <RichTextEditor
                 frameUrl="/richtext/frame"
-                label={state.mode === 'reply' ? 'Reply content' : 'Topic content'}
+                label={state.mode === 'reply' ? forum('replyContent') : forum('topicContent')}
                 profile="discussion"
                 value={state.document}
                 onChange={setDocument}
@@ -339,13 +340,13 @@ export function Composer({
               />
             ) : (
               <div className="prose dark:prose-invert max-w-none text-sm text-foreground">
-                <p className="italic text-muted-foreground">Live preview of your post:</p>
+                <p className="italic text-muted-foreground">{forum('livePreview')}</p>
                 <div className="mt-2 rounded-xl border border-dashed border-border p-4">
                   {state.quotes.length > 0 && (
                     <div className="mb-3 space-y-2">
                       {state.quotes.map((q, i) => (
                         <blockquote key={i} className="border-l-2 border-primary/40 pl-3 italic text-muted-foreground">
-                          {q.snippet ?? `Quote from ${q.authorHandle ?? 'author'}`}
+                          {q.snippet ?? forum('quotedFrom', { author: q.authorHandle ?? forum('unknownAuthor') })}
                         </blockquote>
                       ))}
                     </div>
@@ -360,7 +361,7 @@ export function Composer({
                       })}
                     </div>
                   ) : (
-                    <span className="text-muted-foreground">Nothing to preview yet.</span>
+                    <span className="text-muted-foreground">{forum('nothingToPreview')}</span>
                   )}
                 </div>
               </div>
@@ -377,7 +378,7 @@ export function Composer({
           {/* Footer action bar */}
           <div className="flex items-center justify-between border-t border-border bg-muted/20 px-4 py-3">
             <span className="text-xs text-muted-foreground">
-              Draft saved locally
+              {forum('draftSavedLocally')}
             </span>
 
             <div className="flex items-center gap-2">
@@ -387,7 +388,7 @@ export function Composer({
                 disabled={state.isSubmitting}
                 className="rounded-xl px-4 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
               >
-                Cancel
+                {forum('cancel')}
               </button>
               <button
                 type="submit"
@@ -397,12 +398,12 @@ export function Composer({
                 {state.isSubmitting ? (
                   <>
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Posting…
+                    {forum('posting')}
                   </>
                 ) : (
                   <>
                     <Send className="h-3.5 w-3.5" />
-                    {state.mode === 'reply' ? 'Post Reply' : 'Create Topic'}
+                    {state.mode === 'reply' ? forum('postReply') : forum('createTopic')}
                   </>
                 )}
               </button>

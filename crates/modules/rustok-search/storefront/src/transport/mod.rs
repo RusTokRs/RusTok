@@ -112,6 +112,166 @@ pub async fn fetch_search(
     .await
 }
 
+/// Forum author filter entry. `forumStorefrontSearch` accepts `authorIds` beside `input`, so the
+/// filter is carried as its own operation on both transports and reaches the same execution owner:
+/// the existing `fetch_search` above keeps the filter-free path, which is why an author-filtered
+/// request never degrades into an unfiltered one - it selects a different operation instead.
+pub async fn fetch_forum_search_by_authors(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    author_ids: Vec<String>,
+) -> Result<SearchPreviewPayload, SearchTransportError> {
+    let native_query = query.clone();
+    let native_locale = locale.clone();
+    let native_preset_key = preset_key.clone();
+    let native_filters = filters.clone();
+    let native_author_ids = author_ids.clone();
+
+    execute_selected_transport(
+        "search",
+        selected_transport_path(),
+        move || {
+            forum_native_server_adapter::fetch_search_with_authors(
+                native_query,
+                native_locale,
+                native_preset_key,
+                native_filters,
+                native_author_ids,
+            )
+        },
+        move || {
+            forum_graphql_adapter::fetch_search_with_authors(
+                query, locale, preset_key, filters, author_ids,
+            )
+        },
+    )
+    .await
+}
+
+/// Forum tag and solved-state entry, additive for the same reason as the author filter.
+pub async fn fetch_forum_search_with_filters(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    tags: Vec<String>,
+    solved: Option<bool>,
+) -> Result<SearchPreviewPayload, SearchTransportError> {
+    let native_query = query.clone();
+    let native_locale = locale.clone();
+    let native_preset_key = preset_key.clone();
+    let native_filters = filters.clone();
+    let native_tags = tags.clone();
+
+    execute_selected_transport(
+        "search",
+        selected_transport_path(),
+        move || {
+            forum_native_server_adapter::fetch_search_with_filters(
+                native_query,
+                native_locale,
+                native_preset_key,
+                native_filters,
+                native_tags,
+                solved,
+            )
+        },
+        move || {
+            forum_graphql_adapter::fetch_search_with_filters(
+                query, locale, preset_key, filters, tags, solved,
+            )
+        },
+    )
+    .await
+}
+
+/// Forum published-date window entry. Sending the window as its own argument list keeps the shared
+/// filter model unchanged and keeps the date window from reaching a Search field that would ignore
+/// it.
+pub async fn fetch_forum_search_with_date_window(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    published_from: Option<String>,
+    published_to: Option<String>,
+) -> Result<SearchPreviewPayload, SearchTransportError> {
+    let native_query = query.clone();
+    let native_locale = locale.clone();
+    let native_preset_key = preset_key.clone();
+    let native_filters = filters.clone();
+    let native_published_from = published_from.clone();
+    let native_published_to = published_to.clone();
+
+    execute_selected_transport(
+        "search",
+        selected_transport_path(),
+        move || {
+            forum_native_server_adapter::fetch_search_with_date_window(
+                native_query,
+                native_locale,
+                native_preset_key,
+                native_filters,
+                native_published_from,
+                native_published_to,
+            )
+        },
+        move || {
+            forum_graphql_adapter::fetch_search_with_date_window(
+                query,
+                locale,
+                preset_key,
+                filters,
+                published_from,
+                published_to,
+            )
+        },
+    )
+    .await
+}
+
+/// Forum trusted current-channel narrowing for both storefront transports. Like the author, tag,
+/// solved and date-window entries above it, it selects an additive operation instead of widening
+/// the shared filter model, and it carries no channel identifier.
+pub async fn fetch_forum_search_with_current_channel(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    current_channel_only: Option<bool>,
+) -> Result<SearchPreviewPayload, SearchTransportError> {
+    let native_query = query.clone();
+    let native_locale = locale.clone();
+    let native_preset_key = preset_key.clone();
+    let native_filters = filters.clone();
+
+    execute_selected_transport(
+        "search",
+        selected_transport_path(),
+        move || {
+            forum_native_server_adapter::fetch_search_with_current_channel(
+                native_query,
+                native_locale,
+                native_preset_key,
+                native_filters,
+                current_channel_only,
+            )
+        },
+        move || {
+            forum_graphql_adapter::fetch_search_with_current_channel(
+                query,
+                locale,
+                preset_key,
+                filters,
+                current_channel_only,
+            )
+        },
+    )
+    .await
+}
+
 fn is_explicit_forum_category_scope(filters: &SearchPreviewFilters) -> bool {
     !filters.category_ids.is_empty()
         && filters.source_modules.len() == 1

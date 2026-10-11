@@ -6,12 +6,21 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+// `impl Trait for Type` and long call chains are wrapped by rustfmt at the column limit, so a marker
+// that spans such a boundary has to be compared against a whitespace-normalized copy. Normalizing
+// cannot hide an absence: it only removes layout, never a token.
+function spaced(text) {
+  return text
+    .replace(/\r?\n\s*\./g, ".") // a method chain continued on the next line
+    .replace(/\s+/g, " ");
+}
+
 function requireText(text, marker, message) {
-  if (!text.includes(marker)) throw new Error(message);
+  if (!spaced(text).includes(spaced(marker))) throw new Error(message);
 }
 
 function requireAbsent(text, marker, message) {
-  if (text.includes(marker)) throw new Error(message);
+  if (spaced(text).includes(spaced(marker))) throw new Error(message);
 }
 
 const ownerPath = "crates/modules/rustok-notifications/src/inbox_reconcile.rs";
