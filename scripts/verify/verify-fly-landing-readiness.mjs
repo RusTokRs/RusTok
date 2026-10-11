@@ -235,8 +235,26 @@ rejectText(
   "metadata.og_image",
 );
 const workflow = source(".github/workflows/fly-page-builder.yml");
-if (!workflow.includes("dtolnay/rust-toolchain@1.93.1") && !workflow.includes("dtolnay/rust-toolchain@stable") && !workflow.includes("dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87")) {
+// The toolchain reference is checked by shape, not against a list of accepted values.
+//
+// This used to accept exactly `1.93.1`, `stable`, or one older commit SHA. The repository then
+// moved every workflow to a single commit-SHA pin, so the allow-list was stale while `main` was
+// green: the gate failed the landing-readiness contract for a reason that had nothing to do with
+// landing readiness (H-7 in docs/audits/fly-builder-engineering-audit-2026-10-02.md). The
+// invariant worth enforcing is the supply-chain one the whole repository follows — an immutable
+// commit pin — so a future re-pin does not need this file edited again.
+const toolchainReferences = [
+  ...workflow.matchAll(/uses:\s*(dtolnay\/rust-toolchain@\S+)/g),
+].map((match) => match[1]);
+if (toolchainReferences.length === 0) {
   throw new Error(".github/workflows/fly-page-builder.yml must specify a valid rust-toolchain");
+}
+for (const reference of toolchainReferences) {
+  if (!/^dtolnay\/rust-toolchain@[0-9a-f]{40}$/.test(reference)) {
+    throw new Error(
+      `${reference} must pin dtolnay/rust-toolchain to a full commit SHA (40 lowercase hex characters)`,
+    );
+  }
 }
 requireText(
   ".github/workflows/fly-page-builder.yml",
