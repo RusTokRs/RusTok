@@ -324,7 +324,11 @@ export function TopicFeed({
                       </h4>
                       {locale ? (
                         <Link
-                          href={`/${locale}/modules/forum/t/${topic.slug}`}
+                          // The topic page is mounted at the owner's canonical route prefix
+                          // `/[locale]/forum/t/…`. This read model carries the topic id and slug but
+                          // not the owner's short identity, so the link uses the UUID form the route
+                          // resolves instead of re-implementing route identity in the widget.
+                          href={`/${locale}/forum/t/${topic.id}`}
                           onClick={(e) => e.stopPropagation()}
                           className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
                           dir="ltr"

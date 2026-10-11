@@ -40,6 +40,12 @@
   `src/shared/lib/graphql.ts` maps only `graphQLErrors` into `GraphqlResponse.errors` and drops
   `networkError`, so surfacing connection failures is an app-shell change that affects every module
   package and needs its own decision.
+- `packages/rustok-forum` opens the post a link addressed: `?reply=<uuid>` on `/modules/forum`
+  (notification and mention links) or on the canonical topic route (search results) scrolls to that
+  reply and marks it, paging forward through the owner cursor within 20 pages, and the surface says
+  so when the post is outside what loaded. The topic page therefore lives at the owner's canonical
+  prefix `src/app/[locale]/forum/t/[...slug]`: the owner publishes that path in search documents, SEO
+  targets and canonical redirects, so mounting it under `modules/` instead 404s every such link.
 - Composes search storefront controls through host-owned `src/features/search`: product-owned catalog metadata is loaded via `packages/rustok-product` and passed to the search package as safe option props with the route locale.
 
 ## Docs

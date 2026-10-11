@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { RichTextHtml } from '@rustok/richtext/view';
 import { CheckCheck, MessageSquare, Reply as ReplyIcon, Pin, Lock } from 'lucide-react';
 import type { ForumTopicDetail, ForumReplyDetail } from '../api/forum';
@@ -8,6 +8,7 @@ import { AuthorBadge } from './member-card';
 import { TimelineScroller } from './timeline-scroller';
 import { useComposer } from '../context/composer-context';
 import { TopicStatusLabel } from './topic-status-label';
+import { focusForumReplyPost } from './reply-anchor';
 import { useTranslations } from '@rustok/next-fluent';
 
 interface ThreadPanelProps {
@@ -16,6 +17,12 @@ interface ThreadPanelProps {
   repliesTotal: number;
   onMarkRead?: (topicId: string) => void;
   isMarkingRead?: boolean;
+  /** Reply id the incoming link addressed; scrolled to and marked once posts render. */
+  focusReplyId?: string | null;
+  /** The linked reply stayed outside the loaded pages. */
+  focusReplyMissing?: boolean;
+  /** Reports that the anchor was applied, so re-renders do not scroll again. */
+  onFocusHandled?: () => void;
 }
 
 export function ThreadPanel({
@@ -24,10 +31,26 @@ export function ThreadPanel({
   repliesTotal,
   onMarkRead,
   isMarkingRead = false,
+  focusReplyId = null,
+  focusReplyMissing = false,
+  onFocusHandled,
 }: ThreadPanelProps) {
   const forum = useTranslations('Forum');
   const { openReply } = useComposer();
   const repliesContainerRef = useRef<HTMLDivElement>(null);
+
+  // A deep link addressed one reply: scroll to it once the posts are rendered. A reply outside
+  // the loaded pages is reported below rather than left to look like the whole thread.
+  useEffect(() => {
+    if (!focusReplyId) {
+      return undefined;
+    }
+    const clearHighlight = focusForumReplyPost(focusReplyId);
+    if (clearHighlight) {
+      onFocusHandled?.();
+    }
+    return clearHighlight ?? undefined;
+  }, [focusReplyId, replies, onFocusHandled]);
 
   if (!topic) {
     return (
@@ -145,6 +168,11 @@ export function ThreadPanel({
 
         {/* Replies Section */}
         <div ref={repliesContainerRef} className="space-y-3 pt-2">
+          {focusReplyMissing && (
+            <p className="rounded-xl border border-dashed border-border px-4 py-2 text-center text-[11px] text-muted-foreground">
+              {forum('linkedPostUnavailable')}
+            </p>
+          )}
           <div className="flex items-center justify-between border-t border-border pt-4">
             <h4 className="text-sm font-semibold text-foreground">{forum('replies')}</h4>
             <span className="text-xs text-muted-foreground">
@@ -167,7 +195,7 @@ export function ThreadPanel({
                   data-target-id={reply.id}
                   data-author-handle={reply.authorId ?? undefined}
                   data-revision-id="1"
-                  className="rounded-[1.25rem] border border-border bg-card p-4 transition hover:border-border/80"
+                  className="rounded-[1.25rem] border border-border bg-card p-4 transition hover:border-border/80 data-[focused=true]:border-primary/60 data-[focused=true]:ring-2 data-[focused=true]:ring-primary/40"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <AuthorBadge authorId={reply.authorId} />

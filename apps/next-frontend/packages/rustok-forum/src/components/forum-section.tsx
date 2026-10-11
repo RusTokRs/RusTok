@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   fetchStorefrontCategories,
   fetchStorefrontTopics,
@@ -22,6 +22,7 @@ import { ThreadPanel } from './thread-panel';
 import { Composer } from './composer';
 import { QuoteTooltip } from './quote-tooltip';
 import { CategoryOverview } from './category-overview';
+import { isForumReplyId, MAX_ANCHOR_REPLY_PAGES } from './reply-anchor';
 import { useTranslations } from '@rustok/next-fluent';
 
 interface ForumSectionProps {
@@ -30,6 +31,8 @@ interface ForumSectionProps {
   locale: string;
   initialCategoryId?: string | null;
   initialTopicId?: string | null;
+  /** Reply id from `?reply=` on a notification or mention deep link. */
+  initialReplyId?: string | null;
   initialView?: 'topics' | 'categories';
 }
 
@@ -39,6 +42,7 @@ export function ForumSection({
   locale,
   initialCategoryId = null,
   initialTopicId = null,
+  initialReplyId = null,
   initialView = 'topics',
 }: ForumSectionProps) {
   const forum = useTranslations('Forum');
@@ -60,6 +64,17 @@ export function ForumSection({
   const [loading, setLoading] = useState(true);
   // A failed read is reported instead of being rendered as an empty forum.
   const [loadError, setLoadError] = useState<string | null>(null);
+  // One-shot deep-link anchor: `?reply=<uuid>` addresses one post inside the opened topic.
+  const [replyAnchor, setReplyAnchor] = useState<{
+    topicId: string;
+    replyId: string;
+    visible: boolean;
+  } | null>(null);
+  const pendingAnchorRef = useRef<{ topicId: string; replyId: string } | null>(
+    initialTopicId && isForumReplyId(initialReplyId)
+      ? { topicId: initialTopicId, replyId: initialReplyId }
+      : null
+  );
 
   // Load Categories
   const loadCategories = useCallback(async () => {
@@ -143,6 +158,38 @@ export function ForumSection({
 
       setSelectedTopic(topicData);
       setReplies(repliesData.items);
+
+      const pending = pendingAnchorRef.current;
+      if (pending && pending.topicId === topicId) {
+        pendingAnchorRef.current = null;
+        // The thread is cursor-paged, so the linked post can sit past the first page: walk the
+        // same owner read forward until it is rendered, bounded by MAX_ANCHOR_REPLY_PAGES.
+        let items = repliesData.items;
+        let cursor = repliesData.nextCursor;
+        let pages = 1;
+        while (
+          cursor &&
+          pages < MAX_ANCHOR_REPLY_PAGES &&
+          !items.some((reply) => reply.id === pending.replyId)
+        ) {
+          const next = await fetchStorefrontReplies({
+            tenantId: tenantId ?? undefined,
+            tenantSlug: tenantSlug ?? undefined,
+            topicId,
+            locale,
+            after: cursor,
+          });
+          items = items.concat(next.items);
+          cursor = next.nextCursor;
+          pages += 1;
+        }
+        setReplies(items);
+        setReplyAnchor({
+          topicId,
+          replyId: pending.replyId,
+          visible: items.some((reply) => reply.id === pending.replyId),
+        });
+      }
       // Reply count comes from the topic counter; the reply list is cursor-paged and uncounted.
       setRepliesTotal(topicData?.replyCount ?? 0);
 
@@ -316,7 +363,10 @@ export function ForumSection({
                 topics={topics}
                 total={topicsTotal}
                 selectedTopicId={selectedTopicId}
-                onSelectTopic={(tId) => setSelectedTopicId(tId)}
+                onSelectTopic={(tId) => {
+                  setSelectedTopicId(tId);
+                  setReplyAnchor(null);
+                }}
                 selectedCategoryId={selectedCategoryId}
                 locale={locale}
               />
@@ -327,6 +377,17 @@ export function ForumSection({
                 repliesTotal={repliesTotal}
                 onMarkRead={handleMarkTopicRead}
                 isMarkingRead={isMarkingRead}
+                focusReplyId={
+                  replyAnchor && replyAnchor.topicId === selectedTopicId && replyAnchor.visible
+                    ? replyAnchor.replyId
+                    : null
+                }
+                focusReplyMissing={
+                  replyAnchor !== null &&
+                  !replyAnchor.visible &&
+                  replyAnchor.topicId === selectedTopicId
+                }
+                onFocusHandled={() => setReplyAnchor(null)}
               />
             </div>
           )}

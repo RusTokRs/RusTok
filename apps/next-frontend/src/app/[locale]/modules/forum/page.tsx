@@ -36,6 +36,10 @@ export default async function ForumPage({
       : null;
   const view =
     resolvedSearchParams.view === 'categories' ? 'categories' : 'topics';
+  const reply =
+    typeof resolvedSearchParams.reply === 'string'
+      ? resolvedSearchParams.reply
+      : null;
 
   return (
     <main className="min-h-screen bg-background py-8">
@@ -46,6 +50,7 @@ export default async function ForumPage({
           locale={locale}
           initialCategoryId={category}
           initialTopicId={topic}
+          initialReplyId={reply}
           initialView={view}
         />
       </div>

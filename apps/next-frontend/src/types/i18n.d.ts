@@ -253,6 +253,7 @@ export type AppMessageKey =
   | 'Forum-jumpToEnd'
   | 'Forum-latest'
   | 'Forum-latestDiscussions'
+  | 'Forum-linkedPostUnavailable'
   | 'Forum-livePreview'
   | 'Forum-loading'
   | 'Forum-locked'
@@ -342,6 +343,7 @@ export type AppMessageKey =
   | 'Forum.jumpToEnd'
   | 'Forum.latest'
   | 'Forum.latestDiscussions'
+  | 'Forum.linkedPostUnavailable'
   | 'Forum.livePreview'
   | 'Forum.loading'
   | 'Forum.locked'
@@ -823,6 +825,7 @@ export interface AppMessageArgs {
   'Forum-jumpToEnd'?: Record<string, never>;
   'Forum-latest'?: Record<string, never>;
   'Forum-latestDiscussions'?: Record<string, never>;
+  'Forum-linkedPostUnavailable'?: Record<string, never>;
   'Forum-livePreview'?: Record<string, never>;
   'Forum-loading'?: Record<string, never>;
   'Forum-locked'?: Record<string, never>;
@@ -912,6 +915,7 @@ export interface AppMessageArgs {
   'Forum.jumpToEnd'?: Record<string, never>;
   'Forum.latest'?: Record<string, never>;
   'Forum.latestDiscussions'?: Record<string, never>;
+  'Forum.linkedPostUnavailable'?: Record<string, never>;
   'Forum.livePreview'?: Record<string, never>;
   'Forum.loading'?: Record<string, never>;
   'Forum.locked'?: Record<string, never>;

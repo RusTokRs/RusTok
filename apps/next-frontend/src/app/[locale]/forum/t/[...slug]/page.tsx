@@ -10,6 +10,7 @@ import { getStorefrontTenantId, getStorefrontTenantSlug } from '@/shared/api/mod
 
 interface TopicPageProps {
   params: Promise<{ locale: string; slug: string[] }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 async function resolveTopicId(
@@ -107,8 +108,12 @@ export async function generateMetadata({ params }: TopicPageProps): Promise<Meta
   };
 }
 
-export default async function ForumTopicPage({ params }: TopicPageProps) {
+export default async function ForumTopicPage({ params, searchParams }: TopicPageProps) {
   const { locale, slug } = await params;
+  // `?reply=<uuid>` is appended to this route by the forum search projection so a result points at
+  // one post; the view validates the id and resolves the anchor.
+  const query = await searchParams;
+  const replyParam = typeof query.reply === 'string' ? query.reply : null;
   const tenantSlug = getStorefrontTenantSlug();
   const tenantId = getStorefrontTenantId();
 
@@ -120,7 +125,13 @@ export default async function ForumTopicPage({ params }: TopicPageProps) {
   );
 
   if (shouldRedirectTo) {
-    redirect(shouldRedirectTo);
+    // Keep the addressed post: a canonical redirect that drops the query silently loses the
+    // anchor, and the reader lands at the top of a long thread.
+    redirect(
+      replyParam
+        ? `${shouldRedirectTo}?reply=${encodeURIComponent(replyParam)}`
+        : shouldRedirectTo
+    );
   }
 
   if (!topicId) {
@@ -157,6 +168,8 @@ export default async function ForumTopicPage({ params }: TopicPageProps) {
           initialTopic={topic}
           initialReplies={repliesData.items}
           initialRepliesTotal={topic.replyCount}
+          initialRepliesCursor={repliesData.nextCursor}
+          focusReplyId={replyParam}
         />
       </div>
     </main>

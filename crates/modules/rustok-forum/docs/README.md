@@ -105,6 +105,7 @@ asset against deletion.
 - `node scripts/verify/verify-forum-search-canonical-route-cutover.mjs`
 - `node scripts/verify/verify-forum-search-canonical-route-reindex-harness.mjs`
 - `node scripts/verify/verify-forum-native-host-route-evidence.mjs`
+- `node scripts/verify/verify-forum-reply-anchor-consumer.mjs`
 - task-specific owner, transport, UI and runtime commands from the canonical plan
 
 ## Related documents

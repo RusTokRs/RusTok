@@ -250,6 +250,7 @@ Forum-jumpToBeginning = Jump to beginning
 Forum-jumpToEnd = Jump to end
 Forum-latest = Latest
 Forum-latestDiscussions = Latest discussions
+Forum-linkedPostUnavailable = The linked post is not in the part of this thread that was loaded. It may be hidden, deleted, or further down the page list.
 Forum-livePreview = Live preview of your post:
 Forum-loading = Loading…
 Forum-locked = Locked

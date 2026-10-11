@@ -252,6 +252,7 @@ Forum-jumpToBeginning = К началу
 Forum-jumpToEnd = К концу
 Forum-latest = Новые
 Forum-latestDiscussions = Последние обсуждения
+Forum-linkedPostUnavailable = Ссылка ведёт на сообщение, которого нет в загруженной части темы. Оно может быть скрыто, удалено или находиться дальше в списке страниц.
 Forum-livePreview = Предпросмотр публикации:
 Forum-loading = Загрузка…
 Forum-locked = Закрыта

@@ -49,6 +49,7 @@ registerStorefrontModule({
       locale={locale}
       initialCategoryId={typeof searchParams.category === 'string' ? searchParams.category : null}
       initialTopicId={typeof searchParams.topic === 'string' ? searchParams.topic : null}
+      initialReplyId={typeof searchParams.reply === 'string' ? searchParams.reply : null}
       initialView={searchParams.view === 'categories' ? 'categories' : 'topics'}
     />
   ),

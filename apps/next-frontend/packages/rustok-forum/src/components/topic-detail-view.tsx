@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -31,6 +31,11 @@ import { Composer } from './composer';
 import { QuoteTooltip } from './quote-tooltip';
 import { ComposerProvider, useComposer } from '../context/composer-context';
 import { TopicStatusLabel } from './topic-status-label';
+import {
+  focusForumReplyPost,
+  isForumReplyId,
+  MAX_ANCHOR_REPLY_PAGES,
+} from './reply-anchor';
 import { useTranslations } from '@rustok/next-fluent';
 
 interface TopicDetailViewProps {
@@ -41,6 +46,10 @@ interface TopicDetailViewProps {
   initialTopic?: ForumTopicDetail | null;
   initialReplies?: ForumReplyDetail[];
   initialRepliesTotal?: number;
+  /** Cursor after `initialReplies`, so a reply deep link continues paging without refetching. */
+  initialRepliesCursor?: string | null;
+  /** Reply id addressed by `?reply=` on a search-result or notification link. */
+  focusReplyId?: string | null;
 }
 
 function TopicDetailContent({
@@ -51,6 +60,8 @@ function TopicDetailContent({
   initialTopic,
   initialReplies = [],
   initialRepliesTotal = 0,
+  initialRepliesCursor = null,
+  focusReplyId = null,
 }: TopicDetailViewProps) {
   const forum = useTranslations('Forum');
   const { openReply } = useComposer();
@@ -65,6 +76,9 @@ function TopicDetailContent({
   const [copiedLink, setCopiedLink] = useState(false);
   // A failed read is reported instead of being rendered as "topic not found".
   const [loadError, setLoadError] = useState<string | null>(null);
+  // True when `?reply=` addressed a post that stayed outside the loaded pages.
+  const [anchorMissing, setAnchorMissing] = useState(false);
+  const anchorAppliedRef = useRef(false);
 
   // Load Categories & Topic Data if not provided initially
   const loadData = useCallback(async () => {
@@ -90,12 +104,43 @@ function TopicDetailContent({
               topicId,
               locale,
             })
-          : Promise.resolve({ items: initialReplies, nextCursor: null }),
+          : Promise.resolve({ items: initialReplies, nextCursor: initialRepliesCursor }),
       ]);
 
       setCategories(catsData.items);
       if (topicData) setTopic(topicData);
-      setReplies(repliesData.items);
+
+      const anchorId = isForumReplyId(focusReplyId) ? focusReplyId : null;
+      let items = repliesData.items;
+      if (anchorId) {
+        // The thread is cursor-paged, so the linked post can sit past the page this view has:
+        // walk the same owner read forward until it is rendered, bounded so one view cannot loop.
+        let cursor = repliesData.nextCursor;
+        let pages = 1;
+        while (
+          cursor &&
+          pages < MAX_ANCHOR_REPLY_PAGES &&
+          !items.some((reply) => reply.id === anchorId)
+        ) {
+          const next = await fetchStorefrontReplies({
+            tenantId: tenantId ?? undefined,
+            tenantSlug: tenantSlug ?? undefined,
+            topicId,
+            locale,
+            after: cursor,
+          });
+          items = items.concat(next.items);
+          cursor = next.nextCursor;
+          pages += 1;
+        }
+        const anchoredIndex = items.findIndex((reply) => reply.id === anchorId);
+        setAnchorMissing(anchoredIndex < 0);
+        if (anchoredIndex >= 0) {
+          // The timeline marker follows the anchor so the reported post number stays truthful.
+          setCurrentPost(anchoredIndex + 2);
+        }
+      }
+      setReplies(items);
       // Reply count comes from the topic counter; the reply list is cursor-paged and uncounted.
       setRepliesTotal(topicData?.replyCount ?? initialRepliesTotal);
 
@@ -119,7 +164,31 @@ function TopicDetailContent({
     } catch {
       setLoadError(forum('errorLoad'));
     }
-  }, [tenantId, tenantSlug, locale, topicId, initialTopic, initialReplies, initialRepliesTotal, forum]);
+  }, [
+    tenantId,
+    tenantSlug,
+    locale,
+    topicId,
+    initialTopic,
+    initialReplies,
+    initialRepliesTotal,
+    initialRepliesCursor,
+    focusReplyId,
+    forum,
+  ]);
+
+  // Scroll to the linked post once, after it exists in the document.
+  useEffect(() => {
+    if (anchorAppliedRef.current || !isForumReplyId(focusReplyId)) {
+      return undefined;
+    }
+    const clearHighlight = focusForumReplyPost(focusReplyId);
+    if (!clearHighlight) {
+      return undefined;
+    }
+    anchorAppliedRef.current = true;
+    return clearHighlight;
+  }, [focusReplyId, replies]);
 
   useEffect(() => {
     loadData();
@@ -385,6 +454,11 @@ function TopicDetailContent({
             </article>
 
             {/* Replies List */}
+            {anchorMissing && (
+              <p className="rounded-xl border border-dashed border-border px-4 py-2 text-center text-[11px] text-muted-foreground">
+                {forum('linkedPostUnavailable')}
+              </p>
+            )}
             {replies.length > 0 && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -402,7 +476,7 @@ function TopicDetailContent({
                     data-target-id={reply.id}
                     data-author-handle={getAuthorHandle(reply.authorId)}
                     data-revision-id="1"
-                    className="rounded-[1.75rem] border border-border bg-card p-6 shadow-sm"
+                    className="rounded-[1.75rem] border border-border bg-card p-6 shadow-sm data-[focused=true]:border-primary/60 data-[focused=true]:ring-2 data-[focused=true]:ring-primary/40"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
                       <div className="flex items-center gap-3">

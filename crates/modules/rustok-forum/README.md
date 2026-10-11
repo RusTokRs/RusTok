@@ -44,7 +44,8 @@
   recheck the canonical category through the exact audience and channel boundary,
   but no public category URL is mounted yet. Topic routes use
   `/{locale}/forum/t/{short_id}/{slug}` with immutable redirect/tombstone history
-  and a Rust storefront mount; ID routes remain compatibility paths.
+  and a Rust storefront mount; ID routes remain compatibility paths. The Next.js storefront serves the same prefix at
+  `src/app/[locale]/forum/t/[...slug]`, so a link the owner authors resolves on both hosts.
 - A selected merged-source ID resolves through the immutable
   `forum_topic_merge_operations` chain to the terminal retained topic.
   `GET /api/forum/topics/{id}` returns an authorization-safe `308 Permanent Redirect`
@@ -254,13 +255,15 @@ wrappers. Each one has an owner decision or a follow-up task in
   the reply and deep-links `/modules/forum?category=…&topic=…&reply=…`. The intake selects
   rows from the host decoder's claimed types, so this needed no Notifications change. See
   [`DECISIONS/2026-10-11-notifications-outbox-intake-decoder-claims.md`](../../../DECISIONS/2026-10-11-notifications-outbox-intake-decoder-claims.md).
-- Reply deep links resolve to the topic, not to the reply. `target_route` and the search
-  projection emit `/modules/forum?category=…&topic=…&reply=…`, but `parse_forum_route` and
-  the Next.js widget read `category` and `topic` only, so no surface scrolls to or
-  highlights the referenced reply. A reply anchor needs a route-contract decision plus
-  per-surface plumbing (and it equally affects mentions and search results); until then the
-  notification opens the correct topic and nothing more. Reply anchoring is tracked by
-  `FORUM-20` (Search/SEO/deep links).
+- Reply deep links address one post. `target_route` and the search projection emit
+  `?reply=<reply-uuid>`, and the Next.js forum section and topic page validate that id, page
+  forward through `forumStorefrontReplies` for at most 20 pages until the post is rendered, then
+  scroll to it and mark it; a reply this reader cannot see, or one past that bound, is stated as
+  absent from the loaded part of the thread instead of guessed at. The owner keeps no
+  "page containing this reply" read, so exact placement inside a very long thread costs extra
+  round trips, and the Leptos module widget has no anchor handling because no producer links to
+  it. See
+  [`DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md`](../../../DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md).
 - Notification descriptors carry identifiers only, so the Notifications storefront inbox
   renders `forum.topic.replied` / `forum.topic.created` as the body and the notification
   type as the title until the localized template registry (`NOTIFY-06`) lands. The forum
