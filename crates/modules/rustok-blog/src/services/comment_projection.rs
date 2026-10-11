@@ -157,8 +157,8 @@ impl BlogCommentProjectionHandler {
                 ))
             })?;
 
-        let applied_delta =
-            projection_applied_delta(latest.as_ref().map(|delivery| delivery.delta), change.delta);
+        let latest_delta = latest.as_ref().map(|delivery| delivery.delta);
+        let applied_delta = projection_applied_delta(latest_delta, change.delta);
 
         let next_comment_count = next_comment_count(post.comment_count, applied_delta);
         let post_updated = if applied_delta == 0 {
