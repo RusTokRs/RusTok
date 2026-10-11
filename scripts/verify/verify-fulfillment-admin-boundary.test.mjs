@@ -91,6 +91,16 @@ pub async fn reactivate_shipping_option() {}
 `;
 }
 
+function fulfillmentServiceSource() {
+  return `
+fn create_label_provider_operation_id(metadata: &Value) -> Option<Uuid> {
+  metadata.get("provider_operation");
+}
+#[test]
+fn create_label_provider_operation_id_ignores_secondary_label_locator() {}
+`;
+}
+
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-fulfillment-boundary-"));
   writeFixtureFile(root, "crates/modules/rustok-fulfillment/admin/src/lib.rs", libSource(options));
@@ -99,6 +109,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/modules/rustok-fulfillment/admin/src/transport.rs", transportSource(options));
   writeFixtureFile(root, "crates/modules/rustok-fulfillment/admin/src/transport/graphql_adapter.rs", apiSource());
   if (options.legacyApi) writeFixtureFile(root, "crates/modules/rustok-fulfillment/admin/src/api.rs", apiSource());
+  writeFixtureFile(root, "crates/modules/rustok-fulfillment/src/services/fulfillment.rs", fulfillmentServiceSource());
   writeFixtureFile(root, "crates/modules/rustok-fulfillment/docs/implementation-plan.md", "verify-fulfillment-admin-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-fulfillment-admin-boundary.mjs");
   return root;
