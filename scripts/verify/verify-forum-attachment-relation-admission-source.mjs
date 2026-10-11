@@ -2,7 +2,12 @@
 
 import fs from "node:fs";
 
+// A missing input is a finding, not a crash: an uncaught ENOENT means none of the rules below ever
+// run, and the exit code looks like tooling noise rather than a verdict.
 function read(path) {
+  if (!fs.existsSync(path)) {
+    throw new Error(`Forum attachment relation admission source: missing required input ${path}`);
+  }
   return fs.readFileSync(path, "utf8");
 }
 
@@ -14,14 +19,31 @@ function forbid(text, marker, label) {
   if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
 }
 
+// The admission-only boundary is a rule about production code. A file's own `#[cfg(test)]` module
+// legitimately imports SeaORM and mints identifiers to exercise a pure function, so scanning it
+// would report a violation that does not exist.
+function production(text) {
+  const tests = text.indexOf("#[cfg(test)]");
+  return tests < 0 ? text : text.slice(0, tests);
+}
+
 const contract = read("crates/modules/rustok-forum/src/attachment_relation.rs");
 const lib = read("crates/modules/rustok-forum/src/lib.rs");
 const mediaPorts = read("crates/modules/rustok-media/src/ports.rs");
 const mediaDto = read("crates/modules/rustok-media/src/dto.rs");
-const categoryPresentation = read("crates/modules/rustok-forum/src/category_presentation.rs");
+// `src/category_presentation.rs` was removed when Taxonomy took canonical Category presentation
+// (CAT-5 cutover); the guard asked for a "persistence remains disabled" note inside that file, so
+// the check could only pass by resurrecting a retired path. The contract is now the negative one.
+const categoryPresentationPath = "crates/modules/rustok-forum/src/category_presentation.rs";
+if (fs.existsSync(categoryPresentationPath)) {
+  throw new Error(
+    `Forum attachment relation admission source: retired Forum presentation owner ${categoryPresentationPath} must stay removed`,
+  );
+}
 const packet = read(
   "docs/modules/forum-14-attachment-relation-admission-actualization-2026-08-10.md",
 );
+const forumPlan = read("crates/modules/rustok-forum/docs/implementation-plan.md");
 
 for (const marker of [
   "pub mod attachment_relation;",
@@ -29,7 +51,7 @@ for (const marker of [
 ]) need(lib, marker, "FORUM-14A crate wiring");
 
 for (const marker of [
-  "pub const MAX_FORUM_ATTACHMENTS_PER_REVISION: usize = 32;",
+  "pub const MAX_FORUM_ATTACHMENTS_PER_SET: usize = 32;",
   "pub const MAX_FORUM_ATTACHMENT_CAPTION_BYTES: usize = 512;",
   "pub enum ForumAttachmentUsage",
   "Inline",
@@ -46,7 +68,7 @@ for (const marker of [
   "request.target.id().is_nil()",
   "request.source_revision == 0",
   "normalize_locale_tag(&request.locale)",
-  "request.attachments.len() > MAX_FORUM_ATTACHMENTS_PER_REVISION",
+  "request.attachments.len() > MAX_FORUM_ATTACHMENTS_PER_SET",
   "relation.media_id.is_nil()",
   "DuplicatePosition",
   "NonContiguousPositions",
@@ -66,7 +88,7 @@ for (const marker of [
   "Uuid::new_v4",
   "storage_path",
   "public_url",
-]) forbid(contract, marker, "FORUM-14A admission-only boundary");
+]) forbid(production(contract), marker, "FORUM-14A admission-only boundary");
 
 for (const marker of [
   "async fn get_asset",
@@ -80,16 +102,17 @@ for (const marker of [
   "pub metadata: serde_json::Value",
 ]) need(mediaDto, marker, "Media item baseline");
 
+// The boundary the retired file used to document is stated by the canonical plan and enforced by
+// the Forum Media-facing code: category-cover quarantine/deletion lifecycle stays with Media, so
+// Forum must not own a category-cover lifecycle service.
 need(
-  categoryPresentation,
-  "Persistence remains disabled until Media publishes",
-  "Forum category-cover Media lifecycle baseline",
+  forumPlan,
+  "Forum must not reintroduce a duplicate",
+  "Forum category-cover Media lifecycle boundary in the canonical plan",
 );
-need(
-  categoryPresentation,
-  "quarantine and deletion lifecycle state",
-  "Forum category-cover Media lifecycle baseline",
-);
+for (const forbidden of ["CategoryCoverService", "category_cover_media"]) {
+  forbid(lib, forbidden, "Forum category-cover owner command must stay absent");
+}
 
 for (const marker of [
   "FORUM-14A",

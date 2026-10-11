@@ -28,17 +28,22 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 
-// An uncaught throw is how a decorative gate fails: Node prints the source line, the error and a
-// stack, and none of the gate's own rules ever ran.
+// Only a *platform* failure means the gate never reached its rules. Many guards report violations by
+// throwing their own `Error: <name> verification failed: <detail>` from a `fail()` helper, complete
+// with a stack; counting that as a crash would bury every real finding in a bucket of noise, so the
+// pattern set stays limited to runtime errors Node raises on the gate's behalf.
 const CRASH_PATTERNS = [
-  /^Error: /m,
-  /^(Syntax|Type|Reference|Range)Error:/m,
-  /^ENOENT: no such file or directory/m,
+  /^(?:\w*Error: )?(ENOENT|EISDIR|ENOTDIR|EACCES|EPERM|ERR_[A-Z_]+):/m,
+  /^(Syntax|Type|Reference|Range|URI)Error:/m,
   /^Cannot find (module|package)\b/m,
-  /^throw /m,
-  /^\s+at (?:(?:node:|file:|Object\.|Module\.|async |new ).*|.*\.(?:mjs|js|ts):\d+:\d+)$/m,
+  /^Unexpected end of (JSON input|input)/m,
+  /^\s+at (?:node:|Object\.(?:readFileSync|writeFileSync|readdirSync)|Module\._load|new NodeError)/m,
 ];
 const TOOLCHAIN_PATTERNS = [
+  // A gate that shells out for cargo/docker/node and gets ENOENT is an environment gap, not a
+  // verdict: `spawnSync cargo ENOENT` is how those failures surface.
+  /spawnSync [\w.-]+ ENOENT/,
+  /(?:command|binary) [\w'".-]+ not found/i,
   /\bcargo\b[^\n]*(not found|No such file|is required|requires)/i,
   /\b(docker|psql|pg_ctl|pnpm|npm|npx|playwright|chromium|node)\b[^\n]*(not found|No such file|is required|missing)/i,
   /requires (a |the )?(real )?(postgres|rust|cargo|node toolchain|docker)/i,
@@ -96,17 +101,25 @@ function classify(result, output) {
   const firstLine = output.split('\n').find((line) => line.trim().length > 0) ?? '';
   const structured = STRUCTURED_HEADER.test(output) || /\b(?:verification|status): ok\b/i.test(output);
   const crashed = CRASH_PATTERNS.some((pattern) => pattern.test(output));
-  // A gate that reports its own header and *then* names a defect is doing its job, even when the
-  // sentence mentions a missing file; only an uncaught throw with no header counts as decorative.
   const toolchain =
     !structured && TOOLCHAIN_PATTERNS.some((pattern) => pattern.test(output));
-  if (crashed && !structured) {
+  if (crashed) {
     return 'crash';
   }
   if (toolchain) {
     return 'toolchain';
   }
-  return firstLine.includes('failed') || structured ? 'structured-fail' : 'other-fail';
+  // Anything else that carried a message of its own (a thrown `Error: <gate> ...`, or a bulleted
+  // failure list) reached the gate's rules; only a silent or unrecognised exit stays unclassified.
+  const reported =
+    structured ||
+    /^\w*Error(?: \[[A-Z_]+\])?: \S.{12,}$/m.test(output) || // includes `AssertionError [ERR_ASSERTION]: ...`
+    /^not ok \d+ - /m.test(output) || // a node:test harness that ran and failed
+    /^- \S/m.test(output); // a bulleted failure list
+  if (reported) {
+    return 'structured-fail';
+  }
+  return firstLine.length > 0 ? 'other-fail' : 'silent-fail';
 }
 
 function main() {
