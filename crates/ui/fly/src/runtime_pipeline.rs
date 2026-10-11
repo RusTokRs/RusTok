@@ -174,7 +174,7 @@ fn materialize_project_with_runtime_context_and_providers(
         Some(providers) => materialize_component_actions_with_providers(
             &linked_document,
             &effective_context,
-            providers,
+            Some(providers),
         ),
         None => materialize_component_actions(&linked_document, &effective_context),
     };
