@@ -34,8 +34,13 @@ export function applyQueryPairs(base: string, pairs: readonly QueryPair[]): stri
     if (index >= 0) {
       if (nextValue.length > 0) {
         merged[index][1] = nextValue;
+        for (let duplicate = merged.length - 1; duplicate > index; duplicate -= 1) {
+          if (merged[duplicate][0] === key) merged.splice(duplicate, 1);
+        }
       } else {
-        merged.splice(index, 1);
+        for (let duplicate = merged.length - 1; duplicate >= 0; duplicate -= 1) {
+          if (merged[duplicate][0] === key) merged.splice(duplicate, 1);
+        }
       }
     } else if (nextValue.length > 0) {
       merged.push([key, nextValue]);
