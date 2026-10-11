@@ -805,6 +805,7 @@ mod tests {
     #[cfg(feature = "embed-admin-assets")]
     #[test]
     fn admin_asset_response_supports_if_none_match() {
+        use super::admin_asset_response;
         use axum::http::header::ETAG;
 
         let content = b"console.log('asset');";

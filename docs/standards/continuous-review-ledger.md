@@ -541,6 +541,32 @@ Hard limits for every iteration:
 - **Static & local scoped verification:** executed `cargo check -p rustok-workflow-admin -p rustok-product-relations-admin -p rustok-seo-admin`, which succeeded cleanly with exit code 0.
 - **Status:** `FS-22.07` complete. Next primary iteration: `FS-22.08 — Embedded UI composition`.
 
+- [x] **FS-22.08 — Embedded UI composition** — Admin and storefront mounting, route precedence over wildcard locales, HTTP method restriction on SPA/asset fallbacks, ETag/If-None-Match cache validation, and headless/embedded profile interaction audited and remediated.
+
+### FS-22.08 Assessment — Embedded UI composition
+
+- **Base:** `main` at `0662943e954c8fa02b28f04064245b116e101802`.
+- **Primary scope:** `build_admin_router`, `build_storefront_router`, `mount_application_shell`, `dispatch_embedded_admin_fallback`, `admin_asset_response`, CSP nonce injection (`CspNonce`), HTTP caching validators (ETag, If-None-Match), route precedence between admin and storefront wildcard routes, and runtime deployment profile validation in `apps/server/src/services/app_router.rs` and `apps/server/src/services/app_runtime.rs`.
+- **Invariant map:**
+  - Route precedence: embedded admin root `/admin` and `/admin/` must never be shadowed or hijacked by storefront parameter/wildcard routes (`/{locale}`);
+  - Method enforcement: static asset and SPA index fallbacks must only serve `GET` and `HEAD` requests; non-safe methods (`POST`, `PUT`, `DELETE`, etc.) must fail closed with `405 Method Not Allowed`;
+  - Cache validation: static immutable assets (`!is_document`) must support conditional revalidation via `If-None-Match` returning `304 Not Modified` without transmitting body payloads; `HEAD` requests must emit headers with empty bodies;
+  - CSP and nonces: bundled index documents receive dynamic per-request nonces injected into `<script nonce="...">` and `<style nonce="...">` with `Cache-Control: no-cache`;
+  - Profile contracts: `validate_compiled_surface_contract` guarantees compile-time feature and runtime host mode surface alignment.
+- **Confirmed finding EMBEDDEDUI-22.08-01 (Route Shadowing):** When both `embed_admin` and `embed_storefront` were enabled, `admin_router` was mounted solely inside Axum's `.fallback(...)`, while `storefront_router` was merged with explicit routes including `/{locale}`. Because Axum evaluates explicit routes before fallbacks, any single-segment path—including `GET /admin`—matched storefront's `/{locale}` parameter route, rendering the storefront homepage rather than reaching the embedded admin UI.
+- **Confirmed finding EMBEDDEDUI-22.08-02 (Missing Method Restriction):** `build_admin_router` processed all HTTP methods through its fallback, allowing unexpected `POST`, `PUT`, or `DELETE` calls to `/admin/*` to return `200 OK` with `index.html` instead of rejecting invalid mutation methods.
+- **Confirmed finding EMBEDDEDUI-22.08-03 (Missing ETag / If-None-Match Validation):** `admin_asset_response` computed and emitted `ETag` headers for static bundled assets, but never inspected incoming `If-None-Match` request headers or supported conditional `304 Not Modified` responses, causing browsers to unnecessarily re-fetch static assets on every cache revalidation.
+- **Remediation:**
+  - Route precedence: mounted explicit static routes `/admin` and `/admin/` in `mount_application_shell`. In Axum's matchit tree, static routes take priority over parameter routes `/{locale}`, preventing storefront from capturing admin navigation;
+  - Method enforcement: added strict validation in `build_admin_router` rejecting methods other than `GET` and `HEAD` with `405 Method Not Allowed` and `Allow: GET, HEAD`;
+  - Cache validation: implemented `If-None-Match` matching (including `*` and weak `W/` ETags) in `admin_asset_response`, returning `304 Not Modified` with `ETag` and `Cache-Control` headers and empty body; added empty body handling for `HEAD` requests;
+  - Added unit regression tests `mount_application_shell_prioritizes_admin_root_over_storefront_wildcard_locale` and `admin_asset_response_supports_if_none_match`.
+- **Immediate re-audit:** verified that `/admin` and `/admin/` dispatch to admin router even when storefront routes are present, non-GET/HEAD methods are rejected with 405, and `If-None-Match` returns 304.
+- **Adjacent-boundary re-audit:** traced interaction with `security_headers` middleware (nonce injection), `apps/server/src/services/app_runtime.rs` surface contract validation, and headless profile fallbacks.
+- **Regression audit:** existing admin routes (`/admin/orders`) and headless profile behavior remain intact and verified by unit tests.
+- **Static verification:** scoped check `cargo check -p rustok-server` succeeded cleanly with exit code 0.
+- **Status:** `FS-22.08` complete. Next primary iteration: `FS-22.09 — Feature/config interaction matrix`.
+
 
 ### FS-22.06.03 Assessment — `apps/server/src/controllers/oauth.rs`
 
@@ -969,7 +995,7 @@ Hard limits for every iteration:
 
 - [x] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [x] **FS-22.07 — Server-function composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
-- [ ] **FS-22.08 — Embedded UI composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [x] **FS-22.08 — Embedded UI composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.09 — Feature/config interaction matrix:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.10 — Error/observability boundary:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.11 — Fresh second-pass composition audit:** perform this only after the module queue above has been completed, still one primary module per iteration.
@@ -1844,7 +1870,7 @@ The earlier FS-22.01 route-graph pass is retained as historical evidence and is 
 - [ ] **FS-22.05 GraphQL composition:** trace schema construction, resolver registration, runtime data factories, error conversion, request context, authorization, limits, introspection/IDE exposure, and feature-flag/module interactions.
 - [x] **FS-22.06 REST/controller composition:** trace controller registration, shared state extraction, response envelopes, status mapping, body/multipart handling, and per-route authorization.
 - [x] **FS-22.07 Server-function composition:** inspect `/api/fn/*`, context provisioning, CSRF/browser trust assumptions, auth and tenant propagation, and error/serialization boundaries.
-- [ ] **FS-22.08 Embedded UI composition:** trace admin/storefront mounting, asset fallback behavior, nonce/CSP interaction, cache validators, route precedence, and headless/embedded profile combinations.
+- [x] **FS-22.08 Embedded UI composition:** trace admin/storefront mounting, asset fallback behavior, nonce/CSP interaction, cache validators, route precedence, and headless/embedded profile combinations.
 - [ ] **FS-22.09 Feature/config interaction matrix:** inspect compile-time feature flags vs runtime module enablement/host modes and identify states that compile but produce incomplete or unsafe runtime composition.
 - [ ] **FS-22.10 Error/observability boundary:** inspect server-wide error mapping and logging for secret, identity, tenant, raw domain-error, and stack/payload leakage; verify stable public contracts.
 - [ ] **FS-22.11 Fresh second-pass composition audit:** after all FS-22 fixes, re-read the composition root from scratch without using the original findings list and record any newly discovered defects.
