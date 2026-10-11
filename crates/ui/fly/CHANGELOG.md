@@ -99,6 +99,15 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **`fly-web` can deliver outbound iframe messages to the sandboxed canvas.** `IframeMessagePort`
+  validated its destination with the inbound rule, which accepts `"null"` — the origin a sandboxed
+  `srcdoc` iframe reports — and then handed that same string to `postMessage`. The platform accepts
+  only `*`, `/`, or an absolute URL as `targetOrigin`, so the call raised `SyntaxError: Invalid
+  target origin`, and substituting a real origin instead makes the browser drop the message because
+  it can never equal the recipient's reported origin. An opaque destination is now sent to `*`
+  through `outbound_target_origin`, a host-tested decision in `origin.rs` next to the inbound rule
+  it is deliberately asymmetric with; `OPAQUE_ORIGIN` names the value both rules turn on.
+
 - **`fly-web` geometry rejects non-finite input.** Browser geometry crosses the iframe bridge as
   JSON, where an out-of-range literal deserializes to an infinity rather than an error. An
   infinite rectangle contained every point, passed the size guard, and then yielded a NaN ratio
