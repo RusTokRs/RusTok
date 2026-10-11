@@ -8,8 +8,9 @@ use crate::error::{ForumError, ForumResult};
 const FORUM_REPLY_CREATE_FACTS_DEADLINE: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ForumReplyCreateTransport {
+pub enum ForumReplyCreateTransport {
     Graphql,
+    NativeServer,
     Rest,
 }
 
@@ -17,6 +18,7 @@ impl ForumReplyCreateTransport {
     const fn label(self) -> &'static str {
         match self {
             Self::Graphql => "graphql",
+            Self::NativeServer => "native",
             Self::Rest => "rest",
         }
     }
@@ -28,7 +30,7 @@ impl ForumReplyCreateTransport {
 /// Request DTOs never select either identity. When an HTTP request context is
 /// available, it must agree with the authenticated principal before any owner
 /// facts provider can be called.
-pub(crate) fn reply_create_audience_port_context(
+pub fn reply_create_audience_port_context(
     transport: ForumReplyCreateTransport,
     tenant_id: Uuid,
     auth: &AuthContext,
@@ -177,6 +179,31 @@ mod tests {
             context
                 .correlation_id
                 .starts_with("forum-graphql-reply-create-")
+        );
+    }
+
+    #[test]
+    fn native_server_context_uses_the_native_metric_label() {
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let auth = auth(tenant_id, user_id);
+        let request = request(tenant_id, user_id);
+
+        let context = reply_create_audience_port_context(
+            ForumReplyCreateTransport::NativeServer,
+            tenant_id,
+            &auth,
+            Some(&request),
+            "en",
+        )
+        .expect("native server-fn context should compose");
+
+        assert_eq!(context.locale, "ru-RU");
+        assert_eq!(context.channel.as_deref(), Some("members"));
+        assert!(
+            context
+                .correlation_id
+                .starts_with("forum-native-reply-create-")
         );
     }
 

@@ -36,7 +36,7 @@ pub mod notification_recipient;
 mod notification_source;
 pub mod openapi;
 mod reaction_subject;
-mod reply_create_transport;
+pub mod reply_create_transport;
 pub mod reply_read_transport;
 pub mod richtext;
 mod search_projection;
@@ -46,7 +46,7 @@ mod seo_targets;
 pub mod services;
 pub mod state_machine;
 pub mod subscription;
-mod topic_create_transport;
+pub mod topic_create_transport;
 pub mod topic_read_transport;
 pub mod visibility;
 
@@ -89,6 +89,9 @@ pub use notification_recipient::{
 pub use reaction_subject::{
     FORUM_REACTION_SOURCE, FORUM_REACTION_V1_KEY, FORUM_REPLY_REACTION_KIND,
     FORUM_TOPIC_REACTION_KIND, ForumReactionSubjectProviderFactory,
+};
+pub use reply_create_transport::{
+    ForumReplyCreateTransport, reply_create_audience_port_context,
 };
 pub use reply_read_transport::{
     ForumReplyReadOperation, ForumReplyReadTransport, reply_read_audience_port_context,
@@ -190,6 +193,9 @@ pub use services::{
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};
+pub use topic_create_transport::{
+    ForumTopicCreateTransport, topic_create_audience_port_context,
+};
 pub use topic_read_transport::{
     ForumTopicReadOperation, ForumTopicReadTransport, topic_read_audience_port_context,
 };

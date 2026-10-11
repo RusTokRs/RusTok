@@ -4,6 +4,8 @@ mod graphql_adapter {
     include!("topic_route_graphql_adapter.rs");
     include!("revision_graphql_adapter.rs");
 }
+mod composer_graphql;
+mod composer_native_server;
 mod native_server_adapter {
     include!("native_server_adapter.rs");
     include!("native_server_adapter_bulk.rs");
@@ -13,8 +15,9 @@ mod native_server_adapter {
 }
 
 use crate::model::{
-    StorefrontForumCategoryRouteResolution, StorefrontForumData,
-    StorefrontForumTopicRouteResolution,
+    CreateStorefrontForumReplyDraft, CreateStorefrontForumTopicDraft,
+    StorefrontForumCategoryRouteResolution, StorefrontForumCreatedReply,
+    StorefrontForumCreatedTopic, StorefrontForumData, StorefrontForumTopicRouteResolution,
 };
 use serde::{Deserialize, Serialize};
 
@@ -101,6 +104,30 @@ pub async fn resolve_storefront_topic_route(
         native_server_adapter::resolve_storefront_topic_route_server(locale, short_id, slug).await
     } else {
         graphql_adapter::resolve_storefront_topic_route_graphql(locale, short_id, slug).await
+    }
+}
+
+/// Creates a topic through the single selected storefront transport.
+///
+/// The native `#[server]` path and the GraphQL path carry the same owner command
+/// contract; a failed selected transport never falls back to the other path.
+pub async fn create_storefront_forum_topic(
+    draft: CreateStorefrontForumTopicDraft,
+) -> Result<StorefrontForumCreatedTopic, TransportError> {
+    if use_native_transport() {
+        composer_native_server::create_storefront_topic_server(draft).await
+    } else {
+        composer_graphql::create_storefront_topic_graphql(draft).await
+    }
+}
+
+pub async fn create_storefront_forum_reply(
+    draft: CreateStorefrontForumReplyDraft,
+) -> Result<StorefrontForumCreatedReply, TransportError> {
+    if use_native_transport() {
+        composer_native_server::create_storefront_reply_server(draft).await
+    } else {
+        composer_graphql::create_storefront_reply_graphql(draft).await
     }
 }
 

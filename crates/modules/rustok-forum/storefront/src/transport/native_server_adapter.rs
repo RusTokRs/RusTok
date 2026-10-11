@@ -481,7 +481,7 @@ async fn storefront_topic_mark_read_native(
 }
 
 #[cfg(feature = "ssr")]
-fn normalize_locale(value: Option<&str>) -> String {
+pub(super) fn normalize_locale(value: Option<&str>) -> String {
     value
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -790,6 +790,6 @@ fn empty_replies() -> ForumReplyPage {
 }
 
 #[cfg(feature = "ssr")]
-fn server_error(error: impl std::fmt::Display) -> ServerFnError {
+pub(super) fn server_error(error: impl std::fmt::Display) -> ServerFnError {
     ServerFnError::new(error.to_string())
 }

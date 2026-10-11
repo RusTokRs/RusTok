@@ -18,7 +18,8 @@ pub enum ForumViewMode {
 }
 use crate::core::{
     ForumStorefrontCategoryRailLabels, forum_storefront_category_card_view_model,
-    forum_storefront_count_label, forum_storefront_status_badge_class, topic_status_class,
+    forum_storefront_count_label, forum_storefront_status_badge_class,
+    forum_storefront_topic_accepts_reply, topic_status_class,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -60,6 +61,11 @@ pub fn ForumView() -> impl IntoView {
     );
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
+    // Category chosen from the community overview. The selected category is a route
+    // query value, so an in-page switch is kept as a local override that feeds the
+    // same read transport instead of inventing a second selection source.
+    let (category_override, set_category_override) = signal(Option::<String>::None);
+    let selected_category_id = category_override.get().or_else(|| selected_category_id.clone());
     let (mutation_busy, set_mutation_busy) = signal(false);
     let (mutation_error, set_mutation_error) = signal(Option::<transport::TransportError>::None);
 
@@ -89,6 +95,12 @@ pub fn ForumView() -> impl IntoView {
             set_mutation_busy.set(false);
         });
     });
+
+    let on_post_submitted = Callback::new(move |_topic_id: String| {
+        set_refresh_nonce.update(|value| *value += 1);
+    });
+    let on_select_category =
+        Callback::new(move |category_id: String| set_category_override.set(Some(category_id)));
 
     view! {
         <section class="overflow-hidden rounded-[2rem] border border-border bg-gradient-to-br from-card via-card to-muted/35 p-8 shadow-sm">
@@ -128,6 +140,8 @@ pub fn ForumView() -> impl IntoView {
                                     <ForumShowcase
                                         data
                                         on_mark_topic_read
+                                        on_post_submitted
+                                        on_select_category
                                         mutation_busy
                                     />
                                 }.into_any(),
@@ -148,6 +162,8 @@ pub fn ForumView() -> impl IntoView {
 #[component]
 fn ForumShowcase(
     data: StorefrontForumData,
+    on_post_submitted: Callback<String>,
+    on_select_category: Callback<String>,
     on_mark_topic_read: Callback<String>,
     mutation_busy: ReadSignal<bool>,
 ) -> impl IntoView {
@@ -165,6 +181,17 @@ fn ForumShowcase(
     let composer_signal: ComposerSignal = RwSignal::new(ComposerState::default());
     provide_context(composer_signal);
 
+    let showcase_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let discussions_label = t(
+        showcase_locale.as_deref(),
+        "forum.view.discussions",
+        "Discussions",
+    );
+    let categories_switch_label = t(
+        showcase_locale.as_deref(),
+        "forum.view.categories",
+        "Categories",
+    );
     let composer_categories = categories.items.clone();
     let overview_categories = categories.items.clone();
     let overview_total = categories.total;
@@ -188,7 +215,7 @@ fn ForumShowcase(
                         on:click=move |_| set_view_mode.set(ForumViewMode::Topics)
                     >
                         <span>"💬"</span>
-                        <span>"Discussions"</span>
+                        <span>{discussions_label}</span>
                     </button>
                     <button
                         type="button"
@@ -203,7 +230,7 @@ fn ForumShowcase(
                         on:click=move |_| set_view_mode.set(ForumViewMode::Categories)
                     >
                         <span>"📁"</span>
-                        <span>"Categories"</span>
+                        <span>{categories_switch_label}</span>
                     </button>
                 </div>
             </div>
@@ -215,8 +242,9 @@ fn ForumShowcase(
                         <CategoryOverview
                             items=overview_categories
                             total=overview_total
-                            on_select_category=Callback::new(move |_category_id: String| {
+                            on_select_category=Callback::new(move |category_id: String| {
                                 set_view_mode.set(ForumViewMode::Topics);
+                                on_select_category.run(category_id);
                             })
                         />
                     }.into_any()
@@ -253,7 +281,10 @@ fn ForumShowcase(
             }}
         </div>
 
-        <ForumComposer categories=composer_categories />
+        <ForumComposer
+            categories=composer_categories
+            on_submitted=on_post_submitted
+        />
     }
 }
 
@@ -413,6 +444,18 @@ fn ForumThreadPanel(
     let topic_title = topic.title.clone();
     let author_id = topic.author_id.clone();
     let status_class = topic_status_class(topic.status.as_str());
+    // The owner refuses replies into a locked or non-open topic, so the composer
+    // affordances are hidden here instead of failing after submit.
+    let can_reply = forum_storefront_topic_accepts_reply(
+        topic.status.as_str(),
+        topic.is_locked,
+    );
+    let reply_label = t(locale.as_deref(), "forum.thread.reply", "Reply");
+    let reply_closed_label = t(
+        locale.as_deref(),
+        "forum.thread.replyClosed",
+        "Replies are closed for this topic.",
+    );
     let body = topic.body.clone();
     let body_locale = topic.effective_locale.clone();
     let content_lang = forum_storefront_content_lang(topic.effective_locale.as_str());
@@ -498,7 +541,7 @@ fn ForumThreadPanel(
                             </button>
                         }
                     })}
-                    {
+                    {can_reply.then(|| {
                         let topic_id = topic_id.clone();
                         let topic_title = topic_title.clone();
                         view! {
@@ -511,10 +554,17 @@ fn ForumThreadPanel(
                                     }
                                 }
                             >
-                                "Reply"
+                                {reply_label.clone()}
                             </button>
                         }
-                    }
+                    })}
+                    {!can_reply.then(|| {
+                        view! {
+                            <span class="text-xs text-muted-foreground">
+                                {reply_closed_label.clone()}
+                            </span>
+                        }
+                    })}
                 </div>
             </div>
 
@@ -551,7 +601,17 @@ fn ForumThreadPanel(
                 } else {
                     view! {
                         <div class="mt-4 space-y-3">
-                            {replies.into_iter().map(|reply| view! { <ReplyCard reply /> }).collect_view()}
+                            {replies
+                                .into_iter()
+                                .map(|reply| view! {
+                                    <ReplyCard
+                                        reply
+                                        topic_id=topic_id.clone()
+                                        topic_title=topic_title.clone()
+                                        can_reply
+                                    />
+                                })
+                                .collect_view()}
                         </div>
                     }.into_any()
                 }}
@@ -564,12 +624,25 @@ fn ForumThreadPanel(
 }
 
 #[component]
-fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
+fn ReplyCard(
+    reply: ForumReplyDetail,
+    topic_id: String,
+    topic_title: String,
+    can_reply: bool,
+) -> impl IntoView {
     let author_id = reply.author_id.clone();
     let status_class = topic_status_class(reply.status.as_str());
     let content = reply.content.clone();
     let content_locale = reply.effective_locale.clone();
     let reply_id = reply.id.clone();
+    let quoted_text = reply.content_plain_text.clone();
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let quote_label = t(route_context.locale.as_deref(), "forum.thread.quote", "Quote");
+    let quote_title = t(
+        route_context.locale.as_deref(),
+        "forum.thread.quoteTitle",
+        "Quote this reply",
+    );
 
     view! {
         <article class="rounded-[1.15rem] border border-border bg-card p-4">
@@ -579,32 +652,44 @@ fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
                     <span dir="ltr" class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                         {reply.effective_locale}
                     </span>
-                    <button
-                        type="button"
-                        class="rounded-lg border border-border px-2 py-0.5 text-xs text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                        title="Quote / Reply"
-                        on:click={
-                            let reply_id = reply_id.clone();
-                            move |_| {
-                                if let Some(composer) = use_context::<ComposerSignal>() {
-                                    composer.update(|c| {
-                                        c.append_quote(
+                    {can_reply.then(|| {
+                        let reply_id = reply_id.clone();
+                        let quoted_text = quoted_text.clone();
+                        let topic_id = topic_id.clone();
+                        let topic_title = topic_title.clone();
+                        view! {
+                            <button
+                                type="button"
+                                class="rounded-lg border border-border px-2 py-0.5 text-xs text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                                title=quote_title.clone()
+                                on:click=move |_| {
+                                    let Some(composer) = use_context::<ComposerSignal>() else {
+                                        return;
+                                    };
+                                    // The quote relation needs an exact source revision. The
+                                    // storefront reply read model does not carry one, and per-reply
+                                    // revision lookups are owned by the host reaction composition,
+                                    // so the composer quotes the text and leaves the relation
+                                    // unpinned rather than inventing a revision number.
+                                    composer.update(|state| {
+                                        state.open_reply(topic_id.clone(), topic_title.clone(), None);
+                                        state.append_quote(
                                             ComposerQuote {
                                                 target_kind: "REPLY".to_string(),
                                                 target_id: reply_id.clone(),
-                                                revision_id: 1,
+                                                revision_id: None,
                                                 author_handle: None,
-                                                snippet: None,
+                                                snippet: Some(quoted_text.clone()),
                                             },
-                                            None,
+                                            Some(quoted_text.clone()),
                                         );
                                     });
                                 }
-                            }
+                            >
+                                {quote_label.clone()}
+                            </button>
                         }
-                    >
-                        "Quote"
-                    </button>
+                    })}
                 </div>
             </div>
             <div class="mt-3">

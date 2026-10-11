@@ -201,9 +201,70 @@ pub fn topic_status_class(status: &str) -> &'static str {
     }
 }
 
+/// Content locale a storefront composer write is authored in.
+///
+/// The locale comes from the host route context only; when the host publishes
+/// none, the platform fallback applies, which is the same resolution the owner
+/// read paths use.
+pub fn forum_storefront_content_locale(locale: Option<&str>) -> String {
+    locale
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(rustok_api::PLATFORM_FALLBACK_LOCALE)
+        .to_string()
+}
+
+/// Normalizes a composer quote target kind to the owner quote vocabulary.
+pub fn forum_storefront_quote_target_kind(kind: &str) -> Option<&'static str> {
+    match kind.trim().to_ascii_uppercase().as_str() {
+        "TOPIC" => Some("TOPIC"),
+        "REPLY" => Some("REPLY"),
+        _ => None,
+    }
+}
+
+/// A reply target only accepts an inline quote when the author pinned the exact
+/// quoted revision, so an unresolved revision must fail closed in the composer
+/// instead of inventing a revision number.
+pub fn forum_storefront_quote_revision(revision_id: Option<i64>) -> Option<i64> {
+    revision_id.filter(|value| *value > 0)
+}
+
+/// True when the composer text carries something the owner can store. An empty
+/// discussion document is rejected by the owner contract, so the composer keeps
+/// the submit action disabled rather than sending a doomed write.
+pub fn forum_storefront_composer_has_text(text: &str) -> bool {
+    text.chars().any(|character| !character.is_whitespace())
+}
+
+/// Whether the storefront composer may post into this topic.
+///
+/// The owner accepts replies only into an open, unlocked topic (`TopicStatus::Open`
+/// plus the `locked` flag, per `state_machine.rs`), and the topic detail already
+/// carries both signals, so the affordance is hidden instead of failing after the
+/// author pressed submit.
+pub fn forum_storefront_topic_accepts_reply(status: &str, is_locked: bool) -> bool {
+    !is_locked && status.eq_ignore_ascii_case("open")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn composer_gates_reply_on_topic_state() {
+        assert!(forum_storefront_topic_accepts_reply("open", false));
+        assert!(forum_storefront_topic_accepts_reply("OPEN", false));
+        assert!(!forum_storefront_topic_accepts_reply("open", true));
+        assert!(!forum_storefront_topic_accepts_reply("closed", false));
+        assert!(!forum_storefront_topic_accepts_reply("archived", false));
+        assert!(!forum_storefront_topic_accepts_reply("pending", false));
+        assert_eq!(forum_storefront_quote_revision(Some(7)), Some(7));
+        assert_eq!(forum_storefront_quote_revision(Some(0)), None);
+        assert_eq!(forum_storefront_quote_revision(None), None);
+        assert!(forum_storefront_composer_has_text(" a "));
+        assert!(!forum_storefront_composer_has_text("   \n "));
+    }
 
     #[test]
     fn builds_canonical_category_and_topic_hrefs() {

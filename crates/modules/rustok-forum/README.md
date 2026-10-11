@@ -250,6 +250,23 @@ wrappers. Each one has an owner decision or a follow-up task in
   fixed as pinned first, then recent activity.
 - The Next.js storefront shows the first page of topics without load-more.
   Reply pagination has no load-more.
+- The Leptos storefront composer writes real content: topics go through
+  `createForumTopicWithQuotes` (GraphQL) or `forum/storefront-topic-create`
+  (native `#[server]`) and replies through `createForumReplyWithQuotes` or
+  `forum/storefront-reply-create`, both composed onto the owner create commands
+  with the transport pinned in the audience context. The build-profile-selected
+  transport is never swapped on failure. The composer posts plain text into the
+  canonical discussion document only: tags, explicit slug, attachments, edit,
+  and inline quote-of-quote UI stay unimplemented, and the on-screen failure copy is
+  the redacted transport message because `ApiError`/`TransportError` display does
+  not leak owner reasons (`locked`, `cooldown`, audience denial) to an
+  untrusted surface. Reply and quote affordances are hidden for a locked or
+  non-`Open` topic from the topic detail the read path already returns; the owner
+  check stays authoritative. Composer quotes are forwarded as owner relations only
+  when an exact positive revision is known; the storefront reply read model carries
+  no revision and the module UI must not look one up per visible reply, so a
+  Leptos reply quote posts quoted text without a pinned relation. A pinned quote
+  needs a caller-provided revision, as the Next.js composer does.
 
 ## Roadmap
 

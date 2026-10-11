@@ -12,11 +12,11 @@ Leptos storefront UI package for the `rustok-forum` module.
 - Exposes the forum storefront root view used by `apps/storefront`.
 - Keeps forum-specific storefront UX inside the module package.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
-- Owns dual-path storefront data access for category feeds, selected threads, reply rendering, authenticated visible-topic unread state, and canonical topic-route admission.
+- Owns dual-path storefront data access for category feeds, selected threads, reply rendering, authenticated visible-topic unread state, canonical topic-route admission, and composer topic/reply writes with inline quotes.
 - Adds native Leptos `#[server]` calls while keeping GraphQL as a required parallel fallback.
 - Builds topic-card links with the localized canonical route `/{locale}/forum/t/{short_id}/{slug}` instead of UUID query links.
 - Presents the module as a NodeBB-inspired public discussion surface.
-- Ships package-owned `storefront/locales/en.ftl` and `storefront/locales/ru.ftl` bundles declared through `[provides.storefront_ui.i18n]`.
+- Ships package-owned `storefront/locales/en.ftl`, `storefront/locales/ru.ftl`, and `storefront/locales/ar.ftl` bundles declared through `[provides.storefront_ui.i18n]`; every composer and thread label resolves through `crate::i18n::t` with the locale published by `UiRouteContext`.
 
 ## Entry Points
 
@@ -28,6 +28,7 @@ Leptos storefront UI package for the `rustok-forum` module.
 - Consumed by `apps/storefront` via manifest-driven `build.rs` code generation.
 - Uses build-profile-selected native `#[server]` calls with GraphQL selected path and shared host libraries such as `UiRouteContext`.
 - Keeps GraphQL `forumStorefrontTopicRoute` and native `forum/storefront-topic-route` aligned on `ForumTopicRouteService` plus `ForumTopicAudienceReadService`.
+- Keeps GraphQL `createForumTopicWithQuotes`/`createForumReplyWithQuotes` and native `forum/storefront-topic-create`/`forum/storefront-reply-create` aligned on `TopicService::create_command_with_audience_context` and `ReplyService::create_command_with_audience_context`, each pinning its own `Forum{Topic,Reply}CreateTransport` label in the audience context. A failed selected transport never falls back to the other path.
 - Should remain compatible with the host storefront slot and generic module page contract, including locale-prefixed routes via `UiRouteContext::module_route_base()`.
 - Reads the effective locale from `UiRouteContext.locale` for chrome copy and renders server-sanitized richtext projections.
 - Keeps public category/topic/reply reads as the compatibility baseline. Authenticated requests enrich only the already storefront-visible topic IDs with the canonical Forum unread owner projection.
@@ -36,6 +37,13 @@ Leptos storefront UI package for the `rustok-forum` module.
 - Degrades to the public feed only when authentication or the required Forum topic permission is absent; network, HTTP, persistence and domain failures remain explicit.
 - Hides deleted-route tombstones until Forum owns a visibility-authorized disclosure snapshot; the Rust host therefore returns the same public `404` for missing, hidden, deleted and `GONE` routes.
 - Does not expose category-subtree or tenant-wide mark-read commands because those owner scopes are not yet narrowed to the storefront channel-visible topic set.
+- A composer quote is sent as an owner relation only when it carries an exact positive source revision (`forum_storefront_quote_revision`). The Leptos Reply card quotes the reply text and leaves the relation unpinned: the storefront reply read model carries no revision, and `verify-forum-reply-reactions-storefront-composition.mjs` forbids the module UI from fanning out `fetch_storefront_reply_current_revision` per visible reply (that lookup stays host-owned and selected-reply only). No revision number is invented, so an edited source can never be mis-pinned.
+
+## Known Limitations / Pending Implementation
+
+- The composer posts plain text only. Tags, explicit slug, attachments, edit-in-place, subscribe, vote, and report actions have no storefront transport here, so they stay unreachable in this surface while the owner already exposes some of them through GraphQL. Quoting a reply from the Leptos thread posts quoted text without a pinned owner relation (see Interactions).
+- Submit failures are shown with the redacted transport message (`Forum GraphQL request failed` / `Forum server request failed`). The owner reason stays server-side by contract, so an author cannot tell a locked topic from a cooldown in the UI.
+- The topic feed renders one server page per direction: fixed page sizes, no cursor paging, and client-side filtering over the fetched page while the header count stays server-authored.
 
 ## Documentation
 

@@ -65,6 +65,39 @@ impl RichTextDocument {
             }],
         }
     }
+
+    /// Builds one paragraph node per blank-line separated block of `text`.
+    ///
+    /// A structural text node carries no inline line break, so soft line breaks
+    /// inside one block are joined with a single space. Empty blocks are dropped.
+    /// The result stays profile-neutral: the owning boundary validates and
+    /// normalizes it against the profile it selected.
+    pub fn from_plain_text(text: &str) -> Self {
+        let content = text
+            .split("\n\n")
+            .filter_map(|paragraph| {
+                let paragraph = paragraph
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                (!paragraph.is_empty())
+                    .then(|| Self::single_paragraph(paragraph).content)
+            })
+            .flatten()
+            .collect();
+
+        Self {
+            kind: "doc".to_string(),
+            content,
+        }
+    }
+
+    /// True when the document carries at least one non-whitespace text node.
+    pub fn has_text(&self) -> bool {
+        self.content.iter().any(RichTextNode::has_text)
+    }
 }
 
 impl Default for RichTextDocument {
@@ -92,6 +125,16 @@ pub struct RichTextNode {
     pub marks: Vec<RichTextMark>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+}
+
+impl RichTextNode {
+    /// True when this node or any descendant carries a non-whitespace text value.
+    pub fn has_text(&self) -> bool {
+        self.text
+            .as_deref()
+            .is_some_and(|text| text.chars().any(|character| !character.is_whitespace()))
+            || self.content.iter().any(RichTextNode::has_text)
+    }
 }
 
 /// A structural ProseMirror/Tiptap mark.
@@ -286,6 +329,24 @@ mod tests {
             serde_json::to_value(RichTextDocument::empty()).expect("serialize"),
             json!({"type": "doc", "content": [{"type": "paragraph"}]})
         );
+    }
+
+    #[test]
+    fn plain_text_becomes_one_paragraph_per_blank_line_block() {
+        let document = RichTextDocument::from_plain_text("First line\nsecond line\n\nThird\n\n   ");
+
+        assert_eq!(document.kind, "doc");
+        assert_eq!(document.content.len(), 2);
+        assert_eq!(
+            document.content[0].content[0].text.as_deref(),
+            Some("First line second line")
+        );
+        assert_eq!(
+            document.content[1].content[0].text.as_deref(),
+            Some("Third")
+        );
+        assert!(document.has_text());
+        assert!(!RichTextDocument::from_plain_text("  \n\n \t ").has_text());
     }
 
     #[test]

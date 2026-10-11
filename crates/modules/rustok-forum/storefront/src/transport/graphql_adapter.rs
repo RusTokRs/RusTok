@@ -227,7 +227,7 @@ where
     .await
 }
 
-async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
+pub(super) async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
 where
     V: Serialize,
     T: for<'de> Deserialize<'de>,
