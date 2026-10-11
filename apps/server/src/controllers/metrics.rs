@@ -197,9 +197,7 @@ async fn render_tenant_activity_metrics(ctx: &ServerRuntimeContext) -> String {
         }
         _ => {
             warn!("failed to collect tenant activity metrics");
-            format!(
-                "rustok_tenant_activity_metrics_collection_status 0\nrustok_tenant_active_total NaN\nrustok_tenant_inactive_total NaN\nrustok_tenant_total NaN\n"
-            )
+            "rustok_tenant_activity_metrics_collection_status 0\nrustok_tenant_active_total NaN\nrustok_tenant_inactive_total NaN\nrustok_tenant_total NaN\n".to_string()
         }
     }
 }

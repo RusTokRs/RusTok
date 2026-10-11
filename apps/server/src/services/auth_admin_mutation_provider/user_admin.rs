@@ -134,7 +134,7 @@ impl ServerAuthAdminMutationProvider {
     {
         let permissions = RbacService::get_user_permissions_authoritative(db, &tenant_id, &user_id)
             .await
-            .map_err(|error| super::internal_admin_error(error))?;
+            .map_err(super::internal_admin_error)?;
         Ok(infer_user_role_from_permissions(&permissions))
     }
 
@@ -180,12 +180,9 @@ where
             .lock_exclusive()
             .one(db)
             .await
-            .map_err(|error| super::internal_admin_error(error))?,
+            .map_err(super::internal_admin_error)?,
         DbBackend::Sqlite => {
-            let user = query()
-                .one(db)
-                .await
-                .map_err(|error| super::internal_admin_error(error))?;
+            let user = query().one(db).await.map_err(super::internal_admin_error)?;
             if let Some(user) = user.as_ref() {
                 let result = users::Entity::update_many()
                     .col_expr(
@@ -196,7 +193,7 @@ where
                     .filter(users::Column::TenantId.eq(tenant_id))
                     .exec(db)
                     .await
-                    .map_err(|error| super::internal_admin_error(error))?;
+                    .map_err(super::internal_admin_error)?;
                 if result.rows_affected != 1 {
                     return Err(AuthAdminMutationError::Internal(
                         "user mutation lock fence could not be acquired".to_string(),
@@ -206,7 +203,7 @@ where
                 return query()
                     .one(db)
                     .await
-                    .map_err(|error| super::internal_admin_error(error))?
+                    .map_err(super::internal_admin_error)?
                     .ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()));
             }
             None
@@ -236,7 +233,7 @@ where
         .filter(sessions::Column::RevokedAt.is_null())
         .exec(db)
         .await
-        .map_err(|error| super::internal_admin_error(error))?;
+        .map_err(super::internal_admin_error)?;
     Ok(())
 }
 
@@ -313,11 +310,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await
         .map_err(map_custom_field_error)?;
-        let tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|error| super::internal_admin_error(error))?;
+        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let mut user = AuthLifecycleService::create_user_in_tx(
             &tx,
             context.tenant_id,
@@ -336,7 +329,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             user = active
                 .update(&tx)
                 .await
-                .map_err(|error| super::internal_admin_error(error))?;
+                .map_err(super::internal_admin_error)?;
         }
         if let (Some(locale), Some(values)) = (
             prepared.locale.as_deref(),
@@ -377,7 +370,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .filter(users::Column::TenantId.eq(context.tenant_id))
             .one(&self.db)
             .await
-            .map_err(|error| super::internal_admin_error(error))?
+            .map_err(super::internal_admin_error)?
             .ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))?;
 
         if command.role.is_some() || command.status.is_some() {
@@ -392,7 +385,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         if let Some(email) = command.email.as_deref() {
             let existing = users::Entity::find_by_email(&self.db, context.tenant_id, email)
                 .await
-                .map_err(|error| super::internal_admin_error(error))?;
+                .map_err(super::internal_admin_error)?;
             if existing
                 .as_ref()
                 .is_some_and(|existing| existing.id != initial_user.id)
@@ -428,11 +421,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .map_err(map_custom_field_error)?;
         let password_changed = command.password.is_some();
 
-        let tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|error| super::internal_admin_error(error))?;
+        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let locked_user = lock_user_for_mutation(&tx, context.tenant_id, command.id).await?;
         let current_role = self
             .user_role(&tx, context.tenant_id, locked_user.id)
@@ -490,7 +479,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         }
         if let Some(password) = command.password {
             active.password_hash =
-                Set(hash_password(&password).map_err(|error| super::internal_admin_error(error))?);
+                Set(hash_password(&password).map_err(super::internal_admin_error)?);
         }
         if let Some(metadata) = prepared.metadata {
             active.metadata = Set(metadata);
@@ -516,7 +505,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             active
                 .update(&tx)
                 .await
-                .map_err(|error| super::internal_admin_error(error))?
+                .map_err(super::internal_admin_error)?
         } else {
             locked_user
         };
@@ -528,7 +517,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 plan.new_role().clone(),
             )
             .await
-            .map_err(|error| super::internal_admin_error(error))?;
+            .map_err(super::internal_admin_error)?;
         }
         let status_disables_user = status_changed
             && requested_status
@@ -557,7 +546,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             Some(
                 reserve_rbac_invalidation_generation(&tx)
                     .await
-                    .map_err(|error| super::internal_admin_error(error))?,
+                    .map_err(super::internal_admin_error)?,
             )
         } else {
             None
@@ -651,11 +640,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let event_bus = TransactionalEventBus::new(
             Arc::new(OutboxTransport::new(self.db.clone())) as Arc<dyn EventTransport>
         );
-        let tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|error| super::internal_admin_error(error))?;
+        let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let user = lock_user_for_mutation(&tx, context.tenant_id, user_id).await?;
         let current_role = self.user_role(&tx, context.tenant_id, user.id).await?;
         self.ensure_target_management_allowed(context, user.id, &current_role)
@@ -672,11 +657,11 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             user.id,
         )
         .await
-        .map_err(|error| super::internal_admin_error(error))?;
+        .map_err(super::internal_admin_error)?;
         revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
         let durable_generation = reserve_rbac_invalidation_generation(&tx)
             .await
-            .map_err(|error| super::internal_admin_error(error))?;
+            .map_err(super::internal_admin_error)?;
         if let Err(error) = event_bus
             .publish_in_tx(
                 &tx,
@@ -698,9 +683,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 "durable user deletion invalidation is unavailable".to_string(),
             ));
         }
-        tx.commit()
-            .await
-            .map_err(|error| super::internal_admin_error(error))?;
+        tx.commit().await.map_err(super::internal_admin_error)?;
         publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation).await;
         Ok(())
     }

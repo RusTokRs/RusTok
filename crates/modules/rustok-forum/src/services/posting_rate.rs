@@ -93,8 +93,8 @@ fn retry_after_seconds(
 ) -> Option<u64> {
     let last_created_at = last_created_at?;
     let limit = u64::from(limit_seconds);
-    let elapsed = u64::try_from(now.signed_duration_since(last_created_at).num_seconds())
-        .unwrap_or(0);
+    let elapsed =
+        u64::try_from(now.signed_duration_since(last_created_at).num_seconds()).unwrap_or(0);
     (elapsed < limit).then(|| limit - elapsed)
 }
 

@@ -174,7 +174,11 @@ fn MediaLibraryPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         "page_builder.media.previousPage",
         "Previous page",
     );
-    let next_label = t(locale.as_deref(), "page_builder.media.nextPage", "Next page");
+    let next_label = t(
+        locale.as_deref(),
+        "page_builder.media.nextPage",
+        "Next page",
+    );
     let choose_file_first = t(
         locale.as_deref(),
         "page_builder.media.chooseFileFirst",
@@ -223,7 +227,8 @@ fn MediaLibraryPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         error.set(None);
         spawn_local(async move {
             match read_selected_file(input).await {
-                Ok(Some(file)) => match port.upload(file.name, file.content_type, file.bytes).await {
+                Ok(Some(file)) => match port.upload(file.name, file.content_type, file.bytes).await
+                {
                     Ok(item) => {
                         runtime.dispatch(UiIntent::execute(EditorCommand::Asset {
                             command: AssetCommand::Upsert {

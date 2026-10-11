@@ -406,7 +406,10 @@ impl PostService {
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let per_page = u64::from(query.per_page());
 
-        if !self.channel_is_public_visible(tenant_id, channel_slug).await? {
+        if !self
+            .channel_is_public_visible(tenant_id, channel_slug)
+            .await?
+        {
             return Ok(PublicPostPage {
                 items: Vec::new(),
                 next_cursor: None,
@@ -471,7 +474,10 @@ impl PostService {
                 BlogError::invariant("Keyset page reported a next page without rows")
             })?;
             let published_at = last.published_at.ok_or_else(|| {
-                BlogError::invariant(format!("Published blog post {} has no published_at", last.id))
+                BlogError::invariant(format!(
+                    "Published blog post {} has no published_at",
+                    last.id
+                ))
             })?;
             Some(PublishedPostCursor {
                 published_at,

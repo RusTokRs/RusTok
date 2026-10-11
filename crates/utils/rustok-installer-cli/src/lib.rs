@@ -173,7 +173,11 @@ impl CommandProvider for InstallerCommandProvider {
                 seed_data_path: option(options, "seed_data_path"),
                 continue_on_content_error: option(options, "continue_on_content_error")
                     .and_then(|value| value.parse::<bool>().ok())
-                    .or_else(|| options.get("continue_on_content_error").and_then(|v| v.as_bool()))
+                    .or_else(|| {
+                        options
+                            .get("continue_on_content_error")
+                            .and_then(|v| v.as_bool())
+                    })
                     .unwrap_or(false),
             },
             &ports,

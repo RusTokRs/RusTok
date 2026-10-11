@@ -149,10 +149,12 @@ pub fn filter_rbac_permission_rows(
     let query = search.trim().to_lowercase();
     rows.iter()
         .filter(|row| {
-            if let Some(m) = module_filter {
-                if m != "all" && !m.is_empty() && row.module_slug != m {
-                    return false;
-                }
+            if let Some(m) = module_filter
+                && m != "all"
+                && !m.is_empty()
+                && row.module_slug != m
+            {
+                return false;
             }
             if query.is_empty() {
                 return true;

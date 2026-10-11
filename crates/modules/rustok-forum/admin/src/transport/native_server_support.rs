@@ -69,10 +69,10 @@ pub(super) fn forum_settings_providers(
         host.shared_get::<rustok_api::SharedStaticModuleSettingsReader>(),
         host.shared_get::<rustok_api::SharedStaticModuleSettingsTransactionReader>(),
     ) {
-        (Some(reader), Some(transactional_reader)) => Ok(
-            rustok_forum::ForumSettingsProviders::default()
-                .with_static_readers(reader, transactional_reader),
-        ),
+        (Some(reader), Some(transactional_reader)) => {
+            Ok(rustok_forum::ForumSettingsProviders::default()
+                .with_static_readers(reader, transactional_reader))
+        }
         _ => Err(ServerFnError::new(
             "Forum admin requires static module settings readers in host runtime context",
         )),

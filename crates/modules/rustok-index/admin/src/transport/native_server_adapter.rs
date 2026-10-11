@@ -110,7 +110,13 @@ pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnErr
                 .await
             {
                 for row in rows {
-                    if let (Ok(module_name), Ok(entity_name), Ok(schema_version), Ok(fingerprint), Ok(schema_json)) = (
+                    if let (
+                        Ok(module_name),
+                        Ok(entity_name),
+                        Ok(schema_version),
+                        Ok(fingerprint),
+                        Ok(schema_json),
+                    ) = (
                         row.try_get::<String>("", "module_name"),
                         row.try_get::<String>("", "entity_name"),
                         row.try_get::<i32>("", "schema_version"),
@@ -126,7 +132,9 @@ pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnErr
                             .and_then(|v| v.as_array())
                             .map_or(0, |a| a.len());
                         let owner_module = match module_name.as_str() {
-                            "rustok-product" | "rustok-channel" => "rustok-distribution".to_string(),
+                            "rustok-product" | "rustok-channel" => {
+                                "rustok-distribution".to_string()
+                            }
                             "rustok-social-graph" => "rustok-social-graph".to_string(),
                             other => other.to_string(),
                         };

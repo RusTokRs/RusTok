@@ -1143,7 +1143,10 @@ mod tests {
         assert_eq!(parse_bearer_token("Bearer token-123"), Some("token-123"));
         assert_eq!(parse_bearer_token("bearer token-456"), Some("token-456"));
         assert_eq!(parse_bearer_token("BEARER token-789"), Some("token-789"));
-        assert_eq!(parse_bearer_token("  Bearer   token-abc  "), Some("token-abc"));
+        assert_eq!(
+            parse_bearer_token("  Bearer   token-abc  "),
+            Some("token-abc")
+        );
         assert_eq!(parse_bearer_token("Basic token-123"), None);
         assert_eq!(parse_bearer_token("Bearer"), None);
         assert_eq!(parse_bearer_token("Bearer   "), None);

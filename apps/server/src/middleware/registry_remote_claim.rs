@@ -336,7 +336,7 @@ fn runner_route(path: &str) -> Option<RunnerRoute> {
     }
     let segments = path.split('/').collect::<Vec<_>>();
     if segments.len() != 6
-        || segments[0] != ""
+        || !segments[0].is_empty()
         || segments[1] != "v2"
         || segments[2] != "catalog"
         || segments[3] != "runner"

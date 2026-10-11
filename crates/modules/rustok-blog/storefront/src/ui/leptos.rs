@@ -116,12 +116,12 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                 .or_insert_with(|| name.clone());
         }
     }
-    if let Some(ref sel) = data.selected_post {
-        if let (Some(id), Some(name)) = (&sel.category_id, &sel.category_name) {
-            categories_map
-                .entry(id.clone())
-                .or_insert_with(|| name.clone());
-        }
+    if let Some(ref sel) = data.selected_post
+        && let (Some(id), Some(name)) = (&sel.category_id, &sel.category_name)
+    {
+        categories_map
+            .entry(id.clone())
+            .or_insert_with(|| name.clone());
     }
 
     let other_posts = if let Some(slug) = selected_post_slug.as_deref() {
@@ -740,9 +740,8 @@ fn PublishedPostsList(
                                         <div class="mt-3 flex flex-wrap gap-1.5">
                                             {post.tags
                                                 .iter()
-                                                .cloned()
                                                 .map(|tag| {
-                                                    let tag_link = format!("?tag={}", core::percent_encode(&tag));
+                                                    let tag_link = format!("?tag={}", core::percent_encode(tag));
                                                     view! {
                                                         <a
                                                             href=tag_link

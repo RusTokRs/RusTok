@@ -8,6 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+#![allow(clippy::collapsible_if)]
+
 use async_trait::async_trait;
 use rustok_core::{
     MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, RusToKModule,

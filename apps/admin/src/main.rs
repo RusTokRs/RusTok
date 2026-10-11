@@ -100,7 +100,6 @@ async fn main() {
             .map(ToString::to_string)
     }
 
-
     fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
         headers
             .get(name)

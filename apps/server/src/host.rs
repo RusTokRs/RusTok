@@ -367,14 +367,12 @@ async fn load_config() -> Result<HostConfig> {
         })
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config"));
     let path = config_dir.join(format!("{environment}.yaml"));
-    let raw = tokio::fs::read_to_string(&path)
-        .await
-        .map_err(|error| {
-            Error::Message(format!(
-                "failed to read configuration file at '{}': {error}",
-                path.display()
-            ))
-        })?;
+    let raw = tokio::fs::read_to_string(&path).await.map_err(|error| {
+        Error::Message(format!(
+            "failed to read configuration file at '{}': {error}",
+            path.display()
+        ))
+    })?;
     serde_yaml::from_str(&raw).map_err(|error| {
         Error::Message(format!(
             "failed to parse configuration file at '{}': {error}",
@@ -387,7 +385,8 @@ fn resolve_server_endpoint(config: &ServerConfig) -> Result<(String, u16)> {
     let binding = std::env::var("RUSTOK_BINDING")
         .or_else(|_| std::env::var("HOST"))
         .unwrap_or_else(|_| config.binding.clone());
-    let port = if let Ok(port_str) = std::env::var("RUSTOK_PORT").or_else(|_| std::env::var("PORT")) {
+    let port = if let Ok(port_str) = std::env::var("RUSTOK_PORT").or_else(|_| std::env::var("PORT"))
+    {
         port_str.trim().parse::<u16>().map_err(|error| {
             Error::BadRequest(format!("Invalid port '{port_str}' in environment: {error}"))
         })?

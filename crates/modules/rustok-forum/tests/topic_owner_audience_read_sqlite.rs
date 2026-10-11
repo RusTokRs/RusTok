@@ -214,8 +214,7 @@ async fn fixture() -> Fixture {
 
     let admin = SecurityContext::new(UserRole::Admin, Some(admin_user_id));
     let public_category = create_category(&db, tenant_id, admin.clone(), "public-area").await;
-    let restricted_category =
-        create_category(&db, tenant_id, admin.clone(), "trusted-area").await;
+    let restricted_category = create_category(&db, tenant_id, admin.clone(), "trusted-area").await;
 
     ForumCategoryAudiencePolicyService::new(db.clone())
         .set(
@@ -233,7 +232,15 @@ async fn fixture() -> Fixture {
         .expect("restricted category trust layer should persist");
 
     for slug in ["public-one", "public-two"] {
-        create_topic(&db, &event_bus, tenant_id, admin.clone(), public_category, slug).await;
+        create_topic(
+            &db,
+            &event_bus,
+            tenant_id,
+            admin.clone(),
+            public_category,
+            slug,
+        )
+        .await;
     }
     for slug in ["restricted-one", "restricted-two"] {
         create_topic(
@@ -303,13 +310,16 @@ async fn owner_selected_topic_read_denies_restricted_topic_as_not_found() {
         "owner read must deny a topic whose category audience the viewer does not satisfy"
     );
 
-    let trusted_security =
-        SecurityContext::new(UserRole::Customer, Some(fixture.trusted_user_id));
+    let trusted_security = SecurityContext::new(UserRole::Customer, Some(fixture.trusted_user_id));
     let allowed = service
         .get_authenticated_owner_visible_with_audience_context(
             fixture.tenant_id,
             trusted_security,
-            read_context(fixture.tenant_id, fixture.trusted_user_id, "trusted-owner-read"),
+            read_context(
+                fixture.tenant_id,
+                fixture.trusted_user_id,
+                "trusted-owner-read",
+            ),
             restricted_topic_id,
             Some("en"),
         )
@@ -335,13 +345,21 @@ async fn owner_topic_list_applies_audience_before_pagination() {
         .list_authenticated_owner_visible_with_audience_context(
             fixture.tenant_id,
             low_security,
-            read_context(fixture.tenant_id, fixture.low_trust_user_id, "low-owner-list"),
+            read_context(
+                fixture.tenant_id,
+                fixture.low_trust_user_id,
+                "low-owner-list",
+            ),
             list_filter(2, None),
             Some("en"),
         )
         .await
         .expect("low-trust owner list should resolve");
-    assert_eq!(low_page.items.len(), 2, "only the public topics are visible");
+    assert_eq!(
+        low_page.items.len(),
+        2,
+        "only the public topics are visible"
+    );
     assert!(
         low_page
             .items
@@ -354,13 +372,16 @@ async fn owner_topic_list_applies_audience_before_pagination() {
         "no further visible topic exists, so there must be no next cursor"
     );
 
-    let trusted_security =
-        SecurityContext::new(UserRole::Customer, Some(fixture.trusted_user_id));
+    let trusted_security = SecurityContext::new(UserRole::Customer, Some(fixture.trusted_user_id));
     let first = service
         .list_authenticated_owner_visible_with_audience_context(
             fixture.tenant_id,
             trusted_security.clone(),
-            read_context(fixture.tenant_id, fixture.trusted_user_id, "trusted-owner-list-1"),
+            read_context(
+                fixture.tenant_id,
+                fixture.trusted_user_id,
+                "trusted-owner-list-1",
+            ),
             list_filter(3, None),
             Some("en"),
         )
@@ -376,13 +397,21 @@ async fn owner_topic_list_applies_audience_before_pagination() {
         .list_authenticated_owner_visible_with_audience_context(
             fixture.tenant_id,
             trusted_security,
-            read_context(fixture.tenant_id, fixture.trusted_user_id, "trusted-owner-list-2"),
+            read_context(
+                fixture.tenant_id,
+                fixture.trusted_user_id,
+                "trusted-owner-list-2",
+            ),
             list_filter(3, Some(cursor)),
             Some("en"),
         )
         .await
         .expect("trusted owner second page should resolve");
-    assert_eq!(second.items.len(), 1, "the last page holds the remaining topic");
+    assert_eq!(
+        second.items.len(),
+        1,
+        "the last page holds the remaining topic"
+    );
     assert!(second.next_cursor.is_none());
 
     let mut seen: Vec<Uuid> = first
@@ -393,16 +422,17 @@ async fn owner_topic_list_applies_audience_before_pagination() {
         .collect();
     seen.sort();
     seen.dedup();
-    assert_eq!(seen.len(), 4, "pages must cover every visible topic exactly once");
+    assert_eq!(
+        seen.len(),
+        4,
+        "pages must cover every visible topic exactly once"
+    );
 }
 
 #[tokio::test]
 async fn public_storefront_topic_list_excludes_audience_restricted_topics() {
     let fixture = fixture().await;
-    let service = ForumTopicAudienceListService::new(
-        fixture.db.clone(),
-        fixture.event_bus.clone(),
-    );
+    let service = ForumTopicAudienceListService::new(fixture.db.clone(), fixture.event_bus.clone());
 
     let page = service
         .list_public_storefront_visible_with_locale_fallback(

@@ -1,7 +1,7 @@
 //! CSV format handler.
 
 use rustok_content_portability_api::{FormatOptions, PortabilityError};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 /// CSV format handler for import/export operations.
 pub struct CsvFormatHandler;
@@ -96,8 +96,14 @@ mod tests {
     #[test]
     fn serialize_csv_with_headers() {
         let items = vec![
-            TestItem { id: 1, name: "alice".to_string() },
-            TestItem { id: 2, name: "bob".to_string() },
+            TestItem {
+                id: 1,
+                name: "alice".to_string(),
+            },
+            TestItem {
+                id: 2,
+                name: "bob".to_string(),
+            },
         ];
         let options = FormatOptions::new();
         let bytes = CsvFormatHandler::serialize(&items, &options).unwrap();
@@ -108,7 +114,10 @@ mod tests {
 
     #[test]
     fn serialize_csv_without_headers() {
-        let items = vec![TestItem { id: 1, name: "alice".to_string() }];
+        let items = vec![TestItem {
+            id: 1,
+            name: "alice".to_string(),
+        }];
         let options = FormatOptions::new().with_csv_headers(false);
         let bytes = CsvFormatHandler::serialize(&items, &options).unwrap();
         let csv = String::from_utf8(bytes).unwrap();

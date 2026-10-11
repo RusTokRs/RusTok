@@ -103,7 +103,7 @@ pub fn featured_products(locale: &str) -> Vec<crate::entities::product::ProductC
             original_price: Some(if is_ru { "7 900 ₽".to_string() } else { "$159".to_string() }),
         },
         ProductCardData {
-            title: if is_ru { "RusTok Pro Sound".to_string() } else { "RusTok Pro Sound".to_string() },
+            title: if is_ru { "Беспроводные наушники RusTok Pro".to_string() } else { "RusTok Pro Sound".to_string() },
             description: if is_ru {
                 "Студийные беспроводные наушники с адаптивным ANC и кристальным Hi-Fi звуком.".to_string()
             } else {

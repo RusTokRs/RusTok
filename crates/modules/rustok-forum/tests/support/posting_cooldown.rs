@@ -35,7 +35,11 @@ fn snapshot(module_slug: &str, extra: &serde_json::Value) -> Option<StaticModule
         "rate_limit_new_reply_seconds": 0,
     });
     if let (Some(base), Some(extra)) = (settings.as_object_mut(), extra.as_object()) {
-        base.extend(extra.iter().map(|(key, value)| (key.clone(), value.clone())));
+        base.extend(
+            extra
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone())),
+        );
     }
     Some(StaticModuleSettingsSnapshot {
         enabled: module_slug == FORUM_MODULE_SLUG,

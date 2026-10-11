@@ -514,7 +514,9 @@ mod tests {
     #[test]
     fn validates_and_bounds_correlation_id() {
         assert!(is_valid_correlation_id("abc-123_XYZ.456"));
-        assert!(is_valid_correlation_id("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"));
+        assert!(is_valid_correlation_id(
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        ));
         assert!(!is_valid_correlation_id(""));
         assert!(!is_valid_correlation_id(&"a".repeat(129)));
         assert!(!is_valid_correlation_id("id with spaces"));
@@ -529,7 +531,10 @@ mod tests {
         assert_eq!(extract_correlation_id(&headers), "my-valid-id-123");
 
         let mut headers_malformed = HeaderMap::new();
-        headers_malformed.insert("x-correlation-id", "invalid id with spaces".parse().unwrap());
+        headers_malformed.insert(
+            "x-correlation-id",
+            "invalid id with spaces".parse().unwrap(),
+        );
         let extracted = extract_correlation_id(&headers_malformed);
         assert_ne!(extracted, "invalid id with spaces");
         assert!(Uuid::parse_str(&extracted).is_ok());

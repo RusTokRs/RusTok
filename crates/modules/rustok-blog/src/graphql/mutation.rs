@@ -655,12 +655,7 @@ impl BlogMutation {
     }
 
     /// Pin a post to the top of public listings. Only published posts can be pinned.
-    async fn pin_post(
-        &self,
-        ctx: &Context<'_>,
-        id: Uuid,
-        tenant_id: Option<Uuid>,
-    ) -> Result<bool> {
+    async fn pin_post(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Option<Uuid>) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;

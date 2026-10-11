@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if)]
+
 use super::*;
 use regex::Regex;
 use std::str::FromStr;

@@ -968,9 +968,9 @@ impl FulfillmentService {
             });
         }
         if operation.provider_id != result.provider_id {
-            return Err(FulfillmentError::ProviderResultInvalid(format!(
-                "create_label provider result does not match the journaled provider"
-            )));
+            return Err(FulfillmentError::ProviderResultInvalid(
+                "create_label provider result does not match the journaled provider".to_string(),
+            ));
         }
 
         let fulfillment = self

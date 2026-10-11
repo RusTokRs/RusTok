@@ -117,7 +117,7 @@ pub fn bundle_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
                     "Filter name...".to_string()
                 }),
             }),
-        GridColumnDef::new("slug", if is_ru { "Slug" } else { "Slug" })
+        GridColumnDef::new("slug", if is_ru { "Слаг" } else { "Slug" })
             .width(160)
             .align(ColumnAlign::Left),
         GridColumnDef::new("type", if is_ru { "Тип" } else { "Type" })
@@ -208,15 +208,11 @@ pub fn matches_bundle_filter(item: &BundleAdminListItem, filters: &ColumnFilters
                     return false;
                 }
             }
-            ("type", FilterValue::Select(s)) => {
-                if !item.bundle_type.eq_ignore_ascii_case(s) {
-                    return false;
-                }
+            ("type", FilterValue::Select(s)) if !item.bundle_type.eq_ignore_ascii_case(s) => {
+                return false;
             }
-            ("status", FilterValue::Select(s)) => {
-                if !item.status.eq_ignore_ascii_case(s) {
-                    return false;
-                }
+            ("status", FilterValue::Select(s)) if !item.status.eq_ignore_ascii_case(s) => {
+                return false;
             }
             _ => {}
         }

@@ -410,9 +410,7 @@ pub struct ModuleOperationRecoveryPlan {
 }
 
 fn sanitized_recovery_error_message(issue: &str, error_message: Option<String>) -> Option<String> {
-    let Some(_) = error_message else {
-        return None;
-    };
+    let _ = error_message?;
 
     Some(match issue {
         "post_hook_failed" => "Module lifecycle hook failed".to_string(),

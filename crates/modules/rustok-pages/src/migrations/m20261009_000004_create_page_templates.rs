@@ -10,7 +10,8 @@ impl MigrationTrait for Migration {
         // Additive catalog only: existing pages and their free-form labels are not
         // rewritten. `default` continues to denote the empty legacy layout.
         let ddl = match manager.get_database_backend() {
-            DatabaseBackend::Postgres => r#"
+            DatabaseBackend::Postgres => {
+                r#"
 CREATE TABLE IF NOT EXISTS page_templates (
     tenant_id UUID NOT NULL,
     locale VARCHAR(35) NOT NULL,
@@ -23,8 +24,10 @@ CREATE TABLE IF NOT EXISTS page_templates (
     PRIMARY KEY (tenant_id, locale, template_key),
     CHECK (template_key <> 'default')
 );
-"#,
-            DatabaseBackend::Sqlite => r#"
+"#
+            }
+            DatabaseBackend::Sqlite => {
+                r#"
 CREATE TABLE IF NOT EXISTS page_templates (
     tenant_id TEXT NOT NULL,
     locale TEXT NOT NULL,
@@ -37,15 +40,27 @@ CREATE TABLE IF NOT EXISTS page_templates (
     PRIMARY KEY (tenant_id, locale, template_key),
     CHECK (template_key <> 'default')
 );
-"#,
-            backend => return Err(DbErr::Custom(format!("page template catalog does not support {backend:?}"))),
+"#
+            }
+            backend => {
+                return Err(DbErr::Custom(format!(
+                    "page template catalog does not support {backend:?}"
+                )));
+            }
         };
         manager.get_connection().execute_unprepared(ddl).await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.drop_table(Table::drop().table(PageTemplates::Table).if_exists().to_owned()).await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(PageTemplates::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
         Ok(())
     }
 }

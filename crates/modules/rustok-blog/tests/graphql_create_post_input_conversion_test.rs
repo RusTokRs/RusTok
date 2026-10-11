@@ -21,7 +21,7 @@ fn create_post_input_conversion_preserves_canonical_content() {
         seo_description: Some("description".to_string()),
         channel_slugs: Some(vec!["web".to_string()]),
         scheduled_at: None,
-                is_pinned: None,
+        is_pinned: None,
     };
     let domain: DomainCreatePostInput = input.into();
     assert_eq!(domain.content, canonical);

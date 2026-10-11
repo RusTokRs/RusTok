@@ -1,7 +1,7 @@
 //! JSON format handler.
 
 use rustok_content_portability_api::{FormatOptions, PortabilityError};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 /// JSON format handler for import/export operations.
 pub struct JsonFormatHandler;
@@ -28,7 +28,8 @@ impl JsonFormatHandler {
     ) -> Result<Vec<u8>, PortabilityError> {
         let pretty = options.json_pretty.unwrap_or(false);
         if pretty {
-            serde_json::to_vec_pretty(value).map_err(|e| PortabilityError::serialization(e.to_string()))
+            serde_json::to_vec_pretty(value)
+                .map_err(|e| PortabilityError::serialization(e.to_string()))
         } else {
             serde_json::to_vec(value).map_err(|e| PortabilityError::serialization(e.to_string()))
         }
@@ -79,7 +80,10 @@ mod tests {
 
     #[test]
     fn serialize_compact() {
-        let item = TestItem { id: 1, name: "test".to_string() };
+        let item = TestItem {
+            id: 1,
+            name: "test".to_string(),
+        };
         let options = FormatOptions::new();
         let bytes = JsonFormatHandler::serialize(&item, &options).unwrap();
         let json = String::from_utf8(bytes).unwrap();
@@ -88,7 +92,10 @@ mod tests {
 
     #[test]
     fn serialize_pretty() {
-        let item = TestItem { id: 1, name: "test".to_string() };
+        let item = TestItem {
+            id: 1,
+            name: "test".to_string(),
+        };
         let options = FormatOptions::new().with_json_pretty(true);
         let bytes = JsonFormatHandler::serialize(&item, &options).unwrap();
         let json = String::from_utf8(bytes).unwrap();

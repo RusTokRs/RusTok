@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
 use uuid::Uuid;
 
-use crate::{SubscriberStatus, NewsletterContentItem};
+use crate::{NewsletterContentItem, SubscriberStatus};
 
 /// Typed port for subscriber management operations.
 ///

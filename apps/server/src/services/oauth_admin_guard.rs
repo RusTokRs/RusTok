@@ -100,11 +100,7 @@ impl GuardedOAuthAdminProvider {
         app_id: Uuid,
         authority: &[Permission],
     ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
-        let tx = self
-            .db
-            .begin()
-            .await
-            .map_err(|error| internal_oauth_guard_error(error))?;
+        let tx = self.db.begin().await.map_err(internal_oauth_guard_error)?;
         let app = lock_oauth_app(&tx, context.tenant_id, app_id).await?;
         self.validate_permission_strings(authority, &app.granted_permissions_list())?;
         if !app.can_rotate_secret() {
@@ -116,19 +112,16 @@ impl GuardedOAuthAdminProvider {
         let first_token = generate_refresh_token().map_err(internal_oauth_guard_error)?;
         let second_token = generate_refresh_token().map_err(internal_oauth_guard_error)?;
         let client_secret = format!("sk_live_{first_token}{second_token}");
-        let secret_hash =
-            hash_password(&client_secret).map_err(|error| internal_oauth_guard_error(error))?;
+        let secret_hash = hash_password(&client_secret).map_err(internal_oauth_guard_error)?;
         let mut active: oauth_apps::ActiveModel = app.into();
         active.client_secret_hash = Set(Some(secret_hash));
         active.updated_at = Set(Utc::now().into());
         let updated_app = active
             .update(&tx)
             .await
-            .map_err(|error| internal_oauth_guard_error(error))?;
+            .map_err(internal_oauth_guard_error)?;
         let response_record = build_oauth_app_record(&tx, context, updated_app).await?;
-        tx.commit()
-            .await
-            .map_err(|error| internal_oauth_guard_error(error))?;
+        tx.commit().await.map_err(internal_oauth_guard_error)?;
 
         Ok(OAuthAppSecretResult {
             app: response_record,
@@ -153,7 +146,7 @@ where
             .lock_exclusive()
             .one(db)
             .await
-            .map_err(|error| internal_oauth_guard_error(error))?,
+            .map_err(internal_oauth_guard_error)?,
         DbBackend::Sqlite => {
             let app = query().one(db).await.map_err(internal_oauth_guard_error)?;
             if let Some(app) = app.as_ref() {

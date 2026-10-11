@@ -11,11 +11,11 @@ use crate::audience::SharedForumAudienceFactsPort;
 use crate::dto::{ListTopicsFilter, MAX_FORUM_READ_LIMIT, TopicListItem};
 use crate::error::{ForumError, ForumResult};
 
+use super::engagement_mode::ForumSettingsProviders;
 use super::rbac::enforce_scope;
 use super::topic_audience_visibility::{
     ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
 };
-use super::engagement_mode::ForumSettingsProviders;
 use super::topic_facade::TopicService;
 
 const FORUM_TOPIC_AUDIENCE_SCAN_PAGE_SIZE: u64 = MAX_FORUM_READ_LIMIT;

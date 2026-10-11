@@ -2180,7 +2180,7 @@ fn synonyms_table(
     });
 
     let cell_locale = ui_locale.clone();
-    let cell_delete = delete_synonym.clone();
+    let cell_delete = delete_synonym;
 
     let cell_renderer = Callback::new(
         move |(row, col_id): (core::SearchSynonymRowViewModel, String)| match col_id.as_str() {
@@ -2196,7 +2196,7 @@ fn synonyms_table(
             }
             "actions" => {
                 let syn_id = row.id.clone();
-                let on_del = cell_delete.clone();
+                let on_del = cell_delete;
                 let btn_locale = cell_locale.clone();
                 view! {
                     <button
@@ -2215,7 +2215,7 @@ fn synonyms_table(
 
     let rows_for_batch = rows.clone();
     let batch_delete = {
-        let on_del = delete_synonym.clone();
+        let on_del = delete_synonym;
         let rows_map = rows_for_batch.clone();
         Callback::new(move |_: MouseEvent| {
             let sel = selection.get();
@@ -2339,7 +2339,7 @@ fn stop_words_table(
     });
 
     let cell_locale = ui_locale.clone();
-    let cell_delete = delete_stop_word.clone();
+    let cell_delete = delete_stop_word;
 
     let cell_renderer = Callback::new(
         move |(row, col_id): (core::SearchStopWordRowViewModel, String)| match col_id.as_str() {
@@ -2351,7 +2351,7 @@ fn stop_words_table(
             }
             "actions" => {
                 let stop_id = row.id.clone();
-                let on_del = cell_delete.clone();
+                let on_del = cell_delete;
                 let btn_locale = cell_locale.clone();
                 view! {
                     <button
@@ -2370,7 +2370,7 @@ fn stop_words_table(
 
     let rows_for_batch = rows.clone();
     let batch_delete = {
-        let on_del = delete_stop_word.clone();
+        let on_del = delete_stop_word;
         let rows_map = rows_for_batch.clone();
         Callback::new(move |_: MouseEvent| {
             let sel = selection.get();
@@ -2494,7 +2494,7 @@ fn query_rules_table(
     });
 
     let cell_locale = ui_locale.clone();
-    let cell_delete = delete_query_rule.clone();
+    let cell_delete = delete_query_rule;
 
     let cell_renderer = Callback::new(
         move |(row, col_id): (core::SearchQueryRuleRowViewModel, String)| {
@@ -2519,7 +2519,7 @@ fn query_rules_table(
             "updated_at" => view! { <span class="text-xs text-muted-foreground">{row.updated_at}</span> }.into_any(),
             "actions" => {
                 let rule_id = row.id.clone();
-                let on_del = cell_delete.clone();
+                let on_del = cell_delete;
                 let btn_locale = cell_locale.clone();
                 view! {
                     <button
@@ -2539,7 +2539,7 @@ fn query_rules_table(
 
     let rows_for_batch = rows.clone();
     let batch_delete = {
-        let on_del = delete_query_rule.clone();
+        let on_del = delete_query_rule;
         let rows_map = rows_for_batch.clone();
         Callback::new(move |_: MouseEvent| {
             let sel = selection.get();

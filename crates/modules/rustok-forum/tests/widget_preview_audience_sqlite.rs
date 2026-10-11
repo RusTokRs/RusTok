@@ -179,7 +179,10 @@ fn read_context(tenant_id: Uuid, user_id: Uuid, correlation: &str) -> PortContex
 fn viewer_security(user_id: Uuid) -> SecurityContext {
     SecurityContext::from_permission_snapshot(
         Some(user_id),
-        &[Permission::FORUM_TOPICS_READ, Permission::FORUM_REPLIES_READ],
+        &[
+            Permission::FORUM_TOPICS_READ,
+            Permission::FORUM_REPLIES_READ,
+        ],
     )
 }
 
@@ -232,7 +235,15 @@ async fn fixture() -> Fixture {
         .expect("restricted category trust layer should persist");
 
     for slug in ["public-one", "public-two"] {
-        create_topic(&db, &event_bus, tenant_id, admin.clone(), public_category, slug).await;
+        create_topic(
+            &db,
+            &event_bus,
+            tenant_id,
+            admin.clone(),
+            public_category,
+            slug,
+        )
+        .await;
     }
     let mut restricted_topic_id = None;
     for slug in ["restricted-one", "restricted-two"] {
@@ -264,11 +275,7 @@ fn preview_service(fixture: &Fixture) -> ForumWidgetPreviewService {
     let facts: SharedForumAudienceFactsPort = Arc::new(TrustFactsPort {
         low_trust_user_id: fixture.low_trust_user_id,
     });
-    ForumWidgetPreviewService::new(
-        fixture.db.clone(),
-        fixture.event_bus.clone(),
-        Some(facts),
-    )
+    ForumWidgetPreviewService::new(fixture.db.clone(), fixture.event_bus.clone(), Some(facts))
 }
 
 #[tokio::test]
@@ -280,7 +287,11 @@ async fn widget_topic_list_counts_and_pages_only_owner_visible_topics() {
         .preview(
             fixture.tenant_id,
             viewer_security(fixture.low_trust_user_id),
-            read_context(fixture.tenant_id, fixture.low_trust_user_id, "low-widget-list"),
+            read_context(
+                fixture.tenant_id,
+                fixture.low_trust_user_id,
+                "low-widget-list",
+            ),
             Some("en"),
             input(
                 TOPIC_LIST,
@@ -306,7 +317,11 @@ async fn widget_topic_list_counts_and_pages_only_owner_visible_topics() {
         .preview(
             fixture.tenant_id,
             viewer_security(fixture.trusted_user_id),
-            read_context(fixture.tenant_id, fixture.trusted_user_id, "trusted-widget-list"),
+            read_context(
+                fixture.tenant_id,
+                fixture.trusted_user_id,
+                "trusted-widget-list",
+            ),
             Some("en"),
             input(
                 TOPIC_LIST,
@@ -336,7 +351,11 @@ async fn widget_topic_detail_denies_restricted_topic_as_not_found() {
         .preview(
             fixture.tenant_id,
             viewer_security(fixture.low_trust_user_id),
-            read_context(fixture.tenant_id, fixture.low_trust_user_id, "low-widget-detail"),
+            read_context(
+                fixture.tenant_id,
+                fixture.low_trust_user_id,
+                "low-widget-detail",
+            ),
             Some("en"),
             input(
                 TOPIC_DETAIL,
@@ -353,7 +372,11 @@ async fn widget_topic_detail_denies_restricted_topic_as_not_found() {
         .preview(
             fixture.tenant_id,
             viewer_security(fixture.trusted_user_id),
-            read_context(fixture.tenant_id, fixture.trusted_user_id, "trusted-widget-detail"),
+            read_context(
+                fixture.tenant_id,
+                fixture.trusted_user_id,
+                "trusted-widget-detail",
+            ),
             Some("en"),
             input(
                 TOPIC_DETAIL,
@@ -379,7 +402,11 @@ async fn widget_reply_stream_denies_replies_of_restricted_topic() {
         .preview(
             fixture.tenant_id,
             viewer_security(fixture.low_trust_user_id),
-            read_context(fixture.tenant_id, fixture.low_trust_user_id, "low-widget-replies"),
+            read_context(
+                fixture.tenant_id,
+                fixture.low_trust_user_id,
+                "low-widget-replies",
+            ),
             Some("en"),
             input(
                 REPLY_STREAM,
@@ -406,7 +433,11 @@ async fn widget_preview_rejects_audience_context_for_another_actor() {
         .preview(
             fixture.tenant_id,
             viewer_security(fixture.trusted_user_id),
-            read_context(fixture.tenant_id, fixture.low_trust_user_id, "mismatched-widget"),
+            read_context(
+                fixture.tenant_id,
+                fixture.low_trust_user_id,
+                "mismatched-widget",
+            ),
             Some("en"),
             input(
                 TOPIC_LIST,

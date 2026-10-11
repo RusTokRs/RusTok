@@ -69,17 +69,15 @@ pub async fn fetch_cache_health(
         UiTransportPath::NativeServer => native_server_adapter::cache_health_native()
             .await
             .map_err(|e| e.to_string()),
-        UiTransportPath::Graphql => {
-            rustok_graphql::execute(
-                &rustok_graphql::graphql_url(),
-                rustok_graphql::GraphqlRequest::new(CACHE_HEALTH_QUERY, Some(EmptyVariables {})),
-                token,
-                tenant_slug,
-                None,
-            )
-            .await
-            .map_err(|e| e.to_string())
-        }
+        UiTransportPath::Graphql => rustok_graphql::execute(
+            &rustok_graphql::graphql_url(),
+            rustok_graphql::GraphqlRequest::new(CACHE_HEALTH_QUERY, Some(EmptyVariables {})),
+            token,
+            tenant_slug,
+            None,
+        )
+        .await
+        .map_err(|e| e.to_string()),
     }
 }
 
@@ -91,22 +89,20 @@ pub async fn fetch_cache_settings(
         UiTransportPath::NativeServer => native_server_adapter::cache_settings_native()
             .await
             .map_err(|e| e.to_string()),
-        UiTransportPath::Graphql => {
-            rustok_graphql::execute(
-                &rustok_graphql::graphql_url(),
-                rustok_graphql::GraphqlRequest::new(
-                    PLATFORM_SETTINGS_QUERY,
-                    Some(CategoryVariables {
-                        category: "cache".to_string(),
-                    }),
-                ),
-                token,
-                tenant_slug,
-                None,
-            )
-            .await
-            .map_err(|e| e.to_string())
-        }
+        UiTransportPath::Graphql => rustok_graphql::execute(
+            &rustok_graphql::graphql_url(),
+            rustok_graphql::GraphqlRequest::new(
+                PLATFORM_SETTINGS_QUERY,
+                Some(CategoryVariables {
+                    category: "cache".to_string(),
+                }),
+            ),
+            token,
+            tenant_slug,
+            None,
+        )
+        .await
+        .map_err(|e| e.to_string()),
     }
 }
 

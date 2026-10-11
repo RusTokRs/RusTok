@@ -161,11 +161,7 @@ pub struct GraphqlSchemaDependencies {
     ))]
     pub content_orchestration:
         Option<rustok_content_orchestration::SharedContentOrchestrationService>,
-    #[cfg(all(
-        feature = "mod-content",
-        feature = "mod-blog",
-        feature = "mod-forum"
-    ))]
+    #[cfg(all(feature = "mod-content", feature = "mod-blog", feature = "mod-forum"))]
     pub canonical_route_resolver: Option<rustok_content::SharedCanonicalRouteResolver>,
     #[cfg(feature = "mod-media")]
     pub storage: Option<StorageRuntime>,
@@ -199,11 +195,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
             feature = "mod-comments"
         ))]
         content_orchestration,
-        #[cfg(all(
-            feature = "mod-content",
-            feature = "mod-blog",
-            feature = "mod-forum"
-        ))]
+        #[cfg(all(feature = "mod-content", feature = "mod-blog", feature = "mod-forum"))]
         canonical_route_resolver,
         #[cfg(feature = "mod-media")]
         storage,
@@ -314,11 +306,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         builder
     };
 
-    #[cfg(all(
-        feature = "mod-content",
-        feature = "mod-blog",
-        feature = "mod-forum"
-    ))]
+    #[cfg(all(feature = "mod-content", feature = "mod-blog", feature = "mod-forum"))]
     let builder = if let Some(canonical_route_resolver) = canonical_route_resolver {
         builder.data(canonical_route_resolver)
     } else {

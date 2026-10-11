@@ -811,14 +811,13 @@ pub fn matches_blog_post_filter(
                     return false;
                 }
             }
-            ("locale", FilterValue::Text(q)) => {
+            ("locale", FilterValue::Text(q))
                 if !row
                     .locale
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }

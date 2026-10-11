@@ -4,12 +4,12 @@ use rustok_api::locale_tags_match;
 
 use crate::core::routing::format_channel_scope_text;
 use crate::i18n::t;
+#[cfg(test)]
+use crate::model::PricingProductListItem;
 use crate::model::{
     PricingAdjustmentPreview, PricingEffectivePrice, PricingPrice, PricingPriceListOption,
     PricingProductDetail, PricingProductTranslation, PricingResolutionContext, PricingVariant,
 };
-#[cfg(test)]
-use crate::model::PricingProductListItem;
 
 #[derive(Clone)]
 pub(crate) struct PricingSummary {

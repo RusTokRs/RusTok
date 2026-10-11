@@ -108,9 +108,7 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
         let locale = target_locale.get();
         async move {
             if source_topic_id.trim().is_empty() {
-                Ok(ForumTopicSplitReplyPage {
-                    items: Vec::new(),
-                })
+                Ok(ForumTopicSplitReplyPage { items: Vec::new() })
             } else {
                 transport::fetch_topic_split_replies(token, tenant, source_topic_id, locale).await
             }

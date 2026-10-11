@@ -30,9 +30,7 @@ impl CampaignLifecycle {
             (CampaignStatus::Draft, CampaignStatus::Scheduled) => {
                 Some(CampaignTransition::Schedule)
             }
-            (CampaignStatus::Draft, CampaignStatus::Cancelled) => {
-                Some(CampaignTransition::Cancel)
-            }
+            (CampaignStatus::Draft, CampaignStatus::Cancelled) => Some(CampaignTransition::Cancel),
             (CampaignStatus::Scheduled, CampaignStatus::Sending) => {
                 Some(CampaignTransition::StartSending)
             }

@@ -12,14 +12,14 @@ use rustok_notifications_api::{
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
+use crate::moderation_report::SharedForumModerationReportPort;
+use crate::services::moderation_report::ForumModerationReportService;
 use crate::{
     ForumCategoryAudienceReadService, ForumReadModelService, ForumReplyAudienceReadService,
     ForumSettingsProviders, ForumStorefrontReadStateService, ForumTopicAudienceListService,
     ForumTopicAudienceReadService, ForumVisibilityScopedReadStateService, ModerationService,
     ReplyService, SharedForumAudienceFactsPort, SubscriptionService, TopicService, VoteService,
 };
-use crate::moderation_report::SharedForumModerationReportPort;
-use crate::services::moderation_report::ForumModerationReportService;
 
 /// Manifest-attached Forum GraphQL runtime capabilities.
 ///
@@ -114,8 +114,7 @@ impl ForumGraphqlRuntimeData {
     }
 
     pub(crate) fn vote_service(&self, db: DatabaseConnection) -> VoteService {
-        let service =
-            VoteService::new(db).with_settings_providers(self.settings_providers.clone());
+        let service = VoteService::new(db).with_settings_providers(self.settings_providers.clone());
         match self.audience_facts.clone() {
             Some(facts) => service.with_audience_facts(facts),
             None => service,
@@ -180,7 +179,9 @@ impl ForumGraphqlRuntimeData {
         &self,
         tenant_id: Uuid,
     ) -> crate::error::ForumResult<u64> {
-        self.settings_providers.default_topics_per_page(tenant_id).await
+        self.settings_providers
+            .default_topics_per_page(tenant_id)
+            .await
     }
 
     /// Tenant default page size for reply lists when a request omits `perPage`.
@@ -188,7 +189,9 @@ impl ForumGraphqlRuntimeData {
         &self,
         tenant_id: Uuid,
     ) -> crate::error::ForumResult<u64> {
-        self.settings_providers.default_replies_per_page(tenant_id).await
+        self.settings_providers
+            .default_replies_per_page(tenant_id)
+            .await
     }
 
     pub(crate) fn topic_audience_list_service(

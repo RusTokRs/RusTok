@@ -608,10 +608,9 @@ mod tests {
     #[test]
     fn create_channel_request_converts_with_tenant_isolation() {
         let tenant_id = Uuid::new_v4();
-        let request: rustok_channel::CreateChannelRequest = serde_json::from_str(
-            r#"{"slug":"online-store","name":"Online Store"}"#,
-        )
-        .expect("valid create channel request JSON");
+        let request: rustok_channel::CreateChannelRequest =
+            serde_json::from_str(r#"{"slug":"online-store","name":"Online Store"}"#)
+                .expect("valid create channel request JSON");
 
         assert_eq!(request.slug, "online-store");
         assert_eq!(request.name, "Online Store");

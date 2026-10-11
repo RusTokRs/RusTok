@@ -452,10 +452,10 @@ fn trimmed_string(value: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|s| {
-            if let Some(stripped) = s.strip_prefix('\'') {
-                if stripped.starts_with(['=', '+', '-', '@', '\t', '\r']) {
-                    return stripped.to_string();
-                }
+            if let Some(stripped) = s.strip_prefix('\'')
+                && stripped.starts_with(['=', '+', '-', '@', '\t', '\r'])
+            {
+                return stripped.to_string();
             }
             s.to_string()
         })

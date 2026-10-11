@@ -90,28 +90,25 @@ pub fn ProductRelationsPanel(
         },
     );
 
-    let filtered_relations = Memo::new({
-        let relations_resource = relations_resource.clone();
-        move |_| {
-            let relations = relations_resource
-                .get()
-                .and_then(Result::ok)
-                .unwrap_or_default();
-            let s_val = search.get();
-            let col_filters = filters.get();
-            let target_filter = col_filters.get("target_product_id").and_then(|f| match f {
-                FilterValue::Text(s) if !s.trim().is_empty() => Some(s.as_str()),
-                _ => None,
-            });
-            let query = if !s_val.trim().is_empty() {
-                Some(s_val.as_str())
-            } else {
-                target_filter
-            };
-            let list = filter_relations(&relations, query, None);
-            pagination.update(|p| p.total = list.len() as u64);
-            list
-        }
+    let filtered_relations = Memo::new(move |_| {
+        let relations = relations_resource
+            .get()
+            .and_then(Result::ok)
+            .unwrap_or_default();
+        let s_val = search.get();
+        let col_filters = filters.get();
+        let target_filter = col_filters.get("target_product_id").and_then(|f| match f {
+            FilterValue::Text(s) if !s.trim().is_empty() => Some(s.as_str()),
+            _ => None,
+        });
+        let query = if !s_val.trim().is_empty() {
+            Some(s_val.as_str())
+        } else {
+            target_filter
+        };
+        let list = filter_relations(&relations, query, None);
+        pagination.update(|p| p.total = list.len() as u64);
+        list
     });
 
     let paged_relations = Memo::new(move |_| {

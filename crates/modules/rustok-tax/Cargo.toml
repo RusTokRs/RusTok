@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "Tax domain foundation and provider seam for commerce"
 
+[lints]
+workspace = true
+
 [dependencies]
 async-trait.workspace = true
 rust_decimal.workspace = true

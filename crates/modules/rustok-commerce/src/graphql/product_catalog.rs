@@ -501,11 +501,7 @@ impl ProductCatalogQuery {
             )
             .await
             .map_err(|error| {
-                product_catalog_port_error(
-                    &port_context,
-                    error,
-                    "admin_product_catalog_facets",
-                )
+                product_catalog_port_error(&port_context, error, "admin_product_catalog_facets")
             })?;
 
         Ok(facets.into_iter().map(Into::into).collect())

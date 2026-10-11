@@ -50,8 +50,8 @@ fn create_input(slug: &str, tag: &str) -> CreatePostInput {
         seo_description: None,
         channel_slugs: None,
         metadata: None,
-                scheduled_at: None,
-                is_pinned: None,
+        scheduled_at: None,
+        is_pinned: None,
     }
 }
 

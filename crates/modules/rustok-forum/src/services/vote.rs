@@ -20,10 +20,10 @@ use crate::error::{ForumError, ForumResult};
 use crate::services::engagement_mode::{ForumEngagementMode, ForumSettingsProviders};
 use crate::services::projection_invalidation::publish_forum_topic_projection_direct_in_tx;
 use crate::services::rbac::enforce_scope;
-use crate::services::topic_write_audience::topic_write_audience_allows;
 use crate::services::topic_vote_lock::{
     lock_active_topic_vote_write_in_tx, lock_topic_vote_scopes_in_tx,
 };
+use crate::services::topic_write_audience::topic_write_audience_allows;
 use crate::state_machine::ReplyStatus;
 
 #[derive(Debug, Clone, Copy, Default)]

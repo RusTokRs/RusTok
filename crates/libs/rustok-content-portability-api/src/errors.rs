@@ -35,10 +35,7 @@ pub enum PortabilityError {
 
     /// Batch operation partially failed.
     #[error("batch partially failed: {succeeded}/{total} succeeded")]
-    BatchPartialFailure {
-        succeeded: usize,
-        total: usize,
-    },
+    BatchPartialFailure { succeeded: usize, total: usize },
 
     /// I/O error.
     #[error("I/O error: {0}")]

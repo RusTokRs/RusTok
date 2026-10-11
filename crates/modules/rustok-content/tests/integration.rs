@@ -3,23 +3,20 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use rustok_content::{
-    ContentOrchestrationBridge, ContentOrchestrationService, ContentResult,
-    DemotePostToTopicInput, DemotePostToTopicOutput, MergeTopicsInput, MergeTopicsOutput,
-    PromoteTopicToPostInput, PromoteTopicToPostOutput, SplitTopicInput,
-    SplitTopicOutput,
+    ContentOrchestrationBridge, ContentOrchestrationService, ContentResult, DemotePostToTopicInput,
+    DemotePostToTopicOutput, MergeTopicsInput, MergeTopicsOutput, PromoteTopicToPostInput,
+    PromoteTopicToPostOutput, SplitTopicInput, SplitTopicOutput,
 };
 use rustok_core::{DomainEvent, MemoryTransport, SecurityContext, UserRole};
 use rustok_events::EventEnvelope;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
-    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
-    DbBackend, EntityTrait, QueryFilter, Statement,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    EntityTrait, QueryFilter, Statement,
 };
 use uuid::Uuid;
 
-use rustok_content::entities::{
-    orchestration_audit_log, orchestration_operation,
-};
+use rustok_content::entities::{orchestration_audit_log, orchestration_operation};
 
 #[derive(Default)]
 struct MockBridge {
@@ -176,7 +173,6 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
     .await
     .expect("failed to create content_orchestration_audit_logs table");
 }
-
 
 fn drain_event_envelopes(
     receiver: &mut tokio::sync::broadcast::Receiver<EventEnvelope>,

@@ -318,10 +318,10 @@ pub fn FormError(
         if let Some(cb) = on_dismiss {
             cb.run(());
         }
-        if let Some(ctx) = form_ctx {
-            if let Some(rw) = ctx.rw_state {
-                rw.update(|s| s.clear_form_error());
-            }
+        if let Some(ctx) = form_ctx
+            && let Some(rw) = ctx.rw_state
+        {
+            rw.update(|s| s.clear_form_error());
         }
     };
 

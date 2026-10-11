@@ -355,11 +355,11 @@ impl SeoMutation {
             noindex: generated
                 .robots
                 .as_deref()
-                .map_or(false, |r| r.contains("noindex")),
+                .is_some_and(|r| r.contains("noindex")),
             nofollow: generated
                 .robots
                 .as_deref()
-                .map_or(false, |r| r.contains("nofollow")),
+                .is_some_and(|r| r.contains("nofollow")),
             canonical_url: generated.canonical_url,
             structured_data: existing_structured_data,
             translations: vec![SeoMetaTranslationInput {

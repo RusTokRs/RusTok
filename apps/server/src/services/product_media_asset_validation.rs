@@ -95,9 +95,7 @@ fn resolve_media_asset_read_port(
         return Some(provider);
     }
 
-    let Some(storage) = server.shared_get::<rustok_storage::StorageRuntime>() else {
-        return None;
-    };
+    let storage = server.shared_get::<rustok_storage::StorageRuntime>()?;
 
     let provider: Arc<dyn MediaAssetReadPort> =
         Arc::new(rustok_media::MediaService::new(server.db_clone(), storage));

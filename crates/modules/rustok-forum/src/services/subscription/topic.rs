@@ -16,10 +16,10 @@ use crate::dto::{
 use crate::entities::{forum_topic, forum_topic_subscription};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
-use crate::services::topic_write_audience::topic_write_audience_allows;
 use crate::services::topic_subscription_lock::{
     lock_active_topic_subscription_write_in_tx, lock_topic_subscription_scopes_in_tx,
 };
+use crate::services::topic_write_audience::topic_write_audience_allows;
 use crate::subscription::ForumSubscriptionLevel;
 
 use super::SubscriptionService;

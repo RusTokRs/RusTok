@@ -29,7 +29,8 @@ pub fn DesignSystemPage() -> impl IntoView {
     let (form_input_invalid, set_form_input_invalid) = signal(false);
     let (form_switch, set_form_switch) = signal(true);
     let (form_checkbox, set_form_checkbox) = signal(true);
-    let (form_notes, set_form_notes) = signal("Initial telemetry and module configuration notes.".to_string());
+    let (form_notes, set_form_notes) =
+        signal("Initial telemetry and module configuration notes.".to_string());
 
     // Recipe signals
     let (confirm_open, set_confirm_open) = signal(false);

@@ -726,7 +726,6 @@ fn BodyRevisionHistory(
                                     .into_iter()
                                     .map(|revision| {
                                         let revision_id = revision.id.clone();
-                                        let restore = restore.clone();
                                         view! {
                                             <li class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2 text-sm">
                                                 <div class="min-w-0">

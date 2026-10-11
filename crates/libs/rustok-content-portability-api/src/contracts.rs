@@ -31,7 +31,10 @@ impl std::fmt::Debug for ImportContext {
             .field("user_id", &self.user_id)
             .field("format", &self.format)
             .field("continue_on_error", &self.continue_on_error)
-            .field("progress_callback", &self.progress_callback.as_ref().map(|_| "<callback>"))
+            .field(
+                "progress_callback",
+                &self.progress_callback.as_ref().map(|_| "<callback>"),
+            )
             .field("started_at", &self.started_at)
             .finish()
     }
@@ -84,7 +87,10 @@ impl std::fmt::Debug for ExportContext {
             .field("user_id", &self.user_id)
             .field("format", &self.format)
             .field("filters", &self.filters)
-            .field("progress_callback", &self.progress_callback.as_ref().map(|_| "<callback>"))
+            .field(
+                "progress_callback",
+                &self.progress_callback.as_ref().map(|_| "<callback>"),
+            )
             .field("started_at", &self.started_at)
             .finish()
     }
@@ -311,10 +317,8 @@ pub trait ContentImporter<Source: Send + 'static, Target: Send + 'static>: Send 
                     }
                 }
                 Err(e) => {
-                    let failure = ImportResult::failure(
-                        format!("item_{}", index),
-                        vec![e.to_string()],
-                    );
+                    let failure =
+                        ImportResult::failure(format!("item_{}", index), vec![e.to_string()]);
                     result.add_failure(failure);
 
                     if !context.continue_on_error {
@@ -388,7 +392,13 @@ pub trait ContentExporter<Source: Send + 'static, Target: Send + 'static>: Send 
             match self.export(source, context.clone()).await {
                 Ok(target) => exported.push(target),
                 Err(e) => {
-                    if !context.filters.custom.get("continue_on_error").map(|v| v == "true").unwrap_or(false) {
+                    if !context
+                        .filters
+                        .custom
+                        .get("continue_on_error")
+                        .map(|v| v == "true")
+                        .unwrap_or(false)
+                    {
                         return Err(e);
                     }
                     // Log error and continue

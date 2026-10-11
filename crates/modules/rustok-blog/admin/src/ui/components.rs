@@ -183,7 +183,7 @@ pub(super) fn BlogPostsTable(
     });
 
     let cell_renderer = {
-        let tc = table_classes.clone();
+        let tc = table_classes;
         Callback::new(
             move |(row, col_id): (core::BlogPostAdminTableRowViewModel, String)| {
                 let post_id_edit = row.post_id.clone();

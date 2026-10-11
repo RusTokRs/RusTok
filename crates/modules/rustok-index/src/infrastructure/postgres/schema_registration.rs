@@ -292,9 +292,10 @@ fn resolve_existing_schema(
             "stored schema has unsupported status".to_owned(),
         ));
     }
-    let existing_canonical_json = serde_json::from_value::<IndexSchema>(existing.schema_json.clone())
-        .ok()
-        .and_then(|s| serde_json::to_value(s.canonical()).ok());
+    let existing_canonical_json =
+        serde_json::from_value::<IndexSchema>(existing.schema_json.clone())
+            .ok()
+            .and_then(|s| serde_json::to_value(s.canonical()).ok());
     let contract_matches = if existing.schema_json == *schema_json {
         true
     } else if let Some(ref existing_norm) = existing_canonical_json {

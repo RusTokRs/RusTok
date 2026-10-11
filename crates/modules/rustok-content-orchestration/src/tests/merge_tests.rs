@@ -132,7 +132,10 @@ async fn merge_topics_moves_replies_and_updates_category_counters() {
     let orchestration = ContentOrchestrationService::new(
         db.clone(),
         events.clone(),
-        Arc::new(ServerContentOrchestrationBridge::new(db.clone(), events.clone())),
+        Arc::new(ServerContentOrchestrationBridge::new(
+            db.clone(),
+            events.clone(),
+        )),
     );
 
     let merge_result = orchestration

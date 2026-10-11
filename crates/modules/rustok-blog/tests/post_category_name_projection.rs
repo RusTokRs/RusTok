@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use rustok_blog::{
-    BlogModule, CategoryService, CreateCategoryInput, CreatePostInput, PostListQuery,
-    PostService, PublicPostsPageQuery,
+    BlogModule, CategoryService, CreateCategoryInput, CreatePostInput, PostListQuery, PostService,
+    PublicPostsPageQuery,
 };
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};

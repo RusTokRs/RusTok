@@ -1,10 +1,10 @@
 use async_graphql::*;
 use uuid::Uuid;
 
+use crate::NewsletterGraphqlRuntimeData;
 use crate::dto::{CampaignListQuery, SubscriberListQuery};
 use crate::graphql::types::*;
 use crate::services::{CampaignService, SubscriberService};
-use crate::NewsletterGraphqlRuntimeData;
 
 /// Newsletter GraphQL queries.
 pub struct NewsletterQuery;

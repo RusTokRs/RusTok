@@ -5,8 +5,8 @@ mod mutation;
 mod query;
 mod runtime_data;
 mod scenario_baseline;
-mod types;
 mod templates;
+mod types;
 
 use async_graphql::MergedObject;
 

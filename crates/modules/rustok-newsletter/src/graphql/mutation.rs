@@ -2,10 +2,10 @@ use async_graphql::*;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::NewsletterGraphqlRuntimeData;
 use crate::dto::ScheduleCampaignInput;
 use crate::graphql::types::*;
 use crate::services::{CampaignService, SubscriberService};
-use crate::NewsletterGraphqlRuntimeData;
 
 /// Newsletter GraphQL mutations.
 pub struct NewsletterMutation;
@@ -164,11 +164,7 @@ impl NewsletterMutation {
 
         let service = CampaignService::new(runtime.db.clone());
         let response = service
-            .schedule(
-                tenant_id,
-                id,
-                ScheduleCampaignInput { scheduled_at },
-            )
+            .schedule(tenant_id, id, ScheduleCampaignInput { scheduled_at })
             .await
             .map_err(|e| Error::new(e.to_string()))?;
 

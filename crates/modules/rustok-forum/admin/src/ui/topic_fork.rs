@@ -111,9 +111,7 @@ pub fn ForumTopicForkAdmin() -> impl IntoView {
         let locale = replies_locale.clone();
         async move {
             if source_topic_id.trim().is_empty() {
-                Ok(ForumTopicForkReplyPage {
-                    items: Vec::new(),
-                })
+                Ok(ForumTopicForkReplyPage { items: Vec::new() })
             } else {
                 transport::fetch_topic_fork_replies(token, tenant, source_topic_id, locale).await
             }

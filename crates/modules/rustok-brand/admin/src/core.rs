@@ -169,15 +169,11 @@ pub fn matches_brand_filter(brand: &BrandAdminListItem, filters: &ColumnFilters)
                 }
             }
             ("status", FilterValue::Select(s)) => match s.as_str() {
-                "active" => {
-                    if !brand.is_active {
-                        return false;
-                    }
+                "active" if !brand.is_active => {
+                    return false;
                 }
-                "inactive" => {
-                    if brand.is_active {
-                        return false;
-                    }
+                "inactive" if brand.is_active => {
+                    return false;
                 }
                 _ => {}
             },

@@ -20,10 +20,7 @@ pub enum NewsletterError {
     DuplicateSubscriber(String),
 
     #[error("campaign status invalid for operation: current={current}, required={required}")]
-    InvalidCampaignStatus {
-        current: String,
-        required: String,
-    },
+    InvalidCampaignStatus { current: String, required: String },
 
     #[error("delivery error: {0}")]
     Delivery(String),
@@ -47,7 +44,10 @@ impl NewsletterError {
         Self::Conflict(message.into())
     }
 
-    pub fn invalid_campaign_status(current: impl Into<String>, required: impl Into<String>) -> Self {
+    pub fn invalid_campaign_status(
+        current: impl Into<String>,
+        required: impl Into<String>,
+    ) -> Self {
         Self::InvalidCampaignStatus {
             current: current.into(),
             required: required.into(),

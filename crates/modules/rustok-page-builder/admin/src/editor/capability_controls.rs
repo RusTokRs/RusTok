@@ -111,14 +111,13 @@ pub fn matches_capability_policy_filter(
                     _ => {}
                 }
             }
-            ("effective", FilterValue::Text(q)) => {
+            ("effective", FilterValue::Text(q))
                 if !row
                     .effective_label
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }

@@ -80,7 +80,6 @@ pub use moderation_report::{
     SharedForumModerationReportPort,
 };
 pub use moderation_subject::{FORUM_MODERATION_MODULE, ForumModerationSubjectAdapterFactory};
-pub use services::moderation_report::ForumModerationReportService;
 pub use notification_recipient::{
     FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY,
     FORUM_NOTIFICATION_RECIPIENT_CONTEXT_CAPABILITY_UNAVAILABLE, ForumNotificationRecipientContext,
@@ -95,6 +94,7 @@ pub use reply_read_transport::{
     ForumReplyReadOperation, ForumReplyReadTransport, reply_read_audience_port_context,
 };
 pub use search_projection::ForumSearchProjectionSourceFactory;
+pub use services::moderation_report::ForumModerationReportService;
 pub use services::{
     ApplyExactForumReplyTranslationInput, ApplyExactForumTopicTranslationInput, CategoryService,
     DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT, FORUM_POSTING_POLICY_FACTS_CAPABILITY,

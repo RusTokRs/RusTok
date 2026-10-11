@@ -27,7 +27,9 @@ pub(crate) fn compose_layout_document(
     let mut document = GrapesJsCodec::decode_str(&source)
         .map_err(|error| PagesError::validation(format!("Invalid layout document: {error}")))?;
     if document.project.pages.len() != 1 {
-        return Err(PagesError::validation("A template layout requires exactly one Fly page"));
+        return Err(PagesError::validation(
+            "A template layout requires exactly one Fly page",
+        ));
     }
     let mut used = BTreeSet::new();
     document.project.visit_components(|component, _, _| {
@@ -36,7 +38,8 @@ pub(crate) fn compose_layout_document(
         }
     });
     let root = document.project.pages[0]
-        .component.as_mut()
+        .component
+        .as_mut()
         .and_then(ComponentNode::as_object_mut)
         .ok_or_else(|| PagesError::validation("A template layout requires an object page root"))?;
     let children = root.children_mut().ok_or_else(|| {
@@ -54,8 +57,9 @@ pub(crate) fn compose_layout_document(
     let value = GrapesJsCodec::encode_value(&document).map_err(|error| {
         PagesError::validation(format!("Cannot encode template layout: {error}"))
     })?;
-    let content = serde_json::to_string(&value)
-        .map_err(|error| PagesError::validation(format!("Cannot serialize template layout: {error}")))?;
+    let content = serde_json::to_string(&value).map_err(|error| {
+        PagesError::validation(format!("Cannot serialize template layout: {error}"))
+    })?;
     apply_site_symbols_to_content(&content, symbols)
 }
 
@@ -98,7 +102,7 @@ mod tests {
     fn symbols() -> Vec<Value> {
         vec![
             json!({"id": "site-header", "components": [{"id": "heading", "type": "text", "content": "Header"}]}),
-            json!({"id": "site-footer", "components": [{"id": "copyright", "type": "text", "content": "Footer"}]})
+            json!({"id": "site-footer", "components": [{"id": "copyright", "type": "text", "content": "Footer"}]}),
         ]
     }
 
@@ -106,16 +110,29 @@ mod tests {
     fn layout_wraps_body_without_mutating_it_or_leaking_authoring_state() {
         let source = body();
         let result = compose_layout_document(
-            &source, &["site-header".into()], &["site-footer".into()], &symbols()
-        ).expect("valid symbols and one page");
+            &source,
+            &["site-header".into()],
+            &["site-footer".into()],
+            &symbols(),
+        )
+        .expect("valid symbols and one page");
         assert_eq!(source, body());
-        assert_eq!(result, compose_layout_document(
-            &source, &["site-header".into()], &["site-footer".into()], &symbols()
-        ).unwrap());
+        assert_eq!(
+            result,
+            compose_layout_document(
+                &source,
+                &["site-header".into()],
+                &["site-footer".into()],
+                &symbols()
+            )
+            .unwrap()
+        );
         let project: Value = serde_json::from_str(&result).unwrap();
         assert!(project.get("flySymbols").is_none());
         assert!(project.get("flySymbolsRevision").is_none());
-        let nodes = project["pages"][0]["component"]["components"].as_array().unwrap();
+        let nodes = project["pages"][0]["component"]["components"]
+            .as_array()
+            .unwrap();
         assert_eq!(nodes.len(), 3);
         assert_eq!(nodes[0]["tagName"], "header");
         assert_eq!(nodes[1]["content"], "Body");
@@ -123,7 +140,10 @@ mod tests {
         assert_eq!(nodes[0]["components"][0]["content"], "Header");
         assert_eq!(nodes[2]["components"][0]["content"], "Footer");
         assert!(nodes[0].get("symbolId").is_none());
-        assert_ne!(nodes[0]["id"], nodes[1]["id"], "generated IDs cannot shadow body IDs");
+        assert_ne!(
+            nodes[0]["id"], nodes[1]["id"],
+            "generated IDs cannot shadow body IDs"
+        );
     }
 
     #[test]

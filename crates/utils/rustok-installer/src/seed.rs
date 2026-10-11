@@ -262,49 +262,47 @@ pub async fn execute_seed_profile(
 
     // Load seed content for Dev profile
     let mut content_outcomes = Vec::new();
-    if request.profile == SeedProfile::Dev {
-        if let (Some(content_port), Some(seed_data_path)) = (content_port, &request.seed_data_path) {
-            // Validate that admin user exists for content import
-            let user_id = match &admin {
-                Some(admin_user) => admin_user.id,
-                None => {
-                    return Err(SeedExecutionError::Validation(
-                        "seed content loading requires an admin user to be created".to_string(),
-                    ));
-                }
+    if request.profile == SeedProfile::Dev
+        && let (Some(content_port), Some(seed_data_path)) = (content_port, &request.seed_data_path)
+    {
+        // Validate that admin user exists for content import
+        let user_id = match &admin {
+            Some(admin_user) => admin_user.id,
+            None => {
+                return Err(SeedExecutionError::Validation(
+                    "seed content loading requires an admin user to be created".to_string(),
+                ));
+            }
+        };
+
+        for module_slug in &enabled_modules {
+            if !content_port.has_seed_data(module_slug) {
+                continue;
+            }
+
+            let content_request = SeedContentRequest {
+                tenant_id: tenant.id,
+                user_id,
+                module_slug: module_slug.clone(),
+                seed_data_path: format!("{}/{}", seed_data_path, module_slug),
             };
-            
-            for module_slug in &enabled_modules {
-                if !content_port.has_seed_data(module_slug) {
-                    continue;
-                }
 
-                let content_request = SeedContentRequest {
-                    tenant_id: tenant.id,
-                    user_id,
-                    module_slug: module_slug.clone(),
-                    seed_data_path: format!("{}/{}", seed_data_path, module_slug),
-                };
+            match content_port.load_seed_content(content_request).await {
+                Ok(outcome) => content_outcomes.push(outcome),
+                Err(e) => {
+                    let error_msg =
+                        format!("failed to load seed content for {}: {}", module_slug, e);
 
-                match content_port.load_seed_content(content_request).await {
-                    Ok(outcome) => content_outcomes.push(outcome),
-                    Err(e) => {
-                        let error_msg = format!(
-                            "failed to load seed content for {}: {}",
-                            module_slug, e
-                        );
-                        
-                        if request.continue_on_content_error {
-                            // Log error but continue with other modules
-                            content_outcomes.push(SeedContentOutcome {
-                                module_slug: module_slug.clone(),
-                                imported_count: 0,
-                                failed_count: 0,
-                                errors: vec![error_msg],
-                            });
-                        } else {
-                            return Err(SeedExecutionError::ContentLoading(error_msg));
-                        }
+                    if request.continue_on_content_error {
+                        // Log error but continue with other modules
+                        content_outcomes.push(SeedContentOutcome {
+                            module_slug: module_slug.clone(),
+                            imported_count: 0,
+                            failed_count: 0,
+                            errors: vec![error_msg],
+                        });
+                    } else {
+                        return Err(SeedExecutionError::ContentLoading(error_msg));
                     }
                 }
             }
@@ -506,7 +504,7 @@ mod tests {
                 },
                 enabled_modules: vec!["blog".to_string()],
                 disabled_modules: vec![],
-                admin: None,  // No admin user
+                admin: None, // No admin user
                 demo_customer_password: Some("password".to_string()),
                 actor: "installer".to_string(),
                 seed_data_path: Some("seeds".to_string()),
@@ -565,7 +563,7 @@ mod tests {
                 demo_customer_password: Some("password".to_string()),
                 actor: "installer".to_string(),
                 seed_data_path: Some("seeds".to_string()),
-                continue_on_content_error: true,  // Continue on error
+                continue_on_content_error: true, // Continue on error
             },
             &TenantPort,
             &PrincipalPort,

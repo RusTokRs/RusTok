@@ -349,8 +349,8 @@ impl EditorSessionState {
     pub fn dispatch(&mut self, action: EditorSessionAction) -> Vec<EditorSessionEffect> {
         let mut effects = Vec::new();
         match action {
-            EditorSessionAction::DispatchIntent(intent) => match self.dispatch_intent(intent) {
-                Ok(canvas_effects) => {
+            EditorSessionAction::DispatchIntent(intent) => {
+                if let Ok(canvas_effects) = self.dispatch_intent(intent) {
                     for effect in canvas_effects {
                         match effect {
                             AdminCanvasEffect::Announce(msg) => {
@@ -369,8 +369,7 @@ impl EditorSessionState {
                         }
                     }
                 }
-                Err(_) => {}
-            },
+            }
             EditorSessionAction::ApplyRuntimeScenario(scenario_id) => {
                 self.apply_runtime_scenario(&scenario_id);
             }

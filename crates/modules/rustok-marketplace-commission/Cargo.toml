@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "Marketplace Family versioned commission rule and assessment owner"
 
+[lints]
+workspace = true
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true

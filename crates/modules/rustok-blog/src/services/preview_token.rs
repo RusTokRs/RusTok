@@ -1,18 +1,16 @@
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
+use crate::PostResponse;
 use crate::entities::blog_preview_token;
 use crate::error::{BlogError, BlogResult};
 use crate::services::post::PostService;
 use crate::services::rbac::enforce_owned_scope;
-use crate::PostResponse;
 use rustok_outbox::TransactionalEventBus;
 
 /// Default token TTL: 7 days
@@ -54,7 +52,12 @@ impl PreviewTokenService {
         // Only the post author or users with update permission can create tokens
         let post_service = PostService::new(self.db.clone(), self.event_bus.clone());
         let post = post_service.find_post(tenant_id, post_id).await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Update, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Update,
+            post.author_id,
+        )?;
 
         let ttl = ttl_hours.unwrap_or(DEFAULT_TTL_HOURS).min(MAX_TTL_HOURS);
         let now = Utc::now();
@@ -149,7 +152,12 @@ impl PreviewTokenService {
         let post = post_service
             .find_post(tenant_id, token_record.post_id)
             .await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Update, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Update,
+            post.author_id,
+        )?;
 
         blog_preview_token::Entity::delete_by_id(token_id)
             .exec(&self.db)
@@ -170,7 +178,12 @@ impl PreviewTokenService {
         // Verify the caller has permission
         let post_service = PostService::new(self.db.clone(), self.event_bus.clone());
         let post = post_service.find_post(tenant_id, post_id).await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Update, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Update,
+            post.author_id,
+        )?;
 
         let tokens = blog_preview_token::Entity::find()
             .filter(blog_preview_token::Column::TenantId.eq(tenant_id))
@@ -208,7 +221,7 @@ impl PreviewTokenService {
 /// Generate a cryptographically random preview token.
 /// Format: 32 bytes of randomness, base64url-encoded (43 chars).
 fn generate_preview_token() -> String {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
     let bytes: [u8; 32] = rand::random();
     URL_SAFE_NO_PAD.encode(bytes)

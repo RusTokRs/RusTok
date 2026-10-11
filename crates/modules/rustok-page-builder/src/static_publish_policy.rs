@@ -57,13 +57,7 @@ const DANGEROUS_COMPONENT_TYPES: &[&str] = &[
     "applet", "base", "embed", "iframe", "meta", "object", "script", "style", "template",
 ];
 
-const FORBIDDEN_ATTRIBUTES: &[&str] = &[
-    "background",
-    "ping",
-    "srcdoc",
-    "style",
-    "xlink:href",
-];
+const FORBIDDEN_ATTRIBUTES: &[&str] = &["background", "ping", "srcdoc", "style", "xlink:href"];
 
 /// `srcset` is deliberately absent from [`FORBIDDEN_ATTRIBUTES`]: responsive image
 /// candidates are validated per URL by [`validate_srcset`], with exactly the rule this
@@ -72,7 +66,6 @@ const FORBIDDEN_ATTRIBUTES: &[&str] = &[
 /// image that `src` accepts — the incoherence this policy already refused for CSS
 /// references. An operator who re-adds `"srcset"` to `forbidden_attributes` still
 /// gets the blanket ban: the configuration is honoured over the default.
-
 const URL_ATTRIBUTES: &[&str] = &[
     "action",
     "cite",
@@ -961,9 +954,7 @@ fn validate_srcset(
         if url.starts_with("data:") {
             return Err("data: URLs are not allowed in srcset candidates");
         }
-        if let Err(reason) = validate_url(url, UrlKind::ResourceImage, policy) {
-            return Err(reason);
-        }
+        validate_url(url, UrlKind::ResourceImage, policy)?;
         let (candidate_family, normalized) = match descriptor {
             None => ("x", "1x".to_string()),
             Some(descriptor) => {
@@ -1007,13 +998,12 @@ fn parse_srcset_descriptor(descriptor: &str) -> Option<&'static str> {
     if whole.is_empty() || whole.len() > 3 || !whole.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
-    if let Some(fraction) = fraction {
-        if fraction.is_empty()
+    if let Some(fraction) = fraction
+        && (fraction.is_empty()
             || fraction.len() > 3
-            || !fraction.bytes().all(|byte| byte.is_ascii_digit())
-        {
-            return None;
-        }
+            || !fraction.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        return None;
     }
     Some("x")
 }
@@ -1175,7 +1165,9 @@ fn validate_sizes_condition_value(value: &str) -> Result<(), &'static str> {
             return Err("media condition numeric value is invalid");
         }
     }
-    if value.bytes().all(|byte| byte.is_ascii_lowercase() || byte == b'-')
+    if value
+        .bytes()
+        .all(|byte| byte.is_ascii_lowercase() || byte == b'-')
         && value.starts_with(|character: char| character.is_ascii_lowercase())
     {
         return Ok(());
@@ -1603,11 +1595,22 @@ mod tests {
         )
         .is_ok());
         assert!(validate_srcset("hero.webp 1x, hero@2x.webp 2x", &policy).is_ok());
-        assert!(validate_srcset("/hero.webp", &policy).is_ok(), "bare candidate");
+        assert!(
+            validate_srcset("/hero.webp", &policy).is_ok(),
+            "bare candidate"
+        );
         assert!(validate_sizes("(min-width: 480px) 45vw, 100vw", &policy).is_ok());
-        assert!(validate_sizes("(orientation: landscape) and (min-width: 40em) 300px, 100vw", &policy)
-            .is_ok());
-        assert!(validate_sizes("100vw", &policy).is_ok(), "condition-free entry");
+        assert!(
+            validate_sizes(
+                "(orientation: landscape) and (min-width: 40em) 300px, 100vw",
+                &policy
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_sizes("100vw", &policy).is_ok(),
+            "condition-free entry"
+        );
 
         let document = document(json!({
             "id": "root",
@@ -1705,7 +1708,13 @@ mod tests {
         .cloned()
         .expect("attributes");
         for (raw_name, value) in &attributes {
-            validate_attribute(raw_name, value, "attributes.test", &policy, &mut diagnostics);
+            validate_attribute(
+                raw_name,
+                value,
+                "attributes.test",
+                &policy,
+                &mut diagnostics,
+            );
         }
         assert!(
             diagnostics
@@ -1731,7 +1740,8 @@ mod tests {
                 }
             }]
         }));
-        let error = validate_static_publish_document(&document).expect_err("unsafe responsive image");
+        let error =
+            validate_static_publish_document(&document).expect_err("unsafe responsive image");
         let codes = error
             .diagnostics()
             .iter()

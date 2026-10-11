@@ -214,7 +214,9 @@ async fn customer_permissions_are_enforced_in_forum_services() {
             customer.clone(),
             UpdateReplyInput {
                 locale: "en".to_string(),
-                content: Some(rustok_api::RichTextDocument::single_paragraph("Edited by author")),
+                content: Some(rustok_api::RichTextDocument::single_paragraph(
+                    "Edited by author",
+                )),
             },
         )
         .await
@@ -369,8 +371,14 @@ async fn author_topic_deletion_follows_the_tenant_policy_and_staff_are_not_affec
     // Policy off (default): the author is refused, another customer is refused.
     let closed = TopicService::new(db.clone(), event_bus.clone())
         .with_settings_providers(posting_cooldown::zero_cooldown_providers());
-    let own_topic =
-        create_forum_topic(&closed, tenant_id, category.id, author.clone(), "own-closed").await;
+    let own_topic = create_forum_topic(
+        &closed,
+        tenant_id,
+        category.id,
+        author.clone(),
+        "own-closed",
+    )
+    .await;
     let denied = closed
         .delete(tenant_id, own_topic, author.clone())
         .await
@@ -409,8 +417,14 @@ async fn author_reply_deletion_follows_the_tenant_policy() {
         create_category(&CategoryService::new(db.clone()), tenant_id, admin.clone()).await;
     let topic_service = TopicService::new(db.clone(), event_bus.clone())
         .with_settings_providers(posting_cooldown::zero_cooldown_providers());
-    let topic =
-        create_forum_topic(&topic_service, tenant_id, category.id, admin, "reply-policy").await;
+    let topic = create_forum_topic(
+        &topic_service,
+        tenant_id,
+        category.id,
+        admin,
+        "reply-policy",
+    )
+    .await;
 
     let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
     let reply_service = ReplyService::new(db.clone(), event_bus.clone())
@@ -459,8 +473,7 @@ async fn update_only_role_edits_its_own_topic_and_never_deletes_it() {
             serde_json::json!({ "allow_user_content_deletion": true }),
         ),
     );
-    let topic_id =
-        create_forum_topic(&topics, tenant_id, category.id, author, "update-only").await;
+    let topic_id = create_forum_topic(&topics, tenant_id, category.id, author, "update-only").await;
 
     let update_only = SecurityContext::from_permissions(
         UserRole::Customer,

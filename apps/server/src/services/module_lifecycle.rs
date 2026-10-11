@@ -455,21 +455,15 @@ async fn resolve_predecessor_settings_schema(
             ],
         ))
         .await
+        && let Ok(raw_desc) = row.try_get::<String>("", "descriptor")
+        && let Ok(desc) =
+            serde_json::from_str::<rustok_modules::ModuleArtifactDescriptor>(&raw_desc)
+        && let Some(schema_doc) = desc.settings_schema()
+        && let Ok(spec_map) = serde_json::from_value::<
+            std::collections::HashMap<String, rustok_modules::ModuleSettingSpec>,
+        >(schema_doc.clone())
     {
-        if let Ok(raw_desc) = row.try_get::<String>("", "descriptor") {
-            if let Ok(desc) =
-                serde_json::from_str::<rustok_modules::ModuleArtifactDescriptor>(&raw_desc)
-            {
-                if let Some(schema_doc) = desc.settings_schema() {
-                    if let Ok(spec_map) = serde_json::from_value::<
-                        std::collections::HashMap<String, rustok_modules::ModuleSettingSpec>,
-                    >(schema_doc.clone())
-                    {
-                        return spec_map;
-                    }
-                }
-            }
-        }
+        return spec_map;
     }
 
     candidate_schema.clone()

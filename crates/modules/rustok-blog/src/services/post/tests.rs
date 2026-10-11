@@ -159,12 +159,14 @@ fn admin_post_cursor_rejects_a_different_sort_and_garbage() {
     assert!(
         AdminPostCursor::decode(&token, PostSortField::UpdatedAt, PostSortOrder::Desc).is_err()
     );
+    assert!(AdminPostCursor::decode(&token, PostSortField::CreatedAt, PostSortOrder::Asc).is_err());
     assert!(
-        AdminPostCursor::decode(&token, PostSortField::CreatedAt, PostSortOrder::Asc).is_err()
-    );
-    assert!(
-        AdminPostCursor::decode("not-a-cursor", PostSortField::CreatedAt, PostSortOrder::Desc)
-            .is_err()
+        AdminPostCursor::decode(
+            "not-a-cursor",
+            PostSortField::CreatedAt,
+            PostSortOrder::Desc
+        )
+        .is_err()
     );
 }
 
@@ -483,8 +485,8 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
                     seo_description: None,
                     channel_slugs,
                     metadata: None,
-                scheduled_at: None,
-                is_pinned: None,
+                    scheduled_at: None,
+                    is_pinned: None,
                 },
             )
             .await

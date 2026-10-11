@@ -94,7 +94,10 @@ async fn split_topic_moves_replies_and_updates_category_counter() {
     let orchestration = ContentOrchestrationService::new(
         db.clone(),
         events.clone(),
-        Arc::new(ServerContentOrchestrationBridge::new(db.clone(), events.clone())),
+        Arc::new(ServerContentOrchestrationBridge::new(
+            db.clone(),
+            events.clone(),
+        )),
     );
 
     let split_result = orchestration

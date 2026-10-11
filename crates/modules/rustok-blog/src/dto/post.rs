@@ -268,7 +268,9 @@ impl AdminPostCursor {
         sort_order: PostSortOrder,
     ) -> BlogResult<Self> {
         let invalid = || BlogError::validation("Blog list cursor is invalid");
-        let bytes = URL_SAFE_NO_PAD.decode(token.trim()).map_err(|_| invalid())?;
+        let bytes = URL_SAFE_NO_PAD
+            .decode(token.trim())
+            .map_err(|_| invalid())?;
         let raw = String::from_utf8(bytes).map_err(|_| invalid())?;
         let mut parts = raw.split('|');
         let (Some(field), Some(order), Some(value), Some(id), None) = (
@@ -352,7 +354,8 @@ impl PublishedPostCursor {
     pub fn encode(&self) -> String {
         let raw = format!(
             "{}|{}",
-            self.published_at.to_rfc3339_opts(SecondsFormat::Nanos, false),
+            self.published_at
+                .to_rfc3339_opts(SecondsFormat::Nanos, false),
             self.id
         );
         URL_SAFE_NO_PAD.encode(raw)
@@ -404,7 +407,6 @@ pub struct PublishedPostScanPage {
     pub next_after: Option<Uuid>,
 }
 
-
 /// Result of a bulk operation on blog posts.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BulkOperationResult {
@@ -423,6 +425,12 @@ pub struct BulkOperationResult {
 pub struct BulkOperationFailure {
     pub post_id: Uuid,
     pub reason: String,
+}
+
+impl Default for BulkOperationResult {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BulkOperationResult {

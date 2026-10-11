@@ -17,6 +17,7 @@ impl CacheModeOption {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "redis" => Self::Redis,
@@ -81,11 +82,20 @@ pub fn build_cache_settings_payload(draft: &CacheAdminFormDraft) -> serde_json::
     let port: u16 = draft.redis_port.parse().unwrap_or(6379);
     let db: u32 = draft.redis_db.parse().unwrap_or(0);
     let mut map = serde_json::Map::new();
-    map.insert("mode".to_string(), serde_json::Value::String(draft.mode.clone()));
-    map.insert("redis_host".to_string(), serde_json::Value::String(draft.redis_host.clone()));
+    map.insert(
+        "mode".to_string(),
+        serde_json::Value::String(draft.mode.clone()),
+    );
+    map.insert(
+        "redis_host".to_string(),
+        serde_json::Value::String(draft.redis_host.clone()),
+    );
     map.insert("redis_port".to_string(), serde_json::json!(port));
     map.insert("redis_db".to_string(), serde_json::json!(db));
-    map.insert("redis_url".to_string(), serde_json::Value::String(draft.redis_url.clone()));
+    map.insert(
+        "redis_url".to_string(),
+        serde_json::Value::String(draft.redis_url.clone()),
+    );
     if !draft.redis_password.is_empty() {
         map.insert(
             "redis_password".to_string(),
@@ -219,7 +229,10 @@ mod tests {
     fn test_mode_options() {
         assert_eq!(CacheModeOption::from_str("redis"), CacheModeOption::Redis);
         assert_eq!(CacheModeOption::from_str("hybrid"), CacheModeOption::Hybrid);
-        assert_eq!(CacheModeOption::from_str("unknown"), CacheModeOption::InMemory);
+        assert_eq!(
+            CacheModeOption::from_str("unknown"),
+            CacheModeOption::InMemory
+        );
         assert!(!CacheModeOption::InMemory.requires_redis_fields());
         assert!(CacheModeOption::Redis.requires_redis_fields());
         assert!(CacheModeOption::Hybrid.requires_redis_fields());

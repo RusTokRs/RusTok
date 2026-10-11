@@ -182,9 +182,10 @@ impl PostgresIndexSchemaReadinessStore {
                 continue;
             };
 
-            let canonical_persisted_json = serde_json::from_value::<IndexSchema>(persisted.schema_json.clone())
-                .ok()
-                .and_then(|s| serde_json::to_value(s.canonical()).ok());
+            let canonical_persisted_json =
+                serde_json::from_value::<IndexSchema>(persisted.schema_json.clone())
+                    .ok()
+                    .and_then(|s| serde_json::to_value(s.canonical()).ok());
             let contract_matches = if persisted.schema_json == expected_schema.schema_json {
                 true
             } else if let Some(ref persisted_norm) = canonical_persisted_json {

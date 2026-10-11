@@ -6,8 +6,7 @@ use rustok_forum::{
     ForumModerationReportCommand, ForumModerationReportPort, SharedForumModerationReportPort,
 };
 use rustok_moderation::{
-    ModerationCommandPort, ModerationReporterKind, ModerationService,
-    SubmitModerationReportCommand,
+    ModerationCommandPort, ModerationReporterKind, ModerationService, SubmitModerationReportCommand,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::json;

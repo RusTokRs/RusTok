@@ -62,19 +62,19 @@ fn CategoryTreeGrid(
         filters.set(new_filters);
     });
 
-const fn category_indent_class(depth: usize) -> &'static str {
-    match depth {
-        0 => "pl-0",
-        1 => "pl-5",
-        2 => "pl-10",
-        3 => "pl-14",
-        4 => "pl-20",
-        5 => "pl-24",
-        6 => "pl-28",
-        7 => "pl-32",
-        _ => "pl-36",
+    const fn category_indent_class(depth: usize) -> &'static str {
+        match depth {
+            0 => "pl-0",
+            1 => "pl-5",
+            2 => "pl-10",
+            3 => "pl-14",
+            4 => "pl-20",
+            5 => "pl-24",
+            6 => "pl-28",
+            7 => "pl-32",
+            _ => "pl-36",
+        }
     }
-}
 
     let cell_renderer = Callback::new(move |(row, col_id): (CategoryTreeRowViewModel, String)| {
         match col_id.as_str() {

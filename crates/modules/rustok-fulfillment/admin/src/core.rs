@@ -185,15 +185,17 @@ pub fn matches_shipping_option_filter(
                 .split('T')
                 .next()
                 .unwrap_or(&item.updated_at);
-            if let Some(f) = from {
-                if !f.is_empty() && date < f.as_str() {
-                    return false;
-                }
+            if let Some(f) = from
+                && !f.is_empty()
+                && date < f.as_str()
+            {
+                return false;
             }
-            if let Some(t) = to {
-                if !t.is_empty() && date > t.as_str() {
-                    return false;
-                }
+            if let Some(t) = to
+                && !t.is_empty()
+                && date > t.as_str()
+            {
+                return false;
             }
             true
         }

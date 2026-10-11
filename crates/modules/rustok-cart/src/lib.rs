@@ -1,3 +1,5 @@
+#![deny(clippy::float_arithmetic)]
+
 use async_trait::async_trait;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;

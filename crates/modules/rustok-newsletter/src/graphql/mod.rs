@@ -22,8 +22,6 @@ impl NewsletterGraphqlRuntimeData {
 }
 
 /// Factory function to attach newsletter runtime data to the GraphQL context.
-pub async fn attach_schema_data(
-    db: DatabaseConnection,
-) -> Arc<NewsletterGraphqlRuntimeData> {
+pub async fn attach_schema_data(db: DatabaseConnection) -> Arc<NewsletterGraphqlRuntimeData> {
     Arc::new(NewsletterGraphqlRuntimeData::new(db))
 }

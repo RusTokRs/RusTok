@@ -280,13 +280,13 @@ pub fn Dialog(
     let was_open = RwSignal::new(open_signal.get_untracked());
     Effect::new(move |_| {
         let is_open = open_signal.get();
-        if was_open.get_untracked() && !is_open {
-            if let Some(trigger) = last_trigger
+        if was_open.get_untracked()
+            && !is_open
+            && let Some(trigger) = last_trigger
                 .get_untracked()
                 .and_then(|node_ref| node_ref.get())
-            {
-                let _ = trigger.focus();
-            }
+        {
+            let _ = trigger.focus();
         }
         was_open.set(is_open);
     });

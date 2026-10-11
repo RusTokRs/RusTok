@@ -27,8 +27,14 @@ fn without_posting_cooldown(mut settings: serde_json::Value) -> serde_json::Valu
         settings = serde_json::json!({});
     }
     if let Some(object) = settings.as_object_mut() {
-        object.insert("rate_limit_new_topic_seconds".to_string(), serde_json::json!(0));
-        object.insert("rate_limit_new_reply_seconds".to_string(), serde_json::json!(0));
+        object.insert(
+            "rate_limit_new_topic_seconds".to_string(),
+            serde_json::json!(0),
+        );
+        object.insert(
+            "rate_limit_new_reply_seconds".to_string(),
+            serde_json::json!(0),
+        );
     }
     settings
 }
@@ -78,7 +84,9 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
         Uuid::new_v4()
     );
     let mut opts = ConnectOptions::new(db_url);
-    opts.max_connections(5).min_connections(1).sqlx_logging(false);
+    opts.max_connections(5)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(opts)
         .await
         .expect("failed to connect forum sqlite database");

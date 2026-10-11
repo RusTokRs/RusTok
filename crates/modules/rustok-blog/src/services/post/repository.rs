@@ -232,12 +232,9 @@ impl PostService {
             return Ok(Some(post));
         }
 
-        let Some(redirect) = BlogPostRouteOwner::find_redirect(
-            &self.db,
-            tenant_id,
-            &canonical_post_route(slug),
-        )
-        .await?
+        let Some(redirect) =
+            BlogPostRouteOwner::find_redirect(&self.db, tenant_id, &canonical_post_route(slug))
+                .await?
         else {
             return Ok(None);
         };

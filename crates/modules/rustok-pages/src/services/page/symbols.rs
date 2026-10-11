@@ -255,7 +255,10 @@ pub(super) async fn sync_site_symbols_in_tx<C: ConnectionTrait>(
     // and all layout references have been removed. The current page is excluded
     // because its submitted body (already written inside this transaction) is
     // checked directly. Load the catalog's layout references once per save.
-    let template_references = if existing.iter().any(|row| !desired.contains_key(&row.symbol_id)) {
+    let template_references = if existing
+        .iter()
+        .any(|row| !desired.contains_key(&row.symbol_id))
+    {
         template_symbol_ids(conn, tenant_id, locale).await?
     } else {
         std::collections::BTreeSet::new()

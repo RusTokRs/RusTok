@@ -721,11 +721,11 @@ fn facet_products_condition(
 
 /// Attributes whose bucket vocabulary is bounded and therefore enumerable for a storefront UI.
 trait EnumerableFacet {
-    fn is_enumerable_facet(self) -> bool;
+    fn is_enumerable_facet(&self) -> bool;
 }
 
 impl EnumerableFacet for AttributeValueType {
-    fn is_enumerable_facet(self) -> bool {
+    fn is_enumerable_facet(&self) -> bool {
         matches!(self, Self::Select | Self::Multiselect | Self::Boolean)
     }
 }

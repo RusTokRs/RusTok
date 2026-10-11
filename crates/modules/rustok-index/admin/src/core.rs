@@ -479,23 +479,21 @@ pub fn index_table_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
 pub fn matches_index_table_filter(table: &IndexTableRowViewModel, filters: &ColumnFilters) -> bool {
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
-            ("name", FilterValue::Text(q)) => {
+            ("name", FilterValue::Text(q))
                 if !table
                     .name
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("role", FilterValue::Text(q)) => {
+            ("role", FilterValue::Text(q))
                 if !table
                     .role
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }
@@ -574,32 +572,29 @@ pub fn matches_index_source_filter(
 ) -> bool {
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
-            ("name", FilterValue::Text(q)) => {
+            ("name", FilterValue::Text(q))
                 if !source
                     .name
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("entity", FilterValue::Text(q)) => {
+            ("entity", FilterValue::Text(q))
                 if !source
                     .entity
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("mode", FilterValue::Text(q)) => {
+            ("mode", FilterValue::Text(q))
                 if !source
                     .mode
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }

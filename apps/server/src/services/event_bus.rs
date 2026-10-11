@@ -90,7 +90,8 @@ fn ensure_event_forwarder(ctx: &ServerRuntimeContext, bus: Arc<EventBus>) {
         let default_transport = Arc::new(rustok_outbox::OutboxTransport::new(ctx.db_clone()))
             as Arc<dyn EventTransport>;
         let _ = ctx.shared_insert_if_absent(default_transport.clone());
-        ctx.shared_get::<Arc<dyn EventTransport>>().unwrap_or(default_transport)
+        ctx.shared_get::<Arc<dyn EventTransport>>()
+            .unwrap_or(default_transport)
     };
 
     if let Some(existing) = ctx.shared_get::<EventForwarderHandle>() {
@@ -147,10 +148,7 @@ async fn run_event_forwarder(
                     skipped,
                     "Server event forwarder lagged; {skipped} domain events dropped from broadcast queue"
                 );
-                rustok_telemetry::metrics::record_event_error(
-                    "server_event_forwarder",
-                    "lagged",
-                );
+                rustok_telemetry::metrics::record_event_error("server_event_forwarder", "lagged");
             }
             Err(broadcast::error::RecvError::Closed) => {
                 consumer_runtime.closed();

@@ -41,7 +41,6 @@ impl From<CreateChannelInput> for CreateChannelRequest {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateChannelTargetInput {
     pub target_type: String,
@@ -446,4 +445,3 @@ mod tests {
         assert!(input.settings.is_none());
     }
 }
-

@@ -98,7 +98,10 @@ async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
     let orchestration = ContentOrchestrationService::new(
         db.clone(),
         events.clone(),
-        Arc::new(ServerContentOrchestrationBridge::new(db.clone(), events.clone())),
+        Arc::new(ServerContentOrchestrationBridge::new(
+            db.clone(),
+            events.clone(),
+        )),
     );
     let promoted = match orchestration
         .promote_topic_to_post(

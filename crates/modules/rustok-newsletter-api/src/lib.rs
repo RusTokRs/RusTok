@@ -6,15 +6,15 @@
 
 mod model;
 #[cfg(feature = "server")]
-mod provider;
-#[cfg(feature = "server")]
 mod port;
+#[cfg(feature = "server")]
+mod provider;
 
 pub use model::*;
 #[cfg(feature = "server")]
-pub use provider::*;
-#[cfg(feature = "server")]
 pub use port::*;
+#[cfg(feature = "server")]
+pub use provider::*;
 
 #[cfg(test)]
 mod tests {

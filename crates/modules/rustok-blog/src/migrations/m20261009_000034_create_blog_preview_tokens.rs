@@ -22,22 +22,14 @@ impl MigrationTrait for Migration {
                             .uuid()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(BlogPreviewTokens::PostId)
-                            .uuid()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(BlogPreviewTokens::PostId).uuid().not_null())
                     .col(
                         ColumnDef::new(BlogPreviewTokens::Token)
                             .string_len(128)
                             .not_null()
                             .unique_key(),
                     )
-                    .col(
-                        ColumnDef::new(BlogPreviewTokens::CreatedBy)
-                            .uuid()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(BlogPreviewTokens::CreatedBy).uuid().null())
                     .col(
                         ColumnDef::new(BlogPreviewTokens::ExpiresAt)
                             .timestamp_with_time_zone()

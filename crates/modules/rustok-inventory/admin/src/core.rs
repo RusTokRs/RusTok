@@ -534,15 +534,17 @@ pub fn matches_inventory_filter(
                 .split('T')
                 .next()
                 .unwrap_or(&item.created_at);
-            if let Some(f) = from {
-                if !f.trim().is_empty() && item_date < f.as_str() {
-                    return false;
-                }
+            if let Some(f) = from
+                && !f.trim().is_empty()
+                && item_date < f.as_str()
+            {
+                return false;
             }
-            if let Some(t) = to {
-                if !t.trim().is_empty() && item_date > t.as_str() {
-                    return false;
-                }
+            if let Some(t) = to
+                && !t.trim().is_empty()
+                && item_date > t.as_str()
+            {
+                return false;
             }
             true
         }

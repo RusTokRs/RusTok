@@ -144,7 +144,10 @@ impl CacheService {
         }
     }
 
-    pub(crate) fn get_shared_backend(&self, key: &SharedBackendKey) -> Option<Arc<dyn CacheBackend>> {
+    pub(crate) fn get_shared_backend(
+        &self,
+        key: &SharedBackendKey,
+    ) -> Option<Arc<dyn CacheBackend>> {
         self.shared_backends
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

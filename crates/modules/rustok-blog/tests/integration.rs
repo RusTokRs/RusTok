@@ -300,8 +300,8 @@ async fn test_list_posts_with_pagination() -> TestResult<()> {
                     seo_description: None,
                     channel_slugs: None,
                     metadata: None,
-                scheduled_at: None,
-                is_pinned: None,
+                    scheduled_at: None,
+                    is_pinned: None,
                 },
             )
             .await?;
@@ -319,7 +319,10 @@ async fn test_list_posts_with_pagination() -> TestResult<()> {
         )
         .await?;
     assert_eq!(page1.items.len(), 2);
-    let cursor1 = page1.next_cursor.clone().expect("first page should have a cursor");
+    let cursor1 = page1
+        .next_cursor
+        .clone()
+        .expect("first page should have a cursor");
 
     let page2 = post_service
         .list_posts(
@@ -333,7 +336,10 @@ async fn test_list_posts_with_pagination() -> TestResult<()> {
         )
         .await?;
     assert_eq!(page2.items.len(), 2);
-    let cursor2 = page2.next_cursor.clone().expect("second page should have a cursor");
+    let cursor2 = page2
+        .next_cursor
+        .clone()
+        .expect("second page should have a cursor");
 
     let page3 = post_service
         .list_posts(
@@ -1618,8 +1624,8 @@ mod unit_tests {
             seo_description: Some("SEO описание для поисковиков".to_string()),
             channel_slugs: None,
             metadata: None,
-                scheduled_at: None,
-                is_pinned: None,
+            scheduled_at: None,
+            is_pinned: None,
         };
 
         assert_eq!(input.locale, "ru");

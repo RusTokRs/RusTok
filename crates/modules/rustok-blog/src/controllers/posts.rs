@@ -427,7 +427,8 @@ pub async fn preview_post(
     Query(params): Query<PreviewQueryParams>,
 ) -> HttpResult<Json<PostResponse>> {
     let locale = params.locale.unwrap_or_else(|| "en".to_string());
-    let service = crate::services::PreviewTokenService::new(runtime.db_clone(), runtime.event_bus());
+    let service =
+        crate::services::PreviewTokenService::new(runtime.db_clone(), runtime.event_bus());
     let post = service
         .get_post_by_token(&token, &locale)
         .await

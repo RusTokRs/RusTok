@@ -609,11 +609,15 @@ mod tests {
 
     #[test]
     fn parse_permission_multisegment_ai_resource() {
-        let perm: Permission = "ai:tasks:text:run".parse().expect("parse ai:tasks:text:run");
+        let perm: Permission = "ai:tasks:text:run"
+            .parse()
+            .expect("parse ai:tasks:text:run");
         assert_eq!(perm, Permission::AI_TASKS_TEXT_RUN);
         assert_eq!(perm.to_string(), "ai:tasks:text:run");
 
-        let provider_manage: Permission = "ai:providers:manage".parse().expect("parse ai:providers:manage");
+        let provider_manage: Permission = "ai:providers:manage"
+            .parse()
+            .expect("parse ai:providers:manage");
         assert_eq!(provider_manage, Permission::AI_PROVIDERS_MANAGE);
     }
 
@@ -622,7 +626,9 @@ mod tests {
         let perm: Permission = "  products:read \t".parse().expect("parse with whitespace");
         assert_eq!(perm, Permission::PRODUCTS_READ);
 
-        let perm2: Permission = "categories : list".parse().expect("parse with inner whitespace");
+        let perm2: Permission = "categories : list"
+            .parse()
+            .expect("parse with inner whitespace");
         assert_eq!(perm2, Permission::CATEGORIES_LIST);
     }
 
@@ -646,9 +652,18 @@ mod tests {
         assert_eq!(Permission::COMMENTS_MODERATE.action, Action::Moderate);
         assert_eq!(Permission::WEBHOOKS_MANAGE.resource, Resource::Webhooks);
 
-        assert_eq!(Permission::TRANSLATIONS_MANAGE.resource, Resource::Translations);
-        assert_eq!(Permission::TRANSLATION_MEMORY_MANAGE.resource, Resource::TranslationMemory);
-        assert_eq!(Permission::TRANSLATION_GLOSSARIES_MANAGE.resource, Resource::TranslationGlossaries);
+        assert_eq!(
+            Permission::TRANSLATIONS_MANAGE.resource,
+            Resource::Translations
+        );
+        assert_eq!(
+            Permission::TRANSLATION_MEMORY_MANAGE.resource,
+            Resource::TranslationMemory
+        );
+        assert_eq!(
+            Permission::TRANSLATION_GLOSSARIES_MANAGE.resource,
+            Resource::TranslationGlossaries
+        );
     }
 
     #[test]

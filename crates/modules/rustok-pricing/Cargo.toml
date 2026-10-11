@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "Pricing domain module extracted from rustok-commerce"
 
+[lints]
+workspace = true
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true

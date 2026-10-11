@@ -119,7 +119,7 @@ impl SeoService {
         };
 
         validate_seo_metadata_payload(&generated)
-            .map_err(|err| SeoError::validation(err))?;
+            .map_err(SeoError::validation)?;
 
         Ok(generated)
     }

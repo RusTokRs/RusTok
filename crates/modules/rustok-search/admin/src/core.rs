@@ -1550,7 +1550,7 @@ pub fn search_analytics_query_grid_columns(locale: Option<&str>) -> Vec<GridColu
         GridColumnDef::new("clicks", if is_ru { "Клики" } else { "Clicks" })
             .width(90)
             .align(ColumnAlign::Right),
-        GridColumnDef::new("ctr", if is_ru { "CTR" } else { "CTR" })
+        GridColumnDef::new("ctr", if is_ru { "CTR (%)" } else { "CTR" })
             .width(90)
             .align(ColumnAlign::Right),
         GridColumnDef::new(
@@ -1601,17 +1601,13 @@ pub fn matches_search_analytics_query_filter(
     filters: &ColumnFilters,
 ) -> bool {
     for (col_id, filter_val) in filters.iter() {
-        match (col_id.as_str(), filter_val) {
-            ("query", FilterValue::Text(q)) => {
-                if !row
-                    .query
-                    .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
-            }
-            _ => {}
+        if let ("query", FilterValue::Text(q)) = (col_id.as_str(), filter_val)
+            && !row
+                .query
+                .to_ascii_lowercase()
+                .contains(&q.to_ascii_lowercase())
+        {
+            return false;
         }
     }
     true
@@ -1664,7 +1660,7 @@ pub fn search_analytics_insight_grid_columns(locale: Option<&str>) -> Vec<GridCo
         GridColumnDef::new("clicks", if is_ru { "Клики" } else { "Clicks" })
             .width(90)
             .align(ColumnAlign::Right),
-        GridColumnDef::new("ctr", if is_ru { "CTR" } else { "CTR" })
+        GridColumnDef::new("ctr", if is_ru { "CTR (%)" } else { "CTR" })
             .width(90)
             .align(ColumnAlign::Right),
         GridColumnDef::new(
@@ -1696,23 +1692,21 @@ pub fn matches_search_analytics_insight_filter(
 ) -> bool {
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
-            ("query", FilterValue::Text(q)) => {
+            ("query", FilterValue::Text(q))
                 if !row
                     .query
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("recommendation", FilterValue::Text(q)) => {
+            ("recommendation", FilterValue::Text(q))
                 if !row
                     .recommendation
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }
@@ -1828,23 +1822,21 @@ pub fn matches_lagging_search_document_filter(
                     return false;
                 }
             }
-            ("source", FilterValue::Text(q)) => {
+            ("source", FilterValue::Text(q))
                 if !row
                     .source_status_label
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("locale", FilterValue::Text(q)) => {
+            ("locale", FilterValue::Text(q))
                 if !row
                     .locale
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }
@@ -1981,23 +1973,21 @@ pub fn matches_search_consistency_issue_filter(
                     return false;
                 }
             }
-            ("source", FilterValue::Text(q)) => {
+            ("source", FilterValue::Text(q))
                 if !row
                     .source_status_label
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("locale", FilterValue::Text(q)) => {
+            ("locale", FilterValue::Text(q))
                 if !row
                     .locale
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }
@@ -2089,23 +2079,21 @@ pub fn matches_search_synonym_filter(
 ) -> bool {
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
-            ("term", FilterValue::Text(q)) => {
+            ("term", FilterValue::Text(q))
                 if !row
                     .term
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
-            ("synonyms", FilterValue::Text(q)) => {
+            ("synonyms", FilterValue::Text(q))
                 if !row
                     .synonyms_summary
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }
@@ -2173,17 +2161,13 @@ pub fn matches_search_stop_word_filter(
     filters: &ColumnFilters,
 ) -> bool {
     for (col_id, filter_val) in filters.iter() {
-        match (col_id.as_str(), filter_val) {
-            ("value", FilterValue::Text(q)) => {
-                if !row
-                    .value
-                    .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
-            }
-            _ => {}
+        if let ("value", FilterValue::Text(q)) = (col_id.as_str(), filter_val)
+            && !row
+                .value
+                .to_ascii_lowercase()
+                .contains(&q.to_ascii_lowercase())
+        {
+            return false;
         }
     }
     true

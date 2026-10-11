@@ -286,17 +286,17 @@ fn prune_unused_components(openapi: &mut OpenApiDoc) {
         &mut tag_names,
     );
 
-    if let Some(global_security) = openapi.security.as_ref() {
-        if let Ok(value) = serde_json::to_value(global_security) {
-            let mut unused_schema_names = HashSet::new();
-            let mut unused_tag_names = HashSet::new();
-            collect_component_references(
-                &value,
-                &mut unused_schema_names,
-                &mut security_names,
-                &mut unused_tag_names,
-            );
-        }
+    if let Some(global_security) = openapi.security.as_ref()
+        && let Ok(value) = serde_json::to_value(global_security)
+    {
+        let mut unused_schema_names = HashSet::new();
+        let mut unused_tag_names = HashSet::new();
+        collect_component_references(
+            &value,
+            &mut unused_schema_names,
+            &mut security_names,
+            &mut unused_tag_names,
+        );
     }
 
     if let Some(components) = openapi.components.as_mut() {

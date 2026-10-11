@@ -157,11 +157,7 @@ impl MigrationTrait for Migration {
                             .json()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(NewsletterCampaigns::SegmentId)
-                            .uuid()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(NewsletterCampaigns::SegmentId).uuid().null())
                     .col(
                         ColumnDef::new(NewsletterCampaigns::ScheduledAt)
                             .timestamp_with_time_zone()
@@ -172,11 +168,7 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .null(),
                     )
-                    .col(
-                        ColumnDef::new(NewsletterCampaigns::CreatedBy)
-                            .uuid()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(NewsletterCampaigns::CreatedBy).uuid().null())
                     .col(
                         ColumnDef::new(NewsletterCampaigns::CreatedAt)
                             .timestamp_with_time_zone()
@@ -274,7 +266,11 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(NewsletterSubscriptions::Table).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(NewsletterSubscriptions::Table)
+                    .to_owned(),
+            )
             .await?;
         manager
             .drop_table(Table::drop().table(NewsletterCampaigns::Table).to_owned())

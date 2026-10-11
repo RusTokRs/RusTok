@@ -89,7 +89,7 @@ impl ContentProviderRegistry {
                 all_items.extend(items);
             }
         }
-        all_items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+        all_items.sort_by_key(|b| std::cmp::Reverse(b.published_at));
         Ok(all_items)
     }
 }

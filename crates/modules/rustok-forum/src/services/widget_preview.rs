@@ -18,8 +18,8 @@ use crate::services::widget_contract::{
     FORUM_WIDGET_TYPE_TOPIC_LIST, ForumWidgetContractService,
 };
 use crate::services::{
-    ForumReplyAudienceReadService, ForumTopicAudienceReadService,
-    ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService, TopicService,
+    ForumReplyAudienceReadService, ForumTopicAudienceReadService, ForumTopicAudienceViewer,
+    ForumTopicAudienceVisibilityService, TopicService,
 };
 use crate::state_machine::ReplyStatus;
 

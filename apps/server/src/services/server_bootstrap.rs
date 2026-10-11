@@ -83,12 +83,12 @@ fn check_production_secrets(jwt_secret: &str, database_uri: &str, production: bo
         ));
     }
 
-    if let Some((variable, password)) = configured_superadmin_password() {
-        if known_sample_superadmin_password(&password).is_some() {
-            return Err(crate::error::Error::Message(format!(
-                "FATAL: env var {variable} contains a known sample superadmin password. Set a unique secret before starting the release build."
-            )));
-        }
+    if let Some((variable, password)) = configured_superadmin_password()
+        && known_sample_superadmin_password(&password).is_some()
+    {
+        return Err(crate::error::Error::Message(format!(
+            "FATAL: env var {variable} contains a known sample superadmin password. Set a unique secret before starting the release build."
+        )));
     }
 
     Ok(())

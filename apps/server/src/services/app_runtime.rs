@@ -156,15 +156,13 @@ pub async fn bootstrap_app_runtime(
                 transactional_event_bus_from_context(&runtime_ctx),
             ),
         );
-        #[cfg(all(
-            feature = "mod-content",
-            feature = "mod-blog",
-            feature = "mod-forum"
-        ))]
+        #[cfg(all(feature = "mod-content", feature = "mod-blog", feature = "mod-forum"))]
         runtime_ctx.shared_insert(rustok_content::SharedCanonicalRouteResolver(
-            std::sync::Arc::new(rustok_content_orchestration::OwnerCanonicalRouteResolver::new(
-                runtime_ctx.db_clone(),
-            )),
+            std::sync::Arc::new(
+                rustok_content_orchestration::OwnerCanonicalRouteResolver::new(
+                    runtime_ctx.db_clone(),
+                ),
+            ),
         ));
 
         #[cfg(feature = "mod-workflow")]

@@ -303,10 +303,10 @@ impl TenantCacheGenerationListener {
             }
         }
 
-        if let Some(policy_cache) = &self.effective_policy_cache {
-            if let Ok(tenant_id) = uuid::Uuid::parse_str(&event.key) {
-                policy_cache.invalidate_tenant(tenant_id);
-            }
+        if let Some(policy_cache) = &self.effective_policy_cache
+            && let Ok(tenant_id) = uuid::Uuid::parse_str(&event.key)
+        {
+            policy_cache.invalidate_tenant(tenant_id);
         }
         self.cache.clear_shared_backends();
 

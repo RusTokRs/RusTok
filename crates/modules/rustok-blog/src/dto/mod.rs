@@ -17,9 +17,9 @@ pub use comment::{
     ModerateCommentStatus, UpdateCommentInput,
 };
 pub use post::{
-    AdminPostCursor, ArchivePostInput, BulkOperationFailure, BulkOperationResult,
-    CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder,
-    PostSummary, PublicPostPage, PublicPostsPageQuery, PublishedPostCursor, PublishedPostScanPage,
+    AdminPostCursor, ArchivePostInput, BulkOperationFailure, BulkOperationResult, CreatePostInput,
+    PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder, PostSummary,
+    PublicPostPage, PublicPostsPageQuery, PublishedPostCursor, PublishedPostScanPage,
     UpdatePostInput,
 };
 pub use tag::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};

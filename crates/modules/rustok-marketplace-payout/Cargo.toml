@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "Marketplace Family seller payout scheduling owner"
 
+[lints]
+workspace = true
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true

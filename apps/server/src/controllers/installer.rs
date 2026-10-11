@@ -478,8 +478,8 @@ fn require_setup_token(headers: &HeaderMap) -> Result<()> {
                 .and_then(|value| value.strip_prefix("Bearer "))
         });
 
-    let is_valid = provided
-        .is_some_and(|value| bool::from(value.as_bytes().ct_eq(expected.as_bytes())));
+    let is_valid =
+        provided.is_some_and(|value| bool::from(value.as_bytes().ct_eq(expected.as_bytes())));
 
     if is_valid {
         Ok(())
@@ -538,19 +538,14 @@ mod tests {
 
     #[test]
     fn installer_schema_missing_detects_common_relational_errors() {
-        let postgres_missing = sea_orm::DbErr::Custom(
-            "relation \"install_sessions\" does not exist".to_string(),
-        );
+        let postgres_missing =
+            sea_orm::DbErr::Custom("relation \"install_sessions\" does not exist".to_string());
         assert!(installer_schema_missing(&postgres_missing));
 
-        let sqlite_missing = sea_orm::DbErr::Custom(
-            "no such table: install_sessions".to_string(),
-        );
+        let sqlite_missing = sea_orm::DbErr::Custom("no such table: install_sessions".to_string());
         assert!(installer_schema_missing(&sqlite_missing));
 
-        let other_error = sea_orm::DbErr::Custom(
-            "connection refused".to_string(),
-        );
+        let other_error = sea_orm::DbErr::Custom("connection refused".to_string());
         assert!(!installer_schema_missing(&other_error));
     }
 
@@ -620,4 +615,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-

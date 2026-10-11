@@ -1,8 +1,8 @@
 use chrono::Utc;
 use rustok_newsletter_api::CampaignStatus;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    ModelTrait, QueryFilter, QueryOrder, QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
+    QueryFilter, QueryOrder, QuerySelect,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -94,8 +94,7 @@ impl CampaignService {
             active_model.preheader = Set(Some(preheader));
         }
         if let Some(sources) = input.content_sources {
-            active_model.content_sources =
-                Set(serde_json::to_value(&sources).unwrap_or_default());
+            active_model.content_sources = Set(serde_json::to_value(&sources).unwrap_or_default());
         }
         if let Some(segment_id) = input.segment_id {
             active_model.segment_id = Set(Some(segment_id));
@@ -173,7 +172,7 @@ impl CampaignService {
         use sea_orm::PaginatorTrait;
 
         let page = query.page.unwrap_or(1).max(1);
-        let per_page = query.per_page.unwrap_or(25).min(100).max(1);
+        let per_page = query.per_page.unwrap_or(25).clamp(1, 100);
 
         let mut find = Campaign::find().filter(campaign::Column::TenantId.eq(tenant_id));
 
@@ -220,11 +219,7 @@ impl CampaignService {
 
     /// Delete a draft or cancelled campaign.
     #[instrument(skip(self), fields(tenant_id = %tenant_id, campaign_id = %campaign_id))]
-    pub async fn delete(
-        &self,
-        tenant_id: Uuid,
-        campaign_id: Uuid,
-    ) -> NewsletterResult<()> {
+    pub async fn delete(&self, tenant_id: Uuid, campaign_id: Uuid) -> NewsletterResult<()> {
         let campaign = self.find_campaign(tenant_id, campaign_id).await?;
         let status = parse_status(&campaign.status)?;
 
@@ -295,7 +290,9 @@ fn validate_campaign_input(title: &str, subject: &str) -> NewsletterResult<()> {
         return Err(NewsletterError::validation("Subject cannot be empty"));
     }
     if subject.len() > 512 {
-        return Err(NewsletterError::validation("Subject exceeds 512 characters"));
+        return Err(NewsletterError::validation(
+            "Subject exceeds 512 characters",
+        ));
     }
     Ok(())
 }

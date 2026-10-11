@@ -23,9 +23,9 @@ pub use post::{
     PostService, canonical_post_route,
 };
 pub(crate) use post::{is_post_visible_for_channel, load_post_subject_snapshot};
+pub use preview_token::{PreviewToken, PreviewTokenService};
 pub use tag::TagService;
 pub use taxonomy_translation_owner::BlogTaxonomyTranslationOwner;
-pub use preview_token::{PreviewToken, PreviewTokenService};
 
 #[cfg(test)]
 mod tag_tenant_integrity_tests;

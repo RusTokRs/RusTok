@@ -86,9 +86,7 @@ impl PostService {
             }
             let scheduled_utc = scheduled.with_timezone(&chrono::Utc);
             if scheduled_utc <= now {
-                return Err(BlogError::validation(
-                    "scheduled_at must be in the future",
-                ));
+                return Err(BlogError::validation("scheduled_at must be in the future"));
             }
             Some(scheduled.fixed_offset())
         } else {
@@ -396,9 +394,7 @@ impl PostService {
             Patch::Set(scheduled) => {
                 let scheduled_utc = scheduled.with_timezone(&chrono::Utc);
                 if scheduled_utc <= now {
-                    return Err(BlogError::validation(
-                        "scheduled_at must be in the future",
-                    ));
+                    return Err(BlogError::validation("scheduled_at must be in the future"));
                 }
                 update = update.col_expr(
                     blog_post::Column::ScheduledAt,
@@ -408,7 +404,9 @@ impl PostService {
             Patch::Clear => {
                 update = update.col_expr(
                     blog_post::Column::ScheduledAt,
-                    sea_orm::sea_query::Expr::value(Option::<chrono::DateTime<chrono::FixedOffset>>::None),
+                    sea_orm::sea_query::Expr::value(
+                        Option::<chrono::DateTime<chrono::FixedOffset>>::None,
+                    ),
                 );
             }
         }
@@ -421,9 +419,7 @@ impl PostService {
                 )
                 .col_expr(
                     blog_post::Column::PinnedAt,
-                    sea_orm::sea_query::Expr::value(
-                        pinned_at.map(|t| t.fixed_offset()),
-                    ),
+                    sea_orm::sea_query::Expr::value(pinned_at.map(|t| t.fixed_offset())),
                 );
         }
 
@@ -822,7 +818,7 @@ impl PostService {
     /// This method is called by the scheduler worker.
     pub async fn publish_scheduled_posts(&self) -> BlogResult<Vec<(Uuid, Uuid)>> {
         let now = chrono::Utc::now();
-        
+
         // Find all draft posts with scheduled_at in the past
         let posts = blog_post::Entity::find()
             .filter(blog_post::Column::Status.eq("draft"))
@@ -836,7 +832,7 @@ impl PostService {
 
         for post in posts {
             let txn = self.db.begin().await.map_err(BlogError::from)?;
-            
+
             // Use the same transition logic as manual publish
             apply_status_transition_in_tx(
                 &txn,
@@ -938,4 +934,3 @@ async fn apply_status_transition_in_tx(
 
     Ok(())
 }
-

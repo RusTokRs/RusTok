@@ -491,7 +491,7 @@ pub fn FormSearchInput(
 ) -> impl IntoView {
     let ph = placeholder.unwrap_or_else(|| "Search...".to_string());
 
-    let val = value.clone();
+    let val = value;
     let has_value = Signal::derive(move || !val.get().is_empty());
 
     let on_clear_click = move |_| {
@@ -862,7 +862,7 @@ pub fn FormSelect(
     };
 
     let is_placeholder_selected = {
-        let val = value.clone();
+        let val = value;
         Signal::derive(move || val.get().is_empty())
     };
 
@@ -887,7 +887,7 @@ pub fn FormSelect(
                 let opt_val = opt.value.clone();
                 let is_selected = {
                     let opt_v = opt_val.clone();
-                    let val = value.clone();
+                    let val = value;
                     Signal::derive(move || val.get() == opt_v)
                 };
                 view! {
@@ -1247,7 +1247,7 @@ pub fn FormRadioGroup(
                 let opt_id = format!("{}-{}", group_name, opt.value);
                 let is_checked = {
                     let opt_v = opt_val.clone();
-                    let val = value.clone();
+                    let val = value;
                     Signal::derive(move || val.get() == opt_v)
                 };
                 let opt_disabled = opt.disabled;
@@ -1538,8 +1538,7 @@ pub fn FormOtpInput(
         let raw = event_target_value(&ev);
         let digit = raw
             .chars()
-            .filter(|c| c.is_ascii_digit())
-            .last()
+            .rfind(|c| c.is_ascii_digit())
             .map(|c| c.to_string())
             .unwrap_or_default();
 
@@ -1562,10 +1561,11 @@ pub fn FormOtpInput(
         if let Some(cb) = on_change {
             cb.run(new_val.clone());
         }
-        if new_val.len() == length && !new_val.contains(' ') {
-            if let Some(cb) = on_complete {
-                cb.run(new_val);
-            }
+        if new_val.len() == length
+            && !new_val.contains(' ')
+            && let Some(cb) = on_complete
+        {
+            cb.run(new_val);
         }
     });
 
@@ -1574,7 +1574,7 @@ pub fn FormOtpInput(
             {(0..length).map(|idx| {
                 let cell_id = format!("{base_id}-{idx}");
                 let is_inv = is_invalid;
-                let val_sig = value.clone();
+                let val_sig = value;
                 let digit_val = move || {
                     let s = val_sig.get();
                     s.chars().nth(idx).filter(|c| !c.is_whitespace()).map(|c| c.to_string()).unwrap_or_default()

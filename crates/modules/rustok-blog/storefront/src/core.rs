@@ -483,7 +483,7 @@ pub fn published_posts_empty_state_view(message: String) -> (String,) {
 
 pub fn calculate_reading_time(plain_text: &str) -> u32 {
     let word_count = plain_text.split_whitespace().count();
-    let minutes = (word_count + 199) / 200;
+    let minutes = word_count.div_ceil(200);
     (minutes as u32).max(1)
 }
 

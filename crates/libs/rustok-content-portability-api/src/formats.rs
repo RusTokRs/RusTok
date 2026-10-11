@@ -4,10 +4,11 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Supported content formats.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Format {
     /// JSON format (universal).
+    #[default]
     Json,
     /// CSV format (tabular data).
     Csv,
@@ -52,10 +53,7 @@ impl Format {
 
     /// Check if this format is human-readable.
     pub fn is_human_readable(&self) -> bool {
-        matches!(
-            self,
-            Format::Json | Format::Csv | Format::Markdown
-        )
+        matches!(self, Format::Json | Format::Csv | Format::Markdown)
     }
 }
 
@@ -68,12 +66,6 @@ impl fmt::Display for Format {
             Format::Markdown => write!(f, "Markdown"),
             Format::Custom => write!(f, "Custom"),
         }
-    }
-}
-
-impl Default for Format {
-    fn default() -> Self {
-        Format::Json
     }
 }
 

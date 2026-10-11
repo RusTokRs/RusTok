@@ -66,9 +66,7 @@ pub struct CheckoutPaymentStageExecutor {
 impl CheckoutPaymentStageExecutor {
     pub fn new(db: sea_orm::DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            payment_port: in_process_checkout_payment_execution_port(
-                db.clone(),
-            ),
+            payment_port: in_process_checkout_payment_execution_port(db.clone()),
             operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus),
             owner_db: db,
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,

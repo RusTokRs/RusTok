@@ -84,8 +84,9 @@ fn settings_from_snapshot(
     snapshot: Option<StaticModuleSettingsSnapshot>,
 ) -> ForumResult<ForumSettings> {
     match snapshot {
-        Some(snapshot) if snapshot.enabled => Ok(parse_forum_settings(&snapshot.settings)?
-            .unwrap_or_default()),
+        Some(snapshot) if snapshot.enabled => {
+            Ok(parse_forum_settings(&snapshot.settings)?.unwrap_or_default())
+        }
         _ => Ok(ForumSettings::default()),
     }
 }

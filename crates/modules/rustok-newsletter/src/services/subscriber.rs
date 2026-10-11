@@ -82,11 +82,7 @@ impl SubscriberService {
 
     /// Confirm a pending subscription.
     #[instrument(skip(self), fields(tenant_id = %tenant_id, subscriber_id = %subscriber_id))]
-    pub async fn confirm(
-        &self,
-        tenant_id: Uuid,
-        subscriber_id: Uuid,
-    ) -> NewsletterResult<()> {
+    pub async fn confirm(&self, tenant_id: Uuid, subscriber_id: Uuid) -> NewsletterResult<()> {
         let subscriber = self.find_subscriber(tenant_id, subscriber_id).await?;
         let current = parse_status(&subscriber.status)?;
 
@@ -110,11 +106,7 @@ impl SubscriberService {
 
     /// Unsubscribe an active or pending subscriber.
     #[instrument(skip(self), fields(tenant_id = %tenant_id, subscriber_id = %subscriber_id))]
-    pub async fn unsubscribe(
-        &self,
-        tenant_id: Uuid,
-        subscriber_id: Uuid,
-    ) -> NewsletterResult<()> {
+    pub async fn unsubscribe(&self, tenant_id: Uuid, subscriber_id: Uuid) -> NewsletterResult<()> {
         let subscriber = self.find_subscriber(tenant_id, subscriber_id).await?;
         let current = parse_status(&subscriber.status)?;
 
@@ -168,10 +160,9 @@ impl SubscriberService {
         use sea_orm::PaginatorTrait;
 
         let page = query.page.unwrap_or(1).max(1);
-        let per_page = query.per_page.unwrap_or(25).min(100).max(1);
+        let per_page = query.per_page.unwrap_or(25).clamp(1, 100);
 
-        let mut find = Subscriber::find()
-            .filter(subscriber::Column::TenantId.eq(tenant_id));
+        let mut find = Subscriber::find().filter(subscriber::Column::TenantId.eq(tenant_id));
 
         if let Some(status) = query.status {
             find = find.filter(subscriber::Column::Status.eq(status_to_string(status)));
@@ -239,11 +230,7 @@ impl SubscriberService {
 
     /// Delete a subscriber permanently.
     #[instrument(skip(self), fields(tenant_id = %tenant_id, subscriber_id = %subscriber_id))]
-    pub async fn delete(
-        &self,
-        tenant_id: Uuid,
-        subscriber_id: Uuid,
-    ) -> NewsletterResult<()> {
+    pub async fn delete(&self, tenant_id: Uuid, subscriber_id: Uuid) -> NewsletterResult<()> {
         let subscriber = self.find_subscriber(tenant_id, subscriber_id).await?;
         subscriber.delete(&self.db).await?;
         Ok(())
@@ -295,8 +282,12 @@ fn generate_confirm_token() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    format!("{:x}{}", timestamp, Uuid::now_v7().to_string().replace('-', ""))
-        .chars()
-        .take(64)
-        .collect()
+    format!(
+        "{:x}{}",
+        timestamp,
+        Uuid::now_v7().to_string().replace('-', "")
+    )
+    .chars()
+    .take(64)
+    .collect()
 }

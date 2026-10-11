@@ -128,7 +128,8 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
         .update_topic_subscription(
             tenant_id,
             topic.id,
-            admin.clone(), write_context(tenant_id, &admin),
+            admin.clone(),
+            write_context(tenant_id, &admin),
             UpdateForumSubscriptionInput {
                 level: ForumSubscriptionLevel::Muted,
                 notify_mentions: Some(true),
@@ -151,7 +152,8 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
         .update_topic_subscription(
             tenant_id,
             topic.id,
-            admin.clone(), write_context(tenant_id, &admin),
+            admin.clone(),
+            write_context(tenant_id, &admin),
             UpdateForumSubscriptionInput {
                 level: ForumSubscriptionLevel::Watching,
                 notify_mentions: None,

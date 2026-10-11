@@ -1,3 +1,5 @@
+#![deny(clippy::float_arithmetic)]
+
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
 use rustok_core::{MigrationSource, RusToKModule};

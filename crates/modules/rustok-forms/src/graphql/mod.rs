@@ -1,6 +1,4 @@
-use async_graphql::{
-    Context, FieldError, InputObject, Object, Result, SimpleObject,
-};
+use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
 use rustok_api::graphql::{GraphQLError, require_module_enabled};
 use rustok_api::{AuthContext, Permission, TenantContext, has_any_effective_permission};
 use rustok_core::SecurityContext;

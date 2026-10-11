@@ -83,6 +83,12 @@
 //! ```
 
 #![warn(missing_docs)]
+#![allow(
+    clippy::collapsible_if,
+    clippy::needless_lifetimes,
+    clippy::collapsible_match,
+    clippy::module_inception
+)]
 
 pub mod dirty;
 pub mod error;

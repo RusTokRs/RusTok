@@ -2,10 +2,9 @@
 
 use crate::{CsvFormatHandler, JsonFormatHandler, read_file, write_file};
 use rustok_content_portability_api::{
-    ExportContext, ExportResult, Format, FormatOptions, ImportContext,
-    PortabilityError,
+    ExportContext, ExportResult, Format, FormatOptions, ImportContext, PortabilityError,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::path::Path;
 use tracing::instrument;
 
@@ -186,14 +185,22 @@ mod tests {
         let path = temp.path();
 
         let items = vec![
-            TestItem { id: 1, name: "a".to_string() },
-            TestItem { id: 2, name: "b".to_string() },
+            TestItem {
+                id: 1,
+                name: "a".to_string(),
+            },
+            TestItem {
+                id: 2,
+                name: "b".to_string(),
+            },
         ];
         let json = serde_json::to_vec(&items).unwrap();
         tokio::fs::write(path, json).await.unwrap();
 
         let context = test_context(Format::Json);
-        let imported: Vec<TestItem> = ImportService::import_json_file(path, context).await.unwrap();
+        let imported: Vec<TestItem> = ImportService::import_json_file(path, context)
+            .await
+            .unwrap();
         assert_eq!(imported.len(), 2);
         assert_eq!(imported[0].id, 1);
     }
@@ -208,8 +215,9 @@ mod tests {
 
         let context = test_context(Format::Csv);
         let options = FormatOptions::new();
-        let imported: Vec<TestItem> =
-            ImportService::import_csv_file(path, context, &options).await.unwrap();
+        let imported: Vec<TestItem> = ImportService::import_csv_file(path, context, &options)
+            .await
+            .unwrap();
         assert_eq!(imported.len(), 2);
     }
 
@@ -219,8 +227,14 @@ mod tests {
         let path = temp.path();
 
         let items = vec![
-            TestItem { id: 1, name: "a".to_string() },
-            TestItem { id: 2, name: "b".to_string() },
+            TestItem {
+                id: 1,
+                name: "a".to_string(),
+            },
+            TestItem {
+                id: 2,
+                name: "b".to_string(),
+            },
         ];
 
         let context = test_export_context(Format::Json);
@@ -240,7 +254,10 @@ mod tests {
         let temp = NamedTempFile::new().unwrap();
         let path = temp.path();
 
-        let items = vec![TestItem { id: 1, name: "alice".to_string() }];
+        let items = vec![TestItem {
+            id: 1,
+            name: "alice".to_string(),
+        }];
 
         let context = test_export_context(Format::Csv);
         let options = FormatOptions::new();

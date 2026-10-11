@@ -188,7 +188,9 @@ async fn effective_module_policy_view(
     let tenant_id = ctx.data::<TenantContext>()?.id;
     let registry = ctx.data::<ModuleRegistry>()?;
 
-    let result = if let Ok(runtime_ctx) = ctx.data::<crate::services::server_runtime_context::ServerRuntimeContext>() {
+    let result = if let Ok(runtime_ctx) =
+        ctx.data::<crate::services::server_runtime_context::ServerRuntimeContext>()
+    {
         let cache = runtime_ctx.effective_policy_cache();
         EffectiveModulePolicyService::resolve_cached(db, registry, tenant_id, &cache)
             .await
@@ -197,15 +199,14 @@ async fn effective_module_policy_view(
         EffectiveModulePolicyService::resolve_view(db, registry, tenant_id).await
     };
 
-    result
-        .map_err(|error| {
-            tracing::error!(
-                tenant_id = %tenant_id,
-                error = %error,
-                "effective module policy GraphQL read failed"
-            );
-            <FieldError as GraphQLError>::internal_error("effective module policy is unavailable")
-        })
+    result.map_err(|error| {
+        tracing::error!(
+            tenant_id = %tenant_id,
+            error = %error,
+            "effective module policy GraphQL read failed"
+        );
+        <FieldError as GraphQLError>::internal_error("effective module policy is unavailable")
+    })
 }
 
 fn map_artifact_ui_contribution_error(error: ServerError) -> FieldError {

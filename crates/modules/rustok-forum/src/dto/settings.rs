@@ -107,5 +107,3 @@ fn default_per_page() -> u32 {
 fn default_topic_sort() -> String {
     "latest_reply".to_string()
 }
-
-

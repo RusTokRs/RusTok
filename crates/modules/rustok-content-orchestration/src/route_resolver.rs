@@ -93,32 +93,31 @@ impl OwnerCanonicalRouteResolver {
         if let Some(raw_id) = route
             .strip_prefix(FORUM_ROUTE_PREFIX)
             .and_then(|query| query.strip_prefix(FORUM_TOPIC_PARAM))
+            && let Ok(topic_id) = Uuid::parse_str(raw_id)
         {
-            if let Ok(topic_id) = Uuid::parse_str(raw_id) {
-                let topic_exists = forum_topic::Entity::find_by_id(topic_id)
-                    .filter(forum_topic::Column::TenantId.eq(tenant_id))
-                    .one(&self.db)
-                    .await?
-                    .is_some();
-                if topic_exists {
-                    let translations = forum_topic_translation::Entity::find()
-                        .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
-                        .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
-                        .all(&self.db)
-                        .await?;
-                    let resolved = resolve_by_locale(&translations, locale, |translation| {
-                        translation.locale.as_str()
-                    });
-                    if let Some(_translation) = resolved.item {
-                        return Ok(Some(ResolvedContentRoute {
-                            target_kind: "forum_topic".to_string(),
-                            target_id: topic_id,
-                            locale: resolved.effective_locale,
-                            matched_url: route.to_string(),
-                            canonical_url: route.to_string(),
-                            redirect_required: false,
-                        }));
-                    }
+            let topic_exists = forum_topic::Entity::find_by_id(topic_id)
+                .filter(forum_topic::Column::TenantId.eq(tenant_id))
+                .one(&self.db)
+                .await?
+                .is_some();
+            if topic_exists {
+                let translations = forum_topic_translation::Entity::find()
+                    .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
+                    .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
+                    .all(&self.db)
+                    .await?;
+                let resolved = resolve_by_locale(&translations, locale, |translation| {
+                    translation.locale.as_str()
+                });
+                if let Some(_translation) = resolved.item {
+                    return Ok(Some(ResolvedContentRoute {
+                        target_kind: "forum_topic".to_string(),
+                        target_id: topic_id,
+                        locale: resolved.effective_locale,
+                        matched_url: route.to_string(),
+                        canonical_url: route.to_string(),
+                        redirect_required: false,
+                    }));
                 }
             }
         }

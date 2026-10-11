@@ -107,6 +107,9 @@ todo = "deny"
 unimplemented = "deny"
 print_stdout = "deny"
 print_stderr = "deny"
+lossy_float_literal = "deny"
+float_cmp = "deny"
+float_cmp_const = "deny"
 
 [workspace.package]
 version = "0.1.0"

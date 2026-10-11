@@ -22,7 +22,10 @@ fn sample_list_item(id: &str) -> BlogPostListItem {
 #[test]
 fn admin_posts_load_views_keep_adapter_policy_in_core() {
     let loaded = blog_post_admin_posts_load_view(
-        Ok((vec![sample_list_item("post-1")], Some("cursor-2".to_string()))),
+        Ok((
+            vec![sample_list_item("post-1")],
+            Some("cursor-2".to_string()),
+        )),
         false,
         "Failed to load posts",
     );

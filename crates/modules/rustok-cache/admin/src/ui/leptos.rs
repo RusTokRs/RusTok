@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
@@ -7,10 +6,11 @@ use leptos_ui::{
     CardDescription, CardHeader, CardTitle, Input, Label,
 };
 use rustok_ui_core::UiRouteContext;
+use std::sync::Arc;
 
 use crate::core::{
-    build_cache_settings_payload, parse_cache_settings_json, CacheAdminFormDraft,
-    CacheAdminLabels, CacheDiagnosticsViewModel, CacheModeOption,
+    CacheAdminFormDraft, CacheAdminLabels, CacheDiagnosticsViewModel, CacheModeOption,
+    build_cache_settings_payload, parse_cache_settings_json,
 };
 use crate::transport;
 
@@ -61,9 +61,7 @@ pub fn CacheAdmin() -> impl IntoView {
         if let Some(Ok(response)) = settings_resource.get()
             && !loaded.get_untracked()
         {
-            if let Some(draft) =
-                parse_cache_settings_json(&response.platform_settings.settings)
-            {
+            if let Some(draft) = parse_cache_settings_json(&response.platform_settings.settings) {
                 set_mode.set(draft.mode);
                 set_redis_host.set(draft.redis_host);
                 set_redis_port.set(draft.redis_port);
@@ -383,7 +381,7 @@ pub fn CacheAdmin() -> impl IntoView {
                                 variant=ButtonVariant::Default
                                 disabled=saving.get()
                                 loading=saving.get()
-                                on_click=Box::new(move || save())
+                                on_click=Box::new(save)
                             >
                                 {save_btn_str}
                             </Button>

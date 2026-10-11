@@ -9,8 +9,8 @@ use chrono::Utc;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait,
-    QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, QueryFilter,
+    Set,
 };
 use uuid::Uuid;
 
@@ -85,8 +85,7 @@ impl BlogPostRouteOwner {
                 row.target_id,
                 vec![route.clone()],
             )
-            .await
-            .map_err(BlogError::from)?;
+            .await?;
         }
         Ok(())
     }
@@ -108,7 +107,14 @@ impl BlogPostRouteOwner {
             return Ok(());
         }
         let changed = self
-            .upsert_redirect_in_tx(txn, tenant_id, actor_id, &retired_route, "blog_post", post_id)
+            .upsert_redirect_in_tx(
+                txn,
+                tenant_id,
+                actor_id,
+                &retired_route,
+                "blog_post",
+                post_id,
+            )
             .await?;
         if changed {
             self.event_bus
@@ -144,7 +150,14 @@ impl BlogPostRouteOwner {
         target_canonical_url: &str,
     ) -> BlogResult<()> {
         let changed = self
-            .upsert_redirect_in_tx(txn, tenant_id, actor_id, source_route, target_kind, target_id)
+            .upsert_redirect_in_tx(
+                txn,
+                tenant_id,
+                actor_id,
+                source_route,
+                target_kind,
+                target_id,
+            )
             .await?;
         if changed {
             self.event_bus
@@ -218,7 +231,9 @@ impl BlogPostRouteOwner {
             )));
         }
         if source_route.len() > 512 {
-            return Err(BlogError::validation("Blog redirect source must be <= 512 chars"));
+            return Err(BlogError::validation(
+                "Blog redirect source must be <= 512 chars",
+            ));
         }
         let now = Utc::now();
         let existing = blog_post_route::Entity::find_by_id((tenant_id, source_route.to_string()))
@@ -227,7 +242,9 @@ impl BlogPostRouteOwner {
             .map_err(BlogError::from)?;
 
         match existing {
-            Some(existing) if existing.target_kind == target_kind && existing.target_id == target_id => {
+            Some(existing)
+                if existing.target_kind == target_kind && existing.target_id == target_id =>
+            {
                 return Ok(false);
             }
             Some(existing) => {

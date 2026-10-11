@@ -12,15 +12,16 @@ use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use rustok_api::{
     PortError, SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
-    StaticModuleSettingsReader, StaticModuleSettingsSnapshot, StaticModuleSettingsTransactionReader,
+    StaticModuleSettingsReader, StaticModuleSettingsSnapshot,
+    StaticModuleSettingsTransactionReader,
 };
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_forum::entities::{forum_reply, forum_topic};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumError,
-    ForumModule, ListRepliesFilter, ListTopicsFilter, ModerationService, ReplyService,
-    ReplyStatus, TopicService, TopicStatus, UpdateReplyInput, UpdateTopicInput,
+    ForumModule, ListRepliesFilter, ListTopicsFilter, ModerationService, ReplyService, ReplyStatus,
+    TopicService, TopicStatus, UpdateReplyInput, UpdateTopicInput,
 };
-use rustok_forum::entities::{forum_reply, forum_topic};
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
@@ -227,7 +228,6 @@ async fn set_forum_module_settings(
     }
 }
 
-
 fn repeat_char(ch: char, count: usize) -> String {
     ch.to_string().repeat(count)
 }
@@ -315,7 +315,11 @@ async fn topic_title_and_body_follow_tenant_limits_on_create() {
         .with_settings_providers(test_settings_providers(db.clone()));
 
     let too_short = topics
-        .create(tenant_id, author.clone(), topic_input(category.id, "ab", "short", "Body"))
+        .create(
+            tenant_id,
+            author.clone(),
+            topic_input(category.id, "ab", "short", "Body"),
+        )
         .await;
     assert_validation(too_short, "title below the minimum");
 
@@ -329,7 +333,11 @@ async fn topic_title_and_body_follow_tenant_limits_on_create() {
     assert_validation(too_long, "title above the maximum");
 
     let body_too_short = topics
-        .create(tenant_id, author.clone(), topic_input(category.id, "Valid", "body-short", "a"))
+        .create(
+            tenant_id,
+            author.clone(),
+            topic_input(category.id, "Valid", "body-short", "a"),
+        )
         .await;
     assert_validation(body_too_short, "body below the minimum");
 
@@ -344,7 +352,11 @@ async fn topic_title_and_body_follow_tenant_limits_on_create() {
 
     // Surrounding whitespace is not counted, so "  abc  " is three characters.
     topics
-        .create(tenant_id, author, topic_input(category.id, "  abc  ", "trimmed", "ok"))
+        .create(
+            tenant_id,
+            author,
+            topic_input(category.id, "  abc  ", "trimmed", "ok"),
+        )
         .await
         .expect("title at the minimum after trimming and a body at the minimum should be accepted");
 }
@@ -368,7 +380,11 @@ async fn reply_body_follows_tenant_limits_on_create_and_update() {
     let category =
         create_category(&CategoryService::new(db.clone()), tenant_id, admin, false).await;
     let topic = TopicService::new(db.clone(), event_bus.clone())
-        .create(tenant_id, author.clone(), topic_input(category.id, "Topic", "topic", "Body"))
+        .create(
+            tenant_id,
+            author.clone(),
+            topic_input(category.id, "Topic", "topic", "Body"),
+        )
         .await
         .expect("topic should be created with the default title limits");
     let replies = ReplyService::new(db.clone(), event_bus.clone())
@@ -454,22 +470,31 @@ async fn topic_update_checks_only_the_title_and_body_it_supplies() {
     let topics = TopicService::new(db.clone(), event_bus.clone())
         .with_settings_providers(test_settings_providers(db.clone()));
     let topic = topics
-        .create(tenant_id, author.clone(), topic_input(category.id, "Topic", "update-me", "Body"))
+        .create(
+            tenant_id,
+            author.clone(),
+            topic_input(category.id, "Topic", "update-me", "Body"),
+        )
         .await
         .expect("topic should be created");
 
-    let update = |title: Option<String>,
-                  body: Option<rustok_api::RichTextDocument>| UpdateTopicInput {
-        locale: "en".to_string(),
-        title,
-        body,
-        metadata: None,
-        tags: None,
-        channel_slugs: None,
-    };
+    let update =
+        |title: Option<String>, body: Option<rustok_api::RichTextDocument>| UpdateTopicInput {
+            locale: "en".to_string(),
+            title,
+            body,
+            metadata: None,
+            tags: None,
+            channel_slugs: None,
+        };
 
     let short_title = topics
-        .update(tenant_id, topic.id, author.clone(), update(Some("x".to_string()), None))
+        .update(
+            tenant_id,
+            topic.id,
+            author.clone(),
+            update(Some("x".to_string()), None),
+        )
         .await;
     assert_validation(short_title, "title update below the minimum");
 
@@ -480,14 +505,21 @@ async fn topic_update_checks_only_the_title_and_body_it_supplies() {
             author.clone(),
             update(
                 None,
-                Some(rustok_api::RichTextDocument::single_paragraph(&repeat_char('d', 21))),
+                Some(rustok_api::RichTextDocument::single_paragraph(
+                    &repeat_char('d', 21),
+                )),
             ),
         )
         .await;
     assert_validation(long_body, "body update above the maximum");
 
     topics
-        .update(tenant_id, topic.id, author, update(Some("Renamed".to_string()), None))
+        .update(
+            tenant_id,
+            topic.id,
+            author,
+            update(Some("Renamed".to_string()), None),
+        )
         .await
         .expect("a title update within the limits should be accepted without re-checking the body");
 }
@@ -537,7 +569,11 @@ async fn zero_maximum_is_unlimited_and_inconsistent_limits_fail() {
     )
     .await;
     let inconsistent = topics
-        .create(tenant_id, author, topic_input(category.id, "Valid", "inconsistent", "Body"))
+        .create(
+            tenant_id,
+            author,
+            topic_input(category.id, "Valid", "inconsistent", "Body"),
+        )
         .await;
     assert_validation(inconsistent, "a minimum above the maximum");
 }
@@ -572,13 +608,21 @@ async fn topic_rate_limit_blocks_the_same_author_within_the_interval() {
         .with_settings_providers(test_settings_providers(db.clone()));
 
     topics
-        .create(tenant_id, author.clone(), topic_input(category.id, "First", "first", "Body"))
+        .create(
+            tenant_id,
+            author.clone(),
+            topic_input(category.id, "First", "first", "Body"),
+        )
         .await
         .expect("the first topic should be accepted");
 
     let retry = assert_rate_limited(
         topics
-            .create(tenant_id, author, topic_input(category.id, "Second", "second", "Body"))
+            .create(
+                tenant_id,
+                author,
+                topic_input(category.id, "Second", "second", "Body"),
+            )
             .await,
         "a second topic inside the interval",
     );
@@ -588,7 +632,11 @@ async fn topic_rate_limit_blocks_the_same_author_within_the_interval() {
     );
 
     topics
-        .create(tenant_id, other, topic_input(category.id, "Other", "other", "Body"))
+        .create(
+            tenant_id,
+            other,
+            topic_input(category.id, "Other", "other", "Body"),
+        )
         .await
         .expect("another author is not limited by this author's posts");
 }
@@ -616,11 +664,19 @@ async fn reply_rate_limit_is_independent_of_the_topic_limit() {
         .with_settings_providers(test_settings_providers(db.clone()));
 
     let topic = topics
-        .create(tenant_id, author.clone(), topic_input(category.id, "Topic", "topic", "Body"))
+        .create(
+            tenant_id,
+            author.clone(),
+            topic_input(category.id, "Topic", "topic", "Body"),
+        )
         .await
         .expect("a disabled topic limit should accept consecutive topics");
     topics
-        .create(tenant_id, author.clone(), topic_input(category.id, "Again", "again", "Body"))
+        .create(
+            tenant_id,
+            author.clone(),
+            topic_input(category.id, "Again", "again", "Body"),
+        )
         .await
         .expect("a zero topic interval should not limit topic creation");
 
@@ -630,7 +686,12 @@ async fn reply_rate_limit_is_independent_of_the_topic_limit() {
         parent_reply_id: None,
     };
     replies
-        .create(tenant_id, author.clone(), topic.id, reply_input("First reply"))
+        .create(
+            tenant_id,
+            author.clone(),
+            topic.id,
+            reply_input("First reply"),
+        )
         .await
         .expect("the first reply should be accepted");
 
@@ -681,8 +742,13 @@ async fn author_edit_window_closes_for_topic_and_reply_updates_but_not_for_moder
         }),
     )
     .await;
-    let category =
-        create_category(&CategoryService::new(db.clone()), tenant_id, admin.clone(), false).await;
+    let category = create_category(
+        &CategoryService::new(db.clone()),
+        tenant_id,
+        admin.clone(),
+        false,
+    )
+    .await;
     let topics = TopicService::new(db.clone(), event_bus.clone())
         .with_settings_providers(test_settings_providers(db.clone()));
     let replies = ReplyService::new(db.clone(), event_bus.clone())
@@ -712,11 +778,21 @@ async fn author_edit_window_closes_for_topic_and_reply_updates_but_not_for_moder
         .expect("reply should be created");
 
     topics
-        .update(tenant_id, topic.id, author.clone(), topic_title_update("Edited inside"))
+        .update(
+            tenant_id,
+            topic.id,
+            author.clone(),
+            topic_title_update("Edited inside"),
+        )
         .await
         .expect("an author update inside the window should be accepted");
     replies
-        .update(tenant_id, reply.id, author.clone(), reply_content_update("Edited inside"))
+        .update(
+            tenant_id,
+            reply.id,
+            author.clone(),
+            reply_content_update("Edited inside"),
+        )
         .await
         .expect("an author reply update inside the window should be accepted");
 
@@ -725,13 +801,23 @@ async fn author_edit_window_closes_for_topic_and_reply_updates_but_not_for_moder
 
     assert_validation(
         topics
-            .update(tenant_id, topic.id, author.clone(), topic_title_update("Too late"))
+            .update(
+                tenant_id,
+                topic.id,
+                author.clone(),
+                topic_title_update("Too late"),
+            )
             .await,
         "topic update after the author window",
     );
     assert_validation(
         replies
-            .update(tenant_id, reply.id, author.clone(), reply_content_update("Too late"))
+            .update(
+                tenant_id,
+                reply.id,
+                author.clone(),
+                reply_content_update("Too late"),
+            )
             .await,
         "reply update after the author window",
     );
@@ -739,14 +825,27 @@ async fn author_edit_window_closes_for_topic_and_reply_updates_but_not_for_moder
         .get(tenant_id, admin.clone(), topic.id, "en")
         .await
         .expect("topic should be readable");
-    assert_eq!(stored.title, "Edited inside", "a rejected update must write nothing");
+    assert_eq!(
+        stored.title, "Edited inside",
+        "a rejected update must write nothing"
+    );
 
     topics
-        .update(tenant_id, topic.id, manager.clone(), topic_title_update("Moderated"))
+        .update(
+            tenant_id,
+            topic.id,
+            manager.clone(),
+            topic_title_update("Moderated"),
+        )
         .await
         .expect("a moderator is not limited by the author window");
     replies
-        .update(tenant_id, reply.id, manager, reply_content_update("Moderated"))
+        .update(
+            tenant_id,
+            reply.id,
+            manager,
+            reply_content_update("Moderated"),
+        )
         .await
         .expect("a moderator reply update is not limited by the author window");
 }
@@ -799,11 +898,21 @@ async fn zero_edit_window_leaves_author_edits_open() {
     backdate_reply(&db, reply.id, 30 * 24 * 60).await;
 
     topics
-        .update(tenant_id, topic.id, author.clone(), topic_title_update("Still open"))
+        .update(
+            tenant_id,
+            topic.id,
+            author.clone(),
+            topic_title_update("Still open"),
+        )
         .await
         .expect("a zero window must not close the author's topic edit");
     replies
-        .update(tenant_id, reply.id, author, reply_content_update("Still open"))
+        .update(
+            tenant_id,
+            reply.id,
+            author,
+            reply_content_update("Still open"),
+        )
         .await
         .expect("a zero window must not close the author's reply edit");
 }
@@ -923,8 +1032,13 @@ async fn pre_moderation_holds_new_replies_until_a_moderator_approves_them() {
         }),
     )
     .await;
-    let category =
-        create_category(&CategoryService::new(db.clone()), tenant_id, admin.clone(), false).await;
+    let category = create_category(
+        &CategoryService::new(db.clone()),
+        tenant_id,
+        admin.clone(),
+        false,
+    )
+    .await;
     let topics = TopicService::new(db.clone(), event_bus.clone())
         .with_settings_providers(test_settings_providers(db.clone()));
     let replies = ReplyService::new(db.clone(), event_bus.clone())
@@ -1001,8 +1115,13 @@ async fn pre_moderation_holds_new_topics_until_a_moderator_approves_them() {
         }),
     )
     .await;
-    let category =
-        create_category(&CategoryService::new(db.clone()), tenant_id, admin.clone(), false).await;
+    let category = create_category(
+        &CategoryService::new(db.clone()),
+        tenant_id,
+        admin.clone(),
+        false,
+    )
+    .await;
     let topics = TopicService::new(db.clone(), event_bus.clone())
         .with_settings_providers(test_settings_providers(db.clone()));
     let replies = ReplyService::new(db.clone(), event_bus.clone())
@@ -1100,8 +1219,13 @@ async fn held_replies_are_listed_only_to_their_author_and_moderators() {
         }),
     )
     .await;
-    let category =
-        create_category(&CategoryService::new(db.clone()), tenant_id, admin.clone(), false).await;
+    let category = create_category(
+        &CategoryService::new(db.clone()),
+        tenant_id,
+        admin.clone(),
+        false,
+    )
+    .await;
     let topics = TopicService::new(db.clone(), event_bus.clone())
         .with_settings_providers(test_settings_providers(db.clone()));
     // The topic is created while pre-moderation is off, so only the reply is held.
@@ -1140,7 +1264,10 @@ async fn held_replies_are_listed_only_to_their_author_and_moderators() {
         )
         .await
         .expect("reply should be created");
-    assert_eq!(stored_reply_status(&db, reply.id).await, ReplyStatus::Pending);
+    assert_eq!(
+        stored_reply_status(&db, reply.id).await,
+        ReplyStatus::Pending
+    );
 
     assert!(
         !listed_reply_ids(&replies, tenant_id, topic.id, other_customer)
@@ -1175,8 +1302,13 @@ async fn new_replies_are_published_immediately_when_pre_moderation_is_off() {
         }),
     )
     .await;
-    let category =
-        create_category(&CategoryService::new(db.clone()), tenant_id, admin.clone(), false).await;
+    let category = create_category(
+        &CategoryService::new(db.clone()),
+        tenant_id,
+        admin.clone(),
+        false,
+    )
+    .await;
     let topics = TopicService::new(db.clone(), event_bus.clone())
         .with_settings_providers(test_settings_providers(db.clone()));
     let replies = ReplyService::new(db.clone(), event_bus.clone())

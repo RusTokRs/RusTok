@@ -56,12 +56,10 @@ impl AssetProviderPort for PagesMediaAssetProvider {
         let token = (self.token)();
         let tenant_slug = (self.tenant_slug)();
         Box::pin(async move {
-            let page = i32::try_from(page).map_err(|_| {
-                AssetProviderError::new("media library page out of range")
-            })?;
-            let per_page = i32::try_from(per_page).map_err(|_| {
-                AssetProviderError::new("media library page size out of range")
-            })?;
+            let page = i32::try_from(page)
+                .map_err(|_| AssetProviderError::new("media library page out of range"))?;
+            let per_page = i32::try_from(per_page)
+                .map_err(|_| AssetProviderError::new("media library page size out of range"))?;
             let payload = fetch_media_library(page, per_page, token, tenant_slug)
                 .await
                 .map_err(|error| AssetProviderError::new(error.to_string()))?;

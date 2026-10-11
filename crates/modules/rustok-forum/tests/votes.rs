@@ -8,21 +8,11 @@ use rustok_api::{
 };
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryService,
-    CreateCategoryInput,
-    CreateReplyInput,
-    CreateTopicInput,
-    ForumAudienceConstraints,
-    ForumAudienceFacts,
-    ForumAudienceFactsPort,
-    ForumAudienceFactsRequest,
-    ForumCategoryAudiencePolicyService,
-    ForumError, ForumModule, ListRepliesFilter, ListTopicsFilter, ReplyService,
-    SetForumCategoryAudiencePolicyInput,
-    SubscriptionService,
-    TopicService,
-    UpdateForumSubscriptionInput,
-    VoteService,
+    CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
+    ForumAudienceConstraints, ForumAudienceFacts, ForumAudienceFactsPort,
+    ForumAudienceFactsRequest, ForumCategoryAudiencePolicyService, ForumError, ForumModule,
+    ListRepliesFilter, ListTopicsFilter, ReplyService, SetForumCategoryAudiencePolicyInput,
+    SubscriptionService, TopicService, UpdateForumSubscriptionInput, VoteService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
@@ -40,8 +30,14 @@ fn without_posting_cooldown(mut settings: serde_json::Value) -> serde_json::Valu
         settings = serde_json::json!({});
     }
     if let Some(object) = settings.as_object_mut() {
-        object.insert("rate_limit_new_topic_seconds".to_string(), serde_json::json!(0));
-        object.insert("rate_limit_new_reply_seconds".to_string(), serde_json::json!(0));
+        object.insert(
+            "rate_limit_new_topic_seconds".to_string(),
+            serde_json::json!(0),
+        );
+        object.insert(
+            "rate_limit_new_reply_seconds".to_string(),
+            serde_json::json!(0),
+        );
     }
     settings
 }
@@ -254,11 +250,23 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
         .expect("reply should be created");
 
     vote_service
-        .set_topic_vote(tenant_id, topic.id, voter.clone(), write_context(tenant_id, &voter), 1)
+        .set_topic_vote(
+            tenant_id,
+            topic.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            1,
+        )
         .await
         .expect("topic upvote should succeed");
     vote_service
-        .set_reply_vote(tenant_id, reply.id, voter.clone(), write_context(tenant_id, &voter), -1)
+        .set_reply_vote(
+            tenant_id,
+            reply.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            -1,
+        )
         .await
         .expect("reply downvote should succeed");
 
@@ -315,7 +323,13 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
     assert_eq!(replies_page.items[0].current_user_vote, Some(-1));
 
     vote_service
-        .set_topic_vote(tenant_id, topic.id, voter.clone(), write_context(tenant_id, &voter), -1)
+        .set_topic_vote(
+            tenant_id,
+            topic.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            -1,
+        )
         .await
         .expect("topic vote should be replaceable");
     let topic_after_flip = topic_service
@@ -433,11 +447,23 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
     .expect("module settings should be created");
 
     vote_service
-        .set_topic_vote(tenant_id, topic.id, voter.clone(), write_context(tenant_id, &voter), 1)
+        .set_topic_vote(
+            tenant_id,
+            topic.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            1,
+        )
         .await
         .expect("topic vote should be available while Forum uses internal voting");
     vote_service
-        .set_reply_vote(tenant_id, reply.id, voter.clone(), write_context(tenant_id, &voter), 1)
+        .set_reply_vote(
+            tenant_id,
+            reply.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            1,
+        )
         .await
         .expect("reply vote should be available while Forum uses internal voting");
 
@@ -457,7 +483,13 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
         .expect("forum reactions setting should be enabled");
 
     let topic_vote_when_reactions_selected = vote_service
-        .set_topic_vote(tenant_id, topic.id, voter.clone(), write_context(tenant_id, &voter), -1)
+        .set_topic_vote(
+            tenant_id,
+            topic.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            -1,
+        )
         .await
         .expect_err("internal topic voting must be disabled by the Forum setting");
     assert!(matches!(
@@ -466,7 +498,13 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
     ));
 
     let reply_vote_when_reactions_selected = vote_service
-        .set_reply_vote(tenant_id, reply.id, voter.clone(), write_context(tenant_id, &voter), -1)
+        .set_reply_vote(
+            tenant_id,
+            reply.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            -1,
+        )
         .await
         .expect_err("internal reply voting must be disabled by the Forum setting");
     assert!(matches!(
@@ -522,11 +560,23 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
         .expect("forum reactions setting should be disabled");
 
     vote_service
-        .set_topic_vote(tenant_id, topic.id, voter.clone(), write_context(tenant_id, &voter), -1)
+        .set_topic_vote(
+            tenant_id,
+            topic.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            -1,
+        )
         .await
         .expect("topic internal voting should resume when Forum selects voting");
     vote_service
-        .set_reply_vote(tenant_id, reply.id, voter.clone(), write_context(tenant_id, &voter), -1)
+        .set_reply_vote(
+            tenant_id,
+            reply.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            -1,
+        )
         .await
         .expect("reply internal voting should resume when Forum selects voting");
 }
@@ -579,13 +629,25 @@ async fn vote_validation_rejects_invalid_values_and_pending_replies() {
         .expect("reply should be created");
 
     let invalid_vote = vote_service
-        .set_topic_vote(tenant_id, topic.id, voter.clone(), write_context(tenant_id, &voter), 0)
+        .set_topic_vote(
+            tenant_id,
+            topic.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            0,
+        )
         .await
         .expect_err("invalid vote value should be rejected");
     assert!(matches!(invalid_vote, ForumError::Validation(_)));
 
     let pending_reply_vote = vote_service
-        .set_reply_vote(tenant_id, reply.id, voter.clone(), write_context(tenant_id, &voter), 1)
+        .set_reply_vote(
+            tenant_id,
+            reply.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            1,
+        )
         .await
         .expect_err("pending reply must not be votable");
     assert!(matches!(pending_reply_vote, ForumError::Validation(_)));
@@ -824,11 +886,10 @@ async fn vote_and_subscription_writes_require_owner_audience_and_reject_self_vot
         Err(ForumError::TopicNotFound(_))
     ));
 
-    let subscription_service = SubscriptionService::new(db.clone()).with_audience_facts(Arc::new(
-        WriteTrustFactsPort {
+    let subscription_service =
+        SubscriptionService::new(db.clone()).with_audience_facts(Arc::new(WriteTrustFactsPort {
             low_trust_user_id: low_trust_id,
-        },
-    ));
+        }));
     let low_subscription = subscription_service
         .update_topic_subscription(
             tenant_id,
@@ -960,19 +1021,37 @@ async fn downvotes_are_rejected_only_while_the_tenant_disables_them() {
     .await;
 
     let topic_downvote = vote_service
-        .set_topic_vote(tenant_id, topic_id, voter.clone(), write_context(tenant_id, &voter), -1)
+        .set_topic_vote(
+            tenant_id,
+            topic_id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            -1,
+        )
         .await
         .expect_err("downvotes must be rejected when the tenant disables them");
     assert!(matches!(topic_downvote, ForumError::Validation(_)));
 
     let reply_downvote = vote_service
-        .set_reply_vote(tenant_id, reply_id, voter.clone(), write_context(tenant_id, &voter), -1)
+        .set_reply_vote(
+            tenant_id,
+            reply_id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            -1,
+        )
         .await
         .expect_err("reply downvotes must be rejected when the tenant disables them");
     assert!(matches!(reply_downvote, ForumError::Validation(_)));
 
     vote_service
-        .set_topic_vote(tenant_id, topic_id, voter.clone(), write_context(tenant_id, &voter), 1)
+        .set_topic_vote(
+            tenant_id,
+            topic_id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            1,
+        )
         .await
         .expect("upvotes stay available when downvotes are disabled");
     let summary = vote_service
@@ -988,7 +1067,13 @@ async fn downvotes_are_rejected_only_while_the_tenant_disables_them() {
     )
     .await;
     vote_service
-        .set_topic_vote(tenant_id, topic_id, voter.clone(), write_context(tenant_id, &voter), -1)
+        .set_topic_vote(
+            tenant_id,
+            topic_id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            -1,
+        )
         .await
         .expect("downvotes are accepted again once the tenant enables them");
 }
@@ -1005,12 +1090,24 @@ async fn self_votes_are_forbidden_by_default_and_allowed_by_the_tenant_setting()
 
     // No settings row: the default keeps the F2 rule that authors cannot vote on their own content.
     let topic_self_vote = vote_service
-        .set_topic_vote(tenant_id, topic_id, author.clone(), write_context(tenant_id, &author), 1)
+        .set_topic_vote(
+            tenant_id,
+            topic_id,
+            author.clone(),
+            write_context(tenant_id, &author),
+            1,
+        )
         .await
         .expect_err("authors must not vote on their topic by default");
     assert!(matches!(topic_self_vote, ForumError::Forbidden(_)));
     let reply_self_vote = vote_service
-        .set_reply_vote(tenant_id, reply_id, author.clone(), write_context(tenant_id, &author), 1)
+        .set_reply_vote(
+            tenant_id,
+            reply_id,
+            author.clone(),
+            write_context(tenant_id, &author),
+            1,
+        )
         .await
         .expect_err("authors must not vote on their reply by default");
     assert!(matches!(reply_self_vote, ForumError::Forbidden(_)));
@@ -1023,11 +1120,23 @@ async fn self_votes_are_forbidden_by_default_and_allowed_by_the_tenant_setting()
     .await;
 
     vote_service
-        .set_topic_vote(tenant_id, topic_id, author.clone(), write_context(tenant_id, &author), 1)
+        .set_topic_vote(
+            tenant_id,
+            topic_id,
+            author.clone(),
+            write_context(tenant_id, &author),
+            1,
+        )
         .await
         .expect("authors may vote on their topic when the tenant allows self votes");
     vote_service
-        .set_reply_vote(tenant_id, reply_id, author.clone(), write_context(tenant_id, &author), 1)
+        .set_reply_vote(
+            tenant_id,
+            reply_id,
+            author.clone(),
+            write_context(tenant_id, &author),
+            1,
+        )
         .await
         .expect("authors may vote on their reply when the tenant allows self votes");
     let topic_summary = vote_service

@@ -8,10 +8,10 @@ use crate::audience::{
     ForumAudienceFactsResolver, SharedForumAudienceFactsPort,
 };
 use crate::error::{ForumError, ForumResult};
-use crate::state_machine::TopicStatus;
 use crate::services::pending_visibility::can_see_pending;
 use crate::services::topic_audience::{find_topic, load_policy_for_topic};
 use crate::services::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
+use crate::state_machine::TopicStatus;
 
 /// Exact viewer identity used while composing persisted category/topic audience layers.
 #[derive(Clone, Debug)]
@@ -143,7 +143,10 @@ impl ForumTopicAudienceVisibilityService {
         {
             return Ok(false);
         }
-        if !self.pending_topic_visible(tenant_id, topic_id, viewer).await? {
+        if !self
+            .pending_topic_visible(tenant_id, topic_id, viewer)
+            .await?
+        {
             return Ok(false);
         }
 

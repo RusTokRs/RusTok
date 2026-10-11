@@ -2072,15 +2072,14 @@ pub fn matches_reviewer_queue_filter(entry: &ReviewerQueueItem, filters: &Column
                     return false;
                 }
             }
-            ("status", FilterValue::Text(q)) => {
+            ("status", FilterValue::Text(q))
                 if !entry
                     .item
                     .status
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }
@@ -2192,16 +2191,13 @@ pub fn matches_reviewer_workload_filter(
 ) -> bool {
     let assignee_str = format_actor_id(workload.assignee.as_ref());
     for (col_id, filter_val) in filters.iter() {
-        match (col_id.as_str(), filter_val) {
-            ("reviewer", FilterValue::Text(q)) => {
-                let q_lower = q.to_ascii_lowercase();
-                if !assignee_str.to_ascii_lowercase().contains(&q_lower)
-                    && !(workload.assignee.is_none() && "unassigned".contains(&q_lower))
-                {
-                    return false;
-                }
+        if let ("reviewer", FilterValue::Text(q)) = (col_id.as_str(), filter_val) {
+            let q_lower = q.to_ascii_lowercase();
+            if !assignee_str.to_ascii_lowercase().contains(&q_lower)
+                && !(workload.assignee.is_none() && "unassigned".contains(&q_lower))
+            {
+                return false;
             }
-            _ => {}
         }
     }
     true
@@ -2342,14 +2338,13 @@ pub fn matches_interchange_artifact_filter(
                     return false;
                 }
             }
-            ("status", FilterValue::Text(q)) => {
+            ("status", FilterValue::Text(q))
                 if !artifact
                     .status
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }

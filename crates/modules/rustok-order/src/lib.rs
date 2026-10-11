@@ -8,6 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+#![deny(clippy::float_arithmetic)]
+
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};

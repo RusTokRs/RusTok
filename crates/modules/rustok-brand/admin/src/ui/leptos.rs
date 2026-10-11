@@ -234,26 +234,16 @@ pub fn BrandAdmin() -> impl IntoView {
         }
     };
 
-    let edit_brand = {
-        let draft_slug = draft_slug;
-        let draft_name = draft_name;
-        let draft_description = draft_description;
-        let draft_website_url = draft_website_url;
-        let draft_logo_url = draft_logo_url;
-        let draft_is_active = draft_is_active;
-        let draft_sort_order = draft_sort_order;
-        let edit_brand_id = edit_brand_id;
-        Callback::new(move |b: BrandAdminListItem| {
-            draft_slug.set(b.slug.clone());
-            draft_name.set(b.name.clone());
-            draft_description.set(b.description.clone().unwrap_or_default());
-            draft_website_url.set(b.website_url.clone().unwrap_or_default());
-            draft_logo_url.set(b.logo_url.clone().unwrap_or_default());
-            draft_is_active.set(b.is_active);
-            draft_sort_order.set(b.sort_order);
-            edit_brand_id.set(Some(b.id.clone()));
-        })
-    };
+    let edit_brand = Callback::new(move |b: BrandAdminListItem| {
+        draft_slug.set(b.slug.clone());
+        draft_name.set(b.name.clone());
+        draft_description.set(b.description.clone().unwrap_or_default());
+        draft_website_url.set(b.website_url.clone().unwrap_or_default());
+        draft_logo_url.set(b.logo_url.clone().unwrap_or_default());
+        draft_is_active.set(b.is_active);
+        draft_sort_order.set(b.sort_order);
+        edit_brand_id.set(Some(b.id.clone()));
+    });
 
     let is_ru = locale.starts_with("ru");
     let columns = brand_grid_columns(Some(locale));
@@ -286,12 +276,9 @@ pub fn BrandAdmin() -> impl IntoView {
         filters.set(new_filters);
     });
 
-    let on_row_click = {
-        let edit_brand = edit_brand;
-        Callback::new(move |item: BrandAdminListItem| {
-            edit_brand.run(item);
-        })
-    };
+    let on_row_click = Callback::new(move |item: BrandAdminListItem| {
+        edit_brand.run(item);
+    });
 
     let cell_locale = locale;
     let cell_edit_brand = edit_brand;

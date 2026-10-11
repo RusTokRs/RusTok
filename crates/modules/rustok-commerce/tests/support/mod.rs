@@ -56,11 +56,9 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     )
     .await;
 
-    rustok_outbox::migration::create_owner_operation_receipts_table(
-        &SchemaManager::new(db),
-    )
-    .await
-    .ok();
+    rustok_outbox::migration::create_owner_operation_receipts_table(&SchemaManager::new(db))
+        .await
+        .ok();
 
     create_entity_table(
         db,

@@ -25,11 +25,11 @@ mod policy;
 mod redis_status;
 mod refresh;
 mod service;
+pub mod settings;
 mod shared_backend;
 #[cfg(all(test, feature = "redis-cache"))]
 mod startup_recovery_tests;
 mod tenant_generation_observability;
-pub mod settings;
 mod typed;
 mod weighted;
 

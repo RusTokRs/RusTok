@@ -174,43 +174,41 @@ impl CacheNamespaceGenerationStore {
         #[cfg(feature = "redis-cache")]
         if let Some(client) = &self.redis_client {
             match self.read_shared(client, &namespace_key).await {
-                Ok(value) => {
-                    match self.observe_shared(&namespace_key, value) {
-                        Ok(()) => {
-                            self.metrics.shared_reads.fetch_add(1, Ordering::Relaxed);
-                            return Ok(CacheNamespaceGeneration {
-                                value,
-                                source: CacheGenerationSource::SharedRedis,
-                            });
-                        }
-                        Err(CacheGenerationError::GenerationRegressed { local, shared }) => {
-                            self.metrics
-                                .local_fallback_reads
-                                .fetch_add(1, Ordering::Relaxed);
-                            tracing::warn!(
-                                namespace,
-                                local,
-                                shared,
-                                "Shared cache generation regressed behind local observation; using local fallback"
-                            );
-                            return Ok(CacheNamespaceGeneration {
-                                value: local,
-                                source: CacheGenerationSource::LocalFallback,
-                            });
-                        }
-                        Err(CacheGenerationError::LocalSnapshotCapacityExceeded { .. }) => {
-                            self.metrics.shared_reads.fetch_add(1, Ordering::Relaxed);
-                            return Ok(CacheNamespaceGeneration {
-                                value,
-                                source: CacheGenerationSource::SharedRedis,
-                            });
-                        }
-                        Err(error) => {
-                            self.metrics.read_failures.fetch_add(1, Ordering::Relaxed);
-                            return Err(error);
-                        }
+                Ok(value) => match self.observe_shared(&namespace_key, value) {
+                    Ok(()) => {
+                        self.metrics.shared_reads.fetch_add(1, Ordering::Relaxed);
+                        return Ok(CacheNamespaceGeneration {
+                            value,
+                            source: CacheGenerationSource::SharedRedis,
+                        });
                     }
-                }
+                    Err(CacheGenerationError::GenerationRegressed { local, shared }) => {
+                        self.metrics
+                            .local_fallback_reads
+                            .fetch_add(1, Ordering::Relaxed);
+                        tracing::warn!(
+                            namespace,
+                            local,
+                            shared,
+                            "Shared cache generation regressed behind local observation; using local fallback"
+                        );
+                        return Ok(CacheNamespaceGeneration {
+                            value: local,
+                            source: CacheGenerationSource::LocalFallback,
+                        });
+                    }
+                    Err(CacheGenerationError::LocalSnapshotCapacityExceeded { .. }) => {
+                        self.metrics.shared_reads.fetch_add(1, Ordering::Relaxed);
+                        return Ok(CacheNamespaceGeneration {
+                            value,
+                            source: CacheGenerationSource::SharedRedis,
+                        });
+                    }
+                    Err(error) => {
+                        self.metrics.read_failures.fetch_add(1, Ordering::Relaxed);
+                        return Err(error);
+                    }
+                },
                 Err(error) => {
                     self.metrics.read_failures.fetch_add(1, Ordering::Relaxed);
                     let Some(value) = self.local_snapshot(&namespace_key) else {

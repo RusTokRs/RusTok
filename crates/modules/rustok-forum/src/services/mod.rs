@@ -36,8 +36,8 @@ mod category_search_scope {
 }
 mod category_topic_create_audience;
 mod category_visibility;
-mod counter_reconciliation;
 mod content_limits;
+mod counter_reconciliation;
 mod edit_window;
 mod engagement_mode;
 pub mod event;
@@ -62,11 +62,11 @@ pub mod moderation {
     pub use super::moderation_owner::ModerationService;
 }
 mod moderation_audience_authorization;
+mod pending_visibility;
 mod posting_policy;
 mod posting_policy_approved_facts;
 mod posting_policy_create_window_facts;
 mod posting_policy_evaluator;
-mod pending_visibility;
 mod posting_policy_facts;
 mod posting_policy_reading_facts;
 mod posting_rate;
@@ -123,11 +123,11 @@ mod topic_audience_list;
 mod topic_audience_lock;
 mod topic_audience_read;
 mod topic_audience_visibility;
-mod topic_write_audience;
 mod topic_canonical_resolution;
 mod topic_create_audience_authorization;
 mod topic_route;
 mod topic_route_backfill;
+mod topic_write_audience;
 mod topic_facade {
     include!("topic_facade.rs");
     include!("topic_facade_locale_enumeration.rs");

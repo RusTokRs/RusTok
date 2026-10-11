@@ -15,12 +15,12 @@ pub use dto::{
     ChannelModuleBindingResponse, ChannelOauthAppResponse,
     ChannelResolutionPolicySetDetailResponse, ChannelResolutionPolicySetResponse,
     ChannelResolutionRuleResponse, ChannelResponse, ChannelTargetResponse, CreateChannelInput,
-    CreateChannelRequest, CreateChannelResolutionPolicySetInput,
-    CreateChannelResolutionRuleInput, CreateChannelTargetInput, CreateResolutionPolicySetRequest,
-    CreateResolutionRuleRequest, ReorderChannelResolutionRulesInput,
-    ReorderResolutionRulesRequest, UpdateChannelResolutionRuleInput, UpdateChannelTargetInput,
-    UpdateResolutionRuleRequest, create_channel_input, create_resolution_policy_set_input,
-    create_resolution_rule_input, update_resolution_rule_input,
+    CreateChannelRequest, CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
+    CreateChannelTargetInput, CreateResolutionPolicySetRequest, CreateResolutionRuleRequest,
+    ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest,
+    UpdateChannelResolutionRuleInput, UpdateChannelTargetInput, UpdateResolutionRuleRequest,
+    create_channel_input, create_resolution_policy_set_input, create_resolution_rule_input,
+    update_resolution_rule_input,
 };
 pub use error::{ChannelError, ChannelResult};
 pub use invalidation_generation::{

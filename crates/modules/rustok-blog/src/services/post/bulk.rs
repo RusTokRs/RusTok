@@ -16,7 +16,10 @@ impl PostService {
         let mut result = BulkOperationResult::new();
 
         for &post_id in post_ids {
-            match self.transition_post(tenant_id, post_id, target_status, security.clone()).await {
+            match self
+                .transition_post(tenant_id, post_id, target_status, security.clone())
+                .await
+            {
                 Ok(()) => result.record_success(post_id),
                 Err(e) => result.record_failure(post_id, e.to_string()),
             }
@@ -56,15 +59,9 @@ impl PostService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         match target_status {
-            BlogPostStatus::Published => {
-                self.publish_post(tenant_id, post_id, security).await
-            }
-            BlogPostStatus::Draft => {
-                self.unpublish_post(tenant_id, post_id, security).await
-            }
-            BlogPostStatus::Archived => {
-                self.archive_post(tenant_id, post_id, security, None).await
-            }
+            BlogPostStatus::Published => self.publish_post(tenant_id, post_id, security).await,
+            BlogPostStatus::Draft => self.unpublish_post(tenant_id, post_id, security).await,
+            BlogPostStatus::Archived => self.archive_post(tenant_id, post_id, security, None).await,
         }
     }
 }

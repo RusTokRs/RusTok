@@ -587,10 +587,10 @@ fn build_storefront_list_price_from_map(
         if price.price_list_id.is_some() || price.min_quantity.is_some() {
             continue;
         }
-        if let Some(currency_code) = currency_code {
-            if !price.currency_code.eq_ignore_ascii_case(currency_code) {
-                continue;
-            }
+        if let Some(currency_code) = currency_code
+            && !price.currency_code.eq_ignore_ascii_case(currency_code)
+        {
+            continue;
         }
         let Some(product_id) = variant_to_product.get(&price.variant_id) else {
             continue;

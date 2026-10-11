@@ -61,17 +61,12 @@ impl AssetProviderError {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type AssetProviderLibraryFuture = Pin<
-    Box<
-        dyn Future<Output = Result<AssetProviderLibraryPage, AssetProviderError>>
-            + Send
-            + 'static,
-    >,
+    Box<dyn Future<Output = Result<AssetProviderLibraryPage, AssetProviderError>> + Send + 'static>,
 >;
 
 #[cfg(target_arch = "wasm32")]
-pub type AssetProviderLibraryFuture = Pin<
-    Box<dyn Future<Output = Result<AssetProviderLibraryPage, AssetProviderError>> + 'static>,
->;
+pub type AssetProviderLibraryFuture =
+    Pin<Box<dyn Future<Output = Result<AssetProviderLibraryPage, AssetProviderError>> + 'static>>;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type AssetProviderUploadFuture =
@@ -150,7 +145,10 @@ mod tests {
         assert_eq!(value["id"], "media-0d4f2f64-6f4e-4f60-9c1f-3a5d2f6c9b21");
         assert_eq!(value["src"], "/api/media/public/images/0d4f2f64/abc");
         assert_eq!(value["provider"], RUSTOK_MEDIA_ASSET_PROVIDER);
-        assert_eq!(value["providerAssetId"], "0d4f2f64-6f4e-4f60-9c1f-3a5d2f6c9b21");
+        assert_eq!(
+            value["providerAssetId"],
+            "0d4f2f64-6f4e-4f60-9c1f-3a5d2f6c9b21"
+        );
         assert_eq!(value["mimeType"], "image/webp");
         assert_eq!(value["width"], 1200);
         assert_eq!(value["height"], 630);
@@ -171,6 +169,10 @@ mod tests {
         let definitions = builtin_asset_provider_definitions();
         assert_eq!(definitions.len(), 1);
         assert_eq!(definitions[0].id, RUSTOK_MEDIA_ASSET_PROVIDER);
-        assert!(definitions[0].supported_kinds.contains(&"image".to_string()));
+        assert!(
+            definitions[0]
+                .supported_kinds
+                .contains(&"image".to_string())
+        );
     }
 }

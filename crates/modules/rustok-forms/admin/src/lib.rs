@@ -77,7 +77,6 @@ pub fn FormsAdmin() -> impl IntoView {
                                     .into_iter()
                                     .map(|row| {
                                         let id = row.id;
-                                        let transition = transition.clone();
                                         let summary = summarize(&row);
                                         let pending = row.state == "new" || row.state == "read";
                                         view! {

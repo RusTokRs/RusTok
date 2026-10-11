@@ -214,18 +214,17 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         let topic = match request.scope {
             // Public SEO metadata follows the storefront audience contract: base visibility
             // plus every inherited category layer and the topic-local layer.
-            SeoTargetLoadScope::PublicRoute => ForumTopicAudienceReadService::new(
-                runtime.db.clone(),
-                runtime.event_bus.clone(),
-            )
-            .get_public_storefront_visible_with_locale_fallback(
-                request.tenant_id,
-                request.target_id,
-                request.locale,
-                Some(request.default_locale),
-                request.channel_slug,
-            )
-            .await?,
+            SeoTargetLoadScope::PublicRoute => {
+                ForumTopicAudienceReadService::new(runtime.db.clone(), runtime.event_bus.clone())
+                    .get_public_storefront_visible_with_locale_fallback(
+                        request.tenant_id,
+                        request.target_id,
+                        request.locale,
+                        Some(request.default_locale),
+                        request.channel_slug,
+                    )
+                    .await?
+            }
             SeoTargetLoadScope::Authoring => {
                 let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
                 optional_topic(

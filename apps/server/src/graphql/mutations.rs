@@ -1003,8 +1003,12 @@ impl RootMutation {
         .await
         .map_err(map_toggle_module_error)?;
 
-        if let Ok(runtime_ctx) = ctx.data::<crate::services::server_runtime_context::ServerRuntimeContext>() {
-            runtime_ctx.effective_policy_cache().invalidate_tenant(tenant.id);
+        if let Ok(runtime_ctx) =
+            ctx.data::<crate::services::server_runtime_context::ServerRuntimeContext>()
+        {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
         }
 
         TenantModule::try_from(module).map_err(|_| {
@@ -1700,7 +1704,9 @@ impl RootMutation {
             let _ = bus.publish_envelope(rustok_events::EventEnvelope::new(
                 tenant.id,
                 Some(auth.user_id),
-                rustok_events::DomainEvent::TenantUpdated { tenant_id: tenant.id },
+                rustok_events::DomainEvent::TenantUpdated {
+                    tenant_id: tenant.id,
+                },
             ));
         }
 
