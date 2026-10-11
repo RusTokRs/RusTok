@@ -552,7 +552,7 @@ requireAll("crates/modules/rustok-blog/src/error/public.rs", [
 ]);
 requireAll("crates/modules/rustok-blog/src/error/mod.rs", [
   "TaxonomyTermNotFound(Uuid)",
-  "TaxonomyError::Internal(message) => Self::Invariant",
+  /TaxonomyError::Internal\(message\)\s*=>\s*\{?\s*Self::Invariant/,
   "TaxonomyError::Conflict(message) => Self::Conflict(message)",
   "TaxonomyError::TermNotFound(term_id)",
 ]);
@@ -841,6 +841,7 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
 const allowedBlogPostMutationSources = new Set([
   "crates/modules/rustok-blog/src/services/post/commands.rs",
   "crates/modules/rustok-blog/src/services/post/repository.rs",
+  "crates/modules/rustok-blog/src/services/post/pin.rs",
   "crates/modules/rustok-blog/src/services/tag.rs",
   "crates/modules/rustok-blog/src/services/category_delete.rs",
   "crates/modules/rustok-blog/src/services/comment_projection.rs",
