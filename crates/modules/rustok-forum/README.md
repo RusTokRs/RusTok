@@ -328,19 +328,20 @@ Only part of the module's guard family runs automatically: 13 of the 259
   execute only when someone invokes them, so a red one is not by itself evidence
   about the tree and a green one is not evidence about a rule. `node
   scripts/audit/verifier_status.mjs --prefix forum-` classifies the whole family
-  in one pass; measured on the 2026-10-11 tree that is 86 pass, 172 exiting with
+  in one pass; measured on the 2026-10-11 tree that is 87 pass, 171 exiting with
   their own structured finding, 1 needing `cargo`, and none throwing before
   evaluating a rule. The throwing class is gone rather than re-labelled: three
-  gates died on their own harness or inputs. `verify-forum-owner-boundary.test.mjs` built a fixture that omitted `services/category_owner.rs`,
-  which the guard it exercises requires, and the attachment admission guard read
-  `src/category_presentation.rs`, a file the canonical-category cutover deleted;
-  the first is green across all six cases, the second now asserts the retired path
-  stays removed, fails when an input is missing, and checks production code only -
-  it had also banned `Uuid::new_v4` across the whole file, which only its
-  `#[cfg(test)]` module uses. The audit tool itself had been over-reporting: a
-  guard that signals a violation with `throw new Error(...)` is a verdict, not a
-  crash. Four wired gates pinned the mid-cutover source shape instead of the
-  boundary - the read-model guard demanded the retired
+  gates died on their own harness or inputs.
+  `verify-forum-owner-boundary.test.mjs` built a fixture that omitted
+  `services/category_owner.rs`, which the guard it exercises requires, and the
+  attachment admission guard read `src/category_presentation.rs`, a file the
+  canonical-category cutover deleted; the first is green across all six cases, the
+  second now asserts the retired path stays removed, fails when an input is
+  missing, and checks production code only - it had also banned `Uuid::new_v4`
+  across the whole file, which only its `#[cfg(test)]` module uses. The audit tool
+  itself had been over-reporting: a guard that signals a violation with `throw new
+  Error(...)` is a verdict, not a crash. Four wired gates pinned the mid-cutover
+  source shape instead of the boundary - the read-model guard demanded the retired
   `src/services/read_model.rs` delegate and that the owner query
   `forum_category_taxonomy_binding` directly, and the two taxonomy guards required
   the `ForumCategory` hierarchy columns that
@@ -359,28 +360,42 @@ Only part of the module's guard family runs automatically: 13 of the 259
   Forum's own `forum_category_audience_channel::Entity`. They now isolate
   functions by matching braces, accept a rule satisfied in either file, and anchor
   foreign-module paths; the topic gate is green and the category gate is left red
-  on its canonical-plan markers. One finding was real: `services/mod.rs` re-exported `ForumTopicRouteTombstoneVisibilityService` straight from the internal
-  `mod topic_owner`, against the convention the same file uses for owner-backed
-  services, so that service now comes through a named seam module and the public
-  path consumers use is unchanged, which is what flipped both owner-layout guards
-  green. The topic-route tombstone guard had also pinned the composition spelling
-  itself (`include!(...)`) while `services/topic_owner_inline.rs` wires that file
-  as `#[path = ..] pub mod route_tombstone_visibility;`; both spellings keep the
-  implementation inside the internal owner module, so it accepts either. The
-  audience host-runtime guards (`FORUM-20A-*`) now fail only on canonical-plan
-  markers too: `docs/implementation-plan.md` records FORUM-20 once and has neither
-  the `## FORUM-20` visibility-boundary section nor the `FORUM-20A-G` /
-  `FORUM-20A-AU provide` rows or the `## FORUM-26` heading, while their code pins
-  pass - so the adapter propagation is verified and writing those plan rows
-  belongs to the packets that own them, not to a silent documentation edit; the
-  same delivered- evidence pins account for 21 further gates whose only failures
-  are markers of delivered slices the plan does not carry and that no contract
-  claims. Two workflow steps still name paths the completed cutover deleted
-  (`rustfmt --check crates/modules/rustok-forum/src/services/read_model.rs` in
-  `forum-read-model- category-taxonomy-copy.yml`, and `cargo test -p rustok-forum
+  on its canonical-plan markers. One finding was real: `services/mod.rs`
+  re-exported `ForumTopicRouteTombstoneVisibilityService` straight from the
+  internal `mod topic_owner`, against the convention the same file uses for
+  owner-backed services, so that service now comes through a named seam module and
+  the public path consumers use is unchanged, which is what flipped both
+  owner-layout guards green. The topic-route tombstone guard had also pinned the
+  composition spelling itself (`include!(...)`) while
+  `services/topic_owner_inline.rs` wires that file as `#[path = ..] pub mod
+  route_tombstone_visibility;`; both spellings keep the implementation inside the
+  internal owner module, so it accepts either. The audience host-runtime guards
+  (`FORUM-20A-*`) now fail only on canonical-plan markers too:
+  `docs/implementation-plan.md` records FORUM-20 once and has neither the `##
+  FORUM-20` visibility-boundary section nor the `FORUM-20A-G` / `FORUM-20A-AU
+  provide` rows or the `## FORUM-26` heading, while their code pins pass - so the
+  adapter propagation is verified and writing those plan rows belongs to the
+  packets that own them, not to a silent documentation edit; the same
+  delivered-evidence pins account for 21 further gates whose only failures are
+  markers of delivered slices the plan does not carry and that no contract claims.
+  Two more guards were the same class of defect. The FORUM-33G reconciliation
+  guard pinned `impl NotificationInboxReconciliationInspectPortFactory for ...`
+  and a receiver chain that rustfmt had already wrapped, so it reported a missing
+  implementation that the module has; it now compares markers on a
+  layout-normalized copy and is green. The approved-posts guard read one file of
+  an owner module that `services/mod.rs` composes from four `include!` siblings -
+  the moderation decisions live in `reply_owner_inline.rs` and `topic_inline.rs` -
+  and pinned `status: Set(TopicStatus::Open)`, which the accepted topic
+  pre-moderation decision had superseded, plus a `query_one` call the adapter
+  issues as `query_one_raw`; it now reads the composition through
+  `services/mod.rs`, cites the ADR rule, and reports no code finding at all,
+  leaving only the canonical-plan markers. Two workflow steps still name paths the
+  completed cutover deleted (`rustfmt --check
+  crates/modules/rustok-forum/src/services/read_model.rs` in
+  `forum-read-model-category-taxonomy-copy.yml`, and `cargo test -p rustok-forum
   --test category_taxonomy_binding`, a target that does not exist, in
-  `forum-taxonomy- category-binding.yml`); neither can pass, and retiring them is
-  a CI-owner change that must not be made from a feature branch.
+  `forum-taxonomy-category-binding.yml`); neither can pass, and retiring them is a
+  CI-owner change that must not be made from a feature branch.
 
 ## Roadmap
 
