@@ -45,6 +45,9 @@ Rust gate passes on the same revision.
   `HostRuntimeContext` native path; GraphQL and REST remain parallel control
   surfaces. `scripts/verify/verify-seo-admin-boundary.mjs` protects that
   boundary.
+- The storefront package is a single-adapter owner fragment providing canonical
+  `SeoPageContext` rendering contracts; full native/GraphQL storefront transport parity gap
+  remains tracked while storefront SSR consumes the canonical context directly.
 - The intended `MediaAssetReadPort` / `media.asset_read.v1` consumer contract
   is implemented through `SeoMediaAssetReadProvider` and the host-composed
   `MediaAssetReadPort`. The shared target image contract supports an optional

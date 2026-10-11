@@ -72,10 +72,9 @@ const docs = [
   "apps/admin/src/features/installer/mod.rs",
   "apps/admin/src/features/installer/model.rs",
   "apps/admin/src/features/installer/transport/mod.rs",
-  "apps/admin/src/features/cache/mod.rs",
-  "apps/admin/src/features/cache/model.rs",
-  "apps/admin/src/features/cache/transport/mod.rs",
-  "apps/admin/src/features/cache/transport/native_server_adapter.rs",
+  "crates/modules/rustok-cache/admin/src/core.rs",
+  "crates/modules/rustok-cache/admin/src/model.rs",
+  "crates/modules/rustok-cache/admin/src/transport.rs",
   "apps/admin/src/features/dashboard/mod.rs",
   "apps/admin/src/features/dashboard/model.rs",
   "apps/admin/src/features/dashboard/transport/mod.rs",
@@ -95,7 +94,7 @@ const docs = [
   "apps/next-admin/README.md",
   "apps/next-admin/docs/implementation-plan.md",
   "apps/next-admin/packages/blog/src/index.ts",
-  "apps/next-admin/packages/cache/src/index.ts",
+  "crates/modules/rustok-cache/next-admin/src/index.ts",
   "apps/next-admin/packages/commerce/src/index.ts",
   "apps/next-admin/packages/email/src/index.ts",
   "crates/modules/rustok-events-module/next-admin/src/index.ts",
@@ -180,15 +179,13 @@ const adminInstallerModel = readRepo(
 const adminInstallerTransport = readRepo(
   "apps/admin/src/features/installer/transport/mod.rs",
 );
-const adminCacheMod = readRepo("apps/admin/src/features/cache/mod.rs");
-const adminCacheModel = readRepo("apps/admin/src/features/cache/model.rs");
-const adminCacheTransport = readRepo(
-  "apps/admin/src/features/cache/transport/mod.rs",
-);
-const adminCacheNativeAdapter = readRepo(
-  "apps/admin/src/features/cache/transport/native_server_adapter.rs",
-);
 const adminCachePage = readRepo("apps/admin/src/pages/cache.rs");
+const cacheAdminModel = readRepo(
+  "crates/modules/rustok-cache/admin/src/model.rs",
+);
+const cacheAdminTransport = readRepo(
+  "crates/modules/rustok-cache/admin/src/transport.rs",
+);
 const adminDashboardMod = readRepo("apps/admin/src/features/dashboard/mod.rs");
 const adminDashboardModel = readRepo(
   "apps/admin/src/features/dashboard/model.rs",
@@ -228,7 +225,7 @@ const nextAdminReadme = readRepo("apps/next-admin/README.md");
 const nextAdminPlan = readRepo("apps/next-admin/docs/implementation-plan.md");
 const nextAdminPackageEntrypoints = [
   "apps/next-admin/packages/blog/src/index.ts",
-  "apps/next-admin/packages/cache/src/index.ts",
+  "crates/modules/rustok-cache/next-admin/src/index.ts",
   "apps/next-admin/packages/commerce/src/index.ts",
   "apps/next-admin/packages/email/src/index.ts",
   "crates/modules/rustok-events-module/next-admin/src/index.ts",
@@ -869,59 +866,49 @@ for (const marker of [
   );
 }
 
-assertContains(
-  adminCacheMod,
-  "pub mod model;",
-  "apps/admin/src/features/cache/mod.rs: cache host feature must wire a model",
+assertMissing(
+  "apps/admin/src/features/cache/mod.rs",
+  "apps/admin/src/features/cache/mod.rs: cache host feature moved to rustok-cache-admin and must stay removed",
 );
-assertContains(
-  adminCacheMod,
-  "pub mod transport;",
-  "apps/admin/src/features/cache/mod.rs: cache host feature must wire a transport facade",
+assertMissing(
+  "apps/admin/src/features/cache/model.rs",
+  "apps/admin/src/features/cache/model.rs: cache host feature moved to rustok-cache-admin and must stay removed",
 );
-for (const marker of ["leptos::", "leptos_", "#[component]", "#[server]"]) {
-  assertNotContains(
-    adminCacheModel,
-    marker,
-    `apps/admin/src/features/cache/model.rs: cache model must stay framework/server-function free (${marker})`,
-  );
-}
-assertContains(
-  adminCacheTransport,
-  "UiTransportPath::NativeServer",
-  "apps/admin/src/features/cache/transport/mod.rs: cache transport must select the native path",
+assertMissing(
+  "apps/admin/src/features/cache/transport/mod.rs",
+  "apps/admin/src/features/cache/transport/mod.rs: cache host feature moved to rustok-cache-admin and must stay removed",
 );
-assertContains(
-  adminCacheTransport,
-  "UiTransportPath::Graphql",
-  "apps/admin/src/features/cache/transport/mod.rs: cache transport must keep the GraphQL path",
-);
-assertNotContains(
-  adminCacheTransport,
-  "#[server",
-  "apps/admin/src/features/cache/transport/mod.rs: server functions belong in native_server_adapter.rs",
-);
-assertContains(
-  adminCacheNativeAdapter,
-  "#[server",
-  "apps/admin/src/features/cache/transport/native_server_adapter.rs: native adapter must own server-function endpoints",
+assertMissing(
+  "apps/admin/src/features/cache/transport/native_server_adapter.rs",
+  "apps/admin/src/features/cache/transport/native_server_adapter.rs: cache host feature moved to rustok-cache-admin and must stay removed",
 );
 assertContains(
   adminCachePage,
-  "transport::fetch_cache_health",
-  "apps/admin/src/pages/cache.rs: cache page must use the transport facade",
+  "pub use rustok_cache_admin::CacheAdmin as CachePage;",
+  "apps/admin/src/pages/cache.rs: cache page must delegate to rustok-cache-admin",
 );
-for (const marker of [
-  "CACHE_HEALTH_QUERY",
-  "crate::shared::api::{request",
-  "native_server_adapter::cache_health_native",
-]) {
+for (const marker of ["leptos::", "leptos_", "#[component]", "#[server]"]) {
   assertNotContains(
-    adminCachePage,
+    cacheAdminModel,
     marker,
-    `apps/admin/src/pages/cache.rs: cache page must not own raw transport (${marker})`,
+    `crates/modules/rustok-cache/admin/src/model.rs: cache model must stay framework/server-function free (${marker})`,
   );
 }
+assertContains(
+  cacheAdminTransport,
+  "UiTransportPath::NativeServer",
+  "crates/modules/rustok-cache/admin/src/transport.rs: cache transport must select the native path",
+);
+assertContains(
+  cacheAdminTransport,
+  "UiTransportPath::Graphql",
+  "crates/modules/rustok-cache/admin/src/transport.rs: cache transport must keep the GraphQL path",
+);
+assertContains(
+  cacheAdminTransport,
+  "#[server",
+  "crates/modules/rustok-cache/admin/src/transport.rs: native adapter must own server-function endpoints",
+);
 
 assertContains(
   adminDashboardMod,
