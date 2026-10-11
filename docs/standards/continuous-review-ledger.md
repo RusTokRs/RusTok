@@ -5434,6 +5434,25 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-24` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
 - **Next primary iteration:** core modules audit (FS-25: `rustok-auth`, `rustok-rbac`, `rustok-tenant`, `rustok-cache`).
 
+### FS-25 Assessment — Core Modules Governance, Multi-Tenant Boundaries, and Cryptographic/Caching Invariants
+
+- **Base:** commit `fab3f0720` on dedicated branch `codex/audit-server-bootstrap-and-host`.
+- **Primary scope:** `crates/modules/rustok-auth`, `crates/modules/rustok-rbac`, `crates/modules/rustok-tenant`, `crates/modules/rustok-cache`.
+- **Invariant map:**
+  - `rustok-auth`: Pure core logic capability module; RFC 7519 / RFC 6749 compliance; constant-time / Argon2 password hashing; CSPRNG 256-bit entropy refresh tokens; sensitive credential and secret material redacted in all `Debug` representations; OAuth token ttl bounded and validated before generation.
+  - `rustok-rbac`: Sovereign multi-tenant relational boundary enforcement in SQL (`subject.tenant_id = role.tenant_id`); normalized and deduplicated permission sets; hierarchical `Action::Manage` wildcard matching; deterministic denial reasons; generation-checked cache invalidation.
+  - `rustok-tenant`: Multi-tenant root entity ownership; transactional outbox event publication (`DomainEvent::TenantCreated`, `DomainEvent::TenantUpdated`) atomic with state changes; revisioned locale policy replacement with durable idempotency receipt validation; transport-neutral port boundaries (`TenantReadPort`, `TenantLocalePolicyPort`).
+  - `rustok-cache`: Bounded 512-byte cache keys with deterministic SHA-256 fallback; 64KB dynamic component limits; label-free Prometheus metrics; atomic compare-and-set (CAS) operations; stale-while-revalidate background refresh with dogpile stampede prevention.
+- **Verification Evidence:**
+  - `cargo test -p rustok-auth --lib`: 45 passed; 0 failed.
+  - `cargo test -p rustok-rbac --lib`: 75 passed; 0 failed.
+  - `cargo test -p rustok-tenant --lib`: 6 passed; 0 failed.
+  - `cargo test -p rustok-cache --lib`: 179 passed; 0 failed; 2 ignored (live Redis required).
+  - Total core module unit tests: 305 passed; 0 failed.
+- **Status:** `FS-25` audit and verification complete at source level on the dedicated branch; maintainer/CI verification remains required.
+- **Next primary iteration:** commerce modules audit (FS-26: `rustok-commerce`, `rustok-cart`, `rustok-order`, `rustok-payment`, `rustok-pricing`, `rustok-inventory`, `rustok-fulfillment`).
+
+
 
 
 
