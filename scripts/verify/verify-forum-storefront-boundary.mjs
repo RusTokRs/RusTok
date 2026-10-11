@@ -7,6 +7,7 @@ const files = {
   lib: "crates/modules/rustok-forum/storefront/src/lib.rs",
   core: "crates/modules/rustok-forum/storefront/src/core.rs",
   ui: "crates/modules/rustok-forum/storefront/src/ui/leptos.rs",
+  topicFeedUi: "crates/modules/rustok-forum/storefront/src/ui/topic_feed.rs",
   transport: "crates/modules/rustok-forum/storefront/src/transport/mod.rs",
   graphqlAdapter: "crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs",
   cargo: "crates/modules/rustok-forum/storefront/Cargo.toml",
@@ -33,6 +34,8 @@ function sourceSlice(source, startMarker, endMarker, description) {
 const lib = text(files.lib);
 const core = text(files.core);
 const ui = text(files.ui);
+const topicFeedUi = existsSync(files.topicFeedUi) ? text(files.topicFeedUi) : "";
+const uiCombined = `${ui}\n${topicFeedUi}`;
 const transport = text(files.transport);
 const graphqlAdapter = text(files.graphqlAdapter);
 const cargo = text(files.cargo);
@@ -55,13 +58,13 @@ const pkg = JSON.parse(text(files.packageJson));
 
 assertNotContains(core, "leptos::", `${files.core}: core must remain framework-agnostic`);
 assertNotContains(core, "view!", `${files.core}: core must not render Leptos views`);
-assertNotContains(ui, "fn status_badge_class", `${files.ui}: status badge class policy must stay in core`);
-assertNotContains(ui, "background:linear-gradient", `${files.ui}: inline category accent style must stay absent`);
-assertNotContains(ui, "?category={category_id}", `${files.ui}: route href construction must stay in core`);
-assertContains(ui, "forum_storefront_category_card_view_model", `${files.ui}: UI must consume core-owned category card view-model`);
-assertContains(ui, "forum_storefront_topic_card_view_model", `${files.ui}: UI must consume core-owned topic card view-model`);
-assertContains(ui, "forum_storefront_status_badge_class", `${files.ui}: UI must consume core-owned status badge class policy`);
-assertContains(ui, "forum_storefront_count_label", `${files.ui}: UI must consume core-owned count label policy`);
+assertNotContains(uiCombined, "fn status_badge_class", `${files.ui}: status badge class policy must stay in core`);
+assertNotContains(uiCombined, "background:linear-gradient", `${files.ui}: inline category accent style must stay absent`);
+assertNotContains(uiCombined, "?category={category_id}", `${files.ui}: route href construction must stay in core`);
+assertContains(uiCombined, "forum_storefront_category_card_view_model", `${files.ui}: UI must consume core-owned category card view-model`);
+assertContains(uiCombined, "forum_storefront_topic_card_view_model", `${files.ui}: UI must consume core-owned topic card view-model`);
+assertContains(uiCombined, "forum_storefront_status_badge_class", `${files.ui}: UI must consume core-owned status badge class policy`);
+assertContains(uiCombined, "forum_storefront_count_label", `${files.ui}: UI must consume core-owned count label policy`);
 assertContains(ui, "use leptos_ui::RichTextHtml;", `${files.ui}: UI must use the shared server-projection renderer`);
 assertContains(ui, "view=body", `${files.ui}: topic projection must use RichTextHtml`);
 assertContains(ui, "content_locale=body_locale", `${files.ui}: topic projection must keep the effective locale`);
@@ -71,7 +74,9 @@ assertNotContains(ui, "inner_html=", `${files.ui}: owner UI must not bypass the 
 assertContains(ui, "use rustok_api::normalize_locale_tag;", `${files.ui}: storefront plain-text locale semantics must use the canonical locale normalizer`);
 assertContains(ui, "fn forum_storefront_content_lang(locale: &str) -> String", `${files.ui}: storefront must expose a canonical plain-text content language helper`);
 
-const categoryRail = sourceSlice(ui, "fn ForumCategoryRail(", "fn ForumTopicFeed(", "category rail");
+const categoryRail = topicFeedUi
+  ? sourceSlice(ui, "fn ForumCategoryRail(", "fn ForumThreadPanel(", "category rail")
+  : sourceSlice(ui, "fn ForumCategoryRail(", "fn ForumTopicFeed(", "category rail");
 [
   "forum_storefront_content_lang(item.effective_locale.as_str())",
   "let description_lang = if item",
@@ -84,7 +89,9 @@ const categoryRail = sourceSlice(ui, "fn ForumCategoryRail(", "fn ForumTopicFeed
   "dir=\"ltr\"",
 ].forEach((marker) => assertContains(categoryRail, marker, `${files.ui}: category rail missing content-locale bidi marker ${marker}`));
 
-const topicFeed = sourceSlice(ui, "fn ForumTopicFeed(", "fn ForumThreadPanel(", "topic feed");
+const topicFeed = topicFeedUi
+  ? topicFeedUi
+  : sourceSlice(ui, "fn ForumTopicFeed(", "fn ForumThreadPanel(", "topic feed");
 [
   "forum_storefront_content_lang(card.effective_locale.as_str())",
   "<span dir=\"ltr\"",

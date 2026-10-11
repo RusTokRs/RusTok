@@ -341,12 +341,14 @@ function assertSearchUiCatalogTransportContract() {
   const nextAdmin = readRepo(nextAdminPath);
   const nextStorefront = readRepo(nextStorefrontPath);
   const nextProduct = readRepo(nextProductPath);
-  // The storefront product package split its transport/type surface into
-  // src/api/{products,types}.ts; verify the package aggregate.
   const nextStorefrontProduct = [
     readRepo(nextStorefrontProductPath),
-    readRepo("apps/next-frontend/packages/rustok-product/src/api/products.ts"),
-    readRepo("apps/next-frontend/packages/rustok-product/src/api/types.ts"),
+    existsSync(repoPath("apps/next-frontend/packages/rustok-product/src/api/products.ts"))
+      ? readRepo("apps/next-frontend/packages/rustok-product/src/api/products.ts")
+      : "",
+    existsSync(repoPath("apps/next-frontend/packages/rustok-product/src/api/types.ts"))
+      ? readRepo("apps/next-frontend/packages/rustok-product/src/api/types.ts")
+      : "",
   ].join("\n");
   const nextSearchPage = readRepo(nextSearchPagePath);
   const nextStorefrontSearchFeature = readRepo(nextStorefrontSearchFeaturePath);
@@ -709,8 +711,8 @@ function assertSearchUiCatalogTransportContract() {
   }
 
   for (const marker of [
-    "pub use model::{ProductCatalogSearchOption, ProductCatalogSearchOptions}",
-    "pub use transport::fetch_catalog_search_options",
+    /pub use model::\{[\s\S]*ProductCatalogSearchOption[\s\S]*ProductCatalogSearchOptions[\s\S]*\};/,
+    /pub use transport::\{[\s\S]*fetch_catalog_search_options[\s\S]*\};|pub use transport::fetch_catalog_search_options;/,
   ]) {
     assertContains(productStorefrontLib, marker, `${productStorefrontLibPath}: product storefront metadata export marker missing ${marker}`);
   }
