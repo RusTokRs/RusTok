@@ -16,7 +16,6 @@ use super::{
 };
 
 const MODULE_SLUG: &str = "forum";
-const DEFAULT_STOREFRONT_UNREAD_LIMIT: u64 = 20;
 const MAX_STOREFRONT_UNREAD_LIMIT: u64 = 100;
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -81,7 +80,20 @@ impl ForumStorefrontReadStateQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let request = ctx.data::<RequestContext>()?;
-        let limit = storefront_limit(limit)?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
+        // An omitted `limit` follows the tenant's `topics_per_page` setting — the same rule the
+        // public topic list applies — instead of a transport-local constant, so the widget and
+        // this query cannot disagree about a configured page size.
+        let limit = match limit {
+            Some(value) => storefront_limit(value)?,
+            None => runtime
+                .default_topics_per_page(tenant_id)
+                .await
+                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
+        };
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let audience_context = topic_read_audience_port_context(
             ForumTopicReadTransport::Graphql,
@@ -91,11 +103,6 @@ impl ForumStorefrontReadStateQuery {
             Some(request),
             locale.as_str(),
         )?;
-        let runtime = ctx
-            .data_opt::<ForumGraphqlRuntimeData>()
-            .cloned()
-            .unwrap_or_default();
-
         let page = runtime
             .storefront_read_state_service(db.clone(), event_bus.clone())
             .list_topics_with_unread_audience_visible(
@@ -280,8 +287,7 @@ fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
 }
 
-fn storefront_limit(limit: Option<i32>) -> Result<u64> {
-    let limit = limit.unwrap_or(DEFAULT_STOREFRONT_UNREAD_LIMIT as i32);
+fn storefront_limit(limit: i32) -> Result<u64> {
     let limit = u64::try_from(limit).map_err(|_| {
         <FieldError as GraphQLError>::bad_user_input(
             "Forum storefront unread limit must be positive",

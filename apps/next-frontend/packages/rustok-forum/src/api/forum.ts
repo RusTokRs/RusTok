@@ -1,4 +1,4 @@
-import { storefrontGraphql } from "@/shared/lib/graphql";
+import { storefrontGraphql, type GraphqlResponse } from "@/shared/lib/graphql";
 import type { RichTextDocument, RichTextView } from "@rustok/richtext";
 
 export interface ForumCategoryListItem {
@@ -217,6 +217,19 @@ const CREATE_TOPIC_MUTATION = `
   }
 `;
 
+/**
+ * `storefrontGraphql` resolves with `{ data, errors }` under Apollo's `errorPolicy: "all"`,
+ * so a denied or failed field is indistinguishable from an empty list unless `errors` is
+ * checked. Every forum read fails loudly here and each surface decides how to present the
+ * failure; a null field without errors stays a legitimate "nothing here" result.
+ */
+function assertGraphqlResult(operation: string, result: GraphqlResponse<unknown>): void {
+  const message = result.errors?.[0]?.message;
+  if (message) {
+    throw new Error(`${operation}: ${message}`);
+  }
+}
+
 export async function fetchStorefrontCategories(options: {
   tenantId?: string;
   tenantSlug?: string;
@@ -234,11 +247,13 @@ export async function fetchStorefrontCategories(options: {
       locale: options.locale,
       pagination: {
         offset: options.offset ?? 0,
+        // No owner setting governs the category rail, so the widget keeps its own bound.
         limit: options.limit ?? 50,
       },
     },
   });
 
+  assertGraphqlResult("forum categories", result);
   return (
     result.data?.forumStorefrontCategories ?? {
       items: [],
@@ -266,10 +281,12 @@ export async function fetchStorefrontTopics(options: {
       categoryId: options.categoryId,
       locale: options.locale,
       after: options.after,
-      perPage: options.limit ?? 50,
+      // Omitted page sizes resolve through the tenant's `topics_per_page` setting.
+      perPage: options.limit,
     },
   });
 
+  assertGraphqlResult("forum topic page", result);
   return (
     result.data?.forumStorefrontAudienceTopics ?? {
       items: [],
@@ -296,6 +313,7 @@ export async function fetchStorefrontTopic(options: {
     },
   });
 
+  assertGraphqlResult("forum topic", result);
   return result.data?.forumStorefrontAudienceTopic ?? null;
 }
 
@@ -318,10 +336,12 @@ export async function fetchStorefrontReplies(options: {
       topicId: options.topicId,
       locale: options.locale,
       after: options.after ?? null,
-      perPage: options.perPage ?? 100,
+      // Omitted page sizes resolve through the tenant's `replies_per_page` setting.
+      perPage: options.perPage,
     },
   });
 
+  assertGraphqlResult("forum reply page", result);
   return (
     result.data?.forumStorefrontReplies ?? {
       items: [],
@@ -347,6 +367,7 @@ export async function fetchForumMemberCards(options: {
     },
   });
 
+  assertGraphqlResult("forum member cards", result);
   return result.data?.forumMemberCards ?? [];
 }
 
@@ -356,7 +377,7 @@ export async function markForumTopicRead(options: {
   topicId: string;
   locale?: string;
 }): Promise<void> {
-  await storefrontGraphql({
+  const result = await storefrontGraphql({
     query: MARK_TOPIC_READ_MUTATION,
     tenant: options.tenantSlug,
     variables: {
@@ -365,6 +386,7 @@ export async function markForumTopicRead(options: {
       locale: options.locale,
     },
   });
+  assertGraphqlResult("mark forum topic read", result);
 }
 
 export async function createForumReply(options: {
@@ -385,6 +407,7 @@ export async function createForumReply(options: {
     },
   });
 
+  assertGraphqlResult("forum reply creation", result);
   return result.data?.createForumReplyWithQuotes ?? null;
 }
 
@@ -404,6 +427,7 @@ export async function createForumTopic(options: {
     },
   });
 
+  assertGraphqlResult("forum topic creation", result);
   return result.data?.createForumTopicWithQuotes ?? null;
 }
 
@@ -459,6 +483,7 @@ export async function resolveStorefrontTopicRoute(options: {
     },
   });
 
+  assertGraphqlResult("forum topic route", result);
   return result.data?.forumStorefrontTopicRouteDecision ?? null;
 }
 

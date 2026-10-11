@@ -31,6 +31,15 @@
 - `packages/rustok-forum` shows the owner topic status token through a localized
   `TopicStatusLabel` badge, and unrecognized tokens stay verbatim. It exposes no vote,
   subscribe, or report mutation, so those owner capabilities remain unreachable in this surface.
+- `packages/rustok-forum` takes topic and reply page sizes from the forum module's
+  `topics_per_page` / `replies_per_page` settings by omitting `perPage` on the GraphQL storefront
+  queries, so a tenant that configured a page size is not overridden by the package. A feed shows one
+  server page and offers no paging control. A GraphQL-level failure (denied field, validation,
+  authorization) is reported in a localized banner with a retry action instead of rendering as an
+  empty forum or a missing topic. A transport failure stays indistinguishable from an empty result:
+  `src/shared/lib/graphql.ts` maps only `graphQLErrors` into `GraphqlResponse.errors` and drops
+  `networkError`, so surfacing connection failures is an app-shell change that affects every module
+  package and needs its own decision.
 - Composes search storefront controls through host-owned `src/features/search`: product-owned catalog metadata is loaded via `packages/rustok-product` and passed to the search package as safe option props with the route locale.
 
 ## Docs

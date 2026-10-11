@@ -58,6 +58,8 @@ export function ForumSection({
   const [memberCards, setMemberCards] = useState<ForumMemberCard[]>([]);
   const [isMarkingRead, setIsMarkingRead] = useState(false);
   const [loading, setLoading] = useState(true);
+  // A failed read is reported instead of being rendered as an empty forum.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Load Categories
   const loadCategories = useCallback(async () => {
@@ -69,10 +71,11 @@ export function ForumSection({
       });
       setCategories(data.items);
       setCategoriesTotal(data.total);
+      setLoadError(null);
     } catch {
-      // Ignore load error
+      setLoadError(forum('errorLoad'));
     }
-  }, [tenantId, tenantSlug, locale]);
+  }, [tenantId, tenantSlug, locale, forum]);
 
   // Topics are paged by cursor and never counted; the feed count comes from the owner-provided
   // topicCount of the selected category (all categories when none is selected).
@@ -82,6 +85,7 @@ export function ForumSection({
 
   // Load Topics
   const loadTopics = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await fetchStorefrontTopics({
         tenantId: tenantId ?? undefined,
@@ -111,10 +115,13 @@ export function ForumSection({
           return Array.from(map.values());
         });
       }
+      setLoadError(null);
     } catch {
-      // Ignore
+      setLoadError(forum('errorLoad'));
+    } finally {
+      setLoading(false);
     }
-  }, [tenantId, tenantSlug, selectedCategoryId, locale]);
+  }, [tenantId, tenantSlug, selectedCategoryId, locale, forum]);
 
   // Load Selected Topic & Replies
   const loadTopicDetails = useCallback(async (topicId: string) => {
@@ -159,10 +166,11 @@ export function ForumSection({
           return Array.from(map.values());
         });
       }
+      setLoadError(null);
     } catch {
-      // Ignore
+      setLoadError(forum('errorLoad'));
     }
-  }, [tenantId, tenantSlug, locale]);
+  }, [tenantId, tenantSlug, locale, forum]);
 
   useEffect(() => {
     loadCategories();
@@ -194,11 +202,19 @@ export function ForumSection({
       });
       loadTopics();
     } catch {
-      // Ignore
+      setLoadError(forum('errorMarkRead'));
     } finally {
       setIsMarkingRead(false);
     }
   }, [tenantId, tenantSlug, locale, loadTopics]);
+
+  const retryLoad = useCallback(() => {
+    void loadCategories();
+    void loadTopics();
+    if (selectedTopicId) {
+      void loadTopicDetails(selectedTopicId);
+    }
+  }, [loadCategories, loadTopics, loadTopicDetails, selectedTopicId]);
 
   // On Topic or Reply Submitted
   const handleSubmitted = useCallback((targetTopicId: string) => {
@@ -255,6 +271,20 @@ export function ForumSection({
             </div>
           </div>
 
+          {/* Load failures stay visible instead of masquerading as an empty forum */}
+          {loadError && (
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">
+              <span>{loadError}</span>
+              <button
+                type="button"
+                onClick={retryLoad}
+                className="rounded-xl border border-destructive/30 px-3 py-1 font-semibold transition hover:bg-destructive/15"
+              >
+                {forum('retry')}
+              </button>
+            </div>
+          )}
+
           {/* Body: Categories Overview vs 3-Column Feed */}
           {activeView === 'categories' ? (
             <div className="mt-8">
@@ -282,6 +312,7 @@ export function ForumSection({
               />
 
               <TopicFeed
+                isLoading={loading}
                 topics={topics}
                 total={topicsTotal}
                 selectedTopicId={selectedTopicId}

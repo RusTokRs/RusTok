@@ -22,6 +22,8 @@ import { useTranslations } from '@rustok/next-fluent';
 export type TopicFilterTab = 'latest' | 'top' | 'unread' | 'solved';
 
 interface TopicFeedProps {
+  /** The first page is still in flight; the empty state must not claim there is nothing. */
+  isLoading?: boolean;
   topics: ForumTopicListItem[];
   total: number;
   selectedTopicId: string | null;
@@ -31,6 +33,7 @@ interface TopicFeedProps {
 }
 
 export function TopicFeed({
+  isLoading = false,
   topics,
   total,
   selectedTopicId,
@@ -217,7 +220,11 @@ export function TopicFeed({
       </div>
 
       {/* Topic List */}
-      {topics.length === 0 ? (
+      {isLoading && topics.length === 0 ? (
+        <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+          {forum('loading')}
+        </div>
+      ) : topics.length === 0 ? (
         <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center">
           <h4 className="text-base font-semibold text-card-foreground">{forum('noTopicsYet')}</h4>
           <p className="mt-2 text-sm text-muted-foreground">

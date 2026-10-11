@@ -200,7 +200,9 @@ wrappers. Each one has an owner decision or a follow-up task in
   wiring decision, because each changes a read or write path.
   The unread settings removed by `DECISIONS/2026-10-09-forum-remove-unwired-module-settings.md` are no longer declared.
 - `topics_per_page` and `replies_per_page` are the default page size for REST and GraphQL list requests that omit
-  `per_page`. An explicit `per_page` is bounded to 1..=100 and wins over the setting. See
+  `per_page`. An explicit `per_page` is bounded to 1..=100 and wins over the setting. The module storefront transports
+  and the Next.js forum package omit the argument, so a configured value reaches those surfaces too; the Next.js
+  widget-preview helpers keep their documented `ForumWidgetLimit` because they render static pages. See
   [`DECISIONS/2026-10-09-forum-list-page-size-from-settings.md`](../../../DECISIONS/2026-10-09-forum-list-page-size-from-settings.md).
 - Topic title and post body length limits are enforced on topic create, topic update (title or body
   supplied), topic translation upsert, reply create, and reply update (content supplied). Imports and exact

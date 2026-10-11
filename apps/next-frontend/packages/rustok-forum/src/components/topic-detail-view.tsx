@@ -63,6 +63,8 @@ function TopicDetailContent({
   const [memberCards, setMemberCards] = useState<ForumMemberCard[]>([]);
   const [isMarkingRead, setIsMarkingRead] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  // A failed read is reported instead of being rendered as "topic not found".
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Load Categories & Topic Data if not provided initially
   const loadData = useCallback(async () => {
@@ -113,10 +115,11 @@ function TopicDetailContent({
         });
         setMemberCards(cards);
       }
+      setLoadError(null);
     } catch {
-      // Ignore load error
+      setLoadError(forum('errorLoad'));
     }
-  }, [tenantId, tenantSlug, locale, topicId, initialTopic, initialReplies, initialRepliesTotal]);
+  }, [tenantId, tenantSlug, locale, topicId, initialTopic, initialReplies, initialRepliesTotal, forum]);
 
   useEffect(() => {
     loadData();
@@ -133,7 +136,7 @@ function TopicDetailContent({
         locale,
       });
     } catch {
-      // Ignore
+      setLoadError(forum('errorMarkRead'));
     } finally {
       setIsMarkingRead(false);
     }
@@ -208,6 +211,22 @@ function TopicDetailContent({
 
   const category = categories.find((c) => c.id === topic?.categoryId);
 
+  if (!topic && loadError) {
+    return (
+      <div className="rounded-[1.75rem] border border-dashed border-destructive/40 p-12 text-center">
+        <h3 className="text-xl font-semibold text-card-foreground">{forum('errorLoad')}</h3>
+        <p className="mt-2 text-sm text-muted-foreground">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => void loadData()}
+          className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground shadow-xs transition hover:bg-muted"
+        >
+          {forum('retry')}
+        </button>
+      </div>
+    );
+  }
+
   if (!topic) {
     return (
       <div className="rounded-[1.75rem] border border-dashed border-border p-12 text-center">
@@ -229,6 +248,18 @@ function TopicDetailContent({
   return (
     <MemberCardProvider cards={memberCards}>
       <div className="space-y-6">
+        {loadError && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">
+            <span>{loadError}</span>
+            <button
+              type="button"
+              onClick={() => void loadData()}
+              className="rounded-xl border border-destructive/30 px-3 py-1 font-semibold transition hover:bg-destructive/15"
+            >
+              {forum('retry')}
+            </button>
+          </div>
+        )}
         {/* Discourse/NodeBB Breadcrumbs & Header Navigation */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-4">
           <nav className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

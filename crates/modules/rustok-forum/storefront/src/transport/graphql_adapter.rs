@@ -121,8 +121,9 @@ struct TopicsVariables {
     category_id: Option<String>,
     locale: Option<String>,
     after: Option<String>,
+    /// `None` lets the owner apply the tenant's `topics_per_page` setting.
     #[serde(rename = "perPage")]
-    per_page: i32,
+    per_page: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -133,7 +134,8 @@ struct UnreadTopicsVariables {
     category_id: Option<String>,
     locale: Option<String>,
     after: Option<String>,
-    limit: i32,
+    /// `None` lets the owner apply the tenant's `topics_per_page` setting.
+    limit: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -152,8 +154,9 @@ struct RepliesVariables {
     topic_id: String,
     locale: Option<String>,
     after: Option<String>,
+    /// `None` lets the owner apply the tenant's `replies_per_page` setting.
     #[serde(rename = "perPage")]
-    per_page: i32,
+    per_page: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -313,7 +316,7 @@ pub async fn fetch_storefront_forum_graphql(
             category_id: resolved_category_id.clone(),
             locale: locale.clone(),
             after: None,
-            limit: 20,
+            limit: None,
         },
     )
     .await;
@@ -327,7 +330,7 @@ pub async fn fetch_storefront_forum_graphql(
                     category_id: resolved_category_id.clone(),
                     locale: locale.clone(),
                     after: None,
-                    per_page: 20,
+                    per_page: None,
                 },
             )
             .await?;
@@ -364,7 +367,7 @@ pub async fn fetch_storefront_forum_graphql(
                 topic_id,
                 locale: locale.clone(),
                 after: None,
-                per_page: 20,
+                per_page: None,
             },
         )
         .await?;

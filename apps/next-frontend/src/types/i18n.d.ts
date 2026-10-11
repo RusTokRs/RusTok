@@ -236,6 +236,8 @@ export type AppMessageKey =
   | 'Forum-draftTitle'
   | 'Forum-errorEmptyMessage'
   | 'Forum-errorGeneric'
+  | 'Forum-errorLoad'
+  | 'Forum-errorMarkRead'
   | 'Forum-errorMissingCategory'
   | 'Forum-errorMissingTitle'
   | 'Forum-errorReplyFailed'
@@ -252,6 +254,7 @@ export type AppMessageKey =
   | 'Forum-latest'
   | 'Forum-latestDiscussions'
   | 'Forum-livePreview'
+  | 'Forum-loading'
   | 'Forum-locked'
   | 'Forum-minimize'
   | 'Forum-newReply'
@@ -282,6 +285,7 @@ export type AppMessageKey =
   | 'Forum-replyContent'
   | 'Forum-replyToMessage'
   | 'Forum-replyToTopic'
+  | 'Forum-retry'
   | 'Forum-searchPlaceholder'
   | 'Forum-sectionDescription'
   | 'Forum-sectionsPublished'
@@ -321,6 +325,8 @@ export type AppMessageKey =
   | 'Forum.draftTitle'
   | 'Forum.errorEmptyMessage'
   | 'Forum.errorGeneric'
+  | 'Forum.errorLoad'
+  | 'Forum.errorMarkRead'
   | 'Forum.errorMissingCategory'
   | 'Forum.errorMissingTitle'
   | 'Forum.errorReplyFailed'
@@ -337,6 +343,7 @@ export type AppMessageKey =
   | 'Forum.latest'
   | 'Forum.latestDiscussions'
   | 'Forum.livePreview'
+  | 'Forum.loading'
   | 'Forum.locked'
   | 'Forum.minimize'
   | 'Forum.newReply'
@@ -367,6 +374,7 @@ export type AppMessageKey =
   | 'Forum.replyContent'
   | 'Forum.replyToMessage'
   | 'Forum.replyToTopic'
+  | 'Forum.retry'
   | 'Forum.searchPlaceholder'
   | 'Forum.sectionDescription'
   | 'Forum.sectionsPublished'
@@ -798,6 +806,8 @@ export interface AppMessageArgs {
   'Forum-draftTitle': { 'title': string | number | Date };
   'Forum-errorEmptyMessage'?: Record<string, never>;
   'Forum-errorGeneric'?: Record<string, never>;
+  'Forum-errorLoad'?: Record<string, never>;
+  'Forum-errorMarkRead'?: Record<string, never>;
   'Forum-errorMissingCategory'?: Record<string, never>;
   'Forum-errorMissingTitle'?: Record<string, never>;
   'Forum-errorReplyFailed'?: Record<string, never>;
@@ -814,6 +824,7 @@ export interface AppMessageArgs {
   'Forum-latest'?: Record<string, never>;
   'Forum-latestDiscussions'?: Record<string, never>;
   'Forum-livePreview'?: Record<string, never>;
+  'Forum-loading'?: Record<string, never>;
   'Forum-locked'?: Record<string, never>;
   'Forum-minimize'?: Record<string, never>;
   'Forum-newReply'?: Record<string, never>;
@@ -844,6 +855,7 @@ export interface AppMessageArgs {
   'Forum-replyContent'?: Record<string, never>;
   'Forum-replyToMessage'?: Record<string, never>;
   'Forum-replyToTopic'?: Record<string, never>;
+  'Forum-retry'?: Record<string, never>;
   'Forum-searchPlaceholder'?: Record<string, never>;
   'Forum-sectionDescription'?: Record<string, never>;
   'Forum-sectionsPublished'?: Record<string, never>;
@@ -883,6 +895,8 @@ export interface AppMessageArgs {
   'Forum.draftTitle': { 'title': string | number | Date };
   'Forum.errorEmptyMessage'?: Record<string, never>;
   'Forum.errorGeneric'?: Record<string, never>;
+  'Forum.errorLoad'?: Record<string, never>;
+  'Forum.errorMarkRead'?: Record<string, never>;
   'Forum.errorMissingCategory'?: Record<string, never>;
   'Forum.errorMissingTitle'?: Record<string, never>;
   'Forum.errorReplyFailed'?: Record<string, never>;
@@ -899,6 +913,7 @@ export interface AppMessageArgs {
   'Forum.latest'?: Record<string, never>;
   'Forum.latestDiscussions'?: Record<string, never>;
   'Forum.livePreview'?: Record<string, never>;
+  'Forum.loading'?: Record<string, never>;
   'Forum.locked'?: Record<string, never>;
   'Forum.minimize'?: Record<string, never>;
   'Forum.newReply'?: Record<string, never>;
@@ -929,6 +944,7 @@ export interface AppMessageArgs {
   'Forum.replyContent'?: Record<string, never>;
   'Forum.replyToMessage'?: Record<string, never>;
   'Forum.replyToTopic'?: Record<string, never>;
+  'Forum.retry'?: Record<string, never>;
   'Forum.searchPlaceholder'?: Record<string, never>;
   'Forum.sectionDescription'?: Record<string, never>;
   'Forum.sectionsPublished'?: Record<string, never>;

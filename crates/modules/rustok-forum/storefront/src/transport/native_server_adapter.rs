@@ -38,15 +38,16 @@ async fn storefront_forum_native(
     #[cfg(feature = "ssr")]
     {
         use rustok_api::{
-            HostRuntimeContext, OptionalAuthContext, Permission, RequestContext, TenantContext,
-            has_any_effective_permission,
+            HostRuntimeContext, OptionalAuthContext, Permission, RequestContext,
+            SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
+            TenantContext, has_any_effective_permission,
         };
         use rustok_core::SecurityContext;
         use rustok_forum::services::user_stats::ForumMemberCardService;
         use rustok_forum::{
             ForumCategoryAudienceReadService, ForumCategoryReadOperation,
             ForumCategoryReadTransport, ForumReplyAudienceReadService, ForumReplyReadOperation,
-            ForumReplyReadTransport, ForumStorefrontReadStateService,
+            ForumReplyReadTransport, ForumSettingsProviders, ForumStorefrontReadStateService,
             ForumTopicAudienceListService, ForumTopicAudienceReadService, ForumTopicReadOperation,
             ForumTopicReadTransport, ListRepliesFilter, ListTopicsFilter, ReplyStatus,
             SharedForumAudienceFactsPort, category_read_audience_port_context,
@@ -80,6 +81,26 @@ async fn storefront_forum_native(
         );
         let db = runtime_ctx.db_clone();
         let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
+        // Page sizes are the tenant's own settings, resolved through the owner accessor the
+        // REST and GraphQL transports use: the widget must not freeze a constant that skips a
+        // configured `topics_per_page` / `replies_per_page`. Absent readers yield the owner
+        // defaults, not a bypass.
+        let settings_providers = match (
+            runtime_ctx.shared_get::<SharedStaticModuleSettingsReader>(),
+            runtime_ctx.shared_get::<SharedStaticModuleSettingsTransactionReader>(),
+        ) {
+            (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
+                .with_static_readers(static_reader, transactional_reader),
+            _ => ForumSettingsProviders::default(),
+        };
+        let topics_per_page = settings_providers
+            .default_topics_per_page(tenant.id)
+            .await
+            .map_err(server_error)?;
+        let replies_per_page = settings_providers
+            .default_replies_per_page(tenant.id)
+            .await
+            .map_err(server_error)?;
         let category_audience_service = match audience_facts.clone() {
             Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db.clone(), facts),
             None => ForumCategoryAudienceReadService::new(db.clone()),
@@ -203,7 +224,7 @@ async fn storefront_forum_native(
             status: None,
             locale: Some(effective_locale.clone()),
             after: None,
-            per_page: 20,
+            per_page: topics_per_page,
         };
 
         let (topic_items, topics_next_cursor, first_topic_id, read_state_available) =
@@ -309,7 +330,7 @@ async fn storefront_forum_native(
                         ListRepliesFilter {
                             locale: Some(effective_locale.clone()),
                             after: None,
-                            per_page: 20,
+                            per_page: replies_per_page,
                         },
                         Some(tenant.default_locale.as_str()),
                         Some(&approved_statuses),
@@ -324,7 +345,7 @@ async fn storefront_forum_native(
                         ListRepliesFilter {
                             locale: Some(effective_locale.clone()),
                             after: None,
-                            per_page: 20,
+                            per_page: replies_per_page,
                         },
                         Some(tenant.default_locale.as_str()),
                         channel_slug,
