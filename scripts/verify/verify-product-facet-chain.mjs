@@ -413,7 +413,7 @@ requireAll(
     "AdminCatalogFacetsRequest {",
     "facet_codes,",
     "with_deadline(std::time::Duration::from_secs(2))",
-    '"admin_product_catalog_facets",',
+    '"admin_product_catalog_facets"',
   ],
   "GraphQL admin facet root",
 );
@@ -728,9 +728,14 @@ requireAll(
 requireAll(
   gridFacetTs,
   [
-    "const isEnumerable = facetDomainIsEnumerable(input.domain);",
+    "const isEnumerable = facetDomainIsEnumerable(domain);",
     "if (isEnumerable) {",
-    "for (const bucket of input.values ?? []) {",
+    "for (const bucket of facet.values) {",
+    "if (values.length === MAX_GRID_FACET_VALUES) {",
+    "isTruncated = true;",
+    "break;",
+    "values: facetDomainIsEnumerable(input.domain)",
+    "input.values.slice(0, MAX_GRID_FACET_VALUES + 1)",
   ],
   "shared facet builder (typescript twin)",
 );

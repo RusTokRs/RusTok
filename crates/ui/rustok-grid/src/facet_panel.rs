@@ -10,7 +10,8 @@
 //! [`FacetPanelLabels`], because only the adapter knows the locale.
 
 use crate::facet::{
-    FacetValue, GridFacet, MAX_GRID_FACETS, SELECTION_SEPARATOR, selection_except, selection_key,
+    FacetValue, GridFacet, MAX_GRID_FACETS, MAX_GRID_FACET_VALUES, SELECTION_SEPARATOR,
+    selection_except, selection_key,
 };
 
 /// Copy and markers an adapter supplies for one panel rendering.
@@ -109,21 +110,32 @@ impl FacetPanel {
         let facets = facets
             .iter()
             .take(MAX_GRID_FACETS)
-            .map(|facet| FacetPanelFacet {
-                key: facet.key.clone(),
-                label: facet.label.clone(),
-                is_enumerable: facet.is_enumerable(),
-                unbounded_hint: (!facet.is_enumerable()).then(|| labels.unbounded_hint.clone()),
-                is_truncated: facet.is_truncated,
-                truncated_hint: facet.is_truncated.then(|| labels.truncated_hint.clone()),
-                clear_label: labels.clear_label.clone(),
-                has_selection: has_selection_for_key(selected, facet.key.as_str()),
-                total: facet.total,
-                values: facet
-                    .values
-                    .iter()
-                    .map(|value| panel_value(facet.key.as_str(), value, selected, labels))
-                    .collect(),
+            .map(|facet| {
+                let is_enumerable = facet.is_enumerable();
+                let is_truncated = is_enumerable
+                    && (facet.is_truncated || facet.values.len() > MAX_GRID_FACET_VALUES);
+                let values = if is_enumerable {
+                    facet
+                        .values
+                        .iter()
+                        .take(MAX_GRID_FACET_VALUES)
+                        .map(|value| panel_value(facet.key.as_str(), value, selected, labels))
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                FacetPanelFacet {
+                    key: facet.key.clone(),
+                    label: facet.label.clone(),
+                    is_enumerable,
+                    unbounded_hint: (!is_enumerable).then(|| labels.unbounded_hint.clone()),
+                    is_truncated,
+                    truncated_hint: is_truncated.then(|| labels.truncated_hint.clone()),
+                    clear_label: labels.clear_label.clone(),
+                    has_selection: has_selection_for_key(selected, facet.key.as_str()),
+                    total: facet.total,
+                    values,
+                }
             })
             .collect::<Vec<_>>();
 
@@ -255,18 +267,21 @@ pub fn selection_after_toggle(selected: &[String], key: &str, value: &str) -> Ve
         return selected.to_vec();
     }
     let mut toggled = Vec::with_capacity(selected.len() + 1);
-    let mut removed = false;
+    let mut found = false;
     for entry in selected {
         match split_selection(entry) {
             Some((entry_key, entry_value))
-                if !removed && entry_key.eq_ignore_ascii_case(key) && entry_value == value =>
+                if entry_key.eq_ignore_ascii_case(key) && entry_value == value =>
             {
-                removed = true;
+                // Selection is set-like: one user toggle must remove malformed duplicate entries
+                // of the same option, not leave the checkbox active after only one click.
+                found = true;
             }
-            _ => toggled.push(entry.clone()),
+            Some(_) => toggled.push(entry.clone()),
+            None => {}
         }
     }
-    if !removed {
+    if !found {
         toggled.push(selection_entry(key, value));
     }
     toggled
@@ -276,12 +291,16 @@ pub fn selection_after_toggle(selected: &[String], key: &str, value: &str) -> Ve
 pub fn selection_after_clear_key(selected: &[String], key: &str) -> Vec<String> {
     let key = key.trim();
     if key.is_empty() {
-        return selected.to_vec();
+        return selected
+            .iter()
+            .filter(|entry| split_selection(entry).is_some())
+            .cloned()
+            .collect();
     }
     selected
         .iter()
         .filter(|entry| {
-            !matches!(split_selection(entry), Some((entry_key, _)) if entry_key.eq_ignore_ascii_case(key))
+            matches!(split_selection(entry), Some((entry_key, _)) if !entry_key.eq_ignore_ascii_case(key))
         })
         .cloned()
         .collect()
@@ -426,6 +445,54 @@ mod tests {
         assert_eq!(split_selection("noise"), None);
         assert_eq!(split_selection("color="), None);
         assert_eq!(selection_entry("color", "red"), "color=red");
-        assert_eq!(count_label("({count})", 7), "(7)");
+        assert_eq!(count_label("{count} / {count}", 7), "7 / 7");
+    }
+
+    #[test]
+    fn toggles_remove_duplicate_and_malformed_entries() {
+        let selection = selected(&["color=red", "COLOR=red", "broken", "color="]);
+        assert_eq!(
+            selection_after_toggle(&selection, "color", "red"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            selection_after_toggle(&selection, "size", "m"),
+            selected(&["color=red", "COLOR=red", "size=m"])
+        );
+        assert_eq!(
+            selection_after_clear_key(&selection, "missing"),
+            selected(&["color=red", "COLOR=red"])
+        );
+    }
+
+    #[test]
+    fn panel_sanitizes_unbounded_facet_snapshots_before_rendering() {
+        let mut facet = GridFacet::open("weight", "Weight", 3);
+        facet.values.push(FacetValue::new("10", "10", 1));
+        facet.is_truncated = true;
+        let panel = panel(&[facet], &[]);
+
+        let weight = &panel.facets[0];
+        assert!(!weight.is_truncated);
+        assert!(weight.values.is_empty());
+        assert!(!weight.is_enumerable);
+    }
+
+    #[test]
+    fn panel_caps_mutated_enumerable_facet_snapshots() {
+        let mut facet = GridFacet::from_buckets(
+            "color",
+            "Color",
+            FacetDomain::Dictionary { multi: true },
+            25,
+            Vec::new(),
+        );
+        facet.values = (0..MAX_GRID_FACET_VALUES + 1)
+            .map(|index| FacetValue::new(format!("{index}"), "Value", 1))
+            .collect();
+        let panel = panel(&[facet], &[]);
+
+        assert_eq!(panel.facets[0].values.len(), MAX_GRID_FACET_VALUES);
+        assert!(panel.facets[0].is_truncated);
     }
 }

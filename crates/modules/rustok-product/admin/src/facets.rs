@@ -106,7 +106,8 @@ pub fn build_product_admin_facet_labels(locale: Option<&str>) -> ProductAdminFac
             "product.list.facetsEmpty",
             "No filters are available for this catalog yet.",
         ),
-        count_template: t(locale, "product.list.facetsCount", "({count})"),
+        // The shared panel substitutes this textual token; the number is not a Fluent argument.
+        count_template: "({count})".to_string(),
         selected_marker: t(locale, "product.list.facetsSelected", "[x]"),
         unselected_marker: t(locale, "product.list.facetsUnselected", "[ ]"),
     }
@@ -309,6 +310,14 @@ mod tests {
                 values: Vec::new(),
             },
         ]
+    }
+
+    #[test]
+    fn bucket_count_template_is_code_owned() {
+        assert_eq!(
+            build_product_admin_facet_labels(Some("ru")).count_template,
+            "({count})"
+        );
     }
 
     #[test]

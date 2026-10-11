@@ -79,8 +79,6 @@ product-list-createdAt = Дата создания
 product-list-descending = Сначала новые
 product-list-empty = Товаров пока нет.
 product-list-facetsClear = Очистить фильтры
-product-list-facetsCount = ({ $count })
-# Bucket counts are rendered by the code-owned panel count template, not by Fluent.
 product-list-facetsEmpty = Для этого каталога фильтры пока недоступны.
 product-list-facetsLabel = Фильтры
 product-list-facetsSelected = [x]

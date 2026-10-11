@@ -206,8 +206,17 @@ requireAll(
 // The panel speaks the vocabulary the Rust storefront and the owner already own.
 requireAll(
   rustControls,
-  ["filters.join(\";\")", "parse_attribute_filter"],
+  [
+    "serialize_selection(filters)",
+    "parse_selection(value.as_str())",
+    "parse_attribute_filter",
+  ],
   "rust storefront attribute-filter vocabulary",
+);
+reject(
+  rustControls,
+  ["filters.join(\";\")", ".split(';')"],
+  "rust storefront must delegate the selection-list encoding to rustok-grid",
 );
 requireAll(
   graphqlRoot,

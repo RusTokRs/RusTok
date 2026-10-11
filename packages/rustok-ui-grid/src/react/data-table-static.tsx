@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ariaSortForColumn } from '../sort';
 import type { DataTableStaticProps } from './types';
 
 /**
@@ -24,16 +25,22 @@ export function DataTableStatic<T>({
   return (
     <div className={`rounded-md border ${className ?? ''}`}>
       <div className='relative w-full overflow-auto'>
-        <table className='w-full caption-bottom text-sm'>
+        <table className='w-full caption-bottom text-sm' aria-busy={isLoading || undefined}>
           <thead className='[&_tr]:border-b'>
             <tr className='border-b transition-colors'>
               {columns.map((column) => {
                 const isCurrentSort = sort?.columnId === column.id;
                 const isSortable = Boolean(column.sortable && onSort);
+                const ariaSort = ariaSortForColumn(
+                  sort ?? { columnId: null, direction: null },
+                  column.id
+                );
 
                 return (
                   <th
                     key={column.id}
+                    scope='col'
+                    aria-sort={ariaSort}
                     className={`text-muted-foreground text-left align-middle font-medium ${
                       isCompact ? 'h-8 px-2.5 py-1 text-xs' : 'h-10 px-4 py-2'
                     } ${column.headerClassName ?? ''}`}
@@ -86,7 +93,7 @@ export function DataTableStatic<T>({
             ) : rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length}
+                  colSpan={Math.max(1, columns.length)}
                   className={`text-muted-foreground text-center text-sm ${
                     isCompact ? 'py-4' : 'py-8'
                   }`}

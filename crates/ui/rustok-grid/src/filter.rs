@@ -248,14 +248,36 @@ impl FilterValue {
 }
 
 /// Active filters keyed by column id. Only non-empty values are kept.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct ColumnFilters {
     filters: BTreeMap<String, FilterValue>,
+}
+
+impl<'de> Deserialize<'de> for ColumnFilters {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct ColumnFiltersData {
+            #[serde(default)]
+            filters: BTreeMap<String, FilterValue>,
+        }
+
+        let data = ColumnFiltersData::deserialize(deserializer)?;
+        Ok(data.filters.into_iter().collect())
+    }
 }
 
 impl ColumnFilters {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Rebuild the map from canonical, non-empty values after direct public API use or mutation.
+    pub fn normalize(&mut self) {
+        let filters = std::mem::take(&mut self.filters);
+        *self = filters.into_iter().collect();
     }
 
     pub fn get(&self, column_id: &str) -> Option<&FilterValue> {
@@ -365,6 +387,23 @@ mod tests {
     #[test]
     fn boolean_false_is_an_active_filter() {
         assert!(!FilterValue::Boolean(false).is_empty());
+    }
+
+    #[test]
+    fn deserialization_normalizes_and_drops_empty_values() {
+        let filters: ColumnFilters = serde_json::from_str(
+            r#"{"filters":{"title":{"Text":"  hello  "},"empty":{"Select":"  "},"range":{"NumberRange":{"min":null,"max":10.0}}}}"#,
+        )
+        .expect("valid filter JSON");
+        assert_eq!(filters.count(), 2);
+        assert_eq!(filters.get("title"), Some(&FilterValue::Text("hello".into())));
+        assert_eq!(
+            filters.get("range"),
+            Some(&FilterValue::NumberRange {
+                min: None,
+                max: Some(10.0),
+            })
+        );
     }
 
     #[test]
