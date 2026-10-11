@@ -109,7 +109,7 @@
     },
     "new_operation_order": [
       "enforce_expected_version",
-      "load_bodies_for_reviewed_publish",
+      "load_working_bodies_in_tx",
       "require_builder_sources",
       "parse_builder_project_values",
       "ensure_builder_publish_enabled_in_tx",
