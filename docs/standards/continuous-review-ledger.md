@@ -567,6 +567,29 @@ Hard limits for every iteration:
 - **Static verification:** scoped check `cargo check -p rustok-server` succeeded cleanly with exit code 0.
 - **Status:** `FS-22.08` complete. Next primary iteration: `FS-22.09 — Feature/config interaction matrix`.
 
+- [x] **FS-22.09 — Feature/config interaction matrix** — Compile-time feature flags vs runtime module enablement/host modes audited; catalog platform composition resilience in `RegistryOnly` host mode and storefront SSR compilation invariants remediated.
+
+### FS-22.09 Assessment — Feature/config interaction matrix
+
+- **Base:** `main` at `0662943e954c8fa02b28f04064245b116e101802`.
+- **Primary scope:** Compile-time feature flags (`apps/server/Cargo.toml`, domain modules, UI flags) vs runtime configuration and host modes (`RuntimeHostMode`: `Full`, `Api`, `AdminSsr`, `StorefrontSsr`, `Worker`, `RegistryOnly`), `first_party_catalog_modules` in `apps/server/src/controllers/marketplace_registry.rs`, surface contracts in `apps/server/src/services/app_runtime.rs`, and storefront SSR module adapters (`rustok-forum-storefront`).
+- **Invariant map:**
+  - Runtime host modes (`Full`, `Api`, `AdminSsr`, `StorefrontSsr`, `Worker`, `RegistryOnly`) must enforce clean boundary isolation without attempting uninitialized storage, unmigrated composition queries, or illegal operations;
+  - `RegistryOnly` host mode must load catalog manifest metadata from local `modules.toml` without hard-failing when platform database composition is uninitialized;
+  - Catalog release projections must gracefully fall back to manifest metadata when database governance state is uninitialized;
+  - Optional module compile flags must fail-closed safely when runtime callers probe uncompiled surfaces;
+  - Storefront SSR compositions must compile cleanly without lifetime/closure or missing import regressions.
+- **Confirmed finding FEATUREMATRIX-22.09-01 (Catalog DB Coupling in RegistryOnly):** In `first_party_catalog_modules` (`apps/server/src/controllers/marketplace_registry.rs`), `PlatformCompositionService::active_manifest(ctx.db())` was unconditionally called even in `RuntimeHostMode::RegistryOnly`. When `RegistryOnly` runs on a fresh/minimal database without platform composition migrations, catalog requests failed with 500 Internal Server Error instead of reading `ManifestManager::load()` from `modules.toml` (which is the accepted contract in `app_runtime.rs`). Furthermore, if `RegistryGovernanceService::apply_catalog_projection` failed (e.g. uninitialized releases table), catalog serving failed with 500 instead of returning manifest metadata.
+- **Confirmed finding FEATUREMATRIX-22.09-02 (Storefront SSR Module Compilation Failures):** When `embed-storefront` is enabled with `mod-forum`, `rustok-forum-storefront` failed to compile under `ssr` feature due to missing server adapter imports (`normalize_locale`, `server_error`, `StorefrontForumComposerQuote` in `composer_native_server.rs`), type mismatches (`RwSignal` vs `ReadSignal` in `leptos.rs`), precedence bugs (`!can_reply.then(...)`), and closure `FnOnce` captures moving environment variables in `composer.rs` and `leptos.rs`.
+- **Remediation:**
+  - `marketplace_registry.rs`: updated `first_party_catalog_modules` to load from `ManifestManager::load()` in `RegistryOnly` mode, fall back to `ManifestManager::load()` if `PlatformCompositionService::active_manifest(ctx.db())` fails, and fall back to manifest metadata if `apply_catalog_projection` fails.
+  - `rustok-forum-storefront`: fixed imports in `composer_native_server.rs`, proper `RwSignal` state binding in `leptos.rs`, parenthesized operator precedence `(!can_reply).then(...)`, and cloned label references per child closure in `composer.rs` and `leptos.rs` to preserve `FnMut`.
+- **Immediate re-audit:** verified that `first_party_catalog_modules` returns valid first-party modules in `RegistryOnly` mode and handles missing DB composition tables gracefully without 500 errors. Verified that `rustok-forum-storefront` compiles without warnings or errors with `ssr` enabled.
+- **Adjacent-boundary re-audit:** verified background worker gating across all workers (`runs_background_workers()`), ensuring background tasks never spawn in non-worker modes.
+- **Regression audit:** catalog endpoints continue to return projected releases when DB tables are available; storefront forum UI functions properly across view modes.
+- **Static verification:** scoped check `cargo check -p rustok-forum-storefront --features ssr` succeeded cleanly (exit code 0), and `cargo check -p rustok-server` succeeded cleanly (exit code 0).
+- **Status:** `FS-22.09` complete. Next primary iteration: `FS-22.10 — Error/observability boundary`.
+
 
 ### FS-22.06.03 Assessment — `apps/server/src/controllers/oauth.rs`
 
@@ -996,7 +1019,7 @@ Hard limits for every iteration:
 - [x] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [x] **FS-22.07 — Server-function composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [x] **FS-22.08 — Embedded UI composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
-- [ ] **FS-22.09 — Feature/config interaction matrix:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [x] **FS-22.09 — Feature/config interaction matrix:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.10 — Error/observability boundary:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.11 — Fresh second-pass composition audit:** perform this only after the module queue above has been completed, still one primary module per iteration.
 
@@ -1871,7 +1894,7 @@ The earlier FS-22.01 route-graph pass is retained as historical evidence and is 
 - [x] **FS-22.06 REST/controller composition:** trace controller registration, shared state extraction, response envelopes, status mapping, body/multipart handling, and per-route authorization.
 - [x] **FS-22.07 Server-function composition:** inspect `/api/fn/*`, context provisioning, CSRF/browser trust assumptions, auth and tenant propagation, and error/serialization boundaries.
 - [x] **FS-22.08 Embedded UI composition:** trace admin/storefront mounting, asset fallback behavior, nonce/CSP interaction, cache validators, route precedence, and headless/embedded profile combinations.
-- [ ] **FS-22.09 Feature/config interaction matrix:** inspect compile-time feature flags vs runtime module enablement/host modes and identify states that compile but produce incomplete or unsafe runtime composition.
+- [x] **FS-22.09 Feature/config interaction matrix:** inspect compile-time feature flags vs runtime module enablement/host modes and identify states that compile but produce incomplete or unsafe runtime composition.
 - [ ] **FS-22.10 Error/observability boundary:** inspect server-wide error mapping and logging for secret, identity, tenant, raw domain-error, and stack/payload leakage; verify stable public contracts.
 - [ ] **FS-22.11 Fresh second-pass composition audit:** after all FS-22 fixes, re-read the composition root from scratch without using the original findings list and record any newly discovered defects.
 

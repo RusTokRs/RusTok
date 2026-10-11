@@ -66,3 +66,36 @@ export function compareValues(
 
   return direction === 'asc' ? cmp : -cmp;
 }
+
+/**
+ * Repairs a half-filled sort state (e.g. from query params or storage).
+ * Returns null if invalid or blank.
+ */
+export function normalizeSort(state?: Partial<SortState> | null): SortState | null {
+  if (!state || !state.columnId) return null;
+  const colId = state.columnId.trim();
+  if (colId.length === 0) return null;
+  const dir: SortDirection = state.direction === 'desc' ? 'desc' : 'asc';
+  return { columnId: colId, direction: dir };
+}
+
+/**
+ * Checks whether the grid is sorted by the given columnId.
+ */
+export function isSortedBy(
+  state: SortState | null | undefined,
+  columnId: string
+): SortDirection | null {
+  if (!state || state.columnId !== columnId) return null;
+  return state.direction;
+}
+
+/**
+ * Returns aria-sort string for a specific column header.
+ */
+export function ariaSortFor(
+  state: SortState | null | undefined,
+  columnId: string
+): 'ascending' | 'descending' | 'none' {
+  return ariaSortValue(isSortedBy(state, columnId));
+}

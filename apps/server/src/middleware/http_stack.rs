@@ -360,8 +360,8 @@ fn is_identifier_like(s: &str) -> bool {
 ///
 /// 1. `SetRequestIdLayer` (`x-request-id` generation and request extension attachment)
 /// 2. `PropagateRequestIdLayer` (`x-request-id` header copied to outgoing response)
-/// 3. `SetSensitiveRequestHeadersLayer` (masks `Authorization`, `Cookie`, `Set-Cookie`, `x-rustok-runner-token`
-///    BEFORE tracing so credentials never leak to logs or spans)
+/// 3. `SetSensitiveRequestHeadersLayer` (masks `Authorization`, `Cookie`, `Set-Cookie`, `x-rustok-runner-token`,
+///    `x-rustok-host-token`, and `x-rustok-setup-token` BEFORE tracing so credentials never leak to logs or spans)
 /// 4. `TraceLayer` (per-request spans with latency in ms, status, and embedded `x-request-id` + `x-correlation-id`)
 /// 5. `record_http_metrics` (populates `HTTP_REQUESTS_TOTAL` and `HTTP_REQUEST_DURATION_SECONDS` with cardinality guards)
 /// 6. `CorsLayer` (explicit restricted origin preflight handling, credentials enabled, comprehensive headers)
@@ -390,6 +390,8 @@ pub fn apply_http_edge_stack(
         header::COOKIE,
         header::SET_COOKIE,
         HeaderName::from_static("x-rustok-runner-token"),
+        HeaderName::from_static("x-rustok-host-token"),
+        HeaderName::from_static("x-rustok-setup-token"),
     ]);
     let compression_layer = CompressionLayer::new();
 
@@ -539,5 +541,41 @@ mod tests {
                 .headers()
                 .contains_key("access-control-allow-methods")
         );
+    }
+
+    #[tokio::test]
+    async fn http_edge_stack_marks_custom_tokens_as_sensitive_headers() {
+        let app = Router::new().route(
+            "/sensitive",
+            get(|request: Request| async move {
+                let headers = request.headers();
+                let runner = headers.get("x-rustok-runner-token").map(|v| v.is_sensitive()).unwrap_or(false);
+                let host = headers.get("x-rustok-host-token").map(|v| v.is_sensitive()).unwrap_or(false);
+                let setup = headers.get("x-rustok-setup-token").map(|v| v.is_sensitive()).unwrap_or(false);
+                let auth = headers.get("authorization").map(|v| v.is_sensitive()).unwrap_or(false);
+                if runner && host && setup && auth {
+                    StatusCode::OK
+                } else {
+                    StatusCode::BAD_REQUEST
+                }
+            }),
+        );
+        let app = apply_http_edge_stack(app, false, None, 10);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/sensitive")
+                    .header("authorization", "Bearer test-secret")
+                    .header("x-rustok-runner-token", "runner-secret")
+                    .header("x-rustok-host-token", "host-secret")
+                    .header("x-rustok-setup-token", "setup-secret")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }

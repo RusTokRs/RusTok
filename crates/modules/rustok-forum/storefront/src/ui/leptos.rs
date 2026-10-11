@@ -22,7 +22,7 @@ use crate::core::{
 };
 use crate::i18n::{count_message, slug_message, t};
 use crate::model::{
-    ForumCategoryListItem, ForumReplyDetail, ForumReplyPage, ForumTopicDetail, ForumTopicPage,
+    ForumCategoryListItem, ForumReplyDetail, ForumReplyPage, ForumTopicDetail,
     StorefrontForumData,
 };
 use crate::transport;
@@ -201,10 +201,10 @@ fn ForumShowcase(
     // extend the page it already rendered instead of stopping at one page. `ForumShowcase` is
     // rebuilt whenever the read resource reloads (category switch, refresh after a post), so an
     // appended page cannot leak across selections and a late response cannot corrupt a new one.
-    let (topics_page, set_topics_page) = signal(topics);
+    let topics_page = RwSignal::new(topics);
     let (topics_busy, set_topics_busy) = signal(false);
     let (topics_error, set_topics_error) = signal(Option::<String>::None);
-    let (replies_page, set_replies_page) = signal(replies);
+    let replies_page = RwSignal::new(replies);
     let (replies_busy, set_replies_busy) = signal(false);
     let (replies_error, set_replies_error) = signal(Option::<String>::None);
     let feed_category_id = selected_category_id.clone();
@@ -231,7 +231,7 @@ fn ForumShowcase(
             )
             .await
             {
-                Ok(page) => set_topics_page.update(|state| state.append_page(page)),
+                Ok(page) => topics_page.update(|state| state.append_page(page)),
                 Err(error) => set_topics_error.set(Some(error.to_string())),
             }
             set_topics_busy.set(false);
@@ -252,7 +252,7 @@ fn ForumShowcase(
         set_replies_error.set(None);
         spawn_local(async move {
             match transport::fetch_storefront_forum_reply_page(topic_id, cursor, locale).await {
-                Ok(page) => set_replies_page.update(|state| state.append_page(page)),
+                Ok(page) => replies_page.update(|state| state.append_page(page)),
                 Err(error) => set_replies_error.set(Some(error.to_string())),
             }
             set_replies_busy.set(false);
@@ -652,7 +652,7 @@ fn ForumThreadPanel(
                             </button>
                         }
                     })}
-                    {!can_reply.then(|| {
+                    {(!can_reply).then(|| {
                         view! {
                             <span class="text-xs text-muted-foreground">
                                 {reply_closed_label.clone()}
@@ -725,33 +725,42 @@ fn ForumThreadPanel(
                     // The owner's cursor is the only source of "more exists": the control disappears
                     // when the thread is exhausted, and a failed page is named instead of silently
                     // leaving the list short.
-                    let footer = view! {
-                        <div class="mt-4 space-y-2">
-                            {paging_error.get().map(|message| view! {
-                                <p class="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                                    {format!("{}: {message}", page_error_label.clone())}
-                                </p>
-                            })}
-                            <div class="flex flex-wrap items-center justify-between gap-3">
-                                <span class="text-xs text-muted-foreground">
-                                    {loaded}
-                                </span>
-                                {has_more.then(|| view! {
-                                    <button
-                                        type="button"
-                                        class="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
-                                        disabled=move || paging_busy.get()
-                                        on:click=move |_| on_load_more.run(())
-                                    >
-                                        {move || if paging_busy.get() {
-                                            loading_label.clone()
-                                        } else {
-                                            load_more_label.clone()
-                                        }}
-                                    </button>
+                    let footer = {
+                        let page_error_label = page_error_label.clone();
+                        let loading_label = loading_label.clone();
+                        let load_more_label = load_more_label.clone();
+                        view! {
+                            <div class="mt-4 space-y-2">
+                                {paging_error.get().map(move |message| view! {
+                                    <p class="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                                        {format!("{}: {message}", page_error_label.clone())}
+                                    </p>
                                 })}
+                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                    <span class="text-xs text-muted-foreground">
+                                        {loaded}
+                                    </span>
+                                    {has_more.then(move || {
+                                        let loading_label = loading_label.clone();
+                                        let load_more_label = load_more_label.clone();
+                                        view! {
+                                            <button
+                                                type="button"
+                                                class="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                                                disabled=move || paging_busy.get()
+                                                on:click=move |_| on_load_more.run(())
+                                            >
+                                                {move || if paging_busy.get() {
+                                                    loading_label.clone()
+                                                } else {
+                                                    load_more_label.clone()
+                                                }}
+                                            </button>
+                                        }
+                                    })}
+                                </div>
                             </div>
-                        </div>
+                        }
                     };
                     view! {
                         <>

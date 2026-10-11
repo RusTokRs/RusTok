@@ -12,13 +12,15 @@
  * Framework-free table toolkit: the TypeScript twin of `crates/ui/rustok-grid`.
  *
  * Table state that an owner counts (filter facets), column models, pagination maths,
- * sorting state machines and route query editing are all framework-independent:
+ * sorting state machines, column resizing and route query editing are all framework-independent:
  *
  *   - `column.ts`     — column definitions, alignment, widths, pinning;
  *   - `pagination.ts` — pagination state, page count arithmetic, range labels;
  *   - `sort.ts`       — sort directions, tri-state cycling, value comparators;
  *   - `filter.ts`     — filter types, normalized active conditions;
  *   - `selection.ts`  — immutable Set-based row selection;
+ *   - `resize.ts`     — column width storage and pointer/keyboard resizing math;
+ *   - `state.ts`      — composite grid state with invalidation invariants;
  *   - `facet.ts`      — facet contract, domain rules, selection vocabulary;
  *   - `panel.ts`      — panel view model (counts, markers, hints, clear);
  *   - `url.ts`        — route query editing matching `rustok_ui_core`.
@@ -77,6 +79,22 @@ export {
   toggleRowSelection,
   type RowSelection
 } from "./selection";
+
+export {
+  ColumnWidths,
+  KEYBOARD_RESIZE_STEP,
+  calculateResizedWidth,
+  stepResizedWidth
+} from "./resize";
+
+export {
+  createGridState,
+  pruneGridSelection,
+  resetGridFilters,
+  setGridFilter,
+  toggleGridSort,
+  type GridState
+} from "./state";
 
 export {
   MAX_GRID_FACETS,
