@@ -9,19 +9,74 @@
  */
 
 /**
- * Framework-free table facet toolkit: the TypeScript twin of `crates/ui/rustok-grid`.
+ * Framework-free table toolkit: the TypeScript twin of `crates/ui/rustok-grid`.
  *
- * Table state that an owner counts (filter facets) and table state that lives in the route (query
- * pairs) are both framework-independent, so they live here instead of inside one surface:
+ * Table state that an owner counts (filter facets), column models, pagination maths,
+ * sorting state machines and route query editing are all framework-independent:
  *
- *   - `facet.ts`  — the facet contract, the domain rules and the `code=value` selection vocabulary;
- *   - `panel.ts`  — the panel view model every adapter renders (counts, markers, hints, clear);
- *   - `url.ts`    — route query editing with the same contract as `rustok_ui_core`.
+ *   - `column.ts`     — column definitions, alignment, widths, pinning;
+ *   - `pagination.ts` — pagination state, page count arithmetic, range labels;
+ *   - `sort.ts`       — sort directions, tri-state cycling, value comparators;
+ *   - `filter.ts`     — filter types, normalized active conditions;
+ *   - `selection.ts`  — immutable Set-based row selection;
+ *   - `facet.ts`      — facet contract, domain rules, selection vocabulary;
+ *   - `panel.ts`      — panel view model (counts, markers, hints, clear);
+ *   - `url.ts`        — route query editing matching `rustok_ui_core`.
  *
- * Consumers: the Next storefront product catalog re-exports the selection vocabulary and maps its
- * owner answer into a panel; the Next admin data-table host uses the same transitions for its
- * faceted filters. Nothing here imports React, Next or a fetch client.
+ * Nothing in this root entry imports React, Next or a fetch client.
  */
+
+export {
+  CHECKBOX_COLUMN_ID,
+  hasFilterRow,
+  visibleColumnCount,
+  visibleColumns,
+  type ColumnAlign,
+  type ColumnWidth,
+  type GridColumnDef,
+  type PinnedSide
+} from "./column";
+
+export {
+  DEFAULT_PAGE_SIZE,
+  calculateOffset,
+  calculatePageCount,
+  clampPage,
+  createPagination,
+  dataTableRangeLabel,
+  hasNextPage,
+  hasPreviousPage,
+  type GridPagination,
+  type PaginationMode
+} from "./pagination";
+
+export {
+  ariaSortValue,
+  compareValues,
+  cycleSort,
+  oppositeSortDirection,
+  type SortDirection,
+  type SortState
+} from "./sort";
+
+export {
+  isFilterActive,
+  normalizeFilters,
+  type ColumnFilters,
+  type FilterOption,
+  type FilterValue,
+  type GridFilterType
+} from "./filter";
+
+export {
+  areAllRowsSelected,
+  areSomeRowsSelected,
+  emptyRowSelection,
+  isRowSelected,
+  selectAllRows,
+  toggleRowSelection,
+  type RowSelection
+} from "./selection";
 
 export {
   MAX_GRID_FACETS,

@@ -152,7 +152,7 @@ async fn product_relations_command_native(
                         },
                     )
                     .await
-                    .map_err(|error| ServerFnError::new(relation_command_error_copy(&error)))?;
+                    .map_err(map_product_relation_command_error)?;
 
                 Ok(ProductRelationsAdminCommandResult {
                     item: Some(ProductRelationItem {
@@ -174,7 +174,7 @@ async fn product_relations_command_native(
                 service
                     .delete_relation(tenant.id, Some(auth.user_id), rel_id)
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                    .map_err(map_product_relation_error)?;
 
                 Ok(ProductRelationsAdminCommandResult {
                     item: None,
@@ -206,7 +206,7 @@ async fn product_relations_command_native(
                         },
                     )
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                    .map_err(map_product_relation_error)?;
 
                 Ok(ProductRelationsAdminCommandResult {
                     item: None,
@@ -241,11 +241,32 @@ async fn product_relations_command_native(
 use rustok_product_relations::ProductRelationCommandError;
 
 #[cfg(feature = "ssr")]
-/// Bounded operator copy for one failed idempotent relation command.
-fn relation_command_error_copy(error: &ProductRelationCommandError) -> String {
+fn map_product_relation_error(
+    error: rustok_product_relations::ProductRelationError,
+) -> ServerFnError {
     match error {
-        ProductRelationCommandError::Domain(error) => error.to_string(),
-        ProductRelationCommandError::Receipt(error) => error.message.clone(),
+        rustok_product_relations::ProductRelationError::Database(db_err) => {
+            tracing::error!(%db_err, "Product relations database operation failed");
+            ServerFnError::new("Internal database error")
+        }
+        rustok_product_relations::ProductRelationError::Outbox(outbox_err) => {
+            tracing::error!(%outbox_err, "Product relations outbox operation failed");
+            ServerFnError::new("Internal processing error")
+        }
+        other => ServerFnError::new(other.to_string()),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_product_relation_command_error(error: ProductRelationCommandError) -> ServerFnError {
+    match error {
+        ProductRelationCommandError::Domain(domain_err) => {
+            map_product_relation_error(domain_err)
+        }
+        ProductRelationCommandError::Receipt(port_err) => {
+            tracing::error!(%port_err, "Product relations receipt error");
+            ServerFnError::new(port_err.message)
+        }
     }
 }
 

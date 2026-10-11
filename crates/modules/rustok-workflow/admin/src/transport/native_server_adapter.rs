@@ -21,6 +21,10 @@ pub async fn fetch_workflows_native() -> Result<Vec<WorkflowSummary>, ServerFnEr
             .await
             .map_err(ServerFnError::new)?;
 
+        if auth.tenant_id != tenant.id {
+            return Err(ServerFnError::new("Permission denied: tenant mismatch"));
+        }
+
         if !has_any_effective_permission(&auth.permissions, &[Permission::WORKFLOWS_LIST]) {
             return Err(ServerFnError::new("workflows:list required"));
         }
@@ -30,7 +34,7 @@ pub async fn fetch_workflows_native() -> Result<Vec<WorkflowSummary>, ServerFnEr
             .list(tenant.id)
             .await
             .map(|items| items.into_iter().map(map_workflow_summary).collect())
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_workflow_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -101,6 +105,10 @@ pub async fn create_from_template_native(
             .await
             .map_err(ServerFnError::new)?;
 
+        if auth.tenant_id != tenant.id {
+            return Err(ServerFnError::new("Permission denied: tenant mismatch"));
+        }
+
         if !has_any_effective_permission(&auth.permissions, &[Permission::WORKFLOWS_CREATE]) {
             return Err(ServerFnError::new("workflows:create required"));
         }
@@ -110,7 +118,7 @@ pub async fn create_from_template_native(
             .create_from_template(tenant.id, auth.human_user_id(), &template_id, name)
             .await
             .map(|id| id.to_string())
-            .map_err(|err| ServerFnError::new(err.to_string()))
+            .map_err(map_workflow_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -118,6 +126,42 @@ pub async fn create_from_template_native(
         Err(ServerFnError::new(
             "workflow-admin/create-from-template requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_workflow_error(err: rustok_workflow::WorkflowError) -> ServerFnError {
+    match err {
+        rustok_workflow::WorkflowError::NotFound(id) => {
+            ServerFnError::new(format!("Workflow not found: {id}"))
+        }
+        rustok_workflow::WorkflowError::StepNotFound(id) => {
+            ServerFnError::new(format!("Workflow step not found: {id}"))
+        }
+        rustok_workflow::WorkflowError::ExecutionNotFound(id) => {
+            ServerFnError::new(format!("Workflow execution not found: {id}"))
+        }
+        rustok_workflow::WorkflowError::NotActive(status) => {
+            ServerFnError::new(format!("Workflow is not active (status: {status})"))
+        }
+        rustok_workflow::WorkflowError::InvalidTriggerConfig(msg) => {
+            ServerFnError::new(format!("Invalid trigger configuration: {msg}"))
+        }
+        rustok_workflow::WorkflowError::InvalidStepConfig(msg) => {
+            ServerFnError::new(format!("Invalid step configuration: {msg}"))
+        }
+        rustok_workflow::WorkflowError::Database(db_err) => {
+            tracing::error!(%db_err, "Workflow database operation failed");
+            ServerFnError::new("Internal database error")
+        }
+        rustok_workflow::WorkflowError::Serialization(ser_err) => {
+            tracing::error!(%ser_err, "Workflow serialization failed");
+            ServerFnError::new("Serialization error")
+        }
+        other => {
+            tracing::error!(%other, "Workflow operation failed");
+            ServerFnError::new("Workflow operation failed")
+        }
     }
 }
 

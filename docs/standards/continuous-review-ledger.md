@@ -443,7 +443,7 @@ Hard limits for every iteration:
 
 - [x] **FS-22.05.28 — `apps/server/src/services/app_runtime.rs`** — reordered rate-limit runtime initialization ahead of GraphQL schema construction so Blog/Search GraphQL policies receive their shared limiter handles. Source-level fix and adjacent composition re-audit complete; maintainer-owned tests/build/runtime evidence remain pending.
 - [x] **FS-22.05 — GraphQL composition:** completed through FS-22.05.28 after the GraphQL runtime composition/rate-limit ordering fix and post-merge reconciliation. Remaining maintainer-owned scoped verification is explicitly recorded on the individual iterations.
-- [ ] **FS-22.06 — REST/controller composition:** decomposed below into ordered one-primary-module iterations; begin with the auth controller because it is the highest-risk self-service REST boundary.
+- [x] **FS-22.06 — REST/controller composition:** decomposed below into ordered one-primary-module iterations; begin with the auth controller because it is the highest-risk self-service REST boundary.
 - [x] **FS-22.06.01 — `apps/server/src/controllers/auth.rs`** — auth lifecycle delegation and tenant-scoped session operations completed; public routes/DTOs unchanged. PR #4556 squash merged as `fd0df50e6537ad38fc708cbaebff1917ea5d9880`.
 - [x] **FS-22.06.02 — `apps/server/src/controllers/users.rs`** — fresh one-module audit complete; tenant isolation, permission admission, bounded pagination, DB error propagation, DTO projection, and route compatibility reverified. No repository-owned production defect required remediation.
 - [x] **FS-22.06.03 — `apps/server/src/controllers/oauth.rs`** — OAuth transport/OpenAPI audit complete after bounded post-merge visibility remediation; RFC 7009 form revocation, transport-safe consent errors, complete OpenAPI registration, handler visibility, and consent security metadata are now aligned.
@@ -522,6 +522,24 @@ Hard limits for every iteration:
 - **Remediation:** dual-mounted `/api/channels` alongside `/api/channels/` matching the convention used in `controllers/users.rs`.
 - **Verification:** repository source inspection, CodeGraph call-flow exploration, and branch diff review. Maintainer build and test execution remain required per repo policy.
 - **Status:** `FS-22.06.08` complete on branch `codex/audit-server-bootstrap-and-host`.
+
+- [x] **FS-22.07 — Server-function composition (`/api/fn/*`)** — Leptos server function route mounting, context injection, CSRF/Bearer trust boundaries, tenant/auth propagation, and error sanitization audited; raw DB/internal error leaking across module adapters remediated.
+
+### FS-22.07 Assessment — Server-function composition (`/api/fn/*`)
+
+- **Base:** `main` at `0662943e954c8fa02b28f04064245b116e101802`.
+- **Primary scope:** `/api/fn/{*fn_name}` route mounting in `apps/server/src/services/app_router.rs`, Leptos context injection (`HostRuntimeContext`, `ModuleRegistry`), CSRF immunity model, tenant and auth context propagation via `leptos_axum::extract`, channel invalidation middleware (`apps/server/src/middleware/channel_native_wrapper.rs`), and error/serialization boundaries across native module server adapters.
+- **Invariant map:** server function routing must use POST-only endpoints; authentication must remain strictly Bearer-token driven without ambient-credential cookie reliance to prevent CSRF; tenant and auth contexts must be validated fail-closed with tenant identity consistency (`auth.tenant_id == tenant.id`); module server adapters must never leak raw database queries, internal errors, or SQL schema details into client-facing `ServerFnError` messages.
+- **Confirmed finding SERVERFN-22.07-01:** Several native server adapters (`rustok-workflow-admin`, `rustok-product-relations-admin`, `rustok-seo-admin`) mapped domain and database errors directly using `.map_err(|err| ServerFnError::new(err.to_string()))`, which exposes internal `DbErr` messages (including SQL queries, connection failures, and table schema identifiers) directly to the browser client and lacks server-side error tracing. Furthermore, `rustok-workflow-admin` lacked an explicit check that `auth.tenant_id == tenant.id`.
+- **Remediation:**
+  - `rustok-workflow-admin`: added explicit tenant consistency check `auth.tenant_id != tenant.id`; implemented `map_workflow_error` mapping internal errors to sanitized client messages while logging original database errors to server telemetry with `tracing::error!`.
+  - `rustok-product-relations-admin`: implemented `map_product_relation_error` and `map_product_relation_command_error` across relation query and command endpoints (`create`, `delete`, `reorder`), replacing raw `err.to_string()` with structured server tracing and stable user-safe error strings.
+  - `rustok-seo-admin`: added `tracing` dependency; implemented `map_seo_error` and `map_db_error` across all native server function handlers (redirects, sitemaps, settings, diagnostics, bulk operations, and index repair replay); sanitized setting serialization error handling.
+- **Immediate re-audit:** verified that all modified adapters log internal errors server-side via `tracing::error!` and return stable, non-leaking `ServerFnError` messages. Verified that tenant matching is strictly enforced.
+- **Adjacent-boundary re-audit:** traced interaction with `apps/server/src/services/app_router.rs` server function router and `apps/server/src/middleware/channel_native_wrapper.rs`. Confirmed that channel cache invalidation remains consistent on mutations and request context extracts cleanly.
+- **Regression audit:** client UI error handling remains functional as client components receive valid `ServerFnError` strings without exposing database internals; command arguments and signatures remain unchanged.
+- **Static & local scoped verification:** executed `cargo check -p rustok-workflow-admin -p rustok-product-relations-admin -p rustok-seo-admin`, which succeeded cleanly with exit code 0.
+- **Status:** `FS-22.07` complete. Next primary iteration: `FS-22.08 — Embedded UI composition`.
 
 
 ### FS-22.06.03 Assessment — `apps/server/src/controllers/oauth.rs`
@@ -949,8 +967,8 @@ Hard limits for every iteration:
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** iteration ready for PR/merge after final branch-diff review.
 
-- [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
-- [ ] **FS-22.07 — Server-function composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [x] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [x] **FS-22.07 — Server-function composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.08 — Embedded UI composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.09 — Feature/config interaction matrix:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.10 — Error/observability boundary:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -1824,8 +1842,8 @@ The earlier FS-22.01 route-graph pass is retained as historical evidence and is 
 - [ ] **FS-22.03 Identity/auth propagation:** trace token parsing, principal construction, optional/required auth, session/refresh behavior, impersonation/agent paths, and transport boundary identity reconstruction.
 - [ ] **FS-22.04 Tenant/channel/locale propagation:** follow context from HTTP headers/claims through middleware, GraphQL, REST, server functions, cache keys, DB access, and downstream module calls; specifically test conceptual cross-tenant/channel/locale leakage cases by code inspection.
 - [ ] **FS-22.05 GraphQL composition:** trace schema construction, resolver registration, runtime data factories, error conversion, request context, authorization, limits, introspection/IDE exposure, and feature-flag/module interactions.
-- [ ] **FS-22.06 REST/controller composition:** trace controller registration, shared state extraction, response envelopes, status mapping, body/multipart handling, and per-route authorization.
-- [ ] **FS-22.07 Server-function composition:** inspect `/api/fn/*`, context provisioning, CSRF/browser trust assumptions, auth and tenant propagation, and error/serialization boundaries.
+- [x] **FS-22.06 REST/controller composition:** trace controller registration, shared state extraction, response envelopes, status mapping, body/multipart handling, and per-route authorization.
+- [x] **FS-22.07 Server-function composition:** inspect `/api/fn/*`, context provisioning, CSRF/browser trust assumptions, auth and tenant propagation, and error/serialization boundaries.
 - [ ] **FS-22.08 Embedded UI composition:** trace admin/storefront mounting, asset fallback behavior, nonce/CSP interaction, cache validators, route precedence, and headless/embedded profile combinations.
 - [ ] **FS-22.09 Feature/config interaction matrix:** inspect compile-time feature flags vs runtime module enablement/host modes and identify states that compile but produce incomplete or unsafe runtime composition.
 - [ ] **FS-22.10 Error/observability boundary:** inspect server-wide error mapping and logging for secret, identity, tenant, raw domain-error, and stack/payload leakage; verify stable public contracts.

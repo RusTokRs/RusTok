@@ -1,34 +1,35 @@
 # `@rustok/ui-grid`
 
-Framework-free facet and query-state toolkit for RusTok tables — the TypeScript twin of
+Framework-free table toolkit and React DataGrid companion for RusTok — the TypeScript twin of
 `crates/ui/rustok-grid`.
 
 ## Why it exists
 
-Facet counting is owner-side: a product owner counts the buckets (`CatalogService::*_catalog_facets`),
-`rustok-grid` owns the panel contract, and every adapter only maps the answer and renders it. The
-Leptos surfaces got that split in the product audit remediation waves; the Next surfaces used to keep
-a private copy of the same rules inside one module package, which meant a second table (the admin
-data-table host) could not reuse them.
+DataGrid state machine and arithmetic are owner-side:
+- `rustok-grid` owns column specifications, pagination maths, sort transitions, filters, row selection, and the facet/panel contract.
+- UI adapters (`rustok-grid-leptos`, `@rustok/ui-grid/react`) map and render this state without reinventing calculations.
 
-This package is that shared half. It imports no React, no Next and no fetch client, so it can be
-consumed from a server component, a client widget, a route handler or a test runner.
+This package is that shared half for TypeScript/Next.js applications. Its root entry (`@rustok/ui-grid`) imports no React, no Next and no fetch client, so it can be consumed from a server component, a route handler or a test runner. Its React companion (`@rustok/ui-grid/react`) provides standard companion components for `@tanstack/react-table`.
 
 ## Layout
 
 | Module | Mirrors | Carries |
 |---|---|---|
+| `column.ts` | `rustok-grid::column` | `ColumnAlign` (`left`/`center`/`right`), `PinnedSide`, `ColumnWidth`, `GridColumnDef`, `CHECKBOX_COLUMN_ID`, `visibleColumns`, `hasFilterRow`. |
+| `pagination.ts` | `rustok-grid::pagination` | `DEFAULT_PAGE_SIZE`, `PaginationMode` (`paged`/`infinite`), `GridPagination`, `calculatePageCount`, `clampPage`, `calculateOffset`, `hasPreviousPage`, `hasNextPage`, `dataTableRangeLabel`. |
+| `sort.ts` | `rustok-grid::sort` | `SortDirection` (`asc`/`desc`), `SortState`, `cycleSort`, `oppositeSortDirection`, `compareValues`, `ariaSortValue`. |
+| `filter.ts` | `rustok-grid::filter` | `GridFilterType`, `FilterOption`, `FilterValue`, `ColumnFilters`, `isFilterActive`, `normalizeFilters`. |
+| `selection.ts` | `rustok-grid::selection` | `RowSelection` (immutable Set), `toggleRowSelection`, `selectAllRows`, `isRowSelected`, `areAllRowsSelected`. |
 | `facet.ts` | `rustok-grid::facet` | `FacetDomain` (dictionary/boolean/open), `facetFromBuckets` (cuts at `MAX_GRID_FACET_VALUES` and reports `isTruncated`), `facetFilterOptions`, and the `code=value` selection vocabulary: `selectionEntry`/`splitSelection`/`parseSelection`/`serializeSelection`, `isSelectionSelected` (keys case-insensitive, values exact), `hasSelectionForKey`, `selectionForKey`, `selectionExcept`, `selectionAfterToggle` (order-preserving), `selectionAfterClearKey`, `selectionAfterClear`. |
 | `panel.ts` | `rustok-grid::facet_panel` | `FacetPanelLabels` + `ENGLISH_FACET_PANEL_LABELS`, `countLabel`, `buildFacetPanel` (caps at `MAX_GRID_FACETS`, adds hints, markers and per-bucket `selectionEntry`) and the panel-level transitions. |
 | `url.ts` | `rustok_ui_core::apply_ui_query_pairs` | `applyQueryPairs` (existing key keeps its position, blank value removes the key, browser form encoding) and `queryParam`. |
+| `react/` | `rustok-grid-leptos` | `@rustok/ui-grid/react`: companion adapter providing `DataTableStatic`, `DataTableEmptyState`, `DataTablePaginationBar` for `@tanstack/react-table`. |
 
 ## Contract notes
 
-- The panel never builds a link. It reports `selectionEntry`/`selected` and the adapter turns a
-  selection into an href (the storefront), a router push or a local filter update.
-- Copy is never owned here: an adapter passes `FacetPanelLabels`, because only the adapter knows the
-  locale. The count template is code-owned (`({count})` by default) and substituted textually, so it
-  must not become a Fluent message — `{count}` would parse as a message reference there.
+- The root package (`@rustok/ui-grid`) stays strictly framework-free.
+- The React companion (`@rustok/ui-grid/react`) provides standard components as a companion to `@tanstack/react-table`.
+- Pagination arithmetic is unified: `calculatePageCount` guarantees a floor of 1 page (an empty table reports 1 page, never 0).
 - Keys compare case-insensitively while values compare exactly: a value is an option id.
 
 ## Consumers
@@ -37,11 +38,12 @@ consumed from a server component, a client widget, a route handler or a test run
   vocabulary under the product names and maps the owner answer into `buildCatalogFacetFiltersView`.
 - `apps/next-admin/src/widgets/data-table/data-table-faceted-filter.tsx` uses the shared transitions
   for its multi-select facets.
+- `apps/next-admin/src/features/modules/components/modules-list.tsx` uses `DataTableStatic` for build history and module listings.
 
 Both hosts install it through a `file:` dependency (`file:../../packages/rustok-ui-grid`), map it in
 `tsconfig.json` → `paths` and list it in `next.config.*` → `transpilePackages`, like every other
 workspace package.
 
 Parity with the Rust original is locked by
-`scripts/verify/verify-ui-grid-facets.mjs` (surface) and `scripts/verify/verify-ui-grid-facets.test.mjs`
+`scripts/verify/verify-product-ui-grid-facets.mjs` (surface) and `scripts/verify/verify-product-ui-grid-facets.test.mjs`
 (behaviour, executing this package through Node's type stripping).
