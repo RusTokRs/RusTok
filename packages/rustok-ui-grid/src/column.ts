@@ -1,5 +1,6 @@
 /**
- * Column definitions for RusTok DataGrid — the TypeScript twin of `crates/ui/rustok-grid/src/column.rs`.
+ * Column definitions for RusTok DataGrid — the TypeScript twin of
+ * `crates/ui/rustok-grid/src/column.rs`.
  *
  * Framework-free: no React, no DOM, no styling assumptions.
  */
@@ -9,139 +10,301 @@ import type { GridFilterType } from './filter';
 /** Identifier of the synthetic selection column rendered as a checkbox. */
 export const CHECKBOX_COLUMN_ID = '__checkbox';
 
+/** Largest width representable by the Rust core's `u32` width fields. */
+export const MAX_COLUMN_WIDTH = 0xffff_ffff;
+
+/** Stable identifier of a grid column. */
+export type ColumnId = string;
+
 /** Horizontal alignment of a column's content. */
 export type ColumnAlign = 'left' | 'center' | 'right';
 
 /** Pinned side for fixed columns. */
 export type PinnedSide = 'left' | 'right';
 
-/** Sizing constraints for a column. */
+/** Width constraints of a column; `min <= current <= max` always holds. */
 export interface ColumnWidth {
-  min?: number;
-  max?: number;
-  default?: number;
+  min: number;
+  max: number;
+  current: number;
 }
 
-/** Creates a normalized ColumnWidth descriptor. */
-export function createColumnWidth(
-  defaultPx: number = 150,
-  minPx: number = 50,
-  maxPx: number = 800
+/** Declarative description of one grid column. */
+export interface GridColumnDef {
+  id: ColumnId;
+  title: string;
+  align: ColumnAlign;
+  width: ColumnWidth;
+  sortable: boolean;
+  resizable: boolean;
+  filterable: boolean;
+  visible: boolean;
+  pinned: PinnedSide | null;
+  filterType: GridFilterType | null;
+}
+
+/** Validate a pixel width that crosses the JavaScript/Rust boundary. */
+export function assertColumnWidthPx(value: number, name = 'width'): number {
+  if (!Number.isInteger(value) || value < 0 || value > MAX_COLUMN_WIDTH) {
+    throw new RangeError(`${name} must be an integer between 0 and ${MAX_COLUMN_WIDTH}`);
+  }
+  return value;
+}
+
+function orderedBounds(min: number, max: number): [number, number] {
+  const lower = assertColumnWidthPx(min, 'min width');
+  const upper = assertColumnWidthPx(max, 'max width');
+  return lower <= upper ? [lower, upper] : [upper, lower];
+}
+
+/** The default resizable width used by an ordinary column. */
+export function createDefaultColumnWidth(): ColumnWidth {
+  return { min: 50, max: 800, current: 150 };
+}
+
+/** A column that cannot grow or shrink. */
+export function createFixedColumnWidth(px: number): ColumnWidth {
+  const width = assertColumnWidthPx(px);
+  return { min: width, max: width, current: width };
+}
+
+/** Create a resizable width, normalizing reversed bounds and clamping its default. */
+export function createResizableColumnWidth(
+  defaultPx: number,
+  minPx: number,
+  maxPx: number,
 ): ColumnWidth {
-  const min = Math.min(minPx, maxPx);
-  const max = Math.max(minPx, maxPx);
-  const def = Math.min(Math.max(min, defaultPx), max);
-  return { default: def, min, max };
+  const [min, max] = orderedBounds(minPx, maxPx);
+  const preferred = assertColumnWidthPx(defaultPx, 'default width');
+  return { min, max, current: Math.min(max, Math.max(min, preferred)) };
 }
 
-/** Creates a fixed non-resizable ColumnWidth. */
-export function fixedColumnWidth(px: number): ColumnWidth {
-  return { default: px, min: px, max: px };
+/** Repair an externally supplied width descriptor. */
+export function normalizeColumnWidth(width: ColumnWidth): ColumnWidth {
+  return createResizableColumnWidth(width.current, width.min, width.max);
 }
 
-/** Clamps a pixel width within the bounds of a ColumnWidth. */
+/** Clamp an arbitrary width into a column's range. */
 export function clampColumnWidth(width: ColumnWidth, px: number): number {
-  const min = width.min ?? 50;
-  const max = width.max ?? 800;
-  const lower = Math.min(min, max);
-  const upper = Math.max(min, max);
-  return Math.min(Math.max(lower, px), upper);
+  const normalized = normalizeColumnWidth(width);
+  const requested = assertColumnWidthPx(px);
+  return Math.min(normalized.max, Math.max(normalized.min, requested));
 }
 
-/** Definition of a column in the data grid. */
-export interface GridColumnDef<T = unknown> {
-  id: string;
-  header: string;
-  title?: string;
-  align?: ColumnAlign;
-  sortable?: boolean;
-  resizable?: boolean;
-  filterable?: boolean;
-  filterType?: GridFilterType;
-  pinned?: PinnedSide;
-  width?: ColumnWidth;
-  visible?: boolean;
-  cell?: (row: T) => unknown;
-}
-
-/** Creates a standardized column definition with sensible defaults. */
-export function createColumnDef<T = unknown>(
-  id: string,
-  header: string,
-  options?: Partial<GridColumnDef<T>>
-): GridColumnDef<T> {
+/** Set the preferred width, widening the range instead of discarding existing bounds. */
+export function setPreferredColumnWidth(width: ColumnWidth, px: number): ColumnWidth {
+  const normalized = normalizeColumnWidth(width);
+  const preferred = assertColumnWidthPx(px);
   return {
-    id,
-    header,
-    title: options?.title ?? header,
-    align: options?.align ?? 'left',
-    sortable: options?.sortable ?? true,
-    resizable: options?.resizable ?? true,
-    filterable: options?.filterable ?? true,
-    visible: options?.visible ?? true,
-    filterType: options?.filterType,
-    pinned: options?.pinned,
-    width: options?.width ?? createColumnWidth(),
-    cell: options?.cell
+    min: Math.min(normalized.min, preferred),
+    max: Math.max(normalized.max, preferred),
+    current: preferred,
   };
 }
 
-/** Synthetic row-selection checkbox column definition matching Rust CHECKBOX_COLUMN_ID. */
-export function createCheckboxColumn<T = unknown>(): GridColumnDef<T> {
+/** Raise the lower bound, pushing the upper bound and current width up if required. */
+export function setColumnMinWidth(width: ColumnWidth, minPx: number): ColumnWidth {
+  const normalized = normalizeColumnWidth(width);
+  const min = assertColumnWidthPx(minPx, 'min width');
+  const max = Math.max(normalized.max, min);
+  return { min, max, current: Math.min(max, Math.max(min, normalized.current)) };
+}
+
+/** Lower the upper bound, pulling the lower bound and current width down if required. */
+export function setColumnMaxWidth(width: ColumnWidth, maxPx: number): ColumnWidth {
+  const normalized = normalizeColumnWidth(width);
+  const max = assertColumnWidthPx(maxPx, 'max width');
+  const min = Math.min(normalized.min, max);
+  return { min, max, current: Math.min(max, Math.max(min, normalized.current)) };
+}
+
+/** True when a column has an actual range to resize within. */
+export function isColumnWidthFlexible(width: ColumnWidth): boolean {
+  const normalized = normalizeColumnWidth(width);
+  return normalized.min !== normalized.max;
+}
+
+/** Create an ordinary column with the same defaults as `GridColumnDef::new`. */
+export function createGridColumnDef(id: ColumnId, title: string): GridColumnDef {
+  return {
+    id,
+    title,
+    align: 'left',
+    width: createDefaultColumnWidth(),
+    sortable: true,
+    resizable: true,
+    filterable: true,
+    visible: true,
+    pinned: null,
+    filterType: null,
+  };
+}
+
+/** Preferred width, widening min/max when necessary (order-independent). */
+export function withColumnWidth(column: GridColumnDef, px: number): GridColumnDef {
+  return { ...column, width: setPreferredColumnWidth(column.width, px) };
+}
+
+/** Full width specification in one call. */
+export function withColumnWidthRange(
+  column: GridColumnDef,
+  defaultPx: number,
+  minPx: number,
+  maxPx: number,
+): GridColumnDef {
+  return { ...column, width: createResizableColumnWidth(defaultPx, minPx, maxPx) };
+}
+
+/** Raise the lower bound, pushing the upper bound and current width up if required. */
+export function withColumnMinWidth(column: GridColumnDef, minPx: number): GridColumnDef {
+  return { ...column, width: setColumnMinWidth(column.width, minPx) };
+}
+
+/** Lower the upper bound, pulling the lower bound and current width down if required. */
+export function withColumnMaxWidth(column: GridColumnDef, maxPx: number): GridColumnDef {
+  return { ...column, width: setColumnMaxWidth(column.width, maxPx) };
+}
+
+/** Disable resizing while preserving the configured width descriptor. */
+export function withColumnNotResizable(column: GridColumnDef): GridColumnDef {
+  return { ...column, resizable: false };
+}
+
+/** Disable sorting. */
+export function withColumnNotSortable(column: GridColumnDef): GridColumnDef {
+  return { ...column, sortable: false };
+}
+
+/** Hide a column from the rendered column set. */
+export function hideColumn(column: GridColumnDef): GridColumnDef {
+  return { ...column, visible: false };
+}
+
+/** Set the content alignment. */
+export function withColumnAlign(column: GridColumnDef, align: ColumnAlign): GridColumnDef {
+  return { ...column, align };
+}
+
+/** Attach a filter control to the column. */
+export function withColumnFilter(
+  column: GridColumnDef,
+  filterType: GridFilterType,
+): GridColumnDef {
+  return { ...column, filterable: true, filterType };
+}
+
+/** Disable filtering and discard its control descriptor. */
+export function withColumnNotFilterable(column: GridColumnDef): GridColumnDef {
+  return { ...column, filterable: false, filterType: null };
+}
+
+/** Pin a column to one side of the grid. */
+export function pinColumn(column: GridColumnDef, side: PinnedSide): GridColumnDef {
+  return { ...column, pinned: side };
+}
+
+/** Remove a column's pin. */
+export function unpinColumn(column: GridColumnDef): GridColumnDef {
+  return { ...column, pinned: null };
+}
+
+/** Synthetic row-selection column. */
+export function createCheckboxColumn(): GridColumnDef {
   return {
     id: CHECKBOX_COLUMN_ID,
-    header: '',
     title: '',
     align: 'center',
-    width: fixedColumnWidth(44),
+    width: createFixedColumnWidth(44),
     sortable: false,
     resizable: false,
     filterable: false,
     visible: true,
-    pinned: 'left'
+    pinned: 'left',
+    filterType: null,
   };
 }
 
-/** Trailing column definition reserved for row actions. */
-export function createActionsColumn<T = unknown>(
-  id: string = 'actions',
-  header: string = 'Actions'
-): GridColumnDef<T> {
+/** Trailing column reserved for row actions. */
+export function createActionsColumn(id: ColumnId, title: string): GridColumnDef {
   return {
     id,
-    header,
-    title: header,
+    title,
     align: 'right',
-    width: fixedColumnWidth(80),
+    width: createFixedColumnWidth(80),
     sortable: false,
     resizable: false,
     filterable: false,
     visible: true,
-    pinned: 'right'
+    pinned: 'right',
+    filterType: null,
   };
 }
 
-/** Checks whether a column is the synthetic row selection checkbox column. */
-export function isCheckboxColumn(col: { id: string }): boolean {
-  return col.id === CHECKBOX_COLUMN_ID;
+/** True for the synthetic row-selection column. */
+export function isCheckboxColumn(column: Pick<GridColumnDef, 'id'>): boolean {
+  return column.id === CHECKBOX_COLUMN_ID;
 }
 
-/** Checks whether a column should render an interactive filter control. */
-export function hasColumnFilter(col: GridColumnDef<unknown>): boolean {
-  return col.filterable === true && col.filterType !== undefined;
+/** True when this column should render an interactive filter control. */
+export function hasFilter(
+  column: Pick<GridColumnDef, 'filterable' | 'filterType'>,
+): boolean {
+  return column.filterable && column.filterType !== null && column.filterType !== undefined;
 }
 
-/** Returns the count of visible columns in the definition list. */
-export function visibleColumnCount<T>(columns: GridColumnDef<T>[]): number {
-  return columns.filter((col) => col.visible !== false).length;
+/** Filters the column list to only visible columns, preserving declaration order. */
+export function visibleColumns<T extends Pick<GridColumnDef, 'visible'>>(
+  columns: readonly T[],
+): T[] {
+  return columns.filter((column) => column.visible);
 }
 
-/** Filters the column list to only visible columns. */
-export function visibleColumns<T>(columns: GridColumnDef<T>[]): GridColumnDef<T>[] {
-  return columns.filter((col) => col.visible !== false);
+/** Number of columns actually rendered — the only correct value for `colspan`. */
+export function visibleColumnCount<T extends Pick<GridColumnDef, 'visible'>>(
+  columns: readonly T[],
+): number {
+  return visibleColumns(columns).length;
 }
 
-/** Checks whether any column in the grid has a filter configured. */
-export function hasFilterRow<T>(columns: GridColumnDef<T>[]): boolean {
-  return columns.some((col) => col.filterable === true || col.filterType !== undefined);
+/** True when at least one visible column renders a filter control. */
+export function hasFilterRow(
+  columns: readonly GridColumnDef[],
+): boolean {
+  return visibleColumns(columns).some(hasFilter);
 }
+
+/** Compatibility alias for createGridColumnDef with optional options. */
+export function createColumnDef(
+  id: ColumnId,
+  title: string,
+  options?: Partial<GridColumnDef> & { header?: string }
+): GridColumnDef {
+  let col = createGridColumnDef(id, options?.title ?? options?.header ?? title);
+  if (options?.align) col = withColumnAlign(col, options.align);
+  if (options?.sortable === false) col = withColumnNotSortable(col);
+  if (options?.resizable === false) col = withColumnNotResizable(col);
+  if (options?.visible === false) col = hideColumn(col);
+  if (options?.filterType) col = withColumnFilter(col, options.filterType);
+  if (options?.pinned) col = pinColumn(col, options.pinned);
+  if (options?.width) col = { ...col, width: options.width };
+  return col;
+}
+
+/** Compatibility alias for createResizableColumnWidth. */
+export function createColumnWidth(
+  defaultPx = 150,
+  minPx = 50,
+  maxPx = 800
+): ColumnWidth & { default: number } {
+  const w = createResizableColumnWidth(defaultPx, minPx, maxPx);
+  return { ...w, default: w.current };
+}
+
+/** Compatibility alias for createFixedColumnWidth. */
+export function fixedColumnWidth(px: number): ColumnWidth & { default: number } {
+  const w = createFixedColumnWidth(px);
+  return { ...w, default: w.current };
+}
+
+/** Compatibility alias for hasFilter. */
+export const hasColumnFilter = hasFilter;

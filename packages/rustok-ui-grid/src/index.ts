@@ -11,50 +11,65 @@
 /**
  * Framework-free table toolkit: the TypeScript twin of `crates/ui/rustok-grid`.
  *
- * Table state that an owner counts (filter facets), column models, pagination maths,
- * sorting state machines, column resizing and route query editing are all framework-independent:
- *
- *   - `column.ts`     — column definitions, alignment, widths, pinning;
- *   - `pagination.ts` — pagination state, page count arithmetic, range labels;
- *   - `sort.ts`       — sort directions, tri-state cycling, value comparators;
- *   - `filter.ts`     — filter types, normalized active conditions;
- *   - `selection.ts`  — immutable Set-based row selection;
- *   - `resize.ts`     — column width storage and pointer/keyboard resizing math;
- *   - `state.ts`      — composite grid state with invalidation invariants;
- *   - `facet.ts`      — facet contract, domain rules, selection vocabulary;
- *   - `panel.ts`      — panel view model (counts, markers, hints, clear);
- *   - `url.ts`        — route query editing matching `rustok_ui_core`.
- *
- * Nothing in this root entry imports React, Next or a fetch client.
+ * Column models, resize math, normalized filters, sort and selection state, pagination and facets
+ * all live here as pure data/functions. `react/` is a separate render adapter and is not imported by
+ * this entry point.
  */
 
 export {
   CHECKBOX_COLUMN_ID,
+  MAX_COLUMN_WIDTH,
   clampColumnWidth,
   createActionsColumn,
   createCheckboxColumn,
   createColumnDef,
   createColumnWidth,
+  createDefaultColumnWidth,
+  createFixedColumnWidth,
+  createGridColumnDef,
+  createResizableColumnWidth,
   fixedColumnWidth,
   hasColumnFilter,
+  hasFilter,
   hasFilterRow,
+  hideColumn,
+  pinColumn,
   isCheckboxColumn,
+  isColumnWidthFlexible,
+  normalizeColumnWidth,
+  setColumnMaxWidth,
+  setColumnMinWidth,
+  setPreferredColumnWidth,
+  unpinColumn,
   visibleColumnCount,
   visibleColumns,
+  withColumnAlign,
+  withColumnFilter,
+  withColumnMaxWidth,
+  withColumnMinWidth,
+  withColumnNotFilterable,
+  withColumnNotResizable,
+  withColumnNotSortable,
+  withColumnWidth,
+  withColumnWidthRange,
   type ColumnAlign,
+  type ColumnId,
   type ColumnWidth,
   type GridColumnDef,
-  type PinnedSide
-} from "./column";
+  type PinnedSide,
+} from './column';
 
 export {
   DEFAULT_PAGE_SIZE,
+  MAX_SAFE_GRID_INTEGER,
   calculateOffset,
   calculatePageCount,
   clampPage,
+  createInfinitePagination,
   createPagination,
   dataTableRangeLabel,
   fromIndex,
+  goToPage,
   hasNextPage,
   hasPreviousPage,
   nextPage,
@@ -65,47 +80,78 @@ export {
   setMode,
   setPage,
   setPageSize,
+  setPaginationMode,
   setTotal,
   sliceBounds,
   toIndex,
+  totalPages,
   visibleLen,
+  visibleLength,
   type GridPagination,
-  type PaginationMode
-} from "./pagination";
+  type PaginationMode,
+} from './pagination';
 
 export {
+  activeSort,
   ariaSortFor,
+  ariaSortForColumn,
   ariaSortValue,
   clearSort,
+  clearSortState,
   compareValues,
+  createSortState,
   cycleSort,
+  emptySortState,
   isSortActive,
   isSortedBy,
   normalizeSort,
+  normalizeSortState,
   oppositeSortDirection,
   setSort,
+  setSortState,
+  sortDirectionForColumn,
   type SortDirection,
-  type SortState
-} from "./sort";
+  type SortState,
+} from './sort';
 
 export {
   activeFilterCount,
+  booleanFilter,
+  clearColumnFilters,
   clearFilters,
+  columnFilterCount,
+  columnFilterEntries,
+  columnFilterKeys,
+  dateRangeFilter,
+  emptyFilterValue,
+  filterTypeAccepts,
+  getColumnFilter,
   hasActiveFilters,
+  hasColumnFilterValue,
   isFilterActive,
   isFilterEqual,
+  normalizeFilterValue,
   normalizeFilters,
+  numberRangeFilter,
+  removeColumnFilter,
   removeFilter,
+  selectFilter,
+  selectFilterWithPlaceholder,
+  setColumnFilter,
   setFilter,
+  textFilter,
+  textFilterWithPlaceholder,
   type ColumnFilters,
   type FilterOption,
   type FilterValue,
-  type GridFilterType
-} from "./filter";
+  type GridFilterType,
+} from './filter';
 
 export {
+  addRowsToSelection,
   areAllRowsSelected,
   areSomeRowsSelected,
+  clearRowSelection,
   clearSelection,
   deselectAllRows,
   deselectRow,
@@ -113,38 +159,26 @@ export {
   isAllSelected,
   isPartiallySelected,
   isRowSelected,
+  isRowSelectionEmpty,
   isSelectionEmpty,
+  retainRowIds,
   retainSelectedRows,
+  rowSelectionCount,
+  rowSelectionIds,
   rowSelectionToArray,
   selectAllRows,
   selectRow,
   selectedCount,
+  setRowSelected,
   setSelectedRow,
   toggleRowSelection,
-  type RowSelection
-} from "./selection";
-
-export {
-  ColumnWidths,
-  KEYBOARD_RESIZE_STEP,
-  calculateResizedWidth,
-  stepResizedWidth
-} from "./resize";
-
-export {
-  clampWidths,
-  createGridState,
-  normalizeGridState,
-  pruneGridSelection,
-  resetGridFilters,
-  setGridFilter,
-  toggleGridSort,
-  type GridState
-} from "./state";
+  type RowSelection,
+} from './selection';
 
 export {
   MAX_GRID_FACETS,
   MAX_GRID_FACET_VALUES,
+  MAX_SAFE_FACET_COUNT,
   SELECTION_LIST_SEPARATOR,
   SELECTION_SEPARATOR,
   booleanDomain,
@@ -154,6 +188,7 @@ export {
   facetFromBuckets,
   hasSelectionForKey,
   isSelectionSelected,
+  normalizeFacetSource,
   openDomain,
   openFacet,
   parseSelection,
@@ -168,8 +203,8 @@ export {
   splitSelection,
   type FacetBucket,
   type FacetDomain,
-  type FacetSource
-} from "./facet";
+  type FacetSource,
+} from './facet';
 
 export {
   ENGLISH_FACET_PANEL_LABELS,
@@ -182,7 +217,38 @@ export {
   type FacetPanelFacetView,
   type FacetPanelLabels,
   type FacetPanelValueView,
-  type FacetPanelView
-} from "./panel";
+  type FacetPanelView,
+} from './panel';
 
-export { applyQueryPairs, queryParam, type QueryPair } from "./url";
+export {
+  ColumnWidths,
+  KEYBOARD_RESIZE_STEP,
+  calculateResizedWidth,
+  clampColumnWidths,
+  clearColumnWidths,
+  columnWidthEntries,
+  columnWidthsAreEmpty,
+  getClampedColumnWidth,
+  getColumnWidth,
+  getStoredColumnWidth,
+  normalizeColumnWidths,
+  removeColumnWidth,
+  setClampedColumnWidth,
+  setColumnWidth,
+  stepResizedWidth,
+} from './resize';
+
+export {
+  clampGridWidths,
+  clampWidths,
+  createGridState,
+  normalizeGridState,
+  pruneGridSelection,
+  resetGridFilters,
+  setGridFilter,
+  toggleGridSort,
+  withGridPagination,
+  type GridState,
+} from './state';
+
+export { applyQueryPairs, queryParam, type QueryPair } from './url';

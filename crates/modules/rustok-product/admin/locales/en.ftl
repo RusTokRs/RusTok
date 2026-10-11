@@ -79,9 +79,6 @@ product-list-createdAt = Creation date
 product-list-descending = Newest first
 product-list-empty = No products yet.
 product-list-facetsClear = Clear filters
-# plural-exempt: parenthesized bucket count is invariant in English
-product-list-facetsCount = ({ $count })
-# Bucket counts are rendered by the code-owned panel count template, not by Fluent.
 product-list-facetsEmpty = No filters are available for this catalog yet.
 product-list-facetsLabel = Filters
 product-list-facetsSelected = [x]

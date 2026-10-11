@@ -228,11 +228,25 @@ pub fn apply_ui_query_pairs(base: &str, pairs: &[(&str, Option<String>)]) -> Str
             .iter()
             .position(|(existing_key, _)| existing_key.as_str() == *key);
         match (existing_index, next_value) {
-            // Keeps the position of an existing key so repeated toggles produce stable links.
-            (Some(index), Some(value)) => merged[index].1 = value.to_string(),
-            (Some(index), None) => {
-                merged.remove(index);
+            // Keep the first occurrence in place and discard stale duplicates so one key has one
+            // canonical value after every update.
+            (Some(index), Some(value)) => {
+                merged[index].1 = value.to_string();
+                let mut kept_existing = false;
+                merged.retain(|(existing_key, _)| {
+                    if existing_key.as_str() == *key {
+                        if kept_existing {
+                            false
+                        } else {
+                            kept_existing = true;
+                            true
+                        }
+                    } else {
+                        true
+                    }
+                });
             }
+            (Some(_), None) => merged.retain(|(existing_key, _)| existing_key.as_str() != *key),
             (None, Some(value)) => merged.push(((*key).to_string(), value.to_string())),
             (None, None) => {}
         }
@@ -288,6 +302,24 @@ mod tests {
             ],
         );
         assert_eq!(href, "/products?search=bag&sort=desc&page=2");
+    }
+
+    #[test]
+    fn ui_query_pairs_replace_or_remove_every_duplicate_key() {
+        assert_eq!(
+            apply_ui_query_pairs(
+                "/products?tag=red&search=bag&tag=blue",
+                &[("tag", Some("green".to_string()))],
+            ),
+            "/products?tag=green&search=bag"
+        );
+        assert_eq!(
+            apply_ui_query_pairs(
+                "/products?tag=red&search=bag&tag=blue",
+                &[("tag", None)],
+            ),
+            "/products?search=bag"
+        );
     }
 
     #[test]

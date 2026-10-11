@@ -131,7 +131,7 @@ test("filter normalization, immutable changes and activity tracking", () => {
     let filters = {};
     const res1 = grid.setFilter(filters, "title", "test");
     assert.equal(res1.changed, true);
-    assert.deepEqual(res1.filters, { title: "test" });
+    assert.deepEqual(res1.filters, { title: { kind: "text", value: "test" } });
 
     const res2 = grid.setFilter(res1.filters, "title", "");
     assert.equal(res2.changed, true);
@@ -198,13 +198,13 @@ test("composite GridState invalidation invariants and clamping", () => {
     assert.equal(sRes.state.pagination.page, 1);
     assert.equal(sRes.nextDirection, "asc");
 
-    state.columnWidths.set("title", 9999);
+    state.columnWidths = grid.setColumnWidth(state.columnWidths, "title", 9999).widths;
     const cols = [
       grid.createColumnDef("title", "Title", {
         width: grid.createColumnWidth(200, 100, 300)
       })
     ];
     const clampedState = grid.clampWidths(state, cols);
-    assert.equal(clampedState.columnWidths.get("title", 200), 300);
+    assert.equal(grid.getColumnWidth(clampedState.columnWidths, "title", 200), 300);
   `);
 });

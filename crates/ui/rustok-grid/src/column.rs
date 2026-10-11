@@ -126,11 +126,28 @@ impl ColumnAlign {
 
 /// Width constraints of a column. The invariant `min <= current <= max`
 /// is upheld by every constructor and mutator in this module.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct ColumnWidth {
     pub min: u32,
     pub max: u32,
     pub current: u32,
+}
+
+impl<'de> Deserialize<'de> for ColumnWidth {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct ColumnWidthData {
+            min: u32,
+            max: u32,
+            current: u32,
+        }
+
+        let data = ColumnWidthData::deserialize(deserializer)?;
+        Ok(Self::resizable(data.current, data.min, data.max))
+    }
 }
 
 impl Default for ColumnWidth {
@@ -169,6 +186,14 @@ impl ColumnWidth {
     pub fn clamp(&self, px: u32) -> u32 {
         let (min, max) = ordered(self.min, self.max);
         px.clamp(min, max)
+    }
+
+    /// Repair public fields after a direct mutation.
+    pub fn normalize(&mut self) {
+        let (min, max) = ordered(self.min, self.max);
+        self.min = min;
+        self.max = max;
+        self.current = self.current.clamp(min, max);
     }
 
     /// Set the preferred width, widening the range when the requested value
@@ -376,6 +401,15 @@ mod tests {
     fn width_builders_preserve_invariants() {
         let width = ColumnWidth::resizable(10, 300, 100);
         assert_eq!((width.min, width.max, width.current), (100, 300, 100));
+    }
+
+    #[test]
+    fn deserialization_repairs_width_invariants() {
+        let width: ColumnWidth = serde_json::from_str(
+            r#"{"min":300,"max":100,"current":500}"#,
+        )
+        .expect("valid width JSON");
+        assert_eq!((width.min, width.max, width.current), (100, 300, 300));
     }
 
     #[test]

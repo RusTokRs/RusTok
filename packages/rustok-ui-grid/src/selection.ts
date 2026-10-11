@@ -1,5 +1,6 @@
 /**
- * Row selection state for RusTok DataGrid — the TypeScript twin of `crates/ui/rustok-grid/src/selection.rs`.
+ * Row selection state for RusTok DataGrid — the TypeScript twin of
+ * `crates/ui/rustok-grid/src/selection.rs`.
  *
  * Framework-free: immutable Set-based selection operations.
  */
@@ -7,104 +8,144 @@
 /** Row selection state representing selected row identifiers. */
 export type RowSelection = ReadonlySet<string>;
 
-/**
- * Creates an empty row selection.
- */
+/** Create an empty row selection. */
 export function emptyRowSelection(): RowSelection {
   return new Set<string>();
 }
 
-/**
- * Toggles selection of a single row identifier.
- */
+/** Toggle selection of a single row identifier. */
 export function toggleRowSelection(selection: RowSelection, id: string): RowSelection {
   const next = new Set<string>(selection);
-  if (next.has(id)) {
-    next.delete(id);
-  } else {
-    next.add(id);
-  }
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
   return next;
 }
 
-/**
- * Selects all provided row identifiers.
- */
-export function selectAllRows(ids: string[]): RowSelection {
-  return new Set<string>(ids);
-}
-
-/**
- * Checks whether a row identifier is selected.
- */
-export function isRowSelected(selection: RowSelection, id: string): boolean {
-  return selection.has(id);
-}
-
-/**
- * Checks whether all provided row identifiers are selected.
- */
-export function areAllRowsSelected(selection: RowSelection, ids: string[]): boolean {
-  if (ids.length === 0) return false;
-  return ids.every((id) => selection.has(id));
-}
-
-/**
- * Checks whether some (but not all) provided row identifiers are selected.
- */
-export function areSomeRowsSelected(selection: RowSelection, ids: string[]): boolean {
-  if (ids.length === 0) return false;
-  const count = ids.filter((id) => selection.has(id)).length;
-  return count > 0 && count < ids.length;
-}
-
-/**
- * Adds a single row to selection immutably.
- */
+/** Select one row identifier. */
 export function selectRow(selection: RowSelection, id: string): RowSelection {
-  if (selection.has(id)) return selection;
   const next = new Set<string>(selection);
   next.add(id);
   return next;
 }
 
-/**
- * Removes a single row from selection immutably.
- */
+/** Deselect one row identifier. */
 export function deselectRow(selection: RowSelection, id: string): RowSelection {
-  if (!selection.has(id)) return selection;
   const next = new Set<string>(selection);
   next.delete(id);
   return next;
 }
 
-/**
- * Sets explicit selection state of a row.
- */
-export function setSelectedRow(selection: RowSelection, id: string, selected: boolean): RowSelection {
+/** Set one row's selected state. */
+export function setRowSelected(
+  selection: RowSelection,
+  id: string,
+  selected: boolean,
+): RowSelection {
   return selected ? selectRow(selection, id) : deselectRow(selection, id);
 }
 
-/**
- * Deselects all provided row identifiers immutably.
- */
-export function deselectAllRows(selection: RowSelection, ids: string[]): RowSelection {
-  const next = new Set<string>(selection);
-  let changed = false;
-  for (const id of ids) {
-    if (next.delete(id)) {
-      changed = true;
-    }
-  }
-  return changed ? next : selection;
+/** Create a selection containing every provided row identifier. */
+export function selectAllRows(ids: Iterable<string>): RowSelection {
+  return new Set<string>(ids);
 }
 
 /**
- * Clears the selection entirely.
+ * Add every provided row identifier to an existing selection, preserving selections outside that
+ * page. This is the immutable counterpart of `RowSelection::select_all`.
  */
-export function clearSelection(): RowSelection {
+export function addRowsToSelection(
+  selection: RowSelection,
+  ids: Iterable<string>,
+): RowSelection {
+  const next = new Set<string>(selection);
+  for (const id of ids) next.add(id);
+  return next;
+}
+
+/** Deselect the provided row identifiers, preserving selections outside that page. */
+export function deselectAllRows(
+  selection: RowSelection,
+  ids: Iterable<string>,
+): RowSelection {
+  const next = new Set<string>(selection);
+  for (const id of ids) next.delete(id);
+  return next;
+}
+
+/** Remove every selected row. */
+export function clearRowSelection(): RowSelection {
   return emptyRowSelection();
 }
+
+/** Drop identifiers that are no longer present in the data set. */
+export function retainRowIds(
+  selection: RowSelection,
+  ids: Iterable<string>,
+): RowSelection {
+  const keep = new Set(ids);
+  return new Set([...selection].filter((id) => keep.has(id)));
+}
+
+/** Check whether a row identifier is selected. */
+export function isRowSelected(selection: RowSelection, id: string): boolean {
+  return selection.has(id);
+}
+
+/** Check whether every id in `ids` is selected. An empty input is false. */
+export function areAllRowsSelected(selection: RowSelection, ids: Iterable<string>): boolean {
+  let any = false;
+  for (const id of ids) {
+    any = true;
+    if (!selection.has(id)) return false;
+  }
+  return any;
+}
+
+/** Check whether some — but not all — of `ids` are selected. */
+export function areSomeRowsSelected(selection: RowSelection, ids: Iterable<string>): boolean {
+  let selectedCount = 0;
+  let total = 0;
+  for (const id of ids) {
+    total += 1;
+    if (selection.has(id)) selectedCount += 1;
+  }
+  return selectedCount > 0 && selectedCount < total;
+}
+
+/** Number of selected row identifiers. */
+export function rowSelectionCount(selection: RowSelection): number {
+  return selection.size;
+}
+
+/** True when no row identifier is selected. */
+export function isRowSelectionEmpty(selection: RowSelection): boolean {
+  return selection.size === 0;
+}
+
+function compareCodePoints(left: string, right: string): number {
+  const leftPoints = Array.from(left, (character) => character.codePointAt(0) ?? 0);
+  const rightPoints = Array.from(right, (character) => character.codePointAt(0) ?? 0);
+  const length = Math.min(leftPoints.length, rightPoints.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = leftPoints[index] - rightPoints[index];
+    if (difference !== 0) return difference;
+  }
+  return leftPoints.length - rightPoints.length;
+}
+
+/**
+ * Selected ids in deterministic order, matching Rust's `BTreeSet` serialization rather than
+ * JavaScript Set insertion order.
+ */
+export function rowSelectionIds(selection: RowSelection): string[] {
+  return [...selection].sort(compareCodePoints);
+}
+
+/** Compatibility alias for setRowSelected. */
+export const setSelectedRow = setRowSelected;
+
+/** Compatibility alias for clearRowSelection. */
+export const clearSelection = clearRowSelection;
 
 /**
  * Drops ids that are no longer present in the visible dataset (matches Rust `retain_ids`).

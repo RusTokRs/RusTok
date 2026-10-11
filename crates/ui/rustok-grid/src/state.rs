@@ -11,13 +11,41 @@ use crate::{
     sort::{SortDirection, SortState},
 };
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct GridState {
     pub column_widths: ColumnWidths,
     pub filters: ColumnFilters,
     pub sort: SortState,
     pub selection: RowSelection,
     pub pagination: GridPagination,
+}
+
+impl<'de> Deserialize<'de> for GridState {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize, Default)]
+        #[serde(default)]
+        struct GridStateData {
+            column_widths: ColumnWidths,
+            filters: ColumnFilters,
+            sort: SortState,
+            selection: RowSelection,
+            pagination: GridPagination,
+        }
+
+        let data = GridStateData::deserialize(deserializer)?;
+        let mut state = Self {
+            column_widths: data.column_widths,
+            filters: data.filters,
+            sort: data.sort,
+            selection: data.selection,
+            pagination: data.pagination,
+        };
+        state.normalize();
+        Ok(state)
+    }
 }
 
 impl GridState {
@@ -30,9 +58,12 @@ impl GridState {
         self
     }
 
-    /// Repair every invariant at once — call this after deserializing state
-    /// that came from a URL, local storage or an API.
+    /// Repair every invariant at once after direct field mutation. Serde deserialization calls
+    /// this automatically; width overrides still need column definitions to be clamped.
     pub fn normalize(&mut self) {
+        // `ColumnWidths` stores integer overrides; column-specific bounds are repaired by
+        // `clamp_widths`, once the current definitions are available.
+        self.filters.normalize();
         self.sort.normalize();
         self.pagination.normalize();
     }
@@ -111,5 +142,28 @@ mod tests {
         state.column_widths.set("title", 9_000);
         state.clamp_widths(&columns);
         assert_eq!(state.column_widths.get("title", 200), 300);
+    }
+
+    #[test]
+    fn deserialization_repairs_composite_state() {
+        let state: GridState = serde_json::from_str(
+            r#"{"column_widths":{"widths":{"title":9000}},"filters":{"filters":{"empty":{"Text":" "}}},"sort":{"column_id":"  ","direction":"Asc"},"selection":{"selected_ids":[]},"pagination":{"page":99,"page_size":0,"total":21,"has_next":true,"mode":"Paged"}}"#,
+        )
+        .expect("valid state JSON");
+        assert!(state.filters.is_empty());
+        assert!(!state.sort.is_active());
+        assert_eq!(state.pagination.page_size, 1);
+        assert_eq!(state.pagination.page, 21);
+        assert!(!state.pagination.has_next);
+        // This override needs column definitions before it can be clamped.
+        assert_eq!(state.column_widths.get_stored("title"), Some(9_000));
+    }
+
+    #[test]
+    fn missing_state_fields_use_normal_defaults() {
+        let state: GridState = serde_json::from_str("{}").expect("empty state JSON");
+        assert_eq!(state.pagination, GridPagination::default());
+        assert!(state.filters.is_empty());
+        assert!(!state.sort.is_active());
     }
 }

@@ -1,187 +1,154 @@
 /**
- * Composite grid state: the whole interaction model in one value —
- * the TypeScript twin of `crates/ui/rustok-grid/src/state.rs`.
+ * Composite grid state and cross-field transitions — the TypeScript twin of
+ * `crates/ui/rustok-grid/src/state.rs`.
  *
- * Framework-free: enforces invalidation invariants (filter or sort changes reset page to 1).
+ * State changes are immutable so adapters can feed the result into React, a store or route state
+ * without moving validation and pagination policy into a component.
  */
 
-import { type GridColumnDef } from './column';
-import { type ColumnFilters, type FilterValue, isFilterActive, normalizeFilters } from './filter';
-import { type GridPagination, createPagination, normalizePagination } from './pagination';
-import { ColumnWidths } from './resize';
-import { type RowSelection, emptyRowSelection } from './selection';
-import { type SortDirection, type SortState, cycleSort, normalizeSort } from './sort';
+import {
+  type GridColumnDef,
+} from './column';
+import {
+  type ColumnFilters,
+  clearColumnFilters,
+  normalizeFilters,
+  setColumnFilter,
+} from './filter';
+import {
+  type GridPagination,
+  createPagination,
+  goToPage,
+  normalizePagination,
+} from './pagination';
+import {
+  type ColumnWidths,
+  clampColumnWidths,
+  normalizeColumnWidths,
+} from './resize';
+import {
+  type RowSelection,
+  emptyRowSelection,
+  retainRowIds,
+} from './selection';
+import {
+  type SortDirection,
+  type SortState,
+  cycleSort,
+  emptySortState,
+  normalizeSortState,
+} from './sort';
 
-/**
- * Composite state of a data grid.
- */
-export interface GridState<T = unknown> {
+/** Whole interaction state for one grid instance. */
+export interface GridState {
   columnWidths: ColumnWidths;
   filters: ColumnFilters;
-  sort: SortState | null;
+  sort: SortState;
   selection: RowSelection;
   pagination: GridPagination;
-  columns?: GridColumnDef<T>[];
 }
 
-/**
- * Creates a fresh, default GridState.
- */
-export function createGridState<T = unknown>(
-  options?: Partial<Omit<GridState<T>, 'columnWidths'>> & {
-    columnWidths?: Record<string, number> | Map<string, number> | ColumnWidths;
-  }
-): GridState<T> {
-  const widths =
-    options?.columnWidths instanceof ColumnWidths
-      ? options.columnWidths
-      : new ColumnWidths(options?.columnWidths);
-
+/** Create the same initial state as `GridState::new`. */
+export function createGridState(options?: { pagination?: GridPagination }): GridState {
   return {
-    columnWidths: widths,
-    filters: options?.filters ? normalizeFilters(options.filters) : {},
-    sort: options?.sort ?? null,
-    selection: options?.selection ?? emptyRowSelection(),
+    columnWidths: {},
+    filters: {},
+    sort: emptySortState(),
+    selection: emptyRowSelection(),
     pagination: options?.pagination ?? createPagination(),
-    columns: options?.columns
   };
 }
 
+/** Create a grid state with explicit page metadata, matching `GridState::with_pagination`. */
+export function withGridPagination(
+  state: GridState,
+  page: number,
+  pageSize: number,
+  total: number,
+): GridState {
+  return { ...state, pagination: createPagination(page, pageSize, total) };
+}
+
 /**
- * Applies a filter change. Resetting page to 1 on any effective change
- * because the matching row set has changed.
- *
- * Returns `{ state, changed }`.
+ * Repair all state that can be normalized without column definitions. Pass the current columns to
+ * also clamp persisted width overrides against their current constraints.
  */
-export function setGridFilter<T>(
-  state: GridState<T>,
+export function normalizeGridState(
+  state: Partial<GridState> = {},
+  columns?: readonly GridColumnDef[],
+): GridState {
+  const normalized: GridState = {
+    columnWidths: normalizeColumnWidths(state.columnWidths ?? {}),
+    filters: normalizeFilters(state.filters ?? {}),
+    sort: normalizeSortState(state.sort ?? emptySortState()),
+    selection: new Set(state.selection ?? []),
+    pagination: normalizePagination(state.pagination ?? {}),
+  };
+  if (columns !== undefined) {
+    normalized.columnWidths = clampColumnWidths(normalized.columnWidths, columns);
+  }
+  return normalized;
+}
+
+/** Apply a filter mutation, resetting pagination only when canonical filter state changes. */
+export function setGridFilter(
+  state: GridState,
   columnId: string,
-  value: FilterValue
-): { state: GridState<T>; changed: boolean } {
-  const current = state.filters[columnId];
-  if (current === value) {
-    return { state, changed: false };
-  }
-
-  const nextFilters: ColumnFilters = { ...state.filters };
-  if (isFilterActive(value)) {
-    nextFilters[columnId] = value;
-  } else {
-    delete nextFilters[columnId];
-  }
-
+  value: unknown,
+): { state: GridState; changed: boolean } {
+  const update = setColumnFilter(state.filters, columnId, value);
+  if (!update.changed) return { state, changed: false };
   return {
     state: {
       ...state,
-      filters: nextFilters,
-      pagination: {
-        ...state.pagination,
-        page: 1
-      }
+      filters: update.filters,
+      pagination: goToPage(state.pagination, 1),
     },
-    changed: true
+    changed: true,
   };
 }
 
-/**
- * Clears all active filters and resets pagination to page 1.
- */
-export function resetGridFilters<T>(state: GridState<T>): {
-  state: GridState<T>;
-  changed: boolean;
-} {
-  if (Object.keys(state.filters).length === 0) {
-    return { state, changed: false };
-  }
-
+/** Clear every filter, resetting pagination only when there was an active filter. */
+export function resetGridFilters(state: GridState): { state: GridState; changed: boolean } {
+  const update = clearColumnFilters(state.filters);
+  if (!update.changed) return { state, changed: false };
   return {
     state: {
       ...state,
-      filters: {},
-      pagination: {
-        ...state.pagination,
-        page: 1
-      }
+      filters: update.filters,
+      pagination: goToPage(state.pagination, 1),
     },
-    changed: true
+    changed: true,
   };
 }
 
-/**
- * Cycles sort on a column and resets pagination to page 1.
- */
-export function toggleGridSort<T>(
-  state: GridState<T>,
-  columnId: string
-): { state: GridState<T>; nextDirection: SortDirection | null } {
-  const nextSort = cycleSort(state.sort, columnId);
+/** Toggle sorting on a column and reset pagination. */
+export function toggleGridSort(
+  state: GridState,
+  columnId: string,
+): { state: GridState; direction: SortDirection | null; nextDirection: SortDirection | null } {
+  const next = cycleSort(state.sort, columnId);
+  const sort = next ?? emptySortState();
   return {
     state: {
       ...state,
-      sort: nextSort,
-      pagination: {
-        ...state.pagination,
-        page: 1
-      }
+      sort,
+      pagination: goToPage(state.pagination, 1),
     },
-    nextDirection: nextSort ? nextSort.direction : null
+    direction: sort.direction,
+    nextDirection: sort.direction,
   };
 }
 
-/**
- * Prunes row selection to retain only rows present in visibleIds.
- */
-export function pruneGridSelection<T>(
-  state: GridState<T>,
-  visibleIds: Iterable<string>
-): GridState<T> {
-  const allowed = new Set(visibleIds);
-  const nextSelection = new Set<string>();
-  for (const id of state.selection) {
-    if (allowed.has(id)) {
-      nextSelection.add(id);
-    }
-  }
-  return {
-    ...state,
-    selection: nextSelection
-  };
+/** Drop selected rows that are no longer part of the visible data set. */
+export function pruneGridSelection(state: GridState, visibleIds: Iterable<string>): GridState {
+  return { ...state, selection: retainRowIds(state.selection, visibleIds) };
 }
 
-/**
- * Clamps persisted column widths to the current column definitions.
- * Matches Rust `GridState::clamp_widths`.
- */
-export function clampWidths<T>(
-  state: GridState<T>,
-  columns: GridColumnDef<T>[]
-): GridState<T> {
-  const nextWidths = new ColumnWidths(state.columnWidths.toRecord());
-  for (const column of columns) {
-    const id = column.id;
-    const stored = nextWidths.getStored(id);
-    if (stored !== undefined && column.width) {
-      const min = column.width.min ?? 50;
-      const max = column.width.max ?? 800;
-      nextWidths.setClamped(id, stored, min, max);
-    }
-  }
-  return {
-    ...state,
-    columnWidths: nextWidths
-  };
+/** Clamp persisted widths to the current column definitions. */
+export function clampGridWidths(state: GridState, columns: readonly GridColumnDef[]): GridState {
+  return { ...state, columnWidths: clampColumnWidths(state.columnWidths, columns) };
 }
 
-/**
- * Normalizes every part of GridState (sort, pagination, filters).
- * Matches Rust `GridState::normalize`.
- */
-export function normalizeGridState<T>(state: GridState<T>): GridState<T> {
-  return {
-    ...state,
-    filters: normalizeFilters(state.filters),
-    sort: normalizeSort(state.sort),
-    pagination: normalizePagination(state.pagination)
-  };
-}
-
+/** Compatibility alias for clampGridWidths. */
+export const clampWidths = clampGridWidths;

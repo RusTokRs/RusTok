@@ -21,7 +21,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { writeWorkspacePackageResolver } from "./lib/workspace-package-resolver.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -135,7 +135,9 @@ function runNextFacets(body) {
     harness,
     [
       `import * as facets from ${JSON.stringify(
-        path.join(repoRoot, "apps/next-frontend/packages/rustok-product/src/catalog/facets.ts"),
+        pathToFileURL(
+          path.join(repoRoot, "apps/next-frontend/packages/rustok-product/src/catalog/facets.ts"),
+        ).href,
       )};`,
       `import * as grid from "@rustok/ui-grid";`,
       "const checks = {};",
@@ -152,7 +154,7 @@ function runNextFacets(body) {
   try {
     const result = spawnSync(
       process.execPath,
-      ["--experimental-strip-types", "--import", register, harness],
+      ["--experimental-strip-types", "--import", pathToFileURL(register).href, harness],
       { encoding: "utf8" },
     );
     assert.equal(result.status, 0, `facet harness failed: ${result.stderr || result.stdout}`);
@@ -1036,16 +1038,29 @@ pub fn from_buckets(domain: FacetDomain, buckets: Vec<FacetValue>) -> Self {
     GRID_FACET_TS,
     `export const MAX_GRID_FACETS = ${options.gridCapDrift ? 12 : 8};
 export const MAX_GRID_FACET_VALUES = 20;
-export function facetFromBuckets(input) {
-  const isEnumerable = facetDomainIsEnumerable(input.domain);
+function normalizeFacetSource(facet) {
+  const domain = normalizeFacetDomain(facet.domain);
+  const isEnumerable = facetDomainIsEnumerable(domain);
   const values = [];
   let isTruncated = false;
   if (isEnumerable) {
-    for (const bucket of input.values ?? []) {
+    for (const bucket of facet.values) {
+      if (values.length === MAX_GRID_FACET_VALUES) {
+        isTruncated = true;
+        break;
+      }
       values.push(bucket);
     }
   }
-  return { domain: input.domain, isEnumerable, isTruncated, total: input.total, values };
+  return { domain, isEnumerable, isTruncated, total: facet.total, values };
+}
+export function facetFromBuckets(input) {
+  return normalizeFacetSource({
+    ...input,
+    values: facetDomainIsEnumerable(input.domain)
+      ? input.values.slice(0, MAX_GRID_FACET_VALUES + 1)
+      : [],
+  });
 }
 `,
   );

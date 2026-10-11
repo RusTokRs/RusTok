@@ -1,3 +1,4 @@
+use rustok_grid::facet::{parse_selection, serialize_selection};
 use rustok_ui_core::normalize_optional_ui_text;
 
 use crate::i18n::t;
@@ -32,7 +33,7 @@ pub(crate) fn build_product_admin_list_input(
 }
 
 pub(crate) fn serialize_attribute_filters(filters: &[String]) -> String {
-    filters.join(";")
+    serialize_selection(filters)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,14 +89,7 @@ pub(crate) fn build_product_admin_catalog_controls_labels(
 
 fn normalize_attribute_filters(value: Option<String>) -> Vec<String> {
     normalize_optional_ui_text(value)
-        .map(|value| {
-            value
-                .split(';')
-                .map(str::trim)
-                .filter(|entry| !entry.is_empty())
-                .map(ToOwned::to_owned)
-                .collect()
-        })
+        .map(|value| parse_selection(value.as_str()))
         .unwrap_or_default()
 }
 

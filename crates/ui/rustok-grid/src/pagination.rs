@@ -17,7 +17,7 @@ pub enum PaginationMode {
 }
 
 /// Paging state. `page` is one-based and always within `1..=total_pages()`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct GridPagination {
     pub page: usize,
     pub page_size: usize,
@@ -26,8 +26,48 @@ pub struct GridPagination {
     pub mode: PaginationMode,
 }
 
+impl<'de> Deserialize<'de> for GridPagination {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct GridPaginationData {
+            #[serde(default = "default_page")]
+            page: usize,
+            #[serde(default = "default_page_size")]
+            page_size: usize,
+            #[serde(default)]
+            total: u64,
+            #[serde(default)]
+            has_next: bool,
+            #[serde(default)]
+            mode: PaginationMode,
+        }
+
+        let data = GridPaginationData::deserialize(deserializer)?;
+        let mut pagination = Self {
+            page: data.page,
+            page_size: data.page_size,
+            total: data.total,
+            has_next: data.has_next,
+            mode: data.mode,
+        };
+        pagination.normalize();
+        Ok(pagination)
+    }
+}
+
 /// Fallback page size used when a caller passes `0`.
 pub const DEFAULT_PAGE_SIZE: usize = 20;
+
+fn default_page() -> usize {
+    1
+}
+
+fn default_page_size() -> usize {
+    DEFAULT_PAGE_SIZE
+}
 
 impl Default for GridPagination {
     fn default() -> Self {
@@ -64,14 +104,16 @@ impl GridPagination {
     /// Number of pages, never zero (an empty grid still has "page 1 of 1").
     pub fn total_pages(&self) -> usize {
         let page_size = self.page_size.max(1) as u64;
-        // Integer arithmetic avoids the lossy u64 -> f64 conversion that
-        // silently rounds for data sets above 2^53 rows.
-        self.total
-            .checked_add(page_size - 1)
-            .map(|n| n / page_size)
-            .map(|pages| usize::try_from(pages).unwrap_or(usize::MAX))
-            .unwrap_or(usize::MAX)
-            .max(1)
+        // Quotient + remainder computes ceil(total / page_size) without overflowing when
+        // `total` is close to u64::MAX. A data set may exceed usize on 32-bit wasm targets, so
+        // narrow only after computing the exact u64 page count.
+        let whole_pages = self.total / page_size;
+        let pages = if self.total % page_size == 0 {
+            whole_pages
+        } else {
+            whole_pages.saturating_add(1)
+        };
+        usize::try_from(pages).unwrap_or(usize::MAX).max(1)
     }
 
     pub fn has_previous(&self) -> bool {
@@ -168,10 +210,8 @@ impl GridPagination {
 
     pub fn set_mode(&mut self, mode: PaginationMode) {
         self.mode = mode;
-        // Infinite scrolling always renders from the first page downwards.
-        if mode == PaginationMode::Infinite {
-            self.normalize();
-        }
+        // A mode change is a mutation boundary: repair public fields and refresh `has_next`.
+        self.normalize();
     }
 
     /// Zero-based `[start, end)` slice bounds for client-side paging over
@@ -222,6 +262,29 @@ mod tests {
         p.set_page(usize::MAX);
         assert_eq!(p.page, usize::MAX);
         assert!(!p.has_next);
+    }
+
+    #[test]
+    fn deserialization_restores_pagination_invariants() {
+        let pagination: GridPagination = serde_json::from_str(
+            r#"{"page":99,"page_size":0,"total":21,"has_next":true,"mode":"Paged"}"#,
+        )
+        .expect("valid pagination JSON");
+        assert_eq!(pagination.page, 21);
+        assert_eq!(pagination.page_size, 1);
+        assert!(!pagination.has_next);
+    }
+
+    #[test]
+    fn page_count_ceil_does_not_saturate_for_large_totals() {
+        let pagination = GridPagination::new(1, 20, u64::MAX);
+        let whole_pages = u64::MAX / 20;
+        let expected = if u64::MAX % 20 == 0 {
+            whole_pages
+        } else {
+            whole_pages + 1
+        };
+        assert_eq!(pagination.total_pages(), usize::try_from(expected).unwrap_or(usize::MAX));
     }
 
     #[test]
@@ -283,5 +346,19 @@ mod tests {
 
         let p3 = GridPagination::new(3, 20, 55);
         assert_eq!(p3.range_label(), "41–55 of 55");
+    }
+
+    #[test]
+    fn changing_mode_restores_pagination_invariants() {
+        let mut pagination = GridPagination::new(3, 10, 100);
+        pagination.page = 0;
+        pagination.page_size = 0;
+        pagination.has_next = false;
+
+        pagination.set_mode(PaginationMode::Paged);
+
+        assert_eq!(pagination.page, 1);
+        assert_eq!(pagination.page_size, 1);
+        assert!(pagination.has_next);
     }
 }

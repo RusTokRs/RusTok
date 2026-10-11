@@ -4,7 +4,7 @@ Framework-agnostic DataGrid state machine, column math, and filtering engine for
 
 ## Architecture
 
-Following Hexagonal / Ports & Adapters architecture, `rustok-grid` is 100% pure Rust with zero web framework dependencies (its only dependency is `serde`):
+Following Hexagonal / Ports & Adapters architecture, `rustok-grid` is 100% pure Rust with zero web framework dependencies. Runtime code depends only on `serde`; `serde_json` is a development-only dependency for serialization-normalization tests.
 
 - **Columns**: column definitions, alignment, sizing, and pin configuration.
 - **Resize**: column resizing math with min/max clamps (pointer and keyboard).
@@ -22,16 +22,16 @@ Every type repairs its own state, so no renderer and no server handler has to de
 
 | Type | Invariant |
 | --- | --- |
-| `ColumnWidth` | `min <= current <= max`; builders are order-independent — `.width(px)` widens the range instead of discarding a previously configured `min`/`max`. |
+| `ColumnWidth` | `min <= current <= max`; builders and serde deserialization normalize reversed bounds and clamp `current`; `.width(px)` widens the range instead of discarding configured bounds. |
 | `ColumnWidths` | Persisted widths are clamped against the *current* column definition on read and on write (`get_clamped` / `set_clamped`). |
-| `ColumnFilters` | Only normalized, non-empty values are stored: text is trimmed, `NaN`/infinite numbers are dropped, reversed number/date ranges are swapped. "Key present" therefore means "filter active". `set`/`clear` return whether anything actually changed. |
-| `SortState` | `column_id` and `direction` are either both set or both unset; `normalize()` repairs deserialized state. |
-| `GridPagination` | `page ∈ 1..=total_pages()`, `page_size >= 1`, `total_pages() >= 1`; all arithmetic is integer and overflow-safe (`u64` totals, `saturating_*`, no `f64` rounding on large data sets). `go_to_page` returns the *effective* page. |
+| `ColumnFilters` | Mutation, `normalize()`, and serde deserialization keep only normalized, non-empty values: text is trimmed, `NaN`/infinite numbers are dropped, and reversed number/date ranges are swapped. "Key present" therefore means "filter active". `set`/`clear` return whether anything actually changed. |
+| `SortState` | `column_id` and `direction` are either both set or both unset; deserialization and `normalize()` repair half-filled/blank states. |
+| `GridPagination` | `page ∈ 1..=total_pages()`, `page_size >= 1`, `total_pages() >= 1`; serde deserialization and `normalize()` restore the invariants. Page-count ceiling uses quotient/remainder without overflow (`u64` totals), and `go_to_page` returns the *effective* page. |
 | `RowSelection` | Ordered (deterministic serialization); `is_all_selected` on an empty page is `false`, `retain_ids` prunes rows that left the data set. |
-| `GridFacet` | Bucket lists are cut at `MAX_GRID_FACET_VALUES` with `is_truncated` reporting it; open domains never carry buckets; `other_selection` never returns the facet's own entries. |
+| `GridFacet` | Construction/deserialization cut buckets at `MAX_GRID_FACET_VALUES` and report truncation; open domains never carry buckets; public-field mutation can be repaired with `normalize()`, `other_selection` excludes the facet's own entries, and panel construction normalizes its snapshot before rendering. |
 | `FacetPanel` | Renders at most `MAX_GRID_FACETS` facets, keeps selection order on toggle, and never owns UI copy: labels and markers always come from the adapter. |
 
-`GridState` composes all of the above and offers `normalize()`, `set_filter()`, `toggle_sort()` and `clamp_widths()` so that a filter or sort change always resets pagination to page 1.
+`GridState` composes all of the above, normalizes filters/sort/pagination during deserialization and through `normalize()`, and offers `set_filter()`, `toggle_sort()` and `clamp_widths()` so that a filter or sort change always resets pagination to page 1. Width overrides require the current column definitions before they can be clamped.
 
 The id of the synthetic selection column is exported as `CHECKBOX_COLUMN_ID` — adapters must never hard-code the string.
 

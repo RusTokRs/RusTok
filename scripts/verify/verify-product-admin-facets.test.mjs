@@ -54,12 +54,6 @@ function rustLabelCalls() {
   return calls;
 }
 
-/**
- * Keys whose copy is code-owned rather than translated: the bucket count template feeds a textual
- * `{count}` substitution inside the panel, so it must not be a Fluent message.
- */
-const CODE_OWNED_KEYS = new Set(["product.list.facetsCount"]);
-
 /** FTL key for a dotted message key, e.g. `product.list.facetsLabel` -> `product-list-facetsLabel`. */
 const ftlKey = (key) => key.replaceAll(".", "-");
 
@@ -94,12 +88,8 @@ test("admin facet copy exists in both locales", () => {
   const russian = ftlValues("ru.ftl", "product-list-facets");
   const calls = rustLabelCalls();
 
-  assert.ok(calls.length >= 8, `expected at least 8 facet label calls, saw ${calls.length}`);
+  assert.equal(calls.length, 7, `expected 7 localized facet labels, saw ${calls.length}`);
   for (const { key } of calls) {
-    if (CODE_OWNED_KEYS.has(key)) {
-      assert.ok(!(ftlKey(key) in english), `${key} must stay out of the locale files`);
-      continue;
-    }
     const localized = ftlKey(key);
     assert.ok(localized in english, `en.ftl is missing ${localized}`);
     assert.ok(localized in russian, `ru.ftl is missing ${localized}`);
@@ -114,12 +104,13 @@ test("admin facet copy exists in both locales", () => {
 test("Rust fallbacks equal the English locale", () => {
   const english = ftlValues("en.ftl", "product-list-facets");
   for (const { key, fallback } of rustLabelCalls()) {
-    if (CODE_OWNED_KEYS.has(key)) {
-      assert.equal(fallback, "({count})", `${key}: the count template must stay code-owned`);
-      continue;
-    }
     assert.equal(fallback, english[ftlKey(key)], `${key}: Rust fallback and en.ftl disagree`);
   }
+  assert.match(
+    adminFacets,
+    /count_template:\s*"\(\{count\}\)"\.to_string\(\)/,
+    "the numeric bucket template is code-owned and must use the shared textual placeholder",
+  );
 });
 
 test("locale-independent copy stays shared", () => {
