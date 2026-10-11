@@ -1,7 +1,7 @@
 name: Arena debug (Fly build probe)
 # TEMPORARY debugging workflow for the arena/37f687be-rustok session: CI job logs are not
-# downloadable from this environment, so the failing compiler output is posted as a pull request
-# comment, which is readable through the API. Delete once the diagnosis is captured.
+# downloadable from this environment, so each probe reports through check-run annotations
+# (`gh api .../check-runs/<id>/annotations`), which are readable through the API.
 on:
   push:
     branches:
@@ -27,14 +27,24 @@ jobs:
       - name: Probe
         env:
           GH_TOKEN: ${{ github.token }}
+          CARGO_TERM_COLOR: never
         run: |
           set +e
+          annotate() {
+            label="$1"; code="$2"; file="$3"
+            block=$(awk 'BEGIN{f=0} /^error(\[|:)/{f=1} f{print}' "$file" | head -c 1200)
+            if [ -z "$block" ]; then block=$(tail -c 1200 "$file"); fi
+            block=$(printf '%s' "$block" | sed -e 's/%/%25/g' -e 's/\r//g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=$label exit=$code::$block"
+          }
           probe() {
             label="$1"; shift
             : > /tmp/probe.txt
             echo "### $*" >> /tmp/probe.txt
             "$@" >> /tmp/probe.txt 2>&1
-            echo "### exit=$?" >> /tmp/probe.txt
+            code=$?
+            echo "### exit=$code" >> /tmp/probe.txt
+            annotate "$label" "$code" /tmp/probe.txt
             tail -c 20000 /tmp/probe.txt > /tmp/tail.txt
             {
               echo "probe: $label ($(git rev-parse --short HEAD))"
