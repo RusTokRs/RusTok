@@ -263,15 +263,22 @@ fn ensure_forms_permission(auth: &AuthContext, permission: Permission) -> HttpRe
     Ok(())
 }
 
+/// JSON intake route; `{form_id}` is the Fly document form identifier.
+pub const SUBMIT_JSON_ROUTE: &str = "/api/forms/{form_id}/submit";
+
+/// URL-encoded intake route; this is the native `action` a rendered provider form is bound to.
+///
+/// Mirrored as `FORMS_SUBMIT_ENDPOINT_TEMPLATE` in
+/// `crates/modules/rustok-page-builder/src/interaction_providers.rs`;
+/// `scripts/verify/verify-fly-interaction-capabilities.mjs` fails when the two drift apart.
+pub const SUBMIT_URLENCODED_ROUTE: &str = "/api/forms/{form_id}/submit/form";
+
 pub fn axum_router(runtime: &HostRuntimeContext) -> Result<axum::Router, FormsError> {
     let state = FormsHttpRuntime::from_host(runtime)?;
     Ok(axum::Router::new()
+        .route(SUBMIT_JSON_ROUTE, axum::routing::post(submit_form_json))
         .route(
-            "/api/forms/{form_id}/submit",
-            axum::routing::post(submit_form_json),
-        )
-        .route(
-            "/api/forms/{form_id}/submit/form",
+            SUBMIT_URLENCODED_ROUTE,
             axum::routing::post(submit_form_urlencoded),
         )
         .route(

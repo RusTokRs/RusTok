@@ -2,9 +2,10 @@ use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
 use fly::{
     PageSelection, RenderPolicy, RuntimeScenarioRenderMatrix, ValidationSeverity,
-    render_runtime_scenario_matrix,
+    render_runtime_scenario_matrix_with_providers,
 };
 use leptos::prelude::*;
+use rustok_page_builder::HostFormProviderEndpoints;
 use rustok_ui_core::UiRouteContext;
 use std::sync::Arc;
 
@@ -29,11 +30,12 @@ pub fn RuntimeScenarioMatrixPanel(runtime: AdminEditorRuntime) -> impl IntoView 
                     let report_scenarios = Arc::clone(&scenarios);
                     move || {
                     let matrix = report_runtime.controller.with(|controller| {
-                        render_runtime_scenario_matrix(
+                        render_runtime_scenario_matrix_with_providers(
                             controller.editor().document(),
                             &PageSelection::Index(controller.active_page_index()),
                             &RenderPolicy::default(),
                             report_scenarios.as_slice(),
+                            Some(&HostFormProviderEndpoints),
                         )
                     });
                     let blocking = matrix

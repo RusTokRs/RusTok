@@ -5,6 +5,7 @@ pub mod composition;
 pub mod document;
 pub mod dto;
 pub mod health;
+pub mod interaction_providers;
 pub mod landing;
 #[cfg(feature = "server")]
 pub mod landing_service;
@@ -34,6 +35,12 @@ pub use fly::{
     ComponentRegistryManifest, LandingRenderer, LandingRendererManifest, LandingSectionSnapshot,
     PageHead, RuntimeContextExamplePolicy, RuntimeContextScenario, StaticLandingArtifact,
     StaticLandingBuildIdentity, StaticLandingPage,
+};
+pub use interaction_providers::{
+    FORMS_PROVIDER_ID, FORMS_SUBMIT_ENDPOINT_TEMPLATE, FORMS_SUBMIT_OPERATION,
+    HostFormProviderEndpoints, evaluate_host_runtime_publish_gate,
+    evaluate_host_runtime_publish_gate_with_policy, host_interaction_capability_policy,
+    host_interaction_capability_registry,
 };
 pub use publish_runtime::{
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_FORMAT, PageBuilderPublishRuntimeReviewError,

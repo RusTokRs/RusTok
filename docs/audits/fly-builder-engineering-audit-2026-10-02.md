@@ -93,7 +93,7 @@ Fly — это зрелое по объёму и дисциплинирован�
 | L-4 | Нет `CHANGELOG` | ✅ Сделано | `crates/ui/fly/CHANGELOG.md` |
 | L-7 | `cargo audit` не в CI | ✅ Сделано | джоба `advisories` (advisory-only) |
 | — | Клоны правил стилей в предикатах | ✅ Сделано | `StyleRuleIdentity` |
-| — | Реестр provider-capabilities объявлен и покрыт тестами, но ни один хост его не заполняет → политика `Allow` по умолчанию | 📄 Задокументировано как граница | README `crates/ui/fly` (Known Limitations), `CHANGELOG.md` (Known gaps), `interaction_capability*.rs` |
+| — | Реестр provider-capabilities объявлен и покрыт тестами, но ни один хост его не заполняет → политика `Allow` по умолчанию | ✅ Сделано | хост заполняет каталог: `rustok-page-builder/src/interaction_providers.rs` (капабилити `forms`/`submit`, `HostFormProviderEndpoints`, capability-aware гейты администратора и сервера, привязка эндпоинта в storefront/превью/static/матрице), `rustok-forms` route-константы, пин `scripts/verify/verify-fly-interaction-capabilities.mjs` |
 | C-3 | История на инверсных командах | ⏳ Фаза 4 | уже не критично: память разделена |
 
 ### Уточнение к H-1 (неиспользуемые зависимости)

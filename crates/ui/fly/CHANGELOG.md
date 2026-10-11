@@ -193,6 +193,15 @@ Engineering audit remediation — see
 - CI: wasm32 jobs, adapter feature-combination checks, a dependency advisory job, and
   `verify-fly-gates-are-wired.mjs`, which failed loudly on the 7 verification gates that no
   workflow ran — all 4 rotted gates were among those 7.
+- `FormProviderEndpointResolver` and the provider-aware render variants a host uses to close a
+  provider form's submission target: `materialize_component_actions_with_providers`,
+  `materialize_project_with_runtime_context_with_providers`,
+  `render_page_with_runtime_context_with_providers`,
+  `render_runtime_scenario_matrix_with_providers` and
+  `RuntimeScenarioRenderSnapshot::capture_with_providers`. Without a resolver every existing entry
+  point renders exactly as before (marker-only); with one, each form whose `provider.operation`
+  the resolver recognizes is lowered to a native `action`, POST and url-encoded, and the authored
+  document is never rewritten.
 
 ### Changed
 
@@ -224,11 +233,18 @@ Engineering audit remediation — see
   that the cookie-only transport now leans on — are the admin shell's change, tracked as
   `CLEAN-060` in `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`.
 - 48 glob re-exports (`pub use module::*`) remain.
-- The provider capability catalog is a host contract nobody fills yet: `InteractionCapabilityRegistry`
-  and `evaluate_runtime_publish_gate_with_capabilities` are implemented and tested, the default
-  `InteractionCapabilityPolicy` is `Allow` for actions and forms, and no crate in this repository
-  registers a capability or calls the capability-aware gate. See the *Known Limitations* section of
-  `README.md`.
+- The provider capability catalog is filled by the RusTok host, not by Fly.
+  `rustok-page-builder::interaction_providers` registers the `forms`/`submit` form capability from
+  `rustok-forms`, every host gate calls the capability-aware gate (missing provider forms block the
+  save/publish gate with the missing capability named, missing provider actions warn), and
+  `HostFormProviderEndpoints` binds that provider to the
+  storefront, preview, static-artifact and scenario-matrix renders. Fly itself still defaults to
+  `InteractionCapabilityPolicy::Allow` with no catalog, so a consumer of the standalone crate keeps
+  the permissive contract until it registers its own providers; the two identifiers and the route
+  template are kept in sync by `scripts/verify/verify-fly-interaction-capabilities.mjs` rather than
+  by a Cargo edge. Release-baseline captures (`RuntimeScenarioReleaseBaseline::capture`) stay
+  marker-only: baseline and candidate are compared inside the same renderer, and a provider-aware
+  baseline API does not exist yet. See the *Known Limitations* section of `README.md`.
 - Custom actions (`emit_event`, `provider_action`) have no runtime here either: materialization
   produces `data-fly-action-kind` plus a JSON `data-fly-action` payload, and no crate listens for
   them, so the button is inert until a host implements the contract. Same section of `README.md`.

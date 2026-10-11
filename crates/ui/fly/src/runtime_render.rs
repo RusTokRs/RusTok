@@ -1,7 +1,8 @@
 use crate::{
-    FlyResult, PageSelection, ProjectDocument, RenderPolicy, RenderedPage,
-    RuntimeProjectMaterialization, ValidationDiagnostic, materialize_project_with_runtime_context,
-    render_page,
+    FlyResult, FormProviderEndpointResolver, PageSelection, ProjectDocument, RenderPolicy,
+    RenderedPage, RuntimeProjectMaterialization, ValidationDiagnostic,
+    materialize_project_with_runtime_context,
+    materialize_project_with_runtime_context_with_providers, render_page,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -48,6 +49,36 @@ pub fn render_page_with_runtime_context(
     policy: &RenderPolicy,
     context: &Value,
 ) -> FlyResult<RuntimeRenderResult> {
+    render_page_with_runtime_context_and_providers(document, selection, policy, context, None)
+}
+
+/// Renders with the host's provider form endpoints applied during materialization.
+///
+/// Equivalent to [`render_page_with_runtime_context`] except that provider forms the resolver
+/// recognizes are lowered to the host intake URL instead of posting back to the page.
+pub fn render_page_with_runtime_context_with_providers(
+    document: &ProjectDocument,
+    selection: &PageSelection,
+    policy: &RenderPolicy,
+    context: &Value,
+    providers: &dyn FormProviderEndpointResolver,
+) -> FlyResult<RuntimeRenderResult> {
+    render_page_with_runtime_context_and_providers(
+        document,
+        selection,
+        policy,
+        context,
+        Some(providers),
+    )
+}
+
+fn render_page_with_runtime_context_and_providers(
+    document: &ProjectDocument,
+    selection: &PageSelection,
+    policy: &RenderPolicy,
+    context: &Value,
+    providers: Option<&dyn FormProviderEndpointResolver>,
+) -> FlyResult<RuntimeRenderResult> {
     // Definitions must expand before runtime bindings, actions, and conditions
     // materialize, not only at the final HTML render pass.
     let resolved = if crate::document_has_symbol_instances(document) {
@@ -79,7 +110,12 @@ pub fn render_page_with_runtime_context(
         evaluated_conditions,
         hidden_components,
         repeated_nodes,
-    } = materialize_project_with_runtime_context(document, context);
+    } = match providers {
+        Some(providers) => {
+            materialize_project_with_runtime_context_with_providers(document, context, providers)
+        }
+        None => materialize_project_with_runtime_context(document, context),
+    };
     let page = render_page(&document, selection, policy)?;
     Ok(RuntimeRenderResult {
         page,

@@ -195,13 +195,16 @@ the owner of the missing half.
   policy (`DANGEROUS_COMPONENT_TYPES` in `rustok-page-builder`). The palette block is labelled
   `Raw HTML (escaped as text)` and validation reports `raw_html_not_rendered` (warning) for a
   document that carries visible content in one.
-- **Provider interaction capabilities are an unwired host contract.** `fly` ships
-  `InteractionCapabilityRegistry` and `evaluate_runtime_publish_gate_with_capabilities`, and the
-  default `InteractionCapabilityPolicy` is `Allow` for both actions and forms. No crate in this
-  repository registers capabilities or calls the capability-aware gate, so a `ProviderAction` or a
-  provider form whose provider does not exist publishes exactly like one whose provider does. The
-  gate starts rejecting only once a host supplies the catalog — that catalog is the missing half.
-  Draft editing and GrapesJS round-tripping stay permissive by design.
+- **Provider interaction capabilities are a contract the host fills.** `fly` ships
+  `InteractionCapabilityRegistry`, `evaluate_runtime_publish_gate_with_capabilities` and
+  `FormProviderEndpointResolver`; a bare `fly` consumer keeps `InteractionCapabilityPolicy::Allow`
+  and marker-only form rendering. The RusTok host does fill it:
+  `rustok-page-builder::interaction_providers` registers the `forms`/`submit` form capability
+  (routed to `rustok-forms`), blocks the gate for unregistered provider forms, and binds registered
+  providers to a native `action` in the storefront, preview, static-artifact and scenario-matrix
+  renders through `HostFormProviderEndpoints`. Release-baseline captures stay marker-only (baseline
+  and candidate are compared inside the same renderer). Draft editing and GrapesJS round-tripping
+  stay permissive by design.
 - **Custom actions have no runtime in this repository either.** `emit_event` and `provider_action`
   materialize to a `<button>` carrying `data-fly-action-kind` and a JSON payload in
   `data-fly-action`, and no crate here listens for them: on a published page such a button is

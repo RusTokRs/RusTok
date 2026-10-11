@@ -85,6 +85,29 @@ GraphQL and Leptos server-function endpoints dispatch through the same authorize
 canonical request/response envelopes. Future Dioxus hosts use the same DTO, service and transport
 contracts rather than defining a second provider or local runtime-context parameters.
 
+## Provider interactions
+
+Fly ships the provider contract (`InteractionCapabilityRegistry`,
+`evaluate_runtime_publish_gate_with_capabilities`, `FormProviderEndpointResolver`) and no provider
+catalog; this module is the host that fills it in `src/interaction_providers.rs`:
+
+- the `forms`/`submit` form capability is registered for the `rustok-forms` module, and every
+  publish gate in this repository routes through `evaluate_host_runtime_publish_gate`, so a form
+  whose provider is not registered blocks the save/publish gate (the message names the missing
+  capability) while an unregistered provider action only warns
+  (`evaluate_host_runtime_publish_gate_with_policy` overrides the capability policy);
+- `HostFormProviderEndpoints` resolves that capability to
+  `POST /api/forms/{form_id}/submit/form` (POST, url-encoded) wherever this host renders HTML:
+  the storefront renderer, `PageBuilderRenderer`'s preview, static-artifact materialization and its
+  scenario snapshots, and the scenario-matrix renderer/panel. Fly lowers the `action` at
+  materialization time, so the authored document is never rewritten;
+- release-baseline captures (`RuntimeScenarioReleaseBaseline::capture`) stay marker-only: baseline
+  and candidate are compared inside the same renderer.
+
+Provider id, operation and route template are mirrored from `rustok-forms` rather than imported
+(the module stays buildable standalone) and are drift-checked by
+`scripts/verify/verify-fly-interaction-capabilities.mjs`.
+
 ## Browser host boundary
 
 `crate::browser_host` owns the framework-neutral inline module source used by authoring hosts.

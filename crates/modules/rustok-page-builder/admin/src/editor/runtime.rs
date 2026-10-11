@@ -2,7 +2,7 @@ use crate::core::gate_error_message;
 use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade};
 use fly::{
     GrapesJsCodec, ProjectHash, RuntimeContextScenario, RuntimePublishGateEvaluation,
-    RuntimePublishGatePolicy, TraitSchemaRegistry, evaluate_runtime_publish_gate,
+    RuntimePublishGatePolicy, TraitSchemaRegistry,
 };
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use leptos::prelude::*;
@@ -144,7 +144,7 @@ impl AdminEditorRuntime {
         let context = self.runtime_context.get_untracked();
         let configured = self.runtime_context_configured.get_untracked();
         Some(self.controller.with(|controller| {
-            evaluate_runtime_publish_gate(
+            rustok_page_builder::evaluate_host_runtime_publish_gate(
                 controller.editor().document(),
                 configured.then_some(&context),
                 self.runtime_scenarios.as_slice(),

@@ -1,8 +1,11 @@
+use crate::interaction_providers::{
+    evaluate_host_runtime_publish_gate, evaluate_host_runtime_publish_gate_with_policy,
+};
 use fly::{
-    FlyResult, GrapesJsCodec, RuntimeContextContract, RuntimeContextExample,
-    RuntimeContextExamplePolicy, RuntimeContextJsonSchema, RuntimeContextPreflight,
-    RuntimeContextPreflightPolicy, RuntimeContextScenario, RuntimePublishGateEvaluation,
-    RuntimePublishGatePolicy, evaluate_runtime_publish_gate, export_runtime_context_json_schema,
+    FlyResult, GrapesJsCodec, InteractionCapabilityPolicy, RuntimeContextContract,
+    RuntimeContextExample, RuntimeContextExamplePolicy, RuntimeContextJsonSchema,
+    RuntimeContextPreflight, RuntimeContextPreflightPolicy, RuntimeContextScenario,
+    RuntimePublishGateEvaluation, RuntimePublishGatePolicy, export_runtime_context_json_schema,
     extract_runtime_context_contract, generate_runtime_context_example, preflight_runtime_context,
 };
 use serde::{Deserialize, Serialize};
@@ -63,6 +66,9 @@ pub struct PageBuilderRuntimePublishGateRequest {
     pub scenarios: Vec<RuntimeContextScenario>,
     #[serde(default)]
     pub policy: RuntimePublishGatePolicy,
+    /// Host provider capability policy; `None` uses the host catalog default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interaction_policy: Option<InteractionCapabilityPolicy>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -119,14 +125,22 @@ impl PageBuilderRuntimeContextInspector {
         request: PageBuilderRuntimePublishGateRequest,
     ) -> FlyResult<PageBuilderRuntimePublishGateResponse> {
         let document = GrapesJsCodec::decode_value(request.project_data)?;
-        Ok(PageBuilderRuntimePublishGateResponse {
-            evaluation: evaluate_runtime_publish_gate(
+        let evaluation = match request.interaction_policy {
+            Some(interaction_policy) => evaluate_host_runtime_publish_gate_with_policy(
+                &document,
+                request.context.as_ref(),
+                &request.scenarios,
+                &request.policy,
+                interaction_policy,
+            ),
+            None => evaluate_host_runtime_publish_gate(
                 &document,
                 request.context.as_ref(),
                 &request.scenarios,
                 &request.policy,
             ),
-        })
+        };
+        Ok(PageBuilderRuntimePublishGateResponse { evaluation })
     }
 }
 
@@ -267,6 +281,7 @@ mod tests {
                     readiness: Some(LandingReadinessPolicy::default()),
                     ..RuntimePublishGatePolicy::default()
                 },
+                interaction_policy: None,
             })
             .expect("publish gate response");
         assert!(!response.evaluation.allowed);
@@ -296,6 +311,7 @@ mod tests {
                     preflight: RuntimeContextPreflightPolicy::default(),
                     readiness: None,
                 },
+                interaction_policy: None,
             })
             .expect("publish gate response");
         assert!(response.evaluation.allowed);
