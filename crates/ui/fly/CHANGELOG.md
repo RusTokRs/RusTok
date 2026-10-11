@@ -224,6 +224,12 @@ Engineering audit remediation — see
   `RuntimeContextCompatibilityReport`, `RuntimeContextMigrationPolicy`,
   `RuntimeContextMigration`, and `remove_context_path` in `context_schema.rs`, the removal
   primitive the migration needs and the schema module did not have.
+- `RuntimeScenarioReleaseBaseline::snapshot_has_valid_hash()`, the named integrity check for the
+  embedded scenario render snapshot. `validate()` already reported
+  `runtime_scenario_baseline_snapshot_hash_invalid` by calling `self.snapshot.has_valid_hash()`
+  inline; the accessor makes the check part of the baseline contract, so a consumer can inspect a
+  retained baseline's snapshot integrity without re-deriving the rule, and the release verifier pins
+  the name.
 - `FormProviderEndpointResolver` and the provider-aware render variants a host uses to close a
   provider form's submission target: `materialize_component_actions_with_providers`,
   `materialize_project_with_runtime_context_with_providers`,
