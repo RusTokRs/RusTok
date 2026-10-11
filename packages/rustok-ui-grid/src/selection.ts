@@ -140,3 +140,57 @@ function compareCodePoints(left: string, right: string): number {
 export function rowSelectionIds(selection: RowSelection): string[] {
   return [...selection].sort(compareCodePoints);
 }
+
+/** Compatibility alias for setRowSelected. */
+export const setSelectedRow = setRowSelected;
+
+/** Compatibility alias for clearRowSelection. */
+export const clearSelection = clearRowSelection;
+
+/**
+ * Drops ids that are no longer present in the visible dataset (matches Rust `retain_ids`).
+ */
+export function retainSelectedRows(
+  selection: RowSelection,
+  ids: Iterable<string>
+): RowSelection {
+  const allowed = new Set(ids);
+  const next = new Set<string>();
+  let changed = false;
+  for (const id of selection) {
+    if (allowed.has(id)) {
+      next.add(id);
+    } else {
+      changed = true;
+    }
+  }
+  return changed ? next : selection;
+}
+
+/**
+ * Returns the number of selected rows.
+ */
+export function selectedCount(selection: RowSelection): number {
+  return selection.size;
+}
+
+/**
+ * Checks whether the selection is empty.
+ */
+export function isSelectionEmpty(selection: RowSelection): boolean {
+  return selection.size === 0;
+}
+
+/**
+ * Converts RowSelection to an array of string IDs.
+ */
+export function rowSelectionToArray(selection: RowSelection): string[] {
+  return Array.from(selection);
+}
+
+/** Alias for areAllRowsSelected matching Rust `is_all_selected`. */
+export const isAllSelected = areAllRowsSelected;
+
+/** Alias for areSomeRowsSelected matching Rust `is_partially_selected`. */
+export const isPartiallySelected = areSomeRowsSelected;
+

@@ -16,6 +16,39 @@ export const KEYBOARD_RESIZE_STEP = 16;
 /** User-overridden column widths, stored as a JSON-friendly record keyed by column id. */
 export type ColumnWidths = Readonly<Record<string, number>>;
 
+/**
+ * Compatibility class for object-oriented ColumnWidths usage.
+ */
+export class ColumnWidthsStore {
+  private widths: Record<string, number>;
+  constructor(initial?: Record<string, number>) {
+    this.widths = { ...(initial ?? {}) };
+  }
+  getStored(columnId: string): number | undefined {
+    return getStoredColumnWidth(this.widths, columnId);
+  }
+  get(columnId: string, defaultWidth: number): number {
+    return getColumnWidth(this.widths, columnId, defaultWidth);
+  }
+  getClamped(columnId: string, defaultWidth: number, min: number, max: number): number {
+    return getClampedColumnWidth(this.widths, columnId, defaultWidth, min, max);
+  }
+  set(columnId: string, width: number): void {
+    const res = setColumnWidth(this.widths, columnId, width);
+    this.widths = { ...res.widths };
+  }
+  setClamped(columnId: string, width: number, min: number, max: number): boolean {
+    const res = setClampedColumnWidth(this.widths, columnId, width, min, max);
+    this.widths = { ...res.widths };
+    return res.changed;
+  }
+  toRecord(): Record<string, number> {
+    return { ...this.widths };
+  }
+}
+
+export { ColumnWidthsStore as ColumnWidths };
+
 /** Stored override, if the user ever resized this column. */
 export function getStoredColumnWidth(widths: ColumnWidths, columnId: string): number | undefined {
   if (!Object.prototype.hasOwnProperty.call(widths, columnId)) return undefined;
@@ -187,4 +220,3 @@ export function stepResizedWidth(
   }
   return calculateResizedWidth(currentWidth, stepPx, minWidth, maxWidth);
 }
-

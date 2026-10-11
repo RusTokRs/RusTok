@@ -123,6 +123,18 @@ function optionalTrimmedString(value: unknown): string | null {
  * `null` instead of leaking malformed state into a query.
  */
 export function normalizeFilterValue(value: unknown): FilterValue | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? { kind: 'text', value: trimmed } : { kind: 'empty' };
+  }
+  if (typeof value === 'boolean') {
+    return { kind: 'boolean', value };
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0
+      ? { kind: 'select', value: String(value[0]) }
+      : { kind: 'empty' };
+  }
   if (!isRecord(value) || typeof value.kind !== 'string') return null;
 
   switch (value.kind) {
@@ -295,4 +307,70 @@ export function columnFilterKeys(filters: ColumnFilters): string[] {
 /** Number of active filters. */
 export function columnFilterCount(filters: ColumnFilters): number {
   return columnFilterKeys(filters).length;
+}
+
+/**
+ * Checks whether two filter values are equal.
+ */
+export function isFilterEqual(a: FilterValue | undefined, b: FilterValue | undefined): boolean {
+  if (a === b) return true;
+  if (a === undefined || a === null) return b === undefined || b === null;
+  if (b === undefined || b === null) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((v, i) => v === b[i]);
+  }
+  return false;
+}
+
+/**
+ * Stores a filter value immutably. Empty values remove the entry.
+ * Returns `{ filters, changed }`.
+ */
+export function setFilter(
+  filters: ColumnFilters,
+  columnId: string,
+  value: unknown
+): { filters: ColumnFilters; changed: boolean } {
+  return setColumnFilter(filters, columnId, value);
+}
+
+/**
+ * Removes a filter by columnId immutably.
+ */
+export function removeFilter(
+  filters: ColumnFilters,
+  columnId: string
+): { filters: ColumnFilters; changed: boolean } {
+  if (!(columnId in filters)) {
+    return { filters, changed: false };
+  }
+  const next = { ...filters };
+  delete next[columnId];
+  return { filters: next, changed: true };
+}
+
+/**
+ * Clears all active filters immutably.
+ */
+export function clearFilters(filters: ColumnFilters): {
+  filters: ColumnFilters;
+  changed: boolean;
+} {
+  const hasAny = Object.keys(filters).length > 0;
+  return { filters: {}, changed: hasAny };
+}
+
+/**
+ * Checks whether any filters are active.
+ */
+export function hasActiveFilters(filters: ColumnFilters): boolean {
+  return Object.keys(normalizeFilters(filters)).length > 0;
+}
+
+/**
+ * Returns the count of active column filters.
+ */
+export function activeFilterCount(filters: ColumnFilters): number {
+  return Object.keys(normalizeFilters(filters)).length;
 }

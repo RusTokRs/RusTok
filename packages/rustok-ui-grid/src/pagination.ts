@@ -146,37 +146,90 @@ export function totalPages(pagination: GridPagination): number {
 }
 
 /** One-based index of the first rendered row (zero when the data set is empty). */
-export function fromIndex(pagination: GridPagination): number {
-  const state = normalizePagination(pagination);
-  if (state.total === 0) return 0;
-  if (state.mode === 'infinite') return 1;
-  return safeAdd(safeMultiply(state.page - 1, state.pageSize), 1);
+export function fromIndex(
+  paginationOrPage: GridPagination | number,
+  pageSize?: number,
+  total?: number,
+  mode: PaginationMode = 'paged',
+): number {
+  if (typeof paginationOrPage === 'object') {
+    const state = normalizePagination(paginationOrPage);
+    if (state.total === 0) return 0;
+    if (state.mode === 'infinite') return 1;
+    return safeAdd(safeMultiply(state.page - 1, state.pageSize), 1);
+  }
+  const state = createPagination(paginationOrPage, pageSize ?? DEFAULT_PAGE_SIZE, total ?? 0, mode);
+  return fromIndex(state);
 }
 
 /** One-based index of the last rendered row (zero when the data set is empty). */
-export function toIndex(pagination: GridPagination): number {
-  const state = normalizePagination(pagination);
-  return Math.min(safeMultiply(state.page, state.pageSize), state.total);
+export function toIndex(
+  paginationOrPage: GridPagination | number,
+  pageSize?: number,
+  total?: number,
+): number {
+  if (typeof paginationOrPage === 'object') {
+    const state = normalizePagination(paginationOrPage);
+    return Math.min(safeMultiply(state.page, state.pageSize), state.total);
+  }
+  const state = createPagination(paginationOrPage, pageSize ?? DEFAULT_PAGE_SIZE, total ?? 0);
+  return toIndex(state);
 }
 
 /** Number of rows rendered for the current page/mode. */
-export function visibleLength(pagination: GridPagination): number {
-  const state = normalizePagination(pagination);
-  const end = toIndex(state);
-  if (state.mode === 'infinite') return end;
-  return Math.max(0, end - (fromIndex(state) - 1));
+export function visibleLength(
+  paginationOrPage: GridPagination | number,
+  pageSize?: number,
+  total?: number,
+  mode: PaginationMode = 'paged',
+): number {
+  if (typeof paginationOrPage === 'object') {
+    const state = normalizePagination(paginationOrPage);
+    const end = toIndex(state);
+    if (state.mode === 'infinite') return end;
+    return Math.max(0, end - (fromIndex(state) - 1));
+  }
+  const state = createPagination(paginationOrPage, pageSize ?? DEFAULT_PAGE_SIZE, total ?? 0, mode);
+  return visibleLength(state);
 }
 
+/** Compatibility alias for visibleLength. */
+export const visibleLen = visibleLength;
+
 /** Zero-based `[start, end)` bounds for client-side paging over `length` local rows. */
-export function sliceBounds(pagination: GridPagination, length: number): [number, number] {
-  const state = normalizePagination(pagination);
-  const safeLength = normalizeTotal(length);
-  if (state.mode === 'infinite') {
-    return [0, Math.min(safeMultiply(state.page, state.pageSize), safeLength)];
+export function sliceBounds(
+  paginationOrPage: GridPagination | number,
+  lengthOrPageSize: number,
+  totalOrLen?: number,
+  mode: PaginationMode = 'paged',
+): [number, number] {
+  if (typeof paginationOrPage === 'object') {
+    const state = normalizePagination(paginationOrPage);
+    const safeLength = normalizeTotal(lengthOrPageSize);
+    if (state.mode === 'infinite') {
+      return [0, Math.min(safeMultiply(state.page, state.pageSize), safeLength)];
+    }
+    const start = Math.min(safeMultiply(state.page - 1, state.pageSize), safeLength);
+    const end = Math.min(safeAdd(start, state.pageSize), safeLength);
+    return [start, end];
   }
-  const start = Math.min(safeMultiply(state.page - 1, state.pageSize), safeLength);
-  const end = Math.min(safeAdd(start, state.pageSize), safeLength);
-  return [start, end];
+  const state = createPagination(paginationOrPage, lengthOrPageSize, totalOrLen ?? 0, mode);
+  return sliceBounds(state, totalOrLen ?? 0);
+}
+
+/** Slices an array of items according to pagination state. */
+export function paginateArray<T>(
+  items: readonly T[],
+  paginationOrPage: GridPagination | number,
+  pageSize?: number,
+  mode: PaginationMode = 'paged',
+): T[] {
+  if (typeof paginationOrPage === 'object') {
+    const [start, end] = sliceBounds(paginationOrPage, items.length);
+    return items.slice(start, end);
+  }
+  const [start, end] = sliceBounds(paginationOrPage, pageSize ?? DEFAULT_PAGE_SIZE, items.length, mode);
+  return items.slice(start, end);
 }
 
 /** Select a page, clamping it into the valid range and refreshing `hasNext`. */
@@ -184,6 +237,9 @@ export function goToPage(pagination: GridPagination, nextPage: number): GridPagi
   const state = normalizePagination(pagination);
   return normalizePagination({ ...state, page: nextPage });
 }
+
+/** Compatibility alias for goToPage. */
+export const setPage = goToPage;
 
 /** Advance one page when possible. */
 export function nextPage(pagination: GridPagination): GridPagination {
@@ -217,9 +273,17 @@ export function setPaginationMode(
   return normalizePagination({ ...pagination, mode });
 }
 
+/** Compatibility alias for setPaginationMode. */
+export const setMode = setPaginationMode;
+
 /** Format the standard range label for a paged table. */
 export function dataTableRangeLabel(page: number, pageSize: number, total: number): string {
   const state = createPagination(page, pageSize, total);
   if (state.total === 0) return '0 of 0';
   return `${fromIndex(state)}–${toIndex(state)} of ${state.total}`;
+}
+
+/** Formats range label directly from a GridPagination object. */
+export function rangeLabel(pagination: GridPagination): string {
+  return dataTableRangeLabel(pagination.page, pagination.pageSize, pagination.total);
 }

@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn deserialization_repairs_composite_state() {
         let state: GridState = serde_json::from_str(
-            r#"{"column_widths":{"widths":{"title":9000}},"filters":{"filters":{"empty":{"Text":" "}}},"sort":{"column_id":"  ","direction":"Asc"},"selection":{"selected_ids":[]},"pagination":{"page":9,"page_size":0,"total":21,"has_next":true,"mode":"Paged"}}"#,
+            r#"{"column_widths":{"widths":{"title":9000}},"filters":{"filters":{"empty":{"Text":" "}}},"sort":{"column_id":"  ","direction":"Asc"},"selection":{"selected_ids":[]},"pagination":{"page":99,"page_size":0,"total":21,"has_next":true,"mode":"Paged"}}"#,
         )
         .expect("valid state JSON");
         assert!(state.filters.is_empty());

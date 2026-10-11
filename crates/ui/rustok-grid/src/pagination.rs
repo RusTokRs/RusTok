@@ -140,6 +140,15 @@ impl GridPagination {
         self.page.saturating_mul(self.page_size).min(total)
     }
 
+    /// Standard formatted range description (e.g. "1–20 of 100", or "0 of 0").
+    pub fn range_label(&self) -> String {
+        if self.total == 0 {
+            "0 of 0".to_string()
+        } else {
+            format!("{}–{} of {}", self.from_index(), self.to_index(), self.total)
+        }
+    }
+
     /// Number of rows rendered for the current page/mode.
     pub fn visible_len(&self) -> usize {
         match self.mode {
@@ -328,6 +337,18 @@ mod tests {
         let mut p = GridPagination::new(3, 10, 100);
         p.set_page_size(50);
         assert_eq!((p.page, p.page_size, p.total_pages()), (1, 50, 2));
+    }
+
+    #[test]
+    fn range_label_formats_correctly() {
+        let empty = GridPagination::new(1, 10, 0);
+        assert_eq!(empty.range_label(), "0 of 0");
+
+        let p1 = GridPagination::new(1, 20, 55);
+        assert_eq!(p1.range_label(), "1–20 of 55");
+
+        let p3 = GridPagination::new(3, 20, 55);
+        assert_eq!(p3.range_label(), "41–55 of 55");
     }
 
     #[test]

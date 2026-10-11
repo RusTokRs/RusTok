@@ -1,8 +1,155 @@
 mod core;
 
-use self::core::build_header_links;
+use self::core::{
+    SearchScope, build_header_links, build_search_target_url, resolve_default_scope,
+};
 use crate::shared::ui::UiButton;
 use leptos::prelude::*;
+use rustok_ui_core::UiRouteContext;
+
+#[component]
+fn HeaderSearchInput(locale: String) -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>();
+    let route_segment = route_context
+        .as_ref()
+        .and_then(|ctx| ctx.route_segment.as_deref());
+    let default_scope = resolve_default_scope(route_segment);
+
+    let (active_scope, set_active_scope) = signal(default_scope);
+    let (search_query, set_search_query) = signal(String::new());
+    let (is_dropdown_open, set_is_dropdown_open) = signal(false);
+
+    let is_ru = locale.eq_ignore_ascii_case("ru");
+    let current_locale = locale.clone();
+
+    let on_submit = {
+        let current_locale = current_locale.clone();
+        move |ev: leptos::ev::SubmitEvent| {
+            ev.prevent_default();
+            let query = search_query.get();
+            let scope = active_scope.get();
+            #[allow(unused_variables)]
+            let target = build_search_target_url(&current_locale, &query, scope);
+            #[cfg(target_arch = "wasm32")]
+            if let Some(window) = leptos::web_sys::window() {
+                let _ = window.location().set_href(&target);
+            }
+        }
+    };
+
+    let search_action_url = {
+        let normalized = rustok_ui_core::normalize_ui_text(&locale)
+            .map(|s| s.to_lowercase())
+            .unwrap_or_else(|| "en".to_string());
+        format!("/{}/search", normalized)
+    };
+
+    view! {
+        <div class="relative flex items-center flex-1 max-w-[14rem] sm:max-w-xs md:max-w-sm lg:max-w-md mx-2 sm:mx-4">
+            <form
+                method="get"
+                action=search_action_url
+                on:submit=on_submit
+                class="relative flex items-center w-full rounded-xl border border-border/70 bg-secondary/40 hover:bg-secondary/60 focus-within:bg-background focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 transition-all duration-200 shadow-xs"
+            >
+                // Hidden input for SSR query parameters
+                {move || active_scope.get().source_module().map(|module| view! {
+                    <input type="hidden" name="source_modules" value=module />
+                })}
+
+                // Scope badge with dropdown trigger
+                <div class="relative flex items-center pl-1.5 shrink-0">
+                    <button
+                        type="button"
+                        class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                        on:click=move |_| set_is_dropdown_open.update(|open| *open = !*open)
+                        title=if is_ru { "Выбрать область поиска" } else { "Select search scope" }
+                    >
+                        <span>{move || active_scope.get().label(is_ru)}</span>
+                        <svg class="h-3 w-3 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                    </button>
+
+                    // Clear scope button (if not All)
+                    {move || (active_scope.get() != SearchScope::All).then(|| view! {
+                        <button
+                            type="button"
+                            class="ml-0.5 p-0.5 text-muted-foreground hover:text-foreground rounded-full transition-colors cursor-pointer"
+                            on:click=move |ev| {
+                                ev.stop_propagation();
+                                set_active_scope.set(SearchScope::All);
+                            }
+                            title=if is_ru { "Сбросить в поиск везде" } else { "Reset to search all" }
+                        >
+                            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </button>
+                    })}
+
+                    // Dropdown menu for selecting scope
+                    {move || is_dropdown_open.get().then(|| view! {
+                        <div class="absolute left-0 top-full mt-2 w-48 rounded-xl border border-border/80 bg-popover/95 p-1.5 shadow-xl backdrop-blur-xl z-50 animate-in fade-in zoom-in-95 duration-100">
+                            <div class="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                {if is_ru { "Область поиска" } else { "Search scope" }}
+                            </div>
+                            {SearchScope::ALL_SCOPES.into_iter().map(|scope| {
+                                let is_active = move || active_scope.get() == scope;
+                                view! {
+                                    <button
+                                        type="button"
+                                        class=move || {
+                                            if is_active() {
+                                                "w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-accent text-accent-foreground cursor-pointer"
+                                            } else {
+                                                "w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium text-popover-foreground hover:bg-secondary/80 transition-colors cursor-pointer"
+                                            }
+                                        }
+                                        on:click=move |_| {
+                                            set_active_scope.set(scope);
+                                            set_is_dropdown_open.set(false);
+                                        }
+                                    >
+                                        <span>{scope.label(is_ru)}</span>
+                                        {move || is_active().then(|| view! {
+                                            <svg class="h-3.5 w-3.5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                                <polyline points="20 6 9 17 4 12" />
+                                            </svg>
+                                        })}
+                                    </button>
+                                }
+                            }).collect::<Vec<_>>()}
+                        </div>
+                    })}
+                </div>
+
+                // Text input
+                <input
+                    type="search"
+                    name="q"
+                    class="w-full min-w-0 bg-transparent px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
+                    placeholder=move || active_scope.get().placeholder(is_ru)
+                    prop:value=move || search_query.get()
+                    on:input=move |ev| set_search_query.set(event_target_value(&ev))
+                />
+
+                // Search submit button
+                <button
+                    type="submit"
+                    class="pr-2.5 pl-1 text-muted-foreground hover:text-primary transition-colors cursor-pointer shrink-0"
+                    aria-label=if is_ru { "Искать" } else { "Search" }
+                >
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                </button>
+            </form>
+        </div>
+    }
+}
 
 #[component]
 pub fn Header(
@@ -57,6 +204,8 @@ pub fn Header(
                     </a>
                     {navigation}
                 </div>
+
+                <HeaderSearchInput locale=locale.clone() />
 
                 <div class="flex items-center gap-3">
                     <div class="contents" data-storefront-header-actions="true">

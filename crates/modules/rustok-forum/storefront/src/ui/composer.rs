@@ -466,7 +466,11 @@ pub fn ForumComposer(
 
                             // Editor / Preview body
                             <div class="flex-1 overflow-y-auto p-4 min-h-[180px]">
-                                {move || if active_tab.get() == "write" {
+                                {
+                                    let body_placeholder = body_placeholder.clone();
+                                    let preview_hint_label = preview_hint_label.clone();
+                                    let preview_empty_label = preview_empty_label.clone();
+                                    move || if active_tab.get() == "write" {
                                     view! {
                                         <textarea
                                             placeholder=body_placeholder.clone()
@@ -524,15 +528,17 @@ pub fn ForumComposer(
                                         type="button"
                                         disabled=move || !composer.get().can_submit()
                                         class="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow transition hover:bg-primary/90 disabled:opacity-60"
-                                        on:click=move |_| {
-                                            let draft = composer.get();
-                                            if !draft.can_submit() {
-                                                return;
-                                            }
-                                            let is_topic = matches!(draft.mode, ComposerMode::Topic);
-                                            let locale = forum_storefront_content_locale(
-                                                route_locale.as_deref(),
-                                            );
+                                        on:click={
+                                            let route_locale = route_locale.clone();
+                                            move |_| {
+                                                let draft = composer.get();
+                                                if !draft.can_submit() {
+                                                    return;
+                                                }
+                                                let is_topic = matches!(draft.mode, ComposerMode::Topic);
+                                                let locale = forum_storefront_content_locale(
+                                                    route_locale.as_deref(),
+                                                );
                                             let quotes = draft.transport_quotes();
                                             let body_text = draft.content.clone();
                                             let category_id = draft
@@ -589,6 +595,7 @@ pub fn ForumComposer(
                                                 }
                                             });
                                         }
+                                    }
                                     >
                                         {if state.is_submitting {
                                             submitting_label.clone()

@@ -2475,12 +2475,23 @@ async fn first_party_catalog_modules(
     ctx: &ServerRuntimeContext,
     locale: &str,
 ) -> Result<Vec<CatalogManifestModule>, Error> {
-    let manifest = PlatformCompositionService::active_manifest(ctx.db())
-        .await
-        .map_err(|_| {
-            tracing::error!("Failed to load platform composition for registry catalog");
+    let manifest = if ctx.settings().runtime.is_registry_only() {
+        ManifestManager::load().map_err(|error| {
+            tracing::error!(%error, "Failed to load modules.toml manifest for registry catalog");
             Error::InternalServerError
-        })?;
+        })?
+    } else {
+        match PlatformCompositionService::active_manifest(ctx.db()).await {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                tracing::warn!(%error, "Failed to load platform composition for registry catalog from db, falling back to modules.toml");
+                ManifestManager::load().map_err(|err| {
+                    tracing::error!(%err, "Failed to load fallback modules.toml manifest for registry catalog");
+                    Error::InternalServerError
+                })?
+            }
+        }
+    };
     let modules = tokio::task::spawn_blocking(move || {
         ManifestManager::catalog_modules(&manifest)
     })
@@ -2499,13 +2510,16 @@ async fn first_party_catalog_modules(
         .filter(|module| module.ownership == "first_party")
         .collect::<Vec<_>>();
 
-    RegistryGovernanceService::new(ctx.db_clone())
-        .apply_catalog_projection(first_party_modules, Some(locale), Some(locale))
+    match RegistryGovernanceService::new(ctx.db_clone())
+        .apply_catalog_projection(first_party_modules.clone(), Some(locale), Some(locale))
         .await
-        .map_err(|_| {
-            tracing::error!("Failed to project registry releases into catalog");
-            Error::InternalServerError
-        })
+    {
+        Ok(projected) => Ok(projected),
+        Err(error) => {
+            tracing::warn!(%error, "Failed to project registry releases into catalog; falling back to manifest metadata");
+            Ok(first_party_modules)
+        }
+    }
 }
 
 fn filter_catalog_modules(

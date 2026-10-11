@@ -27,6 +27,7 @@ This package is that shared half for TypeScript/Next.js applications. Its root e
 | `url.ts` | `rustok_ui_core::apply_ui_query_pairs` | `applyQueryPairs` (stable key positions, duplicate-key replacement/removal, blank-value removal and browser form encoding) and `queryParam`. |
 | `react/` | `rustok-grid-leptos` | `@rustok/ui-grid/react`: companion adapter providing `DataTableStatic`, `DataTableEmptyState`, `DataTablePaginationBar` for `@tanstack/react-table`. |
 
+
 ## Contract notes
 
 - The root package (`@rustok/ui-grid`) stays strictly framework-free.

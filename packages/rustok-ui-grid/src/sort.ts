@@ -36,7 +36,8 @@ export function normalizeSortState(state: Partial<SortState> = {}): SortState {
 }
 
 /** True when both the column and direction are set. */
-export function isSortActive(state: SortState): boolean {
+export function isSortActive(state?: SortState | null): boolean {
+  if (!state) return false;
   return activeSort(state) !== null;
 }
 
@@ -59,6 +60,15 @@ export function sortDirectionForColumn(
 /** Invert the sort direction. */
 export function oppositeSortDirection(direction: SortDirection): SortDirection {
   return direction === 'asc' ? 'desc' : 'asc';
+}
+
+/** Compares two values according to sort direction. */
+export function compareValues<T>(a: T, b: T, direction: SortDirection = 'asc'): number {
+  const factor = direction === 'desc' ? -1 : 1;
+  if (typeof a === 'number' && typeof b === 'number') {
+    return (a - b) * factor;
+  }
+  return String(a).localeCompare(String(b)) * factor;
 }
 
 /** Value for the WAI-ARIA `aria-sort` attribute. */
@@ -102,3 +112,52 @@ export function cycleSort(
   if (currentDirection === 'desc') return null;
   return { columnId, direction: 'asc' };
 }
+
+/**
+ * Repairs a half-filled sort state (e.g. from query params or storage).
+ * Returns null if invalid or blank.
+ */
+export function normalizeSort(state?: Partial<SortState> | null): SortState | null {
+  if (!state || !state.columnId) return null;
+  const colId = state.columnId.trim();
+  if (colId.length === 0) return null;
+  const dir: SortDirection = state.direction === 'desc' ? 'desc' : 'asc';
+  return { columnId: colId, direction: dir };
+}
+
+/**
+ * Checks whether the grid is sorted by the given columnId.
+ */
+export function isSortedBy(
+  state: SortState | null | undefined,
+  columnId: string
+): SortDirection | null {
+  if (!state || state.columnId !== columnId) return null;
+  return state.direction;
+}
+
+/**
+ * Returns aria-sort string for a specific column header.
+ */
+export function ariaSortFor(
+  state: SortState | null | undefined,
+  columnId: string
+): 'ascending' | 'descending' | 'none' {
+  return ariaSortValue(isSortedBy(state, columnId));
+}
+
+
+/**
+ * Creates or sets a sort state.
+ */
+export function setSort(columnId: string, direction: SortDirection = 'asc'): SortState {
+  return { columnId, direction };
+}
+
+/**
+ * Clears sort state (returns null).
+ */
+export function clearSort(): null {
+  return null;
+}
+

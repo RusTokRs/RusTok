@@ -272,3 +272,39 @@ export function hasFilterRow(
 ): boolean {
   return visibleColumns(columns).some(hasFilter);
 }
+
+/** Compatibility alias for createGridColumnDef with optional options. */
+export function createColumnDef(
+  id: ColumnId,
+  title: string,
+  options?: Partial<GridColumnDef> & { header?: string }
+): GridColumnDef {
+  let col = createGridColumnDef(id, options?.title ?? options?.header ?? title);
+  if (options?.align) col = withColumnAlign(col, options.align);
+  if (options?.sortable === false) col = withColumnNotSortable(col);
+  if (options?.resizable === false) col = withColumnNotResizable(col);
+  if (options?.visible === false) col = hideColumn(col);
+  if (options?.filterType) col = withColumnFilter(col, options.filterType);
+  if (options?.pinned) col = pinColumn(col, options.pinned);
+  if (options?.width) col = { ...col, width: options.width };
+  return col;
+}
+
+/** Compatibility alias for createResizableColumnWidth. */
+export function createColumnWidth(
+  defaultPx = 150,
+  minPx = 50,
+  maxPx = 800
+): ColumnWidth & { default: number } {
+  const w = createResizableColumnWidth(defaultPx, minPx, maxPx);
+  return { ...w, default: w.current };
+}
+
+/** Compatibility alias for createFixedColumnWidth. */
+export function fixedColumnWidth(px: number): ColumnWidth & { default: number } {
+  const w = createFixedColumnWidth(px);
+  return { ...w, default: w.current };
+}
+
+/** Compatibility alias for hasFilter. */
+export const hasColumnFilter = hasFilter;

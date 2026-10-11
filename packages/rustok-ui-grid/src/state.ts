@@ -49,13 +49,13 @@ export interface GridState {
 }
 
 /** Create the same initial state as `GridState::new`. */
-export function createGridState(): GridState {
+export function createGridState(options?: { pagination?: GridPagination }): GridState {
   return {
     columnWidths: {},
     filters: {},
     sort: emptySortState(),
     selection: emptyRowSelection(),
-    pagination: createPagination(),
+    pagination: options?.pagination ?? createPagination(),
   };
 }
 
@@ -126,7 +126,7 @@ export function resetGridFilters(state: GridState): { state: GridState; changed:
 export function toggleGridSort(
   state: GridState,
   columnId: string,
-): { state: GridState; direction: SortDirection | null } {
+): { state: GridState; direction: SortDirection | null; nextDirection: SortDirection | null } {
   const next = cycleSort(state.sort, columnId);
   const sort = next ?? emptySortState();
   return {
@@ -136,6 +136,7 @@ export function toggleGridSort(
       pagination: goToPage(state.pagination, 1),
     },
     direction: sort.direction,
+    nextDirection: sort.direction,
   };
 }
 
@@ -148,3 +149,6 @@ export function pruneGridSelection(state: GridState, visibleIds: Iterable<string
 export function clampGridWidths(state: GridState, columns: readonly GridColumnDef[]): GridState {
   return { ...state, columnWidths: clampColumnWidths(state.columnWidths, columns) };
 }
+
+/** Compatibility alias for clampGridWidths. */
+export const clampWidths = clampGridWidths;
