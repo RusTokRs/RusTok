@@ -108,7 +108,7 @@ impl GridPagination {
         // `total` is close to u64::MAX. A data set may exceed usize on 32-bit wasm targets, so
         // narrow only after computing the exact u64 page count.
         let whole_pages = self.total / page_size;
-        let pages = if self.total % page_size == 0 {
+        let pages = if self.total.is_multiple_of(page_size) {
             whole_pages
         } else {
             whole_pages.saturating_add(1)
@@ -145,7 +145,12 @@ impl GridPagination {
         if self.total == 0 {
             "0 of 0".to_string()
         } else {
-            format!("{}–{} of {}", self.from_index(), self.to_index(), self.total)
+            format!(
+                "{}–{} of {}",
+                self.from_index(),
+                self.to_index(),
+                self.total
+            )
         }
     }
 
@@ -279,12 +284,15 @@ mod tests {
     fn page_count_ceil_does_not_saturate_for_large_totals() {
         let pagination = GridPagination::new(1, 20, u64::MAX);
         let whole_pages = u64::MAX / 20;
-        let expected = if u64::MAX % 20 == 0 {
+        let expected = if u64::MAX.is_multiple_of(20) {
             whole_pages
         } else {
             whole_pages + 1
         };
-        assert_eq!(pagination.total_pages(), usize::try_from(expected).unwrap_or(usize::MAX));
+        assert_eq!(
+            pagination.total_pages(),
+            usize::try_from(expected).unwrap_or(usize::MAX)
+        );
     }
 
     #[test]
