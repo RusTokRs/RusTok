@@ -242,12 +242,32 @@ wrappers. Each one has an owner decision or a follow-up task in
   `ForumModerationReportPort`. Without that adapter the mutations fail closed. Not yet implemented: automatic flags
   (a `rustok-moderation` policy, not a forum setting), free-text descriptions, report rate limits, REST transport, and the storefront report
   action. See [`DECISIONS/2026-10-09-forum-user-reports-via-moderation.md`](../../../DECISIONS/2026-10-09-forum-user-reports-via-moderation.md).
-- Notifications are emitted only for topic creation and user mentions.
+- Notifications are emitted only for topic creation and user mentions. Reply
+  creation publishes `forum.topic.replied` through the transactional outbox, but the
+  Forum notification provider does not accept that type, so topic subscribers receive
+  nothing for a reply and the stored subscription level is read only for topic
+  creation. Enabling reply notifications needs the provider-side recipient set, the
+  per-recipient audience recheck, and a localized template; the outbox intake no
+  longer blocks it, because the Notifications module now selects rows from the host
+  decoder's claimed types. See
+  [`DECISIONS/2026-10-11-notifications-outbox-intake-decoder-claims.md`](../../../DECISIONS/2026-10-11-notifications-outbox-intake-decoder-claims.md).
 - Topic move (`FORUM-21A`) has an owner service but no transport or UI.
   Topic revision history has services but no API or UI.
 - Attachment relations have a service but no transport or UI.
+- Widget list previews (`forum.topic_list`) run under owner read semantics, which
+  `DECISIONS/2026-10-09-forum-widget-preview-owner-audience.md` chose deliberately: the candidate
+  query applies no storefront display settings, so a preview lists `closed` and `pending` topics
+  that a viewer may read through the owner path but never in a storefront feed, and it ignores
+  `show_locked_topics_in_lists` even though the storefront list honors it. The preview also checks
+  the audience per candidate up to `FORUM_WIDGET_TOPIC_LIST_MAX_CANDIDATES` instead of resolving
+  facts once per batch — the follow-up that ADR records — and a larger candidate set returns a
+  validation error rather than a partial total. Page Builder gets a faithful owner read, not a
+  pixel copy of the rendered block.
 - Topic view counters and topic sort orders are not implemented. The list order is
-  fixed as pinned first, then recent activity.
+  fixed as pinned first, then recent activity. `last_reply_at` is a derived
+  projection recomputed from the newest approved reply in both counter directions, so
+  an imported or restored reply cannot move a topic by a timestamp the data does not
+  carry; `updated_at` still advances with the counter write.
 - The Next.js storefront shows the first page of topics without load-more.
   Reply pagination has no load-more.
 - The Leptos storefront composer writes real content: topics go through

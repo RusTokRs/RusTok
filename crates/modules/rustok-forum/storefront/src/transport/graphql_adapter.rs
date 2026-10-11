@@ -237,11 +237,23 @@ where
         .map_err(|error| ApiError::Graphql(error.to_string()))
 }
 
+/// Whether a personalized storefront query failed only because the caller cannot see
+/// the personalization surface at all: no session, or none of the Forum topic read
+/// permissions these queries require. In that case the storefront may still show the
+/// audience feed. Every other failure — an unrelated permission denial, a network,
+/// HTTP, persistence, or domain error — must surface instead of silently swapping the
+/// dataset the caller asked for. The denials are matched exactly against the messages
+/// the Forum storefront resolvers emit (`forum_topics:list`, `forum_topics:read`, and
+/// the member-card variant); renaming one of those owner messages has to update this
+/// list in the same change.
 fn personalization_unavailable(error: &GraphqlHttpError) -> bool {
     match error {
         GraphqlHttpError::Unauthorized => true,
         GraphqlHttpError::Graphql(message) => {
-            message == "Authentication required" || message.starts_with("Permission denied:")
+            message == "Authentication required"
+                || message == "Permission denied: forum_topics:list required"
+                || message == "Permission denied: forum_topics:read required"
+                || message == "Permission denied: forum_topics:read required for member cards"
         }
         GraphqlHttpError::Network | GraphqlHttpError::Http(_) => false,
     }
@@ -540,6 +552,21 @@ mod tests {
         )));
         assert!(personalization_unavailable(&GraphqlHttpError::Graphql(
             "Permission denied: forum_topics:list required".to_string()
+        )));
+        assert!(personalization_unavailable(&GraphqlHttpError::Graphql(
+            "Permission denied: forum_topics:read required".to_string()
+        )));
+        assert!(personalization_unavailable(&GraphqlHttpError::Graphql(
+            "Permission denied: forum_topics:read required for member cards".to_string()
+        )));
+        assert!(!personalization_unavailable(&GraphqlHttpError::Graphql(
+            "Permission denied: forum_topics:moderate required".to_string()
+        )));
+        assert!(!personalization_unavailable(&GraphqlHttpError::Graphql(
+            "Permission denied: forum_replies:create required".to_string()
+        )));
+        assert!(!personalization_unavailable(&GraphqlHttpError::Graphql(
+            "Permission denied: something else".to_string()
         )));
         assert!(!personalization_unavailable(&GraphqlHttpError::Network));
         assert!(!personalization_unavailable(&GraphqlHttpError::Http(

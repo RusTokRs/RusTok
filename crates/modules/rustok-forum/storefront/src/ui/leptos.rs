@@ -489,7 +489,12 @@ fn ForumThreadPanel(
             <aside class="flex-1 space-y-4 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm overflow-hidden">
                 <div class="space-y-3">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class=forum_storefront_status_badge_class(status_class)>{topic.status.clone()}</span>
+                    <span class=forum_storefront_status_badge_class(status_class)>
+                        {crate::i18n::status_label(
+                            locale.as_deref(),
+                            topic.status.as_str(),
+                        )}
+                    </span>
                     <span dir="ltr" class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                         {topic.effective_locale.clone()}
                     </span>
@@ -647,7 +652,12 @@ fn ReplyCard(
     view! {
         <article class="rounded-[1.15rem] border border-border bg-card p-4">
             <div class="flex items-center justify-between gap-3">
-                <span class=forum_storefront_status_badge_class(status_class)>{reply.status}</span>
+                <span class=forum_storefront_status_badge_class(status_class)>
+                {crate::i18n::status_label(
+                    route_context.locale.as_deref(),
+                    reply.status.as_str(),
+                )}
+            </span>
                 <div class="flex items-center gap-2">
                     <span dir="ltr" class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                         {reply.effective_locale}

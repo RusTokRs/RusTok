@@ -326,7 +326,12 @@ pub fn ForumTopicFeed(
                                         <div class="flex flex-wrap items-start justify-between gap-4">
                                             <div class="space-y-3">
                                                 <div class="flex flex-wrap items-center gap-2">
-                                                    <span class=card.status_badge_class>{card.status.clone()}</span>
+                                                    <span class=card.status_badge_class>
+                                                        {crate::i18n::status_label(
+                                                            locale.as_deref(),
+                                                            &card.status,
+                                                        )}
+                                                    </span>
                                                     <span dir="ltr" class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                                                         {card.effective_locale.clone()}
                                                     </span>

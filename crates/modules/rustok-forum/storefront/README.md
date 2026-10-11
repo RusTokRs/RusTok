@@ -42,8 +42,17 @@ Leptos storefront UI package for the `rustok-forum` module.
 ## Known Limitations / Pending Implementation
 
 - The composer posts plain text only. Tags, explicit slug, attachments, edit-in-place, subscribe, vote, and report actions have no storefront transport here, so they stay unreachable in this surface while the owner already exposes some of them through GraphQL. Quoting a reply from the Leptos thread posts quoted text without a pinned owner relation (see Interactions).
+- Topic cards show the owner status token through a localized badge
+  (`forum.topic.statusOpen|statusClosed|statusArchived|statusPending`), and an unrecognized token
+  is rendered unchanged rather than relabeled.
 - Submit failures are shown with the redacted transport message (`Forum GraphQL request failed` / `Forum server request failed`). The owner reason stays server-side by contract, so an author cannot tell a locked topic from a cooldown in the UI.
-- The topic feed renders one server page per direction: fixed page sizes, no cursor paging, and client-side filtering over the fetched page while the header count stays server-authored.
+- The topic feed renders one server page per direction: fixed page sizes (12 topics, 20 replies),
+  no cursor paging, and client-side filtering over the fetched page while the header count stays
+  server-authored. The owner returns `nextCursor` for the feed query and reads
+  `topics_per_page` / `replies_per_page` for its own defaults; neither the cursor nor those
+  settings are consumed here, so a feed cannot page past the fetched page.
+- Vote, subscribe, and report mutations stay unreachable in this surface, so `is_subscribed` and
+  `current_user_vote` are not part of the read model this package renders.
 
 ## Documentation
 

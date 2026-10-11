@@ -327,18 +327,20 @@ impl TopicService {
             ));
         }
 
-        let last_reply_at = if delta > 0 {
-            Some(now.into())
-        } else {
-            forum_reply::Entity::find()
-                .filter(forum_reply::Column::TenantId.eq(tenant_id))
-                .filter(forum_reply::Column::TopicId.eq(topic_id))
-                .filter(forum_reply::Column::Status.eq(ReplyStatus::Approved))
-                .order_by_desc(forum_reply::Column::CreatedAt)
-                .one(txn)
-                .await?
-                .map(|reply| reply.created_at)
-        };
+        // `last_reply_at` is a derived projection of the newest approved reply, so
+        // both directions recompute it from the reply rows instead of trusting the
+        // wall clock. Stamp it from the counter bump and a reply that carries its
+        // own timestamp (starter import, restore after moderation) moves the topic
+        // to a recency the data does not support, which skews the fixed
+        // recent-activity order and the keyset cursor built on it.
+        let last_reply_at = forum_reply::Entity::find()
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
+            .filter(forum_reply::Column::TopicId.eq(topic_id))
+            .filter(forum_reply::Column::Status.eq(ReplyStatus::Approved))
+            .order_by_desc(forum_reply::Column::CreatedAt)
+            .one(txn)
+            .await?
+            .map(|reply| reply.created_at);
 
         let topic = Self::find_topic_in_tx(txn, tenant_id, topic_id).await?;
         let mut active: forum_topic::ActiveModel = topic.into();
