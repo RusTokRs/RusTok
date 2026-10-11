@@ -668,6 +668,211 @@ fresh-producer-revision -> new case -> new immutable decision re-review flow. It
 must not move recovery state into Forum or bypass the existing shared-scheduler +
 one-attempt dispatch path.
 
+## `LINK-FORUM-03` — index and search
+
+**Status:** `planned` (source-ready proofs only; maintainer execution pending)
+
+Prove publish, translation, moderation approval, move, hide/delete, ACL change,
+attachment and reader-state transitions end to end: Forum owner commit, outbox event,
+Search inbox and projector, owner checkpoint, and the storefront read that must not
+return a document the owner no longer exposes. The reconciliation queries
+(`forum_search_projection_reconciliation_report`) and the versioned-invalidation
+delivery proofs are the source side of that link; they are `source_ready` and explicitly
+do not claim PostgreSQL, Iggy, restart, DLQ, ACL or LINK-FORUM-03 runtime evidence, and
+no slice in this plan closes the link. `FORUM-23B2G2B3D19` owns the promotion packet
+that may move this row once a maintainer retains the aggregate runtime artifact.
+
+## `FORUM-23` — search/index integration
+
+**Status:** `in_progress`
+
+Forum publishes projection documents and owns every authorization decision that a
+Forum-scoped Search result needs; Search owns querying, ranking and pagination. The
+split is enforced by the storefront entrypoint failing closed when a Forum-only
+request arrives without the owner port, never by Search reading Forum tables.
+
+### Delivered in `FORUM-23B1`
+
+The bounded `category_ids` filter of the neutral `SearchQuery` contract selects exact
+Forum category, topic and approved-reply documents without changing product category
+semantics. Forum writes those identities during projection in
+`src/search_projection.rs`. Search filters on them in `forum_document_filters.rs`.
+
+Complete Forum category-subtree filtering is not part of this slice: an exact category
+id is matched as written, so descendants are only reachable through the owner-expanded
+scope below.
+
+### Delivered in `FORUM-23B2A`
+
+`ForumSearchCategoryScopeService` (`src/services/category_search_scope.rs`) expands a
+caller-composed category root into a bounded, visibility-authorized subtree before
+Search execution, so Search never needs a Forum dependency or a Forum table read.
+`cargo test -p rustok-forum category_search_scope -- --nocapture` is the owner-side
+evidence command; `scripts/verify/verify-forum-search-category-subtree-scope.mjs` pins
+the boundary.
+
+### Delivered in `FORUM-23B2B`
+
+`ForumSearchCategoryAudienceScopeService`
+(`src/services/category_search_audience_scope.rs`) applies the inherited
+richer category audience decision - role, trust, channel, group and explicit-user
+selectors - before a subtree is exposed to a Search caller. Host composition remains open: the
+expanded ids reach a caller only through the explicit Forum-only storefront entrypoint,
+and topic-local audience narrowing is applied later, at result eligibility.
+
+### Delivered in `FORUM-23B2C`
+
+`forumStorefrontSearch` (`crates/modules/rustok-search/src/graphql/forum_storefront.rs`)
+is the explicit Forum-only entrypoint: it requires `source_modules: [forum]`, at least
+one category root and the shared `StorefrontSearchCategoryScopePort`, and it rejects a
+tenant that does not match the authenticated request. `StorefrontSearchResultEligibilityPort`
+applies exact topic-local audience narrowing and reply authorization, so a projected
+`topic_id` is never treated as authorization.
+
+### Delivered in `FORUM-23B2D`
+
+`ForumSearchResultEligibilityService` (`src/services/search_result_eligibility.rs`)
+resolves candidate topic/reply rows through the current owner before Search paginates,
+counts, facets or maps a transport payload. Both raw candidates and the owner request
+are capped at 100 rows and the bound is checked before document narrowing, so a
+request cannot widen its own bound by filtering.
+
+### Delivered in `FORUM-23B2E1` / `FORUM-23B2E2`
+
+Storefront channel identity is derived from the trusted `RequestContext`; a
+caller-provided `channel_id` is now only a compatibility assertion that fails closed on
+mismatch. Canonical Product channel allowlists are denormalized into Search-owned
+documents, and one trusted channel authority predicate is applied to every
+Product-bearing response path - rows, totals, facets, query-rule pins and document
+suggestions - with a bounded Search-side reconciler plus host worker for rows that
+predate the projection. Product channel visibility remains blocked on
+maintainer-executed PostgreSQL and transport evidence only; the source boundary is
+delivered. `verify-forum-search-trusted-channel-authority.mjs` and
+`verify-forum-search-product-channel-visibility.mjs` pin the two halves.
+
+### Delivered in `FORUM-23B2F1` / `FORUM-23B2F2` / `FORUM-23B2F3` / `FORUM-23B2F4`
+
+The storefront Search field accepts the exact bounded Forum author filter, the exact
+bounded Forum tag and solved filters, the locale and inclusive published-date window and
+the trusted current-channel filter as arguments beside `SearchPreviewInput`. Both
+storefront transports carry each family in its own additive operation
+(`forum_graphql_adapter.rs`, `forum_native_server_adapter.rs`, dispatched from
+`transport/mod.rs`), all of them executing in the single
+`execute_forum_storefront_search` owner. The shared `SearchPreviewFilters` model and the
+base `forumStorefrontSearch(input: $input)` document are unchanged, and no storefront UI
+control renders these filters yet. Verifiers:
+`verify-forum-search-author-filter.mjs`, `verify-forum-search-tag-solved-filter.mjs`,
+`verify-forum-search-locale-date-filter.mjs`, `verify-forum-search-current-channel-filter.mjs`.
+
+### Delivered in `FORUM-23B2G1` / `FORUM-23B2G1A`
+
+The durable Forum inbox ingest sequence replaces wall-clock and identifier ordering in
+the Search-side inbox with a durable PostgreSQL ingest sequence issued by the
+database (`m20260731_000010_add_forum_projection_ingest_sequence.rs`, plus the
+`_000011` lookup index), while Forum issues the monotonic projection revision ledger
+(`m20260731_000007_add_forum_projection_revision_ledger.rs`, `_000008`) and Search
+records owner-revision checkpoints (`m20260731_000012_create_forum_owner_revision_checkpoints.rs`).
+A Search-issued ingest sequence is not an owner-issued projection revision; the
+revision ledger and the Search-side checkpoint that keep the two ordered are the next
+subsection, and deletion or ACL-change document cleanup still waits on runtime
+evidence. `verify-forum-search-durable-ingest-sequence.mjs` pins the sequence and
+`verify-forum-search-ingest-sequence-index.mjs` the lookup index.
+
+### Delivered in `FORUM-23B2G2A` / `FORUM-23B2G2A1` / `FORUM-23B2G2B1` / `FORUM-23B2G2B2`
+
+`FORUM-23B2G2A` (`crates/modules/rustok-forum/contracts/forum-search-owner-revision-ledger.json`)
+issues the monotonic revision from the Forum ledger and `FORUM-23B2G2A1`
+(`crates/modules/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json`)
+hardens that counter against a restart; both state
+`source_complete_execution_pending`. `FORUM-23B2G2B1`
+(`crates/modules/rustok-forum/contracts/forum-search-owner-revision-source.json`,
+`source_complete_consumer_checkpoint_pending`) publishes the revision through the
+projection source and `FORUM-23B2G2B2`
+(`crates/modules/rustok-forum/contracts/forum-search-owner-revision-checkpoint.json`,
+`source_complete_runtime_evidence_pending`) records the Search-side checkpoint, so
+projected documents and owner/index revisions reconcile on one database-issued
+sequence instead of a clock. `verify-forum-search-owner-revision-source.mjs`,
+`verify-forum-search-owner-revision-ledger.mjs`,
+`verify-forum-search-owner-revision-checkpoint.mjs` and
+`verify-forum-search-owner-revision-counter-hardening.mjs` pin that boundary.
+
+### Aggregate boundary of `FORUM-23`
+
+`FORUM-23B2G2B3A` carries the versioned-invalidation wire contract
+(`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json`,
+`contract_frozen_implementation_pending`), `FORUM-23B2G2B3B1` the caused-publication API and
+`FORUM-23B2G2B3B2` the Forum-owner publisher
+(`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-causation-api.json`,
+`source_complete_family_publisher_pending`), and `FORUM-23B2G2B3C` the persistent
+consumer (`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-consumer.json`,
+`source_complete_runtime_evidence_pending`). None of them closes `FORUM-23`. The
+family that pins this boundary is
+`verify-forum-search-versioned-invalidation-wire.mjs`,
+`verify-forum-search-versioned-invalidation-causation-api.mjs`,
+`verify-forum-search-versioned-invalidation-publisher.mjs`,
+`verify-forum-search-versioned-invalidation-consumer.mjs` and
+`verify-forum-search-versioned-invalidation-runtime-evidence.mjs`.
+
+`FORUM-23B2G2B3D0`
+(`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json`)
+is the retained runtime-evidence protocol and stays
+`source_ready_maintainer_execution_pending`: the maintainer harness must execute and retain every D0 PostgreSQL/Iggy scenario
+- normal delivery, the legacy and typed
+duplicate deliveries, acknowledgement failure with restart, multi-process delivery,
+raw and semantic poison quarantine, missing-delivery repair, snapshot-only backfill,
+search-disabled recovery and the deletion/ACL ordering case - and only the assembled
+`LINK-FORUM-03` cross-module runtime proof can advance the aggregate. The two per-slice
+handoffs `crates/modules/rustok-forum/docs/forum-23b2g2b3d7-normal-delivery-proof.md`
+and `crates/modules/rustok-forum/docs/forum-23b2g2b3d8-deletion-acl-ordering-proof.md`
+carry the exact `cargo test --ignored` invocations and the PostgreSQL prerequisites; no
+agent may substitute a static guard for that run. `FORUM-23B2G2B3D1` is the canonical
+plan-sync slice and is satisfied by the two subsections above; the read-only
+`node scripts/audit/forum_plan_requirements.mjs` reports which markers the verifier
+family demands of this section.
+
+### Remaining scope of `FORUM-23`
+
+Search filters include
+category subtree, author, tag, locale, date, solved, kind, channel/group and
+attachment-presence families; kind and attachment-presence have no owner model yet.
+The plan keeps owner-issued monotonic projection revisions as the remaining ordering
+work: they must replace the remaining clock-based projection ordering, reconciliation
+and ACL/deletion cleanup need runtime evidence, and
+the maintainer-executed PostgreSQL, restart, retry and LINK-FORUM-03 evidence is not
+retained. The 51 `forum-search-*.json` contracts in this directory state an
+execution-pending status of their own - commonly
+`source_complete_execution_pending` or `source_ready_maintainer_execution_pending` -
+and none of them claims completion.
+
+## `FORUM-24` — localized routes
+
+**Status:** `in_progress`
+
+Forum 24 owns the localized canonical, redirect, hreflang and metadata routes built
+from one route resolver, and the Search-facing boundary is that Search never
+reconstructs a Forum slug or short id: Forum projects the canonical path and absolute
+URL, and Search validates the projected payload identity and the route locale before it
+emits either. The registered-host SSR evidence for the resolver is
+`docs/evidence/forum-forum24-registered-host/` and the per-slice records are the
+`FORUM-24A` through `FORUM-24S` rows in `docs/standards/continuous-review-ledger.md`.
+
+Two Search-owned follow-ups stay open as executable packets rather than completed work.
+`crates/modules/rustok-forum/contracts/forum-search-canonical-route-cutover.json`
+(status `source_ready_maintainer_execution_pending`) describes cutting the storefront
+Search result links over to `/{locale}/forum/c/{slug}` and
+`/{locale}/forum/t/{short_id}/{slug}` with a `?reply={reply_id}` deep link, which is why
+the Leptos and Yew storefront rows still render `/forum/t/{id}` and
+`/forum/t/{id}?reply={reply_id}`;
+`crates/modules/rustok-forum/contracts/forum-search-canonical-route-reindex-harness.json`
+(status `executable_no_run`) provides the PostgreSQL-only reindex and eligibility
+harness that a cutover needs before links are republished, with
+`RUSTOK_SEARCH_TEST_DATABASE_URL` falling back to `DATABASE_URL` and a unique schema
+first in `search_path`. Both packets read this section for the canonical route cutover
+and full-reindex status rather than trusting the ledger row, and until they run no
+route is claimed as cut over. `verify-forum-search-canonical-route-cutover.mjs`,
+`verify-forum-search-canonical-route-reindex-harness.mjs` and
+`verify-forum-canonical-route-seo-policy.mjs` pin the boundary.
+
 ## `FORUM-32` — Page Builder and widget evolution
 
 **Status:** `in_progress`

@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { containsMarker, moduleComposition } from "./lib/forum-source-verification.mjs";
 
 const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
@@ -12,6 +13,7 @@ const paths = {
   note: "crates/modules/rustok-forum/docs/forum-23b2f4-search-current-channel-filter.md",
   projection: "crates/modules/rustok-forum/src/search_projection.rs",
   topicOwner: "crates/modules/rustok-forum/src/services/topic_owner.rs",
+  topicOwnerCore: "crates/modules/rustok-forum/src/services/topic_inline.rs",
   topicInline: "crates/modules/rustok-forum/src/services/topic_inline.rs",
   filter: "crates/modules/rustok-search/src/forum_current_channel_filter.rs",
   execution: "crates/modules/rustok-search/src/forum_storefront_execution.rs",
@@ -40,13 +42,13 @@ function read(relativePath) {
 
 function requireAll(source, markers, label) {
   for (const marker of markers) {
-    if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
+    if (!containsMarker(source, marker)) failures.push(`${label}: missing ${marker}`);
   }
 }
 
 function rejectAll(source, markers, label) {
   for (const marker of markers) {
-    if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+    if (containsMarker(source, marker)) failures.push(`${label}: forbidden ${marker}`);
   }
 }
 
@@ -89,6 +91,7 @@ const contract = parseJson(paths.contract);
 const note = read(paths.note);
 const projection = read(paths.projection);
 const topicOwner = read(paths.topicOwner);
+const topicOwnerCore = read(paths.topicOwnerCore);
 const topicInline = read(paths.topicInline);
 const filter = read(paths.filter);
 const execution = read(paths.execution);
@@ -120,11 +123,34 @@ requireAll(filter, [
 ], paths.filter);
 rejectAll(filter, ["rustok_forum", "forum_topic::", "forum_reply::", "group_ids"], paths.filter);
 
-const ownerUpdate = functionBody(topicOwner, "update");
-requireAll(ownerUpdate, [
-  "update_with_inline_relations",
-  "input.into()",
-], `${paths.topicOwner}: public topic update`);
+// The public topic update is the composed `topic_owner` module: the queries live in `topic_owner.rs`
+// and the command seams in its sibling, so the rule reads the composition rather than one file. The
+// owner then converts the typed command into parts instead of an untyped `into()` at the seam.
+const topicOwnerComposition = moduleComposition(
+  root,
+  "crates/modules/rustok-forum/src/services/mod.rs",
+  "topic_owner",
+  paths.topicOwner,
+);
+if (topicOwnerComposition.finding) failures.push(topicOwnerComposition.finding);
+const ownerUpdate = topicOwnerComposition.text;
+requireAll(
+  functionBody(topicOwnerComposition.text, "update_command"),
+  ["update_with_inline_relations(tenant_id, topic_id, security, input)"],
+  `${paths.topicOwner}: public topic update`,
+);
+// The command type is part of the signature and the conversion is inside the body, so the two are
+// pinned separately rather than pretending a body slice carries the parameter list.
+requireAll(
+  topicOwnerCore,
+  ["async fn update_with_inline_relations(", "input: UpdateTopicCommandInput"],
+  `${paths.topicOwnerCore}: owner topic update`,
+);
+requireAll(
+  functionBody(topicOwnerCore, "update_with_inline_relations"),
+  ["input.into_parts()"],
+  `${paths.topicOwnerCore}: owner topic update`,
+);
 rejectAll(ownerUpdate, ["update_with_relations"], `${paths.topicOwner}: legacy update path`);
 
 const inlineUpdate = functionBody(topicInline, "update_with_inline_relations");
@@ -154,7 +180,7 @@ requireAll(execution, [
   "current_channel_filter: ForumStorefrontCurrentChannelFilter",
   "resolve_current_channel_filter(request.current_channel_only, &trusted_channel)",
   "current_channel_only requires a trusted storefront channel",
-  "document_filters.matches(item) && current_channel_filter.matches(item)",
+  "request.document_filters.matches(item) && request.current_channel_filter.matches(item)",
   "document_filters.is_empty() && current_channel_filter.is_empty()",
   "let raw_total =",
   "let candidates = all_items",

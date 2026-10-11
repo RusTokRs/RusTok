@@ -297,6 +297,11 @@ wrappers. Each one has an owner decision or a follow-up task in
   facts once per batch — the follow-up that ADR records — and a larger candidate set returns a
   validation error rather than a partial total. Page Builder gets a faithful owner read, not a
   pixel copy of the rendered block.
+- Forum search documents carry the exact filter facts (`author`, `tags`, solved state,
+  `published_at`, `channel_slugs`) and the Search module filters on them, but neither the
+  Forum nor the Search storefront surface renders a control for author, tag, solved,
+  locale, date or current-channel filtering. The transports are additive and the owner
+  plan tracks the missing product surface under `FORUM-23B2F1` to `FORUM-23B2F4`.
 - Topic view counters and topic sort orders are not implemented. The list order is
   fixed as pinned first, then recent activity. `last_reply_at` is a derived
   projection recomputed from the newest approved reply in both counter directions, so

@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { moduleComposition, containsMarker, markeredIndexes } from "./lib/forum-source-verification.mjs";
 
 const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
@@ -50,15 +51,20 @@ function parseJson(relativePath) {
   }
 }
 
+/**
+ * A guard pins what the code does, not how rustfmt happened to break the line, so markers are compared
+ * on a layout-normalized copy of the source and of the marker (`spaced`). `markeredIndexes` gives the
+ * ordering rules below the same tolerance.
+ */
 function requireAll(source, markers, label) {
   for (const marker of markers) {
-    if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
+    if (!containsMarker(source, marker)) failures.push(`${label}: missing ${marker}`);
   }
 }
 
 function rejectAll(source, markers, label) {
   for (const marker of markers) {
-    if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+    if (containsMarker(source, marker)) failures.push(`${label}: forbidden ${marker}`);
   }
 }
 
@@ -110,7 +116,7 @@ requireAll(
     "SearchDictionaryService::transform_query",
     "SearchFilterPresetService::resolve",
     "SearchRankingProfile::resolve",
-    "SearchDictionaryService::apply_query_rules",
+    "SearchDictionaryService::apply_storefront_query_rules",
     "SearchAnalyticsService::record_query",
     "category_ids,",
   ],
@@ -118,7 +124,16 @@ requireAll(
 );
 rejectAll(
   execution,
-  ["rustok_forum", "ForumSearchCategoryAudienceScopeService", "forum_category"],
+  // A Search document carries `forum_category` as its entity-type discriminator (the same label the
+  // projector and engine use), which is not Forum data access; the boundary rule is about tables,
+  // so the forbidden forms are the SeaORM paths and the Forum-owned scope service.
+  [
+    "rustok_forum",
+    "ForumSearchCategoryAudienceScopeService",
+    "forum_category::Entity",
+    "forum_topic::Entity",
+    "forum_reply::Entity",
+  ],
   paths.execution,
 );
 
@@ -137,10 +152,19 @@ requireAll(
   ],
   paths.serverAdapter,
 );
+// The host composes each forum Search adapter as a `#[path]` module rather than an `include!` of
+// the same file, so what the rule needs is that the module is declared and the host file behind it
+// carries the port - pinning one Rust item form would rot the moment the composition style moved.
+const categoryScopeModule = moduleComposition(root, paths.serverComposition, "forum_search_category_scope", "apps/server/src/services/forum_search_category_scope.rs");
+if (categoryScopeModule.finding) failures.push(categoryScopeModule.finding);
+requireAll(
+  categoryScopeModule.text,
+  ["ServerForumSearchCategoryScopePort", "StorefrontSearchCategoryScopePort"],
+  "apps/server/src/services/forum_search_category_scope.rs",
+);
 requireAll(
   serverComposition,
   [
-    'include!("forum_search_category_scope.rs")',
     "ServerForumSearchCategoryScopePort::shared",
     "extensions.insert(category_scope)",
     "SharedStorefrontSearchCategoryScopePort",
@@ -170,7 +194,9 @@ requireAll(
 requireAll(
   serverSchema,
   [
-    "use rustok_search::graphql::ForumStorefrontSearchQuery;",
+    // The host groups its Search imports, so the rule pins the import group that carries the
+    // forum storefront Search root rather than one-item-per-statement formatting.
+    /use rustok_search::graphql::\{[^}]*ForumStorefrontSearchQuery[^}]*\}/,
     "ForumStorefrontSearchQuery,",
   ],
   paths.serverSchema,
@@ -193,8 +219,11 @@ requireAll(
   [
     "query ForumStorefrontSearch",
     "forumStorefrontSearch(input: $input)",
-    "source_modules: filters.source_modules",
-    "category_ids: filters.category_ids",
+    // The adapter moves the shared filter model into the GraphQL `input` by destructuring and
+    // shorthand fields, so what has to stay is that the Forum scope reaches `input` - not one
+    // spelling of an explicit `field: filters.field` assignment.
+    /let SearchPreviewFilters \{[^}]*source_modules[^}]*\} = filters;/,
+    /SearchPreviewInput \{[^}]*source_modules,[^}]*category_ids,/,
   ],
   paths.graphqlAdapter,
 );

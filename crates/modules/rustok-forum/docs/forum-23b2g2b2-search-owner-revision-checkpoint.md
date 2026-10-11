@@ -35,6 +35,16 @@ semantics, so concurrent server workers may duplicate a bounded scan but cannot
 move the shared cursor backwards. A short final page resets the cursor and starts
 the next round-robin pass.
 
+## Versioned owner-revision wire contract
+
+The checkpoint reads only the versioned owner-revision wire contract of the Forum
+owner port: `ForumProjectionOwnerRevisionResponse { owner_revision, event_id,
+event_type, impact }` for each covered revision and
+`ForumProjectionOwnerTenantHeadResponse { tenant_id, latest_owner_revision }` for a
+tenant head (`crates/modules/rustok-forum/src/dto/event.rs`). Search never selects a
+Forum ledger column itself, and neither value is treated as delivery order: the numeric
+revision is an owner coverage statement, recorded beside the event identity.
+
 ## Checkpoint storage
 
 Migration `m20260731_000012_create_forum_owner_revision_checkpoints` adds

@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 
 const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
@@ -35,8 +36,10 @@ function parseJson(relativePath) {
   }
 }
 
+// A guard pins what the code does, not how rustfmt broke the line, so markers - including regular
+// expressions - are compared on a layout-normalized copy of the source.
 function requireMarker(source, marker, label) {
-  if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
+  if (!containsMarker(source, marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function requireAll(source, markers, label) {
@@ -44,7 +47,7 @@ function requireAll(source, markers, label) {
 }
 
 function rejectMarker(source, marker, label) {
-  if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+  if (containsMarker(source, marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
 const plan = read(planPath);
@@ -86,7 +89,9 @@ rejectMarker(service, "search_documents", servicePath);
 requireAll(
   exports,
   [
-    "mod category_search_scope;",
+    // The owner module is `include!`-composed; either declaration form is acceptable because the
+    // rule is that Forum declares the scope service, not how the item is spelled in `mod.rs`.
+    /mod category_search_scope\s*\{[^}]*include!\(\s*"category_search_scope\.rs"\s*\)/,
     "ForumSearchCategoryScope, ForumSearchCategoryScopeService, MAX_FORUM_SEARCH_CATEGORY_ROOTS",
   ],
   exportPath,

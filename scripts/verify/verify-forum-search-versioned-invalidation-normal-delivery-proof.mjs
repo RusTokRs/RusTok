@@ -3,19 +3,24 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { containsMarker, markeredIndexes } from "./lib/forum-source-verification.mjs";
 
 const root = process.cwd();
 const read = (path) => readFileSync(resolve(root, path), "utf8");
+// These guards read production Rust and harness sources, where rustfmt is free to continue a method
+// chain on the next line; markers and the ordering indexes built from them are therefore compared on a
+// layout-normalized copy of the source instead of on one formatting of it.
 const requireAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(text.includes(marker), `${label} is missing required marker: ${marker}`);
+    assert.ok(containsMarker(text, marker), `${label} is missing required marker: ${marker}`);
   }
 };
 const forbidAll = (text, markers, label) => {
   for (const marker of markers) {
-    assert.ok(!text.includes(marker), `${label} contains forbidden marker: ${marker}`);
+    assert.ok(!containsMarker(text, marker), `${label} contains forbidden marker: ${marker}`);
   }
 };
+const markerIndex = (text, marker) => markeredIndexes(text, marker)[0] ?? -1;
 
 const contractPath =
   "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-normal-delivery-proof.json";
@@ -133,14 +138,14 @@ forbidAll(
   ],
   "Forum normal-delivery executable proof",
 );
-const ingressIndex = test.indexOf("ingress.ingest(&delivery.envelope).await?");
-const pendingIndex = test.indexOf("ensure_pending_inbox(&inbox, revision, fixture)?");
-const acknowledgeIndex = test.indexOf("group.acknowledge(&delivery).await?");
+const ingressIndex = markerIndex(test, "ingress.ingest(&delivery.envelope).await?");
+const pendingIndex = markerIndex(test, "ensure_pending_inbox(&inbox, revision, fixture)?");
+const acknowledgeIndex = markerIndex(test, "group.acknowledge(&delivery).await?");
 assert.ok(ingressIndex >= 0 && ingressIndex < pendingIndex);
 assert.ok(pendingIndex >= 0 && pendingIndex < acknowledgeIndex);
-const projectionIndex = test.indexOf("let report = reconciler.sweep_due(8, 8).await?");
-const checkpointIndex = test.indexOf("let checkpoint = load_checkpoint");
-const storefrontIndex = test.indexOf("let storefront_total = assert_storefront_topic");
+const projectionIndex = markerIndex(test, "let report = reconciler.sweep_due(8, 8).await?");
+const checkpointIndex = markerIndex(test, "let checkpoint = load_checkpoint");
+const storefrontIndex = markerIndex(test, "let storefront_total = assert_storefront_topic");
 assert.ok(projectionIndex >= 0 && projectionIndex < checkpointIndex);
 assert.ok(checkpointIndex >= 0 && checkpointIndex < storefrontIndex);
 
@@ -227,21 +232,15 @@ requireAll(
     "resolve_storefront_search_result_candidates",
     "let total = visible_items.len() as u64",
     "build_forum_result_facets(&visible_items)",
-    ".skip(query.offset)",
-    ".take(query.limit)",
+    ".skip(request.query.offset)",
+    ".take(request.query.limit)",
   ],
   "production Forum storefront execution",
 );
-const eligibilityIndex = storefrontExecution.indexOf(
-  "resolve_storefront_search_result_candidates",
-);
-const totalIndex = storefrontExecution.indexOf(
-  "let total = visible_items.len() as u64",
-);
-const facetsIndex = storefrontExecution.indexOf(
-  "build_forum_result_facets(&visible_items)",
-);
-const offsetIndex = storefrontExecution.indexOf(".skip(query.offset)");
+const eligibilityIndex = markerIndex(storefrontExecution, "resolve_storefront_search_result_candidates");
+const totalIndex = markerIndex(storefrontExecution, "let total = visible_items.len() as u64");
+const facetsIndex = markerIndex(storefrontExecution, "build_forum_result_facets(&visible_items)");
+const offsetIndex = markerIndex(storefrontExecution, ".skip(request.query.offset)");
 assert.ok(eligibilityIndex >= 0 && eligibilityIndex < totalIndex);
 assert.ok(totalIndex >= 0 && totalIndex < facetsIndex);
 assert.ok(facetsIndex >= 0 && facetsIndex < offsetIndex);

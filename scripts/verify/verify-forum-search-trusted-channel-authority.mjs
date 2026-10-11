@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 
 const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
@@ -21,7 +22,9 @@ const paths = {
   forumNative:
     "crates/modules/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
   forumExecution: "crates/modules/rustok-search/src/forum_storefront_execution.rs",
-  projector: "crates/modules/rustok-search/src/projector_legacy.rs",
+  // The Search projector is composed of `projector.rs` (worker/bootstrap side) and `projector_core.rs`
+  // (document SQL); there is no `projector_legacy.rs`, so the product-document rule reads the core.
+  projector: "crates/modules/rustok-search/src/projector_core.rs",
   engine: "crates/modules/rustok-search/src/pg_engine.rs",
 };
 
@@ -45,13 +48,13 @@ function parseJson(relativePath) {
 
 function requireAll(source, markers, label) {
   for (const marker of markers) {
-    if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
+    if (!containsMarker(source, marker)) failures.push(`${label}: missing ${marker}`);
   }
 }
 
 function rejectAll(source, markers, label) {
   for (const marker of markers) {
-    if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+    if (containsMarker(source, marker)) failures.push(`${label}: forbidden ${marker}`);
   }
 }
 
@@ -110,11 +113,11 @@ requireAll(
   graphql,
   [
     "let request_context = ctx.data::<RequestContext>()?;",
-    "resolve_trusted_storefront_channel(",
-    "request_context,",
-    "tenant.id,",
-    "input.channel_id,",
-    "channel_id: trusted_channel.channel_id,",
+    // The trusted channel is resolved from the request context with the caller field as the
+    // last argument; the argument list may sit on one line or several, so the rule matches the
+    // call rather than rustfmt output.
+    /resolve_trusted_storefront_channel\(request_context, tenant\.id, input\.channel_id\)/,
+        "channel_id: trusted_channel.channel_id,",
   ],
   paths.graphql,
 );
@@ -123,11 +126,11 @@ requireAll(
   native,
   [
     "leptos_axum::extract::<RequestContext>()",
-    "resolve_trusted_storefront_channel(",
-    "&request_context,",
-    "tenant.id,",
-    "input.channel_id,",
-    "channel_id: trusted_channel.channel_id,",
+    // The trusted channel is resolved from the request context with the caller field as the
+    // last argument; the argument list may sit on one line or several, so the rule matches the
+    // call rather than rustfmt output.
+    /resolve_trusted_storefront_channel\(&request_context, tenant\.id, input\.channel_id\)/,
+        "channel_id: trusted_channel.channel_id,",
   ],
   paths.native,
 );
