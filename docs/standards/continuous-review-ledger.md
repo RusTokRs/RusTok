@@ -5419,6 +5419,22 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-23.02` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
 - **Next primary iteration:** move to background processing, event delivery, outbox, and telemetry (FS-24).
 
+### FS-24 Assessment — Event dispatcher lifecycle controls and bounded background worker shutdown
+
+- **Base:** commit `8c49781e6` on dedicated branch `codex/audit-server-bootstrap-and-host`.
+- **Primary scope:** `crates/libs/rustok-core/src/events/handler.rs`, `apps/server/src/services/app_lifecycle.rs`, `apps/server/src/services/module_transition_watchdog.rs`.
+- **Invariant map:** Event dispatcher handles and server background worker tasks must support structured, bounded lifecycle controls (`is_finished`, `abort`, `join`) to prevent unjoined background task leaks, dropped outbox event flushes, or hung test runtimes during host shutdown.
+- **Confirmed finding DISPATCHER-24-01:** `RunningDispatcher` in `rustok-core` previously only provided `stop(self)`, which consumed the handle by value without allowing inspection of completion (`is_finished()`) or non-destructive cancellation before awaiting `join()`.
+- **Confirmed finding WORKERDRAIN-24-02:** `shutdown_runtime_workers` in `app_lifecycle.rs` broadcasted the shutdown signal via `StopHandle::stop()` but never awaited or boundedly drained registered runtime worker handles (`OutboxRelayWorkerHandle`, `OutboxRetentionWorkerHandle`, `RemoteExecutorReaperHandle`, `SeoBulkWorkerHandle`, `ModuleTransitionWatchdogHandle`), potentially allowing uncompleted in-flight transactions or uncommitted relay batches to terminate abruptly upon process exit.
+- **Remediation:**
+  1. Implemented `abort(&self)` and `is_finished(&self)` on `RunningDispatcher` with comprehensive unit tests for abort and post-abort join semantics.
+  2. Implemented `join(self)` on `OutboxRelayWorkerHandle`, `OutboxRetentionWorkerHandle`, `RemoteExecutorReaperHandle`, `SeoBulkWorkerHandle`, and `ModuleTransitionWatchdogHandle`.
+  3. Implemented bounded graceful draining (5-second timeout per handle with structured tracing) in `shutdown_runtime_workers(&runtime_ctx)`.
+  4. Updated `connect_runtime_workers_is_idempotent_for_outbox_relay_handle` test to use `shutdown_runtime_workers`.
+- **Status:** `FS-24` implementation complete at source level on the dedicated branch; maintainer/CI verification remains required.
+- **Next primary iteration:** core modules audit (FS-25: `rustok-auth`, `rustok-rbac`, `rustok-tenant`, `rustok-cache`).
+
+
 
 
 

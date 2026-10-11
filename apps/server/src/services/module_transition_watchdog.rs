@@ -13,6 +13,20 @@ pub struct ModuleTransitionWatchdogHandle {
     pub join_handle: JoinHandle<()>,
 }
 
+impl ModuleTransitionWatchdogHandle {
+    pub fn instance_id(&self) -> u64 {
+        self.instance_id
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.join_handle.is_finished()
+    }
+
+    pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
+        self.join_handle.await
+    }
+}
+
 pub fn spawn_module_transition_watchdog_handle(
     db: DatabaseConnection,
     poll_interval_ms: u64,

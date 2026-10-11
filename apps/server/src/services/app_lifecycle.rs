@@ -133,6 +133,10 @@ impl OutboxRelayWorkerHandle {
     pub fn is_finished(&self) -> bool {
         self._handle.is_finished()
     }
+
+    pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
+        self._handle.await
+    }
 }
 
 pub struct OutboxRetentionWorkerHandle {
@@ -148,6 +152,10 @@ impl OutboxRetentionWorkerHandle {
     pub fn is_finished(&self) -> bool {
         self._handle.is_finished()
     }
+
+    pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
+        self._handle.await
+    }
 }
 
 pub struct RemoteExecutorReaperHandle {
@@ -162,6 +170,10 @@ impl RemoteExecutorReaperHandle {
 
     pub fn is_finished(&self) -> bool {
         self._handle.is_finished()
+    }
+
+    pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
+        self._handle.await
     }
 }
 
@@ -179,6 +191,10 @@ impl SeoBulkWorkerHandle {
 
     pub fn is_finished(&self) -> bool {
         self._handle.is_finished()
+    }
+
+    pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
+        self._handle.await
     }
 }
 
@@ -291,6 +307,49 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     if let Some(handle) = runtime_ctx.shared_get::<StopHandle>() {
         tracing::info!("Stopping background workers");
         handle.stop().await;
+    }
+
+    let timeout_duration = Duration::from_secs(5);
+
+    if let Some(worker) = runtime_ctx.shared_take::<OutboxRelayWorkerHandle>() {
+        match tokio::time::timeout(timeout_duration, worker.join()).await {
+            Ok(Ok(())) => tracing::info!("Outbox relay worker stopped gracefully"),
+            Ok(Err(err)) => tracing::warn!(?err, "Outbox relay worker joined with error"),
+            Err(_) => tracing::warn!("Outbox relay worker shutdown timed out after 5s"),
+        }
+    }
+
+    if let Some(worker) = runtime_ctx.shared_take::<OutboxRetentionWorkerHandle>() {
+        match tokio::time::timeout(timeout_duration, worker.join()).await {
+            Ok(Ok(())) => tracing::info!("Outbox retention worker stopped gracefully"),
+            Ok(Err(err)) => tracing::warn!(?err, "Outbox retention worker joined with error"),
+            Err(_) => tracing::warn!("Outbox retention worker shutdown timed out after 5s"),
+        }
+    }
+
+    if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
+        match tokio::time::timeout(timeout_duration, worker.join()).await {
+            Ok(Ok(())) => tracing::info!("Remote executor reaper worker stopped gracefully"),
+            Ok(Err(err)) => tracing::warn!(?err, "Remote executor reaper worker joined with error"),
+            Err(_) => tracing::warn!("Remote executor reaper worker shutdown timed out after 5s"),
+        }
+    }
+
+    #[cfg(feature = "mod-seo")]
+    if let Some(worker) = runtime_ctx.shared_take::<SeoBulkWorkerHandle>() {
+        match tokio::time::timeout(timeout_duration, worker.join()).await {
+            Ok(Ok(())) => tracing::info!("SEO bulk worker stopped gracefully"),
+            Ok(Err(err)) => tracing::warn!(?err, "SEO bulk worker joined with error"),
+            Err(_) => tracing::warn!("SEO bulk worker shutdown timed out after 5s"),
+        }
+    }
+
+    if let Some(worker) = runtime_ctx.shared_take::<crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle>() {
+        match tokio::time::timeout(timeout_duration, worker.join()).await {
+            Ok(Ok(())) => tracing::info!("Module transition watchdog worker stopped gracefully"),
+            Ok(Err(err)) => tracing::warn!(?err, "Module transition watchdog worker joined with error"),
+            Err(_) => tracing::warn!("Module transition watchdog worker shutdown timed out after 5s"),
+        }
     }
 }
 
@@ -654,9 +713,7 @@ mod tests {
             "the retention worker must not be started twice"
         );
 
-        // Gracefully shut down background workers to avoid hanging tests
-        if let Some(stop_handle) = runtime_ctx.shared_get::<super::StopHandle>() {
-            stop_handle.stop().await;
-        };
+        // Gracefully shut down and drain background workers to avoid hanging tests
+        super::shutdown_runtime_workers(&runtime_ctx).await;
     }
 }

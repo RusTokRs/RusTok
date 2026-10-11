@@ -352,6 +352,14 @@ impl RunningDispatcher {
         self.handle.abort();
     }
 
+    pub fn abort(&self) {
+        self.handle.abort();
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.handle.is_finished()
+    }
+
     pub async fn join(self) -> Result<(), tokio::task::JoinError> {
         self.handle.await
     }
@@ -691,5 +699,19 @@ mod tests {
 
         assert_eq!(handled.load(Ordering::SeqCst), 2);
         assert_eq!(controller.current_depth(), 0);
+    }
+
+    #[tokio::test]
+    async fn running_dispatcher_lifecycle_abort_and_is_finished() {
+        let bus = EventBus::new();
+        let dispatcher = EventDispatcher::new(bus);
+        let running = dispatcher.start();
+
+        assert!(!running.is_finished());
+        running.abort();
+
+        // After abort, join yields cancelled/join error
+        let join_result = running.join().await;
+        assert!(join_result.is_err());
     }
 }
