@@ -10,12 +10,14 @@ use rustok_page_builder::browser_host::{
 ///
 /// [`crate::editor::isolated_canvas`] renders the canvas with `sandbox="allow-scripts"` and
 /// `srcdoc`, which gives the document an opaque origin: browsers report every `postMessage` from
-/// it as the literal string `"null"`. Fly's browser adapter fails closed when no origin is
-/// configured, so the value is passed explicitly instead of relying on a default.
+/// it as the literal string `"null"` — [`fly_web::OPAQUE_ORIGIN`]. Fly's browser adapter fails
+/// closed when no origin is configured, so the value is passed explicitly instead of relying on a
+/// default, and the Rust-side subscription in [`crate::editor::isolated_canvas`] compares against
+/// this same constant.
 ///
 /// The sandbox attribute and this value are one contract: if the attribute changes (for example
 /// to add `allow-same-origin`), this constant must change with it.
-pub const PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN: &str = "null";
+pub const PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN: &str = fly_web::OPAQUE_ORIGIN;
 
 #[cfg(any(feature = "browser-js", test))]
 fn browser_adapter_config_json(

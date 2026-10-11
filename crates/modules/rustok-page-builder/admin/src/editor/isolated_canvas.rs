@@ -75,7 +75,10 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                 let message_runtime = runtime.clone();
                 match fly_leptos::IframeJsonSubscription::subscribe_by_element_id(
                     iframe_id.clone(),
-                    "null",
+                    // One contract with the adapter configuration and the `sandbox` attribute on
+                    // the iframe above: a srcdoc document without `allow-same-origin` reports the
+                    // opaque origin, so this side must accept exactly that value.
+                    crate::ui::browser_adapter::PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN,
                     move |payload, last_sequence| {
                         decode_canvas_message(payload, &decoder_instance, last_sequence)
                     },
