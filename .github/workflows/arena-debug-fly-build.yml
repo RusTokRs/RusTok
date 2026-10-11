@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
   pull-requests: write
+concurrency:
+  group: arena-debug-fly-build-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   probe:
     name: Probe
@@ -48,7 +51,7 @@ jobs:
           probe "wasm fly-web" cargo check --target wasm32-unknown-unknown -p fly-web --features wasm-client
           probe "wasm fly-leptos" cargo check --target wasm32-unknown-unknown -p fly-leptos --no-default-features --features wasm-client
           probe "wasm fly-dioxus" cargo check --target wasm32-unknown-unknown -p fly-dioxus --features web
-          probe "desktop apt deps" sudo apt-get install -y --no-install-recommends libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+          probe "desktop apt deps" bash -lc "sudo apt-get update && sudo apt-get install -y --no-install-recommends libgtk-3-dev libwebkit2gtk-4.1-dev"
           probe "fly-dioxus desktop" cargo check -p fly-dioxus --features desktop
           probe "fly-leptos no-default" cargo check -p fly-leptos --no-default-features
           probe "pages unit tests" cargo test -p rustok-pages --lib --quiet
