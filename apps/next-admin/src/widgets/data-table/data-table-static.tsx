@@ -2,6 +2,11 @@
 
 import * as React from 'react';
 
+import {
+  CaretSortIcon,
+  ChevronDownIcon,
+  ChevronUpIcon
+} from '@radix-ui/react-icons';
 import { Button } from '@/shared/ui/shadcn/button';
 import { Skeleton } from '@/shared/ui/shadcn/skeleton';
 import { cn } from '@/shared/lib/utils';
@@ -32,6 +37,8 @@ export type DataTableStaticColumn<T> = {
   headerClassName?: string;
   cellClassName?: string;
   cell: (row: T) => React.ReactNode;
+  /** Enables clicking this header to trigger `onSort`. */
+  sortable?: boolean;
 };
 
 export interface DataTableStaticProps<T> {
@@ -46,6 +53,12 @@ export interface DataTableStaticProps<T> {
   skeletonRows?: number;
   /** Wrapper class names; the bordered surface is the default. */
   className?: string;
+  /** Active sort state: columnId and asc/desc direction. */
+  sort?: { columnId: string; direction: 'asc' | 'desc' } | null;
+  /** Callback invoked when a sortable column header is clicked. */
+  onSort?: (columnId: string) => void;
+  /** Controls table row padding density. Defaults to 'default'. */
+  density?: 'default' | 'compact';
 }
 
 export function DataTableStatic<T>({
@@ -55,18 +68,53 @@ export function DataTableStatic<T>({
   emptyState,
   isLoading,
   skeletonRows = 5,
-  className
+  className,
+  sort,
+  onSort,
+  density = 'default'
 }: DataTableStaticProps<T>) {
+  const isCompact = density === 'compact';
+
   return (
     <div className={cn('rounded-md border', className)}>
       <Table>
         <TableHeader>
           <TableRow>
-            {columns.map((column) => (
-              <TableHead key={column.id} className={column.headerClassName}>
-                {column.header}
-              </TableHead>
-            ))}
+            {columns.map((column) => {
+              const isCurrentSort = sort?.columnId === column.id;
+              const isSortable = Boolean(column.sortable && onSort);
+
+              return (
+                <TableHead
+                  key={column.id}
+                  className={cn(
+                    isCompact && 'h-8 px-2.5 py-1 text-xs',
+                    column.headerClassName
+                  )}
+                >
+                  {isSortable ? (
+                    <button
+                      type='button'
+                      onClick={() => onSort?.(column.id)}
+                      className='text-muted-foreground hover:text-foreground -ml-1 inline-flex items-center gap-1 rounded px-1 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-ring'
+                    >
+                      <span>{column.header}</span>
+                      {isCurrentSort ? (
+                        sort?.direction === 'desc' ? (
+                          <ChevronDownIcon className='h-3.5 w-3.5' />
+                        ) : (
+                          <ChevronUpIcon className='h-3.5 w-3.5' />
+                        )
+                      ) : (
+                        <CaretSortIcon className='h-3.5 w-3.5 opacity-40' />
+                      )}
+                    </button>
+                  ) : (
+                    column.header
+                  )}
+                </TableHead>
+              );
+            })}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -74,8 +122,11 @@ export function DataTableStatic<T>({
             Array.from({ length: skeletonRows }, (_, index) => (
               <TableRow key={`skeleton-${index}`}>
                 {columns.map((column) => (
-                  <TableCell key={column.id}>
-                    <Skeleton className='h-4 w-full' />
+                  <TableCell
+                    key={column.id}
+                    className={isCompact ? 'px-2.5 py-1.5' : undefined}
+                  >
+                    <Skeleton className={cn('w-full', isCompact ? 'h-3.5' : 'h-4')} />
                   </TableCell>
                 ))}
               </TableRow>
@@ -84,7 +135,10 @@ export function DataTableStatic<T>({
             <TableRow>
               <TableCell
                 colSpan={columns.length}
-                className='text-muted-foreground py-8 text-center text-sm'
+                className={cn(
+                  'text-muted-foreground text-center text-sm',
+                  isCompact ? 'py-4' : 'py-8'
+                )}
               >
                 {emptyState ?? 'No results.'}
               </TableCell>
@@ -93,7 +147,13 @@ export function DataTableStatic<T>({
             rows.map((row, index) => (
               <TableRow key={getRowKey ? getRowKey(row) : index}>
                 {columns.map((column) => (
-                  <TableCell key={column.id} className={column.cellClassName}>
+                  <TableCell
+                    key={column.id}
+                    className={cn(
+                      isCompact && 'px-2.5 py-1.5 text-xs',
+                      column.cellClassName
+                    )}
+                  >
                     {column.cell(row)}
                   </TableCell>
                 ))}

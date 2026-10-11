@@ -152,10 +152,11 @@ requireText(
 );
 
 const eventsLib = read('crates/libs/rustok-events/src/lib.rs');
+requireText(eventsLib, 'CHECKOUT_OPERATION_ADMISSIONS', 'admission vocabulary re-export');
 requireText(
   eventsLib,
-  '    CHECKOUT_OPERATION_ADMISSIONS, CHECKOUT_OPERATION_ADMISSION_CHANGED_EVENT_TYPE,',
-  'admission vocabulary re-export',
+  'CHECKOUT_OPERATION_ADMISSION_CHANGED_EVENT_TYPE',
+  'admission changed event type re-export',
 );
 
 // --- in-transaction publication -------------------------------------------
@@ -404,7 +405,9 @@ for (const commerceJournalOwner of [
 const legacyStages = read(
   'crates/modules/rustok-commerce/src/services/checkout_payment_stages_legacy.rs',
 );
-const legacyWiring = countText(legacyStages, 'checkout_execution_admission_port(');
+const legacyWiring =
+  countText(legacyStages, 'in_process_checkout_payment_execution_port(') +
+  countText(legacyStages, 'InProcessCheckoutPaymentExecutionPort::with_provider_registry(');
 if (legacyWiring !== 2) {
   failures.push(
     `expected both legacy checkout payment stage constructors to wire the admission port, found ${legacyWiring}`,

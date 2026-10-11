@@ -82,7 +82,7 @@ impl OAuthAppService {
 
         let client_id = Uuid::new_v4();
         let client_secret_plain = generate_client_secret()?;
-        let client_secret_hash = auth::hash_password(&client_secret_plain)?;
+        let client_secret_hash = auth::hash_password_async(client_secret_plain.clone()).await?;
 
         let app = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
@@ -213,7 +213,7 @@ impl OAuthAppService {
         }
 
         let new_secret = generate_client_secret()?;
-        let new_hash = auth::hash_password(&new_secret)?;
+        let new_hash = auth::hash_password_async(new_secret.clone()).await?;
 
         let mut active: OAuthAppActiveModel = app.into();
         active.client_secret_hash = Set(Some(new_hash));
@@ -278,6 +278,11 @@ impl OAuthAppService {
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
 
         Ok(updated)
+    }
+
+    /// Verify a client_secret against the stored hash asynchronously
+    pub async fn verify_client_secret_async(secret: String, hash: String) -> Result<bool> {
+        auth::verify_password_async(secret, hash).await
     }
 
     /// Verify a client_secret against the stored hash

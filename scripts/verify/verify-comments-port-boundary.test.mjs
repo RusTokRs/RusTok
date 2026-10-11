@@ -249,7 +249,7 @@ function fixture({
     root,
     registryPath,
     JSON.stringify({
-      schema_version: 4,
+      schema_version: 5,
       module: "comments",
       role: "provider",
       status: "boundary_ready",

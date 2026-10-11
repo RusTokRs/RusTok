@@ -105,9 +105,9 @@ for (const marker of [
 }
 
 assertContains(transportMod, "mod native_server_adapter;", `${transportModPath}: transport facade must wire native adapter`);
-assertContains(transportMod, "native::fetch_customers(search, page, per_page).await", `${transportModPath}: facade must call native customer list path`);
-assertContains(transportMod, "native::create_customer(payload).await", `${transportModPath}: facade must call native customer create path`);
-assertContains(transportMod, "native::update_customer(customer_id, payload).await", `${transportModPath}: facade must call native customer update path`);
+assertContains(transportMod, /native::fetch_customers\(search,\s*page,\s*per_page\)[\s\S]*?\.await/, `${transportModPath}: facade must call native customer list path`);
+assertContains(transportMod, /native::create_customer\(payload\)[\s\S]*?\.await/, `${transportModPath}: facade must call native customer create path`);
+assertContains(transportMod, /native::update_customer\(customer_id,\s*payload\)[\s\S]*?\.await/, `${transportModPath}: facade must call native customer update path`);
 assertNotContains(transportMod, "#[server", `${transportModPath}: server-function endpoints belong in native_server_adapter.rs`);
 
 for (const endpoint of [

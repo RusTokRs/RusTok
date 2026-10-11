@@ -2,7 +2,8 @@ use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionTrait, sea_query::Expr};
 
 use crate::auth::{
-    AuthConfig, decode_password_reset_token, hash_password, password_reset_credential_matches,
+    AuthConfig, decode_password_reset_token, hash_password_async,
+    password_reset_credential_matches,
 };
 use crate::models::{sessions, users};
 
@@ -45,7 +46,9 @@ impl AuthLifecycleService {
         }
 
         let previous_hash = user.password_hash;
-        let new_hash = hash_password(new_password).map_err(AuthLifecycleError::from)?;
+        let new_hash = hash_password_async(new_password.to_string())
+            .await
+            .map_err(AuthLifecycleError::from)?;
         let now = Utc::now();
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
 

@@ -967,13 +967,15 @@ async fn revoke_handler_inner(
                 error: "invalid_client".to_string(),
                 error_description: "client_secret is required".to_string(),
             })?;
-        let valid =
-            OAuthAppService::verify_client_secret(client_secret, secret_hash).map_err(|_| {
-                TokenErrorResponse {
-                    error: "invalid_client".to_string(),
-                    error_description: "Invalid client credentials".to_string(),
-                }
-            })?;
+        let valid = OAuthAppService::verify_client_secret_async(
+            client_secret.to_string(),
+            secret_hash.to_string(),
+        )
+        .await
+        .map_err(|_| TokenErrorResponse {
+            error: "invalid_client".to_string(),
+            error_description: "Invalid client credentials".to_string(),
+        })?;
         if !valid {
             return Err(TokenErrorResponse {
                 error: "invalid_client".to_string(),

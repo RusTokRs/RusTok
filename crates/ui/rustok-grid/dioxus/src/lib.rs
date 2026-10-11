@@ -1,4 +1,4 @@
-//! Dioxus 0.6 DataGrid adapter for RusToK.
+//! Dioxus 0.7 DataGrid adapter for RusToK.
 //!
 //! This crate is a thin **adapter**: every piece of state and all the maths
 //! live in [`rustok_grid`], here we only translate them into markup and DOM

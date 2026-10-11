@@ -216,6 +216,26 @@ async fn apply_public_channel_inventory_to_product() {
 `;
 }
 
+function storefrontLineItemResolutionSource({ includeDirectLookup = false } = {}) {
+  if (includeDirectLookup) {
+    return `
+use rustok_inventory::inventory_policy_allows_backorder;
+use crate::storefront_channel::load_available_inventory_for_variant_in_public_channel;
+async fn validate_storefront_variant_inventory() {
+    if inventory_policy_allows_backorder("continue") { return; }
+    load_available_inventory_for_variant_in_public_channel().await;
+}
+`;
+  }
+
+  return `
+use rustok_inventory::{check_variant_availability_for_public_channel, PublicChannelInventoryVariantProjectionInput};
+async fn validate_storefront_variant_inventory() {
+    check_variant_availability_for_public_channel(PublicChannelInventoryVariantProjectionInput { variant_id, inventory_policy }).await;
+}
+`;
+}
+
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-inventory-boundary-"));
   writeFixtureFile(root, "crates/modules/rustok-inventory/src/services/inventory.rs", inventorySource(options));
@@ -235,12 +255,9 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/modules/rustok-inventory/admin/locales/ru.ftl", "inventory-subtitle = native inventory facade\n");
   writeFixtureFile(root, "crates/modules/rustok-inventory/admin/Cargo.toml", "[package]\nname = \"rustok-inventory-admin\"\n");
   writeFixtureFile(root, "crates/modules/rustok-inventory/docs/implementation-plan.md", "Inventory admin stock operations are owned by native/transport mutations.\n- Next step: verification/CI evidence slice for inventory boundary.\n- [x] move current inventory admin UI stock operations to inventory-owned native/transport mutations\n");
-  for (const relativePath of [
-    "crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs",
-    "crates/modules/rustok-commerce/src/controllers/store/mod.rs",
-  ]) {
-    writeFixtureFile(root, relativePath, commerceAvailabilityCallerSource(options));
-  }
+  writeFixtureFile(root, "crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs", commerceAvailabilityCallerSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs", storefrontLineItemResolutionSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-commerce/src/controllers/store/mod.rs", commerceAvailabilityCallerSource(options));
   writeFixtureFile(root, "crates/modules/rustok-commerce/src/services/checkout.rs", checkoutAvailabilityCallerSource(options));
   writeFixtureFile(root, "crates/modules/rustok-commerce/src/storefront_channel.rs", commerceStorefrontChannelSource(options));
   return root;

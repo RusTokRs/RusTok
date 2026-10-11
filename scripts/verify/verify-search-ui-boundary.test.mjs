@@ -321,7 +321,8 @@ export type ProductCatalogSearchOptions = {
 const QUERY = "query StorefrontCatalogSearchOptions($locale: String!) { storefrontCatalogSearchOptions(locale: $locale) { categoryOptions { value label } attributeOptions { value label } } }";
 export async function fetchCatalogSearchOptions(request) {
   const locale = request.locale.trim();
-  return storefrontGraphql({ query: QUERY, variables: { locale }, tenant: request.tenantSlug });
+  const tenantSlug = request.tenantSlug;
+  return storefrontGraphql({ query: QUERY, variables: { locale }, tenant: tenantSlug ?? undefined });
 }
 `);
   writeFixtureFile(root, "apps/next-admin/src/app/dashboard/search/page.tsx", `

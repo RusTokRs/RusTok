@@ -1,4 +1,4 @@
-//! Dioxus 0.6 adapter foundation for Fly visual editors.
+//! Dioxus 0.7 adapter foundation for Fly visual editors.
 //!
 //! This crate owns Dioxus component shells, DOM element rendering, and event bindings.
 //! Canonical project state, drop legality, commands, history, and editor policy remain in `fly` and `fly-ui`.

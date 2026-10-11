@@ -145,7 +145,7 @@ test("rejects silent Blog search body cursor decode fallback", () => {
       root,
       relativePath,
       source.replace(
-        'last_row\n                    .try_get::<String>("", "document_key")\n                    .map_err(Error::Database)?;',
+        /last_row\s*\.try_get::<String>\("", "document_key"\)\s*\.map_err\(Error::Database\)\?;/,
         'last_row\n                    .try_get::<String>("", "document_key")\n                    .ok().unwrap();',
       ),
     );

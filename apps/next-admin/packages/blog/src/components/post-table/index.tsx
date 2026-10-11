@@ -7,9 +7,7 @@ import type {
   StockFeatures
 } from '@tanstack/react-table';
 import Link from 'next/link';
-import { useDataTable } from '@/shared/hooks/use-data-table';
-import { DataTable } from '@/widgets/data-table/data-table';
-import { DataTableToolbar } from '@/widgets/data-table/data-table-toolbar';
+import { DataTableShell } from '@/widgets/data-table/data-table-shell';
 
 export interface PostTablePager {
   previousHref: string | null;
@@ -29,19 +27,12 @@ export function PostTable<
   TData extends RowData = any,
   TValue extends CellData = any
 >({ data, pager, columns }: PostTableParams<TData, TValue>) {
-  // Cursor-paged: the page count is unknown, so the table never paginates on its own.
-  const { table } = useDataTable({
-    data,
-    columns,
-    pageCount: -1,
-    shallow: false,
-    debounceMs: 500
-  });
-
   return (
-    <DataTable table={table} pagination={<CursorPagination pager={pager} />}>
-      <DataTableToolbar table={table} />
-    </DataTable>
+    <DataTableShell
+      data={data}
+      columns={columns}
+      pagination={<CursorPagination pager={pager} />}
+    />
   );
 }
 

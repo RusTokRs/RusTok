@@ -25,7 +25,7 @@ status: active
 > ```
 > *(or in English: `Execute deep code review per docs/CONTINUOUS_CODE_REVIEW.md`)*
 >
-> The agent reads this guide, takes the next pending module from the ledger, conducts a deep audit across all 6 engineering pillars, verifies changes via gatekeeper, and records progress in the ledger.
+> The agent reads this guide, takes the next pending module from the ledger, conducts a deep audit across all 7 engineering pillars, verifies changes via gatekeeper, and records progress in the ledger.
 For repository-wide work, the trigger above is the complete task instruction: it means execute the next pending phase in the **Deep Full-Stack Audit Cycle** in the ledger, starting from the refreshed `main`, fixing in-scope findings, and integrating the phase through the branch → commit → PR → merge workflow defined by `AGENTS.md`.
 
 ---
@@ -62,7 +62,7 @@ Or view the top specific issue:
 python scripts/maintenance/review_orchestrator.py next
 ```
 
-### Step 3: Deep Engineering Review (6 Pillars of Quality & Anti-Slop)
+### Step 3: Deep Engineering Review (7 Pillars of Quality & Anti-Slop)
 
 Do **NOT** stop at trivial mechanical linting (like unwrap or regexes). Perform a genuine senior-level engineering review based on [docs/standards/patterns-vs-antipatterns.md](standards/patterns-vs-antipatterns.md):
 
@@ -94,6 +94,11 @@ Do **NOT** stop at trivial mechanical linting (like unwrap or regexes). Perform 
 6. **Runtime Safety & Panic Elimination (AGENTS.md §14):**
    - Replace bare `.unwrap()` / `.expect()` in domain paths with typed `Result` propagation (`?`).
    - If physically guaranteed by compiler or constant, document the guarantee: `// INVARIANT: <explanation>`.
+
+7. **FFA Frontend & UI Boundary Correctness (AGENTS.md §5):**
+   - **Zero Framework in Core:** `core/` MUST have zero UI framework imports (`leptos::*`, `dioxus::*`). All validation, calculations, computable view-models, and state machines MUST live in `core/` and be tested by standalone unit tests.
+   - **Zero Domain Logic in UI Adapters:** `ui/leptos` and `ui/dioxus` MUST NOT contain input validation rules, command construction, price/discount math, status evaluation, or direct backend API calls. The adapter ONLY binds the ready `ViewModel` to DOM/design tokens and events to callbacks.
+   - **Anti-Leak Smell:** If a module's `core/` is trivial or lacks unit tests while `ui/leptos.rs` is bloated with business logic, extract the logic into `core/` before declaring the component reviewed.
 
 ### Step 4: Validate with the Gatekeeper
 Before committing, you **MUST** run the gatekeeper on your modified files:

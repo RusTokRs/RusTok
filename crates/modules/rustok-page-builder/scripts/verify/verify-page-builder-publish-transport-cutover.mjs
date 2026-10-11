@@ -39,6 +39,10 @@ function fail(message) {
 }
 
 function requireMarker(source, marker, label) {
+  if (marker instanceof RegExp) {
+    if (!marker.test(source)) fail(`${label} is missing ${marker}`);
+    return;
+  }
   if (!source.includes(marker)) fail(`${label} is missing ${marker}`);
 }
 
@@ -172,7 +176,7 @@ for (const marker of [
   "$input: PublishGqlPageInput!",
   "publishPage(id: $id, input: $input)",
   "expectedBodyRevisions",
-  "load_publish_scenario_selection(&id, &baseline.baseline_hash)",
+  /load_publish_scenario_selection\(&?id,\s*&baseline\.baseline_hash\)/,
   "resolve_publish_scenario(&baseline, selected_scenario_id.as_deref())",
   "PageBuilderReviewedPublishRuntime::new",
   "ProjectHash::from_bytes(&bytes).hex()",

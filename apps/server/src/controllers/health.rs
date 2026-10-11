@@ -16,9 +16,9 @@ use sea_orm::{
 };
 use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
 use utoipa::ToSchema;
 
 use crate::common::settings::{EmailProvider, RustokSettings};
@@ -922,7 +922,7 @@ where
     Fut: std::future::Future<Output = std::result::Result<(), String>>,
 {
     let started_at = Instant::now();
-    if let Some(open_for_ms) = circuit_open_for(name).await {
+    if let Some(open_for_ms) = circuit_open_for(name) {
         return ReadinessCheck {
             name: name.to_string(),
             kind,
@@ -937,7 +937,7 @@ where
 
     match result {
         Ok(Ok(())) => {
-            on_check_success(name).await;
+            on_check_success(name);
             ReadinessCheck {
                 name: name.to_string(),
                 kind,
@@ -948,7 +948,7 @@ where
             }
         }
         Ok(Err(reason)) => {
-            on_check_failure(name).await;
+            on_check_failure(name);
             ReadinessCheck {
                 name: name.to_string(),
                 kind,
@@ -959,7 +959,7 @@ where
             }
         }
         Err(_) => {
-            on_check_failure(name).await;
+            on_check_failure(name);
             ReadinessCheck {
                 name: name.to_string(),
                 kind,
@@ -979,8 +979,10 @@ fn status_for_failure(criticality: DependencyCriticality) -> ReadinessStatus {
     }
 }
 
-async fn circuit_open_for(name: &str) -> Option<u128> {
-    let mut state = CIRCUITS.lock().await;
+fn circuit_open_for(name: &str) -> Option<u128> {
+    let mut state = CIRCUITS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let now = Instant::now();
 
     if let Some(circuit) = state.get_mut(name)
@@ -997,13 +999,17 @@ async fn circuit_open_for(name: &str) -> Option<u128> {
     None
 }
 
-async fn on_check_success(name: &str) {
-    let mut state = CIRCUITS.lock().await;
+fn on_check_success(name: &str) {
+    let mut state = CIRCUITS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     state.remove(name);
 }
 
-async fn on_check_failure(name: &str) {
-    let mut state = CIRCUITS.lock().await;
+fn on_check_failure(name: &str) {
+    let mut state = CIRCUITS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let circuit = state.entry(name.to_string()).or_default();
     circuit.consecutive_failures += 1;
 

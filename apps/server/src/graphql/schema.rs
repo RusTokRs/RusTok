@@ -50,8 +50,6 @@ use crate::services::field_definition_registry_bootstrap::build_field_def_regist
 use crate::services::flex_attached_values::FlexAttachedValuesGraphqlAdapter;
 use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
 use flex::graphql::FlexGraphqlRuntime;
-#[cfg(feature = "mod-ai")]
-use rustok_ai::graphql::{AiMutation, AiQuery, AiSubscription};
 use rustok_auth::graphql::{AuthMutation, AuthQuery, OAuthMutation, OAuthQuery};
 #[cfg(feature = "mod-blog")]
 use rustok_blog::graphql::{BlogGraphqlRateLimitPolicy, BlogGraphqlRateLimiterHandle};
@@ -88,7 +86,6 @@ pub struct Query(
     OAuthQuery,
     McpQuery,
     RbacQuery,
-    #[cfg(feature = "mod-ai")] AiQuery,
     SettingsQuery,
     SystemQuery,
     schema_codegen::OptionalModuleQuery,
@@ -115,7 +112,6 @@ pub struct Mutation(
     OAuthMutation,
     McpMutation,
     RbacMutation,
-    #[cfg(feature = "mod-ai")] AiMutation,
     SettingsMutation,
     StarterMutation,
     schema_codegen::OptionalModuleMutation,
@@ -124,7 +120,6 @@ pub struct Mutation(
 #[derive(MergedSubscription, Default)]
 pub struct Subscription(
     BuildSubscription,
-    #[cfg(feature = "mod-ai")] AiSubscription,
     schema_codegen::OptionalModuleSubscription,
 );
 

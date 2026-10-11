@@ -84,8 +84,7 @@ const masterPlan = read(paths.masterPlan);
 requireText(cargo, "uuid.workspace = true", `${paths.cargo}: correlation UUID dependency`);
 requireText(cargo, "tracing.workspace = true", `${paths.cargo}: diagnostics dependency`);
 for (const marker of [
-  '#[path = "transport/graphql_error_safety.rs"]',
-  "mod graphql_error_safety;",
+  "graphql_error_safety",
   "use rustok_graphql::GraphqlHttpError;",
 ]) {
   requireText(facade, marker, `${paths.facade}: typed policy wiring`);
@@ -93,21 +92,21 @@ for (const marker of [
 
 const readBlock = between(
   safety,
-  "pub(super) struct GraphqlReadContext",
-  "pub(super) struct GraphqlMutationContext",
+  "struct GraphqlReadContext",
+  "struct GraphqlMutationContext",
   paths.safety,
 );
-const mutationBlock = safety.slice(safety.indexOf("pub(super) struct GraphqlMutationContext"));
+const mutationBlock = safety.slice(safety.indexOf("struct GraphqlMutationContext"));
 
 for (const marker of [
   'const PRODUCT_ADMIN_GRAPHQL_BOUNDARY: &str = "product_admin_primary_graphql_reads";',
   '"product_admin_category_graphql_reads"',
-  "pub(super) struct GraphqlReadContext",
+  "struct GraphqlReadContext",
   "boundary: &'static str",
   "category_id_length: Option<usize>",
   "Uuid::new_v4()",
   '"product-admin-graphql:{operation}:{}"',
-  "pub(super) fn map_error(&self, error: GraphqlHttpError)",
+  "fn map_error(&self, error: GraphqlHttpError)",
   "GraphqlHttpError::Network",
   "GraphqlHttpError::Http(_)",
   "GraphqlHttpError::Unauthorized",

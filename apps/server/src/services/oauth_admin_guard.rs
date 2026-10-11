@@ -7,7 +7,7 @@ use rustok_api::{Permission, has_effective_permission};
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
-    UpdateOAuthAppCommand, generate_refresh_token, hash_password,
+    UpdateOAuthAppCommand, generate_refresh_token,
 };
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
@@ -112,7 +112,9 @@ impl GuardedOAuthAdminProvider {
         let first_token = generate_refresh_token().map_err(internal_oauth_guard_error)?;
         let second_token = generate_refresh_token().map_err(internal_oauth_guard_error)?;
         let client_secret = format!("sk_live_{first_token}{second_token}");
-        let secret_hash = hash_password(&client_secret).map_err(internal_oauth_guard_error)?;
+        let secret_hash = crate::auth::hash_password_async(client_secret.clone())
+            .await
+            .map_err(internal_oauth_guard_error)?;
         let mut active: oauth_apps::ActiveModel = app.into();
         active.client_secret_hash = Set(Some(secret_hash));
         active.updated_at = Set(Utc::now().into());

@@ -108,11 +108,13 @@ for (const marker of [
 // 3. Admin transport facade re-exports the eleven typed fallback wrappers, which
 //    live in transport/graphql_fallback_mutations.rs. Each command carries a typed
 //    error policy and delegates through the legacy transport instead of bypassing it.
-assertContains(facade, "pub(crate) use graphql_fallback_mutations::{", paths.facade);
-const reexportBlock = facade.slice(
-  facade.indexOf("pub(crate) use graphql_fallback_mutations::{"),
-  facade.indexOf("};", facade.indexOf("pub(crate) use graphql_fallback_mutations::{")),
-);
+const reexportStart = facade.search(/pub\(crate\)\s+use\s+(?:crate::transport::)?graphql_fallback_mutations::\{/);
+if (reexportStart < 0) {
+  failures.push(`${paths.facade}: missing pub(crate) use graphql_fallback_mutations::{`);
+}
+const reexportBlock = reexportStart >= 0
+  ? facade.slice(reexportStart, facade.indexOf("};", reexportStart))
+  : "";
 for (const name of [
   "set_category_schema_mode",
   "create_product_attribute_schema_group",

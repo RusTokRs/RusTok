@@ -55,6 +55,7 @@ pub struct DlqReplayResponse {
     path = "/api/admin/events/dlq",
     params(
         ("event_type" = Option<String>, Query, description = "Filter by event type"),
+        ("created_after" = Option<DateTime<Utc>>, Query, description = "Filter by events created after timestamp (RFC 3339)"),
         ("limit" = Option<u64>, Query, description = "Maximum number of results (1-200)"),
     ),
     responses(

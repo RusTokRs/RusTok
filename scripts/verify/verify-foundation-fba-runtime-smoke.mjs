@@ -18,7 +18,7 @@ export const foundationFbaRuntimeSmokeModules = [
         'validate_channel_read_request(&request)?;',
         'ensure_tenant_scope(tenant_id, &detail)?;',
         '!request.include_inactive && !detail.channel.is_active',
-        'list_channel_details_page(tenant_id, request.page, request.per_page, request.include_inactive)',
+        /list_channel_details_page\(\s*tenant_id,\s*request\.page,\s*request\.per_page,\s*request\.include_inactive,?\s*\)/,
         'channel.slug_empty',
         'channel.host_target_empty'
       ]],
@@ -133,7 +133,8 @@ export function verifyFoundationFbaRuntimeSmoke({ root = process.cwd() } = {}) {
     for (const [filePath, markers] of config.markers) {
       const source = read(root, filePath);
       for (const marker of markers) {
-        if (!source.includes(marker)) fail(`${config.module} source marker missing in ${filePath}: ${marker}`);
+        const found = marker instanceof RegExp ? marker.test(source) : source.includes(marker);
+        if (!found) fail(`${config.module} source marker missing in ${filePath}: ${marker}`);
       }
     }
   }

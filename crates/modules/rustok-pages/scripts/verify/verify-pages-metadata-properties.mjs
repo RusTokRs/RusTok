@@ -389,7 +389,7 @@ for (const forbidden of [
 
 for (const marker of [
   "<PagesFlyBuilder",
-  "<PublishedDocumentLocked",
+  "Published page: editor saves go to the unpublished body draft",
 ]) {
   requireMarker(pagesWorkspace, marker, "Pages workspace lifecycle composition");
 }

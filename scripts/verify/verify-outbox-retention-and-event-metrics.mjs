@@ -97,7 +97,7 @@ requireText(
 );
 requireText(
   telemetryMetrics,
-  "registry.register(Box::new(OUTBOX_RETENTION_LAST_RUN_TIMESTAMP_SECONDS.clone()))?;",
+  /registry\.register\(\s*Box::new\(\s*OUTBOX_RETENTION_LAST_RUN_TIMESTAMP_SECONDS\.clone\(\),?\s*\)\s*\)\?;/,
   "outbox retention run gauge registration",
 );
 requireText(
@@ -133,7 +133,7 @@ requireText(
 const factory = readRepo("apps/server/src/services/event_transport_factory.rs");
 requireText(
   factory,
-  "let outbox_retention = resolve_outbox_retention(ctx, &settings.events.outbox_retention)?;",
+  /let outbox_retention =\s+resolve_outbox_retention\(ctx, &settings\.events\.outbox_retention\)\?;/,
   "event runtime must resolve the retention policy from settings",
 );
 requireText(

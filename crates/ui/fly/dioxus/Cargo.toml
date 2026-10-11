@@ -3,7 +3,7 @@ name = "fly-dioxus"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "SSR and Web/Desktop Dioxus 0.6 adapter foundation for Fly visual editors"
+description = "SSR and Web/Desktop Dioxus 0.7 adapter foundation for Fly visual editors"
 
 [features]
 # No renderer by default, unlike `fly-leptos` which defaults to `ssr`.

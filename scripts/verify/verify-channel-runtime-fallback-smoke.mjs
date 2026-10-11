@@ -25,7 +25,8 @@ const requireAssertion = (entry, assertion) => {
   if (!entry.assertions.includes(assertion)) fail(`${entry.profile}/${entry.operation} lacks assertion ${assertion}`);
 };
 const requireSource = (source, marker, label) => {
-  if (!source.includes(marker)) fail(`${label} source missing ${marker}`);
+  const matches = marker instanceof RegExp ? marker.test(source) : source.includes(marker);
+  if (!matches) fail(`${label} source missing ${marker}`);
 };
 
 if (smoke.schema_version !== 1 || smoke.module !== 'channel') fail('runtime smoke identity drift');
@@ -48,7 +49,7 @@ const listCase = requireCase('embedded_native', 'list_channels_for_tenant');
 for (const assertion of ['in_process_channel_service_impl_exported', 'deadline_required_before_lookup', 'tenant_scope_preserved_by_list_service', 'inactive_channels_filtered_when_include_inactive_false']) requireAssertion(listCase, assertion);
 // The list path pushes pagination and the inactive-channel filter down into the
 // service query instead of filtering a full in-memory list.
-requireSource(ports, '.list_channel_details_page(tenant_id, request.page, request.per_page, request.include_inactive)', 'ports');
+requireSource(ports, /\.list_channel_details_page\(\s*tenant_id,\s*request\.page,\s*request\.per_page,\s*request\.include_inactive,?\s*\)/, 'ports');
 const channelService = read('crates/modules/rustok-channel/src/services/channel_service.rs');
 requireSource(channelService, 'query.filter(channel::Column::IsActive.eq(true))', 'channel service');
 

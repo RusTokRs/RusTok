@@ -105,7 +105,7 @@ impl OAuthTokenService {
         let response = match request.grant_type.as_str() {
             CLIENT_CREDENTIALS_GRANT => {
                 require_grant(&app, CLIENT_CREDENTIALS_GRANT)?;
-                authenticate_client(&app, request, true)?;
+                authenticate_client(&app, request, true).await?;
                 let requested = parse_requested_scopes(request.scope.as_deref());
                 let scopes = validate_requested_scopes(&app, &requested)?;
                 let (access_token, expires_in) =
@@ -121,7 +121,7 @@ impl OAuthTokenService {
             }
             AUTHORIZATION_CODE_GRANT => {
                 require_grant(&app, AUTHORIZATION_CODE_GRANT)?;
-                authenticate_client(&app, request, false)?;
+                authenticate_client(&app, request, false).await?;
                 let code = required(request.code.as_deref(), "code is required")?;
                 let redirect_uri =
                     required(request.redirect_uri.as_deref(), "redirect_uri is required")?;
@@ -148,7 +148,7 @@ impl OAuthTokenService {
             }
             REFRESH_TOKEN_GRANT => {
                 require_grant(&app, REFRESH_TOKEN_GRANT)?;
-                authenticate_client(&app, request, false)?;
+                authenticate_client(&app, request, false).await?;
                 let raw_refresh_token = required(
                     request.refresh_token.as_deref(),
                     "refresh_token is required",
@@ -234,7 +234,7 @@ fn require_grant(
     }
 }
 
-fn authenticate_client(
+async fn authenticate_client(
     app: &oauth_apps::Model,
     request: &TokenRequest,
     secret_required: bool,
@@ -253,8 +253,12 @@ fn authenticate_client(
         .as_deref()
         .filter(|value| !value.is_empty())
         .ok_or_else(|| OAuthTokenProtocolError::invalid_client("client_secret is required"))?;
-    let valid = OAuthAppService::verify_client_secret(secret, secret_hash)
-        .map_err(|_| OAuthTokenProtocolError::invalid_client("Invalid client credentials"))?;
+    let valid = OAuthAppService::verify_client_secret_async(
+        secret.to_string(),
+        secret_hash.to_string(),
+    )
+    .await
+    .map_err(|_| OAuthTokenProtocolError::invalid_client("Invalid client credentials"))?;
 
     if valid {
         Ok(())

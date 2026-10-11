@@ -55,6 +55,14 @@ impl InstallerPersistenceService {
             .await
     }
 
+    pub async fn has_running_http_job(&self) -> Result<bool, sea_orm::DbErr> {
+        install_http_job::Entity::find()
+            .filter(install_http_job::Column::Status.eq(HTTP_INSTALL_JOB_RUNNING_STATUS))
+            .one(&self.db)
+            .await
+            .map(|job| job.is_some())
+    }
+
     pub async fn finish_http_job_succeeded(
         &self,
         job_id: Uuid,

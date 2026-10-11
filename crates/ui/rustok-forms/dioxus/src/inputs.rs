@@ -86,12 +86,14 @@ pub fn FormInput(
 ) -> Element {
     let field = try_use_context::<FieldContext>();
 
-    let name_attr = name.or_else(|| field.map(|f| f.name.to_string()));
-    let input_id = id.or_else(|| field.map(|f| f.id.to_string()).or_else(|| name_attr.clone()));
-
-    let is_submitting = field.map(|f| f.is_submitting()).unwrap_or(false);
+    let field_name = field.as_ref().map(|f| f.name.clone());
+    let field_id = field.as_ref().map(|f| f.id.clone());
+    let is_submitting = field.as_ref().map(|f| f.is_submitting()).unwrap_or(false);
     let is_disabled = disabled || is_submitting;
-    let is_invalid = field.map(|f| f.is_invalid()).unwrap_or(false);
+    let is_invalid = field.as_ref().map(|f| f.is_invalid()).unwrap_or(false);
+
+    let name_attr = name.or(field_name);
+    let input_id = id.or(field_id).or_else(|| name_attr.clone());
 
     let aria_desc = if let Some(ref explicit) = aria_describedby {
         Some(explicit.clone())
@@ -515,12 +517,14 @@ pub fn FormTextarea(
 ) -> Element {
     let field = try_use_context::<FieldContext>();
 
-    let name_attr = name.or_else(|| field.map(|f| f.name.to_string()));
-    let textarea_id = id.or_else(|| field.map(|f| f.id.to_string()).or_else(|| name_attr.clone()));
-
-    let is_submitting = field.map(|f| f.is_submitting()).unwrap_or(false);
+    let field_name = field.as_ref().map(|f| f.name.clone());
+    let field_id = field.as_ref().map(|f| f.id.clone());
+    let is_submitting = field.as_ref().map(|f| f.is_submitting()).unwrap_or(false);
     let is_disabled = disabled || is_submitting;
-    let is_invalid = field.map(|f| f.is_invalid()).unwrap_or(false);
+    let is_invalid = field.as_ref().map(|f| f.is_invalid()).unwrap_or(false);
+
+    let name_attr = name.or(field_name);
+    let textarea_id = id.or(field_id).or_else(|| name_attr.clone());
 
     let aria_desc = if let Some(ref explicit) = aria_describedby {
         Some(explicit.clone())
@@ -614,12 +618,14 @@ pub fn FormSelect(
 ) -> Element {
     let field = try_use_context::<FieldContext>();
 
-    let name_attr = name.or_else(|| field.map(|f| f.name.to_string()));
-    let select_id = id.or_else(|| field.map(|f| f.id.to_string()).or_else(|| name_attr.clone()));
-
-    let is_submitting = field.map(|f| f.is_submitting()).unwrap_or(false);
+    let field_name = field.as_ref().map(|f| f.name.clone());
+    let field_id = field.as_ref().map(|f| f.id.clone());
+    let is_submitting = field.as_ref().map(|f| f.is_submitting()).unwrap_or(false);
     let is_disabled = disabled || is_submitting;
-    let is_invalid = field.map(|f| f.is_invalid()).unwrap_or(false);
+    let is_invalid = field.as_ref().map(|f| f.is_invalid()).unwrap_or(false);
+
+    let name_attr = name.or(field_name);
+    let select_id = id.or(field_id).or_else(|| name_attr.clone());
 
     let aria_desc = select_id.as_ref().map(|n| {
         if is_invalid {
@@ -725,12 +731,14 @@ pub fn FormCheckbox(
 ) -> Element {
     let field = try_use_context::<FieldContext>();
 
-    let name_attr = name.or_else(|| field.map(|f| f.name.to_string()));
-    let checkbox_id = id.or_else(|| field.map(|f| f.id.to_string()).or_else(|| name_attr.clone()));
-
-    let is_submitting = field.map(|f| f.is_submitting()).unwrap_or(false);
+    let field_name = field.as_ref().map(|f| f.name.clone());
+    let field_id = field.as_ref().map(|f| f.id.clone());
+    let is_submitting = field.as_ref().map(|f| f.is_submitting()).unwrap_or(false);
     let is_disabled = disabled || is_submitting;
-    let is_invalid = field.map(|f| f.is_invalid()).unwrap_or(false);
+    let is_invalid = field.as_ref().map(|f| f.is_invalid()).unwrap_or(false);
+
+    let name_attr = name.or(field_name);
+    let checkbox_id = id.or(field_id).or_else(|| name_attr.clone());
 
     let border_color = if is_invalid {
         "border-destructive"
@@ -744,7 +752,7 @@ pub fn FormCheckbox(
         div {
             class: "flex items-start gap-2.5 {custom_class}",
             input {
-                id: checkbox_id.clone(),
+                id: checkbox_id.as_deref(),
                 r#type: "checkbox",
                 name: name_attr,
                 checked: checked,
@@ -763,7 +771,7 @@ pub fn FormCheckbox(
             }
             if label.is_some() || description.is_some() {
                 label {
-                    r#for: checkbox_id,
+                    r#for: checkbox_id.as_deref(),
                     class: "text-xs font-medium text-foreground cursor-pointer select-none leading-relaxed",
                     if let Some(ref l) = label {
                         span { "{l}" }
@@ -808,11 +816,13 @@ pub fn FormSwitch(
 ) -> Element {
     let field = try_use_context::<FieldContext>();
 
-    let name_attr = name.or_else(|| field.map(|f| f.name.to_string()));
-    let switch_id = id.or_else(|| field.map(|f| f.id.to_string()).or_else(|| name_attr.clone()));
-
-    let is_submitting = field.map(|f| f.is_submitting()).unwrap_or(false);
+    let field_name = field.as_ref().map(|f| f.name.clone());
+    let field_id = field.as_ref().map(|f| f.id.clone());
+    let is_submitting = field.as_ref().map(|f| f.is_submitting()).unwrap_or(false);
     let is_disabled = disabled || is_submitting;
+
+    let name_attr = name.or(field_name);
+    let switch_id = id.or(field_id).or_else(|| name_attr.clone());
 
     let track_bg = if checked { "bg-primary" } else { "bg-muted" };
     let thumb_translate = if checked { "translate-x-4" } else { "translate-x-0" };
@@ -822,7 +832,7 @@ pub fn FormSwitch(
         div {
             class: "flex items-start gap-3 {custom_class}",
             button {
-                id: switch_id.clone(),
+                id: switch_id.as_deref(),
                 r#type: "button",
                 role: "switch",
                 "aria-checked": if checked { "true" } else { "false" },
@@ -842,7 +852,7 @@ pub fn FormSwitch(
             }
             if label.is_some() || description.is_some() {
                 label {
-                    r#for: switch_id,
+                    r#for: switch_id.as_deref(),
                     class: "text-xs font-medium text-foreground cursor-pointer select-none leading-relaxed",
                     if let Some(ref l) = label {
                         span { "{l}" }
@@ -883,9 +893,11 @@ pub fn FormRadioGroup(
 ) -> Element {
     let field = try_use_context::<FieldContext>();
 
-    let name_attr = name.unwrap_or_else(|| field.map(|f| f.name.to_string()).unwrap_or_else(|| "radio_group".to_string()));
-    let is_submitting = field.map(|f| f.is_submitting()).unwrap_or(false);
+    let field_name = field.as_ref().map(|f| f.name.clone());
+    let is_submitting = field.as_ref().map(|f| f.is_submitting()).unwrap_or(false);
     let is_disabled = disabled || is_submitting;
+
+    let name_attr = name.or(field_name).unwrap_or_else(|| "radio_group".to_string());
 
     let layout_class = if horizontal { "flex flex-wrap gap-4" } else { "space-y-2" };
     let custom_class = class.unwrap_or_default();
@@ -895,34 +907,41 @@ pub fn FormRadioGroup(
             role: "radiogroup",
             class: "{layout_class} {custom_class}",
             for opt in options {
-                let opt_val = opt.value.clone();
-                let is_checked = opt_val == value;
-                let opt_disabled = is_disabled || opt.disabled;
-                let item_id = format!("{name_attr}-{opt_val}");
+                {
+                    let opt_val = opt.value.clone();
+                    let is_checked = opt_val == value;
+                    let opt_disabled = is_disabled || opt.disabled;
+                    let item_id = format!("{name_attr}-{opt_val}");
+                    let field_opt = field.clone();
+                    let on_change_opt = on_change.clone();
+                    let name_attr_item = name_attr.clone();
 
-                div {
-                    class: "flex items-center gap-2",
-                    input {
-                        id: "{item_id}",
-                        r#type: "radio",
-                        name: "{name_attr}",
-                        value: "{opt_val}",
-                        checked: is_checked,
-                        disabled: opt_disabled,
-                        class: "h-3.5 w-3.5 border-border text-primary focus:ring-primary/20 disabled:opacity-50 cursor-pointer",
-                        onchange: move |_| {
-                            if let Some(ref f) = field {
-                                f.mark_dirty();
+                    rsx! {
+                        div {
+                            class: "flex items-center gap-2",
+                            input {
+                                id: "{item_id}",
+                                r#type: "radio",
+                                name: "{name_attr_item}",
+                                value: "{opt_val}",
+                                checked: is_checked,
+                                disabled: opt_disabled,
+                                class: "h-3.5 w-3.5 border-border text-primary focus:ring-primary/20 disabled:opacity-50 cursor-pointer",
+                                onchange: move |_| {
+                                    if let Some(ref f) = field_opt {
+                                        f.mark_dirty();
+                                    }
+                                    if let Some(ref cb) = on_change_opt {
+                                        cb.call(opt_val.clone());
+                                    }
+                                }
                             }
-                            if let Some(ref cb) = on_change {
-                                cb.call(opt_val.clone());
+                            label {
+                                r#for: "{item_id}",
+                                class: "text-xs font-medium text-foreground cursor-pointer select-none",
+                                "{opt.label}"
                             }
                         }
-                    }
-                    label {
-                        r#for: "{item_id}",
-                        class: "text-xs font-medium text-foreground cursor-pointer select-none",
-                        "{opt.label}"
                     }
                 }
             }
@@ -959,12 +978,14 @@ pub fn FormFileInput(
 ) -> Element {
     let field = try_use_context::<FieldContext>();
 
-    let name_attr = name.or_else(|| field.map(|f| f.name.to_string()));
-    let input_id = id.or_else(|| field.map(|f| f.id.to_string()).or_else(|| name_attr.clone()));
-
-    let is_submitting = field.map(|f| f.is_submitting()).unwrap_or(false);
+    let field_name = field.as_ref().map(|f| f.name.clone());
+    let field_id = field.as_ref().map(|f| f.id.clone());
+    let is_submitting = field.as_ref().map(|f| f.is_submitting()).unwrap_or(false);
     let is_disabled = disabled || is_submitting;
-    let is_invalid = field.map(|f| f.is_invalid()).unwrap_or(false);
+    let is_invalid = field.as_ref().map(|f| f.is_invalid()).unwrap_or(false);
+
+    let name_attr = name.or(field_name);
+    let input_id = id.or(field_id).or_else(|| name_attr.clone());
 
     let aria_desc = input_id.as_ref().map(|n| {
         if is_invalid {
@@ -1032,11 +1053,13 @@ pub fn FormColorInput(
 ) -> Element {
     let field = try_use_context::<FieldContext>();
 
-    let name_attr = name.or_else(|| field.map(|f| f.name.to_string()));
-    let input_id = id.or_else(|| field.map(|f| f.id.to_string()).or_else(|| name_attr.clone()));
-
-    let is_submitting = field.map(|f| f.is_submitting()).unwrap_or(false);
+    let field_name = field.as_ref().map(|f| f.name.clone());
+    let field_id = field.as_ref().map(|f| f.id.clone());
+    let is_submitting = field.as_ref().map(|f| f.is_submitting()).unwrap_or(false);
     let is_disabled = disabled || is_submitting;
+
+    let name_attr = name.or(field_name);
+    let input_id = id.or(field_id).or_else(|| name_attr.clone());
     let custom_class = class.unwrap_or_default();
 
     rsx! {
@@ -1106,11 +1129,13 @@ pub fn FormRangeInput(
 ) -> Element {
     let field = try_use_context::<FieldContext>();
 
-    let name_attr = name.or_else(|| field.map(|f| f.name.to_string()));
-    let input_id = id.or_else(|| field.map(|f| f.id.to_string()).or_else(|| name_attr.clone()));
-
-    let is_submitting = field.map(|f| f.is_submitting()).unwrap_or(false);
+    let field_name = field.as_ref().map(|f| f.name.clone());
+    let field_id = field.as_ref().map(|f| f.id.clone());
+    let is_submitting = field.as_ref().map(|f| f.is_submitting()).unwrap_or(false);
     let is_disabled = disabled || is_submitting;
+
+    let name_attr = name.or(field_name);
+    let input_id = id.or(field_id).or_else(|| name_attr.clone());
     let custom_class = class.unwrap_or_default();
 
     rsx! {
@@ -1176,12 +1201,14 @@ pub fn FormOtpInput(
 ) -> Element {
     let field = try_use_context::<FieldContext>();
 
-    let name_attr = name.or_else(|| field.map(|f| f.name.to_string()));
-    let input_id = id.or_else(|| field.map(|f| f.id.to_string()).or_else(|| name_attr.clone()));
-
-    let is_submitting = field.map(|f| f.is_submitting()).unwrap_or(false);
+    let field_name = field.as_ref().map(|f| f.name.clone());
+    let field_id = field.as_ref().map(|f| f.id.clone());
+    let is_submitting = field.as_ref().map(|f| f.is_submitting()).unwrap_or(false);
     let is_disabled = disabled || is_submitting;
-    let is_invalid = field.map(|f| f.is_invalid()).unwrap_or(false);
+    let is_invalid = field.as_ref().map(|f| f.is_invalid()).unwrap_or(false);
+
+    let name_attr = name.or(field_name);
+    let input_id = id.or(field_id).or_else(|| name_attr.clone());
 
     let state_border = if is_invalid {
         "border-destructive text-destructive"
@@ -1196,38 +1223,46 @@ pub fn FormOtpInput(
         div {
             class: "flex items-center gap-2 {custom_class}",
             for i in 0..length {
-                let char_val = chars.get(i).copied().unwrap_or(' ');
-                let display_str = if char_val != ' ' { char_val.to_string() } else { String::new() };
-                let cell_id = input_id.as_ref().map(|n| format!("{n}-digit-{i}"));
+                {
+                    let char_val = chars.get(i).copied().unwrap_or(' ');
+                    let display_str = if char_val != ' ' { char_val.to_string() } else { String::new() };
+                    let cell_id = input_id.as_ref().map(|n| format!("{n}-digit-{i}"));
+                    let field_opt = field.clone();
+                    let on_change_opt = on_change.clone();
+                    let on_complete_opt = on_complete.clone();
+                    let cur_value = value.clone();
 
-                input {
-                    id: cell_id,
-                    r#type: "text",
-                    maxlength: "1",
-                    inputmode: "numeric",
-                    pattern: "[0-9]*",
-                    disabled: is_disabled,
-                    value: "{display_str}",
-                    class: "w-10 h-11 text-center font-mono text-base font-semibold rounded-xl border bg-background {state_border} outline-none transition disabled:opacity-50",
-                    oninput: move |ev| {
-                        let entered = ev.value();
-                        let mut new_code = value.clone();
-                        if let Some(ch) = entered.chars().last() {
-                            if i < new_code.len() {
-                                new_code.replace_range(i..=i, &ch.to_string());
-                            } else {
-                                new_code.push(ch);
-                            }
-                        }
-                        if let Some(ref f) = field {
-                            f.mark_dirty();
-                        }
-                        if let Some(ref cb) = on_change {
-                            cb.call(new_code.clone());
-                        }
-                        if new_code.len() == length {
-                            if let Some(ref cb_comp) = on_complete {
-                                cb_comp.call(new_code);
+                    rsx! {
+                        input {
+                            id: cell_id,
+                            r#type: "text",
+                            maxlength: "1",
+                            inputmode: "numeric",
+                            pattern: "[0-9]*",
+                            disabled: is_disabled,
+                            value: "{display_str}",
+                            class: "w-10 h-11 text-center font-mono text-base font-semibold rounded-xl border bg-background {state_border} outline-none transition disabled:opacity-50",
+                            oninput: move |ev| {
+                                let entered = ev.value();
+                                let mut new_code = cur_value.clone();
+                                if let Some(ch) = entered.chars().last() {
+                                    if i < new_code.len() {
+                                        new_code.replace_range(i..=i, &ch.to_string());
+                                    } else {
+                                        new_code.push(ch);
+                                    }
+                                }
+                                if let Some(ref f) = field_opt {
+                                    f.mark_dirty();
+                                }
+                                if let Some(ref cb) = on_change_opt {
+                                    cb.call(new_code.clone());
+                                }
+                                if new_code.len() == length {
+                                    if let Some(ref cb_comp) = on_complete_opt {
+                                        cb_comp.call(new_code);
+                                    }
+                                }
                             }
                         }
                     }

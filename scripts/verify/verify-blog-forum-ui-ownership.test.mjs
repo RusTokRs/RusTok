@@ -109,20 +109,20 @@ ${options.forumPlainTextMissingBidi ? '' : "lang={contentLocale}\ndir='auto'\ndi
       : '<span lang={option.lang} dir={option.dir}>'
   );
   writeFixtureFile(root, 'apps/next-admin/src/modules/index.ts',
-    "import '../../packages/blog/src';\nimport '../../packages/forum/src';");
+    "import '@rustok/blog-admin';\nimport '@rustok/forum-admin';");
   const selectorBidi = options.selectorMissingEffectiveLocale
     ? ''
     : "lang={topic.effectiveLocale}\ndir='auto'";
   writeFixtureFile(root, 'apps/next-admin/src/app/dashboard/forum/reply/page.tsx',
-    `../../../../../packages/forum/src
-${options.blogRoute ? '../../../../../packages/blog/src\n' : ''}ForumReplyEditor
+    `@rustok/forum-admin
+${options.blogRoute ? 'packages/blog/src\n' : ''}ForumReplyEditor
 listForumTopics
 getForumTopic
 selectedTopicSummary.locale
 initialContentLocale={selectedTopic.effectiveLocale}
 ${selectorBidi}`);
   writeFixtureFile(root, 'apps/next-admin/src/app/dashboard/forum/topic/page.tsx',
-    `../../../../../packages/forum/src
+    `@rustok/forum-admin
 ForumTopicEditor
 listForumCategories
 listForumTopics

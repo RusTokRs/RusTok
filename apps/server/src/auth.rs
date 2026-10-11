@@ -209,8 +209,20 @@ pub fn hash_password(password: &str) -> Result<String> {
     rustok_auth::hash_password(password).map_err(auth_err)
 }
 
+pub async fn hash_password_async(password: String) -> Result<String> {
+    tokio::task::spawn_blocking(move || hash_password(&password))
+        .await
+        .map_err(|_| Error::InternalServerError)?
+}
+
 pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
     rustok_auth::verify_password(password, password_hash).map_err(auth_err)
+}
+
+pub async fn verify_password_async(password: String, password_hash: String) -> Result<bool> {
+    tokio::task::spawn_blocking(move || verify_password(&password, &password_hash))
+        .await
+        .map_err(|_| Error::InternalServerError)?
 }
 
 pub fn generate_refresh_token() -> Result<String> {
