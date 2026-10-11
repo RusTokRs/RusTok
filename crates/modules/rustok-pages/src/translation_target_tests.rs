@@ -52,7 +52,13 @@ async fn translation_target_schema_supports_up_down_up() {
         .position(|migration| migration.name() == TRANSLATION_TARGET_MIGRATION)
         .expect("Pages translation target migration should be registered");
     let translation_target_migration = migrations.remove(translation_target_index);
-    for migration in migrations.into_iter().take(translation_target_index) {
+    // Every other migration is applied, not just the ones registered before the translation
+    // target. `m20261009_000001_create_page_body_drafts_and_revisions` is registered after it, and
+    // the service this test then exercises writes through that table — applying a prefix of the
+    // list left `page_body_drafts` missing, so the assertion failed for a reason that had nothing
+    // to do with the translation-target migration. Rolling it back and reapplying it on top of the
+    // complete schema is also the state a deployed database is in.
+    for migration in migrations {
         migration
             .up(&manager)
             .await
