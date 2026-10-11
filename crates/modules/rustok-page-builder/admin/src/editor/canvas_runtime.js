@@ -145,6 +145,22 @@
     send('ready');
   };
 
+  // The canvas previews author content and must never navigate. Following an authored link or
+  // submitting an authored form replaces the `srcdoc` document with a foreign page: the bridge
+  // goes with it, the parent resets `lastSequence`/geometry on the iframe `load`, and the operator
+  // is left looking at a page the editor cannot instrument. Neither existing barrier stops it —
+  // the srcdoc CSP does not cover `form-action` (it is not part of `default-src`) and document
+  // navigation has no CSP directive with real browser support, while the `sandbox` attribute only
+  // removes the popup/top-level variants. Selection is unaffected: `preventDefault` cancels the
+  // navigation without stopping the bubble-phase listener below.
+  document.addEventListener('click', (event) => {
+    if (!(event.target instanceof Element)) return;
+    if (event.target.closest('a[href], area[href]')) event.preventDefault();
+  }, { capture: true });
+  document.addEventListener('submit', (event) => {
+    event.preventDefault();
+  }, { capture: true });
+
   document.addEventListener('click', (event) => {
     const component = componentAt(event.target);
     document.querySelectorAll('[data-fly-selected]')
