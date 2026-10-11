@@ -170,9 +170,7 @@ impl FormStepTracker {
     /// Reset tracker to step 0 and clear completed history.
     pub fn reset(&mut self) {
         self.current_step = 0;
-        for c in &mut self.completed_steps {
-            *c = false;
-        }
+        self.completed_steps.fill(false);
     }
 }
 

@@ -447,6 +447,7 @@ These exact phrases are retained only because earlier static guards consume the 
 - `Authenticated authoring route: source-ready`.
 - `Dedicated authoring asset delivery: source-ready`.
 - `Admin-owned inline authoring launch: source-ready`.
+- `Authenticated real-DOM inline adapter: source-ready`.
 - `client artifact build and browser execution remain pending`.
 
 ## Boundaries

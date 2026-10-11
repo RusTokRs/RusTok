@@ -69,6 +69,15 @@ impl RuntimeScenarioReleaseBaseline {
         }
     }
 
+    /// Whether the embedded render snapshot still matches its own integrity hash.
+    ///
+    /// A baseline is only meaningful while its snapshot is the one that was captured: if the
+    /// embedded snapshot's contents were edited, its `snapshot_hash` no longer matches and the
+    /// release evaluation must not compare a candidate render against a corrupt reference.
+    pub fn snapshot_has_valid_hash(&self) -> bool {
+        self.snapshot.has_valid_hash()
+    }
+
     /// Whether `baseline_hash` is the retired FNV-1a 64 fingerprint of these contents.
     ///
     /// The release gate hashed with [`ProjectHash`] until 2026-10-08, and a 64-bit
@@ -167,7 +176,7 @@ impl RuntimeScenarioReleaseBaseline {
                 ),
             ));
         }
-        if !self.snapshot.has_valid_hash() {
+        if !self.snapshot_has_valid_hash() {
             diagnostics.push(release_diagnostic(
                 "runtime_scenario_baseline_snapshot_hash_invalid",
                 "baseline.snapshot.snapshot_hash",

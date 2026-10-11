@@ -295,8 +295,8 @@ fn normalize_plain_text(value: String) -> Result<String, InlineEditContractError
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 mod browser {
     use super::*;
-    use std::cell::Cell;
-    use std::collections::BTreeSet;
+    use std::cell::{Cell, RefCell};
+    use std::collections::{BTreeMap, BTreeSet};
     use std::rc::Rc;
     use wasm_bindgen::{JsCast, closure::Closure};
     use web_sys::{Element, Event, HtmlElement};
@@ -416,6 +416,9 @@ mod browser {
             .query_selector_all(&format!("[{FLY_REAL_DOM_COMPONENT_ATTRIBUTE}]"))
             .map_err(browser_error)?;
         let mut marked = Vec::new();
+        // The rendered text of every marked editor, keyed by component id: the baseline a blur is
+        // compared against, so a focus that never changed anything emits no request at all.
+        let mut emitted_text = BTreeMap::new();
         for index in 0..nodes.length() {
             let Some(node) = nodes.item(index) else {
                 continue;
@@ -427,17 +430,22 @@ mod browser {
                 continue;
             };
             if allowed.contains(&component_id) {
+                if let Some(html) = element.dyn_ref::<HtmlElement>() {
+                    emitted_text.insert(component_id.clone(), html.inner_text());
+                }
                 marked.push(MarkedElement::mark(element)?);
             }
         }
 
         let allowed = Rc::new(allowed);
         let sequence = Rc::new(Cell::new(0_u64));
+        let emitted_text = Rc::new(RefCell::new(emitted_text));
         let on_request = Rc::new(on_request);
         let on_error = Rc::new(on_error);
         let focusout = Closure::<dyn FnMut(Event)>::new({
             let allowed = allowed.clone();
             let sequence = sequence.clone();
+            let emitted_text = emitted_text.clone();
             let on_request = on_request.clone();
             let on_error = on_error.clone();
             move |event: Event| {
@@ -466,16 +474,40 @@ mod browser {
                 let Some(element) = editable.dyn_ref::<HtmlElement>() else {
                     return;
                 };
+                let rendered_text = element.inner_text();
+                // Blurring an editor whose text nobody touched is not an edit. It used to emit a
+                // request anyway and the server answered `NoContentChange`, which the host
+                // surfaces as an error: clicking into a text and clicking away turned an
+                // untouched page into a red validation message and a wasted round trip. The
+                // comparison is against the text this adapter last saw in this element, so a
+                // rejected edit stays retryable by editing again.
+                if emitted_text
+                    .borrow()
+                    .get(&component_id)
+                    .is_some_and(|previous| *previous == rendered_text)
+                {
+                    return;
+                }
+                // What the DOM holds is not necessarily what the contract accepts: a paste can
+                // introduce carriage returns, tabs or control characters, and this crate's
+                // `validate_request` rejects requests that carry them. Fail here, where the
+                // browser knows which element is at fault, instead of letting the host turn a
+                // rejected request into an opaque error.
+                let value = match normalize_plain_text(rendered_text.clone()) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        on_error(error);
+                        return;
+                    }
+                };
                 let next_sequence = sequence.get().saturating_add(1);
                 let now_unix_ms = js_sys::Date::now().max(0.0) as u64;
-                match grant.bind_request(
-                    now_unix_ms,
-                    next_sequence,
-                    component_id,
-                    element.inner_text(),
-                ) {
+                match grant.bind_request(now_unix_ms, next_sequence, component_id, value) {
                     Ok(request) => {
                         sequence.set(next_sequence);
+                        emitted_text
+                            .borrow_mut()
+                            .insert(request.component_id.clone(), rendered_text);
                         on_request(request);
                     }
                     Err(error) => on_error(error),

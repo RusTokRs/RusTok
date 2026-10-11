@@ -100,9 +100,18 @@ const failures = required
 if (contextSchema.includes('eval(') || contextSchema.includes('Function(')) {
   failures.push('computed expressions must not use JavaScript eval or Function');
 }
-const contextStage = runtimePipeline.indexOf('materialize_context');
-const bindingStage = runtimePipeline.indexOf('materialize_bindings');
-const dynamicStage = runtimePipeline.indexOf('materialize_runtime');
+// Scope the stage-order check to the pipeline function body: the crate's `use` block also names
+// all three stages, and rustfmt sorts it alphabetically (`materialize_bindings` before
+// `materialize_context`), which would both mask and misreport the real order.
+const pipelineStart = runtimePipeline.indexOf(
+  'fn materialize_project_with_runtime_context_and_providers(',
+);
+const pipelineBody = pipelineStart < 0 ? runtimePipeline : runtimePipeline.slice(pipelineStart);
+// Match the calls, not the prefixes: the pipeline also calls
+// `materialize_runtime_locale_context`, which is a different stage.
+const contextStage = pipelineBody.indexOf('materialize_context(');
+const bindingStage = pipelineBody.indexOf('materialize_bindings(');
+const dynamicStage = pipelineBody.indexOf('materialize_runtime(');
 if (contextStage < 0 || bindingStage < 0 || dynamicStage < 0) {
   failures.push('runtime pipeline stages are incomplete');
 } else {

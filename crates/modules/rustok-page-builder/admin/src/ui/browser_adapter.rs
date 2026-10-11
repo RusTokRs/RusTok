@@ -6,12 +6,26 @@ use rustok_page_builder::browser_host::{
     PageBuilderBrowserModuleOptions, page_builder_browser_module,
 };
 
+/// Expected origin of the sandboxed authoring canvas iframe.
+///
+/// [`crate::editor::isolated_canvas`] renders the canvas with `sandbox="allow-scripts"` and
+/// `srcdoc`, which gives the document an opaque origin: browsers report every `postMessage` from
+/// it as the literal string `"null"` — [`fly_web::OPAQUE_ORIGIN`]. Fly's browser adapter fails
+/// closed when no origin is configured, so the value is passed explicitly instead of relying on a
+/// default, and the Rust-side subscription in [`crate::editor::isolated_canvas`] compares against
+/// this same constant.
+///
+/// The sandbox attribute and this value are one contract: if the attribute changes (for example
+/// to add `allow-same-origin`), this constant must change with it.
+pub const PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN: &str = fly_web::OPAQUE_ORIGIN;
+
 #[cfg(any(feature = "browser-js", test))]
 fn browser_adapter_config_json(
     intent_endpoint: Option<String>,
     csrf_token: Option<String>,
 ) -> Result<String, serde_json::Error> {
     BrowserAdapterConfig {
+        expected_origin: Some(PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN.to_string()),
         intent_endpoint,
         csrf_token,
         ..BrowserAdapterConfig::default()
@@ -85,6 +99,9 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&json).expect("JSON");
         assert_eq!(value["intentEndpoint"], "/admin/fly/intents");
         assert_eq!(value["csrfToken"], "csrf-token");
+        // The canvas iframe is sandboxed with `allow-scripts` only, so its messages carry the
+        // opaque origin. Fly fails closed without an explicit value; this host states it.
+        assert_eq!(value["expectedOrigin"], "null");
         assert_eq!(value["maxMessageBytes"], DEFAULT_MAX_BROWSER_MESSAGE_BYTES);
         assert_eq!(
             value["maxGeometryComponents"],

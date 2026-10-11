@@ -159,18 +159,22 @@ test('expected aborts stay separate from network failures', async ({
       }
 
       const timeoutAdapter = scope.FlyBrowser?.mount?.(roots.timeout, {
+        expectedOrigin: 'null',
         intentEndpoint: '/timeout',
         intentRequestTimeoutMs: 30
       });
       const stopAdapter = scope.FlyBrowser?.mount?.(roots.stop, {
+        expectedOrigin: 'null',
         intentEndpoint: '/stop',
         intentRequestTimeoutMs: 1_000
       });
       const networkAdapter = scope.FlyBrowser?.mount?.(roots.network, {
+        expectedOrigin: 'null',
         intentEndpoint: '/network',
         intentRequestTimeoutMs: 1_000
       });
       const externalAdapter = scope.FlyBrowser?.mount?.(roots.external, {
+        expectedOrigin: 'null',
         intentEndpoint: '/external',
         intentRequestTimeoutMs: 1_000
       });

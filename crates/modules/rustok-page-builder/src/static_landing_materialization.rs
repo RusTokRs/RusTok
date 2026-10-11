@@ -1,9 +1,11 @@
 use crate::dto::PageBuilderPreviewRuntime;
+use crate::interaction_providers::HostFormProviderEndpoints;
 use crate::landing::LandingProjectError;
 use crate::static_landing::StaticLandingCompiler;
 use fly::{
     PageSelection, ProjectHash, RuntimeContextScenario, RuntimeScenarioRenderSnapshot,
-    StaticLandingArtifact, ValidationSeverity, materialize_project_with_runtime_context,
+    StaticLandingArtifact, ValidationSeverity,
+    materialize_project_with_runtime_context_with_providers,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -161,11 +163,12 @@ pub fn compile_materialized_static_landing(
     );
     let runtime_snapshots = (0..document.project.pages.len())
         .map(|page_index| {
-            RuntimeScenarioRenderSnapshot::capture(
+            RuntimeScenarioRenderSnapshot::capture_with_providers(
                 &document,
                 &PageSelection::Index(page_index),
                 compiler.render_policy(),
                 std::slice::from_ref(&scenario),
+                &HostFormProviderEndpoints,
             )
         })
         .collect::<Vec<_>>();
@@ -176,7 +179,11 @@ pub fn compile_materialized_static_landing(
         .map(|diagnostic| diagnostic.code.clone())
         .collect::<Vec<_>>();
 
-    let materialized = materialize_project_with_runtime_context(&document, &runtime.context);
+    let materialized = materialize_project_with_runtime_context_with_providers(
+        &document,
+        &runtime.context,
+        &HostFormProviderEndpoints,
+    );
     blocking_codes.extend(
         materialized
             .diagnostics

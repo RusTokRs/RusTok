@@ -6,7 +6,18 @@ const paths = {
   capability: 'crates/ui/fly/src/interaction_capability.rs',
   capabilityGate: 'crates/ui/fly/src/interaction_capability_gate.rs',
   actionModel: 'crates/ui/fly/src/action/model.rs',
+  actionMaterialize: 'crates/ui/fly/src/action/materialize.rs',
+  runtimeRender: 'crates/ui/fly/src/runtime_render.rs',
+  runtimePipeline: 'crates/ui/fly/src/runtime_pipeline.rs',
   componentVisit: 'crates/ui/fly/src/component_visit.rs',
+  hostCatalog: 'crates/modules/rustok-page-builder/src/interaction_providers.rs',
+  hostLib: 'crates/modules/rustok-page-builder/src/lib.rs',
+  hostRuntimeContext: 'crates/modules/rustok-page-builder/src/runtime_context.rs',
+  hostRender: 'crates/modules/rustok-page-builder/src/render.rs',
+  hostStorefrontRoute: 'crates/modules/rustok-page-builder-storefront/src/localized_route.rs',
+  adminSession: 'crates/modules/rustok-page-builder/admin/src/core/session.rs',
+  adminRuntime: 'crates/modules/rustok-page-builder/admin/src/editor/runtime.rs',
+  formsControllers: 'crates/modules/rustok-forms/src/controllers.rs',
 };
 
 const source = Object.fromEntries(await Promise.all(
@@ -79,6 +90,66 @@ requireMarkers('capabilityGate', [
   'strict_capability_policy_blocks_publish_without_blocking_base_gate',
   'registered_capability_allows_publish',
 ], 'capability-aware publish gate');
+requireMarkers('actionModel', [
+  'pub trait FormProviderEndpointResolver',
+  'fn form_endpoint(&self, provider: &str, operation: &str, form_id: &str) -> Option<String>;',
+], 'host provider endpoint resolver contract');
+requireMarkers('actionMaterialize', [
+  'pub fn materialize_component_actions_with_providers(',
+  'providers?.form_endpoint(provider, operation, form.id.trim())',
+], 'provider-aware action materialization');
+requireMarkers('runtimeRender', [
+  'pub fn render_page_with_runtime_context_with_providers(',
+  'materialize_project_with_runtime_context_with_providers(',
+], 'provider-aware runtime render');
+requireMarkers('runtimePipeline', [
+  'pub fn materialize_project_with_runtime_context_with_providers(',
+], 'provider-aware runtime materialization');
+requireMarkers('hostCatalog', [
+  'pub const FORMS_PROVIDER_ID: &str = "forms";',
+  'pub const FORMS_SUBMIT_OPERATION: &str = "submit";',
+  'pub const FORMS_SUBMIT_ENDPOINT_TEMPLATE: &str = "/api/forms/{form_id}/submit/form";',
+  'impl FormProviderEndpointResolver for HostFormProviderEndpoints',
+  'pub fn host_interaction_capability_registry()',
+  'InteractionCapabilityKind::Form',
+  'MissingInteractionCapabilityPolicy::Error',
+  'MissingInteractionCapabilityPolicy::Warn',
+  'evaluate_runtime_publish_gate_with_capabilities(',
+], 'host provider capability catalog');
+requireMarkers('hostLib', [
+  'pub mod interaction_providers;',
+], 'host provider capability module');
+requireMarkers('hostRuntimeContext', [
+  'evaluate_host_runtime_publish_gate(',
+  'evaluate_host_runtime_publish_gate_with_policy(',
+  'pub interaction_policy: Option<InteractionCapabilityPolicy>,',
+], 'host publish gate capability wiring');
+requireMarkers('hostRender', [
+  'render_page_with_runtime_context_with_providers(',
+  '&HostFormProviderEndpoints',
+], 'host preview render provider wiring');
+requireMarkers('hostStorefrontRoute', [
+  'render_page_with_runtime_context_with_providers(',
+  '&HostFormProviderEndpoints',
+], 'storefront provider form endpoint binding');
+requireMarkers('adminSession', [
+  'evaluate_host_runtime_publish_gate(',
+], 'admin session publish gate capability wiring');
+requireMarkers('adminRuntime', [
+  'rustok_page_builder::evaluate_host_runtime_publish_gate(',
+], 'admin editor publish gate capability wiring');
+
+// The endpoint template in the page builder must stay byte-identical to the route the forms
+// module serves; the two are only coupled through this check, not through Cargo.
+const routeLiteral = /pub const SUBMIT_URLENCODED_ROUTE: &str = "([^"]+)";/;
+const formsRoute = source.formsControllers.match(routeLiteral);
+if (!formsRoute) {
+  failures.push('rustok-forms does not declare SUBMIT_URLENCODED_ROUTE');
+} else if (!source.hostCatalog.includes(`"${formsRoute[1]}"`)) {
+  failures.push(
+    `host provider endpoint template drifted from the rustok-forms route ${formsRoute[1]}`,
+  );
+}
 
 if (failures.length > 0) {
   console.error('Fly interaction capability verification failed:');

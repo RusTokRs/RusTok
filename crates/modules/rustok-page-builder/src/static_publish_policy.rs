@@ -1653,8 +1653,10 @@ mod tests {
                 "accepted hostile srcset {value}"
             );
         }
-        let mut bounded = PageBuilderStaticPublishPolicy::default();
-        bounded.max_srcset_candidates = 1;
+        let bounded = PageBuilderStaticPublishPolicy {
+            max_srcset_candidates: 1,
+            ..PageBuilderStaticPublishPolicy::default()
+        };
         assert!(validate_srcset("/a.webp 1x, /b.webp 2x", &bounded).is_err());
     }
 
@@ -1681,8 +1683,10 @@ mod tests {
                 "accepted hostile sizes {value}"
             );
         }
-        let mut bounded = PageBuilderStaticPublishPolicy::default();
-        bounded.max_sizes_entries = 1;
+        let bounded = PageBuilderStaticPublishPolicy {
+            max_sizes_entries: 1,
+            ..PageBuilderStaticPublishPolicy::default()
+        };
         assert!(validate_sizes("100vw, 50vw", &bounded).is_err());
     }
 

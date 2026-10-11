@@ -237,8 +237,15 @@ pub struct BrowserAdapterConfig {
     pub root_selector: String,
     #[serde(default = "default_iframe_selector")]
     pub iframe_selector: String,
-    #[serde(default = "default_expected_origin")]
-    pub expected_origin: String,
+    /// Origin that inbound canvas messages must match, or `None` when the host configured none.
+    ///
+    /// There is deliberately no default. The field used to default to `"null"` — the opaque
+    /// origin of a sandboxed `srcdoc` iframe — so a host that never configured an origin silently
+    /// accepted the sandboxed canvas rather than refusing to mount. The JavaScript bridge now
+    /// fails closed on an unset origin, and a host whose canvas really is a sandboxed `srcdoc`
+    /// iframe passes `"null"` explicitly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_origin: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intent_endpoint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -270,7 +277,7 @@ impl Default for BrowserAdapterConfig {
         Self {
             root_selector: default_root_selector(),
             iframe_selector: default_iframe_selector(),
-            expected_origin: default_expected_origin(),
+            expected_origin: None,
             intent_endpoint: None,
             csrf_token: None,
             auto_mount: true,
@@ -291,7 +298,7 @@ impl BrowserAdapterConfig {
     pub fn normalized(mut self) -> Self {
         self.root_selector = non_empty(self.root_selector, default_root_selector());
         self.iframe_selector = non_empty(self.iframe_selector, default_iframe_selector());
-        self.expected_origin = non_empty(self.expected_origin, default_expected_origin());
+        self.expected_origin = normalize_optional(self.expected_origin);
         self.intent_endpoint = normalize_optional(self.intent_endpoint);
         self.csrf_token = normalize_optional(self.csrf_token);
         if self.max_message_bytes == 0 {
@@ -424,10 +431,6 @@ fn default_iframe_selector() -> String {
     "iframe[data-fly-iframe-canvas]".to_string()
 }
 
-fn default_expected_origin() -> String {
-    "null".to_string()
-}
-
 fn default_protocol() -> String {
     FLY_BROWSER_PROTOCOL.to_string()
 }
@@ -473,7 +476,8 @@ mod tests {
     #[test]
     fn defaults_are_ssr_host_friendly() {
         let config = BrowserAdapterConfig::default();
-        assert_eq!(config.expected_origin, "null");
+        // No origin default: the JavaScript bridge refuses to mount until a host states one.
+        assert_eq!(config.expected_origin, None);
         assert!(config.root_selector.contains("data-fly-browser-root"));
         assert!(config.iframe_selector.contains("data-fly-iframe-canvas"));
         assert!(config.intent_endpoint.is_none());
@@ -497,7 +501,7 @@ mod tests {
         let config = BrowserAdapterConfig {
             root_selector: "  ".to_string(),
             iframe_selector: " iframe ".to_string(),
-            expected_origin: " null ".to_string(),
+            expected_origin: Some(" null ".to_string()),
             intent_endpoint: Some("  /admin/fly/intents  ".to_string()),
             csrf_token: Some("   ".to_string()),
             max_message_bytes: 0,
@@ -512,6 +516,7 @@ mod tests {
         .normalized();
         assert_eq!(config.root_selector, "[data-fly-browser-root]");
         assert_eq!(config.iframe_selector, "iframe");
+        assert_eq!(config.expected_origin.as_deref(), Some("null"));
         assert_eq!(
             config.intent_endpoint.as_deref(),
             Some("/admin/fly/intents")

@@ -16,7 +16,7 @@ mod real_dom_inline;
 pub use real_dom_inline::*;
 
 mod origin;
-pub use origin::normalize_expected_origin;
+pub use origin::{OPAQUE_ORIGIN, normalize_expected_origin, outbound_target_origin};
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 mod browser_interaction;

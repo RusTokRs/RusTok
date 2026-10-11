@@ -9,7 +9,11 @@ sends a transactional email notification.
 
 - **Intake** — `POST /api/forms/{form_id}/submit` (JSON, one flat object of
   scalar fields) and `POST /api/forms/{form_id}/submit/form` (HTML form
-  encoding). Both answer `202 { "id", "accepted": true }`.
+  encoding). Both answer `202 { "id", "accepted": true }`. The routes are
+  declared as `SUBMIT_JSON_ROUTE`/`SUBMIT_URLENCODED_ROUTE`; the page-builder
+  host mirrors the urlencoded one as its `forms`/`submit` provider endpoint
+  template, and `scripts/verify/verify-fly-interaction-capabilities.mjs` fails
+  when the two drift.
 - **Abuse controls** — honeypot field `website` (any non-empty value is stored
   as `spam` and answers exactly like success), per-identity rate limit
   (`FORM_SUBMIT_RATE_LIMIT = 5` per `FORM_SUBMIT_RATE_WINDOW_MINUTES = 10`

@@ -28,6 +28,8 @@ it then trusts for authorisation decisions, Fly cannot help.
 | Document size | Bounded node count and nesting depth | `validation.rs::ValidationLimits` |
 | Undo history | Bounded by entry count *and* retained bytes | `command/model.rs::History` |
 | Snapshot / bundle integrity | SHA-256, compared in constant time | `digest.rs::ContentDigest` |
+| Inbound canvas messages | Accepted only when the sender is the canvas iframe *and* its origin equals the configured origin; an unset origin, the empty string and `*` refuse the mount | `fly-browser.js::normalizeExpectedOrigin`, `web/src/origin.rs::normalize_expected_origin` |
+| Intent credentials | The same-origin session cookie only; no token is read from `localStorage` and no tenant claim is sent | `fly-browser.js::postIntent` |
 
 ## Integrity: `ProjectHash` vs `ContentDigest`
 
@@ -48,8 +50,12 @@ migration baselines, so its representation cannot change without a data migratio
 
 ## Deliberate decisions that look like bugs
 
-* **`expected_origin` defaults to `"null"`** in the browser adapter. A sandboxed `srcdoc` iframe
-  genuinely has the opaque origin `null`; this is correct, not an oversight.
+* **`expected_origin` has no default and the adapter refuses to start without one.** A sandboxed
+  `srcdoc` iframe genuinely reports the opaque origin `null`, so hosts that render one pass `"null"`
+  explicitly — the Page Builder admin does it through `PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN`, next to
+  the `sandbox="allow-scripts"` attribute it belongs to. Silent fallback to `"null"` would have made
+  "never configured" indistinguishable from "intentionally sandboxed", so the missing value is
+  treated as the configuration error it is.
 * **`fly` and `fly-ui` are declared but unused by `fly-leptos` / `fly-dioxus`.** This fixes the
   permitted direction of dependencies ahead of the adapters being implemented, and is enforced by
   `scripts/verify/verify-fly-dependency-boundaries.mjs`.
@@ -62,9 +68,18 @@ migration baselines, so its representation cannot change without a data migratio
 These are tracked in `docs/audits/fly-builder-engineering-audit-2026-10-02.md` and are **not**
 currently mitigated:
 
-* The browser access token is held in `localStorage`, so it is readable by any script that
-  achieves execution on the admin origin. Moving it to an httpOnly cookie requires a coordinated
-  server change.
+* The admin session cookie is issued by the browser, not the server: the admin shell mirrors the
+  `localStorage` session into `rustok-admin-session-v1` so SSR can revalidate it, so the token stays
+  readable by any script that achieves execution on the admin origin. The Fly adapter no longer
+  reads or forwards it, but the HttpOnly cookie itself is a server-side change owned by the admin
+  shell (`CLEAN-060` in `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`).
+* The intent route authenticates cookie-borne requests without an explicit server-side CSRF
+  check. Removing the bearer header also removed the property that made a cross-site forgery
+  impossible, so the remaining protection is incidental: the session cookie is issued
+  `SameSite=Lax`, a cross-site `<form>` cannot produce the `application/json` content type the
+  route requires, and the standalone admin serves no CORS layer. These hold today but are
+  properties of the surrounding host, not of the route; an explicit check belongs to the admin
+  shell's session work (`CLEAN-060`).
 * `ComponentNode` uses `#[serde(untagged)]` with an `Opaque(Value)` fallback, so a malformed
   component degrades silently into opaque JSON instead of reporting a diagnostic.
 * `cargo deny` / `cargo audit` are not yet part of the Fly CI pipeline.

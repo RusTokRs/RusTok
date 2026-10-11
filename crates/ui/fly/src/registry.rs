@@ -324,7 +324,7 @@ pub fn builtin_blocks() -> Vec<BlockDefinition> {
         .filter(|id| !matches!(*id, "wrapper" | "list_item" | "label" | "option" | "symbol"))
         .map(|id| BlockDefinition {
             id: id.to_string(),
-            label: humanize_id(id),
+            label: builtin_block_label(id),
             category: builtin_category(id).to_string(),
             component: builtin_component_template(id),
         })
@@ -520,7 +520,7 @@ fn builtin_component_template(id: &str) -> ComponentNode {
         }),
         "raw_html" => json!({
             "type": "raw_html",
-            "content": "Restricted raw HTML placeholder"
+            "content": "Raw HTML is escaped and shown as text."
         }),
         _ => json!({ "type": id }),
     };
@@ -677,6 +677,22 @@ fn humanize_id(id: &str) -> String {
         first.make_ascii_uppercase();
     }
     characters.into_iter().collect()
+}
+
+/// Palette label for a built-in block.
+///
+/// Mostly the humanized id, with one deliberate exception. `raw_html` is a codec-level type: the
+/// renderer has no raw HTML sink at all (see `render.rs`), so its `content` is escaped and shown
+/// as text. A palette entry called "Raw html" therefore advertises a capability the engine does
+/// not have, which is how a pasted `<iframe>` ends up as visible markup on a published page. The
+/// type stays in the palette because dropping it would leave authors who need an embed with no
+/// way to learn what Fly does with one; the label states the truth instead, and
+/// `validation::walk_component` reports the same fact as a `raw_html_not_rendered` warning.
+fn builtin_block_label(id: &str) -> String {
+    match id {
+        "raw_html" => "Raw HTML (escaped as text)".to_string(),
+        _ => humanize_id(id),
+    }
 }
 
 fn builtin_category(id: &str) -> &'static str {

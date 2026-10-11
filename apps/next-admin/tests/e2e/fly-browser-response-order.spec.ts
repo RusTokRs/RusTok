@@ -92,6 +92,7 @@ async function mountOrderContract(page: Page) {
 
     scope.__FLY_BROWSER_CONFIG__ = {
       autoMount: true,
+      expectedOrigin: 'null',
       intentEndpoint: '/fly-intent'
     };
     scope.__flyAborts = [];

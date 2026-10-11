@@ -1,7 +1,10 @@
-//! Leptos/browser adapter foundation for Fly.
+//! Browser geometry, hit-testing, drop resolution and iframe-bridge primitives for Fly.
 //!
-//! This crate owns framework and browser concerns only. Canonical project state, drop legality,
-//! commands, history, and editor policy remain in `fly` and `fly-ui`.
+//! Framework-neutral by construction: this module has no UI-framework dependency and is compiled
+//! and tested on the host target, so the arithmetic that decides where a drop lands and which
+//! inbound iframe messages are accepted is exercised by ordinary `cargo test` rather than only
+//! compiled behind the `wasm-client` gate. Canonical project state, commands, history and editor
+//! policy remain in `fly` and `fly-ui`; DOM-facing wrappers live in `browser_runtime`.
 
 use fly_ui::{CanvasRect, DropPosition, HitTestCandidate};
 use serde::{Deserialize, Serialize};

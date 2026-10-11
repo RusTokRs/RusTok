@@ -128,6 +128,9 @@ source. A future Dioxus renderer can use the same source without copying browser
 - `src/transport.rs` — canonical GraphQL and server-function envelopes;
 - `src/runtime_telemetry.rs` — runtime operation evidence;
 - `src/runtime_scenario_release.rs` — optional scenario release gate;
+- `src/runtime_context.rs`, `src/runtime_context_dependency.rs`,
+  `src/runtime_context_compatibility.rs` and `src/runtime_context_migration.rs` — consumer
+  runtime context contract, dependency, compatibility and migration inspectors;
 - `src/landing.rs` and `src/landing_service.rs` — static landing validation and publish boundary;
 - `src/health.rs` and `src/rollout.rs` — health/SLO and capability rollout policy.
 

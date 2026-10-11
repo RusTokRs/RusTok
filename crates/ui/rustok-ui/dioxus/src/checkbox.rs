@@ -13,7 +13,7 @@ use rustok_ui::checkbox_classes;
 
 /// Checkbox input.
 ///
-/// Dioxus 0.6 does not expose the `indeterminate` state: HTML defines no such
+/// Dioxus 0.7 does not expose the `indeterminate` state: HTML defines no such
 /// attribute (it is a DOM property only) and `dioxus-html` declares no
 /// `indeterminate` constant, so a tri-state checkbox has to be driven from a
 /// host-provided script.

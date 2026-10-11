@@ -59,6 +59,8 @@ jobs:
         with:
           node-version: 22
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: "1.96.0"
       - name: Verify Product Category closure invariant retirement contract
         run: node scripts/verify/verify-product-category-closure-invariant-retirement.mjs
       - name: Fetch exact PR base

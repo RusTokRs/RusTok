@@ -1,3 +1,4 @@
+use crate::interaction_providers::HostFormProviderEndpoints;
 use fly::{
     FlyResult, GrapesJsCodec, PageSelection, RenderPolicy, RuntimeContextScenario,
     RuntimeScenarioRenderDiff, RuntimeScenarioRenderSnapshot,
@@ -53,11 +54,12 @@ impl PageBuilderRuntimeScenarioRegressionInspector {
     ) -> FlyResult<PageBuilderRuntimeScenarioSnapshotResponse> {
         let document = GrapesJsCodec::decode_value(request.project_data)?;
         Ok(PageBuilderRuntimeScenarioSnapshotResponse {
-            snapshot: RuntimeScenarioRenderSnapshot::capture(
+            snapshot: RuntimeScenarioRenderSnapshot::capture_with_providers(
                 &document,
                 &request.selection,
                 &request.policy,
                 &request.scenarios,
+                &HostFormProviderEndpoints,
             ),
         })
     }
@@ -76,11 +78,12 @@ impl PageBuilderRuntimeScenarioRegressionInspector {
         request: PageBuilderRuntimeScenarioProjectDiffRequest,
     ) -> FlyResult<PageBuilderRuntimeScenarioDiffResponse> {
         let document = GrapesJsCodec::decode_value(request.project_data)?;
-        let next = RuntimeScenarioRenderSnapshot::capture(
+        let next = RuntimeScenarioRenderSnapshot::capture_with_providers(
             &document,
             &request.selection,
             &request.policy,
             &request.scenarios,
+            &HostFormProviderEndpoints,
         );
         Ok(PageBuilderRuntimeScenarioDiffResponse {
             diff: diff_runtime_scenario_render_snapshots(&request.previous, &next),

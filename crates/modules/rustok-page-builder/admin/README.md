@@ -44,6 +44,11 @@ also provides the block palette, drag-and-drop insertion, resize handles, keyboa
 traits/styles editors and asset management. Storefront real-DOM editing remains outside this
 authoring package.
 
+The canvas is a preview surface, not a navigable document: the runtime cancels authored link
+activation and form submission inside the iframe, so an authored `<a href>` or form cannot replace
+the `srcdoc` document with a page the bridge no longer instruments. The server preview panel is
+where a rendered page — including its links and forms — is inspected.
+
 ## Verification
 
 ```bash

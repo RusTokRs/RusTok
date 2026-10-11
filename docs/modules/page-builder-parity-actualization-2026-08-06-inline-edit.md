@@ -16,11 +16,12 @@ The adapter boundary remains independently valid and is now consumed by the late
 - receives an opaque trusted grant binding session, page, revision, exact Fly project hash and expiry;
 - marks only an explicit allow-list of instrumented noninteractive static leaf text nodes;
 - treats the real DOM as a temporary plain-text buffer;
-- emits one bounded commit request on `focusout`;
+- emits one bounded commit request on `focusout`, and only when the element's text changed
+  since the last request — an untouched blur is not an edit and produces no request;
 - redacts the authorization proof from debugging and never writes it into DOM;
 - restores pre-existing attributes and unregisters its listener on teardown.
 
-`rustok-page-builder-storefront` exposes a feature-gated authenticated inline surface and canonical session that:
+`rustok-page-builder-storefront` exposes the feature-gated authenticated real-DOM adapter surface (`inline-edit`) and the canonical session that:
 
 - is absent unless `inline-edit` is enabled;
 - leaves the existing read-only renderer uninstrumented;

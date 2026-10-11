@@ -42,17 +42,32 @@ async fn main() {
         Json(envelope): Json<BrowserIntentEnvelope>,
     ) -> Result<Json<PagesBrowserIntentResponse>, (StatusCode, Json<Value>)> {
         let auth = auth_snapshot_from_headers(&headers);
-        let token = bearer_token(&headers)
-            .or_else(|| auth.session.as_ref().map(|session| session.token.clone()))
-            .ok_or_else(|| {
-                auth_error(
-                    StatusCode::UNAUTHORIZED,
-                    "Page Builder access token is missing",
-                )
-            })?;
-        let tenant_slug = header_value(&headers, "x-tenant-slug")
-            .or_else(|| auth.session.as_ref().map(|session| session.tenant.clone()))
-            .ok_or_else(|| auth_error(StatusCode::BAD_REQUEST, "Page Builder tenant is missing"))?;
+        // One authority per request. An `authorization: Bearer` request is an API client, which
+        // may state its tenant in `x-tenant-slug` (the documented transport contract); a request
+        // without one is the standalone admin's own browser session, and then BOTH the token and
+        // the tenant come from that session alone. The previous fallback chain paired a session
+        // token with a client-supplied tenant header, so the browser could carry its own cookie
+        // while a different tenant label decided which page and rollout snapshot the intent
+        // resolved against.
+        let (token, tenant_slug) = match bearer_token(&headers) {
+            Some(token) => {
+                let tenant_slug = header_value(&headers, "x-tenant-slug")
+                    .or_else(|| auth.session.as_ref().map(|session| session.tenant.clone()))
+                    .ok_or_else(|| {
+                        auth_error(StatusCode::BAD_REQUEST, "Page Builder tenant is missing")
+                    })?;
+                (token, tenant_slug)
+            }
+            None => {
+                let session = auth.session.as_ref().ok_or_else(|| {
+                    auth_error(
+                        StatusCode::UNAUTHORIZED,
+                        "Page Builder access token is missing",
+                    )
+                })?;
+                (session.token.clone(), session.tenant.clone())
+            }
+        };
         let verified_user =
             leptos_auth::transport::fetch_current_user(token.clone(), tenant_slug.clone())
                 .await

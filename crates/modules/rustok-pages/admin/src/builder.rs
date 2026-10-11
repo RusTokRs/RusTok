@@ -5,6 +5,7 @@ use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PreviewPageBuilderInput,
     PublishPageBuilderInput,
 };
+use rustok_page_builder::rollout::BuilderCapabilityFlags;
 use rustok_page_builder_admin::{
     AdminCanvasController, PageBuilderAdminFacade, PageBuilderAdminFacadeError,
     PageBuilderAdminFacadeFuture, PageBuilderAdminProviderStatus,
@@ -68,6 +69,23 @@ impl PagesBuilderFacade {
 
     pub fn with_provider_status(mut self, provider_status: PageBuilderAdminProviderStatus) -> Self {
         self.provider_status = Some(provider_status);
+        self
+    }
+
+    /// Attach trusted rollout flags as an explicitly unobserved provider status.
+    ///
+    /// Flag-only consumers — ones that hold the server-owned rollout snapshot but no accepted
+    /// deployment-health binding — must not claim an observed SLO state, so the status carries no
+    /// health snapshot: the canvas then narrows capabilities from the flags alone and reports the
+    /// provider as `unobserved` instead of fabricating health.
+    // No host in this repository composes the facade this way yet: the Pages workspace binds the
+    // health-aware `with_provider_status` path. The flag-only path is part of the pinned consumer
+    // contract (the provider-status and provider-health gates name this method and the
+    // `unobserved` status identity), so it is kept for hosts that hold only the server-owned
+    // rollout flags. The expectation fails if a caller appears, which retires the attribute.
+    #[expect(dead_code)]
+    pub fn with_provider_flags(mut self, provider_flags: BuilderCapabilityFlags) -> Self {
+        self.provider_status = Some(PageBuilderAdminProviderStatus::unobserved(provider_flags));
         self
     }
 }

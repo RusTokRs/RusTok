@@ -1,9 +1,11 @@
 use crate::{
     ActionMaterialization, BindingMaterialization, ContextMaterialization,
-    InternalLinkMaterialization, LocalePolicyMaterialization, LocalizedPageMetadataMaterialization,
-    ProjectDocument, RuntimeMaterialization, TranslationMaterialization, ValidationDiagnostic,
-    extract_runtime_context_contract, materialize_bindings, materialize_component_actions,
-    materialize_context, materialize_internal_page_links, materialize_localized_page_metadata,
+    FormProviderEndpointResolver, InternalLinkMaterialization, LocalePolicyMaterialization,
+    LocalizedPageMetadataMaterialization, ProjectDocument, RuntimeMaterialization,
+    TranslationMaterialization, ValidationDiagnostic, extract_runtime_context_contract,
+    materialize_bindings, materialize_component_actions,
+    materialize_component_actions_with_providers, materialize_context,
+    materialize_internal_page_links, materialize_localized_page_metadata,
     materialize_project_locale_context, materialize_project_translations, materialize_runtime,
     materialize_runtime_locale_context, validate_component_actions, validate_component_public_urls,
     validate_internal_page_links,
@@ -45,6 +47,26 @@ pub struct RuntimeProjectMaterialization {
 pub fn materialize_project_with_runtime_context(
     document: &ProjectDocument,
     input_context: &Value,
+) -> RuntimeProjectMaterialization {
+    materialize_project_with_runtime_context_and_providers(document, input_context, None)
+}
+
+/// Materializes a project for a host that serves provider form endpoints.
+///
+/// Equivalent to [`materialize_project_with_runtime_context`] except that the resolver is
+/// consulted while forms are lowered to native HTML.
+pub fn materialize_project_with_runtime_context_with_providers(
+    document: &ProjectDocument,
+    input_context: &Value,
+    providers: &dyn FormProviderEndpointResolver,
+) -> RuntimeProjectMaterialization {
+    materialize_project_with_runtime_context_and_providers(document, input_context, Some(providers))
+}
+
+fn materialize_project_with_runtime_context_and_providers(
+    document: &ProjectDocument,
+    input_context: &Value,
+    providers: Option<&dyn FormProviderEndpointResolver>,
 ) -> RuntimeProjectMaterialization {
     let LocalePolicyMaterialization {
         context: locale_policy_context,
@@ -148,7 +170,14 @@ pub fn materialize_project_with_runtime_context(
         custom_actions,
         fallback_actions,
         unresolved_actions,
-    } = materialize_component_actions(&linked_document, &effective_context);
+    } = match providers {
+        Some(providers) => materialize_component_actions_with_providers(
+            &linked_document,
+            &effective_context,
+            Some(providers),
+        ),
+        None => materialize_component_actions(&linked_document, &effective_context),
+    };
     diagnostics.extend(action_diagnostics);
     diagnostics.extend(validate_component_public_urls(&document));
 
