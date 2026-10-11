@@ -66,7 +66,8 @@ Fly — это зрелое по объёму и дисциплинирован�
 | H-2 | Обход валидации через `Opaque` закрыт: лимиты и проверка id теперь тотальны | ✅ Сделано | `validation.rs::validate_opaque_components` |
 | H-3 | Лимит глубины при декодировании | ✅ Сделано | `MAXIMUM_DECODE_DEPTH`, итеративный `ensure_depth_within_limit` |
 | H-4 | Навигация по ответу сервера и intent-endpoint ограничены same-origin | ✅ Сделано | `fly-browser.js`: `sameOriginUrl()` |
-| H-4 | Токен из `localStorage` → httpOnly-cookie | ⏳ Фаза 1 | требует изменений сервера (`apps/admin/src/main.rs` читает `x-fly-access-token`) |
+| H-4 | `expectedOrigin` fail-closed: нет значения → адаптер не стартует | ✅ Сделано | `fly-browser.js::normalizeExpectedOrigin` + `EXPECTED_ORIGIN_REQUIRED`; `BrowserAdapterConfig::expected_origin: Option<String>` без дефолта; хост Page Builder передаёт `"null"` явно (`PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN`) |
+| H-4 | Токен из `localStorage` → httpOnly-cookie | ⏳ Частично | адаптер больше не читает токен/тенант из `localStorage` и не отправляет их заголовками — интенты идут на сессионной cookie с `credentials: "same-origin"`; серверно-издаваемая HttpOnly-сессия остаётся за админ-шеллом (`CLEAN-060` в `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`) |
 | H-5 | Единый модуль политики URL | ✅ Сделано | `safe_url.rs` — оказалось **пять** реализаций, не три |
 | H-6 | CI: добавлены `fly-ui`, `fly-web`, `fly-leptos`, `fly-dioxus`; убран `--lib`; wasm32-джоба; исправлены path-фильтры | ✅ Сделано | `.github/workflows/fly-page-builder.yml` |
 | H-7 | Починены 4 сгнивших гейта; 6 сирот подключены в CI; мета-гейт против сирот | ✅ Сделано | `verify-fly-gates-are-wired.mjs` |
@@ -937,7 +938,7 @@ bidirectional codec», это недостаточно. Фикстуры GrapesJ
 | 1.3 **C-2** | Валидация charset `component.id` / `page.id` (`^[A-Za-z0-9_:.-]{1,128}$`, severity `Error`). |
 | 1.4 **C-2** | Полный CSS-escape в `escape_css_attribute`; нейтрализация `</` при вставке CSS в `<style>` в `compose_document_html`. Тесты: `</style>`, `</script>`, `<!--`, `]]>`. |
 | 1.5 **H-3** | `MAX_DECODE_DEPTH` (512) в `GrapesJsCodec::decode_slice/decode_value` до построения модели; новый `FlyError::MaximumDepthExceeded`. Fuzz-тест глубокого JSON. |
-| 1.6 **H-4** | `fly-browser.js`: fail-closed `expectedOrigin` (нет значения → `start()` бросает); whitelist схем для `result.location` (только относительный путь либо same-origin); `intentEndpoint` только относительный; убрать чтение токена из `localStorage` и дублирующий `x-fly-access-token`, перейти на httpOnly-cookie + CSRF-токен. |
+| 1.6 **H-4** | `fly-browser.js`: fail-closed `expectedOrigin` (нет значения → `start()` бросает) ✅ 2026-10-11; whitelist схем для `result.location` (только относительный путь либо same-origin) ✅; `intentEndpoint` только относительный либо same-origin ✅; чтение токена из `localStorage` удалено из адаптера, дублирующих заголовков нет ✅ 2026-10-11; серверно-издаваемая httpOnly-сессия + серверная проверка CSRF — за админ-шеллом (`CLEAN-060`). |
 | 1.7 **H-5** | Выделить `src/url_policy.rs` как единственный источник правды; `safe_url.rs`, `render.rs::url_allowed`, `validation.rs::public_url_allowed` — тонкие обёртки. Общий табличный тест-корпус (≥60 кейсов), прогоняемый через все три точки входа. |
 | 1.8 | `cargo fuzz` таргет на `GrapesJsCodec::decode_slice` (или `arbitrary` + proptest, если fuzz инфраструктуры нет). |
 
@@ -1041,8 +1042,12 @@ grep по исходникам; любой рефактор `apply()` или `vi
   `fly-web`/`fly-browser` — beta, `fly-leptos`/`fly-dioxus` — только фундамент (оболочки из
   четырёх `<section>`, без канвы, DnD и панелей). Пункт H-1 остаётся закрытым в части README;
   ADR, описывающие полноценные редакторы, по-прежнему опережают код.
-- **H-4 (токен в localStorage → httpOnly cookie)** — открыт; серверная часть по-прежнему читает
-  `x-fly-access-token` (`apps/admin/src/main.rs`), альтернативный транспорт не появился.
+- **H-4 (токен в localStorage → httpOnly cookie)** — частично закрыт (2026-10-11). `x-fly-access-token`
+  в серверном коде отсутствует: маршрут интентов читает `AUTHORIZATION: Bearer` и сессионную cookie
+  `rustok-admin-session-v1` (ревалидируется `verify_auth_snapshot`), а адаптер больше не читает
+  `localStorage` вовсе и шлёт интенты только на сессионной cookie с `credentials: "same-origin"`.
+  Остаётся серверно-издаваемая HttpOnly-сессия — это изменение админ-шелла, отслеживается как
+  `CLEAN-060` в `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`.
 
 ### 10.2. Уточнение C-1: переведён один хеш из четырёх (исправлено 2026-10-08)
 

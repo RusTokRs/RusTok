@@ -130,6 +130,11 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                             <iframe
                                 id=iframe_id
                                 title="Fly page canvas"
+                                // `allow-scripts` without `allow-same-origin` gives the srcdoc
+                                // document an opaque origin, which is why the browser adapter is
+                                // configured with the matching
+                                // `PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN` value. Changing one
+                                // without the other breaks canvas messages.
                                 sandbox="allow-scripts"
                                 srcdoc=move || canvas_srcdoc.get()
                                 data-fly-iframe-canvas="true"

@@ -58,6 +58,7 @@ async function mountPendingContract(page: Page) {
 
     scope.__FLY_BROWSER_CONFIG__ = {
       autoMount: true,
+      expectedOrigin: 'null',
       intentEndpoint: '/fly-intent',
       maxPendingIntentRequests: 2,
       pendingIntentLimitMessage: 'Too many editor actions.',

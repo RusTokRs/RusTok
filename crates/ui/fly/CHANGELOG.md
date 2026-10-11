@@ -77,6 +77,26 @@ Engineering audit remediation — see
   crates whose framework macros emit their own `allow` attributes.
 - Added `SECURITY.md` describing the trust boundaries and the threat model.
 
+- **The browser adapter's expected origin is fail-closed and has no default.** `expectedOrigin` used
+  to fall back to the literal `"null"` — the opaque origin a sandboxed `srcdoc` iframe reports — so
+  a host that never configured an origin silently accepted messages from the sandboxed canvas
+  instead of refusing to mount. `BrowserAdapterConfig::expected_origin` is now `Option<String>`
+  with no default, the shipped adapter throws `EXPECTED_ORIGIN_REQUIRED` from `start()` when
+  neither `expectedOrigin` nor `data-fly-expected-origin` is set, and the empty value and the `*`
+  wildcard resolve to "not configured" rather than to "accept anything" — the same rule
+  `fly_web::normalize_expected_origin` applies on the Rust side. The Page Builder admin host, whose
+  canvas is rendered `sandbox="allow-scripts"` with `srcdoc`, states the matching origin explicitly
+  through `PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN`.
+
+- **The browser adapter no longer reads the admin token or the tenant slug from `localStorage`.**
+  It used to scrape `rustok-admin-token` and `rustok-admin-tenant` and send them as
+  `authorization: Bearer` and `x-tenant-slug` on every intent request, although the request already
+  runs with `credentials: "same-origin"` and the admin session cookie is revalidated server-side
+  before it becomes a request-scoped auth snapshot. Copying a credential into script-readable
+  storage widened the XSS surface, and a client-supplied tenant was a claim the adapter had no
+  business making. Requests now authenticate solely through the session cookie; `x-csrf-token` is
+  still forwarded when the host configures one.
+
 ### Fixed
 
 - **`fly-web` geometry rejects non-finite input.** Browser geometry crosses the iframe bridge as
@@ -160,6 +180,9 @@ Engineering audit remediation — see
   entries share allocations (which keeps the budget conservative).
 - A standalone build (`--no-default-features`) loses CLDR likely-subtag inference: `zh-TW` falls
   back to `zh` rather than `zh-Hant`, and `iw` is not canonicalized to `he`.
-- The admin access token is still read from `localStorage`; moving it to an httpOnly cookie
-  requires a coordinated server change.
+- The admin session cookie is still issued by the browser rather than by the server: the admin
+  shell mirrors the `localStorage` session into `rustok-admin-session-v1` so SSR can revalidate it,
+  which keeps the token reachable by any script on the admin origin. Fly's adapter no longer reads
+  or forwards it, but server-issued HttpOnly sessions are the admin shell's change — tracked as
+  `CLEAN-060` in `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`.
 - 48 glob re-exports (`pub use module::*`) remain.
