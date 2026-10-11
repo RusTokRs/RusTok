@@ -186,6 +186,14 @@ Engineering audit remediation — see
 - Four separate copies of id-reference substitution consolidated into `id_reference`, which
   rewrites only declared reference positions instead of any string that happens to match an id.
 
+### Fixed
+
+- `verify-page-builder-runtime-context.mjs` failed on a correct pipeline. Its stage-order pins
+  read the first textual match in `runtime_pipeline.rs`, which is the crate's `use` block — where
+  rustfmt sorts `materialize_bindings` before `materialize_context` — and `materialize_runtime`
+  matched the `materialize_runtime_locale_context` prefix (a different stage). The check now reads
+  the pipeline function body and matches call forms; the workflow runs the verifier.
+
 ### Added
 
 - `MAX_REPEATER_DEPTH` (8) and `MAX_TOTAL_REPEATED_NODES` (50 000) with
@@ -204,6 +212,18 @@ Engineering audit remediation — see
 - CI: wasm32 jobs, adapter feature-combination checks, a dependency advisory job, and
   `verify-fly-gates-are-wired.mjs`, which failed loudly on the 7 verification gates that no
   workflow ran — all 4 rotted gates were among those 7.
+- Runtime context contract compatibility and migration: `diff_runtime_context_contracts` and
+  `diff_runtime_context_contracts_with_policy` compare the contract a runtime context payload was
+  authored against with a candidate one, naming every difference (`RuntimeContextContractChange`,
+  13 kinds) and deciding per kind which breaking changes stay warnings
+  (`RuntimeContextCompatibilityPolicy`); `migrate_runtime_context` moves a payload onto the target
+  contract — optionally dropping paths the target no longer declares, then applying the target's
+  defaults and computed values through the existing `materialize_context` — and returns the
+  compatibility report beside the migrated context. The migration is never silent: breaking
+  contract changes and dropped values are diagnostics on the result. Supporting API:
+  `RuntimeContextCompatibilityReport`, `RuntimeContextMigrationPolicy`,
+  `RuntimeContextMigration`, and `remove_context_path` in `context_schema.rs`, the removal
+  primitive the migration needs and the schema module did not have.
 - `FormProviderEndpointResolver` and the provider-aware render variants a host uses to close a
   provider form's submission target: `materialize_component_actions_with_providers`,
   `materialize_project_with_runtime_context_with_providers`,
