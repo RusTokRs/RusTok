@@ -99,3 +99,25 @@ export function ariaSortFor(
 ): 'ascending' | 'descending' | 'none' {
   return ariaSortValue(isSortedBy(state, columnId));
 }
+
+/**
+ * Checks whether sort state is active.
+ */
+export function isSortActive(state?: SortState | null): boolean {
+  return Boolean(state && state.columnId && state.direction);
+}
+
+/**
+ * Creates or sets a sort state.
+ */
+export function setSort(columnId: string, direction: SortDirection = 'asc'): SortState {
+  return { columnId, direction };
+}
+
+/**
+ * Clears sort state (returns null).
+ */
+export function clearSort(): null {
+  return null;
+}
+

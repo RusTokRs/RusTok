@@ -19,11 +19,14 @@ This package is that shared half for TypeScript/Next.js applications. Its root e
 | `pagination.ts` | `rustok-grid::pagination` | `DEFAULT_PAGE_SIZE`, `PaginationMode` (`paged`/`infinite`), `GridPagination`, `calculatePageCount`, `clampPage`, `calculateOffset`, `hasPreviousPage`, `hasNextPage`, `dataTableRangeLabel`. |
 | `sort.ts` | `rustok-grid::sort` | `SortDirection` (`asc`/`desc`), `SortState`, `cycleSort`, `oppositeSortDirection`, `compareValues`, `ariaSortValue`. |
 | `filter.ts` | `rustok-grid::filter` | `GridFilterType`, `FilterOption`, `FilterValue`, `ColumnFilters`, `isFilterActive`, `normalizeFilters`. |
-| `selection.ts` | `rustok-grid::selection` | `RowSelection` (immutable Set), `toggleRowSelection`, `selectAllRows`, `isRowSelected`, `areAllRowsSelected`. |
+| `selection.ts` | `rustok-grid::selection` | `RowSelection` (immutable Set), `toggleRowSelection`, `selectAllRows`, `selectRow`, `deselectRow`, `deselectAllRows`, `clearSelection`, `retainSelectedRows`, `isRowSelected`, `areAllRowsSelected`, `areSomeRowsSelected`. |
+| `resize.ts` | `rustok-grid::resize` | `ColumnWidths` (persisted user width storage), `calculateResizedWidth`, `stepResizedWidth`, `KEYBOARD_RESIZE_STEP`. |
+| `state.ts` | `rustok-grid::state` | `GridState`, `createGridState`, `setGridFilter`, `resetGridFilters`, `toggleGridSort`, `pruneGridSelection`, `clampWidths`, `normalizeGridState`. |
 | `facet.ts` | `rustok-grid::facet` | `FacetDomain` (dictionary/boolean/open), `facetFromBuckets` (cuts at `MAX_GRID_FACET_VALUES` and reports `isTruncated`), `facetFilterOptions`, and the `code=value` selection vocabulary: `selectionEntry`/`splitSelection`/`parseSelection`/`serializeSelection`, `isSelectionSelected` (keys case-insensitive, values exact), `hasSelectionForKey`, `selectionForKey`, `selectionExcept`, `selectionAfterToggle` (order-preserving), `selectionAfterClearKey`, `selectionAfterClear`. |
 | `panel.ts` | `rustok-grid::facet_panel` | `FacetPanelLabels` + `ENGLISH_FACET_PANEL_LABELS`, `countLabel`, `buildFacetPanel` (caps at `MAX_GRID_FACETS`, adds hints, markers and per-bucket `selectionEntry`) and the panel-level transitions. |
 | `url.ts` | `rustok_ui_core::apply_ui_query_pairs` | `applyQueryPairs` (existing key keeps its position, blank value removes the key, browser form encoding) and `queryParam`. |
 | `react/` | `rustok-grid-leptos` | `@rustok/ui-grid/react`: companion adapter providing `DataTableStatic`, `DataTableEmptyState`, `DataTablePaginationBar` for `@tanstack/react-table`. |
+
 
 ## Contract notes
 

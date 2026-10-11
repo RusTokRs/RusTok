@@ -28,6 +28,7 @@ fn HeaderSearchInput(locale: String) -> impl IntoView {
             ev.prevent_default();
             let query = search_query.get();
             let scope = active_scope.get();
+            #[allow(unused_variables)]
             let target = build_search_target_url(&current_locale, &query, scope);
             #[cfg(target_arch = "wasm32")]
             if let Some(window) = leptos::web_sys::window() {

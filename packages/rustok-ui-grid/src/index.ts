@@ -30,7 +30,15 @@
 
 export {
   CHECKBOX_COLUMN_ID,
+  clampColumnWidth,
+  createActionsColumn,
+  createCheckboxColumn,
+  createColumnDef,
+  createColumnWidth,
+  fixedColumnWidth,
+  hasColumnFilter,
   hasFilterRow,
+  isCheckboxColumn,
   visibleColumnCount,
   visibleColumns,
   type ColumnAlign,
@@ -46,24 +54,49 @@ export {
   clampPage,
   createPagination,
   dataTableRangeLabel,
+  fromIndex,
   hasNextPage,
   hasPreviousPage,
+  nextPage,
+  normalizePagination,
+  paginateArray,
+  previousPage,
+  rangeLabel,
+  setMode,
+  setPage,
+  setPageSize,
+  setTotal,
+  sliceBounds,
+  toIndex,
+  visibleLen,
   type GridPagination,
   type PaginationMode
 } from "./pagination";
 
 export {
+  ariaSortFor,
   ariaSortValue,
+  clearSort,
   compareValues,
   cycleSort,
+  isSortActive,
+  isSortedBy,
+  normalizeSort,
   oppositeSortDirection,
+  setSort,
   type SortDirection,
   type SortState
 } from "./sort";
 
 export {
+  activeFilterCount,
+  clearFilters,
+  hasActiveFilters,
   isFilterActive,
+  isFilterEqual,
   normalizeFilters,
+  removeFilter,
+  setFilter,
   type ColumnFilters,
   type FilterOption,
   type FilterValue,
@@ -73,9 +106,20 @@ export {
 export {
   areAllRowsSelected,
   areSomeRowsSelected,
+  clearSelection,
+  deselectAllRows,
+  deselectRow,
   emptyRowSelection,
+  isAllSelected,
+  isPartiallySelected,
   isRowSelected,
+  isSelectionEmpty,
+  retainSelectedRows,
+  rowSelectionToArray,
   selectAllRows,
+  selectRow,
+  selectedCount,
+  setSelectedRow,
   toggleRowSelection,
   type RowSelection
 } from "./selection";
@@ -88,7 +132,9 @@ export {
 } from "./resize";
 
 export {
+  clampWidths,
   createGridState,
+  normalizeGridState,
   pruneGridSelection,
   resetGridFilters,
   setGridFilter,

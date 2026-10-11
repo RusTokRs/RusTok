@@ -590,6 +590,31 @@ Hard limits for every iteration:
 - **Static verification:** scoped check `cargo check -p rustok-forum-storefront --features ssr` succeeded cleanly (exit code 0), and `cargo check -p rustok-server` succeeded cleanly (exit code 0).
 - **Status:** `FS-22.09` complete. Next primary iteration: `FS-22.10 — Error/observability boundary`.
 
+- [x] **FS-22.10 — Error/observability boundary** — Server-wide error mapping, credential leakage mitigation in HTTP edge tracing, and taxonomy consistency audited and remediated.
+
+### FS-22.10 Assessment — Error/observability boundary
+
+- **Base:** `main` at `0662943e954c8fa02b28f04064245b116e101802`.
+- **Primary scope:** Server error boundary (`apps/server/src/error.rs`), sensitive request header masking and tracing span generation in HTTP edge stack (`apps/server/src/middleware/http_stack.rs`), and operational diagnostic sanitization in metrics authentication (`apps/server/src/middleware/metrics_auth.rs`).
+- **Invariant map:**
+  - HTTP error responses must preserve the typed `ErrorBody` envelope (`code`, `message`) across all client failure paths;
+  - Internal infrastructure, database (`sea_orm::DbErr`), template, and I/O failures must map to generic HTTP 500 (`internal_error`) with backend diagnostics kept server-side only in logs; raw SQL queries, parameters, database credentials, connection strings, and filesystem paths must never leak to HTTP clients;
+  - Request tracing spans (`RusTokMakeSpan`) must log path-only URIs (`request.uri().path()`), strictly excluding query strings that might carry access tokens or secret parameters;
+  - Sensitive authentication and session credentials (`Authorization`, `Cookie`, `Set-Cookie`, `Proxy-Authorization`, `x-rustok-runner-token`, `x-rustok-host-token`, `x-rustok-setup-token`, `x-rustok-observability-token`, `x-api-key`) must be marked sensitive via `SetSensitiveRequestHeadersLayer` before logging, tracing, or propagation;
+  - Public `/health/ready` probe must expose only aggregate status to unauthenticated callers, reserving detailed subsystem latency and reason diagnostics for authenticated operators with valid observability bearer tokens;
+  - Domain validation and conflict errors must return exact HTTP status codes (`400 Bad Request`, `409 Conflict`) with stable machine codes (`validation_error`, `conflict`, `invalid_header`).
+- **Confirmed finding ERROROBS-22.10-01 (Missing First-Class Conflict Error Variant):** In `apps/server/src/error.rs`, `Error` lacked a typed `Conflict(String)` variant, forcing controllers to either construct an ad-hoc `HttpError` or flatten conflict to generic bad request. Added `Error::Conflict(String)` mapping to `StatusCode::CONFLICT` with machine code `"conflict"`.
+- **Confirmed finding ERROROBS-22.10-02 (Validation Code Taxonomy Inconsistency):** In `apps/server/src/error.rs`, `Error::Validation(msg)` produced `code: "bad_request"` instead of the platform-standard `code: "validation_error"` used by `rustok_core::Error::Validation`. Aligned `Error::Validation` to emit `code: "validation_error"`.
+- **Confirmed finding ERROROBS-22.10-03 (Header Parsing Error Classification):** `Error::InvalidHeaderValue` was unhandled in `IntoResponse` and fell through to HTTP 500 Internal Server Error. Aligned to HTTP 400 Bad Request with `code: "invalid_header"`.
+- **Confirmed finding ERROROBS-22.10-04 (Sensitive Request Headers Gaps in HTTP Stack):** `SetSensitiveRequestHeadersLayer` in `apply_http_edge_stack` (`apps/server/src/middleware/http_stack.rs`) protected runner, host, and setup tokens but omitted `Proxy-Authorization`, `x-rustok-observability-token`, and `x-api-key`. Expanded the sensitive headers layer and updated the edge stack tests.
+- **Confirmed finding ERROROBS-22.10-05 (Server Error Unit Test Coverage):** `apps/server/src/error.rs` previously had 0 unit tests. Added comprehensive async unit tests verifying clean status mapping, taxonomy codes, and ensuring that internal errors (`Error::Message`, `Error::Io`, `Error::Database`) never leak raw connection strings, secrets, or file paths into the client response.
+- **Immediate re-audit:** verified that all variants of `Error` map to canonical status codes and JSON payloads, internal errors are redacted from client responses, and custom tokens are marked sensitive.
+- **Adjacent-boundary re-audit:** verified that `RusTokMakeSpan` excludes query strings from span URIs, `metrics_auth.rs` strips diagnostic details from unauthenticated readiness probes, and GraphQL JSON rejections return stable generic error envelopes.
+- **Regression audit:** existing controller error flows continue to function without signature breakage; sensitive header propagation retains header availability while masking header values in logs.
+- **Static verification:** scoped check `cargo check -p rustok-server` succeeded cleanly with exit code 0.
+- **Status:** `FS-22.10` complete. Next primary iteration: `FS-22.11 — Fresh second-pass composition audit`.
+
+
 
 ### FS-22.06.03 Assessment — `apps/server/src/controllers/oauth.rs`
 
@@ -1020,7 +1045,7 @@ Hard limits for every iteration:
 - [x] **FS-22.07 — Server-function composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [x] **FS-22.08 — Embedded UI composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [x] **FS-22.09 — Feature/config interaction matrix:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
-- [ ] **FS-22.10 — Error/observability boundary:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [x] **FS-22.10 — Error/observability boundary:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.11 — Fresh second-pass composition audit:** perform this only after the module queue above has been completed, still one primary module per iteration.
 
 ### FS-22.03.01 Iteration 1 — `apps/server/src/extractors/auth/mod.rs`
@@ -1895,7 +1920,7 @@ The earlier FS-22.01 route-graph pass is retained as historical evidence and is 
 - [x] **FS-22.07 Server-function composition:** inspect `/api/fn/*`, context provisioning, CSRF/browser trust assumptions, auth and tenant propagation, and error/serialization boundaries.
 - [x] **FS-22.08 Embedded UI composition:** trace admin/storefront mounting, asset fallback behavior, nonce/CSP interaction, cache validators, route precedence, and headless/embedded profile combinations.
 - [x] **FS-22.09 Feature/config interaction matrix:** inspect compile-time feature flags vs runtime module enablement/host modes and identify states that compile but produce incomplete or unsafe runtime composition.
-- [ ] **FS-22.10 Error/observability boundary:** inspect server-wide error mapping and logging for secret, identity, tenant, raw domain-error, and stack/payload leakage; verify stable public contracts.
+- [x] **FS-22.10 Error/observability boundary:** inspect server-wide error mapping and logging for secret, identity, tenant, raw domain-error, and stack/payload leakage; verify stable public contracts.
 - [ ] **FS-22.11 Fresh second-pass composition audit:** after all FS-22 fixes, re-read the composition root from scratch without using the original findings list and record any newly discovered defects.
 
 ### Phase Order

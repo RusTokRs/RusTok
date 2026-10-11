@@ -235,3 +235,12 @@ export function setMode(pagination: GridPagination, mode: PaginationMode): GridP
     mode
   };
 }
+
+/**
+ * Normalizes pagination invariants (clamps page, ensures valid pageSize and total).
+ * Matches Rust `GridPagination::normalize`.
+ */
+export function normalizePagination(pagination: GridPagination): GridPagination {
+  return createPagination(pagination.page, pagination.pageSize, pagination.total, pagination.mode);
+}
+

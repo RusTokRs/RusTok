@@ -389,9 +389,12 @@ pub fn apply_http_edge_stack(
         header::AUTHORIZATION,
         header::COOKIE,
         header::SET_COOKIE,
+        header::PROXY_AUTHORIZATION,
         HeaderName::from_static("x-rustok-runner-token"),
         HeaderName::from_static("x-rustok-host-token"),
         HeaderName::from_static("x-rustok-setup-token"),
+        HeaderName::from_static("x-rustok-observability-token"),
+        HeaderName::from_static("x-api-key"),
     ]);
     let compression_layer = CompressionLayer::new();
 
@@ -553,7 +556,10 @@ mod tests {
                 let host = headers.get("x-rustok-host-token").map(|v| v.is_sensitive()).unwrap_or(false);
                 let setup = headers.get("x-rustok-setup-token").map(|v| v.is_sensitive()).unwrap_or(false);
                 let auth = headers.get("authorization").map(|v| v.is_sensitive()).unwrap_or(false);
-                if runner && host && setup && auth {
+                let obs = headers.get("x-rustok-observability-token").map(|v| v.is_sensitive()).unwrap_or(false);
+                let api_key = headers.get("x-api-key").map(|v| v.is_sensitive()).unwrap_or(false);
+                let proxy_auth = headers.get("proxy-authorization").map(|v| v.is_sensitive()).unwrap_or(false);
+                if runner && host && setup && auth && obs && api_key && proxy_auth {
                     StatusCode::OK
                 } else {
                     StatusCode::BAD_REQUEST
@@ -567,9 +573,12 @@ mod tests {
                 Request::builder()
                     .uri("/sensitive")
                     .header("authorization", "Bearer test-secret")
+                    .header("proxy-authorization", "Basic test-proxy")
                     .header("x-rustok-runner-token", "runner-secret")
                     .header("x-rustok-host-token", "host-secret")
                     .header("x-rustok-setup-token", "setup-secret")
+                    .header("x-rustok-observability-token", "obs-secret")
+                    .header("x-api-key", "api-secret")
                     .body(Body::empty())
                     .unwrap(),
             )

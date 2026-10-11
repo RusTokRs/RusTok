@@ -7,10 +7,10 @@
 
 import { type GridColumnDef } from './column';
 import { type ColumnFilters, type FilterValue, isFilterActive, normalizeFilters } from './filter';
-import { type GridPagination, createPagination } from './pagination';
+import { type GridPagination, createPagination, normalizePagination } from './pagination';
 import { ColumnWidths } from './resize';
 import { type RowSelection, emptyRowSelection } from './selection';
-import { type SortDirection, type SortState, cycleSort } from './sort';
+import { type SortDirection, type SortState, cycleSort, normalizeSort } from './sort';
 
 /**
  * Composite state of a data grid.
@@ -147,3 +147,41 @@ export function pruneGridSelection<T>(
     selection: nextSelection
   };
 }
+
+/**
+ * Clamps persisted column widths to the current column definitions.
+ * Matches Rust `GridState::clamp_widths`.
+ */
+export function clampWidths<T>(
+  state: GridState<T>,
+  columns: GridColumnDef<T>[]
+): GridState<T> {
+  const nextWidths = new ColumnWidths(state.columnWidths.toRecord());
+  for (const column of columns) {
+    const id = column.id;
+    const stored = nextWidths.getStored(id);
+    if (stored !== undefined && column.width) {
+      const min = column.width.min ?? 50;
+      const max = column.width.max ?? 800;
+      nextWidths.setClamped(id, stored, min, max);
+    }
+  }
+  return {
+    ...state,
+    columnWidths: nextWidths
+  };
+}
+
+/**
+ * Normalizes every part of GridState (sort, pagination, filters).
+ * Matches Rust `GridState::normalize`.
+ */
+export function normalizeGridState<T>(state: GridState<T>): GridState<T> {
+  return {
+    ...state,
+    filters: normalizeFilters(state.filters),
+    sort: normalizeSort(state.sort),
+    pagination: normalizePagination(state.pagination)
+  };
+}
+
