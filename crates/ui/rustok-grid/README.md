@@ -62,4 +62,4 @@ domain module never renders. The contract in between is this crate:
 ## Adapters
 
 - [`rustok-grid-leptos`](./leptos): SSR-first Leptos 0.8 `<DataGrid />` UI adapter.
-- [`rustok-grid-dioxus`](./dioxus): Dioxus 0.6 `DataGrid` UI adapter with the same component set, props and markup.
+- [`rustok-grid-dioxus`](./dioxus): Dioxus 0.7 `DataGrid` UI adapter with the same component set, props and markup.

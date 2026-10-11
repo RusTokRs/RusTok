@@ -23,7 +23,7 @@ conflicting utilities by stylesheet order rather than by attribute order.
 This crate is wrapped by framework adapters located in subdirectories:
 
 - `leptos/` (`rustok-ui-leptos`): SSR-first Leptos 0.8 component adapter.
-- `dioxus/` (`rustok-ui-dioxus`): Dioxus 0.6 component adapter for web and desktop hosts.
+- `dioxus/` (`rustok-ui-dioxus`): Dioxus 0.7 component adapter for web and desktop hosts.
 
 ## Usage
 

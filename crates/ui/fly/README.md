@@ -15,7 +15,7 @@ Read this before planning against the architecture diagram below: the layers dif
 | `fly-web` | `web/` | **Beta** | Geometry, hit-testing, iframe bridge, real-DOM inline grants, cleanup registry |
 | `fly-browser` | `browser/` | **Beta** | SSR JS bridge (`assets/fly-browser.js`) and its Rust-side config contract |
 | `fly-leptos` | `leptos/` | **Foundation only** | Four layout shells (`FlyFullEditor`, `FlyInlineEditor`, `FlyPreview`, `FlyReadOnly`) that render a `<section>` wrapper, plus re-exports of `fly-web`. **No canvas, drag & drop, panels or state wiring.** |
-| `fly-dioxus` | `dioxus/` | **Foundation only** | The same four layout shells for Dioxus 0.6. **No canvas, drag & drop, panels or state wiring.** |
+| `fly-dioxus` | `dioxus/` | **Foundation only** | The same four layout shells for Dioxus 0.7. **No canvas, drag & drop, panels or state wiring.** |
 
 Authoring surfaces that need a working editor today drive `fly` and `fly-ui` directly and render
 through SSR plus `fly-browser`; see `crates/modules/rustok-page-builder/admin`.
@@ -94,7 +94,7 @@ crates/ui/fly/
 │   ├── Cargo.toml
 │   └── src/
 │
-└── dioxus/                     <-- `fly-dioxus`: layout shells for Dioxus 0.6 (foundation only)
+└── dioxus/                     <-- `fly-dioxus`: layout shells for Dioxus 0.7 (foundation only)
     ├── Cargo.toml
     └── src/
 ```
@@ -106,7 +106,7 @@ crates/ui/fly/
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     UI Adapters Layer                       │
-│     fly-leptos (Leptos 0.8)       fly-dioxus (Dioxus 0.6)   │
+│     fly-leptos (Leptos 0.8)       fly-dioxus (Dioxus 0.7)   │
 │     foundation only               foundation only          │
 │     - FlyFullEditor  (shell)      - FlyFullEditor  (shell)  │
 │     - FlyInlineEditor (shell)     - FlyInlineEditor (shell) │
@@ -149,7 +149,7 @@ crates/ui/fly/
 | `fly-web` | `web/` | Browser geometry, hit-testing, iframe bridge, real DOM inline | `fly`, `fly-ui`, `web-sys` (WASM) |
 | `fly-browser` | `browser/` | Standalone JS bridge asset for classic SSR | Pure Rust |
 | `fly-leptos` | `leptos/` | Leptos 0.8 layout shells (foundation only) | `fly-web`, `leptos` |
-| `fly-dioxus` | `dioxus/` | Dioxus 0.6 layout shells (foundation only) | `fly-web`, `dioxus` |
+| `fly-dioxus` | `dioxus/` | Dioxus 0.7 layout shells (foundation only) | `fly-web`, `dioxus` |
 
 ---
 

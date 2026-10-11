@@ -1,10 +1,10 @@
 # rustok-forms-dioxus
 
-Dioxus 0.6 adapter for the [`rustok-forms`](../) core library.
+Dioxus 0.7 adapter for the [`rustok-forms`](../) core library.
 
 ## Overview
 
-`rustok-forms-dioxus` provides structural form layout components, accessible input controls, lifecycle-aware buttons, and reactive context coordination designed for Dioxus 0.6 and styled using RusToK design tokens.
+`rustok-forms-dioxus` provides structural form layout components, accessible input controls, lifecycle-aware buttons, and reactive context coordination designed for Dioxus 0.7 and styled using RusToK design tokens.
 
 Features:
 - **Full Parity with Leptos Adapter**: Mirrors the same API, structural components, and styling conventions as `rustok-forms-leptos`.

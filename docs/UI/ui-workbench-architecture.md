@@ -72,7 +72,7 @@ The UI Workbench follows RusToK FFA principles ([`docs/UI/module-package-archite
   - 4 Composite recipes matching the Next.js host with zero JavaScript bridges.
 
 ### Dioxus Adapter (`crates/ui/rustok-ui/dioxus` & `apps/dioxus-admin`)
-- Native Dioxus 0.6 component suite wrapping shared `rustok-ui` tokens and contracts.
+- Native Dioxus 0.7 component suite wrapping shared `rustok-ui` tokens and contracts.
 - Includes `Button`, `Badge`, `Card`, `Input`, `Checkbox`, `Switch`, `Alert`, `Separator`, etc.
 - Provides identical styling and headless behavior for desktop (Tao/Wry) and web shells.
 

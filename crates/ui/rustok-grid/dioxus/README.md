@@ -1,6 +1,6 @@
 # rustok-grid-dioxus
 
-Dioxus 0.6 DataGrid adapter for RusToK.
+Dioxus 0.7 DataGrid adapter for RusToK.
 
 The crate is a thin **adapter** over [`rustok-grid`](../): all state and all the
 maths (widths, clamping, pagination, filter normalization, selection) live in

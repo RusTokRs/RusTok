@@ -1,10 +1,10 @@
 # rustok-ui-dioxus
 
-Dioxus 0.6 design system component adapter for the RusToK platform.
+Dioxus 0.7 design system component adapter for the RusToK platform.
 
 ## Overview
 
-`rustok-ui-dioxus` provides Dioxus 0.6 implementations of the RusToK UI component suite. It wraps the framework-agnostic `rustok-ui` core crate, ensuring identical styling tokens, WAI-ARIA compliance, and semantic parity across web and desktop hosts.
+`rustok-ui-dioxus` provides Dioxus 0.7 implementations of the RusToK UI component suite. It wraps the framework-agnostic `rustok-ui` core crate, ensuring identical styling tokens, WAI-ARIA compliance, and semantic parity across web and desktop hosts.
 
 ## Components
 
@@ -20,7 +20,7 @@ Dioxus 0.6 design system component adapter for the RusToK platform.
   `rustok-ui-leptos`; component APIs are renderer-specific where required, and
   dialog interaction parity is not yet complete in this adapter.
 - `Checkbox` has no `indeterminate` prop: HTML defines no `indeterminate`
-  attribute (it is a DOM property) and `dioxus-html` 0.6 declares no such
+  attribute (it is a DOM property) and `dioxus-html` 0.7 declares no such
   constant, so a tri-state checkbox has to be driven from host JavaScript.
 - `Dialog` closes through the backdrop; provide an accessible name with
   `aria_label` or `aria_labelledby` and give `DialogTitle` the matching `id`.

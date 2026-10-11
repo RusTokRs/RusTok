@@ -11,7 +11,7 @@
 //! Framework-agnostic design system primitives, variants, contracts, and styling resolvers.
 //!
 //! The crate is wrapped by the framework adapters `rustok-ui-leptos` (Leptos 0.8)
-//! and `rustok-ui-dioxus` (Dioxus 0.6). Hosts that only need deterministic class
+//! and `rustok-ui-dioxus` (Dioxus 0.7). Hosts that only need deterministic class
 //! strings — for example a server-side renderer that emits HTML itself — can
 //! depend on this crate directly.
 //!
