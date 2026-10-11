@@ -1,13 +1,12 @@
-//! Leptos/browser adapter foundation for Fly.
+//! Layout shells and the `fly-web` re-export surface of the Leptos adapter.
 //!
-//! This crate owns framework and browser concerns only. Canonical project state, drop legality,
-//! commands, history, and editor policy remain in `fly` and `fly-ui`.
-//! Browser math, iframe bridge, and geometry contracts are provided by `fly-web`.
-
-// No hand-written unsafe in this crate. `deny` rather than `forbid` because framework
-// proc-macros (`#[component]`, wasm-bindgen glue) may expand to generated unsafe guarded by their
-// own `#[allow(unsafe_code)]`, which `forbid` would reject.
-#![deny(unsafe_code)]
+//! Four `#[component]` wrappers render a labelled `<section>` around their children
+//! ([`FlyFullEditor`], [`FlyInlineEditor`], [`FlyPreview`], [`FlyReadOnly`]), and the module
+//! re-exports `fly-web` so a Leptos host reaches the geometry, iframe-bridge and real-DOM inline
+//! contracts through this crate. There is no canvas, drag & drop, panel or state wiring here:
+//! canonical project state, drop legality, commands, history and editor policy stay in `fly` and
+//! `fly-ui`, and the authoring surfaces that need them drive those crates directly — see
+//! `crates/modules/rustok-page-builder/admin`.
 
 pub use fly_web::*;
 use leptos::prelude::*;

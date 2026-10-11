@@ -175,6 +175,13 @@ Engineering audit remediation — see
 
 ### Changed
 
+- `fly-leptos` has a conventional crate root. `Cargo.toml` declares `[lib] path = "src/root.rs"`, so
+  `root.rs` is the crate root; the layout-shell module it used to pull in through
+  `#[path = "lib.rs"] mod foundation;` is now the ordinary `src/foundation.rs` module. Nothing
+  leaves the public API: the shim `real_dom_inline.rs` duplicated names that `pub use fly_web::*`
+  already exported (and needed two `#[allow(unused_imports)]` suppressions to stay quiet), and
+  `#![deny(unsafe_code)]` moved to the crate root so it covers the feature-gated browser modules
+  rather than only the included file.
 - `FlyEditor::apply` performs one deep document copy per command instead of three, and `undo`/
   `redo` perform none, by sharing documents between the editor and adjacent history entries via
   `Arc`. History memory roughly halves. The public API is unchanged.

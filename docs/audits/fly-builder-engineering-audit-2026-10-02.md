@@ -687,7 +687,8 @@ O(n) сдвиг вектора из тяжёлых элементов вмест
 
 * `README.md` обещает: «`fly-leptos`: Thin Leptos 0.8 components (`FlyFullEditor`, `FlyInlineEditor`,
   `FlyPreview`, `FlyReadOnly`)» и аналогично для Dioxus.
-  Факт: `leptos/src/lib.rs` — 62 строки, четыре компонента вида
+  Факт: `leptos/src/foundation.rs` (до 2026-10-11 — `leptos/src/lib.rs`, см. L-2) — четыре
+  компонента вида
   `<section class="fly-editor--full">{children()}</section>`. Ни состояния, ни интентов,
   ни канваса, ни drag&drop. `dioxus/src/lib.rs` — то же самое, 72 строки.
   При этом `fly-leptos` и `fly-dioxus` объявляют зависимости на `fly` и `fly-ui`, которые
@@ -898,6 +899,10 @@ bidirectional codec», это недостаточно. Фикстуры GrapesJ
   `[workspace.lints]`. Нет `#![forbid(unsafe_code)]`, `#![deny(missing_docs)]` при 1299 pub-элементах.
 * `L-2` — `leptos/src/root.rs:1-2`: `#[path = "lib.rs"] mod foundation;` при `[lib] path = "src/root.rs"`.
   Файл `lib.rs`, который не является крейт-корнем, — ловушка для IDE и новых разработчиков.
+  **Исправлено 2026-10-11**: модуль переименован в `foundation.rs`, `#[path]` убран, `#![deny(unsafe_code)]`
+  перенесён в крейт-корень (раньше он покрывал только включаемый модуль, а не браузерные shim-модули);
+  дублирующий shim `real_dom_inline.rs` с двумя `#[allow(unused_imports)]` удалён — его поверхность и так
+  идёт через `pub use fly_web::*`.
 * `L-3` — `SequentialIdGenerator` (`ids.rs`) предсказуем; для многопользовательского
   редактирования нужен ULID/UUIDv7, иначе параллельные сессии дают конфликты id.
 * `L-4` — `escape_html` (`render.rs:697-702`) делает 3 прохода `String::replace` с 3 аллокациями;
