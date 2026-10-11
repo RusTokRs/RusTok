@@ -34,7 +34,8 @@ use rustok_product::entities::{
 };
 use rustok_region::entities::{region, region_country_tax_policy, region_translation};
 use rustok_taxonomy::entities::{
-    taxonomy_term, taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation,
+    taxonomy_category_hierarchy, taxonomy_category_presentation, taxonomy_term,
+    taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation,
     translation_change,
 };
 use rustok_tenant::entities::tenant_module;
@@ -70,6 +71,18 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(taxonomy_term::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(taxonomy_category_hierarchy::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(taxonomy_category_presentation::Entity),
     )
     .await;
     create_entity_table(
@@ -444,6 +457,7 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     .await;
     ensure_field_definition_tables(db).await;
     ensure_product_attribute_tables(db).await;
+    ensure_catalog_category_tables(db).await;
     create_entity_table(
         db,
         &builder,
@@ -535,6 +549,7 @@ async fn ensure_product_attribute_tables(db: &DatabaseConnection) {
             position INTEGER NOT NULL DEFAULT 0,
             is_default INTEGER NOT NULL DEFAULT 0,
             metadata TEXT NOT NULL DEFAULT '{}',
+            archived_at TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )",
@@ -547,20 +562,65 @@ async fn ensure_product_attribute_tables(db: &DatabaseConnection) {
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )",
+        "CREATE TABLE IF NOT EXISTS product_attribute_values (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            product_id TEXT NOT NULL,
+            attribute_id TEXT NOT NULL,
+            value_text TEXT,
+            value_integer INTEGER,
+            value_decimal NUMERIC,
+            value_boolean BOOLEAN,
+            value_date TEXT,
+            value_datetime TEXT,
+            value_json TEXT,
+            detached_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (tenant_id, product_id, attribute_id)
+        )",
+        "CREATE TABLE IF NOT EXISTS product_attribute_value_translations (
+            id TEXT PRIMARY KEY NOT NULL,
+            value_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            value_text TEXT,
+            UNIQUE (value_id, locale)
+        )",
+        "CREATE TABLE IF NOT EXISTS product_attribute_value_options (
+            tenant_id TEXT NOT NULL,
+            value_id TEXT NOT NULL,
+            option_id TEXT NOT NULL,
+            PRIMARY KEY (value_id, option_id)
+        )",
         "CREATE TABLE IF NOT EXISTS product_variant_attribute_values (
             id TEXT PRIMARY KEY NOT NULL,
             tenant_id TEXT NOT NULL,
             variant_id TEXT NOT NULL,
             attribute_id TEXT NOT NULL,
+            value_text TEXT,
+            value_integer INTEGER,
+            value_decimal NUMERIC,
+            value_boolean BOOLEAN,
+            value_date TEXT,
+            value_datetime TEXT,
+            value_json TEXT,
             detached_at TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (tenant_id, variant_id, attribute_id)
+        )",
+        "CREATE TABLE IF NOT EXISTS product_variant_attribute_value_translations (
+            id TEXT PRIMARY KEY NOT NULL,
+            value_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            value_text TEXT,
+            UNIQUE (value_id, locale)
         )",
         "CREATE TABLE IF NOT EXISTS product_variant_attribute_value_options (
-            id TEXT PRIMARY KEY NOT NULL,
             tenant_id TEXT NOT NULL,
             value_id TEXT NOT NULL,
-            option_id TEXT NOT NULL
+            option_id TEXT NOT NULL,
+            PRIMARY KEY (value_id, option_id)
         )",
     ] {
         db.execute_raw(Statement::from_string(
@@ -675,5 +735,118 @@ async fn ensure_field_definition_tables(db: &DatabaseConnection) {
         db.execute_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
             .await
             .expect("failed to create attached localized values test table");
+    }
+}
+
+async fn ensure_catalog_category_tables(db: &DatabaseConnection) {
+    for sql in [
+        "CREATE TABLE IF NOT EXISTS catalog_categories (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            code TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'structural',
+            path TEXT NOT NULL DEFAULT '',
+            level INTEGER NOT NULL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            rule_config TEXT NOT NULL DEFAULT '{}',
+            metadata TEXT NOT NULL DEFAULT '{}',
+            deleted_at TEXT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        "CREATE TABLE IF NOT EXISTS catalog_category_translations (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            category_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            meta_title TEXT,
+            meta_description TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        "CREATE TABLE IF NOT EXISTS category_attribute_schema_assignments (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            category_id TEXT NOT NULL,
+            mode TEXT NOT NULL DEFAULT 'inherit',
+            schema_id TEXT NULL,
+            cloned_from_category_id TEXT NULL,
+            snapshot TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        "CREATE TABLE IF NOT EXISTS category_attribute_groups (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            category_id TEXT NOT NULL,
+            code TEXT NOT NULL,
+            inherited_from_group_id TEXT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            metadata TEXT NOT NULL DEFAULT '{}'
+        )",
+        "CREATE TABLE IF NOT EXISTS category_attribute_group_translations (
+            id TEXT PRIMARY KEY NOT NULL,
+            group_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            label TEXT NOT NULL
+        )",
+        "CREATE TABLE IF NOT EXISTS category_attributes (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            category_id TEXT NOT NULL,
+            attribute_id TEXT NOT NULL,
+            group_id TEXT NULL,
+            binding_kind TEXT NOT NULL DEFAULT 'addition',
+            is_required INTEGER NULL,
+            is_disabled INTEGER NOT NULL DEFAULT 0,
+            position INTEGER NULL,
+            visibility_overrides TEXT NOT NULL DEFAULT '{}',
+            validation_overrides TEXT NOT NULL DEFAULT '{}',
+            variant_axis_policy TEXT NULL,
+            default_variant_axis TEXT NULL,
+            metadata TEXT NOT NULL DEFAULT '{}'
+        )",
+        "CREATE TABLE IF NOT EXISTS product_attribute_schemas (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            code TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            metadata TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            archived_at TEXT NULL
+        )",
+        "CREATE TABLE IF NOT EXISTS product_attribute_schema_groups (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            schema_id TEXT NOT NULL,
+            code TEXT NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            metadata TEXT NOT NULL DEFAULT '{}'
+        )",
+        "CREATE TABLE IF NOT EXISTS product_attribute_schema_attributes (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            schema_id TEXT NOT NULL,
+            attribute_id TEXT NOT NULL,
+            group_id TEXT NULL,
+            is_required INTEGER NOT NULL DEFAULT 0,
+            is_disabled INTEGER NOT NULL DEFAULT 0,
+            position INTEGER NOT NULL DEFAULT 0,
+            visibility_overrides TEXT NOT NULL DEFAULT '{}',
+            validation_overrides TEXT NOT NULL DEFAULT '{}',
+            variant_axis_policy TEXT NULL,
+            default_variant_axis TEXT NULL,
+            metadata TEXT NOT NULL DEFAULT '{}'
+        )",
+    ] {
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            sql.to_string(),
+        ))
+        .await
+        .expect("failed to create catalog category test table");
     }
 }

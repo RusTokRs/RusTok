@@ -3,7 +3,7 @@
 //! Provides a mock event bus for testing event publishing and handling.
 
 use rustok_core::{EventBus, EventTransport, ReliabilityLevel};
-use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_events::{ContractEventEnvelope, DomainEvent, EventEnvelope};
 use rustok_outbox::TransactionalEventBus;
 use std::any::Any;
 use std::sync::{Arc, Mutex};
@@ -13,6 +13,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct MockEventTransport {
     recorded_events: Arc<Mutex<Vec<RecordedEvent>>>,
+    recorded_contract_events: Arc<Mutex<Vec<ContractEventEnvelope>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +39,15 @@ impl EventTransport for MockEventTransport {
         Ok(())
     }
 
+    async fn publish_contract(
+        &self,
+        envelope: ContractEventEnvelope,
+    ) -> rustok_core::Result<()> {
+        let mut events = self.recorded_contract_events.lock().unwrap();
+        events.push(envelope);
+        Ok(())
+    }
+
     fn reliability_level(&self) -> ReliabilityLevel {
         ReliabilityLevel::Outbox
     }
@@ -51,11 +61,17 @@ impl MockEventTransport {
     pub fn new() -> Self {
         Self {
             recorded_events: Arc::new(Mutex::new(Vec::new())),
+            recorded_contract_events: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
     pub fn event_count(&self) -> usize {
         self.recorded_events.lock().unwrap().len()
+            + self.recorded_contract_events.lock().unwrap().len()
+    }
+
+    pub fn recorded_contract_events(&self) -> Vec<ContractEventEnvelope> {
+        self.recorded_contract_events.lock().unwrap().clone()
     }
 
     pub fn has_event_of_type(&self, event_type: &str) -> bool {
@@ -64,6 +80,12 @@ impl MockEventTransport {
             .unwrap()
             .iter()
             .any(|e| e.event_type == event_type)
+            || self
+                .recorded_contract_events
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|e| e.event_type() == event_type)
     }
 
     pub fn events_of_type(&self, event_type: &str) -> Vec<DomainEvent> {
@@ -78,10 +100,12 @@ impl MockEventTransport {
 
     pub fn clear(&self) {
         self.recorded_events.lock().unwrap().clear();
+        self.recorded_contract_events.lock().unwrap().clear();
     }
 
     pub fn is_empty(&self) -> bool {
         self.recorded_events.lock().unwrap().is_empty()
+            && self.recorded_contract_events.lock().unwrap().is_empty()
     }
 }
 

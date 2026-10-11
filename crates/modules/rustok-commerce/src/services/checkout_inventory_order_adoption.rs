@@ -2,8 +2,8 @@ use chrono::Utc;
 use rustok_commerce_foundation::entities::{inventory_item, reservation_item};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityTrait, Set, Statement,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
+    QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -301,28 +301,33 @@ impl CheckoutInventoryOrderAdoptionService {
                 reservation_active.update(&txn).await?;
             }
 
-            let result = txn
-                .execute_raw(Statement::from_sql_and_values(
-                    txn.get_database_backend(),
-                    r#"
-                    UPDATE checkout_inventory_reservations
-                    SET order_line_item_id = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE reservation_id = ?
-                      AND tenant_id = ?
-                      AND checkout_operation_id = ?
-                      AND status = 'reserved'
-                      AND (order_line_item_id IS NULL OR order_line_item_id = ?)
-                    "#,
-                    vec![
-                        binding.order_line_item_id.into(),
-                        mapping.reservation_id.into(),
-                        tenant_id.into(),
-                        operation_id.into(),
-                        binding.order_line_item_id.into(),
-                    ],
-                ))
+            let result = checkout_inventory_reservation::Entity::update_many()
+                .filter(
+                    checkout_inventory_reservation::Column::ReservationId
+                        .eq(mapping.reservation_id),
+                )
+                .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
+                .filter(
+                    checkout_inventory_reservation::Column::CheckoutOperationId
+                        .eq(operation_id),
+                )
+                .filter(checkout_inventory_reservation::Column::Status.eq("reserved"))
+                .filter(
+                    Condition::any()
+                        .add(checkout_inventory_reservation::Column::OrderLineItemId.is_null())
+                        .add(
+                            checkout_inventory_reservation::Column::OrderLineItemId
+                                .eq(binding.order_line_item_id),
+                        ),
+                )
+                .set(checkout_inventory_reservation::ActiveModel {
+                    order_line_item_id: Set(Some(binding.order_line_item_id)),
+                    updated_at: Set(Utc::now().into()),
+                    ..Default::default()
+                })
+                .exec(&txn)
                 .await?;
-            if result.rows_affected() != 1
+            if result.rows_affected != 1
                 && load_order_line_adoption(&txn, tenant_id, mapping.reservation_id).await?
                     != Some(binding.order_line_item_id)
             {
@@ -373,17 +378,12 @@ async fn load_order_line_adoption<C>(
 where
     C: ConnectionTrait,
 {
-    conn.query_one_raw(Statement::from_sql_and_values(
-        conn.get_database_backend(),
-        r#"
-        SELECT order_line_item_id
-        FROM checkout_inventory_reservations
-        WHERE tenant_id = ? AND reservation_id = ?
-        "#,
-        vec![tenant_id.into(), reservation_id.into()],
-    ))
-    .await
-    .map(|row| row.and_then(|row| row.try_get("", "order_line_item_id").ok()))
+    checkout_inventory_reservation::Entity::find()
+        .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
+        .filter(checkout_inventory_reservation::Column::ReservationId.eq(reservation_id))
+        .one(conn)
+        .await
+        .map(|opt| opt.and_then(|row| row.order_line_item_id))
 }
 
 async fn load_operation_adoptions<C>(
@@ -394,29 +394,24 @@ async fn load_operation_adoptions<C>(
 where
     C: ConnectionTrait,
 {
-    let rows = conn
-        .query_all_raw(Statement::from_sql_and_values(
-            conn.get_database_backend(),
-            r#"
-            SELECT reservation_id, cart_line_item_id, order_line_item_id
-            FROM checkout_inventory_reservations
-            WHERE tenant_id = ?
-              AND checkout_operation_id = ?
-              AND order_line_item_id IS NOT NULL
-            ORDER BY cart_line_item_id
-            "#,
-            vec![tenant_id.into(), operation_id.into()],
-        ))
+    let rows = checkout_inventory_reservation::Entity::find()
+        .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
+        .filter(checkout_inventory_reservation::Column::CheckoutOperationId.eq(operation_id))
+        .filter(checkout_inventory_reservation::Column::OrderLineItemId.is_not_null())
+        .order_by_asc(checkout_inventory_reservation::Column::CartLineItemId)
+        .all(conn)
         .await?;
-    rows.into_iter()
-        .map(|row| {
-            Ok(CheckoutInventoryOrderAdoption {
-                reservation_id: row.try_get("", "reservation_id")?,
-                cart_line_item_id: row.try_get("", "cart_line_item_id")?,
-                order_line_item_id: row.try_get("", "order_line_item_id")?,
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            row.order_line_item_id.map(|order_line_item_id| CheckoutInventoryOrderAdoption {
+                reservation_id: row.reservation_id,
+                cart_line_item_id: row.cart_line_item_id,
+                order_line_item_id,
             })
         })
-        .collect()
+        .collect())
 }
 
 fn validate_order_provenance(

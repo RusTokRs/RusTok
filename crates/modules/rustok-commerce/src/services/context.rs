@@ -70,6 +70,12 @@ impl StoreContextService {
         }
     }
 
+    /// Resolves the canonical tenant default locale through the tenant owner ports.
+    pub async fn load_tenant_default_locale(&self, tenant_id: Uuid) -> StoreContextResult<String> {
+        let (default_locale, _) = self.load_tenant_locale_context(tenant_id).await?;
+        Ok(default_locale)
+    }
+
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
     pub async fn resolve_context(
         &self,

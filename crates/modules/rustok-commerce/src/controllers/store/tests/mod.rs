@@ -233,7 +233,9 @@ pub(crate) fn storefront_product_input() -> CreateProductInput {
 pub(crate) fn test_app_context(
     db: sea_orm::DatabaseConnection,
 ) -> crate::controllers::CommerceHttpRuntime {
-    let event_bus = mock_transactional_event_bus();
+    let event_bus = rustok_outbox::TransactionalEventBus::new(std::sync::Arc::new(
+        rustok_outbox::OutboxTransport::new(db.clone()),
+    ));
     crate::controllers::CommerceHttpRuntime::in_process(db, event_bus)
 }
 

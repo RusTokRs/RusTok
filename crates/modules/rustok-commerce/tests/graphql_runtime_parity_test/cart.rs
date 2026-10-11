@@ -179,122 +179,125 @@ async fn storefront_graphql_cart_flow_creates_reads_updates_and_removes_line_ite
         None,
     );
 
-    let created_cart = schema
-        .execute(Request::new(storefront_cart_flow_mutation(tenant_id)))
-        .await;
-    assert!(
-        created_cart.errors.is_empty(),
-        "unexpected create cart GraphQL errors: {:?}",
-        created_cart.errors
-    );
-    let created_cart_json = created_cart
-        .data
-        .into_json()
-        .expect("GraphQL response must serialize");
-    let cart_id = Uuid::parse_str(
-        created_cart_json["createStorefrontCart"]["cart"]["id"]
-            .as_str()
-            .expect("cart id must be a string"),
-    )
-    .expect("cart id must parse");
-    assert_eq!(
-        created_cart_json["createStorefrontCart"]["context"]["currencyCode"],
-        Value::from("EUR")
-    );
+    rustok_cart::with_guest_cart_request_scope(None, async {
+        let created_cart = schema
+            .execute(Request::new(storefront_cart_flow_mutation(tenant_id)))
+            .await;
+        assert!(
+            created_cart.errors.is_empty(),
+            "unexpected create cart GraphQL errors: {:?}",
+            created_cart.errors
+        );
+        let created_cart_json = created_cart
+            .data
+            .into_json()
+            .expect("GraphQL response must serialize");
+        let cart_id = Uuid::parse_str(
+            created_cart_json["createStorefrontCart"]["cart"]["id"]
+                .as_str()
+                .expect("cart id must be a string"),
+        )
+        .expect("cart id must parse");
+        assert_eq!(
+            created_cart_json["createStorefrontCart"]["context"]["currencyCode"],
+            Value::from("EUR")
+        );
 
-    let added = schema
-        .execute(Request::new(storefront_cart_add_line_item_mutation(
-            tenant_id,
-            cart_id,
-            published_variant.id,
-        )))
-        .await;
-    assert!(
-        added.errors.is_empty(),
-        "unexpected add line item GraphQL errors: {:?}",
-        added.errors
-    );
-    let added_json = added
-        .data
-        .into_json()
-        .expect("GraphQL response must serialize");
-    let line_id = Uuid::parse_str(
-        added_json["addStorefrontCartLineItem"]["lineItems"][0]["id"]
-            .as_str()
-            .expect("line id must be a string"),
-    )
-    .expect("line id must parse");
-    assert_eq!(
-        added_json["addStorefrontCartLineItem"]["totalAmount"],
-        Value::from("39.98")
-    );
+        let added = schema
+            .execute(Request::new(storefront_cart_add_line_item_mutation(
+                tenant_id,
+                cart_id,
+                published_variant.id,
+            )))
+            .await;
+        assert!(
+            added.errors.is_empty(),
+            "unexpected add line item GraphQL errors: {:?}",
+            added.errors
+        );
+        let added_json = added
+            .data
+            .into_json()
+            .expect("GraphQL response must serialize");
+        let line_id = Uuid::parse_str(
+            added_json["addStorefrontCartLineItem"]["lineItems"][0]["id"]
+                .as_str()
+                .expect("line id must be a string"),
+        )
+        .expect("line id must parse");
+        assert_eq!(
+            added_json["addStorefrontCartLineItem"]["totalAmount"],
+            Value::from("39.98")
+        );
 
-    let queried = schema
-        .execute(Request::new(storefront_cart_query(tenant_id, cart_id)))
-        .await;
-    assert!(
-        queried.errors.is_empty(),
-        "unexpected cart query GraphQL errors: {:?}",
-        queried.errors
-    );
-    let queried_json = queried
-        .data
-        .into_json()
-        .expect("GraphQL response must serialize");
-    assert_eq!(
-        queried_json["storefrontCart"]["lineItems"][0]["title"],
-        Value::from("Paritaet Produkt / Default")
-    );
-    assert_eq!(
-        queried_json["storefrontCart"]["lineItems"][0]["quantity"],
-        Value::from(2)
-    );
+        let queried = schema
+            .execute(Request::new(storefront_cart_query(tenant_id, cart_id)))
+            .await;
+        assert!(
+            queried.errors.is_empty(),
+            "unexpected cart query GraphQL errors: {:?}",
+            queried.errors
+        );
+        let queried_json = queried
+            .data
+            .into_json()
+            .expect("GraphQL response must serialize");
+        assert_eq!(
+            queried_json["storefrontCart"]["lineItems"][0]["title"],
+            Value::from("Paritaet Produkt / Default")
+        );
+        assert_eq!(
+            queried_json["storefrontCart"]["lineItems"][0]["quantity"],
+            Value::from(2)
+        );
 
-    let updated = schema
-        .execute(Request::new(storefront_cart_update_line_item_mutation(
-            tenant_id, cart_id, line_id,
-        )))
-        .await;
-    assert!(
-        updated.errors.is_empty(),
-        "unexpected update line item GraphQL errors: {:?}",
-        updated.errors
-    );
-    let updated_json = updated
-        .data
-        .into_json()
-        .expect("GraphQL response must serialize");
-    assert_eq!(
-        updated_json["updateStorefrontCartLineItem"]["totalAmount"],
-        Value::from("59.97")
-    );
-    assert_eq!(
-        updated_json["updateStorefrontCartLineItem"]["lineItems"][0]["quantity"],
-        Value::from(3)
-    );
+        let updated = schema
+            .execute(Request::new(storefront_cart_update_line_item_mutation(
+                tenant_id, cart_id, line_id,
+            )))
+            .await;
+        assert!(
+            updated.errors.is_empty(),
+            "unexpected update line item GraphQL errors: {:?}",
+            updated.errors
+        );
+        let updated_json = updated
+            .data
+            .into_json()
+            .expect("GraphQL response must serialize");
+        assert_eq!(
+            updated_json["updateStorefrontCartLineItem"]["totalAmount"],
+            Value::from("59.97")
+        );
+        assert_eq!(
+            updated_json["updateStorefrontCartLineItem"]["lineItems"][0]["quantity"],
+            Value::from(3)
+        );
 
-    let removed = schema
-        .execute(Request::new(storefront_cart_remove_line_item_mutation(
-            tenant_id, cart_id, line_id,
-        )))
-        .await;
-    assert!(
-        removed.errors.is_empty(),
-        "unexpected remove line item GraphQL errors: {:?}",
-        removed.errors
-    );
-    let removed_json = removed
-        .data
-        .into_json()
-        .expect("GraphQL response must serialize");
-    assert_eq!(
-        removed_json["removeStorefrontCartLineItem"]["totalAmount"],
-        Value::from("0")
-    );
-    assert_eq!(
-        removed_json["removeStorefrontCartLineItem"]["lineItems"],
-        serde_json::json!([])
-    );
+        let removed = schema
+            .execute(Request::new(storefront_cart_remove_line_item_mutation(
+                tenant_id, cart_id, line_id,
+            )))
+            .await;
+        assert!(
+            removed.errors.is_empty(),
+            "unexpected remove line item GraphQL errors: {:?}",
+            removed.errors
+        );
+        let removed_json = removed
+            .data
+            .into_json()
+            .expect("GraphQL response must serialize");
+        assert_eq!(
+            removed_json["removeStorefrontCartLineItem"]["totalAmount"],
+            Value::from("0")
+        );
+        assert_eq!(
+            removed_json["removeStorefrontCartLineItem"]["lineItems"],
+            serde_json::json!([])
+        );
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -413,6 +416,10 @@ async fn storefront_graphql_cart_context_patch_keeps_tristate_semantics() {
         )
         .await
         .expect("shipping option should be created");
+    let (metadata, guest_token) = rustok_cart::prepare_guest_cart_metadata(
+        None,
+        serde_json::json!({ "source": "storefront-graphql-cart-context" }),
+    );
     let cart = CartService::new(db.clone())
         .create_cart(
             tenant_id,
@@ -424,7 +431,7 @@ async fn storefront_graphql_cart_context_patch_keeps_tristate_semantics() {
                 locale_code: Some("de".to_string()),
                 selected_shipping_option_id: None,
                 currency_code: "eur".to_string(),
-                metadata: serde_json::json!({ "source": "storefront-graphql-cart-context" }),
+                metadata,
             },
         )
         .await
@@ -436,14 +443,17 @@ async fn storefront_graphql_cart_context_patch_keeps_tristate_semantics() {
         request_context(tenant_id, "de"),
         None,
     );
-    let response = schema
-        .execute(Request::new(storefront_cart_context_update_mutation(
-            tenant_id,
-            cart.id,
-            region.id,
-            shipping_option.id,
-        )))
-        .await;
+    let response = rustok_cart::with_guest_cart_request_scope(guest_token, async {
+        schema
+            .execute(Request::new(storefront_cart_context_update_mutation(
+                tenant_id,
+                cart.id,
+                region.id,
+                shipping_option.id,
+            )))
+            .await
+    })
+    .await;
     assert!(
         response.errors.is_empty(),
         "unexpected cart context patch GraphQL errors: {:?}",

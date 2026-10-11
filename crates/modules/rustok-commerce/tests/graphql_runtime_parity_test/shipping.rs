@@ -682,6 +682,10 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
         .await
         .expect("bulky shipping option should be created");
 
+    let (metadata, guest_token) = rustok_cart::prepare_guest_cart_metadata(
+        None,
+        serde_json::json!({ "source": "storefront-graphql-shipping-profile" }),
+    );
     let cart = cart_service
         .create_cart(
             tenant_id,
@@ -693,7 +697,7 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
                 locale_code: Some("de".to_string()),
                 selected_shipping_option_id: None,
                 currency_code: "eur".to_string(),
-                metadata: serde_json::json!({ "source": "storefront-graphql-shipping-profile" }),
+                metadata,
             },
         )
         .await
@@ -723,23 +727,26 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
         request_context(tenant_id, "de"),
         None,
     );
-    let response = schema
-        .execute(Request::new(format!(
-            r#"
-            query {{
-              storefrontShippingOptions(
-                tenantId: "{tenant_id}",
-                filter: {{ cartId: "{cart_id}" currencyCode: "eur" }}
-              ) {{
-                id
-                name
-                allowedShippingProfileSlugs
-              }}
-            }}
-            "#,
-            cart_id = cart.id
-        )))
-        .await;
+    let response = rustok_cart::with_guest_cart_request_scope(guest_token, async {
+        schema
+            .execute(Request::new(format!(
+                r#"
+                query {{
+                  storefrontShippingOptions(
+                    tenantId: "{tenant_id}",
+                    filter: {{ cartId: "{cart_id}" currencyCode: "eur" }}
+                  ) {{
+                    id
+                    name
+                    allowedShippingProfileSlugs
+                  }}
+                }}
+                "#,
+                cart_id = cart.id
+            )))
+            .await
+    })
+    .await;
     assert!(
         response.errors.is_empty(),
         "unexpected storefront shipping profile GraphQL errors: {:?}",
@@ -808,6 +815,10 @@ async fn storefront_graphql_update_cart_context_rejects_incompatible_shipping_pr
         .await
         .expect("shipping option should be created");
 
+    let (metadata, guest_token) = rustok_cart::prepare_guest_cart_metadata(
+        None,
+        serde_json::json!({ "source": "storefront-graphql-shipping-profile" }),
+    );
     let cart = cart_service
         .create_cart(
             tenant_id,
@@ -819,7 +830,7 @@ async fn storefront_graphql_update_cart_context_rejects_incompatible_shipping_pr
                 locale_code: Some("de".to_string()),
                 selected_shipping_option_id: None,
                 currency_code: "eur".to_string(),
-                metadata: serde_json::json!({ "source": "storefront-graphql-shipping-profile" }),
+                metadata,
             },
         )
         .await
@@ -849,23 +860,26 @@ async fn storefront_graphql_update_cart_context_rejects_incompatible_shipping_pr
         request_context(tenant_id, "de"),
         None,
     );
-    let response = schema
-        .execute(Request::new(format!(
-            r#"
-            mutation {{
-              updateStorefrontCartContext(
-                tenantId: "{tenant_id}",
-                cartId: "{cart_id}",
-                input: {{ selectedShippingOptionId: "{shipping_option_id}" }}
-              ) {{
-                cart {{ id }}
-              }}
-            }}
-            "#,
-            cart_id = cart.id,
-            shipping_option_id = incompatible_option.id
-        )))
-        .await;
+    let response = rustok_cart::with_guest_cart_request_scope(guest_token, async {
+        schema
+            .execute(Request::new(format!(
+                r#"
+                mutation {{
+                  updateStorefrontCartContext(
+                    tenantId: "{tenant_id}",
+                    cartId: "{cart_id}",
+                    input: {{ selectedShippingOptionId: "{shipping_option_id}" }}
+                  ) {{
+                    cart {{ id }}
+                  }}
+                }}
+                "#,
+                cart_id = cart.id,
+                shipping_option_id = incompatible_option.id
+            )))
+            .await
+    })
+    .await;
 
     assert_eq!(response.errors.len(), 1);
     assert!(

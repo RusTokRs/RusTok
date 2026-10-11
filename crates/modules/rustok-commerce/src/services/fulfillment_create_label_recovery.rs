@@ -79,6 +79,15 @@ impl FulfillmentCreateLabelRecoveryService {
             }
         }
 
+        let operation = journal
+            .claim_execution(tenant_id, operation_id)
+            .await?
+            .ok_or_else(|| {
+                FulfillmentOrchestrationError::Validation(format!(
+                    "create_label operation {operation_id} could not be claimed for execution"
+                ))
+            })?;
+
         let request: FulfillmentProviderOperationRequest = serde_json::from_value(
             operation.request_payload.clone(),
         )

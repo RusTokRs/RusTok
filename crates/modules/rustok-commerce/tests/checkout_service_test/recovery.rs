@@ -690,9 +690,25 @@ async fn retry_after_preflight_failure_creates_checkout_artifacts() {
 
 #[tokio::test]
 async fn checkout_operation_lease_renewal_and_fencing_prevents_expired_executor_side_effects() {
-    let (db, _, _, _) = setup().await;
+    let (db, cart_service, _, _) = setup().await;
     let tenant_id = Uuid::new_v4();
-    let cart_id = Uuid::new_v4();
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("lease-fence@example.com".to_string()),
+                region_id: None,
+                country_code: None,
+                locale_code: None,
+                selected_shipping_option_id: None,
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("cart created");
+    let cart_id = cart.id;
     let journal = rustok_commerce::services::CheckoutOperationJournal::new(
         db.clone(),
         mock_transactional_event_bus(),
@@ -779,11 +795,27 @@ async fn checkout_operation_lease_renewal_and_fencing_prevents_expired_executor_
 
 #[tokio::test]
 async fn expired_lease_executor_is_fenced_from_order_creation_without_ghost_orders() {
-    let (db, _, _, _) = setup().await;
+    let (db, cart_service, _, _) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
-    let cart_id = Uuid::new_v4();
     seed_tenant_context(&db, tenant_id).await;
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("lease-order-fence@example.com".to_string()),
+                region_id: None,
+                country_code: None,
+                locale_code: None,
+                selected_shipping_option_id: None,
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("cart created");
+    let cart_id = cart.id;
 
     let journal = rustok_commerce::services::CheckoutOperationJournal::new(
         db.clone(),

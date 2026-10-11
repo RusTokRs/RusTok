@@ -21,7 +21,7 @@ use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
     entities::product::ProductStatus,
 };
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use sea_orm::DatabaseConnection;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use crate::StoreContextService;
@@ -73,7 +73,7 @@ pub enum CheckoutError {
 pub type CheckoutResult<T> = Result<T, CheckoutError>;
 
 pub struct CheckoutService {
-    db: DatabaseConnection,
+    _db: DatabaseConnection,
     cart_checkout_port: Arc<dyn CartCheckoutPort>,
     inventory_reservation_port: Arc<dyn InventoryReservationPort>,
     product_catalog_read_port: Arc<dyn ProductCatalogReadPort>,
@@ -94,7 +94,7 @@ impl CheckoutService {
         product_catalog_read_port: Arc<dyn ProductCatalogReadPort>,
     ) -> Self {
         Self {
-            db: db.clone(),
+            _db: db.clone(),
             cart_checkout_port,
             inventory_reservation_port,
             product_catalog_read_port,
@@ -840,7 +840,11 @@ impl CheckoutService {
 
         let order_locale = match cart.locale_code.as_deref() {
             Some(locale) => locale.to_string(),
-            None => load_tenant_default_locale(&self.db, tenant_id).await?,
+            None => self
+                .context_service
+                .load_tenant_default_locale(tenant_id)
+                .await
+                .map_err(stage_error("load_tenant_default_locale"))?,
         };
         let order = self
             .order_service
@@ -1160,24 +1164,6 @@ fn checkout_port_error(stage: &'static str, error: PortError) -> CheckoutError {
     }
 }
 
-async fn load_tenant_default_locale<C>(conn: &C, tenant_id: Uuid) -> CheckoutResult<String>
-where
-    C: ConnectionTrait,
-{
-    let row = conn
-        .query_one_raw(Statement::from_sql_and_values(
-            conn.get_database_backend(),
-            "SELECT default_locale FROM tenants WHERE id = ?",
-            vec![tenant_id.into()],
-        ))
-        .await
-        .map_err(stage_error("load_tenant_default_locale"))?;
-
-    Ok(row
-        .and_then(|row| row.try_get::<String>("", "default_locale").ok())
-        .and_then(|locale| normalize_locale_tag(&locale))
-        .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()))
-}
 
 fn stage_error<E>(stage: &'static str) -> impl FnOnce(E) -> CheckoutError
 where

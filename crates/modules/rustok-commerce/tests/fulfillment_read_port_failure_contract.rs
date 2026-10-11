@@ -10,7 +10,7 @@ use axum::{
 use rust_decimal::Decimal;
 use rustok_api::{
     AuthContext, AuthContextExtension, HostRuntimeContext, Permission, PortActorKind, PortContext,
-    PortError, PortErrorKind, RequestContext, TenantContext, TenantContextExtension,
+    PortError, PortErrorKind, RequestContext, ResolvedRequestLocale, TenantContext, TenantContextExtension,
     graphql::GraphqlRuntimeInputs,
 };
 #[cfg(feature = "marketplace-financial")]
@@ -290,6 +290,10 @@ fn rest_router(
         .expect("commerce HTTP runtime should compose")
         .layer(Extension(AuthContextExtension(auth)))
         .layer(Extension(TenantContextExtension(tenant)))
+        .layer(Extension(ResolvedRequestLocale {
+            requested_locale: Some("ru-RU".to_string()),
+            effective_locale: "ru-RU".to_string(),
+        }))
 }
 
 fn response_json(response: &async_graphql::Response) -> Value {

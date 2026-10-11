@@ -9,12 +9,17 @@ use rustok_product::CatalogService;
 use rustok_product::CommerceError;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
+    VariantAxisInput, VariantAxisValueInput,
 };
 use rustok_product::entities;
 use rustok_product::entities::product::ProductStatus;
+use rustok_product::services::{
+    CatalogCategoryKind, CategoryTranslationInput, CreateCatalogCategoryInput,
+    ProductCatalogSchemaService,
+};
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::DatabaseConnection;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -54,6 +59,103 @@ async fn setup() -> (DatabaseConnection, CatalogService) {
     let event_bus = mock_transactional_event_bus();
     let service = CatalogService::new(db.clone(), event_bus);
     (db, service)
+}
+
+async fn seed_test_variant_axis(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    code: &str,
+    options: &[&str],
+) -> (Uuid, Vec<Uuid>) {
+    let attribute_id = Uuid::new_v4();
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Sqlite,
+        "INSERT INTO product_attributes (id, tenant_id, code, value_type, scope, created_at, updated_at)
+         VALUES (?, ?, ?, 'select', 'variant', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        vec![
+            attribute_id.into(),
+            tenant_id.into(),
+            code.into(),
+        ],
+    ))
+    .await
+    .expect("failed to insert test attribute");
+
+    let mut option_ids = Vec::new();
+    for (position, opt_code) in options.iter().enumerate() {
+        let opt_id = Uuid::new_v4();
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO product_attribute_options (id, tenant_id, attribute_id, code, position, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            vec![
+                opt_id.into(),
+                tenant_id.into(),
+                attribute_id.into(),
+                (*opt_code).into(),
+                (position as i32).into(),
+            ],
+        ))
+        .await
+        .expect("failed to insert test attribute option");
+        option_ids.push(opt_id);
+    }
+
+    (attribute_id, option_ids)
+}
+
+async fn seed_test_structural_category(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    code: &str,
+) -> Uuid {
+    let event_bus = mock_transactional_event_bus();
+    let schema_service = ProductCatalogSchemaService::new(db.clone(), event_bus);
+    let category = schema_service
+        .create_category(
+            tenant_id,
+            Uuid::new_v4(),
+            CreateCatalogCategoryInput {
+                code: code.to_string(),
+                slug: code.to_string(),
+                kind: CatalogCategoryKind::Structural,
+                parent_id: None,
+                position: 0,
+                rule_config: serde_json::json!({}),
+                metadata: serde_json::json!({}),
+                translations: vec![CategoryTranslationInput {
+                    locale: "en".to_string(),
+                    name: code.to_string(),
+                    description: None,
+                    meta_title: None,
+                    meta_description: None,
+                }],
+            },
+        )
+        .await
+        .expect("failed to create test structural category");
+    category.id
+}
+
+async fn bind_test_category_attribute(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    category_id: Uuid,
+    attribute_id: Uuid,
+) {
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Sqlite,
+        "INSERT INTO category_attributes (id, tenant_id, category_id, attribute_id, binding_kind, is_disabled, variant_axis_policy)
+         VALUES (?, ?, ?, ?, 'addition', 0, 'allowed')",
+        vec![
+            Uuid::new_v4().into(),
+            tenant_id.into(),
+            category_id.into(),
+            attribute_id.into(),
+        ],
+    ))
+    .await
+    .expect("failed to bind test category attribute");
 }
 
 fn create_test_product_input() -> CreateProductInput {
@@ -691,11 +793,26 @@ async fn test_get_product_reads_image_translation_groups() {
 
 #[tokio::test]
 async fn test_create_product_with_multiple_variants() {
-    let (_db, service) = setup().await;
+    let (db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
 
+    let category_id = seed_test_structural_category(&db, tenant_id, "size-apparel").await;
+    let (attr_id, opt_ids) =
+        seed_test_variant_axis(&db, tenant_id, "size", &["medium", "small", "large"]).await;
+    bind_test_category_attribute(&db, tenant_id, category_id, attr_id).await;
+
     let mut input = create_test_product_input();
+    input.primary_category_id = Some(category_id);
+    input.variant_axes = vec![VariantAxisInput {
+        attribute_id: attr_id,
+        position: 0,
+        allowed_option_ids: opt_ids.clone(),
+    }];
+    input.variants[0].axis_values = vec![VariantAxisValueInput {
+        attribute_id: attr_id,
+        option_id: opt_ids[0],
+    }];
     input.variants.push(CreateVariantInput {
         sku: Some(format!(
             "SKU-{}",
@@ -703,7 +820,10 @@ async fn test_create_product_with_multiple_variants() {
         )),
         barcode: None,
         shipping_profile_slug: None,
-        axis_values: vec![],
+        axis_values: vec![VariantAxisValueInput {
+            attribute_id: attr_id,
+            option_id: opt_ids[1],
+        }],
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
             channel_id: None,
@@ -723,7 +843,10 @@ async fn test_create_product_with_multiple_variants() {
         )),
         barcode: None,
         shipping_profile_slug: None,
-        axis_values: vec![],
+        axis_values: vec![VariantAxisValueInput {
+            attribute_id: attr_id,
+            option_id: opt_ids[2],
+        }],
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
             channel_id: None,
@@ -739,8 +862,7 @@ async fn test_create_product_with_multiple_variants() {
 
     let result = service.create_product(tenant_id, actor_id, input).await;
 
-    assert!(result.is_ok());
-    let product = result.unwrap();
+    let product = result.expect("create_product failed");
     assert_eq!(product.variants.len(), 3);
 
     let small = product.variants.iter().find(|v| {
@@ -1222,11 +1344,26 @@ async fn test_variant_price_in_prices_vec() {
 
 #[tokio::test]
 async fn test_multiple_variants_different_prices() {
-    let (_db, service) = setup().await;
+    let (db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
 
+    let category_id = seed_test_structural_category(&db, tenant_id, "edition-category").await;
+    let (attr_id, opt_ids) =
+        seed_test_variant_axis(&db, tenant_id, "edition", &["standard", "deluxe"]).await;
+    bind_test_category_attribute(&db, tenant_id, category_id, attr_id).await;
+
     let mut input = create_test_product_input();
+    input.primary_category_id = Some(category_id);
+    input.variant_axes = vec![VariantAxisInput {
+        attribute_id: attr_id,
+        position: 0,
+        allowed_option_ids: opt_ids.clone(),
+    }];
+    input.variants[0].axis_values = vec![VariantAxisValueInput {
+        attribute_id: attr_id,
+        option_id: opt_ids[0],
+    }];
     input.variants[0].prices = vec![PriceInput {
         currency_code: "USD".to_string(),
         channel_id: None,
@@ -1241,7 +1378,10 @@ async fn test_multiple_variants_different_prices() {
         )),
         barcode: None,
         shipping_profile_slug: None,
-        axis_values: vec![],
+        axis_values: vec![VariantAxisValueInput {
+            attribute_id: attr_id,
+            option_id: opt_ids[1],
+        }],
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
             channel_id: None,
@@ -1257,8 +1397,7 @@ async fn test_multiple_variants_different_prices() {
 
     let result = service.create_product(tenant_id, actor_id, input).await;
 
-    assert!(result.is_ok());
-    let product = result.unwrap();
+    let product = result.expect("create_product failed");
     assert_eq!(product.variants.len(), 2);
 
     // Find variants by their price amount

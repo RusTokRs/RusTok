@@ -39,7 +39,7 @@ if (!exampleManifest.includes(rootDependency)) {
 for (const marker of [
   'tenant_read_port: Arc<dyn TenantReadPort>',
   'tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort>',
-  'TenantService::new(db)',
+  'in_process_tenant_storefront_ports(db)',
   'TenantReadSelector::Id(tenant_id)',
   'include_inactive: false',
   '.read_locale_policy(',

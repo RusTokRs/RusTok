@@ -3542,6 +3542,10 @@ async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_ca
         )
         .await
         .unwrap();
+    let (metadata, guest_token) = rustok_cart::prepare_guest_cart_metadata(
+        None,
+        serde_json::json!({ "source": "storefront-graphql-checkout" }),
+    );
     let cart = cart_service
         .create_cart(
             tenant_id,
@@ -3553,7 +3557,7 @@ async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_ca
                 locale_code: Some("de".to_string()),
                 selected_shipping_option_id: Some(shipping_option.id),
                 currency_code: "eur".to_string(),
-                metadata: serde_json::json!({ "source": "storefront-graphql-checkout" }),
+                metadata,
             },
         )
         .await
@@ -3583,11 +3587,14 @@ async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_ca
         request_context(tenant_id, "de"),
         None,
     );
-    let response = schema
-        .execute(Request::new(storefront_checkout_mutation(
-            tenant_id, cart.id,
-        )))
-        .await;
+    let response = rustok_cart::with_guest_cart_request_scope(guest_token, async {
+        schema
+            .execute(Request::new(storefront_checkout_mutation(
+                tenant_id, cart.id,
+            )))
+            .await
+    })
+    .await;
     assert!(
         response.errors.is_empty(),
         "unexpected storefront checkout GraphQL errors: {:?}",
@@ -3700,6 +3707,10 @@ async fn storefront_graphql_checkout_preserves_typed_adjustments_and_net_payment
         )
         .await
         .unwrap();
+    let (metadata, guest_token) = rustok_cart::prepare_guest_cart_metadata(
+        None,
+        serde_json::json!({ "source": "storefront-graphql-adjustments" }),
+    );
     let cart = cart_service
         .create_cart(
             tenant_id,
@@ -3711,7 +3722,7 @@ async fn storefront_graphql_checkout_preserves_typed_adjustments_and_net_payment
                 locale_code: Some("de".to_string()),
                 selected_shipping_option_id: Some(shipping_option.id),
                 currency_code: "eur".to_string(),
-                metadata: serde_json::json!({ "source": "storefront-graphql-adjustments" }),
+                metadata,
             },
         )
         .await
@@ -3759,29 +3770,32 @@ async fn storefront_graphql_checkout_preserves_typed_adjustments_and_net_payment
         request_context(tenant_id, "de"),
         None,
     );
-    let cart_query = schema
-        .execute(Request::new(format!(
-            r#"
-            query {{
-              storefrontCart(tenantId: "{tenant_id}", id: "{cart_id}") {{
-                id
-                subtotalAmount
-                adjustmentTotal
-                totalAmount
-                adjustments {{
-                  lineItemId
-                  sourceType
-                  sourceId
-                  amount
-                  currencyCode
-                  metadata
+    let cart_query = rustok_cart::with_guest_cart_request_scope(guest_token, async {
+        schema
+            .execute(Request::new(format!(
+                r#"
+                query {{
+                  storefrontCart(tenantId: "{tenant_id}", id: "{cart_id}") {{
+                    id
+                    subtotalAmount
+                    adjustmentTotal
+                    totalAmount
+                    adjustments {{
+                      lineItemId
+                      sourceType
+                      sourceId
+                      amount
+                      currencyCode
+                      metadata
+                    }}
+                  }}
                 }}
-              }}
-            }}
-            "#,
-            cart_id = cart.id
-        )))
-        .await;
+                "#,
+                cart_id = cart.id
+            )))
+            .await
+    })
+    .await;
     assert!(
         cart_query.errors.is_empty(),
         "unexpected storefront cart adjustment errors: {:?}",
@@ -4018,6 +4032,10 @@ async fn storefront_graphql_checkout_preserves_shipping_total_and_shipping_promo
         .await
         .unwrap();
     let cart_service = CartService::new(db.clone());
+    let (metadata, guest_token) = rustok_cart::prepare_guest_cart_metadata(
+        None,
+        serde_json::json!({ "source": "storefront-graphql-shipping-promotion" }),
+    );
     let cart = cart_service
         .create_cart(
             tenant_id,
@@ -4029,7 +4047,7 @@ async fn storefront_graphql_checkout_preserves_shipping_total_and_shipping_promo
                 locale_code: Some("de".to_string()),
                 selected_shipping_option_id: Some(shipping_option.id),
                 currency_code: "eur".to_string(),
-                metadata: serde_json::json!({ "source": "storefront-graphql-shipping-promotion" }),
+                metadata,
             },
         )
         .await
@@ -4072,29 +4090,32 @@ async fn storefront_graphql_checkout_preserves_shipping_total_and_shipping_promo
         request_context(tenant_id, "de"),
         None,
     );
-    let cart_query = schema
-        .execute(Request::new(format!(
-            r#"
-            query {{
-              storefrontCart(tenantId: "{tenant_id}", id: "{cart_id}") {{
-                subtotalAmount
-                shippingTotal
-                adjustmentTotal
-                totalAmount
-                adjustments {{
-                  lineItemId
-                  sourceType
-                  sourceId
-                  amount
-                  currencyCode
-                  metadata
+    let cart_query = rustok_cart::with_guest_cart_request_scope(guest_token, async {
+        schema
+            .execute(Request::new(format!(
+                r#"
+                query {{
+                  storefrontCart(tenantId: "{tenant_id}", id: "{cart_id}") {{
+                    subtotalAmount
+                    shippingTotal
+                    adjustmentTotal
+                    totalAmount
+                    adjustments {{
+                      lineItemId
+                      sourceType
+                      sourceId
+                      amount
+                      currencyCode
+                      metadata
+                    }}
+                  }}
                 }}
-              }}
-            }}
-            "#,
-            cart_id = cart.id
-        )))
-        .await;
+                "#,
+                cart_id = cart.id
+            )))
+            .await
+    })
+    .await;
     assert!(
         cart_query.errors.is_empty(),
         "unexpected storefront shipping promotion errors: {:?}",
@@ -4388,6 +4409,10 @@ async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_co
         )
         .await
         .expect("usd option should be created");
+    let (metadata, guest_token) = rustok_cart::prepare_guest_cart_metadata(
+        None,
+        serde_json::json!({ "source": "storefront-graphql-discovery" }),
+    );
     let cart = CartService::new(db.clone())
         .create_cart(
             tenant_id,
@@ -4399,7 +4424,7 @@ async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_co
                 locale_code: Some("de".to_string()),
                 selected_shipping_option_id: None,
                 currency_code: "eur".to_string(),
-                metadata: serde_json::json!({ "source": "storefront-graphql-discovery" }),
+                metadata,
             },
         )
         .await
@@ -4411,9 +4436,12 @@ async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_co
         request_context(tenant_id, "de"),
         None,
     );
-    let response = schema
-        .execute(Request::new(storefront_discovery_query(tenant_id, cart.id)))
-        .await;
+    let response = rustok_cart::with_guest_cart_request_scope(guest_token, async {
+        schema
+            .execute(Request::new(storefront_discovery_query(tenant_id, cart.id)))
+            .await
+    })
+    .await;
     assert!(
         response.errors.is_empty(),
         "unexpected storefront discovery GraphQL errors: {:?}",

@@ -98,6 +98,7 @@ impl TransactionalEventBus {
         E: EventContract,
     {
         let event_type = event.event_type();
+        let actor_id = actor_id.filter(|id| !id.is_nil());
         let envelope =
             ContractEventEnvelope::new_with_envelope_id(envelope_id, tenant_id, actor_id, event)
                 .map_err(|error| {
@@ -133,6 +134,7 @@ impl TransactionalEventBus {
         E: EventContract,
     {
         let event_type = event.event_type();
+        let actor_id = actor_id.filter(|id| !id.is_nil());
         let envelope = ContractEventEnvelope::new_with_envelope_id_and_causation(
             envelope_id,
             tenant_id,
@@ -308,6 +310,7 @@ impl TransactionalEventBus {
         event: DomainEvent,
     ) -> Result<EventEnvelope> {
         validate_event(&event)?;
+        let actor_id = actor_id.filter(|id| !id.is_nil());
         Ok(EventEnvelope::new(tenant_id, actor_id, event))
     }
 
@@ -320,12 +323,18 @@ impl TransactionalEventBus {
         C: ConnectionTrait,
     {
         let envelope_id = envelope.id();
-        let outbox = self
-            .transport
-            .as_any()
-            .downcast_ref::<OutboxTransport>()
-            .ok_or_else(|| transactional_transport_required(&*self.transport))?;
-        outbox.write_contract_to_outbox(txn, envelope).await?;
+        if let Some(outbox) = self.transport.as_any().downcast_ref::<OutboxTransport>() {
+            outbox.write_contract_to_outbox(txn, envelope).await?;
+        } else {
+            #[cfg(feature = "test-transport-fallback")]
+            {
+                self.transport.publish_contract(envelope).await?;
+            }
+            #[cfg(not(feature = "test-transport-fallback"))]
+            {
+                return Err(transactional_transport_required(&*self.transport));
+            }
+        }
         Ok(envelope_id)
     }
 }
@@ -340,6 +349,7 @@ where
     E: EventContract,
 {
     let event_type = event.event_type();
+    let actor_id = actor_id.filter(|id| !id.is_nil());
     let envelope = match causation_id {
         Some(causation_id) => {
             ContractEventEnvelope::new_caused_by(tenant_id, actor_id, causation_id, event)
@@ -352,6 +362,7 @@ where
     })
 }
 
+#[allow(dead_code)]
 fn transactional_transport_required(transport: &dyn EventTransport) -> rustok_core::Error {
     rustok_core::Error::Validation(format!(
         "transactional event publishing requires OutboxTransport; configured transport reliability is {:?}",

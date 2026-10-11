@@ -487,7 +487,7 @@ impl OrderService {
             .publish_in_tx(
                 &txn,
                 tenant_id,
-                Some(actor_id),
+                (!actor_id.is_nil()).then_some(actor_id),
                 DomainEvent::OrderPlaced {
                     order_id,
                     customer_id: input.customer_id,
@@ -688,7 +688,7 @@ impl OrderService {
             .publish_in_tx(
                 &txn,
                 tenant_id,
-                Some(actor_id),
+                (!actor_id.is_nil()).then_some(actor_id),
                 DomainEvent::OrderCompleted { order_id },
             )
             .await?;
@@ -739,7 +739,7 @@ impl OrderService {
             .publish_in_tx(
                 &txn,
                 tenant_id,
-                Some(actor_id),
+                (!actor_id.is_nil()).then_some(actor_id),
                 DomainEvent::OrderCancelled {
                     order_id,
                     reason: cancel_reason,
@@ -814,7 +814,7 @@ impl OrderService {
             .publish_in_tx(
                 txn,
                 tenant_id,
-                Some(actor_id),
+                (!actor_id.is_nil()).then_some(actor_id),
                 DomainEvent::OrderStatusChanged {
                     order_id,
                     old_status: old_status.to_string(),
