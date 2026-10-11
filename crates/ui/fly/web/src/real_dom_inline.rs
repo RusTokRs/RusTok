@@ -507,7 +507,7 @@ mod browser {
                         sequence.set(next_sequence);
                         emitted_text
                             .borrow_mut()
-                            .insert(component_id, rendered_text);
+                            .insert(request.component_id.clone(), rendered_text);
                         on_request(request);
                     }
                     Err(error) => on_error(error),

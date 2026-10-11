@@ -594,12 +594,14 @@ mod tests {
     }
 
     fn document_with(root: ComponentNode, symbols: Vec<Value>) -> ProjectDocument {
-        let mut project = GrapesProject::default();
-        project.pages = vec![ProjectPage {
-            id: Some("page-1".to_string()),
-            component: Some(root),
-            ..ProjectPage::default()
-        }];
+        let mut project = GrapesProject {
+            pages: vec![ProjectPage {
+                id: Some("page-1".to_string()),
+                component: Some(root),
+                ..ProjectPage::default()
+            }],
+            ..GrapesProject::default()
+        };
         if !symbols.is_empty() {
             project
                 .extensions
