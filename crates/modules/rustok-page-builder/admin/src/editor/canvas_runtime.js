@@ -37,15 +37,38 @@
       || Boolean(target.closest('[contenteditable="true"]'));
   };
 
+  // Physical-key token for a `KeyboardEvent.code`, mirroring `fly_ui::physical_key`.
+  const physicalKey = (code) => {
+    if (typeof code !== 'string' || code.length === 0) return null;
+    if (code.startsWith('Key') && code.length === 4) return code.slice(3).toLowerCase();
+    return {
+      Escape: 'escape',
+      Delete: 'delete',
+      Backspace: 'backspace',
+      ArrowUp: 'arrowup',
+      ArrowDown: 'arrowdown',
+    }[code] ?? null;
+  };
+
+  // Must stay in step with `fly_ui::resolve_editor_shortcut`, including the layout fallback:
+  // `event.key` is the character produced by the active layout, so a Cyrillic layout reports `я`
+  // for Ctrl+Z (leaving this side without `preventDefault`, so the browser's own behaviour runs on
+  // top of the editor's undo), while `event.code` still reports `KeyZ`. The code is consulted only
+  // when the character did not match, so a layout that does produce a matching character — QWERTZ
+  // reports `key: 'z'` with `code: 'KeyY'` — keeps its current behaviour.
   const editorShortcut = (event, editingText) => {
-    const key = event.key.toLowerCase();
     const primary = event.ctrlKey || event.metaKey;
-    if (key === 'escape') return true;
-    if (primary && key === 's') return true;
-    if (editingText) return false;
-    if (primary && ['z', 'y', 'c', 'x', 'v', 'd'].includes(key)) return true;
-    if (!primary && ['delete', 'backspace'].includes(key)) return true;
-    return event.altKey && ['arrowup', 'arrowdown'].includes(key);
+    const matches = (key) => {
+      if (key === 'escape') return true;
+      if (primary && key === 's') return true;
+      if (editingText) return false;
+      if (primary && ['z', 'y', 'c', 'x', 'v', 'd'].includes(key)) return true;
+      if (!primary && ['delete', 'backspace'].includes(key)) return true;
+      return event.altKey && ['arrowup', 'arrowdown'].includes(key);
+    };
+    if (matches(event.key.toLowerCase())) return true;
+    const physical = physicalKey(event.code);
+    return physical === null ? false : matches(physical);
   };
 
   const reportViewport = () => send('viewport_changed', {
