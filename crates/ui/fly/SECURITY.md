@@ -73,6 +73,13 @@ currently mitigated:
   readable by any script that achieves execution on the admin origin. The Fly adapter no longer
   reads or forwards it, but the HttpOnly cookie itself is a server-side change owned by the admin
   shell (`CLEAN-060` in `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`).
+* The intent route authenticates cookie-borne requests without an explicit server-side CSRF
+  check. Removing the bearer header also removed the property that made a cross-site forgery
+  impossible, so the remaining protection is incidental: the session cookie is issued
+  `SameSite=Lax`, a cross-site `<form>` cannot produce the `application/json` content type the
+  route requires, and the standalone admin serves no CORS layer. These hold today but are
+  properties of the surrounding host, not of the route; an explicit check belongs to the admin
+  shell's session work (`CLEAN-060`).
 * `ComponentNode` uses `#[serde(untagged)]` with an `Opaque(Value)` fallback, so a malformed
   component degrades silently into opaque JSON instead of reporting a diagnostic.
 * `cargo deny` / `cargo audit` are not yet part of the Fly CI pipeline.

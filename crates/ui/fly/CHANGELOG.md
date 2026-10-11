@@ -183,6 +183,7 @@ Engineering audit remediation — see
 - The admin session cookie is still issued by the browser rather than by the server: the admin
   shell mirrors the `localStorage` session into `rustok-admin-session-v1` so SSR can revalidate it,
   which keeps the token reachable by any script on the admin origin. Fly's adapter no longer reads
-  or forwards it, but server-issued HttpOnly sessions are the admin shell's change — tracked as
+  or forwards it, but server-issued HttpOnly sessions — and the explicit server-side CSRF check
+  that the cookie-only transport now leans on — are the admin shell's change, tracked as
   `CLEAN-060` in `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`.
 - 48 glob re-exports (`pub use module::*`) remain.
