@@ -47,7 +47,12 @@ const ruLocale = parseFtl(fs.readFileSync(ruLocalePath, 'utf8'));
 
 const requireAll = (source, markers, label) => {
   for (const marker of markers) {
-    if (!source.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+    // Strings are matched literally; a RegExp is for pins that must survive a
+    // formatting-only rewrite (a redundant `.clone()` on a `Copy` handle is
+    // dropped by clippy, and pinning its exact line turned this guard red while
+    // the wiring it exists to protect stayed intact).
+    const found = typeof marker === "string" ? source.includes(marker) : marker.test(source);
+    if (!found) throw new Error(`${label}: missing ${marker}`);
   }
 };
 
@@ -216,8 +221,8 @@ for (const [page, source] of [['category', categoryPage], ['topic', topicPage]])
 requireAll(topicPage, [
   'let selected_category_display = Memo::new',
   'forum_admin_selected_category_display(',
-  'let sidebar_selected_category = selected_category_display.clone()',
-  'let heading_selected_category = selected_category_display',
+  /let sidebar_selected_category = selected_category_display(\.clone\(\))?/,
+  /let heading_selected_category = selected_category_display(\.clone\(\))?/,
   'render_selected_category_label(sidebar_selected_category.get())',
   'render_selected_category_label(heading_selected_category.get())',
 ], 'selected category summary content-locale wiring');

@@ -323,6 +323,37 @@ wrappers. Each one has an owner decision or a follow-up task in
   no revision and the module UI must not look one up per visible reply, so a
   Leptos reply quote posts quoted text without a pinned relation. A pinned quote
   needs a caller-provided revision, as the Next.js composer does.
+Only part of the module's guard family runs automatically: 13 of the 259
+  `scripts/verify/verify-forum-*.mjs` gates are wired into 8 workflows, the rest
+  execute only when someone invokes them, so a red one is not by itself evidence
+  about the tree and a green one is not evidence about a rule. `node
+  scripts/audit/verifier_status.mjs --prefix forum-` classifies the whole family
+  in one pass (measured on the 2026-10-11 tree: 81 pass, 110 exit with their own
+  structured finding, 65 throw before evaluating any rule because a fixture or
+  contract file never landed, 3 report in another shape). Four wired gates were
+  red for the wrong reason: they pinned the mid-cutover source shape instead of
+  the boundary - the read-model guard demanded the retired
+  `src/services/read_model.rs` delegate and that the owner query
+  `forum_category_taxonomy_binding` directly, and the two taxonomy guards required
+  the `ForumCategory` hierarchy columns that
+  `m20260916_000032_clean_forum_category_canonical_taxonomy` dropped. They now
+  assert the current contract (category copy only through
+  `TaxonomyOwnerCategoryReader`, locale fallback only through the shared Content
+  helper, `enforce_scope` on every read entry point, and the retired delegate,
+  binding entity and columns staying retired), so a failure means a boundary moved
+  rather than that history was rewritten. The audience host-runtime guards
+  (`FORUM-20A-*`) now fail only on canonical-plan markers: `docs/implementation-
+  plan.md` records FORUM-20 once and has neither the `## FORUM-20` visibility-
+  boundary section nor the `FORUM-20A-G` / `FORUM-20A-AU provide` rows or the `##
+  FORUM-26` heading, while their code pins pass - so the adapter propagation is
+  verified and writing those plan rows belongs to the packets that own them, not
+  to a silent documentation edit. Two workflow steps still name paths the
+  completed cutover deleted (`rustfmt --check crates/modules/rustok-
+  forum/src/services/read_model.rs` in `forum-read-model-category-taxonomy-
+  copy.yml`, and `cargo test -p rustok-forum --test category_taxonomy_binding`, a
+  target that does not exist, in `forum-taxonomy-category-binding.yml`); neither
+  can pass, and retiring them is a CI-owner change that must not be made from a
+  feature branch.
 
 ## Roadmap
 

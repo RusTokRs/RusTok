@@ -19,12 +19,19 @@ function read(relativePath) {
   return readFileSync(absolute, "utf8");
 }
 
+// Markers may be strings or regular expressions. A regular expression is required for source
+// shapes rustfmt is free to re-wrap: the adapter reads `context.channel.as_deref()` inside a chain
+// that is one-per-line today, and an exact-line pin reported a propagated channel as missing.
+function matchesMarker(source, marker) {
+  return marker instanceof RegExp ? marker.test(source) : source.includes(marker);
+}
+
 function requireText(source, marker, message) {
-  if (!source.includes(marker)) failures.push(message);
+  if (!matchesMarker(source, marker)) failures.push(message);
 }
 
 function rejectText(source, marker, message) {
-  if (source.includes(marker)) failures.push(message);
+  if (matchesMarker(source, marker)) failures.push(message);
 }
 
 const contractPath =
@@ -97,7 +104,7 @@ for (const marker of [
   "impl ForumAudienceFactsPort for ServerForumAudienceFactsPort",
   "let request = normalize_request(request)?",
   "validate_context(&context, &request)?",
-  "context.channel",
+  /context\s*\.\s*channel\s*\.\s*as_deref\(\)/u,
   ".binary_search(&channel_slug)",
   "ChannelReadSelector::Slug(channel_slug.clone())",
   "include_inactive: false",
