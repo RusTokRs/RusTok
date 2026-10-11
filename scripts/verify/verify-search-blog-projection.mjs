@@ -55,8 +55,10 @@ for (const marker of [
 ]) {
   requireMarker(projector, marker, projectorPath);
 }
-const cursorDecodeMarker = 'last_row\n                    .try_get::<String>("", "document_key")\n                    .map_err(Error::Database)?;';
-requireMarker(projector, cursorDecodeMarker, `${projectorPath}: Blog projection body cursor must propagate document-key decode failures`);
+const cursorDecodePattern = /last_row\s*\.try_get::<String>\("", "document_key"\)\s*\.map_err\(Error::Database\)\?;/;
+if (!cursorDecodePattern.test(projector)) {
+  failures.push(`${projectorPath}: Blog projection body cursor must propagate document-key decode failures`);
+}
 rejectMarker(
   projector,
   '.and_then(|row| row.try_get::<String>("", "document_key").ok())',

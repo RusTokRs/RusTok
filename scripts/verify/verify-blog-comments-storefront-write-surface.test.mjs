@@ -100,7 +100,7 @@ test('rejects loss of post-create public visibility revalidation', () => {
       'crates/modules/rustok-blog/src/services/comment.rs',
       (source) =>
         source.replace(
-          'match self\n            .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)',
+          'match self\n            .ensure_public_comment_creation_allowed(tenant_id, post_id, public_channel_slug)',
           'match self\n            .ensure_post_exists(tenant_id, post_id)',
         ),
     ),

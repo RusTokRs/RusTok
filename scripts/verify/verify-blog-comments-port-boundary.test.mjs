@@ -42,6 +42,7 @@ const files = {
   storefrontGraphql: 'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs',
   storefrontNative: 'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
   storefrontUi: 'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
+  storefrontCommentsList: 'crates/modules/rustok-blog/storefront/src/ui/comments_list.rs',
   adminNative: 'crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs',
   hostSnapshot: 'apps/server/src/services/blog_public_comments_snapshot.rs',
   hostComposition: 'apps/server/src/services/module_event_dispatcher.rs',
@@ -156,7 +157,7 @@ test('rejects removal of the native snapshot store lookup', () => {
 
 test('rejects removal of stale snapshot UI disclosure', () => {
   const result = rejects(
-    removeMarker(files.storefrontUi, 'Showing a recent cached snapshot.'),
+    removeMarker(files.storefrontCommentsList, 'Showing a recent cached snapshot.'),
   );
   assert.notEqual(result.status, 0);
 });
