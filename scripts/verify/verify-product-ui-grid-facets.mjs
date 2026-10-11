@@ -41,15 +41,31 @@ function reject(source, markers, description) {
 }
 
 const packageJson = read("packages/rustok-ui-grid/package.json");
+const columnModule = read("packages/rustok-ui-grid/src/column.ts");
+const paginationModule = read("packages/rustok-ui-grid/src/pagination.ts");
+const sortModule = read("packages/rustok-ui-grid/src/sort.ts");
+const filterModule = read("packages/rustok-ui-grid/src/filter.ts");
+const selectionModule = read("packages/rustok-ui-grid/src/selection.ts");
 const facetModule = read("packages/rustok-ui-grid/src/facet.ts");
 const panelModule = read("packages/rustok-ui-grid/src/panel.ts");
+const resizeModule = read("packages/rustok-ui-grid/src/resize.ts");
+const stateModule = read("packages/rustok-ui-grid/src/state.ts");
 const urlModule = read("packages/rustok-ui-grid/src/url.ts");
 const indexModule = read("packages/rustok-ui-grid/src/index.ts");
 const readme = read("packages/rustok-ui-grid/README.md");
 
+const rustColumn = read("crates/ui/rustok-grid/src/column.rs");
+const rustPagination = read("crates/ui/rustok-grid/src/pagination.rs");
+const rustSort = read("crates/ui/rustok-grid/src/sort.rs");
+const rustFilter = read("crates/ui/rustok-grid/src/filter.rs");
+const rustSelection = read("crates/ui/rustok-grid/src/selection.rs");
 const rustFacet = read("crates/ui/rustok-grid/src/facet.rs");
 const rustPanel = read("crates/ui/rustok-grid/src/facet_panel.rs");
+const rustResize = read("crates/ui/rustok-grid/src/resize.rs");
+const rustState = read("crates/ui/rustok-grid/src/state.rs");
 const rustGridLib = read("crates/ui/rustok-grid/src/lib.rs");
+const leptosPagination = read("crates/ui/rustok-grid/leptos/src/pagination.rs");
+const dioxusPagination = read("crates/ui/rustok-grid/dioxus/src/pagination.rs");
 
 const storefrontCargo = read("crates/modules/rustok-product/storefront/Cargo.toml");
 const storefrontControls = read(
@@ -57,6 +73,7 @@ const storefrontControls = read(
 );
 const storefrontCore = read("crates/modules/rustok-product/storefront/src/core.rs");
 const adminFacets = read("crates/modules/rustok-product/admin/src/facets.rs");
+const adminControls = read("crates/modules/rustok-product/admin/src/catalog_controls.rs");
 
 const productFacets = read(
   "apps/next-frontend/packages/rustok-product/src/catalog/facets.ts",
@@ -81,6 +98,8 @@ requireAll(
     '"./facet": "./src/facet.ts"',
     '"./panel": "./src/panel.ts"',
     '"./url": "./src/url.ts"',
+    '"./resize": "./src/resize.ts"',
+    '"./state": "./src/state.ts"',
   ],
   "shared ui-grid package",
 );
@@ -92,9 +111,158 @@ requireAll(
 
 // ── Framework-free on purpose ──────────────────────────────────────────────
 reject(
-  [facetModule, panelModule, urlModule, indexModule].join("\n"),
+  [
+    columnModule,
+    paginationModule,
+    sortModule,
+    filterModule,
+    selectionModule,
+    facetModule,
+    panelModule,
+    resizeModule,
+    stateModule,
+    urlModule,
+    indexModule,
+  ].join("\n"),
   ['from "react"', 'from "next', "useState", "useEffect", "fetch(", "use client"],
   "shared ui-grid must stay framework-free",
+);
+
+// ── Core state-machine surfaces exist on both language sides ──────────────
+requireAll(
+  columnModule,
+  [
+    "export function hasFilter(",
+    "export function hasFilterRow(",
+    "export function withColumnWidth(",
+    "export function withColumnWidthRange(",
+    "export function withColumnFilter(",
+    "export function pinColumn(",
+  ],
+  "TypeScript column contract",
+);
+requireAll(
+  paginationModule,
+  [
+    "export function createInfinitePagination(",
+    "export function calculatePageCount(",
+    "export function fromIndex(",
+    "export function sliceBounds(",
+    "export function setPageSize(",
+    "export function setPaginationMode(",
+  ],
+  "TypeScript pagination contract",
+);
+requireAll(
+  sortModule,
+  [
+    "export function normalizeSortState(",
+    "export function cycleSort(",
+  ],
+  "TypeScript sort contract",
+);
+requireAll(
+  filterModule,
+  [
+    "export function normalizeFilters(",
+    "export function getColumnFilter(",
+    "export function hasColumnFilterValue(",
+    "export function columnFilterEntries(",
+    "export function setColumnFilter(",
+  ],
+  "TypeScript filter contract",
+);
+requireAll(
+  selectionModule,
+  [
+    "export function addRowsToSelection(",
+    "export function deselectAllRows(",
+    "export function areAllRowsSelected(",
+    "export function areSomeRowsSelected(",
+  ],
+  "TypeScript row-selection contract",
+);
+requireAll(
+  rustSelection,
+  [
+    "pub fn select_all(",
+    "pub fn deselect_all(",
+    "pub fn is_all_selected<",
+    "pub fn is_partially_selected<",
+  ],
+  "Rust row-selection contract",
+);
+requireAll(
+  resizeModule,
+  [
+    "export type ColumnWidths",
+    "export function getClampedColumnWidth(",
+    "export function setClampedColumnWidth(",
+    "export function calculateResizedWidth(",
+    "export function stepResizedWidth(",
+  ],
+  "TypeScript resize contract",
+);
+requireAll(
+  stateModule,
+  [
+    "export interface GridState",
+    "export function normalizeGridState(",
+    "export function setGridFilter(",
+    "export function toggleGridSort(",
+    "export function pruneGridSelection(",
+  ],
+  "TypeScript composite-state contract",
+);
+requireAll(
+  rustColumn,
+  ["pub fn has_filter(&self)", "pub fn has_filter_row(", "impl<'de> Deserialize<'de> for ColumnWidth"],
+  "Rust column contract",
+);
+requireAll(
+  rustPagination,
+  [
+    "pub fn total_pages(&self)",
+    "pub fn slice_bounds(&self",
+    "pub fn set_mode(&mut self",
+    "impl<'de> Deserialize<'de> for GridPagination",
+  ],
+  "Rust pagination contract",
+);
+requireAll(
+  rustSort,
+  ["pub fn normalize(&mut self)", "pub fn toggle(&mut self", "pub fn set(&mut self"],
+  "Rust sort normalization contract",
+);
+requireAll(
+  rustFilter,
+  ["pub fn normalize(&mut self)", "impl<'de> Deserialize<'de> for ColumnFilters"],
+  "Rust filter normalization",
+);
+requireAll(
+  rustResize,
+  ["pub struct ColumnWidths", "pub fn calculate_resized_width(", "pub fn step_resized_width("],
+  "Rust resize contract",
+);
+requireAll(
+  rustState,
+  ["pub struct GridState", "impl<'de> Deserialize<'de> for GridState", "pub fn normalize(&mut self)"],
+  "Rust composite-state contract",
+);
+requireAll(
+  leptosPagination,
+  [
+    'aria-label="Load more rows"',
+    '"Load more"',
+    "node_ref=sentinel_ref",
+    "observer_on_load_more.run(())",
+  ],
+  "Leptos infinite pagination must support keyboard and observer loading",
+);
+requireAll(
+  dioxusPagination,
+  ["\"Load more\"", "onvisible:", "on_load_more.call(())"],
+  "Dioxus infinite pagination must support keyboard and observer loading",
 );
 
 // ── Contract parity with the Rust original ────────────────────────────────
@@ -148,6 +316,9 @@ requireAll(
     "buildFacetPanel",
     "applyQueryPairs",
     "selectionAfterToggle",
+    "calculateResizedWidth",
+    "normalizeGridState",
+    "hasFilter",
     "countLabel",
   ],
   "shared ui-grid public surface",
@@ -171,6 +342,17 @@ if (Object.keys(rustLimits).length === 0) {
 
 // The Rust original must keep exporting the same vocabulary the twin mirrors.
 requireAll(
+  rustFacet,
+  [
+    "pub const SELECTION_LIST_SEPARATOR",
+    "pub fn parse_selection(",
+    "pub fn serialize_selection(",
+    "impl<'de> Deserialize<'de> for GridFacet",
+    "pub fn normalize(&mut self)",
+  ],
+  "rust facet normalization and route-selection contract",
+);
+requireAll(
   rustPanel,
   [
     "pub struct FacetPanelLabels",
@@ -187,7 +369,11 @@ requireAll(
   ],
   "rust facet panel contract",
 );
-requireAll(rustGridLib, ["pub mod facet_panel;"], "rust grid facade");
+requireAll(
+  rustGridLib,
+  ["pub mod facet_panel;", "SELECTION_LIST_SEPARATOR", "parse_selection", "serialize_selection"],
+  "rust grid facade",
+);
 
 // ── Both Next hosts consume the package the same way as any workspace package ─
 for (const [app, packageManifest, tsconfig, nextConfig] of [
@@ -237,6 +423,9 @@ requireAll(storefrontCargo, ["rustok-grid.workspace = true"], "storefront depend
 requireAll(
   storefrontControls,
   [
+    "use rustok_grid::facet::{parse_selection, serialize_selection}",
+    "parse_selection(value.as_str())",
+    "serialize_selection(filters)",
     "use rustok_grid::facet_panel::",
     "split_selection(",
     "selection_after_toggle(",
@@ -261,8 +450,18 @@ requireAll(
 );
 reject(
   storefrontControls,
-  ["split_once('=')", 'format!("{code}={value}")'],
+  ["split_once('=')", 'format!("{code}={value}")', 'filters.join(";")', ".split(';')"],
   "storefront facet controls must not re-implement the selection vocabulary",
+);
+requireAll(
+  adminControls,
+  ["serialize_selection(filters)", "parse_selection(value.as_str())"],
+  "admin selection-list serialization",
+);
+reject(
+  adminControls,
+  ['filters.join(";")', ".split(';')"],
+  "admin controls must delegate selection-list encoding to rustok-grid",
 );
 reject(
   storefrontCore,

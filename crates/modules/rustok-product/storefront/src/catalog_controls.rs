@@ -1,5 +1,6 @@
 use rustok_ui_core::normalize_optional_ui_text;
 
+use rustok_grid::facet::{parse_selection, serialize_selection};
 use rustok_grid::facet_panel::{
     FacetPanelLabels, has_selection_for_key, is_selection_selected, selection_after_clear_key,
     selection_after_toggle, split_selection,
@@ -81,13 +82,13 @@ pub fn build_catalog_list_input(
 }
 
 pub fn serialize_attribute_filters(filters: &[String]) -> String {
-    filters.join(";")
+    serialize_selection(filters)
 }
 
 /// Splits the `code=value` transport entry of one attribute filter into its parts.
 ///
-/// The vocabulary itself belongs to the table toolkit (`rustok_grid::facet_panel`): the storefront
-/// panel and the admin grid mutate one selection language, so neither owns a private copy.
+/// The entry grammar and panel mutations belong to `rustok_grid`; the storefront and admin grids
+/// therefore share one selection language instead of owning private copies.
 #[allow(dead_code)]
 pub fn parse_attribute_filter(entry: &str) -> Option<(String, String)> {
     split_selection(entry).map(|(code, value)| (code.to_string(), value.to_string()))
@@ -167,7 +168,8 @@ pub fn build_catalog_facet_labels(locale: Option<&str>) -> CatalogFacetLabels {
             "product.list.facetsEmpty",
             "No filters are available for this catalog yet.",
         ),
-        count_template: t(locale, "product.list.facetsCount", "({count})"),
+        // The shared panel substitutes this textual token; the number is not a Fluent argument.
+        count_template: "({count})".to_string(),
         selected_marker: t(locale, "product.list.facetsSelected", "[x]"),
         unselected_marker: t(locale, "product.list.facetsUnselected", "[ ]"),
     }
@@ -228,20 +230,21 @@ fn normalize_sort_direction(value: Option<String>) -> Option<String> {
 
 fn normalize_attribute_filters(value: Option<String>) -> Vec<String> {
     normalize_optional_ui_text(value)
-        .map(|value| {
-            value
-                .split(';')
-                .map(str::trim)
-                .filter(|entry| !entry.is_empty())
-                .map(ToOwned::to_owned)
-                .collect()
-        })
+        .map(|value| parse_selection(value.as_str()))
         .unwrap_or_default()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn facet_count_template_is_code_owned() {
+        assert_eq!(
+            build_catalog_facet_labels(Some("ru")).count_template,
+            "({count})"
+        );
+    }
 
     #[test]
     fn catalog_controls_trim_and_drop_invalid_values() {

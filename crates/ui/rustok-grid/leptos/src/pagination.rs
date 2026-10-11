@@ -29,18 +29,17 @@ pub fn GridPaginationBar(
 
     // Infinite scroll: load the next page when the sentinel becomes visible.
     #[cfg(target_arch = "wasm32")]
+    let observer_on_load_more = on_load_more.clone();
+    #[cfg(target_arch = "wasm32")]
     let _ = use_intersection_observer(sentinel_ref, move |entries, _| {
         if !entries.iter().any(|entry| entry.is_intersecting()) {
             return;
         }
         let state = pagination.get_untracked();
         if state.mode == PaginationMode::Infinite && state.has_next {
-            on_load_more.run(());
+            observer_on_load_more.run(());
         }
     });
-
-    #[cfg(not(target_arch = "wasm32"))]
-    let _ = on_load_more;
 
     let current_page = move || pagination.get().page;
     let total_pages = move || pagination.get().total_pages();
@@ -161,13 +160,28 @@ pub fn GridPaginationBar(
                 </Show>
             </nav>
 
-            // Sentinel observed for infinite scrolling.
-            <Show when=move || is_infinite()>
-                <div
-                    node_ref=sentinel_ref
-                    class="h-1 w-full -mt-2 opacity-0 pointer-events-none"
-                    aria-hidden="true"
-                />
+            // The explicit button keeps infinite loading available to keyboard users; the
+            // sentinel remains a pointer-free enhancement for observers.
+            <Show when=move || is_infinite() && has_next()>
+                <div class="flex items-center gap-2">
+                    <button
+                        type="button"
+                        aria-label="Load more rows"
+                        on:click=move |_| {
+                            if is_infinite() && has_next() {
+                                on_load_more.run(());
+                            }
+                        }
+                        class="text-[11px] px-2 py-1 rounded border border-border hover:bg-muted font-medium text-foreground transition-colors"
+                    >
+                        "Load more"
+                    </button>
+                    <div
+                        node_ref=sentinel_ref
+                        class="h-1 w-full -mt-2 opacity-0 pointer-events-none"
+                        aria-hidden="true"
+                    />
+                </div>
             </Show>
         </div>
     }

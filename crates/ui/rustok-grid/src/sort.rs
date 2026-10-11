@@ -47,10 +47,33 @@ impl std::fmt::Display for SortDirection {
 ///
 /// The two fields are kept in sync: either both are `Some` or both are `None`.
 /// Deserialized or hand-built values are repaired by [`SortState::normalize`].
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct SortState {
     pub column_id: Option<String>,
     pub direction: Option<SortDirection>,
+}
+
+impl<'de> Deserialize<'de> for SortState {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct SortStateData {
+            #[serde(default)]
+            column_id: Option<String>,
+            #[serde(default)]
+            direction: Option<SortDirection>,
+        }
+
+        let data = SortStateData::deserialize(deserializer)?;
+        let mut state = Self {
+            column_id: data.column_id,
+            direction: data.direction,
+        };
+        state.normalize();
+        Ok(state)
+    }
 }
 
 impl SortState {
@@ -74,13 +97,17 @@ impl SortState {
     }
 
     pub fn is_active(&self) -> bool {
-        self.column_id.is_some() && self.direction.is_some()
+        self.active().is_some()
     }
 
-    /// Active sort as a pair, `None` when the grid is unsorted.
+    /// Active sort as a normalized pair, `None` when the grid is unsorted.
+    ///
+    /// A nonblank column with a missing direction uses ascending order, matching `normalize()`.
     pub fn active(&self) -> Option<(&str, SortDirection)> {
         match (self.column_id.as_deref(), self.direction) {
-            (Some(id), Some(direction)) => Some((id, direction)),
+            (Some(id), direction) if !id.trim().is_empty() => {
+                Some((id, direction.unwrap_or(SortDirection::Asc)))
+            }
             _ => None,
         }
     }
@@ -102,6 +129,7 @@ impl SortState {
 
     /// Cycles through: None -> Asc -> Desc -> None.
     pub fn toggle(&mut self, column_id: &str) {
+        self.normalize();
         match self.is_sorted_by(column_id) {
             Some(SortDirection::Asc) => self.direction = Some(SortDirection::Desc),
             Some(SortDirection::Desc) => self.clear(),
@@ -115,6 +143,7 @@ impl SortState {
     pub fn set(&mut self, column_id: impl Into<String>, direction: SortDirection) {
         self.column_id = Some(column_id.into());
         self.direction = Some(direction);
+        self.normalize();
     }
 
     pub fn clear(&mut self) {
@@ -145,6 +174,51 @@ mod tests {
         state.toggle("sku");
         assert_eq!(state.active(), Some(("sku", SortDirection::Asc)));
         assert_eq!(state.is_sorted_by("title"), None);
+    }
+
+    #[test]
+    fn deserialization_repairs_half_filled_sort_state() {
+        let state: SortState = serde_json::from_str(
+            r#"{"column_id":"title","direction":null}"#,
+        )
+        .expect("valid sort JSON");
+        assert_eq!(state.active(), Some(("title", SortDirection::Asc)));
+
+        let dangling: SortState = serde_json::from_str(r#"{"direction":"Desc"}"#)
+            .expect("valid sort JSON");
+        assert!(!dangling.is_active());
+    }
+
+    #[test]
+    fn queries_read_half_filled_state_as_normalized() {
+        let half_filled = SortState {
+            column_id: Some("title".into()),
+            direction: None,
+        };
+        assert!(half_filled.is_active());
+        assert_eq!(half_filled.active(), Some(("title", SortDirection::Asc)));
+        assert_eq!(half_filled.is_sorted_by("title"), Some(SortDirection::Asc));
+        assert_eq!(half_filled.aria_sort_for("title"), "ascending");
+
+        let blank = SortState {
+            column_id: Some("  ".into()),
+            direction: Some(SortDirection::Desc),
+        };
+        assert!(!blank.is_active());
+        assert_eq!(blank.active(), None);
+    }
+
+    #[test]
+    fn mutations_normalize_invalid_existing_or_requested_sort_state() {
+        let mut half_filled = SortState {
+            column_id: Some("title".into()),
+            direction: None,
+        };
+        half_filled.toggle("title");
+        assert_eq!(half_filled.active(), Some(("title", SortDirection::Desc)));
+
+        half_filled.set("  ", SortDirection::Asc);
+        assert!(!half_filled.is_active());
     }
 
     #[test]

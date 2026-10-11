@@ -108,9 +108,9 @@ three renderer-driven deviations:
    cannot express `indeterminate` declaratively in rsx, so the tri-state is
    rendered as a button with `aria-checked="true" | "false" | "mixed"`.
 
-Infinite scrolling uses the `onvisible` special attribute (Dioxus' built-in
-intersection observer — no JavaScript, no `web-sys`), plus a real **Load more**
-button, because a scroll-only trigger is unreachable by keyboard.
+Infinite scrolling keeps the same keyboard-reachable **Load more** action as
+Leptos, while its sentinel uses the `onvisible` special attribute (Dioxus'
+built-in intersection observer — no JavaScript, no `web-sys`).
 
 ## Accessibility
 

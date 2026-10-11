@@ -1036,16 +1036,29 @@ pub fn from_buckets(domain: FacetDomain, buckets: Vec<FacetValue>) -> Self {
     GRID_FACET_TS,
     `export const MAX_GRID_FACETS = ${options.gridCapDrift ? 12 : 8};
 export const MAX_GRID_FACET_VALUES = 20;
-export function facetFromBuckets(input) {
-  const isEnumerable = facetDomainIsEnumerable(input.domain);
+function normalizeFacetSource(facet) {
+  const domain = normalizeFacetDomain(facet.domain);
+  const isEnumerable = facetDomainIsEnumerable(domain);
   const values = [];
   let isTruncated = false;
   if (isEnumerable) {
-    for (const bucket of input.values ?? []) {
+    for (const bucket of facet.values) {
+      if (values.length === MAX_GRID_FACET_VALUES) {
+        isTruncated = true;
+        break;
+      }
       values.push(bucket);
     }
   }
-  return { domain: input.domain, isEnumerable, isTruncated, total: input.total, values };
+  return { domain, isEnumerable, isTruncated, total: facet.total, values };
+}
+export function facetFromBuckets(input) {
+  return normalizeFacetSource({
+    ...input,
+    values: facetDomainIsEnumerable(input.domain)
+      ? input.values.slice(0, MAX_GRID_FACET_VALUES + 1)
+      : [],
+  });
 }
 `,
   );

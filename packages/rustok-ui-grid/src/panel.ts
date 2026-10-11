@@ -32,6 +32,7 @@ import {
   selectionAfterClearKey,
   selectionAfterToggle,
   selectionEntry,
+  normalizeFacetSource,
   type FacetSource,
 } from "./facet";
 
@@ -64,7 +65,7 @@ export const ENGLISH_FACET_PANEL_LABELS: FacetPanelLabels = {
 
 /** Renders a bucket count through the adapter's template. */
 export function countLabel(template: string, count: number): string {
-  return template.replace("{count}", String(count));
+  return template.split("{count}").join(String(count));
 }
 
 /** One bucket rendered by the adapter. */
@@ -125,10 +126,12 @@ export function buildFacetPanel(
   selected: readonly string[],
   labels: FacetPanelLabels,
 ): FacetPanelView {
+  const activeSelection = [...(selected ?? [])];
   const panelFacets: FacetPanelFacetView[] = (facets ?? [])
     .slice(0, MAX_GRID_FACETS)
-    .map((facet) => {
-      const isEnumerable = facet.isEnumerable && facetDomainIsEnumerable(facet.domain);
+    .map((source) => {
+      const facet = normalizeFacetSource(source);
+      const isEnumerable = facetDomainIsEnumerable(facet.domain);
       return {
         code: facet.code,
         label: facet.label,
@@ -137,11 +140,11 @@ export function buildFacetPanel(
         isTruncated: facet.isTruncated,
         truncatedHint: facet.isTruncated ? labels.truncatedHint : undefined,
         clearLabel: labels.clearLabel,
-        hasSelection: hasSelectionForKey(selected, facet.code),
+        hasSelection: hasSelectionForKey(activeSelection, facet.code),
         total: facet.total,
-        values: (facet.values ?? []).map((bucket) => {
+        values: facet.values.map((bucket) => {
           const bucketSelected = isSelectionSelected(
-            selected,
+            activeSelection,
             facet.code,
             bucket.value,
           );
@@ -166,8 +169,8 @@ export function buildFacetPanel(
     clearLabel: labels.clearLabel,
     emptyMessage: labels.emptyMessage,
     showEmptyState: panelFacets.length === 0,
-    selected: [...(selected ?? [])],
-    hasSelection: (selected ?? []).length > 0,
+    selected: activeSelection,
+    hasSelection: activeSelection.length > 0,
   };
 }
 
