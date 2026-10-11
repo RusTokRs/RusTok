@@ -22,6 +22,7 @@ const paths = {
   transport: `${storefront}/src/transport/mod.rs`,
   pages: `${storefront}/src/transport/native_server_adapter_pages.rs`,
   graphql: `${storefront}/src/transport/graphql_adapter.rs`,
+  core: `${storefront}/src/core.rs`,
   ui: `${storefront}/src/ui/leptos.rs`,
   feed: `${storefront}/src/ui/topic_feed.rs`,
   timeline: `${storefront}/src/ui/timeline.rs`,
@@ -232,12 +233,16 @@ requireText(timeline, 'href="#forum-thread-end"', "timeline jump to newest post"
 requireText(timeline, 'role="progressbar"', "timeline exposes progress to assistive tech");
 forbidText(timeline, "<button", "timeline controls must be actionable links");
 
-// Count-bearing catalog messages need Fluent arguments: resolving them through `t` makes every
-// locale fall back to the English literal, so paging copy must use the argument-bearing helper.
+// Count-bearing and slug-bearing catalog messages need bound Fluent arguments: resolved through `t`
+// they fail formatting in every locale and silently render the English caller literal, so the
+// storefront must go through the argument-bearing helpers. The repo-wide ratchet in
+// scripts/verify/ui-i18n-argument-baseline.json is what forbids `t` on those keys; this pins that
+// the forum storefront keeps the shape the ratchet was shrunk with.
 const i18n = read(paths.i18n);
-requireText(i18n, "pub fn count_message(", "count message resolver");
-requireText(i18n, 'arguments.set("count"', "count Fluent argument");
-requireText(i18n, "format(locale, key, Some(&arguments), fallback)", "argument-bearing format");
+requireText(i18n, "pub fn count_message", "count message resolver");
+requireText(i18n, 'fluent_args!("count" => count)', "count Fluent argument");
+requireText(i18n, "pub fn slug_message", "slug message resolver");
+requireText(i18n, 'fluent_args!("slug" => slug)', "slug Fluent argument");
 forbidText(timeline, "forum_storefront_count_label(", "timeline must resolve with arguments");
 for (const [label, source] of [
   ["topic feed", feed],
@@ -245,6 +250,15 @@ for (const [label, source] of [
 ]) {
   requireText(source, "count_message(", `${label} loaded count resolver`);
 }
+requireText(feed, "slug_message(", "topic feed slug resolver");
+requireText(ui, "slug_message(", "thread panel slug resolver");
+
+// A label template that no consumer reads is a phantom setting: the rail renders counts itself, so
+// the builder must not carry a template, and the topic card takes the already resolved slug label.
+const core = read(paths.core);
+forbidText(core, "total_template", "category rail labels must not carry an unread template");
+requireText(core, "slug_label: &str,", "topic card view model takes a resolved slug label");
+requireText(core, "slug_label: slug_label.to_string(),", "topic card view model keeps the resolved label");
 
 const pagingKeys = [
   "forum-feed-loadMore",

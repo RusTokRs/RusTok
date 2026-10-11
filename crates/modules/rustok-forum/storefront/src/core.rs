@@ -5,10 +5,12 @@ const FORUM_TOPIC_ROUTE_SHORT_ID_LEN: usize = 12;
 const MAX_FORUM_ROUTE_LOCALE_LEN: usize = 64;
 const MAX_FORUM_ROUTE_SLUG_LEN: usize = 255;
 
+/// Copy the category rail cards need. Counts are not here on purpose: the surface renders them
+/// from `ForumStorefrontCategoryCardViewModel::topic_count`, so a template carried through the
+/// builder would be dead weight that looks like a configured label.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ForumStorefrontCategoryRailLabels {
     pub no_description: String,
-    pub total_template: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -124,7 +126,7 @@ pub fn forum_storefront_topic_card_view_model(
     item: &crate::model::ForumTopicListItem,
     _selected_category_id: Option<&str>,
     selected_topic_id: Option<&str>,
-    slug_template: &str,
+    slug_label: &str,
 ) -> ForumStorefrontTopicCardViewModel {
     let is_active = selected_topic_id == Some(item.id.as_str());
     let is_unread = item.is_unread.unwrap_or(false);
@@ -149,7 +151,7 @@ pub fn forum_storefront_topic_card_view_model(
         unread_count: item.unread_count.unwrap_or(0),
         has_unread_topic_revision: item.has_unread_topic_revision.unwrap_or(false),
         title: item.title.clone(),
-        slug_label: forum_storefront_slug_label(slug_template, item.slug.as_str()),
+        slug_label: slug_label.to_string(),
         reply_count: item.reply_count,
         is_solved: item.solution_reply_id.is_some(),
         vote_score: item.vote_score.unwrap_or(0),

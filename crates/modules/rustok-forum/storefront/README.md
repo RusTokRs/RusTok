@@ -16,7 +16,7 @@ Leptos storefront UI package for the `rustok-forum` module.
 - Adds native Leptos `#[server]` calls while keeping GraphQL as a required parallel fallback.
 - Builds topic-card links with the localized canonical route `/{locale}/forum/t/{short_id}/{slug}` instead of UUID query links.
 - Presents the module as a NodeBB-inspired public discussion surface.
-- Ships package-owned `storefront/locales/en.ftl`, `storefront/locales/ru.ftl`, and `storefront/locales/ar.ftl` bundles declared through `[provides.storefront_ui.i18n]`; every composer and thread label resolves through `crate::i18n::t` with the locale published by `UiRouteContext`.
+- Ships package-owned `storefront/locales/en.ftl`, `storefront/locales/ru.ftl`, and `storefront/locales/ar.ftl` bundles declared through `[provides.storefront_ui.i18n]`; every composer and thread label resolves through `crate::i18n::t` with the locale published by `UiRouteContext`, and every label that carries a number or a slug resolves through `crate::i18n::count_message` / `crate::i18n::slug_message` so the catalog binds `$count`/`$slug` itself. A caller-side `"{count} threads"` template is not an acceptable substitute: Fluent reports a format error for an unbound argument, the shared resolver turns any format error into `Failed`, and the caller literal then wins in every locale, which silently deletes all plural variants.
 
 ## Entry Points
 
@@ -46,12 +46,13 @@ Leptos storefront UI package for the `rustok-forum` module.
   (`forum.topic.statusOpen|statusClosed|statusArchived|statusPending`), and an unrecognized token
   is rendered unchanged rather than relabeled.
 - Submit failures are shown with the redacted transport message (`Forum GraphQL request failed` / `Forum server request failed`). The owner reason stays server-side by contract, so an author cannot tell a locked topic from a cooldown in the UI.
-- The topic feed renders one server page per direction: page sizes come from the owner
+- Both lists page forward only through the owner `nextCursor`: page sizes come from the owner
   `topics_per_page` / `replies_per_page` settings (the browser transport omits `perPage`, the server
-  transport resolves them through the shared module-settings readers), categories stay at 12 because
-  the owner exposes no category page-size setting, and filtering runs client-side over the fetched
-  page while the header count stays server-authored. The owner returns `nextCursor` for the feed
-  query, but no paging control is rendered, so a feed cannot reach past the fetched page.
+  transport resolves them through the shared module-settings readers), appended pages are
+  identity-deduplicated in `Forum{Topic,Reply}Page::append_page`, a failed page is shown inline with a
+  retry instead of looking like the end of the thread, and the header count stays server-authored.
+  Categories stay at 12 because the owner exposes no category page-size setting, category filtering
+  runs client-side over the fetched page, and a filtered feed does not offer a next page.
 - Vote, subscribe, and report mutations stay unreachable in this surface, so `is_subscribed` and
   `current_user_vote` are not part of the read model this package renders.
 
@@ -62,4 +63,4 @@ Leptos storefront UI package for the `rustok-forum` module.
 
 ## FFA boundary
 
-The package keeps runtime-independent storefront policy in `src/core.rs`: canonical topic hrefs, rich-content summaries, count/slug labels, category/topic card view-models, unread badge/card mapping, accent fallback, and stable status badge class mapping. `src/transport/` remains the build-profile-selected native/GraphQL selected-path facade, while `src/ui/leptos.rs` is the explicit Leptos adapter. The host receives only visibility-admitted route DTOs and owns HTTP composition; it does not read Forum storage or alias history. The fast non-compiling guardrails are `npm run verify:forum:storefront-boundary` and `node scripts/verify/verify-forum-topic-route-storefront-mount.mjs`.
+The package keeps runtime-independent storefront policy in `src/core.rs`: canonical topic hrefs, rich-content summaries, count/slug labels, category/topic card view-models, unread badge/card mapping, accent fallback, and stable status badge class mapping. `src/transport/` remains the build-profile-selected native/GraphQL selected-path facade, while `src/ui/leptos.rs` is the explicit Leptos adapter. The host receives only visibility-admitted route DTOs and owns HTTP composition; it does not read Forum storage or alias history. `src/ui/topic_feed.rs` and `src/ui/timeline.rs` are the second half of that Leptos adapter: the feed component and the anchor-aware timeline scroller. The fast non-compiling guardrails are `npm run verify:forum:storefront-boundary` (it reads every `src/ui/*.rs` source that exists, so a component may move between files without the guard going blind), `node scripts/verify/verify-forum-storefront-cursor-paging.mjs`, and `node scripts/verify/verify-forum-topic-route-storefront-mount.mjs`.

@@ -101,7 +101,12 @@ forum-topic-statusDeleted = Удалено
 forum-topic-pinned = Закреплено
 forum-topic-replies = Ответы
 forum-topic-slug = slug треда: { $slug }
-forum-topic-unreadCount = { $count } непрочитанных
+forum-topic-unreadCount =
+    { $count ->
+        [one] { $count } непрочитанное
+        [few] { $count } непрочитанных
+       *[other] { $count } непрочитанного
+    }
 forum-topic-updatedUnread = Обновлено
 forum-view-categories = Категории
 forum-view-discussions = Обсуждения

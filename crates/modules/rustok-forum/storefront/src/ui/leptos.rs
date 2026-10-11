@@ -18,10 +18,9 @@ pub enum ForumViewMode {
 }
 use crate::core::{
     ForumStorefrontCategoryRailLabels, forum_storefront_category_card_view_model,
-    forum_storefront_count_label, forum_storefront_status_badge_class,
-    forum_storefront_topic_accepts_reply, topic_status_class,
+    forum_storefront_status_badge_class, forum_storefront_topic_accepts_reply, topic_status_class,
 };
-use crate::i18n::{count_message, t};
+use crate::i18n::{count_message, slug_message, t};
 use crate::model::{
     ForumCategoryListItem, ForumReplyDetail, ForumReplyPage, ForumTopicDetail, ForumTopicPage,
     StorefrontForumData,
@@ -374,10 +373,11 @@ fn ForumCategoryRail(
     let module_route_base = route_context.module_route_base(route_segment.as_str());
     let categories_label = t(locale.as_deref(), "forum.categories.label", "Categories");
     let categories_title = t(locale.as_deref(), "forum.categories.title", "Community map");
-    let categories_total_template = t(
+    let categories_total_label = count_message(
         locale.as_deref(),
         "forum.categories.total",
         "{count} sections published from the forum module.",
+        total,
     );
     let no_description_label = t(
         locale.as_deref(),
@@ -395,7 +395,7 @@ fn ForumCategoryRail(
                     </p>
                     <h3 class="mt-2 text-xl font-semibold text-card-foreground">{categories_title}</h3>
                     <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                        {forum_storefront_count_label(categories_total_template.as_str(), total)}
+                        {categories_total_label}
                     </p>
                 </div>
                 <button
@@ -414,7 +414,6 @@ fn ForumCategoryRail(
                     let subcategory_indent = if is_subcategory { "ml-3 w-[calc(100%-0.75rem)] border-dashed" } else { "" };
                     let labels = ForumStorefrontCategoryRailLabels {
                         no_description: no_description_label.clone(),
-                        total_template: categories_total_template.clone(),
                     };
                     let content_lang = forum_storefront_content_lang(item.effective_locale.as_str());
                     let description_lang = if item
@@ -543,12 +542,18 @@ fn ForumThreadPanel(
         "forum.thread.markingRead",
         "Marking read…",
     );
-    let slug_template = t(locale.as_deref(), "forum.thread.slug", "slug: {slug}");
+    let slug_label = slug_message(
+        locale.as_deref(),
+        "forum.thread.slug",
+        "slug: {slug}",
+        topic.slug.as_str(),
+    );
     let replies_title = t(locale.as_deref(), "forum.thread.repliesTitle", "Replies");
-    let replies_total_template = t(
+    let replies_total_label = count_message(
         locale.as_deref(),
         "forum.thread.repliesTotal",
         "{count} total",
+        replies_total,
     );
     let no_replies_label = t(
         locale.as_deref(),
@@ -604,7 +609,7 @@ fn ForumThreadPanel(
                         data-forum-route-identifier=""
                         dir="ltr"
                         class="mt-2 text-sm text-muted-foreground"
-                    >{crate::core::forum_storefront_slug_label(slug_template.as_str(), topic.slug.as_str())}</p>
+                    >{slug_label}</p>
                 </div>
                 <ForumAuthorBadge author_id />
                 <RichTextHtml
@@ -679,7 +684,7 @@ fn ForumThreadPanel(
             <div class="rounded-[1.35rem] border border-border bg-background p-4">
                 <div class="flex items-center justify-between gap-3">
                     <p class="text-sm font-semibold text-foreground">{replies_title}</p>
-                    <span class="text-xs text-muted-foreground">{forum_storefront_count_label(replies_total_template.as_str(), replies_total)}</span>
+                    <span class="text-xs text-muted-foreground">{replies_total_label}</span>
                 </div>
                 {move || {
                     let page = replies.get();

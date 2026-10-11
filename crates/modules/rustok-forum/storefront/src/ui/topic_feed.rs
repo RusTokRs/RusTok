@@ -4,8 +4,8 @@ use rustok_ui_core::UiRouteContext;
 
 use super::composer::ComposerSignal;
 use super::member_card::ForumAuthorBadge;
-use crate::core::{forum_storefront_count_label, forum_storefront_topic_card_view_model};
-use crate::i18n::{count_message, t};
+use crate::core::forum_storefront_topic_card_view_model;
+use crate::i18n::{count_message, slug_message, t};
 use crate::model::ForumTopicPage;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,16 +50,9 @@ pub fn ForumTopicFeed(
     );
     let feed_label = t(locale.as_deref(), "forum.feed.label", "Topic feed");
     let feed_title = t(locale.as_deref(), "forum.feed.title", "Latest discussions");
-    let threads_template = t(locale.as_deref(), "forum.feed.threads", "{count} threads");
     let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
     let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
-    let unread_template = t(
-        locale.as_deref(),
-        "forum.topic.unreadCount",
-        "{count} unread",
-    );
     let updated_unread_label = t(locale.as_deref(), "forum.topic.updatedUnread", "Updated");
-    let slug_template = t(locale.as_deref(), "forum.topic.slug", "thread slug: {slug}");
     let replies_label = t(locale.as_deref(), "forum.topic.replies", "Replies");
     let load_more_label = t(locale.as_deref(), "forum.feed.loadMore", "Load more topics");
     let loading_label = t(locale.as_deref(), "forum.feed.loading", "Loading\u{2026}");
@@ -69,6 +62,8 @@ pub fn ForumTopicFeed(
         "Could not load the next topic page",
     );
     let paging_locale = locale.clone();
+    // Card labels resolve per topic because each card interpolates its own count and slug.
+    let feed_locale = locale.clone();
 
     // An empty first page cannot be paged: the owner returns a cursor only with content.
     if topics.get().items.is_empty() {
@@ -155,7 +150,12 @@ pub fn ForumTopicFeed(
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                        {forum_storefront_count_label(threads_template.as_str(), total)}
+                        {count_message(
+                            locale.as_deref(),
+                            "forum.feed.threads",
+                            "{count} threads",
+                            total,
+                        )}
                     </span>
                     <button
                         type="button"
@@ -287,8 +287,6 @@ pub fn ForumTopicFeed(
                 let selected_category_id = selected_category_id.clone();
                 let selected_topic_id = selected_topic_id.clone();
                 let module_route_base = module_route_base.clone();
-                let slug_template = slug_template.clone();
-                let unread_template = unread_template.clone();
                 let updated_unread_label = updated_unread_label.clone();
                 let pinned_label = pinned_label.clone();
                 let locked_label = locked_label.clone();
@@ -323,16 +321,27 @@ pub fn ForumTopicFeed(
                         <div class="space-y-3">
                             {list.into_iter().map(|item| {
                                 let author_id = item.author_id.clone();
+                                let slug_label = slug_message(
+                                    feed_locale.as_deref(),
+                                    "forum.topic.slug",
+                                    "thread slug: {slug}",
+                                    item.slug.as_str(),
+                                );
                                 let card = forum_storefront_topic_card_view_model(
                                     module_route_base.as_str(),
                                     &item,
                                     selected_category_id.as_deref(),
                                     selected_topic_id.as_deref(),
-                                    slug_template.as_str(),
+                                    slug_label.as_str(),
                                 );
                                 let content_lang = forum_storefront_content_lang(card.effective_locale.as_str());
                                 let unread_label = if card.unread_count > 0 {
-                                    forum_storefront_count_label(unread_template.as_str(), card.unread_count)
+                                    count_message(
+                                        feed_locale.as_deref(),
+                                        "forum.topic.unreadCount",
+                                        "{count} unread",
+                                        card.unread_count,
+                                    )
                                 } else {
                                     updated_unread_label.clone()
                                 };

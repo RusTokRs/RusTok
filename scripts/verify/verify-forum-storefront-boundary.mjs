@@ -7,6 +7,7 @@ const files = {
   lib: "crates/modules/rustok-forum/storefront/src/lib.rs",
   core: "crates/modules/rustok-forum/storefront/src/core.rs",
   ui: "crates/modules/rustok-forum/storefront/src/ui/leptos.rs",
+  feedUi: "crates/modules/rustok-forum/storefront/src/ui/topic_feed.rs",
   transport: "crates/modules/rustok-forum/storefront/src/transport/mod.rs",
   graphqlAdapter: "crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs",
   cargo: "crates/modules/rustok-forum/storefront/Cargo.toml",
@@ -23,16 +24,24 @@ function text(path) {
 function fail(message) { console.error("forum storefront boundary verification failed:"); console.error(`- ${message}`); process.exit(1); }
 function assertContains(source, needle, message) { if (!source.includes(needle)) fail(message); }
 function assertNotContains(source, needle, message) { if (source.includes(needle)) fail(message); }
-function sourceSlice(source, startMarker, endMarker, description) {
+function sourceSlice(source, startMarker, endMarker, description, file = files.ui) {
   const start = source.indexOf(startMarker);
+  if (start < 0) fail(`${file}: missing ${description} source boundary`);
+  if (endMarker === null) return source.slice(start);
   const end = source.indexOf(endMarker, start + startMarker.length);
-  if (start < 0 || end < 0) fail(`${files.ui}: missing ${description} source boundary`);
+  if (end < 0) fail(`${file}: missing ${description} source boundary`);
   return source.slice(start, end);
 }
 
 const lib = text(files.lib);
 const core = text(files.core);
+// The storefront list component lives in a sibling file next to the shell component, so the
+// boundary rules are checked across every UI source that exists rather than one snapshot of the
+// original single file.
+const uiSources = [files.ui, files.feedUi].filter((file) => existsSync(file));
+if (uiSources.length === 0) fail(`${files.ui}: no storefront UI source found`);
 const ui = text(files.ui);
+const uiAll = uiSources.map((file) => text(file)).join("\n");
 const transport = text(files.transport);
 const graphqlAdapter = text(files.graphqlAdapter);
 const cargo = text(files.cargo);
@@ -55,23 +64,36 @@ const pkg = JSON.parse(text(files.packageJson));
 
 assertNotContains(core, "leptos::", `${files.core}: core must remain framework-agnostic`);
 assertNotContains(core, "view!", `${files.core}: core must not render Leptos views`);
-assertNotContains(ui, "fn status_badge_class", `${files.ui}: status badge class policy must stay in core`);
-assertNotContains(ui, "background:linear-gradient", `${files.ui}: inline category accent style must stay absent`);
-assertNotContains(ui, "?category={category_id}", `${files.ui}: route href construction must stay in core`);
-assertContains(ui, "forum_storefront_category_card_view_model", `${files.ui}: UI must consume core-owned category card view-model`);
-assertContains(ui, "forum_storefront_topic_card_view_model", `${files.ui}: UI must consume core-owned topic card view-model`);
-assertContains(ui, "forum_storefront_status_badge_class", `${files.ui}: UI must consume core-owned status badge class policy`);
-assertContains(ui, "forum_storefront_count_label", `${files.ui}: UI must consume core-owned count label policy`);
-assertContains(ui, "use leptos_ui::RichTextHtml;", `${files.ui}: UI must use the shared server-projection renderer`);
-assertContains(ui, "view=body", `${files.ui}: topic projection must use RichTextHtml`);
-assertContains(ui, "content_locale=body_locale", `${files.ui}: topic projection must keep the effective locale`);
-assertContains(ui, "view=content", `${files.ui}: reply projection must use RichTextHtml`);
-assertContains(ui, "content_locale=content_locale", `${files.ui}: reply projection must keep the effective locale`);
-assertNotContains(ui, "inner_html=", `${files.ui}: owner UI must not bypass the shared RichTextHtml sink`);
-assertContains(ui, "use rustok_api::normalize_locale_tag;", `${files.ui}: storefront plain-text locale semantics must use the canonical locale normalizer`);
-assertContains(ui, "fn forum_storefront_content_lang(locale: &str) -> String", `${files.ui}: storefront must expose a canonical plain-text content language helper`);
+assertNotContains(uiAll, "fn status_badge_class", `${files.ui}: status badge class policy must stay in core`);
+assertNotContains(uiAll, "background:linear-gradient", `${files.ui}: inline category accent style must stay absent`);
+assertNotContains(uiAll, "?category={category_id}", `${files.ui}: route href construction must stay in core`);
+assertContains(uiAll, "forum_storefront_category_card_view_model", `${files.ui}: UI must consume core-owned category card view-model`);
+assertContains(uiAll, "forum_storefront_topic_card_view_model", `${files.ui}: UI must consume core-owned topic card view-model`);
+assertContains(uiAll, "forum_storefront_status_badge_class", `${files.ui}: UI must consume core-owned status badge class policy`);
+// Interpolated copy must go through the core-owned label policy as well. The canonical form is the
+// argument-bearing resolver in `i18n`, which substitutes through these same core helpers; a
+// component that interpolates by hand would bypass the catalog entirely (Fluent fails formatting on
+// an unbound `$count`, so every locale silently renders the caller literal).
+if (!/forum_storefront_count_label|count_message\(|slug_message\(/.test(uiAll)) {
+  fail(`${files.ui}: UI must consume core-owned count label policy`);
+}
+assertNotContains(uiAll, '.replace("{count}"', `${files.ui}: UI must not interpolate counts by hand`);
+assertNotContains(uiAll, '.replace("{slug}"', `${files.ui}: UI must not interpolate slugs by hand`);
+assertContains(uiAll, "use leptos_ui::RichTextHtml;", `${files.ui}: UI must use the shared server-projection renderer`);
+assertContains(uiAll, "view=body", `${files.ui}: topic projection must use RichTextHtml`);
+assertContains(uiAll, "content_locale=body_locale", `${files.ui}: topic projection must keep the effective locale`);
+assertContains(uiAll, "view=content", `${files.ui}: reply projection must use RichTextHtml`);
+assertContains(uiAll, "content_locale=content_locale", `${files.ui}: reply projection must keep the effective locale`);
+assertNotContains(uiAll, "inner_html=", `${files.ui}: owner UI must not bypass the shared RichTextHtml sink`);
+assertContains(uiAll, "use rustok_api::normalize_locale_tag;", `${files.ui}: storefront plain-text locale semantics must use the canonical locale normalizer`);
+uiSources.forEach((file) => {
+  assertContains(text(file), "fn forum_storefront_content_lang(locale: &str) -> String", `${file}: storefront must expose a canonical plain-text content language helper`);
+});
 
-const categoryRail = sourceSlice(ui, "fn ForumCategoryRail(", "fn ForumTopicFeed(", "category rail");
+const categoryRail = sourceSlice(ui, "fn ForumCategoryRail(", "fn ForumThreadPanel(", "category rail");
+const feedSource = uiSources.find((file) => text(file).includes("fn ForumTopicFeed("));
+if (feedSource === undefined) fail(`${files.ui}: missing topic feed component`);
+const topicFeed = sourceSlice(text(feedSource), "fn ForumTopicFeed(", null, "topic feed", feedSource);
 [
   "forum_storefront_content_lang(item.effective_locale.as_str())",
   "let description_lang = if item",
@@ -84,7 +106,6 @@ const categoryRail = sourceSlice(ui, "fn ForumCategoryRail(", "fn ForumTopicFeed
   "dir=\"ltr\"",
 ].forEach((marker) => assertContains(categoryRail, marker, `${files.ui}: category rail missing content-locale bidi marker ${marker}`));
 
-const topicFeed = sourceSlice(ui, "fn ForumTopicFeed(", "fn ForumThreadPanel(", "topic feed");
 [
   "forum_storefront_content_lang(card.effective_locale.as_str())",
   "<span dir=\"ltr\"",
@@ -93,7 +114,7 @@ const topicFeed = sourceSlice(ui, "fn ForumTopicFeed(", "fn ForumThreadPanel(", 
   "dir=\"auto\"",
   "data-forum-route-identifier=\"\"",
   "dir=\"ltr\"",
-].forEach((marker) => assertContains(topicFeed, marker, `${files.ui}: topic feed missing content-locale bidi marker ${marker}`));
+].forEach((marker) => assertContains(topicFeed, marker, `${feedSource}: topic feed missing content-locale bidi marker ${marker}`));
 
 const threadPanel = sourceSlice(ui, "fn ForumThreadPanel(", "fn ReplyCard(", "thread panel");
 [
