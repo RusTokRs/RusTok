@@ -9,6 +9,7 @@ const files = {
   pagination: "crates/modules/rustok-blog/storefront/src/comments_pagination.rs",
   model: "crates/modules/rustok-blog/storefront/src/model.rs",
   ui: "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
+  commentsListUi: "crates/modules/rustok-blog/storefront/src/ui/comments_list.rs",
   transport: "crates/modules/rustok-blog/storefront/src/transport/mod.rs",
   native: "crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs",
   graphql: "crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs",
@@ -109,6 +110,8 @@ const core = text(files.core);
 const pagination = text(files.pagination);
 const model = text(files.model);
 const ui = text(files.ui);
+const commentsListUi = existsSync(files.commentsListUi) ? text(files.commentsListUi) : "";
+const uiCombined = `${ui}\n${commentsListUi}`;
 const transport = text(files.transport);
 const native = text(files.native);
 const graphql = text(files.graphql);
@@ -175,10 +178,10 @@ assertNotContains(model, "pub body: Option<String>", `${files.model}: storefront
 assertNotContains(model, "pub body_format: String", `${files.model}: storefront DTO must not expose legacy body format`);
 
 assertContains(ui, "use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY)", `${files.ui}: UI must read route-owned comments page state`);
-assertContains(ui, "use_route_query_writer()", `${files.ui}: UI must write pagination intents through shared routing`);
+assertContains(uiCombined, "use_route_query_writer()", `${files.ui}: UI must write pagination intents through shared routing`);
 assertContains(ui, "transport::fetch_blog(request, comments_page)", `${files.ui}: UI must pass the current comments page through transport`);
 assertContains(selectedPostUi, "<PublicCommentsList comments=public_comments comments_page />", `${files.ui}: selected post must render paginated public comments`);
-assertContains(ui, "comments_pagination::comments_page_query_intent", `${files.ui}: pagination controls must use the pure route policy`);
+assertContains(uiCombined, "comments_pagination::comments_page_query_intent", `${files.ui}: pagination controls must use the pure route policy`);
 assertContains(selectedPostUi, "let content = post.content;", `${files.ui}: selected post must consume RichTextView from the storefront DTO`);
 assertContains(selectedPostUi, "post.content_plain_text", `${files.ui}: selected post must retain server-derived plain-text fallback`);
 assertContains(selectedPostUi, expectedRenderContract.fallback_sink, `${files.ui}: selected post must render the server-derived plain-text fallback`);

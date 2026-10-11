@@ -89,7 +89,11 @@ assertContains(core, "build_rbac_admin_overview_view_model", `${corePath}: core 
 assertContains(core, "format_rbac_admin_bootstrap_error", `${corePath}: core must own bootstrap error formatting`);
 assertContains(core, "overview_view_model_formats_bootstrap_without_framework_runtime", `${corePath}: core view-model must have framework-free unit coverage`);
 
-assertContains(ui, "use crate::core::{build_rbac_admin_overview_view_model, format_rbac_admin_bootstrap_error};", `${uiPath}: Leptos adapter must consume core helpers`);
+assertContains(
+  ui,
+  /use crate::core::\{[\s\S]*build_rbac_admin_overview_view_model[\s\S]*format_rbac_admin_bootstrap_error[\s\S]*\};/,
+  `${uiPath}: Leptos adapter must consume core helpers`,
+);
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must consume transport facade`);
 assertContains(ui, "transport::fetch_bootstrap", `${uiPath}: Leptos adapter must call module-owned transport facade`);
 for (const marker of ["mod api;", "crate::api", /(^|[^A-Za-z0-9_])api::/, "native_server_adapter::", "fetch_bootstrap_native", "#[server"]) {
