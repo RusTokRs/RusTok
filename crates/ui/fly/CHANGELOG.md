@@ -99,6 +99,18 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **A form that submits nowhere now says so.** `ComponentForm` has three mutually exclusive
+  submission shapes — a native `action_url`, a provider action a host resolves, or `method: dialog`
+  for a host-driven dialog — and when none is present the browser falls back to the document URL,
+  so the field values land as query parameters on a page reload (the default `get`) or the page is
+  POSTed to itself. The palette's own form block is exactly that shape, so the first form most
+  authors build appeared finished and did nothing (functional audit G-7, "the form goes nowhere").
+  Validation now reports `form_without_submission_target` as a warning — for a block with a
+  `flyForm` contract and no target, and for a bare `form` component with no `action` attribute —
+  while exempting dialog forms and forms already wired to a host through
+  `ComponentAction::SubmitForm`. GET-to-self stays legal for search and filter forms, which is why
+  this is a warning rather than an error.
+
 - **The `raw_html` block no longer advertises a capability the engine does not have.** The palette
   offered a block called "Raw html" whose content the renderer escapes and prints as text: the
   engine has no raw HTML sink at all, so a pasted `<iframe>` published as visible markup with

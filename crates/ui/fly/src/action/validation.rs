@@ -15,14 +15,21 @@ pub(super) type FormIndex = BTreeMap<String, String>;
 struct ActionValidation<'a> {
     routes: &'a InteractionRouteCatalog,
     form_ids: &'a FormIndex,
+    /// Forms an author already wired to a host through `ComponentAction::SubmitForm`.
+    ///
+    /// Such a form is submitted by the host, so the absence of a native target is a decision
+    /// rather than an oversight, and it must not be reported as one.
+    host_submitted_form_ids: &'a BTreeSet<String>,
 }
 
 pub fn validate_component_actions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let routes = InteractionRouteCatalog::from_document(document);
     let form_ids = collect_form_ids(document);
+    let host_submitted_form_ids = collect_host_submitted_form_ids(document);
     let validation = ActionValidation {
         routes: &routes,
         form_ids: &form_ids,
+        host_submitted_form_ids: &host_submitted_form_ids,
     };
     let mut diagnostics = Vec::new();
     let mut seen_form_ids = BTreeSet::new();
@@ -102,6 +109,11 @@ fn validate_component(
                         format!("form id `{}` is duplicated", form.id),
                     ));
                 }
+                if let Some(diagnostic) =
+                    form_without_submission_target(&form, validation, path, component_id.as_deref())
+                {
+                    diagnostics.push(diagnostic);
+                }
             }
             Err(error) => diagnostics.push(action_diagnostic(
                 ValidationSeverity::Error,
@@ -111,6 +123,24 @@ fn validate_component(
                 error,
             )),
         }
+    } else if component
+        .component_type()
+        .trim()
+        .eq_ignore_ascii_case("form")
+        && !has_native_submission_target(component)
+    {
+        // A form block dropped from the palette carries no `flyForm` contract and no `action`
+        // attribute, which makes the browser submit it back to the page URL. That is the default
+        // shape of the block, so this is the case most authors meet first (functional audit G-7:
+        // the form goes nowhere), and nothing in the editor used to say so.
+        diagnostics.push(action_diagnostic(
+            ValidationSeverity::Warning,
+            "form_without_submission_target",
+            path,
+            component_id.clone(),
+            "form has no submission target: the browser submits it to the current page URL; set a \
+             form action_url or a provider action unless that is intended",
+        ));
     }
 
     if let Some(raw) = component.extensions.get(FLY_ACTION_FIELD).cloned() {
@@ -237,6 +267,75 @@ pub(super) fn validate_action_contract(
         } => validate_identifier(provider, "provider")
             .and_then(|_| validate_identifier(action, "provider action")),
     }
+}
+
+fn collect_host_submitted_form_ids(document: &ProjectDocument) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    visit_project_components(&document.project, |component, _| {
+        let Some(raw) = component.extensions.get(FLY_ACTION_FIELD).cloned() else {
+            return;
+        };
+        if let Ok(ComponentAction::SubmitForm { form_id }) =
+            serde_json::from_value::<ComponentAction>(raw)
+        {
+            ids.insert(form_id);
+        }
+    });
+    ids
+}
+
+/// Report a form the browser will submit back to the page it is rendered on.
+///
+/// `ComponentForm` deliberately offers three mutually exclusive shapes: a native `action_url`, a
+/// provider action a host resolves, or `method: dialog` for a host-driven dialog. When none is
+/// present the browser falls back to the document URL, so the field values become query parameters
+/// on a page reload (GET) or the page answers a POST it never expected. The form appears complete
+/// and simply does nothing, which is exactly the failure the audit recorded as "the form goes
+/// nowhere" — with no diagnostic to explain it.
+///
+/// A warning, not an error: GET-to-self is a legitimate pattern for a search or filter form, and
+/// documents that already rely on it must keep publishing.
+fn form_without_submission_target(
+    form: &ComponentForm,
+    validation: &ActionValidation<'_>,
+    path: &str,
+    component_id: Option<&str>,
+) -> Option<ValidationDiagnostic> {
+    if form.method == FormMethod::Dialog
+        || non_empty(form.action_url.as_deref()).is_some()
+        || non_empty(form.provider.as_deref()).is_some()
+        || validation.host_submitted_form_ids.contains(&form.id)
+    {
+        return None;
+    }
+    Some(action_diagnostic(
+        ValidationSeverity::Warning,
+        "form_without_submission_target",
+        path,
+        component_id.map(ToString::to_string),
+        format!(
+            "form `{}` has no submission target: the browser submits it to the current page URL \
+             (method `{}`); set a form action_url or a provider action unless that is intended",
+            form.id,
+            form.method.as_str()
+        ),
+    ))
+}
+
+/// Whether a component already points somewhere without a `flyForm` contract.
+///
+/// Two shapes count. A materialized document carries the generated `action` attribute, and a
+/// materialized provider form carries `data-fly-form-provider` with no `action` at all — in both
+/// cases the submission has an owner, so the block must not be reported as target-less. Shared by
+/// both branches of the check so a form that was materialized earlier is not reported twice.
+fn has_native_submission_target(component: &ComponentObject) -> bool {
+    ["action", "data-fly-form-provider"]
+        .iter()
+        .any(|name| non_empty(component.attributes.get(*name).and_then(Value::as_str)).is_some())
+}
+
+fn non_empty(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
 }
 
 fn validate_identifier(value: &str, label: &str) -> Result<(), String> {
