@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { ForumCategoryListItem } from '../api/forum';
+import { useTranslations } from '@rustok/next-fluent';
 
 interface CategoryRailProps {
   categories: ForumCategoryListItem[];
@@ -36,28 +37,29 @@ export function CategoryRail({
   onSwitchToOverview,
   baseHref = '/modules/forum',
 }: CategoryRailProps) {
+  const forum = useTranslations('Forum');
   return (
     <aside className="space-y-4 rounded-[1.75rem] border border-border bg-card p-5 shadow-sm xl:sticky xl:top-6 xl:self-start">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-            Categories
+            {forum('categories')}
           </p>
           <h3 className="mt-2 text-xl font-semibold text-card-foreground">
-            Community map
+            {forum('communityMap')}
           </h3>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            {total} sections published from the forum module.
+            {total} {forum('sectionsPublished')}
           </p>
         </div>
         {onSwitchToOverview && (
           <button
             type="button"
             onClick={onSwitchToOverview}
-            title="Open category matrix with subcategories"
+            title={forum('openCategoryMatrix')}
             className="shrink-0 rounded-full border border-border bg-background p-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-foreground"
           >
-            Grid ⊞
+            {forum('grid')} ⊞
           </button>
         )}
       </div>
@@ -79,8 +81,8 @@ export function CategoryRail({
             }`}
           />
           <div className="pl-3">
-            <h4 className="text-sm font-semibold text-foreground">All Topics</h4>
-            <p className="mt-1 text-xs text-muted-foreground">View discussions across all categories</p>
+            <h4 className="text-sm font-semibold text-foreground">{forum('allTopics')}</h4>
+            <p className="mt-1 text-xs text-muted-foreground">{forum('allTopicsHint')}</p>
           </div>
         </button>
 

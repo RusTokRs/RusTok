@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import type { ForumCategoryListItem } from '../api/forum';
+import { useTranslations } from '@rustok/next-fluent';
 
 interface CategoryOverviewProps {
   categories: ForumCategoryListItem[];
@@ -23,6 +24,7 @@ export function CategoryOverview({
   onSelectCategory,
   className = '',
 }: CategoryOverviewProps) {
+  const forum = useTranslations('Forum');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Group into hierarchy: roots and subcategories
@@ -118,7 +120,7 @@ export function CategoryOverview({
             </span>
           )}
           <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-muted-foreground">
-            {aggregateTopics} Total Topics
+            {aggregateTopics} {forum('totalTopics')}
           </span>
         </div>
 
@@ -126,7 +128,7 @@ export function CategoryOverview({
         <div className="relative min-w-64 max-w-sm">
           <input
             type="search"
-            placeholder="Filter categories or subcategories…"
+            placeholder={forum('filterPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full rounded-xl border border-border bg-background px-3.5 py-2 text-sm outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
@@ -137,7 +139,7 @@ export function CategoryOverview({
               onClick={() => setSearchQuery('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
             >
-              Clear
+              {forum('clear')}
             </button>
           )}
         </div>
@@ -150,10 +152,10 @@ export function CategoryOverview({
             📁
           </div>
           <h3 className="mt-4 text-base font-semibold text-foreground">
-            No matching categories found
+            {forum('noMatchingCategories')}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Try searching with a different term or clear the filter.
+            {forum('noMatchingCategoriesHint')}
           </p>
         </div>
       ) : (
@@ -223,20 +225,20 @@ function colorToTextClass(color?: string | null): string {
                       onClick={() => onSelectCategory(category.id)}
                       className="shrink-0 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-primary hover:bg-muted"
                     >
-                      Browse →
+                      {forum('browse')} →
                     </button>
                   </div>
 
                   {/* Description */}
                   <p className="mt-3 text-sm leading-6 text-muted-foreground line-clamp-2">
-                    {category.description || 'No description provided for this section.'}
+                    {category.description || forum('noSectionDescription')}
                   </p>
 
                   {/* Subcategories (Discourse / NodeBB Style Pill Badges) */}
                   {subcategories.length > 0 && (
                     <div className="mt-5 space-y-2 border-t border-border/60 pt-4">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                        Subcategories
+                        {forum('subcategories')}
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {subcategories.map((sub) => {

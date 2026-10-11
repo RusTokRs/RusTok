@@ -24,6 +24,13 @@
 - Works in parallel with `apps/storefront` for storefront parity at the contract level.
 - Reuses shared frontend contracts instead of duplicating auth and transport logic per page.
 - Consumes the canonical SEO contract from `rustok-seo` through a Next Metadata adapter while Rust hosts use `rustok-seo-render`.
+- Module packages under `packages/*` read UI copy from the app-level Fluent catalogs
+  `messages/{locale}.ftl`. `packages/rustok-forum` uses the `Forum` namespace (catalog ids
+  `Forum-<key>`), so a copy change is made in both catalogs in one change and
+  `pnpm --filter @rustok/next-frontend typegen:i18n` regenerates `src/types/i18n.d.ts`.
+- `packages/rustok-forum` shows the owner topic status token through a localized
+  `TopicStatusLabel` badge, and unrecognized tokens stay verbatim. It exposes no vote,
+  subscribe, or report mutation, so those owner capabilities remain unreachable in this surface.
 - Composes search storefront controls through host-owned `src/features/search`: product-owned catalog metadata is loaded via `packages/rustok-product` and passed to the search package as safe option props with the route locale.
 
 ## Docs

@@ -22,6 +22,7 @@ import { ThreadPanel } from './thread-panel';
 import { Composer } from './composer';
 import { QuoteTooltip } from './quote-tooltip';
 import { CategoryOverview } from './category-overview';
+import { useTranslations } from '@rustok/next-fluent';
 
 interface ForumSectionProps {
   tenantId?: string | null;
@@ -40,6 +41,7 @@ export function ForumSection({
   initialTopicId = null,
   initialView = 'topics',
 }: ForumSectionProps) {
+  const forum = useTranslations('Forum');
   const [activeView, setActiveView] = useState<'topics' | 'categories'>(initialView);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(initialCategoryId);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(initialTopicId);
@@ -214,13 +216,13 @@ export function ForumSection({
             <div className="max-w-3xl space-y-3">
               <span className="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
                 <span className="h-2 w-2 rounded-full bg-amber-500" />
-                Forum
+                {forum('forumIndex')}
               </span>
               <h2 className="text-3xl font-semibold text-card-foreground">
-                Community threads from the module package
+                {forum('sectionSubtitle')}
               </h2>
               <p className="text-sm leading-6 text-muted-foreground">
-                A NodeBB-inspired storefront surface that reads categories, topic feed, and thread replies through the forum module&apos;s public GraphQL contract.
+                {forum('sectionDescription')}
               </p>
             </div>
 
@@ -236,7 +238,7 @@ export function ForumSection({
                 }`}
               >
                 <span>💬</span>
-                <span>Discussions</span>
+                <span>{forum('discussions')}</span>
               </button>
               <button
                 type="button"
@@ -248,7 +250,7 @@ export function ForumSection({
                 }`}
               >
                 <span>📁</span>
-                <span>Categories</span>
+                <span>{forum('categories')}</span>
               </button>
             </div>
           </div>

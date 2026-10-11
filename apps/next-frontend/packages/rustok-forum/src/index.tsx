@@ -32,6 +32,7 @@ export { CategoryRail } from './components/category-rail';
 export { TopicFeed } from './components/topic-feed';
 export { ThreadPanel } from './components/thread-panel';
 export { CategoryOverview } from './components/category-overview';
+export { TopicStatusLabel } from './components/topic-status-label';
 export { TopicDetailView } from './components/topic-detail-view';
 export { AuthorBadge, MemberCardProvider } from './components/member-card';
 export { ComposerProvider, useComposer } from './context/composer-context';
