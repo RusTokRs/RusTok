@@ -7,6 +7,21 @@ rustok_ui_i18n::declare_module_i18n!(
     ]
 );
 
+/// Localized plural-aware count label resolved with the number bound as a Fluent argument.
+///
+/// The no-argument `t` family cannot serve these keys: a pattern that references `$count` fails
+/// Fluent formatting when no arguments are supplied, every locale then falls back to the caller
+/// literal, and the storefront silently renders English copy for a Russian or Arabic reader.
+/// Resolving through `format` lets the catalog plural select run, which is the only way Slavic and
+/// Arabic plural categories are chosen correctly. Substituting the `{count}` placeholder afterwards
+/// is a no-op for a resolved message and keeps the caller literal usable when a catalog lacks a key.
+pub fn count_message(locale: Option<&str>, key: &str, fallback: &str, count: u64) -> String {
+    let mut arguments = rustok_ui_i18n::FluentArgs::new();
+    arguments.set("count", i64::try_from(count).unwrap_or(i64::MAX));
+    let resolved = format(locale, key, Some(&arguments), fallback);
+    crate::core::forum_storefront_count_label(resolved.as_str(), count)
+}
+
 /// Localized label for a raw topic or reply status token returned by the owner
 /// transports.
 ///
@@ -31,7 +46,7 @@ pub fn status_label(locale: Option<&str>, status: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::t;
+    use super::{count_message, t};
 
     #[test]
     fn every_catalog_locale_names_the_topic_statuses() {
@@ -65,6 +80,28 @@ mod tests {
             assert_eq!(t(Some(locale), "forum.topic.statusApproved", "?"), approved);
             assert_eq!(t(Some(locale), "forum.topic.statusDeleted", "?"), deleted);
         }
+    }
+
+    #[test]
+    fn count_message_runs_the_catalog_plural_select() {
+        // A message with a count variable only renders from the catalog when the argument is
+        // supplied, so these labels are localized instead of falling back to the caller literal.
+        assert_eq!(
+            count_message(Some("en"), "forum.thread.repliesTotal", "{count} total", 1),
+            "1 total"
+        );
+        assert_eq!(
+            count_message(Some("ru"), "forum.thread.repliesTotal", "{count} total", 42),
+            "42 всего"
+        );
+    }
+
+    #[test]
+    fn count_message_keeps_the_caller_literal_usable_for_unknown_keys() {
+        assert_eq!(
+            count_message(Some("en"), "forum.feed.absentKey", "{count} loaded", 2),
+            "2 loaded"
+        );
     }
 
     #[test]

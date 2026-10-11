@@ -511,7 +511,7 @@ pub(super) fn normalize_locale(value: Option<&str>) -> String {
 }
 
 #[cfg(feature = "ssr")]
-fn parse_optional_uuid(
+pub(super) fn parse_optional_uuid(
     value: Option<&str>,
     field: &str,
 ) -> Result<Option<uuid::Uuid>, ServerFnError> {
@@ -715,7 +715,7 @@ fn map_category(value: rustok_forum::CategoryListItem) -> ForumCategoryListItem 
 }
 
 #[cfg(feature = "ssr")]
-fn map_topic_list_item(value: rustok_forum::TopicListItem) -> ForumTopicListItem {
+pub(super) fn map_topic_list_item(value: rustok_forum::TopicListItem) -> ForumTopicListItem {
     ForumTopicListItem {
         id: value.id.to_string(),
         effective_locale: value.effective_locale,
@@ -740,7 +740,9 @@ fn map_topic_list_item(value: rustok_forum::TopicListItem) -> ForumTopicListItem
 }
 
 #[cfg(feature = "ssr")]
-fn map_unread_topic(value: rustok_forum::ForumStorefrontUnreadTopic) -> ForumTopicListItem {
+pub(super) fn map_unread_topic(
+    value: rustok_forum::ForumStorefrontUnreadTopic,
+) -> ForumTopicListItem {
     ForumTopicListItem {
         id: value.topic.id.to_string(),
         effective_locale: value.topic.effective_locale,
@@ -787,7 +789,7 @@ fn map_topic_detail(value: rustok_forum::TopicResponse) -> ForumTopicDetail {
 }
 
 #[cfg(feature = "ssr")]
-fn map_reply(value: rustok_forum::ReplyResponse) -> ForumReplyDetail {
+pub(super) fn map_reply(value: rustok_forum::ReplyResponse) -> ForumReplyDetail {
     ForumReplyDetail {
         id: value.id.to_string(),
         effective_locale: value.effective_locale,

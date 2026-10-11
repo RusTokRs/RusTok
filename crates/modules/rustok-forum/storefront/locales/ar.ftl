@@ -36,6 +36,10 @@ forum-error-updateReadState = تعذر تحديث حالة القراءة في �
 forum-feed-emptyBody = انشر موضوعًا من حزمة إدارة المنتدى ليظهر في هذه الخلاصة.
 forum-feed-emptyTitle = لا توجد مواضيع بعد
 forum-feed-label = خلاصة المواضيع
+forum-feed-loaded = تم تحميل { $count }
+forum-feed-loading = جارٍ التحميل…
+forum-feed-loadMore = تحميل المزيد من المواضيع
+forum-feed-pageFailed = تعذر تحميل الصفحة التالية من المواضيع
 forum-feed-threads =
     { $count ->
         [zero] لا توجد مواضيع
@@ -59,11 +63,15 @@ forum-richContent-summary =
        *[other] مخزّن بتنسيق `{ $format }`. طول المحتوى الخام: { $count } حرف.
     }
 forum-subtitle = واجهة متجر مستوحاة من NodeBB تقرأ التصنيفات وخلاصة المواضيع وردود النقاش عبر عقد GraphQL العام لوحدة المنتدى.
+forum-thread-loaded = تم تحميل { $count }
+forum-thread-loading = جارٍ التحميل…
+forum-thread-loadMore = تحميل المزيد من الردود
 forum-thread-markRead = وضع علامة مقروء على الموضوع
 forum-thread-markingRead = جارٍ وضع علامة مقروء…
 forum-thread-noReplies = لا توجد ردود بعد.
 forum-thread-openBody = اختر موضوعًا من الخلاصة لقراءة المشاركة الافتتاحية وأحدث الردود.
 forum-thread-openTitle = افتح موضوعًا
+forum-thread-pageFailed = تعذر تحميل الصفحة التالية من الردود
 forum-thread-quote = اقتباس
 forum-thread-quoteTitle = اقتباس هذا الرد
 forum-thread-repliesTitle = الردود
@@ -71,6 +79,22 @@ forum-thread-repliesTotal = الإجمالي { $count }
 forum-thread-reply = رد
 forum-thread-replyClosed = الردود مغلقة في هذا الموضوع.
 forum-thread-slug = المعرّف النصي: { $slug }
+forum-timeline-loaded =
+    { $count ->
+        [one] تم تحميل { $count } مشاركة
+        [two] تم تحميل { $count } مشاركتين
+        [few] تم تحميل { $count } مشاركات
+       *[other] تم تحميل { $count } مشاركة
+    }
+forum-timeline-toEnd = الانتقال إلى أحدث مشاركة
+forum-timeline-toTop = الانتقال إلى أول مشاركة
+forum-timeline-total =
+    { $count ->
+        [one] { $count } مشاركة في هذا الموضوع
+        [two] { $count } مشاركتان في هذا الموضوع
+        [few] { $count } مشاركات في هذا الموضوع
+       *[other] { $count } مشاركة في هذا الموضوع
+    }
 forum-title = مواضيع المجتمع من حزمة الوحدة
 forum-topic-locked = مغلق
 forum-topic-statusOpen = مفتوحة

@@ -13,10 +13,11 @@ mod native_server_adapter {
     include!("native_server_adapter_topic_route.rs");
     include!("native_server_adapter_revision.rs");
 }
+mod native_server_adapter_pages;
 
 use crate::model::{
-    CreateStorefrontForumReplyDraft, CreateStorefrontForumTopicDraft,
-    StorefrontForumCategoryRouteResolution, StorefrontForumCreatedReply,
+    CreateStorefrontForumReplyDraft, CreateStorefrontForumTopicDraft, ForumReplyPage,
+    ForumTopicPage, StorefrontForumCategoryRouteResolution, StorefrontForumCreatedReply,
     StorefrontForumCreatedTopic, StorefrontForumData, StorefrontForumTopicRouteResolution,
 };
 use serde::{Deserialize, Serialize};
@@ -57,6 +58,52 @@ pub async fn fetch_storefront_forum(
             locale,
         )
         .await
+    }
+}
+
+/// Fetches the next topic page for the list variant the surface is holding.
+///
+/// The cursor is opaque and variant-specific, so `read_state_available` is part of the page request:
+/// both transports continue on the service that produced the cursor instead of re-pointing it.
+/// A failed page never falls back to the other transport.
+pub async fn fetch_storefront_forum_topic_page(
+    selected_category_id: Option<String>,
+    after: String,
+    locale: Option<String>,
+    read_state_available: bool,
+) -> Result<ForumTopicPage, TransportError> {
+    if use_native_transport() {
+        native_server_adapter_pages::fetch_storefront_forum_topic_page_server(
+            selected_category_id,
+            after,
+            locale,
+            read_state_available,
+        )
+        .await
+    } else {
+        graphql_adapter::fetch_storefront_forum_topic_page_graphql(
+            selected_category_id,
+            after,
+            locale,
+            read_state_available,
+        )
+        .await
+    }
+}
+
+/// Fetches the next reply page of one topic through the selected transport.
+pub async fn fetch_storefront_forum_reply_page(
+    topic_id: String,
+    after: String,
+    locale: Option<String>,
+) -> Result<ForumReplyPage, TransportError> {
+    if use_native_transport() {
+        native_server_adapter_pages::fetch_storefront_forum_reply_page_server(
+            topic_id, after, locale,
+        )
+        .await
+    } else {
+        graphql_adapter::fetch_storefront_forum_reply_page_graphql(topic_id, after, locale).await
     }
 }
 

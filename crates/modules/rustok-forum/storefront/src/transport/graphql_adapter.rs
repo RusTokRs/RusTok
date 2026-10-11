@@ -391,6 +391,65 @@ pub async fn fetch_storefront_forum_graphql(
     })
 }
 
+/// One more page of the topic list this surface already holds.
+///
+/// `read_state_available` selects the variant whose cursor the surface is holding: the unread-aware
+/// storefront query or the public audience query. The page size stays omitted so the owner applies
+/// the tenant setting that produced the first page.
+pub async fn fetch_storefront_forum_topic_page_graphql(
+    selected_category_id: Option<String>,
+    after: String,
+    locale: Option<String>,
+    read_state_available: bool,
+) -> Result<ForumTopicPage, ApiError> {
+    if read_state_available {
+        let response: StorefrontForumUnreadTopicsResponse = request(
+            STOREFRONT_FORUM_UNREAD_TOPICS_QUERY,
+            UnreadTopicsVariables {
+                tenant_id: None,
+                category_id: selected_category_id,
+                locale: locale.clone(),
+                after: Some(after),
+                limit: None,
+            },
+        )
+        .await?;
+        return Ok(response.forum_storefront_unread_topics);
+    }
+    let response: StorefrontForumAudienceTopicsResponse = request(
+        STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY,
+        TopicsVariables {
+            tenant_id: None,
+            category_id: selected_category_id,
+            locale: locale.clone(),
+            after: Some(after),
+            per_page: None,
+        },
+    )
+    .await?;
+    Ok(response.forum_storefront_audience_topics)
+}
+
+/// One more page of thread replies, on the same owner query as the first page.
+pub async fn fetch_storefront_forum_reply_page_graphql(
+    topic_id: String,
+    after: String,
+    locale: Option<String>,
+) -> Result<ForumReplyPage, ApiError> {
+    let response: StorefrontForumRepliesResponse = request(
+        STOREFRONT_FORUM_REPLIES_QUERY,
+        RepliesVariables {
+            tenant_id: None,
+            topic_id,
+            locale: locale.clone(),
+            after: Some(after),
+            per_page: None,
+        },
+    )
+    .await?;
+    Ok(response.forum_storefront_replies)
+}
+
 async fn load_storefront_member_cards(
     topics: &ForumTopicPage,
     selected_topic: Option<&ForumTopicDetail>,

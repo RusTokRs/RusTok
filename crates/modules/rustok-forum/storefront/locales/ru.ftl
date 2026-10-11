@@ -34,6 +34,10 @@ forum-error-updateReadState = Не удалось обновить состоя�
 forum-feed-emptyBody = Опубликуйте тему из forum admin package, чтобы наполнить эту storefront-ленту.
 forum-feed-emptyTitle = Тем пока нет
 forum-feed-label = Лента тем
+forum-feed-loaded = загружено { $count }
+forum-feed-loading = Загрузка…
+forum-feed-loadMore = Показать ещё темы
+forum-feed-pageFailed = Не удалось загрузить следующую страницу тем
 forum-feed-threads =
     { $count ->
         [one] { $count } тред
@@ -53,11 +57,15 @@ forum-richContent-summary =
        *[other] Контент хранится в формате `{ $format }`. Длина сырого содержимого: { $count } символа.
     }
 forum-subtitle = NodeBB-подобная storefront-поверхность, которая читает категории, topic feed и ответы треда через публичный GraphQL contract модуля forum.
+forum-thread-loaded = загружено { $count }
+forum-thread-loading = Загрузка…
+forum-thread-loadMore = Показать ещё ответы
 forum-thread-markRead = Отметить тему прочитанной
 forum-thread-markingRead = Отмечаем прочитанной…
 forum-thread-noReplies = Ответов пока нет.
 forum-thread-openBody = Выберите тему в ленте, чтобы прочитать стартовый пост и последние ответы.
 forum-thread-openTitle = Откройте тред
+forum-thread-pageFailed = Не удалось загрузить следующую страницу ответов
 forum-thread-quote = Цитировать
 forum-thread-quoteTitle = Цитировать этот ответ
 forum-thread-repliesTitle = Ответы
@@ -65,6 +73,20 @@ forum-thread-repliesTotal = { $count } всего
 forum-thread-reply = Ответить
 forum-thread-replyClosed = Ответы в этой теме закрыты.
 forum-thread-slug = slug: { $slug }
+forum-timeline-loaded =
+    { $count ->
+        [one] загружено { $count } сообщение
+        [few] загружено { $count } сообщения
+       *[other] загружено { $count } сообщений
+    }
+forum-timeline-toEnd = К последнему сообщению
+forum-timeline-toTop = К первому сообщению
+forum-timeline-total =
+    { $count ->
+        [one] { $count } сообщение в ветке
+        [few] { $count } сообщения в ветке
+       *[other] { $count } сообщений в ветке
+    }
 forum-title = Треды сообщества из пакета модуля
 forum-topic-locked = Закрыто
 forum-topic-statusOpen = Открыта

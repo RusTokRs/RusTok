@@ -205,6 +205,21 @@ wrappers. Each one has an owner decision or a follow-up task in
   and the Next.js forum package omit the argument, so a configured value reaches those surfaces too; the Next.js
   widget-preview helpers keep their documented `ForumWidgetLimit` because they render static pages. See
   [`DECISIONS/2026-10-09-forum-list-page-size-from-settings.md`](../../../DECISIONS/2026-10-09-forum-list-page-size-from-settings.md).
+- `rustok-forum-storefront` pages both lists with the owner cursor. `ForumTopicPage` and
+  `ForumReplyPage` carry `next_cursor` with `has_more` and `append_page`, so a fetched page extends
+  the list the reader is looking at instead of replacing it, and ids already rendered are skipped
+  because a keyset cursor can re-read a row a concurrent write moved into the next page. The next
+  page continues on the variant the first page came from: unread-aware and audience-only topic
+  cursors are produced by different owner services, so a principal that no longer holds
+  `forum_topics:list` gets an error on the following page instead of a silently reordered feed.
+  Both fetches omit `per_page`/`limit` so the owner applies the module settings, and both exist on
+  both transports — the GraphQL list queries and the `forum/storefront-topic-page` /
+  `forum/storefront-reply-page` `#[server]` endpoints - with no cross-transport fallback. The feed
+  header count stays the selected category's authored topic count and the paging footer reports how
+  many entries are actually loaded; the thread timeline measures the loaded window against the
+  topic's `reply_count`, never a position inside posts that were not fetched. A failed page is
+  named in the list that failed. Guarded by
+  `scripts/verify/verify-forum-storefront-cursor-paging.mjs`.
 - Topic title and post body length limits are enforced on topic create, topic update (title or body
   supplied), topic translation upsert, reply create, and reply update (content supplied). Imports and exact
   translation apply are not limited. The check counts characters of the trimmed title and of the plain text of
@@ -287,8 +302,10 @@ wrappers. Each one has an owner decision or a follow-up task in
   projection recomputed from the newest approved reply in both counter directions, so
   an imported or restored reply cannot move a topic by a timestamp the data does not
   carry; `updated_at` still advances with the counter write.
-- The Next.js storefront shows the first page of topics without load-more.
-  Reply pagination has no load-more.
+- The Next.js storefront has no load-more control: the topic feed and the thread panel render the
+  first owner page, and `nextCursor` is only followed while resolving a reply deep link (see
+  `DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md`). Paging copy for that host is not
+  defined, so the two hosts are not interchangeable here.
 - The Leptos storefront composer writes real content: topics go through
   `createForumTopicWithQuotes` (GraphQL) or `forum/storefront-topic-create`
   (native `#[server]`) and replies through `createForumReplyWithQuotes` or

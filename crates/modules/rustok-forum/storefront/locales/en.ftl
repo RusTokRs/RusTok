@@ -32,6 +32,11 @@ forum-error-updateReadState = Failed to update forum read state
 forum-feed-emptyBody = Publish a topic from the forum admin package to light up this storefront feed.
 forum-feed-emptyTitle = No topics yet
 forum-feed-label = Topic feed
+# plural-exempt: adjectival 'N loaded' is invariant in English
+forum-feed-loaded = { $count } loaded
+forum-feed-loading = Loading…
+forum-feed-loadMore = Load more topics
+forum-feed-pageFailed = Could not load the next topic page
 forum-feed-threads =
     { $count ->
         [one] { $count } thread
@@ -47,11 +52,16 @@ forum-richContent-summary =
        *[other] Stored in `{ $format }` format. Raw content length: { $count } characters.
     }
 forum-subtitle = A NodeBB-inspired storefront surface that reads categories, topic feed, and thread replies through the forum module's public GraphQL contract.
+# plural-exempt: adjectival 'N loaded' is invariant in English
+forum-thread-loaded = { $count } loaded
+forum-thread-loading = Loading…
+forum-thread-loadMore = Load more replies
 forum-thread-markRead = Mark topic read
 forum-thread-markingRead = Marking read…
 forum-thread-noReplies = No replies yet.
 forum-thread-openBody = Pick a topic from the feed to read the opening post and latest replies.
 forum-thread-openTitle = Open a thread
+forum-thread-pageFailed = Could not load the next replies page
 forum-thread-quote = Quote
 forum-thread-quoteTitle = Quote this reply
 forum-thread-repliesTitle = Replies
@@ -60,6 +70,18 @@ forum-thread-repliesTotal = { $count } total
 forum-thread-reply = Reply
 forum-thread-replyClosed = Replies are closed for this topic.
 forum-thread-slug = slug: { $slug }
+forum-timeline-loaded =
+    { $count ->
+        [one] { $count } post loaded
+       *[other] { $count } posts loaded
+    }
+forum-timeline-toEnd = Jump to the newest post
+forum-timeline-toTop = Jump to the first post
+forum-timeline-total =
+    { $count ->
+        [one] { $count } post in this thread
+       *[other] { $count } posts in this thread
+    }
 forum-title = Community threads from the module package
 forum-topic-locked = Locked
 forum-topic-statusOpen = Open
