@@ -5,7 +5,7 @@ name = "rustok-admin-dioxus"
 version = "0.1.0"
 edition = "2024"
 license = "BSL-1.1"
-description = "Dioxus host shell scaffolding for RusToK FFA UI (Phase E pilot / standalone)"
+description = "CONCEPT / DORMANT: Dioxus host shell runner for RusToK FFA UI (Phase E pilot). DO NOT use in production or workspace test sweeps."
 
 [features]
 default = ["web"]
@@ -13,9 +13,4 @@ web = ["dep:dioxus"]
 desktop = ["dep:dioxus"]
 
 [dependencies]
-rustok-ui-core = { path = "../../crates/ui/rustok-ui-core" }
-rustok-ui-transport = { path = "../../crates/ui/rustok-ui-transport" }
-rustok-ui-i18n = { path = "../../crates/ui/rustok-ui-i18n" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 dioxus = { version = "0.6", optional = true, default-features = false }

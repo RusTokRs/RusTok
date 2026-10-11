@@ -8,10 +8,6 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use rustok_admin_dioxus::DioxusAdminApp;
-
 fn main() {
-    println!("Starting RusToK Dioxus Admin Host Shell (scaffolding)...");
-    let app = DioxusAdminApp::new("en", "default-tenant");
-    println!("Initialized Dioxus Admin Shell: locale={}, tenant={}", app.locale, app.tenant);
+    println!("RusToK Dioxus Admin Host (dormant Phase E runner)");
 }

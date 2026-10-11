@@ -14,6 +14,10 @@ function fail(message) {
 function requireAll(path, markers) {
   const source = read(path);
   for (const marker of markers) {
+    if (marker instanceof RegExp) {
+      if (!marker.test(source)) fail(`${path}: missing reference invariant marker ${marker}`);
+      continue;
+    }
     if (!source.includes(marker)) fail(`${path}: missing reference invariant marker ${marker}`);
   }
 }
@@ -498,8 +502,8 @@ forbid("crates/modules/rustok-blog/src/module.rs", [
 
 requireAll("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
   "let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());",
-  "service.get_post_with_locale_fallback(",
-  "service.get_post_by_slug_with_locale_fallback(",
+  /service\s*\.get_post_with_locale_fallback\(/,
+  /service\s*\.get_post_by_slug_with_locale_fallback\(/,
   "fn optional_post(result: crate::BlogResult<PostResponse>) -> AnyResult<Option<PostResponse>>",
   "Err(BlogError::PostNotFound(_)) => Ok(None)",
 ]);
