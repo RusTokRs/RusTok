@@ -1,0 +1,51 @@
+name: Arena debug (Fly build probe)
+# TEMPORARY debugging workflow for the arena/37f687be-rustok session: CI job logs are not
+# downloadable from this environment, so the failing compiler output is posted as a pull request
+# comment, which is readable through the API. Delete once the diagnosis is captured.
+on:
+  push:
+    branches:
+      - arena/37f687be-rustok
+permissions:
+  contents: read
+  pull-requests: write
+concurrency:
+  group: arena-debug-fly-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  probe:
+    name: Probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: "1.96.0"
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Probe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          probe() {
+            label="$1"; shift
+            : > /tmp/probe.txt
+            echo "### $*" >> /tmp/probe.txt
+            "$@" >> /tmp/probe.txt 2>&1
+            echo "### exit=$?" >> /tmp/probe.txt
+            tail -c 20000 /tmp/probe.txt > /tmp/tail.txt
+            {
+              echo "probe: $label ($(git rev-parse --short HEAD))"
+              echo '```'
+              cat /tmp/tail.txt
+              echo '```'
+            } > /tmp/comment.txt
+            gh pr comment 4602 --body-file /tmp/comment.txt
+          }
+          probe "step19 clippy (exact)" cargo clippy -p fly-browser -p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin -p rustok-pages-storefront --lib -- -D warnings
+          probe "check page-builder-admin" cargo check -p rustok-page-builder-admin --lib
+          probe "check grid family" cargo check -p rustok-grid -p rustok-grid-leptos -p rustok-ui-core --all-targets
+          probe "clippy grid family" cargo clippy -p rustok-grid -p rustok-grid-leptos -p rustok-ui-core --all-targets -- -D warnings
+          probe "check product family" cargo check -p rustok-product-admin -p rustok-product-storefront --all-targets
