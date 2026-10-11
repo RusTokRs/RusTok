@@ -145,7 +145,12 @@ impl GridPagination {
         if self.total == 0 {
             "0 of 0".to_string()
         } else {
-            format!("{}–{} of {}", self.from_index(), self.to_index(), self.total)
+            format!(
+                "{}–{} of {}",
+                self.from_index(),
+                self.to_index(),
+                self.total
+            )
         }
     }
 
