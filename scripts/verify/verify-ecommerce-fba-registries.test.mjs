@@ -264,7 +264,7 @@ test('verifyEcommerceFbaRegistries rejects write operations without write semant
     () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
     {
       name: EcommerceFbaRegistryVerificationError.name,
-      message: 'pricing.create_or_reuse_collection write operation must enforce require_write_semantics',
+      message: 'pricing.create_or_reuse_collection write operation must enforce write idempotency/deadline semantics',
     },
   );
 });
@@ -423,6 +423,8 @@ const createOrderFixtureRoot = ({ withImplMetadata = false, withOwnerImpl = fals
         error: 'rustok_api::ports::PortError',
         idempotency_required: true,
         deadline_required: true,
+        read_operations: ['read_checkout_result', 'read_order_status'],
+        write_operations: ['complete_checkout'],
       },
     ],
     consumers: [

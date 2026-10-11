@@ -228,12 +228,9 @@ assertContains(
   `${paths.bindings}: category-local additions start from the attribute base rules`
 );
 
-// 4. Product and Variant writes enforce the merged rules.
-assertContains(
-  schemaService,
-  "is_localized: bool,\n    validation: Value,",
-  `${paths.schemaService}: write definitions must expose the declared rule object`
-);
+if (!/is_localized:\s*bool,[\s\S]*?validation:\s*Value,/.test(schemaService)) {
+  failures.push(`${paths.schemaService}: write definitions must expose the declared rule object`);
+}
 assertContains(
   schemaService,
   "SELECT id, value_type, scope, is_localized, validation",

@@ -167,7 +167,16 @@ async fn load_effective_form_for_category_in<C>() {
     load_effective_attribute_validation(db, tenant_id, &mut form).await?;
 }
 `,
-  "crates/modules/rustok-product/src/services/catalog_schema_service/values.rs": `async fn validate_product_publish_requirements_in<C>() {
+  "crates/modules/rustok-product/src/services/catalog_schema_service/values.rs": `pub async fn validate_new_product_publish_requirements(&self) -> CommerceResult<()> {
+    Self::validate_new_product_publish_requirements_in(&self.db, tenant_id, primary_category_id).await
+}
+pub(crate) async fn validate_new_product_publish_requirements_in<C>() {
+    if binding.is_required || rules.required || !rules.required_locales.is_empty() {
+        required_attribute_ids.push(binding.attribute_id);
+    }
+    Ok(())
+}
+async fn validate_product_publish_requirements_in<C>() {
     let rules = attribute_validation::parse_product_attribute_validation(&binding.validation)?;
     if binding.is_required || rules.required || !rules.required_locales.is_empty() {
         required_attribute_ids.push(binding.attribute_id);
@@ -181,12 +190,6 @@ async fn load_effective_form_for_category_in<C>() {
 }
 async fn load_missing_required_locales<C>(conn: &C) -> CommerceResult<()> {
     let _ = "JOIN product_attribute_value_translations pavt";
-    Ok(())
-}
-pub async fn validate_new_product_publish_requirements(&self) -> CommerceResult<()> {
-    if binding.is_required || rules.required || !rules.required_locales.is_empty() {
-        required_attribute_ids.push(binding.attribute_id);
-    }
     Ok(())
 }
 pub async fn save_product_attribute_values(&self) -> CommerceResult<()> {

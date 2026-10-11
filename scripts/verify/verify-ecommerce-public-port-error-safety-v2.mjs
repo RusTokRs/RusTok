@@ -24,7 +24,8 @@ const read = (relativePath) => {
 const failures = [];
 
 const requireText = (source, value, label) => {
-  if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
+  const found = value instanceof RegExp ? value.test(source) : source.includes(value);
+  if (!found) failures.push(`${label}: missing ${value}`);
 };
 const requireAny = (source, values, label) => {
   if (!values.some((value) => source.includes(value))) {
@@ -414,10 +415,7 @@ forbidAll(taxCalculation, [
 
 requireText(
   tax,
-  `PortError::validation(
-                "tax.validation",
-                "tax calculation request is invalid",
-            )`,
+  /PortError::validation\(\s*"tax\.validation",\s*"tax calculation request is invalid",?\s*\)/,
   'tax stable validation envelope',
 );
 requireText(taxCalculation, 'error_message_present = !error.message.is_empty()', 'tax local error message presence');

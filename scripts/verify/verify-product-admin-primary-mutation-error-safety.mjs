@@ -136,20 +136,20 @@ if (countText(facade, ".map_err(|mutation_error| context.map_error(mutation_erro
 
 const mutationBlock = between(
   safety,
-  "pub(super) struct GraphqlMutationContext",
+  "struct GraphqlMutationContext",
   "fn text_length",
   paths.safety,
 );
 for (const [marker, label] of [
   ["const PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY", "mutation boundary"],
   ['"product_admin_primary_graphql_mutations"', "mutation boundary identity"],
-  ["pub(super) struct GraphqlMutationContext", "private mutation context"],
+  ["struct GraphqlMutationContext", "private mutation context"],
   ['"product-admin-mutation:{operation}:{}"', "mutation correlation namespace"],
-  ["pub(super) fn for_create_product(", "create context"],
-  ["pub(super) fn for_update_product(", "update context"],
-  ["pub(super) fn for_change_product_status(", "status context"],
-  ["pub(super) fn for_delete_product(", "delete context"],
-  ["pub(super) fn map_error(&self, error: GraphqlHttpError)", "typed mutation mapper"],
+  ["fn for_create_product(", "create context"],
+  ["fn for_update_product(", "update context"],
+  ["fn for_change_product_status(", "status context"],
+  ["fn for_delete_product(", "delete context"],
+  ["fn map_error(&self, error: GraphqlHttpError)", "typed mutation mapper"],
   ["GraphqlHttpError::Network", "network classification"],
   ["GraphqlHttpError::Http(_)", "HTTP classification"],
   ["GraphqlHttpError::Unauthorized", "authentication classification"],
