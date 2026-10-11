@@ -25,6 +25,7 @@ pub const NOTIFICATION_OUTBOX_INTAKE_ENABLED_ENV: &str =
 const OUTBOX_INTAKE_POLL_INTERVAL: Duration = Duration::from_millis(500);
 const FORUM_SOURCE: &str = "forum";
 const FORUM_TOPIC_CREATED: &str = "forum.topic.created";
+const FORUM_TOPIC_REPLIED: &str = "forum.topic.replied";
 const FORUM_USER_MENTION_ADDED: &str = "forum.mention.user_added";
 static NOTIFICATION_OUTBOX_INTAKE_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
@@ -84,6 +85,13 @@ impl NotificationOutboxEnvelopeDecoder for ServerNotificationOutboxEnvelopeDecod
             {
                 source_event_ref(envelope.tenant_id, topic_id, FORUM_TOPIC_CREATED, 1)
             }
+            // The reply id is the source event identity: one fan-out per reply, and the
+            // provider resolves the topic and the reply's audience from it.
+            DomainEvent::ForumTopicReplied { reply_id, .. }
+                if record.event_type == FORUM_TOPIC_REPLIED =>
+            {
+                source_event_ref(envelope.tenant_id, reply_id, FORUM_TOPIC_REPLIED, 1)
+            }
             _ => Err(NotificationError::InvalidEvent),
         }
     }
@@ -94,6 +102,7 @@ impl NotificationOutboxEnvelopeDecoder for ServerNotificationOutboxEnvelopeDecod
         // soon as the host decodes it.
         vec![
             FORUM_TOPIC_CREATED.to_string(),
+            FORUM_TOPIC_REPLIED.to_string(),
             FORUM_USER_MENTION_ADDED.to_string(),
         ]
     }
@@ -270,7 +279,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        FORUM_TOPIC_CREATED, FORUM_USER_MENTION_ADDED, ServerNotificationOutboxEnvelopeDecoder,
+        FORUM_TOPIC_CREATED, FORUM_TOPIC_REPLIED, FORUM_USER_MENTION_ADDED,
+        ServerNotificationOutboxEnvelopeDecoder,
     };
 
     #[test]
@@ -301,6 +311,44 @@ mod tests {
         assert_eq!(decoded.event_type().as_str(), FORUM_TOPIC_CREATED);
         assert_eq!(decoded.source_revision(), 1);
 
+        let reply_topic_id = Uuid::new_v4();
+        let reply_id = Uuid::new_v4();
+        let reply = EventEnvelope::new(
+            tenant_id,
+            Some(Uuid::new_v4()),
+            DomainEvent::ForumTopicReplied {
+                topic_id: reply_topic_id,
+                reply_id,
+                author_id: Some(Uuid::new_v4()),
+            },
+        );
+        let reply_record = NotificationOutboxEnvelopeRecord {
+            outbox_event_id: reply.id,
+            event_type: reply.event_type.clone(),
+            schema_version: i16::try_from(reply.schema_version).expect("schema fits"),
+            payload: serde_json::to_value(reply).expect("reply envelope serializes"),
+        };
+        let decoded_reply = ServerNotificationOutboxEnvelopeDecoder
+            .decode(&reply_record)
+            .expect("reply envelope decodes");
+        assert_eq!(decoded_reply.tenant_id(), tenant_id);
+        assert_eq!(decoded_reply.event_id(), reply_id);
+        assert_eq!(decoded_reply.event_type().as_str(), FORUM_TOPIC_REPLIED);
+        assert_eq!(decoded_reply.source_revision(), 1);
+
+        let mismatched = NotificationOutboxEnvelopeRecord {
+            outbox_event_id: reply_record.outbox_event_id,
+            event_type: FORUM_TOPIC_CREATED.to_string(),
+            schema_version: reply_record.schema_version,
+            payload: reply_record.payload.clone(),
+        };
+        assert!(
+            ServerNotificationOutboxEnvelopeDecoder
+                .decode(&mismatched)
+                .is_err(),
+            "a replied payload under another event type must not be claimed as a topic"
+        );
+
         let mention_revision = 7_i64;
         let mention = ContractEventEnvelope::new(
             tenant_id,
@@ -327,5 +375,17 @@ mod tests {
         assert_eq!(decoded.event_id(), mention_id);
         assert_eq!(decoded.event_type().as_str(), FORUM_USER_MENTION_ADDED);
         assert_eq!(decoded.source_revision(), mention_revision as u64);
+    }
+
+    #[test]
+    fn intake_claims_exactly_the_decoded_forum_types() {
+        assert_eq!(
+            ServerNotificationOutboxEnvelopeDecoder.accepted_event_types(),
+            vec![
+                FORUM_TOPIC_CREATED.to_string(),
+                FORUM_TOPIC_REPLIED.to_string(),
+                FORUM_USER_MENTION_ADDED.to_string(),
+            ]
+        );
     }
 }

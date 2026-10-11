@@ -242,15 +242,29 @@ wrappers. Each one has an owner decision or a follow-up task in
   `ForumModerationReportPort`. Without that adapter the mutations fail closed. Not yet implemented: automatic flags
   (a `rustok-moderation` policy, not a forum setting), free-text descriptions, report rate limits, REST transport, and the storefront report
   action. See [`DECISIONS/2026-10-09-forum-user-reports-via-moderation.md`](../../../DECISIONS/2026-10-09-forum-user-reports-via-moderation.md).
-- Notifications are emitted only for topic creation and user mentions. Reply
-  creation publishes `forum.topic.replied` through the transactional outbox, but the
-  Forum notification provider does not accept that type, so topic subscribers receive
-  nothing for a reply and the stored subscription level is read only for topic
-  creation. Enabling reply notifications needs the provider-side recipient set, the
-  per-recipient audience recheck, and a localized template; the outbox intake no
-  longer blocks it, because the Notifications module now selects rows from the host
-  decoder's claimed types. See
+- Reply notifications are delivered. `forum.topic.replied` is claimed by the host outbox
+  intake decoder, described against the approved reply, and fanned out to topic-level
+  watchers first and to the owning category's watchers second: an explicit topic-level row
+  always wins (so `Normal` with replies off suppresses the category default), `Muted` rows
+  and the reply author are never recipients, and each candidate is rechecked against that
+  recipient's current topic and reply visibility before a notification is materialized,
+  with a pending reply retried rather than dropped. Opening the notification re-authorizes
+  the reply and deep-links `/modules/forum?category=…&topic=…&reply=…`. The intake selects
+  rows from the host decoder's claimed types, so this needed no Notifications change. See
   [`DECISIONS/2026-10-11-notifications-outbox-intake-decoder-claims.md`](../../../DECISIONS/2026-10-11-notifications-outbox-intake-decoder-claims.md).
+- Reply deep links resolve to the topic, not to the reply. `target_route` and the search
+  projection emit `/modules/forum?category=…&topic=…&reply=…`, but `parse_forum_route` and
+  the Next.js widget read `category` and `topic` only, so no surface scrolls to or
+  highlights the referenced reply. A reply anchor needs a route-contract decision plus
+  per-surface plumbing (and it equally affects mentions and search results); until then the
+  notification opens the correct topic and nothing more. Reply anchoring is tracked by
+  `FORUM-20` (Search/SEO/deep links).
+- Notification descriptors carry identifiers only, so the Notifications storefront inbox
+  renders `forum.topic.replied` / `forum.topic.created` as the body and the notification
+  type as the title until the localized template registry (`NOTIFY-06`) lands. The forum
+  deliberately does not copy topic titles or reply text into the stored payload: reply
+  bodies and restricted topic titles would be duplicated into per-recipient rows that
+  outlive the visibility rules which currently allow them.
 - Topic move (`FORUM-21A`) has an owner service but no transport or UI.
   Topic revision history has services but no API or UI.
 - Attachment relations have a service but no transport or UI.

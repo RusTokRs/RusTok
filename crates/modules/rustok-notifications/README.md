@@ -459,10 +459,10 @@ continue to succeed when the module is absent or disabled.
 - serialize active-manifest, artifact-security, maintenance, and node-readiness
   policy changes with final candidate commits;
 - bounded moderator-directory expansion;
-- reply notifications: `rustok-forum` publishes `forum.topic.replied` but its
-  provider supports only the two types above, so topic subscribers are not notified
-  about replies. Enabling it is provider-side work (recipient set, per-recipient
-  audience recheck, and a localized template), not an intake change;
+- localized notification templates: every Forum descriptor (topic created, topic
+  replied, user mention) carries identifiers only, so the storefront inbox renders
+  `template_key` as the body and the notification type as the title until `NOTIFY-06`
+  supplies the owner template registry and locale-aware rendering;
 - tenant-wide scheduled reconciliation and payload redaction;
 - channel delivery enqueue with delivery-time authorization;
 - PostgreSQL cursor/lease contention evidence and worker health/lag metrics;

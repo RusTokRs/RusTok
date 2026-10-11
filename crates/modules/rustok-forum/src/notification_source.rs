@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,14 +15,15 @@ use rustok_notifications_api::{
 };
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Statement,
+    QueryOrder, QuerySelect, Statement, Value,
 };
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::audience::SharedForumAudienceFactsPort;
 use crate::entities::{
-    forum_category_subscription, forum_domain_event, forum_reply, forum_topic, forum_user_mention,
+    forum_category_subscription, forum_domain_event, forum_reply, forum_topic,
+    forum_topic_subscription, forum_user_mention,
 };
 use crate::error::ForumError;
 use crate::notification_recipient::{
@@ -35,11 +36,16 @@ use crate::subscription::ForumSubscriptionLevel;
 const FORUM_SOURCE: &str = "forum";
 const TOPIC_CREATED_TYPE: &str = "forum.topic.created";
 const USER_MENTION_ADDED_TYPE: &str = "forum.mention.user_added";
+const TOPIC_REPLIED_TYPE: &str = "forum.topic.replied";
+const REPLY_CREATED_TYPE: &str = "forum.reply.created";
+const REPLY_AUDIENCE_TOPIC_STAGE: &str = "t";
+const REPLY_AUDIENCE_CATEGORY_STAGE: &str = "c";
 const FORUM_TOPIC_TARGET: &str = "forum.topic";
 const FORUM_REPLY_TARGET: &str = "forum.reply";
 const MENTION_DESCRIBE_ACTOR: &str = "forum-notification-mention-describe";
 const MENTION_AUDIENCE_ACTOR: &str = "forum-notification-mention-audience";
 const TOPIC_SUBSCRIPTION_AUDIENCE_ACTOR: &str = "forum-notification-topic-subscription-audience";
+const REPLY_SUBSCRIPTION_AUDIENCE_ACTOR: &str = "forum-notification-reply-subscription-audience";
 const TARGET_OPEN_ACTOR: &str = "forum-notification-target-open";
 const RECIPIENT_CONTEXT_DEADLINE: Duration = Duration::from_secs(2);
 
@@ -83,6 +89,12 @@ enum ForumTargetAvailability {
     Visible(ForumTargetContext),
     Deferred,
     Unavailable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReplyAudienceStage {
+    Topic,
+    Category,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -138,12 +150,25 @@ impl ForumNotificationSourceProvider {
                     .map_err(retryable_database_error)?
                     .ok_or(NotificationProviderError::InvalidEvent)?
             }
+            None if event.event_type() == &topic_replied_type() => {
+                forum_domain_event::Entity::find()
+                    .filter(forum_domain_event::Column::TenantId.eq(event.tenant_id()))
+                    .filter(forum_domain_event::Column::AggregateType.eq("reply"))
+                    .filter(forum_domain_event::Column::AggregateId.eq(event.event_id()))
+                    .filter(forum_domain_event::Column::EventType.eq(REPLY_CREATED_TYPE))
+                    .order_by_asc(forum_domain_event::Column::SequenceNo)
+                    .one(&self.db)
+                    .await
+                    .map_err(retryable_database_error)?
+                    .ok_or(NotificationProviderError::InvalidEvent)?
+            }
             None => return Err(NotificationProviderError::InvalidEvent),
         };
 
         if requested_revision != persisted.sequence_no {
             let semantic_revision = match persisted.event_type.as_str() {
                 TOPIC_CREATED_TYPE if persisted.schema_version == 1 => 1,
+                REPLY_CREATED_TYPE if persisted.schema_version == 1 => 1,
                 USER_MENTION_ADDED_TYPE => self.parse_user_mention(&persisted)?.source_revision_id,
                 _ => return Err(NotificationProviderError::InvalidEvent),
             };
@@ -231,6 +256,32 @@ impl ForumNotificationSourceProvider {
             return Ok(None);
         }
         Ok(Some(topic))
+    }
+
+    async fn load_approved_reply(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> NotificationProviderResult<Option<forum_reply::Model>> {
+        let Some(reply) = forum_reply::Entity::find()
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
+            .filter(forum_reply::Column::Id.eq(reply_id))
+            .one(&self.db)
+            .await
+            .map_err(retryable_database_error)?
+        else {
+            return Ok(None);
+        };
+        if reply.status != ReplyStatus::Approved {
+            return Ok(None);
+        }
+        if !self
+            .row_is_active("forum_replies", "id", tenant_id, reply.id)
+            .await?
+        {
+            return Ok(None);
+        }
+        Ok(Some(reply))
     }
 
     async fn load_target_for_viewer(
@@ -374,6 +425,131 @@ impl ForumNotificationSourceProvider {
             .map(|topic| topic.is_some())
     }
 
+    async fn reply_subscription_recipient_availability(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        recipient_id: Uuid,
+    ) -> NotificationProviderResult<ForumTargetAvailability> {
+        if self.recipient_context_port.is_none() {
+            return self
+                .load_public_target(tenant_id, "reply", reply_id)
+                .await;
+        }
+        let Some(viewer) = self
+            .resolve_recipient_viewer(
+                recipient_operation_context(
+                    tenant_id,
+                    recipient_id,
+                    reply_id,
+                    REPLY_SUBSCRIPTION_AUDIENCE_ACTOR,
+                ),
+                tenant_id,
+                recipient_id,
+            )
+            .await?
+        else {
+            return Ok(ForumTargetAvailability::Unavailable);
+        };
+        self.load_target_for_viewer(tenant_id, "reply", reply_id, &viewer)
+            .await
+    }
+
+    async fn reply_topic_subscription_page(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        actor_id: Option<Uuid>,
+        after: Option<Uuid>,
+        limit: usize,
+    ) -> NotificationProviderResult<(Vec<Uuid>, bool)> {
+        let mut query = forum_topic_subscription::Entity::find()
+            .filter(forum_topic_subscription::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic_subscription::Column::TopicId.eq(topic_id))
+            .filter(forum_topic_subscription::Column::NotifyReplies.eq(true))
+            .filter(forum_topic_subscription::Column::Level.ne(ForumSubscriptionLevel::Muted))
+            .order_by_asc(forum_topic_subscription::Column::UserId);
+        if let Some(after) = after {
+            query = query.filter(forum_topic_subscription::Column::UserId.gt(after));
+        }
+        if let Some(actor_id) = actor_id {
+            query = query.filter(forum_topic_subscription::Column::UserId.ne(actor_id));
+        }
+        let rows = query
+            .limit((limit + 1) as u64)
+            .all(&self.db)
+            .await
+            .map_err(retryable_database_error)?;
+        let has_more = rows.len() > limit;
+        Ok((
+            rows.into_iter().take(limit).map(|row| row.user_id).collect(),
+            has_more,
+        ))
+    }
+
+    async fn reply_category_subscription_page(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        category_id: Uuid,
+        actor_id: Option<Uuid>,
+        after: Option<Uuid>,
+        limit: usize,
+    ) -> NotificationProviderResult<(Vec<Uuid>, bool)> {
+        let mut query = forum_category_subscription::Entity::find()
+            .filter(forum_category_subscription::Column::TenantId.eq(tenant_id))
+            .filter(forum_category_subscription::Column::CategoryId.eq(category_id))
+            .filter(forum_category_subscription::Column::NotifyReplies.eq(true))
+            .filter(forum_category_subscription::Column::Level.ne(ForumSubscriptionLevel::Muted))
+            .order_by_asc(forum_category_subscription::Column::UserId);
+        if let Some(after) = after {
+            query = query.filter(forum_category_subscription::Column::UserId.gt(after));
+        }
+        if let Some(actor_id) = actor_id {
+            query = query.filter(forum_category_subscription::Column::UserId.ne(actor_id));
+        }
+        let rows = query
+            .limit((limit + 1) as u64)
+            .all(&self.db)
+            .await
+            .map_err(retryable_database_error)?;
+        let has_more = rows.len() > limit;
+        let page = rows.into_iter().take(limit).collect::<Vec<_>>();
+        let suppressed = self
+            .topic_level_reply_suppressions(tenant_id, topic_id, &page)
+            .await?;
+        Ok((
+            page.into_iter()
+                .map(|row| row.user_id)
+                .filter(|user_id| !suppressed.contains(user_id))
+                .collect(),
+            has_more,
+        ))
+    }
+
+    async fn topic_level_reply_suppressions(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        subscriptions: &[forum_category_subscription::Model],
+    ) -> NotificationProviderResult<BTreeSet<Uuid>> {
+        if subscriptions.is_empty() {
+            return Ok(BTreeSet::new());
+        }
+        let user_ids = subscriptions
+            .iter()
+            .map(|row| Value::from(row.user_id))
+            .collect::<Vec<_>>();
+        forum_topic_subscription::Entity::find()
+            .filter(forum_topic_subscription::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic_subscription::Column::TopicId.eq(topic_id))
+            .filter(forum_topic_subscription::Column::UserId.is_in(user_ids))
+            .all(&self.db)
+            .await
+            .map_err(retryable_database_error)
+            .map(|rows| rows.into_iter().map(|row| row.user_id).collect())
+    }
+
     async fn resolve_recipient_viewer(
         &self,
         caller_context: PortContext,
@@ -489,6 +665,21 @@ impl ForumNotificationSourceProvider {
         Ok(())
     }
 
+    fn validate_reply_descriptor(
+        &self,
+        event: &forum_domain_event::Model,
+        descriptor: &NotificationSemanticDescriptor,
+    ) -> NotificationProviderResult<()> {
+        if descriptor.notification_type != topic_replied_type()
+            || descriptor.target.owner != forum_source_slug()
+            || descriptor.target.kind != forum_reply_target_kind()
+            || descriptor.target.id != event.aggregate_id
+        {
+            return Err(NotificationProviderError::Rejected);
+        }
+        Ok(())
+    }
+
     fn validate_mention_descriptor(
         &self,
         payload: &ForumUserMentionPayload,
@@ -569,7 +760,11 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
     }
 
     fn supported_types(&self) -> Vec<NotificationTypeKey> {
-        vec![topic_created_type(), user_mention_added_type()]
+        vec![
+            topic_created_type(),
+            topic_replied_type(),
+            user_mention_added_type(),
+        ]
     }
 
     async fn describe_event(
@@ -603,6 +798,42 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                         id: topic.id,
                     },
                     actor_id: event.actor_id.or(topic.author_id),
+                    priority: NotificationPriority::Normal,
+                    template_data,
+                }))
+            }
+            REPLY_CREATED_TYPE => {
+                if event.aggregate_type != "reply" || event.schema_version != 1 {
+                    return Err(NotificationProviderError::InvalidEvent);
+                }
+                let Some(reply) = self
+                    .load_approved_reply(event.tenant_id, event.aggregate_id)
+                    .await?
+                else {
+                    return Ok(None);
+                };
+                let Some(topic) = self
+                    .load_topic_for_description(event.tenant_id, reply.topic_id)
+                    .await?
+                else {
+                    return Ok(None);
+                };
+                let template_data = NotificationTemplateData::try_new(BTreeMap::from([
+                    ("topic_id".to_string(), topic.id.to_string()),
+                    ("reply_id".to_string(), reply.id.to_string()),
+                    ("category_id".to_string(), topic.category_id.to_string()),
+                ]))
+                .map_err(|_| NotificationProviderError::InvalidEvent)?;
+                Ok(Some(NotificationSemanticDescriptor {
+                    notification_type: topic_replied_type(),
+                    template_key: NotificationTemplateKey::new(TOPIC_REPLIED_TYPE)
+                        .expect("forum topic-replied notification template key must stay valid"),
+                    target: NotificationTargetRef {
+                        owner: forum_source_slug(),
+                        kind: forum_reply_target_kind(),
+                        id: reply.id,
+                    },
+                    actor_id: event.actor_id.or(reply.author_id),
                     priority: NotificationPriority::Normal,
                     template_data,
                 }))
@@ -709,6 +940,99 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                         });
                     }
                 }
+                NotificationAudiencePage::try_new(recipients, next_cursor)
+                    .map_err(|_| NotificationProviderError::Internal { retryable: false })
+            }
+            REPLY_CREATED_TYPE => {
+                self.validate_reply_descriptor(&event, &request.descriptor)?;
+                let reply_id = event.aggregate_id;
+                let Some(reply) = self
+                    .load_approved_reply(event.tenant_id, reply_id)
+                    .await?
+                else {
+                    return Ok(NotificationAudiencePage::empty());
+                };
+                let topic = if self.recipient_context_port.is_none() {
+                    self.load_public_topic(event.tenant_id, reply.topic_id)
+                        .await?
+                } else {
+                    self.load_topic_for_subscription_audience(event.tenant_id, reply.topic_id)
+                        .await?
+                };
+                let Some(topic) = topic else {
+                    return Ok(NotificationAudiencePage::empty());
+                };
+
+                let limit = request.bounded_limit();
+                if limit == 0 {
+                    return Err(NotificationProviderError::Rejected);
+                }
+                let (stage, after) = match request.cursor.as_ref() {
+                    Some(cursor) => parse_reply_audience_cursor(cursor.as_str())?,
+                    None => (ReplyAudienceStage::Topic, None),
+                };
+                let actor_id = event.actor_id.or(reply.author_id);
+                let (candidates, has_more) = match stage {
+                    ReplyAudienceStage::Topic => {
+                        self.reply_topic_subscription_page(
+                            event.tenant_id,
+                            topic.id,
+                            actor_id,
+                            after,
+                            limit,
+                        )
+                        .await?
+                    }
+                    ReplyAudienceStage::Category => {
+                        self.reply_category_subscription_page(
+                            event.tenant_id,
+                            topic.id,
+                            topic.category_id,
+                            actor_id,
+                            after,
+                            limit,
+                        )
+                        .await?
+                    }
+                };
+                let last_candidate = candidates.last().copied();
+                let mut recipients = Vec::with_capacity(candidates.len());
+                for recipient_id in candidates {
+                    match self
+                        .reply_subscription_recipient_availability(
+                            event.tenant_id,
+                            reply_id,
+                            recipient_id,
+                        )
+                        .await?
+                    {
+                        ForumTargetAvailability::Visible(_) => {
+                            recipients.push(NotificationAudienceCandidate { recipient_id })
+                        }
+                        ForumTargetAvailability::Deferred => {
+                            return Err(NotificationProviderError::Internal { retryable: true });
+                        }
+                        ForumTargetAvailability::Unavailable => {}
+                    }
+                }
+                let next_cursor = if has_more {
+                    last_candidate.map(|after| (stage, after))
+                } else {
+                    match stage {
+                        ReplyAudienceStage::Topic => {
+                            Some((ReplyAudienceStage::Category, Uuid::nil()))
+                        }
+                        ReplyAudienceStage::Category => None,
+                    }
+                };
+                let next_cursor = next_cursor
+                    .map(|(stage, after)| {
+                        NotificationAudienceCursor::new(encode_reply_audience_cursor(
+                            stage, after,
+                        ))
+                    })
+                    .transpose()
+                    .map_err(|_| NotificationProviderError::Internal { retryable: false })?;
                 NotificationAudiencePage::try_new(recipients, next_cursor)
                     .map_err(|_| NotificationProviderError::Internal { retryable: false })
             }
@@ -843,7 +1167,33 @@ fn forum_owner_error(error: ForumError) -> NotificationProviderError {
 }
 
 fn is_supported_event_type(event_type: &NotificationTypeKey) -> bool {
-    event_type == &topic_created_type() || event_type == &user_mention_added_type()
+    event_type == &topic_created_type()
+        || event_type == &topic_replied_type()
+        || event_type == &user_mention_added_type()
+}
+
+fn encode_reply_audience_cursor(stage: ReplyAudienceStage, after: Uuid) -> String {
+    let prefix = match stage {
+        ReplyAudienceStage::Topic => REPLY_AUDIENCE_TOPIC_STAGE,
+        ReplyAudienceStage::Category => REPLY_AUDIENCE_CATEGORY_STAGE,
+    };
+    format!("{prefix}:{after}")
+}
+
+/// Reply audiences walk two subscription tables in a fixed order (topic-level rows first,
+/// then the owning category). The cursor therefore carries the stage plus the last raw
+/// subscriber id that was inspected, so a resumed page never revisits or skips a row.
+fn parse_reply_audience_cursor(
+    cursor: &str,
+) -> NotificationProviderResult<(ReplyAudienceStage, Option<Uuid>)> {
+    let (prefix, raw) = cursor.split_once(':').ok_or(NotificationProviderError::InvalidEvent)?;
+    let stage = match prefix {
+        REPLY_AUDIENCE_TOPIC_STAGE => ReplyAudienceStage::Topic,
+        REPLY_AUDIENCE_CATEGORY_STAGE => ReplyAudienceStage::Category,
+        _ => return Err(NotificationProviderError::InvalidEvent),
+    };
+    let after = Uuid::parse_str(raw).map_err(|_| NotificationProviderError::InvalidEvent)?;
+    Ok((stage, Some(after)))
 }
 
 fn target_kind_for_source(source_kind: &str) -> NotificationProviderResult<NotificationTargetKind> {
@@ -867,6 +1217,11 @@ fn topic_created_type() -> NotificationTypeKey {
 fn user_mention_added_type() -> NotificationTypeKey {
     NotificationTypeKey::new(USER_MENTION_ADDED_TYPE)
         .expect("forum user-mention notification type must stay valid")
+}
+
+fn topic_replied_type() -> NotificationTypeKey {
+    NotificationTypeKey::new(TOPIC_REPLIED_TYPE)
+        .expect("forum topic-replied notification type must stay valid")
 }
 
 fn forum_topic_target_kind() -> NotificationTargetKind {
@@ -907,5 +1262,50 @@ mod tests {
             )),
             NotificationProviderError::CapabilityUnavailable { retryable: false }
         );
+    }
+
+    #[test]
+    fn reply_audience_cursor_round_trips_each_stage() {
+        let user_id = Uuid::new_v4();
+        for (stage, prefix) in [
+            (ReplyAudienceStage::Topic, REPLY_AUDIENCE_TOPIC_STAGE),
+            (ReplyAudienceStage::Category, REPLY_AUDIENCE_CATEGORY_STAGE),
+        ] {
+            let cursor = encode_reply_audience_cursor(stage, user_id);
+            assert!(cursor.starts_with(&format!("{prefix}:")));
+            let (parsed_stage, parsed_user) = parse_reply_audience_cursor(&cursor)
+                .expect("encoded stage cursors should parse");
+            assert_eq!(parsed_stage, stage);
+            assert_eq!(parsed_user, Some(user_id));
+        }
+    }
+
+    #[test]
+    fn reply_audience_cursor_rejects_unknown_stage_and_malformed_values() {
+        for cursor in [
+            Uuid::new_v4().to_string(),
+            format!("x:{}", Uuid::new_v4()),
+            format!("{}:not-a-uuid", REPLY_AUDIENCE_TOPIC_STAGE),
+            format!("{}::extra", REPLY_AUDIENCE_CATEGORY_STAGE),
+        ] {
+            assert!(
+                parse_reply_audience_cursor(&cursor).is_err(),
+                "cursor {cursor} must not be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn nil_category_stage_cursor_starts_the_second_stage_from_the_first_row() {
+        let cursor = encode_reply_audience_cursor(ReplyAudienceStage::Category, Uuid::nil());
+        let (stage, after) =
+            parse_reply_audience_cursor(&cursor).expect("stage hand-off cursor should parse");
+        assert_eq!(stage, ReplyAudienceStage::Category);
+        assert_eq!(after, Some(Uuid::nil()));
+    }
+
+    #[test]
+    fn replied_type_is_distinct_from_topic_created_type() {
+        assert_eq!(topic_replied_type().as_str(), "forum.topic.replied");
     }
 }

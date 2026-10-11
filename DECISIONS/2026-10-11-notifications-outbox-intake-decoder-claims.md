@@ -173,6 +173,11 @@ whenever the decoder still claims them.
   required to confirm the removed `Condition` import and the new trait default.
 - `node scripts/verify/verify-notifications-fanout-worker.mjs` still passes (worker
   start order and the neutral-module rule).
+- `cargo test -p rustok-forum --test notification_source_sqlite` now walks the reply
+  audience across both subscription stages (author exclusion, topic-level opt-out
+  suppression, deep-link route, malformed cursor) and
+  `cargo test -p rustok-server --lib notification_outbox_intake_worker` covers the replied
+  decode arm plus the claimed-type list. Neither command ran in the authoring session.
 - `python scripts/verify/verify-remediation-gate.py --files <paths>` passes its diff
   invariants; its dependency-guard stage needs `cargo metadata` and was not run here.
 
@@ -181,5 +186,13 @@ whenever the decoder still claims them.
 - Adding a forum notification type is a two-file change (owner provider plus host
   decoder) instead of a cross-module edit, which removes the silent-stranding failure
   mode found while auditing reply notifications.
-- The reply-notification gap stays open and is now recorded as a provider-side task
-  rather than being blocked by an intake allowlist in another module.
+- The reply-notification gap that motivated this decision is closed through exactly the
+  path the decision reserved: `rustok-forum` describes `forum.topic.replied` (topic-level
+  watchers, then the owning category's watchers, per-recipient visibility recheck, reply
+  deep link) and the host decoder claims the type. The Notifications module and its
+  migrations were not touched.
+- Localized template rendering stays outside this decision and is tracked as `NOTIFY-06`;
+  until it lands the storefront inbox renders the stored template key, which is the
+  pre-existing behaviour for every Forum notification type.
+- The implementation status remains `In progress` until CI runs the Forum provider and
+  `rustok-server` decoder suites; the authoring sandbox had no Rust toolchain.
