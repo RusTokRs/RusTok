@@ -328,7 +328,7 @@ Only part of the module's guard family runs automatically: 13 of the 259
   execute only when someone invokes them, so a red one is not by itself evidence
   about the tree and a green one is not evidence about a rule. `node
   scripts/audit/verifier_status.mjs --prefix forum-` classifies the whole family
-  in one pass; measured on the 2026-10-11 tree that is 87 pass, 171 exiting with
+  in one pass; measured on the 2026-10-11 tree that is 88 pass, 170 exiting with
   their own structured finding, 1 needing `cargo`, and none throwing before
   evaluating a rule. The throwing class is gone rather than re-labelled: three
   gates died on their own harness or inputs.
@@ -389,8 +389,15 @@ Only part of the module's guard family runs automatically: 13 of the 259
   pre-moderation decision had superseded, plus a `query_one` call the adapter
   issues as `query_one_raw`; it now reads the composition through
   `services/mod.rs`, cites the ADR rule, and reports no code finding at all,
-  leaving only the canonical-plan markers. Two workflow steps still name paths the
-  completed cutover deleted (`rustfmt --check
+  leaving only the canonical-plan markers. The category slug alias guard combined
+  both defects and one contradiction: it pinned `DROP TABLE
+  forum_category_route_aliases` while the alias-history test drops that table as
+  `DROP TABLE IF EXISTS ..`, and it required `category_route.rs` to reference
+  `forum_category_taxonomy_binding` - a runtime read of the binding table that the
+  same module's taxonomy guard asserts is retired, so the two guards demanded
+  opposite shapes and only the port-based route could satisfy both; the marker is
+  now a layout-tolerant pattern and the binding reference is a forbidden pattern.
+  Both probes bite. the completed cutover deleted (`rustfmt --check
   crates/modules/rustok-forum/src/services/read_model.rs` in
   `forum-read-model-category-taxonomy-copy.yml`, and `cargo test -p rustok-forum
   --test category_taxonomy_binding`, a target that does not exist, in
