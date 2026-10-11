@@ -43,6 +43,7 @@ const corePath = "crates/modules/rustok-forum/admin/src/core.rs";
 const modelPath = "crates/modules/rustok-forum/admin/src/model.rs";
 const uiPath = "crates/modules/rustok-forum/admin/src/ui/leptos.rs";
 const categoryDndPath = "crates/modules/rustok-forum/admin/src/ui/category_dnd.rs";
+const i18nPath = "crates/modules/rustok-forum/admin/src/i18n.rs";
 const transportPath = "crates/modules/rustok-forum/admin/src/transport.rs";
 const legacyApiPath = "crates/modules/rustok-forum/admin/src/api.rs";
 const graphqlAdapterPath = "crates/modules/rustok-forum/admin/src/transport/graphql_adapter.rs";
@@ -58,6 +59,7 @@ for (const filePath of [
   modelPath,
   uiPath,
   categoryDndPath,
+  i18nPath,
   transportPath,
   graphqlAdapterPath,
   categoryTreeGraphqlAdapterPath,
@@ -77,6 +79,7 @@ const core = readRepo(corePath);
 const model = readRepo(modelPath);
 const ui = readRepo(uiPath);
 const categoryDnd = readRepo(categoryDndPath);
+const i18n = readRepo(i18nPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
 const categoryTreeGraphqlAdapter = readRepo(categoryTreeGraphqlAdapterPath);
@@ -199,6 +202,77 @@ for (const rawActionButtonClass of [
   assertNotContains(ui, rawActionButtonClass, `${uiPath}: action button styles must stay in core policy (${rawActionButtonClass})`);
 }
 assertNotContains(ui, /format!\("\{\}: \{err\}"/, `${uiPath}: transport error message composition must stay in core helper`);
+// Interpolated copy has to reach the panel through the core label policy and the crate i18n
+// resolvers. A `t()` result handed to `String::replace` never binds its Fluent argument, so
+// `fluent-bundle` records a reference error, the shared resolver reports the lookup as failed, and
+// the caller literal renders in every locale - which also makes the catalog's plural variants dead
+// code. The `*_template` fields are listed too: a label struct that carries an unresolved template
+// looks like a configurable string but can only ever show English.
+for (const marker of [
+  '.replace("{count}"',
+  '.replace("{value}"',
+  '.replace("{category}"',
+  '.replace("{slug}"',
+  "topics_count_template",
+  "replies_count_template",
+  "icon_template",
+  "thread_path_template",
+  "shown_template",
+]) {
+  assertNotContains(ui, marker, `${uiPath}: interpolated admin copy must resolve through the core label policy (${marker})`);
+  assertNotContains(categoryDnd, marker, `${categoryDndPath}: interpolated admin copy must resolve through the core label policy (${marker})`);
+}
+for (const marker of [
+  "topics_count_template",
+  "replies_count_template",
+  "icon_template",
+  "thread_path_template",
+  "shown_template",
+]) {
+  assertNotContains(core, marker, `${corePath}: unresolved label templates must stay out of the admin view models (${marker})`);
+}
+for (const marker of [
+  "forum_admin_count_label",
+  "forum_admin_value_label",
+  "forum_admin_thread_path_label",
+  "forum_admin_reply_preview_shown_label",
+]) {
+  assertContains(core, marker, `${corePath}: expected core-owned FFA helper ${marker}`);
+}
+assertContains(ui, "forum_admin_reply_preview_shown_label", `${uiPath}: UI must consume core-owned reply preview count policy`);
+
+// The resolvers are the only sanctioned way to bind catalog arguments. `verify-ui-i18n-keys.mjs`
+// reads key literals out of `t`/`format` calls, not out of these wrappers, so the call shape and the
+// catalog keys are pinned here. Numbers must stay numbers: a `usize` -> `i64` clamp would silently
+// rewrite large counts.
+for (const marker of [
+  "pub fn count_message",
+  'arguments.set("count", count)',
+  "pub fn value_message",
+  'arguments.set("value", value)',
+  "pub fn thread_path_message",
+  'arguments.set("category", category)',
+  'arguments.set("slug", slug)',
+]) {
+  assertContains(i18n, marker, `${i18nPath}: expected bound-argument resolver shape ${marker}`);
+}
+for (const marker of ["i64::MAX", "as i64"]) {
+  assertNotContains(i18n, marker, `${i18nPath}: counts must reach Fluent without a lossy clamp (${marker})`);
+}
+for (const marker of [
+  "forum.topics.ready",
+  "forum.topics.shown",
+  "forum.render.topicsCount",
+  "forum.render.repliesCount",
+  "forum.render.icon",
+  "forum.render.threadPath",
+]) {
+  assertContains(
+    `${core}\n${i18n}`,
+    marker,
+    `${corePath}: interpolated admin key ${marker} must be resolved by core, not by a caller template`,
+  );
+}
 
 for (const marker of [
   "category_drop_move_request",

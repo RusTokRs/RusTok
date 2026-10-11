@@ -39,7 +39,16 @@ Leptos admin UI package for the `rustok-forum` module.
 - `admin/src/transport/topic_slug_rename_graphql_adapter.rs` composes `renameForumTopicSlug` and bounded localized topic candidates without reading route alias state.
 - `admin/src/transport/topic_split_graphql_adapter.rs` composes `splitForumTopicReplies` and bounded candidate/reply reads without owner policy.
 - `admin/src/transport/topic_reply_range_graphql_adapter.rs` composes `moveForumTopicReplyRange` without inferring owner positions or reading audit state.
-- `admin/src/ui/root.rs` performs route-only composition.
+- `admin/src/i18n.rs` declares the package catalog and the bound-argument resolvers
+  (`count_message`, `value_message`, `thread_path_message`). Interpolated panel copy resolves there,
+  never from a `"{count}"` template handed to `t()`: `fluent-bundle` records a reference error for an
+  unbound placeable, the shared resolver reports the lookup as failed, and the caller literal then
+  renders in every locale, which also makes the catalog's plural variants dead code.
+- `admin/src/core.rs` owns the label policy behind that rule - `forum_admin_count_label`,
+  `forum_admin_value_label`, `forum_admin_thread_path_label` and the reply-preview and tag-count
+  label helpers - so view models take resolved strings and per-item numbers stay owner-derived.
+  `verify-forum-admin-boundary.mjs` locks both halves: no `*_template` field and no component-side
+  `.replace("{...}")` may return.
 - `admin/src/ui/topic_merge.rs`, `admin/src/ui/topic_slug_rename.rs`, `admin/src/ui/topic_split.rs`, `admin/src/ui/topic_fork.rs` and `admin/src/ui/topic_reply_range.rs` are thin Leptos render/effect adapters.
 
 ## Transport state
@@ -65,26 +74,6 @@ Slug rename uses the additive FORUM-24F GraphQL mutation in all Leptos build pro
 - Slug rename requires `forum_topics:update`; the GraphQL adapter and owner revalidate routed tenant and actor authority.
 - Merge/split/fork/reply-range workflows require `forum_topics:manage` and retain their existing operation identity policies.
 - The route rename result displays the owner-provided previous path, canonical path, locale, immutable alias ID and `changed` replay flag.
-
-## Known Limitations / Pending Implementation
-
-- Six admin labels still resolve a variable-bearing Fluent message through a pre-resolved template:
-  `forum.render.topicsCount`, `forum.render.repliesCount`, `forum.render.icon`,
-  `forum.render.threadPath`, `forum.topics.ready` and `forum.topics.shown` are read with the
-  no-argument `t()`, which cannot bind `$count`, `$value`, `$category` or `$slug`. `fluent-bundle`
-  records a reference error for every unbound placeable and the shared resolver maps any format error
-  to a failed lookup, so the caller literal wins: the label renders in English whatever the runtime
-  locale is, and the catalog entry - including the `# plural-exempt` note beside two of these keys -
-  never renders. The canonical shape is the storefront's `count_message` / `slug_message` resolvers
-  (`../storefront/src/i18n.rs`), which pass `fluent_args!` and delegate the placeholder tail to a
-  core label helper. The admin side needs one extra step: `forum_admin_topic_tag_count_label` derives
-  the count from the raw tag string inside `src/core.rs`, so the UI cannot resolve the message before
-  the count exists and that helper has to return the count instead of a rendered label. Each migrated
-  site must also drop its `*_template` field, so no unresolved template reaches a view. These six
-  sites are listed in
-  [`scripts/verify/ui-i18n-argument-baseline.json`](../../../../scripts/verify/ui-i18n-argument-baseline.json),
-  which `verify-ui-i18n-keys.mjs` treats as shrink-only: a new template-style site fails the gate, and
-  finishing this work means deleting those entries rather than adding more.
 
 ## Documentation
 

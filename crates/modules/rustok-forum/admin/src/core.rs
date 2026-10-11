@@ -281,23 +281,33 @@ pub fn forum_admin_topic_form_labels(
     }
 }
 
+/// Static copy of the reply preview panel. The "{count} shown" badge is deliberately not here: its
+/// number follows the live reply payload, so it resolves per read in
+/// [`forum_admin_reply_preview_shown_label`] and a template field would only invite an unresolved
+/// caller literal.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ForumAdminReplyPreviewLabels {
     pub preview_label: String,
     pub preview_title: String,
-    pub shown_template: String,
 }
 
 pub fn forum_admin_reply_preview_labels(
     preview_label: String,
     preview_title: String,
-    shown_template: String,
 ) -> ForumAdminReplyPreviewLabels {
     ForumAdminReplyPreviewLabels {
         preview_label,
         preview_title,
-        shown_template,
     }
+}
+
+/// Localized reply count badge for the preview panel, resolved against the current payload.
+pub fn forum_admin_reply_preview_shown_label(
+    locale: Option<&str>,
+    replies: Option<Result<Vec<ReplyListItem>, String>>,
+) -> String {
+    let count = reply_count_label(replies);
+    crate::i18n::count_message(locale, "forum.topics.shown", "{count} shown", count)
 }
 
 #[derive(Clone, Debug)]
@@ -425,12 +435,11 @@ pub fn forum_admin_seo_copy_labels(
     }
 }
 
+/// Shared static copy of the category cards. Per-item strings (the two counts and the icon label)
+/// are resolved inside [`category_card_view_model`] because each card interpolates its own number.
 #[derive(Clone, Debug)]
 pub struct ForumAdminCategoryRenderLabels {
     pub no_description: String,
-    pub topics_count_template: String,
-    pub replies_count_template: String,
-    pub icon_template: String,
     pub editing: String,
     pub edit: String,
 }
@@ -450,9 +459,10 @@ pub struct ForumAdminCategoryCardViewModel {
     pub is_busy: bool,
 }
 
+/// Shared static copy of the topic cards. The thread path is per item and resolves inside
+/// [`topic_card_view_model`], so no template is carried here.
 #[derive(Clone, Debug)]
 pub struct ForumAdminTopicRenderLabels {
-    pub thread_path_template: String,
     pub opened: String,
     pub open_thread: String,
 }
@@ -510,8 +520,14 @@ pub fn category_select_options(
         .collect()
 }
 
-pub fn forum_admin_topic_tag_count_label(tags_raw: &str, ready_template: &str) -> String {
-    render_count_label(ready_template, parse_tags(tags_raw).len() as i32)
+/// Localized "{count} ready" badge for the topic form's tag editor.
+///
+/// The count is derived here because only the owner payload knows it, and the message is resolved
+/// with that count bound as a Fluent argument - a caller that pre-resolved a `"{count} ready"`
+/// template could never bind it, and Fluent fails formatting for an unbound placeable.
+pub fn forum_admin_topic_tag_count_label(tags_raw: &str, locale: Option<&str>) -> String {
+    let count = parse_tags(tags_raw).len();
+    crate::i18n::count_message(locale, "forum.topics.ready", "{count} ready", count)
 }
 
 pub fn forum_admin_editing_thread_label(
@@ -576,6 +592,7 @@ pub fn category_card_view_model(
     item: &CategoryListItem,
     editing_id: Option<&str>,
     busy_key: Option<&str>,
+    locale: Option<&str>,
     labels: &ForumAdminCategoryRenderLabels,
 ) -> ForumAdminCategoryCardViewModel {
     let is_editing = editing_id == Some(item.id.as_str());
@@ -594,13 +611,25 @@ pub fn category_card_view_model(
             .filter(|value| !value.trim().is_empty())
             .map(|value| format!("background:{};", value))
             .unwrap_or_else(|| DEFAULT_CATEGORY_ACCENT_STYLE.to_string()),
-        topics_count_label: render_count_label(&labels.topics_count_template, item.topic_count),
-        replies_count_label: render_count_label(&labels.replies_count_template, item.reply_count),
+        topics_count_label: crate::i18n::count_message(
+            locale,
+            "forum.render.topicsCount",
+            "topics: {count}",
+            item.topic_count,
+        ),
+        replies_count_label: crate::i18n::count_message(
+            locale,
+            "forum.render.repliesCount",
+            "replies: {count}",
+            item.reply_count,
+        ),
         icon_label: item
             .icon
             .as_deref()
             .filter(|value| !value.trim().is_empty())
-            .map(|value| labels.icon_template.replace("{value}", value)),
+            .map(|value| {
+                crate::i18n::value_message(locale, "forum.render.icon", "icon: {value}", value)
+            }),
         action_label: if is_editing {
             labels.editing.clone()
         } else {
@@ -614,6 +643,7 @@ pub fn topic_card_view_model(
     item: &TopicListItem,
     editing_id: Option<&str>,
     busy_key: Option<&str>,
+    locale: Option<&str>,
     labels: &ForumAdminTopicRenderLabels,
 ) -> ForumAdminTopicCardViewModel {
     let is_editing = editing_id == Some(item.id.as_str());
@@ -625,10 +655,13 @@ pub fn topic_card_view_model(
         pinned: item.is_pinned,
         locked: item.is_locked,
         title: item.title.clone(),
-        thread_path: labels
-            .thread_path_template
-            .replace("{category}", item.category_id.as_str())
-            .replace("{slug}", item.slug.as_str()),
+        thread_path: crate::i18n::thread_path_message(
+            locale,
+            "forum.render.threadPath",
+            "thread/{category}/{slug}",
+            item.category_id.as_str(),
+            item.slug.as_str(),
+        ),
         reply_count: item.reply_count,
         action_label: if is_editing {
             labels.opened.clone()
@@ -683,8 +716,24 @@ pub fn forum_admin_busy_key(
     ui_scoped_busy_key(surface.as_str(), action.as_str(), item_id)
 }
 
-fn render_count_label(template: &str, value: i32) -> String {
-    template.replace("{count}", value.to_string().as_str())
+/// Tail substitution for a count message, used by [`crate::i18n::count_message`]. It is a no-op on
+/// text that resolved from a catalog (that placeholder is already filled) and keeps the caller
+/// literal usable while a locale has no such message.
+pub fn forum_admin_count_label(template: &str, count: impl ToString) -> String {
+    template.replace("{count}", count.to_string().as_str())
+}
+
+/// Tail substitution for a single free-form value, used by [`crate::i18n::value_message`].
+pub fn forum_admin_value_label(template: &str, value: &str) -> String {
+    template.replace("{value}", value)
+}
+
+/// Tail substitution for the two-variable thread path label, used by
+/// [`crate::i18n::thread_path_message`].
+pub fn forum_admin_thread_path_label(template: &str, category: &str, slug: &str) -> String {
+    template
+        .replace("{category}", category)
+        .replace("{slug}", slug)
 }
 
 pub fn item_busy(busy_key: Option<&str>, item_id: &str) -> bool {
@@ -1440,6 +1489,12 @@ mod tests {
         );
     }
 
+    /// Bidi isolation is on in the shared bundle, so interpolated values carry invisible FSI/PDI
+    /// marks. Assertions compare the visible text.
+    fn visible(text: &str) -> String {
+        text.replace(['\u{2068}', '\u{2069}'], "")
+    }
+
     #[test]
     fn builds_category_card_view_model_with_labels_and_fallbacks() {
         let item = CategoryListItem {
@@ -1453,9 +1508,6 @@ mod tests {
         };
         let labels = ForumAdminCategoryRenderLabels {
             no_description: "No description".to_string(),
-            topics_count_template: "topics: {count}".to_string(),
-            replies_count_template: "replies: {count}".to_string(),
-            icon_template: "icon: {value}".to_string(),
             editing: "Editing".to_string(),
             edit: "Edit".to_string(),
         };
@@ -1463,13 +1515,19 @@ mod tests {
             &item,
             Some("category-1"),
             Some("category:edit:category-1"),
+            Some("en"),
             &labels,
         );
         assert_eq!(vm.slug_badge, "#community");
         assert_eq!(vm.description, "No description");
-        assert_eq!(vm.topics_count_label, "topics: 7");
-        assert_eq!(vm.replies_count_label, "replies: 12");
-        assert_eq!(vm.icon_label.as_deref(), Some("icon:  chat "));
+        // The per-card copy resolves from the catalog with the number bound as a Fluent argument,
+        // so this asserts the localized shape rather than an interpolated caller template.
+        assert_eq!(visible(vm.topics_count_label.as_str()), "topics: 7");
+        assert_eq!(visible(vm.replies_count_label.as_str()), "replies: 12");
+        assert_eq!(
+            vm.icon_label.as_deref().map(visible).as_deref(),
+            Some("icon:  chat ")
+        );
         assert_eq!(vm.action_label, "Editing");
         assert!(vm.is_busy);
         assert_eq!(vm.accent_style, DEFAULT_CATEGORY_ACCENT_STYLE);
@@ -1482,6 +1540,7 @@ mod tests {
             &other_item,
             Some("category-10"),
             Some("category:edit:category-1"),
+            Some("en"),
             &labels,
         );
         assert!(!other_vm.is_busy);
@@ -1505,13 +1564,18 @@ mod tests {
             created_at: "2026-06-08T00:00:00Z".to_string(),
         };
         let labels = ForumAdminTopicRenderLabels {
-            thread_path_template: "thread/{category}/{slug}".to_string(),
             opened: "Opened".to_string(),
             open_thread: "Open thread".to_string(),
         };
-        let vm = topic_card_view_model(&item, None, Some("topic:delete:topic-2"), &labels);
+        let vm = topic_card_view_model(
+            &item,
+            None,
+            Some("topic:delete:topic-2"),
+            Some("en"),
+            &labels,
+        );
         assert_eq!(vm.status_class, "success");
-        assert_eq!(vm.thread_path, "thread/category-1/welcome");
+        assert_eq!(visible(vm.thread_path.as_str()), "thread/category-1/welcome");
         assert_eq!(vm.action_label, "Open thread");
         assert!(!vm.is_busy);
         assert!(vm.pinned);
@@ -1560,7 +1624,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            forum_admin_topic_tag_count_label(" rust, forum ,, ffa ", "{count} ready"),
+            visible(forum_admin_topic_tag_count_label(" rust, forum ,, ffa ", Some("en")).as_str()),
             "3 ready"
         );
         assert_eq!(
@@ -1776,13 +1840,35 @@ mod tests {
 
     #[test]
     fn maps_reply_preview_labels() {
-        let preview = forum_admin_reply_preview_labels(
-            "Preview".to_string(),
-            "Title".to_string(),
-            "Template".to_string(),
-        );
+        let preview =
+            forum_admin_reply_preview_labels("Preview".to_string(), "Title".to_string());
         assert_eq!(preview.preview_label, "Preview");
         assert_eq!(preview.preview_title, "Title");
-        assert_eq!(preview.shown_template, "Template");
+    }
+
+    #[test]
+    fn reply_preview_shown_label_follows_the_live_reply_payload() {
+        let reply = ReplyListItem {
+            id: "reply-1".to_string(),
+            locale: "en".to_string(),
+            effective_locale: "en".to_string(),
+            topic_id: "topic-1".to_string(),
+            author_id: None,
+            content_preview: "Thanks for the update".to_string(),
+            status: "pending".to_string(),
+            is_deleted: false,
+            parent_reply_id: None,
+            created_at: "2026-06-08T00:00:00Z".to_string(),
+        };
+        assert_eq!(
+            visible(forum_admin_reply_preview_shown_label(Some("en"), None).as_str()),
+            "0 shown"
+        );
+        assert_eq!(
+            visible(
+                forum_admin_reply_preview_shown_label(Some("ru"), Some(Ok(vec![reply]))).as_str()
+            ),
+            "показано: 1"
+        );
     }
 }
