@@ -37,7 +37,7 @@ const taxonomyRead = 'crates/modules/rustok-taxonomy/src/owner_category_read.rs'
 const taxonomyLib = 'crates/modules/rustok-taxonomy/src/lib.rs';
 
 for (const file of [
-  migration, migrationRegistry, backfillContracts, relation, runtimeTest, entities,
+  migration, migrationRegistry, backfillContracts, entities,
   legacyCategory, categoryService, categoryMutationSupport, categoryImport,
   categoryProjectionOwner, categoryCommandOwner, categoryLifecycle, forumServices,
   forumLib, forumManifest, forumComposition, taxonomyHierarchy, taxonomyRead, taxonomyLib,
@@ -51,10 +51,31 @@ if (failures.length === 0) {
   requireMarker(migration, 'fk_forum_category_taxonomy_binding_taxonomy', 'Taxonomy composite foreign key');
   requireMarker(migrationRegistry, 'm20260823_000029_add_forum_taxonomy_category_binding', 'CAT-5 migration registration');
   requireMarker(backfillContracts, 'forum-taxonomy-category-binding-bootstrap', 'CAT-5 backfill declaration');
-  requireMarker(relation, 'ForumCategoryTaxonomyBindingService', 'typed binding owner');
-  requireMarker(runtimeTest, 'forum_category_binding_is_category_only_tenant_bounded_and_one_to_one', 'runtime binding contract');
+  // The forum-side binding entity and its staged runtime test were retired once the Taxonomy owner
+  // took over category identity: the binding table is now reached only from the published backfill
+  // migration (`mod migration_forum_category_taxonomy_binding` inside m20260823_000030), and no
+  // `ForumCategoryTaxonomyBindingService` exists anywhere in the tree. Both paths therefore have to
+  // stay removed instead of being recreated to satisfy a mid-cutover pin.
+  for (const retired of [relation, runtimeTest]) {
+    if (fs.existsSync(retired)) {
+      failures.push(`${retired}: retired Forum binding seam file must stay removed`);
+    }
+  }
+  rejectMarker(
+    entities,
+    'forum_category_taxonomy_binding;',
+    'retired Forum binding entity re-export',
+  );
   rejectMarker(legacyCategory, 'taxonomy_category_id', 'retired Taxonomy identity column in Forum Category');
-  requireMarker(legacyCategory, 'pub parent_id: Option<Uuid>', 'legacy hierarchy placeholder retained only where explicitly staged');
+  // Hierarchy storage moved to the Taxonomy owner; the cleanup migration dropped these columns.
+  for (const retired of ['pub parent_id', 'pub position', 'pub icon', 'pub color']) {
+    rejectMarker(legacyCategory, retired, `retired Forum Category hierarchy column ${retired}`);
+  }
+  requireMarker(
+    migrationRegistry,
+    'm20260916_000032_clean_forum_category_canonical_taxonomy',
+    'registered legacy hierarchy cleanup migration',
+  );
 
   requireMarker(categoryService, 'pub(super) struct CategoryService;', 'Forum Category persistence seam');
   requireMarker(categoryService, 'pub(crate) async fn load_categories_in_tx(', 'bounded Forum Category loader');

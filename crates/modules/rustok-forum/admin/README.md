@@ -39,7 +39,16 @@ Leptos admin UI package for the `rustok-forum` module.
 - `admin/src/transport/topic_slug_rename_graphql_adapter.rs` composes `renameForumTopicSlug` and bounded localized topic candidates without reading route alias state.
 - `admin/src/transport/topic_split_graphql_adapter.rs` composes `splitForumTopicReplies` and bounded candidate/reply reads without owner policy.
 - `admin/src/transport/topic_reply_range_graphql_adapter.rs` composes `moveForumTopicReplyRange` without inferring owner positions or reading audit state.
-- `admin/src/ui/root.rs` performs route-only composition.
+- `admin/src/i18n.rs` declares the package catalog and the bound-argument resolvers
+  (`count_message`, `value_message`, `thread_path_message`). Interpolated panel copy resolves there,
+  never from a `"{count}"` template handed to `t()`: `fluent-bundle` records a reference error for an
+  unbound placeable, the shared resolver reports the lookup as failed, and the caller literal then
+  renders in every locale, which also makes the catalog's plural variants dead code.
+- `admin/src/core.rs` owns the label policy behind that rule - `forum_admin_count_label`,
+  `forum_admin_value_label`, `forum_admin_thread_path_label` and the reply-preview and tag-count
+  label helpers - so view models take resolved strings and per-item numbers stay owner-derived.
+  `verify-forum-admin-boundary.mjs` locks both halves: no `*_template` field and no component-side
+  `.replace("{...}")` may return.
 - `admin/src/ui/topic_merge.rs`, `admin/src/ui/topic_slug_rename.rs`, `admin/src/ui/topic_split.rs`, `admin/src/ui/topic_fork.rs` and `admin/src/ui/topic_reply_range.rs` are thin Leptos render/effect adapters.
 
 ## Transport state

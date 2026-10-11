@@ -4,9 +4,9 @@ use rustok_ui_core::UiRouteContext;
 
 use super::composer::ComposerSignal;
 use super::member_card::ForumAuthorBadge;
-use crate::core::{forum_storefront_count_label, forum_storefront_topic_card_view_model};
-use crate::i18n::t;
-use crate::model::ForumTopicListItem;
+use crate::core::forum_storefront_topic_card_view_model;
+use crate::i18n::{count_message, slug_message, t};
+use crate::model::ForumTopicPage;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TopicFilterMode {
@@ -22,10 +22,13 @@ fn forum_storefront_content_lang(locale: &str) -> String {
 
 #[component]
 pub fn ForumTopicFeed(
-    items: Vec<ForumTopicListItem>,
+    topics: RwSignal<ForumTopicPage>,
     total: u64,
     selected_category_id: Option<String>,
     selected_topic_id: Option<String>,
+    paging_busy: ReadSignal<bool>,
+    paging_error: ReadSignal<Option<String>>,
+    on_load_more: Callback<()>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
@@ -47,19 +50,23 @@ pub fn ForumTopicFeed(
     );
     let feed_label = t(locale.as_deref(), "forum.feed.label", "Topic feed");
     let feed_title = t(locale.as_deref(), "forum.feed.title", "Latest discussions");
-    let threads_template = t(locale.as_deref(), "forum.feed.threads", "{count} threads");
     let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
     let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
-    let unread_template = t(
-        locale.as_deref(),
-        "forum.topic.unreadCount",
-        "{count} unread",
-    );
     let updated_unread_label = t(locale.as_deref(), "forum.topic.updatedUnread", "Updated");
-    let slug_template = t(locale.as_deref(), "forum.topic.slug", "thread slug: {slug}");
     let replies_label = t(locale.as_deref(), "forum.topic.replies", "Replies");
+    let load_more_label = t(locale.as_deref(), "forum.feed.loadMore", "Load more topics");
+    let loading_label = t(locale.as_deref(), "forum.feed.loading", "Loading\u{2026}");
+    let page_error_label = t(
+        locale.as_deref(),
+        "forum.feed.pageFailed",
+        "Could not load the next topic page",
+    );
+    let paging_locale = locale.clone();
+    // Card labels resolve per topic because each card interpolates its own count and slug.
+    let feed_locale = locale.clone();
 
-    if items.is_empty() {
+    // An empty first page cannot be paged: the owner returns a cursor only with content.
+    if topics.get().items.is_empty() {
         return view! {
             <section class="rounded-[1.75rem] border border-dashed border-border p-8 text-center">
                 <h3 class="text-lg font-semibold text-card-foreground">{empty_title}</h3>
@@ -83,51 +90,54 @@ pub fn ForumTopicFeed(
         .into_any();
     }
 
-    let all_items = items;
-    let unread_total = all_items
-        .iter()
-        .filter(|t| t.is_unread.unwrap_or(false) || t.unread_count.unwrap_or(0) > 0)
-        .count();
-    let solved_total = all_items
-        .iter()
-        .filter(|t| t.solution_reply_id.is_some())
-        .count();
-
-    let filtered_items = {
-        let all_items = all_items.clone();
-        move || {
-            let q = search_query.get().trim().to_lowercase();
-            let mode = filter_mode.get();
-            let mut list = all_items.clone();
-            if !q.is_empty() {
-                list.retain(|t| {
-                    t.title.to_lowercase().contains(&q) || t.slug.to_lowercase().contains(&q)
-                });
-            }
-            match mode {
-                TopicFilterMode::Latest => {
-                    list.sort_by(|a, b| match (a.is_pinned, b.is_pinned) {
-                        (true, false) => std::cmp::Ordering::Less,
-                        (false, true) => std::cmp::Ordering::Greater,
-                        _ => std::cmp::Ordering::Equal,
-                    });
-                }
-                TopicFilterMode::Top => {
-                    list.sort_by_key(|b| std::cmp::Reverse(b.reply_count));
-                }
-                TopicFilterMode::Unread => {
-                    list.retain(|t| {
-                        t.is_unread.unwrap_or(false) || t.unread_count.unwrap_or(0) > 0
-                    });
-                }
-                TopicFilterMode::Solved => {
-                    list.retain(|t| t.solution_reply_id.is_some());
-                }
-            }
-            list
-        }
+    // Tab counts and the filtered list read the accumulated pages, so they stay truthful as the
+    // reader loads more topics instead of describing only the first page.
+    let unread_total = move || {
+        topics
+            .get()
+            .items
+            .iter()
+            .filter(|t| t.is_unread.unwrap_or(false) || t.unread_count.unwrap_or(0) > 0)
+            .count()
+    };
+    let solved_total = move || {
+        topics
+            .get()
+            .items
+            .iter()
+            .filter(|t| t.solution_reply_id.is_some())
+            .count()
     };
 
+    let filtered_items = move || {
+        let q = search_query.get().trim().to_lowercase();
+        let mode = filter_mode.get();
+        let mut list = topics.get().items;
+        if !q.is_empty() {
+            list.retain(|t| {
+                t.title.to_lowercase().contains(&q) || t.slug.to_lowercase().contains(&q)
+            });
+        }
+        match mode {
+            TopicFilterMode::Latest => {
+                list.sort_by(|a, b| match (a.is_pinned, b.is_pinned) {
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    _ => std::cmp::Ordering::Equal,
+                });
+            }
+            TopicFilterMode::Top => {
+                list.sort_by_key(|b| std::cmp::Reverse(b.reply_count));
+            }
+            TopicFilterMode::Unread => {
+                list.retain(|t| t.is_unread.unwrap_or(false) || t.unread_count.unwrap_or(0) > 0);
+            }
+            TopicFilterMode::Solved => {
+                list.retain(|t| t.solution_reply_id.is_some());
+            }
+        }
+        list
+    };
     view! {
         <section class="space-y-4 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm">
             // Header
@@ -140,7 +150,12 @@ pub fn ForumTopicFeed(
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                        {forum_storefront_count_label(threads_template.as_str(), total)}
+                        {count_message(
+                            locale.as_deref(),
+                            "forum.feed.threads",
+                            "{count} threads",
+                            total,
+                        )}
                     </span>
                     <button
                         type="button"
@@ -208,11 +223,14 @@ pub fn ForumTopicFeed(
                     >
                         <span>"💬"</span>
                         <span>"Unread"</span>
-                        {(unread_total > 0).then(|| view! {
-                            <span class="ml-0.5 rounded-full bg-blue-500/20 px-1.5 py-0.2 text-[10px] font-bold text-blue-600 dark:text-blue-400">
-                                {unread_total}
-                            </span>
-                        })}
+                        {move || {
+                            let unread_total = unread_total();
+                            (unread_total > 0).then(|| view! {
+                                <span class="ml-0.5 rounded-full bg-blue-500/20 px-1.5 py-0.2 text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                                    {unread_total}
+                                </span>
+                            })
+                        }}
                     </button>
 
                     <button
@@ -229,11 +247,14 @@ pub fn ForumTopicFeed(
                     >
                         <span>"✓"</span>
                         <span>"Solved"</span>
-                        {(solved_total > 0).then(|| view! {
-                            <span class="ml-0.5 rounded-full bg-emerald-500/20 px-1.5 py-0.2 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                                {solved_total}
-                            </span>
-                        })}
+                        {move || {
+                            let solved_total = solved_total();
+                            (solved_total > 0).then(|| view! {
+                                <span class="ml-0.5 rounded-full bg-emerald-500/20 px-1.5 py-0.2 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                                    {solved_total}
+                                </span>
+                            })
+                        }}
                     </button>
                 </div>
 
@@ -266,8 +287,6 @@ pub fn ForumTopicFeed(
                 let selected_category_id = selected_category_id.clone();
                 let selected_topic_id = selected_topic_id.clone();
                 let module_route_base = module_route_base.clone();
-                let slug_template = slug_template.clone();
-                let unread_template = unread_template.clone();
                 let updated_unread_label = updated_unread_label.clone();
                 let pinned_label = pinned_label.clone();
                 let locked_label = locked_label.clone();
@@ -302,16 +321,27 @@ pub fn ForumTopicFeed(
                         <div class="space-y-3">
                             {list.into_iter().map(|item| {
                                 let author_id = item.author_id.clone();
+                                let slug_label = slug_message(
+                                    feed_locale.as_deref(),
+                                    "forum.topic.slug",
+                                    "thread slug: {slug}",
+                                    item.slug.as_str(),
+                                );
                                 let card = forum_storefront_topic_card_view_model(
                                     module_route_base.as_str(),
                                     &item,
                                     selected_category_id.as_deref(),
                                     selected_topic_id.as_deref(),
-                                    slug_template.as_str(),
+                                    slug_label.as_str(),
                                 );
                                 let content_lang = forum_storefront_content_lang(card.effective_locale.as_str());
                                 let unread_label = if card.unread_count > 0 {
-                                    forum_storefront_count_label(unread_template.as_str(), card.unread_count)
+                                    count_message(
+                                        feed_locale.as_deref(),
+                                        "forum.topic.unreadCount",
+                                        "{count} unread",
+                                        card.unread_count,
+                                    )
                                 } else {
                                     updated_unread_label.clone()
                                 };
@@ -326,7 +356,12 @@ pub fn ForumTopicFeed(
                                         <div class="flex flex-wrap items-start justify-between gap-4">
                                             <div class="space-y-3">
                                                 <div class="flex flex-wrap items-center gap-2">
-                                                    <span class=card.status_badge_class>{card.status.clone()}</span>
+                                                    <span class=card.status_badge_class>
+                                                        {crate::i18n::status_label(
+                                                            locale.as_deref(),
+                                                            &card.status,
+                                                        )}
+                                                    </span>
                                                     <span dir="ltr" class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                                                         {card.effective_locale.clone()}
                                                     </span>
@@ -396,6 +431,58 @@ pub fn ForumTopicFeed(
                     }.into_any()
                 }
             }
+
+            // Cursor paging: the owner's `nextCursor` is the only source of "more topics exist", so
+            // the control disappears on the last page and a failed page is named instead of leaving
+            // the list silently short. The header count stays the owner-authored category total.
+            {move || {
+                let page = topics.get();
+                let has_more = page.has_more();
+                let loaded = u64::try_from(page.items.len()).unwrap_or(u64::MAX);
+                let error = paging_error.get();
+                if !has_more && error.is_none() {
+                    return view! { <span class="hidden"></span> }.into_any();
+                }
+                let paging_locale = paging_locale.clone();
+                let loaded = count_message(
+                    paging_locale.as_deref(),
+                    "forum.feed.loaded",
+                    "{count} loaded",
+                    loaded,
+                );
+                let load_more_label = load_more_label.clone();
+                let loading_label = loading_label.clone();
+                let page_error_label = page_error_label.clone();
+                view! {
+                    <div class="mt-4 space-y-2">
+                        {error.map(|message| view! {
+                            <p class="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                                {format!("{}: {message}", page_error_label)}
+                            </p>
+                        })}
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <span class="text-xs text-muted-foreground">
+                                {loaded}
+                            </span>
+                            {has_more.then(|| view! {
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                                    disabled=move || paging_busy.get()
+                                    on:click=move |_| on_load_more.run(())
+                                >
+                                    {move || if paging_busy.get() {
+                                        loading_label.clone()
+                                    } else {
+                                        load_more_label.clone()
+                                    }}
+                                </button>
+                            })}
+                        </div>
+                    </div>
+                }
+                .into_any()
+            }}
         </section>
     }.into_any()
 }

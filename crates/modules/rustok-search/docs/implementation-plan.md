@@ -76,6 +76,9 @@ PostgreSQL execution remains maintainer-owned.
 
 Forum public category, topic, and approved-reply projections support exact
 category filtering through the existing bounded `category_ids` query field.
+Complete Forum category-subtree filtering is not part of that field: an exact id matches
+only the documents Forum projects with that identifier, and subtree expansion happens in
+the Forum-owned scope port below.
 Product queries retain normalized `index_product_categories` matching. Forum
 category documents match their document identifier, while topic and reply
 documents match the owner-projected `facets.category_id`.
@@ -144,7 +147,7 @@ GraphQL/native operations carry the boolean. Arbitrary channel/group selection,
 future topic kinds and attachment presence remain blocked on their Forum owner
 contracts. Runtime and reindex evidence remain pending.
 
-`FORUM-23B2G1` adds a durable PostgreSQL-issued Forum inbox ingest sequence.
+`FORUM-23B2G1` adds a durable Forum inbox ingest sequence issued by PostgreSQL.
 Existing rows are deterministically backfilled, new successful inserts receive a
 positive unique sequence, and claim, retry blocking, due-tenant order plus scope
 watermarks use that value instead of producer timestamps and event UUIDs.
@@ -163,7 +166,7 @@ database access.
 
 `FORUM-23B2E1/B2E2` close the storefront channel authority and Product visibility
 source boundary. GraphQL and native storefront Search derive channel ID and slug
-from trusted `RequestContext`; caller-provided `channel_id` is only a compatibility
+from trusted `RequestContext`; caller-provided `channel_id` is now only a compatibility
 assertion. Search projects Product-owned
 `metadata.channel_visibility.allowed_channel_slugs`, hides missing or malformed
 projections, and applies one storefront-only predicate before FTS or typo ranking.
@@ -174,7 +177,9 @@ admin/global query suggestions remain unchanged. A Search-owned bounded
 reconciler and host startup worker repair missing legacy Product projections in
 PostgreSQL batches. Malformed explicit owner values remain hidden until Product is
 corrected instead of entering an endless rebuild loop. Admin preview/global Search
-retain the previous non-storefront path. Runtime evidence remains pending.
+retain the previous non-storefront path. Product channel visibility remains blocked
+on that evidence: the source boundary is delivered, the maintainer-executed PostgreSQL
+and transport proof is not.
 
 The durable projection contract is also incomplete. The generic
 `search_projection_inbox` and watermark schema exists, but only Forum events use
@@ -390,8 +395,8 @@ rebuild behavior through replayable event transport.
    add topic kinds after `FORUM-22` and attachment presence after `FORUM-14`.
    **Done when:** no caller-selected audience identifier or owner policy is copied
    into Search and every result still passes exact post-retrieval eligibility.
-2. **Add owner-issued Forum projection revisions.** Carry a monotonic Forum-owned
-   revision in versioned invalidation events and reconcile it with the delivered
+2. **Add owner-issued Forum projection revisions.** Carry owner-issued monotonic aggregate
+   revisions in versioned invalidation events and reconcile them with the delivered
    Search ingest sequence during rolling deployment. **Done when:** source revision
    watermarks reject stale owner state independently of delivery order.
 3. **Generalize durable Search projection recovery.** Use the existing generic

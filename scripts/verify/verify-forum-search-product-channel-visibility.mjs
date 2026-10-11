@@ -15,7 +15,9 @@ const paths = {
     "crates/modules/rustok-forum/contracts/forum-search-product-channel-visibility.json",
   note: "crates/modules/rustok-forum/docs/forum-23b2e2-product-channel-visibility.md",
   predicate: "crates/modules/rustok-search/src/storefront_product_channel_visibility.rs",
-  projector: "crates/modules/rustok-search/src/projector_legacy.rs",
+  // The Search projector is composed of `projector.rs` (worker/bootstrap side) and `projector_core.rs`
+  // (document SQL); there is no `projector_legacy.rs`, so the product-document rule reads the core.
+  projector: "crates/modules/rustok-search/src/projector_core.rs",
   bootstrap: "crates/modules/rustok-search/src/projector.rs",
   reconciler: "crates/modules/rustok-search/src/product_channel_reconciliation.rs",
   serverWorker:
@@ -91,7 +93,10 @@ requireAll(
     "channel_visibility,allowed_channel_slugs",
     "jsonb_typeof",
     "jsonb_array_length",
-    "entity_type_column} <> 'product'",
+    // The predicate scopes itself with a CASE that only product and blog rows enter; the
+    // `ELSE TRUE` arm is the documented pass-through for every other source module.
+    "WHEN {entity_type_column} = 'product' THEN",
+    "ELSE TRUE",
     "unwrap_or_else(|| \"FALSE\".to_string())",
     "missing_or_malformed_projection_fails_closed",
     "restricted_product_requires_matching_normalized_slug",
@@ -122,7 +127,7 @@ requireAll(
     "PRODUCT_CHANNEL_VISIBILITY_LEGACY_COUNT_SQL",
     "entity_type = 'product'",
     "IS NULL",
-    "self.rebuild_product_scope(tenant_id).await?",
+    "self.core.rebuild_product_scope(tenant_id).await",
     "product_channel_visibility_legacy_projection_is_detected",
   ],
   paths.bootstrap,
@@ -166,10 +171,12 @@ requireAll(
   [
     "pub async fn search_storefront(",
     "search_with_storefront_channel(query, Some(channel))",
-    "product_channel_visibility_sql(",
+    // pg_engine applies the storefront-wide predicate (products *and* blog posts), while the
+    // product-only wrapper is what the suggestion path reuses.
+    "storefront_channel_visibility_sql(",
     "run_fts_search(",
     "run_typo_tolerant_search(",
-    "build_filter_clause(query, 4, storefront_channel)",
+    "build_filter_clause(request.query, 4, request.storefront_channel)",
     "self.search_with_storefront_channel(query, None).await",
   ],
   paths.engine,
@@ -226,7 +233,7 @@ requireAll(
   forumExecution,
   [
     "trusted_channel: TrustedStorefrontChannel",
-    ".search_storefront(scan_query.clone(), trusted_channel)",
+    ".search_storefront(scan_query.clone(), request.trusted_channel)",
     "apply_storefront_query_rules(",
   ],
   paths.forumExecution,

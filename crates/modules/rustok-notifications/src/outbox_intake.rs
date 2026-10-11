@@ -3,8 +3,8 @@ use std::sync::Arc;
 use chrono::{DateTime, FixedOffset, Utc};
 use rustok_notifications_api::NotificationSourceEventRef;
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, QueryTrait, TransactionTrait, sea_query::OnConflict,
+    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, QueryTrait, TransactionTrait, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -15,8 +15,6 @@ use crate::model::NotificationSourceInboxStatus;
 
 pub const DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE: usize = 32;
 pub const MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE: usize = 64;
-const FORUM_TOPIC_CREATED: &str = "forum.topic.created";
-const FORUM_USER_MENTION_ADDED: &str = "forum.mention.user_added";
 
 mod outbox_event {
     use chrono::{DateTime, Utc};
@@ -95,6 +93,17 @@ pub trait NotificationOutboxEnvelopeDecoder: Send + Sync {
         &self,
         envelope: &NotificationOutboxEnvelopeRecord,
     ) -> NotificationResult<NotificationSourceEventRef>;
+
+    /// Event types this decoder claims out of the shared outbox.
+    ///
+    /// The intake pre-filter consumes this list instead of knowing any module's
+    /// event vocabulary, so a source module extends its notification types in its
+    /// own owner crate plus host wiring. An empty list claims every committed
+    /// outbox row: selecting nothing and then rejecting a foreign row would write
+    /// a permanent rejection for another source's event.
+    fn accepted_event_types(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -196,12 +205,12 @@ impl NotificationOutboxIntakeWorker {
             .select_only()
             .column(intake_rejection::Column::OutboxEventId)
             .into_query();
-        let rows = outbox_event::Entity::find()
-            .filter(
-                Condition::any()
-                    .add(outbox_event::Column::EventType.eq(FORUM_TOPIC_CREATED))
-                    .add(outbox_event::Column::EventType.eq(FORUM_USER_MENTION_ADDED)),
-            )
+        let mut select = outbox_event::Entity::find();
+        let accepted = self.decoder.accepted_event_types();
+        if !accepted.is_empty() {
+            select = select.filter(outbox_event::Column::EventType.is_in(accepted));
+        }
+        let rows = select
             .filter(outbox_event::Column::Id.not_in_subquery(receipts))
             .filter(outbox_event::Column::Id.not_in_subquery(rejections))
             .order_by_asc(outbox_event::Column::CreatedAt)

@@ -20,27 +20,73 @@ function read(relativePath) {
 }
 
 function requireText(source, marker, message) {
-  if (!source.includes(marker)) failures.push(message);
+  if (!matchesMarker(source, marker)) failures.push(message);
 }
 
 function rejectText(source, marker, message) {
-  if (source.includes(marker)) failures.push(message);
+  if (matchesMarker(source, marker)) failures.push(message);
 }
 
-function between(source, start, end, label) {
-  const startIndex = source.indexOf(start);
-  const endIndex = source.indexOf(end, startIndex + start.length);
-  if (startIndex < 0 || endIndex < 0) {
-    failures.push(`${label}: unable to isolate source block`);
-    return "";
+// Markers may be strings or regular expressions. A bare substring is unsafe for module-boundary
+// rules: `channel::` also occurs inside Forum's own `forum_category_audience_channel::Entity`, so an
+// unanchored check reported a dependency that does not exist.
+function matchesMarker(source, marker) {
+  return marker instanceof RegExp ? marker.test(source) : source.includes(marker);
+}
+
+/**
+ * Every block in `source` starting at `signature` and ending at its matching closing brace. Slicing
+ * from signature to sibling-function name breaks whenever an implementation is split across files or
+ * a neighbour is renamed, which is not a contract change: the category audience policy lives in the
+ * shared helper module and in the thin owner seam, and `insert_roles` stayed with the helpers.
+ */
+function blocksFor(source, signature, label) {
+  const blocks = [];
+  let from = 0;
+  for (;;) {
+    const start = source.indexOf(signature, from);
+    if (start < 0) break;
+    const open = source.indexOf("{", start);
+    if (open < 0) break;
+    let depth = 0;
+    let end = -1;
+    for (let index = open; index < source.length; index += 1) {
+      if (source[index] === "{") depth += 1;
+      else if (source[index] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          end = index;
+          break;
+        }
+      }
+    }
+    if (end < 0) break;
+    blocks.push(source.slice(start, end + 1));
+    from = end + 1;
   }
-  return source.slice(startIndex, endIndex);
+  if (blocks.length === 0) failures.push(`${label}: unable to isolate source block`);
+  return blocks;
+}
+
+// True when one candidate block carries every marker, so the rule is about an operation's
+// implementation rather than about how the module happens to be split.
+function requireInAny(blocks, markers, message) {
+  if (!blocks.some((block) => markers.every((marker) => block.includes(marker)))) {
+    failures.push(message);
+  }
 }
 
 const contractPath =
   "crates/modules/rustok-forum/contracts/forum-category-audience-policy.json";
 const contract = JSON.parse(read(contractPath) || "{}");
-const owner = read(contract.owner_file ?? "");
+// The policy service is split between the shared helper module and the thin owner seam, so the
+// owner contract is checked across both files.
+const owner = [
+  read(contract.owner_file ?? ""),
+  read(contract.owner_seam_file ?? contract.owner_file ?? ""),
+]
+  .filter((value, index, all) => value.length > 0 && all.indexOf(value) === index)
+  .join("\n");
 const audience = read(contract.audience_contract_file ?? "");
 const migration = read(contract.migration_file ?? "");
 const migrations = read(contract.migration_registry_file ?? "");
@@ -167,43 +213,36 @@ for (const marker of [
 ]) {
   requireText(owner, marker, `category audience owner is missing ${marker}`);
 }
-const getBlock = between(
-  owner,
-  "pub async fn get(",
-  "pub async fn set(",
-  "category audience owner get",
+requireInAny(
+  blocksFor(owner, "pub async fn get(", "category audience owner get"),
+  [
+    "Action::Manage",
+    "let txn = self.db.begin().await?",
+    "lock_category_tree_in_tx(&txn, tenant_id).await?",
+    "txn.commit().await?",
+  ],
+  "managed category audience get must enforce Action::Manage and commit inside the tree lock",
 );
-for (const marker of [
-  "Action::Manage",
-  "let txn = self.db.begin().await?",
-  "lock_category_tree_in_tx(&txn, tenant_id).await?",
-  "txn.commit().await?",
-]) {
-  requireText(getBlock, marker, `managed category audience get is missing ${marker}`);
-}
-const setBlock = between(
-  owner,
-  "pub async fn set(",
-  "async fn insert_roles(",
-  "category audience owner set",
-);
-const deleteIndex = setBlock.indexOf("forum_category_audience_policy::Entity::delete_many()");
-const policyInsertIndex = setBlock.indexOf("forum_category_audience_policy::ActiveModel");
-const commitIndex = setBlock.indexOf("txn.commit().await?");
 if (
-  deleteIndex < 0 ||
-  policyInsertIndex < 0 ||
-  commitIndex < 0 ||
-  deleteIndex > policyInsertIndex ||
-  policyInsertIndex > commitIndex
+  !blocksFor(owner, "pub async fn set(", "category audience owner set").some(
+    (block) =>
+      block.includes("forum_category_audience_policy::Entity::delete_many()") &&
+      block.indexOf("forum_category_audience_policy::ActiveModel") >
+        block.indexOf("forum_category_audience_policy::Entity::delete_many()") &&
+      block.indexOf("txn.commit().await?") >
+        block.indexOf("forum_category_audience_policy::ActiveModel"),
+  )
 ) {
-  failures.push("category audience owner must replace local layers atomically with delete then insert");
+  failures.push(
+    "category audience owner must replace local layers atomically with delete then insert",
+  );
 }
+
 for (const forbidden of [
   "rustok_groups",
   "rustok_channel",
-  "groups::",
-  "channel::",
+  /(?:^|[^A-Za-z0-9_])groups::/u,
+  /(?:^|[^A-Za-z0-9_])channel::/u,
   "forum_user_stat",
   "serde_json::Value",
 ]) {

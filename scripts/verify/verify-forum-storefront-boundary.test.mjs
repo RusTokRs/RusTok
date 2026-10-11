@@ -28,12 +28,29 @@ pub fn forum_storefront_status_badge_class() {}
 `;
 }
 
+// The feed component block, kept separate because the storefront composes it either in the shell
+// file or in its own module file; the guard has to accept both layouts and reject hand-rolled
+// interpolation in either.
+const TOPIC_FEED_BLOCK = `fn ForumTopicFeed() {
+forum_storefront_content_lang(card.effective_locale.as_str());
+count_message(locale.as_deref(), "forum.feed.threads", "{count} threads", total);
+<span dir="ltr";
+data-forum-target-localized="";
+lang=content_lang;
+dir="auto";
+data-forum-route-identifier="";
+dir="ltr";
+}
+`;
+
 function uiSource({
   rawAccent = false,
   rawHref = false,
   missingCoreUse = false,
   directRichtextHtml = false,
   missingBidi = false,
+  handInterpolated = false,
+  splitFeed = false,
 } = {}) {
   const categoryBidi = missingBidi ? "" : `
 forum_storefront_content_lang(item.effective_locale.as_str());
@@ -52,16 +69,7 @@ fn forum_storefront_content_lang(locale: &str) -> String { normalize_locale_tag(
 fn ForumCategoryRail() {
 ${categoryBidi}
 }
-fn ForumTopicFeed() {
-forum_storefront_content_lang(card.effective_locale.as_str());
-<span dir="ltr";
-data-forum-target-localized="";
-lang=content_lang;
-dir="auto";
-data-forum-route-identifier="";
-dir="ltr";
-}
-fn ForumThreadPanel() {
+${splitFeed ? "" : TOPIC_FEED_BLOCK}fn ForumThreadPanel() {
 forum_storefront_content_lang(topic.effective_locale.as_str());
 <span dir="ltr";
 data-forum-target-localized="";
@@ -78,7 +86,16 @@ fn ReplyCard() {
 ${directRichtextHtml ? "inner_html=body.html;" : "<RichTextHtml view=body content_locale=body_locale />;\n<RichTextHtml view=content content_locale=content_locale />;"}
 ${rawAccent ? 'const STYLE: &str = "background:linear-gradient(180deg,#0ea5e9 0%,#f59e0b 100%);";\n' : ""}
 ${rawHref ? 'const HREF: &str = "?category={category_id}";\n' : ""}
+${handInterpolated ? 'let total_label = template.replace("{count}", total.to_string());\n' : ""}
 `;
+}
+
+function feedSource(options = {}) {
+  if (!options.splitFeed) return "";
+  return `use crate::core::forum_storefront_topic_card_view_model;
+use rustok_api::normalize_locale_tag;
+fn forum_storefront_content_lang(locale: &str) -> String { normalize_locale_tag(locale).unwrap_or_else(|| "und".to_string()) }
+${TOPIC_FEED_BLOCK}`;
 }
 
 function packageSource({ omitVerify = false, omitAggregate = false } = {}) {
@@ -99,6 +116,9 @@ function fixture(options = {}) {
   writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/lib.rs", `${options.restoredApi ? "mod api;" : ""}\npub use ui::leptos::ForumView;\n`);
   writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/ui/leptos.rs", uiSource(options));
+  if (options.splitFeed) {
+    writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/ui/topic_feed.rs", feedSource(options));
+  }
   writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/transport/mod.rs", "mod graphql_adapter { include!(\"graphql_adapter.rs\"); }\npub async fn fetch_storefront_forum() { graphql_adapter::fetch_storefront_forum().await; }\n");
   writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub async fn fetch_storefront_forum() {}\n");
   writeFixtureFile(root, "crates/modules/rustok-forum/storefront/Cargo.toml", "[dependencies]\nleptos-ui.workspace = true\n");
@@ -136,6 +156,22 @@ test("forum storefront boundary verifier rejects missing storefront content-loca
   const result = run(fixture({ missingBidi: true }));
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /category rail missing content-locale bidi marker/);
+});
+
+test("forum storefront boundary verifier accepts the split component layout", () => {
+  // The storefront feed lives in `ui/topic_feed.rs` next to the shell component; both UI sources
+  // have to be read or the boundary rules silently stop applying.
+  const result = run(fixture({ splitFeed: true }));
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /forum storefront boundary verification passed/);
+});
+
+test("forum storefront boundary verifier rejects hand-rolled interpolation", () => {
+  // Interpolating a catalog template inside a component bypasses the argument-bearing resolver, and
+  // Fluent fails formatting on an unbound `$count`, so the label would render in English per locale.
+  const result = run(fixture({ handInterpolated: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /must not interpolate counts by hand/);
 });
 
 test("forum storefront boundary verifier rejects raw UI accent fallback", () => {

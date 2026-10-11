@@ -214,4 +214,8 @@ Producer modules import `rustok-notifications-api`, register neutral source
 factories, and never call this owner synchronously. Envelope decoding and
 cross-owner policy composition belong to the executable server. Forum supports
 `forum.topic.created` and `forum.mention.user_added`, preserving legacy journal
-references while accepting semantic source identities from committed envelopes.
+references while accepting semantic source identities from committed envelopes. The
+intake pre-filter is supplied by the decoder through
+`NotificationOutboxEnvelopeDecoder::accepted_event_types`, so this crate never names
+a module event type and a producer extends its notification vocabulary without
+touching the Notifications owner.

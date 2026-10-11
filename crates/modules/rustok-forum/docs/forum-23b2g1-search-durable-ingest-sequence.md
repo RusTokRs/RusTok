@@ -40,8 +40,8 @@ privacy and account-deletion author scopes remain redaction barriers and are
 never skipped from an unrelated watermark.
 
 `revision_at` and `event_id` remain stored and validated against the serialized
-envelope. They are retained for diagnostics and event identity, but no longer
-determine execution or watermark order.
+envelope, retained for diagnostics and event identity. A producer clock or identifier
+does not determine execution or watermark order.
 
 ## Compatibility and degraded mode
 

@@ -38,15 +38,16 @@ async fn storefront_forum_native(
     #[cfg(feature = "ssr")]
     {
         use rustok_api::{
-            HostRuntimeContext, OptionalAuthContext, Permission, RequestContext, TenantContext,
-            has_any_effective_permission,
+            HostRuntimeContext, OptionalAuthContext, Permission, RequestContext,
+            SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
+            TenantContext, has_any_effective_permission,
         };
         use rustok_core::SecurityContext;
         use rustok_forum::services::user_stats::ForumMemberCardService;
         use rustok_forum::{
             ForumCategoryAudienceReadService, ForumCategoryReadOperation,
             ForumCategoryReadTransport, ForumReplyAudienceReadService, ForumReplyReadOperation,
-            ForumReplyReadTransport, ForumStorefrontReadStateService,
+            ForumReplyReadTransport, ForumSettingsProviders, ForumStorefrontReadStateService,
             ForumTopicAudienceListService, ForumTopicAudienceReadService, ForumTopicReadOperation,
             ForumTopicReadTransport, ListRepliesFilter, ListTopicsFilter, ReplyStatus,
             SharedForumAudienceFactsPort, category_read_audience_port_context,
@@ -80,6 +81,26 @@ async fn storefront_forum_native(
         );
         let db = runtime_ctx.db_clone();
         let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
+        // Page sizes are the tenant's own settings, resolved through the owner accessor the
+        // REST and GraphQL transports use: the widget must not freeze a constant that skips a
+        // configured `topics_per_page` / `replies_per_page`. Absent readers yield the owner
+        // defaults, not a bypass.
+        let settings_providers = match (
+            runtime_ctx.shared_get::<SharedStaticModuleSettingsReader>(),
+            runtime_ctx.shared_get::<SharedStaticModuleSettingsTransactionReader>(),
+        ) {
+            (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
+                .with_static_readers(static_reader, transactional_reader),
+            _ => ForumSettingsProviders::default(),
+        };
+        let topics_per_page = settings_providers
+            .default_topics_per_page(tenant.id)
+            .await
+            .map_err(server_error)?;
+        let replies_per_page = settings_providers
+            .default_replies_per_page(tenant.id)
+            .await
+            .map_err(server_error)?;
         let category_audience_service = match audience_facts.clone() {
             Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db.clone(), facts),
             None => ForumCategoryAudienceReadService::new(db.clone()),
@@ -203,7 +224,7 @@ async fn storefront_forum_native(
             status: None,
             locale: Some(effective_locale.clone()),
             after: None,
-            per_page: 20,
+            per_page: topics_per_page,
         };
 
         let (topic_items, topics_next_cursor, first_topic_id, read_state_available) =
@@ -309,7 +330,7 @@ async fn storefront_forum_native(
                         ListRepliesFilter {
                             locale: Some(effective_locale.clone()),
                             after: None,
-                            per_page: 20,
+                            per_page: replies_per_page,
                         },
                         Some(tenant.default_locale.as_str()),
                         Some(&approved_statuses),
@@ -324,7 +345,7 @@ async fn storefront_forum_native(
                         ListRepliesFilter {
                             locale: Some(effective_locale.clone()),
                             after: None,
-                            per_page: 20,
+                            per_page: replies_per_page,
                         },
                         Some(tenant.default_locale.as_str()),
                         channel_slug,
@@ -481,7 +502,7 @@ async fn storefront_topic_mark_read_native(
 }
 
 #[cfg(feature = "ssr")]
-fn normalize_locale(value: Option<&str>) -> String {
+pub(super) fn normalize_locale(value: Option<&str>) -> String {
     value
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -490,7 +511,7 @@ fn normalize_locale(value: Option<&str>) -> String {
 }
 
 #[cfg(feature = "ssr")]
-fn parse_optional_uuid(
+pub(super) fn parse_optional_uuid(
     value: Option<&str>,
     field: &str,
 ) -> Result<Option<uuid::Uuid>, ServerFnError> {
@@ -694,7 +715,7 @@ fn map_category(value: rustok_forum::CategoryListItem) -> ForumCategoryListItem 
 }
 
 #[cfg(feature = "ssr")]
-fn map_topic_list_item(value: rustok_forum::TopicListItem) -> ForumTopicListItem {
+pub(super) fn map_topic_list_item(value: rustok_forum::TopicListItem) -> ForumTopicListItem {
     ForumTopicListItem {
         id: value.id.to_string(),
         effective_locale: value.effective_locale,
@@ -719,7 +740,9 @@ fn map_topic_list_item(value: rustok_forum::TopicListItem) -> ForumTopicListItem
 }
 
 #[cfg(feature = "ssr")]
-fn map_unread_topic(value: rustok_forum::ForumStorefrontUnreadTopic) -> ForumTopicListItem {
+pub(super) fn map_unread_topic(
+    value: rustok_forum::ForumStorefrontUnreadTopic,
+) -> ForumTopicListItem {
     ForumTopicListItem {
         id: value.topic.id.to_string(),
         effective_locale: value.topic.effective_locale,
@@ -766,7 +789,7 @@ fn map_topic_detail(value: rustok_forum::TopicResponse) -> ForumTopicDetail {
 }
 
 #[cfg(feature = "ssr")]
-fn map_reply(value: rustok_forum::ReplyResponse) -> ForumReplyDetail {
+pub(super) fn map_reply(value: rustok_forum::ReplyResponse) -> ForumReplyDetail {
     ForumReplyDetail {
         id: value.id.to_string(),
         effective_locale: value.effective_locale,
@@ -790,6 +813,6 @@ fn empty_replies() -> ForumReplyPage {
 }
 
 #[cfg(feature = "ssr")]
-fn server_error(error: impl std::fmt::Display) -> ServerFnError {
+pub(super) fn server_error(error: impl std::fmt::Display) -> ServerFnError {
     ServerFnError::new(error.to_string())
 }

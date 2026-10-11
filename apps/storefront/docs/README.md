@@ -107,6 +107,8 @@ Direct storefront server functions currently cover:
 - `region/storefront-data`
 - `forum/storefront-data`
 - `forum/storefront-topic-route`
+- `forum/storefront-topic-create`
+- `forum/storefront-reply-create`
 - `search/storefront-search`
 - `search/storefront-filter-presets`
 - `search/storefront-suggestions`

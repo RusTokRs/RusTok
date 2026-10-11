@@ -16,10 +16,14 @@ import {
 import type { ForumTopicListItem } from '../api/forum';
 import { AuthorBadge } from './member-card';
 import { useComposer } from '../context/composer-context';
+import { TopicStatusLabel } from './topic-status-label';
+import { useTranslations } from '@rustok/next-fluent';
 
 export type TopicFilterTab = 'latest' | 'top' | 'unread' | 'solved';
 
 interface TopicFeedProps {
+  /** The first page is still in flight; the empty state must not claim there is nothing. */
+  isLoading?: boolean;
   topics: ForumTopicListItem[];
   total: number;
   selectedTopicId: string | null;
@@ -29,6 +33,7 @@ interface TopicFeedProps {
 }
 
 export function TopicFeed({
+  isLoading = false,
   topics,
   total,
   selectedTopicId,
@@ -36,6 +41,7 @@ export function TopicFeed({
   selectedCategoryId,
   locale,
 }: TopicFeedProps) {
+  const forum = useTranslations('Forum');
   const { openNewTopic } = useComposer();
   const [activeTab, setActiveTab] = useState<TopicFilterTab>('latest');
   const [searchQuery, setSearchQuery] = useState('');
@@ -102,16 +108,16 @@ export function TopicFeed({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-            Topic feed
+            {forum('topicFeed')}
           </p>
           <h3 className="mt-2 text-2xl font-semibold text-card-foreground">
-            Latest discussions
+            {forum('latestDiscussions')}
           </h3>
         </div>
 
         <div className="flex items-center gap-2">
           <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-            {total} threads
+            {total} {forum('threads')}
           </span>
           <button
             type="button"
@@ -119,7 +125,7 @@ export function TopicFeed({
             className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
           >
             <Plus className="h-3.5 w-3.5" />
-            New Topic
+            {forum('newTopic')}
           </button>
         </div>
       </div>
@@ -138,7 +144,7 @@ export function TopicFeed({
             }`}
           >
             <Sparkles className="h-3.5 w-3.5 text-primary" />
-            Latest
+            {forum('latest')}
           </button>
 
           <button
@@ -151,7 +157,7 @@ export function TopicFeed({
             }`}
           >
             <Flame className="h-3.5 w-3.5 text-amber-500" />
-            Top
+            {forum('top')}
           </button>
 
           <button
@@ -164,7 +170,7 @@ export function TopicFeed({
             }`}
           >
             <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
-            Unread
+            {forum('unread')}
             {unreadCountTotal > 0 && (
               <span className="ml-0.5 rounded-full bg-blue-500/20 px-1.5 py-0.2 text-[10px] font-bold text-blue-600 dark:text-blue-400">
                 {unreadCountTotal}
@@ -182,7 +188,7 @@ export function TopicFeed({
             }`}
           >
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-            Solved
+            {forum('solved')}
             {solvedCountTotal > 0 && (
               <span className="ml-0.5 rounded-full bg-emerald-500/20 px-1.5 py-0.2 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
                 {solvedCountTotal}
@@ -198,7 +204,7 @@ export function TopicFeed({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search discussions..."
+            placeholder={forum('searchPlaceholder')}
             className="w-full rounded-2xl border border-border bg-background/80 py-1.5 pl-9 pr-8 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
           />
           {searchQuery && (
@@ -214,11 +220,15 @@ export function TopicFeed({
       </div>
 
       {/* Topic List */}
-      {topics.length === 0 ? (
+      {isLoading && topics.length === 0 ? (
+        <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+          {forum('loading')}
+        </div>
+      ) : topics.length === 0 ? (
         <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center">
-          <h4 className="text-base font-semibold text-card-foreground">No topics yet</h4>
+          <h4 className="text-base font-semibold text-card-foreground">{forum('noTopicsYet')}</h4>
           <p className="mt-2 text-sm text-muted-foreground">
-            Be the first to start a conversation in this section!
+            {forum('noTopicsYetHint')}
           </p>
           <button
             type="button"
@@ -226,23 +236,23 @@ export function TopicFeed({
             className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/10"
           >
             <Plus className="h-4 w-4" />
-            Start Discussion
+            {forum('startDiscussion')}
           </button>
         </div>
       ) : filteredTopics.length === 0 ? (
         <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center">
           <h4 className="text-base font-semibold text-card-foreground">
-            No matching discussions found
+            {forum('noMatchingDiscussions')}
           </h4>
           <p className="mt-2 text-sm text-muted-foreground">
-            No topics match your current filter tab or search keyword.
+            {forum('noMatchingDiscussionsHint')}
           </p>
           <button
             type="button"
             onClick={handleResetFilters}
             className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground shadow-xs transition hover:bg-muted"
           >
-            Clear filters
+            {forum('clearFilters')}
           </button>
         </div>
       ) : (
@@ -263,7 +273,7 @@ export function TopicFeed({
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        {topic.status}
+                        <TopicStatusLabel status={topic.status} />
                       </span>
                       <span
                         dir="ltr"
@@ -275,28 +285,28 @@ export function TopicFeed({
                       {/* Solved Badge */}
                       {Boolean(topic.solutionReplyId) && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                          <CheckCircle2 className="h-3 w-3" /> Solved
+                          <CheckCircle2 className="h-3 w-3" /> {forum('solved')}
                         </span>
                       )}
 
                       {/* Unread Badge */}
                       {topic.isUnread && (
                         <span className="rounded-full bg-blue-500/15 px-2.5 py-0.5 text-[11px] font-medium text-blue-700 dark:text-blue-300">
-                          {topic.unreadCount ? `${topic.unreadCount} unread` : 'New'}
+                          {topic.unreadCount ? `${topic.unreadCount} ${forum('unread')}` : forum('fresh')}
                         </span>
                       )}
 
                       {/* Pinned Badge */}
                       {topic.isPinned && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                          <Pin className="h-3 w-3" /> Pinned
+                          <Pin className="h-3 w-3" /> {forum('pinned')}
                         </span>
                       )}
 
                       {/* Locked Badge */}
                       {topic.isLocked && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2.5 py-0.5 text-[11px] font-medium text-destructive">
-                          <Lock className="h-3 w-3" /> Locked
+                          <Lock className="h-3 w-3" /> {forum('locked')}
                         </span>
                       )}
 
@@ -314,11 +324,15 @@ export function TopicFeed({
                       </h4>
                       {locale ? (
                         <Link
-                          href={`/${locale}/modules/forum/t/${topic.slug}`}
+                          // The topic page is mounted at the owner's canonical route prefix
+                          // `/[locale]/forum/t/…`. This read model carries the topic id and slug but
+                          // not the owner's short identity, so the link uses the UUID form the route
+                          // resolves instead of re-implementing route identity in the widget.
+                          href={`/${locale}/forum/t/${topic.id}`}
                           onClick={(e) => e.stopPropagation()}
                           className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
                           dir="ltr"
-                          title="Open topic in full page"
+                          title={forum('openTopicFullPage')}
                         >
                           t/{topic.slug} ↗
                         </Link>
@@ -334,7 +348,7 @@ export function TopicFeed({
 
                   <div className="text-right">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                      Replies
+                      {forum('replies')}
                     </p>
                     <p className="mt-1 text-2xl font-semibold text-foreground">
                       {topic.replyCount}

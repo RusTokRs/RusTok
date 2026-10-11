@@ -3,9 +3,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Quote } from 'lucide-react';
 import { useComposer } from '../context/composer-context';
+import { useTranslations } from '@rustok/next-fluent';
 
 export function QuoteTooltip() {
   const { appendQuote } = useComposer();
+  const forum = useTranslations('Forum');
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const [selectedText, setSelectedText] = useState('');
   const [targetContext, setTargetContext] = useState<{
@@ -117,7 +119,7 @@ export function QuoteTooltip() {
           className="flex items-center gap-1.5 rounded-full border border-border bg-foreground px-3 py-1 text-xs font-semibold text-background shadow-lg transition hover:scale-105 active:scale-95"
         >
           <Quote className="h-3 w-3" />
-          Quote
+          {forum('quote')}
         </button>
       </foreignObject>
     </svg>

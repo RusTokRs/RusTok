@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { ChevronUp, ChevronDown } from 'lucide-react';
+import { useTranslations } from '@rustok/next-fluent';
 
 interface TimelineScrollerProps {
   currentPost: number;
@@ -14,6 +15,7 @@ export function TimelineScroller({
   totalPosts,
   onJumpToPost,
 }: TimelineScrollerProps) {
+  const forum = useTranslations('Forum');
   if (totalPosts <= 1) return null;
 
   const percentage = Math.min(
@@ -27,7 +29,7 @@ export function TimelineScroller({
         type="button"
         onClick={() => onJumpToPost?.(1)}
         className="rounded-xl p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-        title="Jump to beginning"
+        title={forum('jumpToBeginning')}
       >
         <ChevronUp className="h-4 w-4" />
       </button>
@@ -57,7 +59,7 @@ export function TimelineScroller({
         type="button"
         onClick={() => onJumpToPost?.(totalPosts)}
         className="rounded-xl p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-        title="Jump to end"
+        title={forum('jumpToEnd')}
       >
         <ChevronDown className="h-4 w-4" />
       </button>

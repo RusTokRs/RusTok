@@ -37,6 +37,12 @@
       "source_event_identity": "topic_id",
       "source_revision": 1
     },
+    "forum.topic.replied": {
+      "family": "root",
+      "source_slug": "forum",
+      "source_event_identity": "reply_id",
+      "source_revision": 1
+    },
     "forum.mention.user_added": {
       "family": "forum_mention_contract",
       "source_slug": "forum",

@@ -220,6 +220,186 @@ export type AppMessageKey =
   | 'Comments.composer.success'
   | 'Comments-composer-title'
   | 'Comments.composer.title'
+  | 'Forum-allTopics'
+  | 'Forum-allTopicsHint'
+  | 'Forum-backToDiscussions'
+  | 'Forum-browse'
+  | 'Forum-cancel'
+  | 'Forum-categories'
+  | 'Forum-clear'
+  | 'Forum-clearFilters'
+  | 'Forum-close'
+  | 'Forum-communityMap'
+  | 'Forum-createTopic'
+  | 'Forum-discussions'
+  | 'Forum-draftSavedLocally'
+  | 'Forum-draftTitle'
+  | 'Forum-errorEmptyMessage'
+  | 'Forum-errorGeneric'
+  | 'Forum-errorLoad'
+  | 'Forum-errorMarkRead'
+  | 'Forum-errorMissingCategory'
+  | 'Forum-errorMissingTitle'
+  | 'Forum-errorReplyFailed'
+  | 'Forum-errorTopicFailed'
+  | 'Forum-expand'
+  | 'Forum-filterPlaceholder'
+  | 'Forum-forumIndex'
+  | 'Forum-fresh'
+  | 'Forum-grid'
+  | 'Forum-joinTheConversation'
+  | 'Forum-joinTheConversationHint'
+  | 'Forum-jumpToBeginning'
+  | 'Forum-jumpToEnd'
+  | 'Forum-latest'
+  | 'Forum-latestDiscussions'
+  | 'Forum-linkedPostUnavailable'
+  | 'Forum-livePreview'
+  | 'Forum-loading'
+  | 'Forum-locked'
+  | 'Forum-minimize'
+  | 'Forum-newReply'
+  | 'Forum-newTopic'
+  | 'Forum-noMatchingCategories'
+  | 'Forum-noMatchingCategoriesHint'
+  | 'Forum-noMatchingDiscussions'
+  | 'Forum-noMatchingDiscussionsHint'
+  | 'Forum-noRepliesYet'
+  | 'Forum-noSectionDescription'
+  | 'Forum-nothingToPreview'
+  | 'Forum-noTopicsYet'
+  | 'Forum-noTopicsYetHint'
+  | 'Forum-openAThread'
+  | 'Forum-openAThreadHint'
+  | 'Forum-openCategoryMatrix'
+  | 'Forum-openTopicFullPage'
+  | 'Forum-pinned'
+  | 'Forum-postedOn'
+  | 'Forum-posting'
+  | 'Forum-postReply'
+  | 'Forum-preview'
+  | 'Forum-quote'
+  | 'Forum-quotedFrom'
+  | 'Forum-replies'
+  | 'Forum-repliesCount'
+  | 'Forum-reply'
+  | 'Forum-replyContent'
+  | 'Forum-replyToMessage'
+  | 'Forum-replyToTopic'
+  | 'Forum-retry'
+  | 'Forum-searchPlaceholder'
+  | 'Forum-sectionDescription'
+  | 'Forum-sectionsPublished'
+  | 'Forum-sectionSubtitle'
+  | 'Forum-solved'
+  | 'Forum-startDiscussion'
+  | 'Forum-statusArchived'
+  | 'Forum-statusClosed'
+  | 'Forum-statusOpen'
+  | 'Forum-statusPending'
+  | 'Forum-subcategories'
+  | 'Forum-threads'
+  | 'Forum-top'
+  | 'Forum-topicContent'
+  | 'Forum-topicFeed'
+  | 'Forum-topicNotFound'
+  | 'Forum-topicNotFoundHint'
+  | 'Forum-topicTitlePlaceholder'
+  | 'Forum-total'
+  | 'Forum-totalTopics'
+  | 'Forum-unknownAuthor'
+  | 'Forum-unread'
+  | 'Forum-write'
+  | 'Forum.allTopics'
+  | 'Forum.allTopicsHint'
+  | 'Forum.backToDiscussions'
+  | 'Forum.browse'
+  | 'Forum.cancel'
+  | 'Forum.categories'
+  | 'Forum.clear'
+  | 'Forum.clearFilters'
+  | 'Forum.close'
+  | 'Forum.communityMap'
+  | 'Forum.createTopic'
+  | 'Forum.discussions'
+  | 'Forum.draftSavedLocally'
+  | 'Forum.draftTitle'
+  | 'Forum.errorEmptyMessage'
+  | 'Forum.errorGeneric'
+  | 'Forum.errorLoad'
+  | 'Forum.errorMarkRead'
+  | 'Forum.errorMissingCategory'
+  | 'Forum.errorMissingTitle'
+  | 'Forum.errorReplyFailed'
+  | 'Forum.errorTopicFailed'
+  | 'Forum.expand'
+  | 'Forum.filterPlaceholder'
+  | 'Forum.forumIndex'
+  | 'Forum.fresh'
+  | 'Forum.grid'
+  | 'Forum.joinTheConversation'
+  | 'Forum.joinTheConversationHint'
+  | 'Forum.jumpToBeginning'
+  | 'Forum.jumpToEnd'
+  | 'Forum.latest'
+  | 'Forum.latestDiscussions'
+  | 'Forum.linkedPostUnavailable'
+  | 'Forum.livePreview'
+  | 'Forum.loading'
+  | 'Forum.locked'
+  | 'Forum.minimize'
+  | 'Forum.newReply'
+  | 'Forum.newTopic'
+  | 'Forum.noMatchingCategories'
+  | 'Forum.noMatchingCategoriesHint'
+  | 'Forum.noMatchingDiscussions'
+  | 'Forum.noMatchingDiscussionsHint'
+  | 'Forum.noRepliesYet'
+  | 'Forum.noSectionDescription'
+  | 'Forum.nothingToPreview'
+  | 'Forum.noTopicsYet'
+  | 'Forum.noTopicsYetHint'
+  | 'Forum.openAThread'
+  | 'Forum.openAThreadHint'
+  | 'Forum.openCategoryMatrix'
+  | 'Forum.openTopicFullPage'
+  | 'Forum.pinned'
+  | 'Forum.postedOn'
+  | 'Forum.posting'
+  | 'Forum.postReply'
+  | 'Forum.preview'
+  | 'Forum.quote'
+  | 'Forum.quotedFrom'
+  | 'Forum.replies'
+  | 'Forum.repliesCount'
+  | 'Forum.reply'
+  | 'Forum.replyContent'
+  | 'Forum.replyToMessage'
+  | 'Forum.replyToTopic'
+  | 'Forum.retry'
+  | 'Forum.searchPlaceholder'
+  | 'Forum.sectionDescription'
+  | 'Forum.sectionsPublished'
+  | 'Forum.sectionSubtitle'
+  | 'Forum.solved'
+  | 'Forum.startDiscussion'
+  | 'Forum.statusArchived'
+  | 'Forum.statusClosed'
+  | 'Forum.statusOpen'
+  | 'Forum.statusPending'
+  | 'Forum.subcategories'
+  | 'Forum.threads'
+  | 'Forum.top'
+  | 'Forum.topicContent'
+  | 'Forum.topicFeed'
+  | 'Forum.topicNotFound'
+  | 'Forum.topicNotFoundHint'
+  | 'Forum.topicTitlePlaceholder'
+  | 'Forum.total'
+  | 'Forum.totalTopics'
+  | 'Forum.unknownAuthor'
+  | 'Forum.unread'
+  | 'Forum.write'
   | 'Order-backToCatalog'
   | 'Order.backToCatalog'
   | 'Order-browseCatalog'
@@ -612,6 +792,186 @@ export interface AppMessageArgs {
   'Comments-composer-success'?: Record<string, never>;
   'Comments.composer.title'?: Record<string, never>;
   'Comments-composer-title'?: Record<string, never>;
+  'Forum-allTopics'?: Record<string, never>;
+  'Forum-allTopicsHint'?: Record<string, never>;
+  'Forum-backToDiscussions'?: Record<string, never>;
+  'Forum-browse'?: Record<string, never>;
+  'Forum-cancel'?: Record<string, never>;
+  'Forum-categories'?: Record<string, never>;
+  'Forum-clear'?: Record<string, never>;
+  'Forum-clearFilters'?: Record<string, never>;
+  'Forum-close'?: Record<string, never>;
+  'Forum-communityMap'?: Record<string, never>;
+  'Forum-createTopic'?: Record<string, never>;
+  'Forum-discussions'?: Record<string, never>;
+  'Forum-draftSavedLocally'?: Record<string, never>;
+  'Forum-draftTitle': { 'title': string | number | Date };
+  'Forum-errorEmptyMessage'?: Record<string, never>;
+  'Forum-errorGeneric'?: Record<string, never>;
+  'Forum-errorLoad'?: Record<string, never>;
+  'Forum-errorMarkRead'?: Record<string, never>;
+  'Forum-errorMissingCategory'?: Record<string, never>;
+  'Forum-errorMissingTitle'?: Record<string, never>;
+  'Forum-errorReplyFailed'?: Record<string, never>;
+  'Forum-errorTopicFailed'?: Record<string, never>;
+  'Forum-expand'?: Record<string, never>;
+  'Forum-filterPlaceholder'?: Record<string, never>;
+  'Forum-forumIndex'?: Record<string, never>;
+  'Forum-fresh'?: Record<string, never>;
+  'Forum-grid'?: Record<string, never>;
+  'Forum-joinTheConversation'?: Record<string, never>;
+  'Forum-joinTheConversationHint'?: Record<string, never>;
+  'Forum-jumpToBeginning'?: Record<string, never>;
+  'Forum-jumpToEnd'?: Record<string, never>;
+  'Forum-latest'?: Record<string, never>;
+  'Forum-latestDiscussions'?: Record<string, never>;
+  'Forum-linkedPostUnavailable'?: Record<string, never>;
+  'Forum-livePreview'?: Record<string, never>;
+  'Forum-loading'?: Record<string, never>;
+  'Forum-locked'?: Record<string, never>;
+  'Forum-minimize'?: Record<string, never>;
+  'Forum-newReply'?: Record<string, never>;
+  'Forum-newTopic'?: Record<string, never>;
+  'Forum-noMatchingCategories'?: Record<string, never>;
+  'Forum-noMatchingCategoriesHint'?: Record<string, never>;
+  'Forum-noMatchingDiscussions'?: Record<string, never>;
+  'Forum-noMatchingDiscussionsHint'?: Record<string, never>;
+  'Forum-noRepliesYet'?: Record<string, never>;
+  'Forum-noSectionDescription'?: Record<string, never>;
+  'Forum-nothingToPreview'?: Record<string, never>;
+  'Forum-noTopicsYet'?: Record<string, never>;
+  'Forum-noTopicsYetHint'?: Record<string, never>;
+  'Forum-openAThread'?: Record<string, never>;
+  'Forum-openAThreadHint'?: Record<string, never>;
+  'Forum-openCategoryMatrix'?: Record<string, never>;
+  'Forum-openTopicFullPage'?: Record<string, never>;
+  'Forum-pinned'?: Record<string, never>;
+  'Forum-postedOn': { 'date': string | number | Date };
+  'Forum-posting'?: Record<string, never>;
+  'Forum-postReply'?: Record<string, never>;
+  'Forum-preview'?: Record<string, never>;
+  'Forum-quote'?: Record<string, never>;
+  'Forum-quotedFrom': { 'author': string | number | Date };
+  'Forum-replies'?: Record<string, never>;
+  'Forum-repliesCount'?: Record<string, never>;
+  'Forum-reply'?: Record<string, never>;
+  'Forum-replyContent'?: Record<string, never>;
+  'Forum-replyToMessage'?: Record<string, never>;
+  'Forum-replyToTopic'?: Record<string, never>;
+  'Forum-retry'?: Record<string, never>;
+  'Forum-searchPlaceholder'?: Record<string, never>;
+  'Forum-sectionDescription'?: Record<string, never>;
+  'Forum-sectionsPublished'?: Record<string, never>;
+  'Forum-sectionSubtitle'?: Record<string, never>;
+  'Forum-solved'?: Record<string, never>;
+  'Forum-startDiscussion'?: Record<string, never>;
+  'Forum-statusArchived'?: Record<string, never>;
+  'Forum-statusClosed'?: Record<string, never>;
+  'Forum-statusOpen'?: Record<string, never>;
+  'Forum-statusPending'?: Record<string, never>;
+  'Forum-subcategories'?: Record<string, never>;
+  'Forum-threads'?: Record<string, never>;
+  'Forum-top'?: Record<string, never>;
+  'Forum-topicContent'?: Record<string, never>;
+  'Forum-topicFeed'?: Record<string, never>;
+  'Forum-topicNotFound'?: Record<string, never>;
+  'Forum-topicNotFoundHint'?: Record<string, never>;
+  'Forum-topicTitlePlaceholder'?: Record<string, never>;
+  'Forum-total'?: Record<string, never>;
+  'Forum-totalTopics'?: Record<string, never>;
+  'Forum-unknownAuthor'?: Record<string, never>;
+  'Forum-unread'?: Record<string, never>;
+  'Forum-write'?: Record<string, never>;
+  'Forum.allTopics'?: Record<string, never>;
+  'Forum.allTopicsHint'?: Record<string, never>;
+  'Forum.backToDiscussions'?: Record<string, never>;
+  'Forum.browse'?: Record<string, never>;
+  'Forum.cancel'?: Record<string, never>;
+  'Forum.categories'?: Record<string, never>;
+  'Forum.clear'?: Record<string, never>;
+  'Forum.clearFilters'?: Record<string, never>;
+  'Forum.close'?: Record<string, never>;
+  'Forum.communityMap'?: Record<string, never>;
+  'Forum.createTopic'?: Record<string, never>;
+  'Forum.discussions'?: Record<string, never>;
+  'Forum.draftSavedLocally'?: Record<string, never>;
+  'Forum.draftTitle': { 'title': string | number | Date };
+  'Forum.errorEmptyMessage'?: Record<string, never>;
+  'Forum.errorGeneric'?: Record<string, never>;
+  'Forum.errorLoad'?: Record<string, never>;
+  'Forum.errorMarkRead'?: Record<string, never>;
+  'Forum.errorMissingCategory'?: Record<string, never>;
+  'Forum.errorMissingTitle'?: Record<string, never>;
+  'Forum.errorReplyFailed'?: Record<string, never>;
+  'Forum.errorTopicFailed'?: Record<string, never>;
+  'Forum.expand'?: Record<string, never>;
+  'Forum.filterPlaceholder'?: Record<string, never>;
+  'Forum.forumIndex'?: Record<string, never>;
+  'Forum.fresh'?: Record<string, never>;
+  'Forum.grid'?: Record<string, never>;
+  'Forum.joinTheConversation'?: Record<string, never>;
+  'Forum.joinTheConversationHint'?: Record<string, never>;
+  'Forum.jumpToBeginning'?: Record<string, never>;
+  'Forum.jumpToEnd'?: Record<string, never>;
+  'Forum.latest'?: Record<string, never>;
+  'Forum.latestDiscussions'?: Record<string, never>;
+  'Forum.linkedPostUnavailable'?: Record<string, never>;
+  'Forum.livePreview'?: Record<string, never>;
+  'Forum.loading'?: Record<string, never>;
+  'Forum.locked'?: Record<string, never>;
+  'Forum.minimize'?: Record<string, never>;
+  'Forum.newReply'?: Record<string, never>;
+  'Forum.newTopic'?: Record<string, never>;
+  'Forum.noMatchingCategories'?: Record<string, never>;
+  'Forum.noMatchingCategoriesHint'?: Record<string, never>;
+  'Forum.noMatchingDiscussions'?: Record<string, never>;
+  'Forum.noMatchingDiscussionsHint'?: Record<string, never>;
+  'Forum.noRepliesYet'?: Record<string, never>;
+  'Forum.noSectionDescription'?: Record<string, never>;
+  'Forum.nothingToPreview'?: Record<string, never>;
+  'Forum.noTopicsYet'?: Record<string, never>;
+  'Forum.noTopicsYetHint'?: Record<string, never>;
+  'Forum.openAThread'?: Record<string, never>;
+  'Forum.openAThreadHint'?: Record<string, never>;
+  'Forum.openCategoryMatrix'?: Record<string, never>;
+  'Forum.openTopicFullPage'?: Record<string, never>;
+  'Forum.pinned'?: Record<string, never>;
+  'Forum.postedOn': { 'date': string | number | Date };
+  'Forum.posting'?: Record<string, never>;
+  'Forum.postReply'?: Record<string, never>;
+  'Forum.preview'?: Record<string, never>;
+  'Forum.quote'?: Record<string, never>;
+  'Forum.quotedFrom': { 'author': string | number | Date };
+  'Forum.replies'?: Record<string, never>;
+  'Forum.repliesCount'?: Record<string, never>;
+  'Forum.reply'?: Record<string, never>;
+  'Forum.replyContent'?: Record<string, never>;
+  'Forum.replyToMessage'?: Record<string, never>;
+  'Forum.replyToTopic'?: Record<string, never>;
+  'Forum.retry'?: Record<string, never>;
+  'Forum.searchPlaceholder'?: Record<string, never>;
+  'Forum.sectionDescription'?: Record<string, never>;
+  'Forum.sectionsPublished'?: Record<string, never>;
+  'Forum.sectionSubtitle'?: Record<string, never>;
+  'Forum.solved'?: Record<string, never>;
+  'Forum.startDiscussion'?: Record<string, never>;
+  'Forum.statusArchived'?: Record<string, never>;
+  'Forum.statusClosed'?: Record<string, never>;
+  'Forum.statusOpen'?: Record<string, never>;
+  'Forum.statusPending'?: Record<string, never>;
+  'Forum.subcategories'?: Record<string, never>;
+  'Forum.threads'?: Record<string, never>;
+  'Forum.top'?: Record<string, never>;
+  'Forum.topicContent'?: Record<string, never>;
+  'Forum.topicFeed'?: Record<string, never>;
+  'Forum.topicNotFound'?: Record<string, never>;
+  'Forum.topicNotFoundHint'?: Record<string, never>;
+  'Forum.topicTitlePlaceholder'?: Record<string, never>;
+  'Forum.total'?: Record<string, never>;
+  'Forum.totalTopics'?: Record<string, never>;
+  'Forum.unknownAuthor'?: Record<string, never>;
+  'Forum.unread'?: Record<string, never>;
+  'Forum.write'?: Record<string, never>;
   'Order.backToCatalog'?: Record<string, never>;
   'Order-backToCatalog'?: Record<string, never>;
   'Order.browseCatalog'?: Record<string, never>;

@@ -68,7 +68,17 @@ if (failures.length === 0) {
     'pub mod forum_category_translation;',
     'public legacy Category Translation entity export',
   );
-  requireMarker(legacyCategory, 'pub parent_id: Option<Uuid>', 'Forum-owned compatibility hierarchy projection retained');
+  // Hierarchy columns left Forum for good when m20260916_000032_clean_forum_category_canonical_taxonomy
+  // dropped them; the earlier pin demanded the dual-write compatibility projection stay declared,
+  // which would resurrect a column that no longer exists in the schema.
+  for (const retired of ['pub parent_id', 'pub position', 'pub icon', 'pub color']) {
+    rejectMarker(legacyCategory, retired, `retired Forum Category hierarchy column ${retired}`);
+  }
+  requireMarker(
+    registry,
+    'm20260916_000032_clean_forum_category_canonical_taxonomy',
+    'registered legacy hierarchy cleanup migration',
+  );
   rejectMarker(
     legacyCategory,
     'forum_category_translation',

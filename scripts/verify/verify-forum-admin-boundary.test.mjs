@@ -25,7 +25,7 @@ pub use ui::leptos::ForumAdmin;
 `;
 }
 
-function coreSource({ includeLeptos = false, omitDeleteOutcome = false } = {}) {
+function coreSource({ includeLeptos = false, omitDeleteOutcome = false, phantomTemplate = false } = {}) {
   const helpers = [
     "CategoryFormSnapshot", "TopicFormSnapshot", "ForumAdminRouteQueryIntent", "ForumAdminDeleteOutcome",
     "forum_admin_delete_outcome", "forum_admin_busy_key", "ForumAdminBusySurface", "ForumAdminFormErrorLabels",
@@ -41,9 +41,16 @@ function coreSource({ includeLeptos = false, omitDeleteOutcome = false } = {}) {
     "ForumAdminCategoryFormLabels", "forum_admin_category_form_labels", "ForumAdminTopicStreamLabels",
     "forum_admin_topic_stream_labels", "ForumAdminTopicFormLabels", "forum_admin_topic_form_labels",
     "ForumAdminReplyPreviewLabels", "forum_admin_reply_preview_labels",
+    "forum_admin_count_label", "forum_admin_value_label", "forum_admin_thread_path_label",
+    "forum_admin_reply_preview_shown_label",
   ].filter((name) => !(omitDeleteOutcome && name === "forum_admin_delete_outcome"));
   return `
+// Catalog keys the core resolves with bound arguments; the guard requires them here so a
+// migration back to caller-side templates is a fixture failure, not a silent pass.
+// keys: forum.topics.ready forum.topics.shown forum.render.topicsCount
+//       forum.render.repliesCount forum.render.icon forum.render.threadPath
 ${includeLeptos ? "use leptos::prelude::*;" : ""}
+${phantomTemplate ? "pub struct ForumAdminCategoryRenderLabels { pub topics_count_template: String }" : ""}
 ${helpers.map((name) => name.startsWith("Forum") || name.endsWith("Snapshot") ? `pub struct ${name};` : `pub fn ${name}() {}`).join("\n")}
 `;
 }
@@ -65,9 +72,10 @@ function uiSource({
   rawBusy = false,
   omitCoreImport = false,
   flatCategoryRead = false,
+  rawInterpolation = false,
 } = {}) {
   return `
-${omitCoreImport ? "" : "use crate::core::{forum_admin_category_matrix_labels, forum_admin_category_form_labels, forum_admin_topic_stream_labels, forum_admin_topic_form_labels, forum_admin_reply_preview_labels, forum_admin_busy_key, forum_admin_form_error_message, forum_admin_transport_error_message, category_select_options, forum_admin_topic_tag_count_label, forum_admin_editing_thread_label, forum_admin_position_value, forum_admin_sidebar_category_class, forum_admin_status_badge_class, forum_admin_tag_chips, forum_admin_title_envelope_view_model, forum_admin_placeholder_policy, forum_admin_seo_copy_labels, forum_admin_delete_outcome, CategoryFormSnapshot, TopicFormSnapshot, forum_admin_moderator_notes_copy_labels, forum_admin_sidebar_copy_labels, forum_admin_metric_accent_class, forum_admin_action_button_class};"}
+${omitCoreImport ? "" : "use crate::core::{forum_admin_category_matrix_labels, forum_admin_category_form_labels, forum_admin_topic_stream_labels, forum_admin_topic_form_labels, forum_admin_reply_preview_labels, forum_admin_busy_key, forum_admin_form_error_message, forum_admin_transport_error_message, category_select_options, forum_admin_topic_tag_count_label, forum_admin_reply_preview_shown_label, forum_admin_editing_thread_label, forum_admin_position_value, forum_admin_sidebar_category_class, forum_admin_status_badge_class, forum_admin_tag_chips, forum_admin_title_envelope_view_model, forum_admin_placeholder_policy, forum_admin_seo_copy_labels, forum_admin_delete_outcome, CategoryFormSnapshot, TopicFormSnapshot, forum_admin_moderator_notes_copy_labels, forum_admin_sidebar_copy_labels, forum_admin_metric_accent_class, forum_admin_action_button_class};"}
 use crate::transport;
 use crate::ui::category_dnd::CategoryDndGrid;
 
@@ -79,7 +87,33 @@ pub mod leptos {
     ${rawApi ? "let _ = api::fetch_categories;" : ""}
     ${rawService ? "let _ = ForumService;" : ""}
     ${rawBusy ? "let _ = \"category:save\";" : ""}
+    ${rawInterpolation ? "let _ = template.replace(\"{count}\", count.to_string());" : ""}
   }
+}
+`;
+}
+
+function i18nSource() {
+  return `
+rustok_ui_i18n::declare_module_i18n!("en", &[]);
+
+pub fn count_message(locale: Option<&str>, key: &str, fallback: &str, count: u64) -> String {
+    let mut arguments = rustok_ui_i18n::FluentArgs::new();
+    arguments.set("count", count);
+    format(locale, key, Some(&arguments), fallback)
+}
+
+pub fn value_message<'a>(locale: Option<&str>, key: &str, fallback: &str, value: &'a str) -> String {
+    let mut arguments = rustok_ui_i18n::FluentArgs::new();
+    arguments.set("value", value);
+    format(locale, key, Some(&arguments), fallback)
+}
+
+pub fn thread_path_message<'a>(locale: Option<&str>, key: &str, fallback: &str, category: &'a str, slug: &'a str) -> String {
+    let mut arguments = rustok_ui_i18n::FluentArgs::new();
+    arguments.set("category", category);
+    arguments.set("slug", slug);
+    format(locale, key, Some(&arguments), fallback)
 }
 `;
 }
@@ -159,6 +193,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/model.rs", modelSource(options));
   writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/ui/category_dnd.rs", categoryDndSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/i18n.rs", i18nSource());
   writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/transport.rs", transportSource(options));
   writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
   if (options.restoredFallback) {
@@ -198,6 +233,20 @@ test("forum admin boundary verifier passes canonical fixture", () => {
   withTempFixture({}, (result) => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /forum admin boundary verification passed/);
+  });
+});
+
+test("forum admin boundary verifier rejects interpolated copy in the admin UI", () => {
+  withTempFixture({ rawInterpolation: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /interpolated admin copy must resolve through the core label policy/);
+  });
+});
+
+test("forum admin boundary verifier rejects an unresolved label template in core", () => {
+  withTempFixture({ phantomTemplate: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /unresolved label templates must stay out of the admin view models/);
   });
 });
 

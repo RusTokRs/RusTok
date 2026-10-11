@@ -121,8 +121,9 @@ struct TopicsVariables {
     category_id: Option<String>,
     locale: Option<String>,
     after: Option<String>,
+    /// `None` lets the owner apply the tenant's `topics_per_page` setting.
     #[serde(rename = "perPage")]
-    per_page: i32,
+    per_page: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -133,7 +134,8 @@ struct UnreadTopicsVariables {
     category_id: Option<String>,
     locale: Option<String>,
     after: Option<String>,
-    limit: i32,
+    /// `None` lets the owner apply the tenant's `topics_per_page` setting.
+    limit: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -152,8 +154,9 @@ struct RepliesVariables {
     topic_id: String,
     locale: Option<String>,
     after: Option<String>,
+    /// `None` lets the owner apply the tenant's `replies_per_page` setting.
     #[serde(rename = "perPage")]
-    per_page: i32,
+    per_page: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -227,7 +230,7 @@ where
     .await
 }
 
-async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
+pub(super) async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
 where
     V: Serialize,
     T: for<'de> Deserialize<'de>,
@@ -237,11 +240,23 @@ where
         .map_err(|error| ApiError::Graphql(error.to_string()))
 }
 
+/// Whether a personalized storefront query failed only because the caller cannot see
+/// the personalization surface at all: no session, or none of the Forum topic read
+/// permissions these queries require. In that case the storefront may still show the
+/// audience feed. Every other failure — an unrelated permission denial, a network,
+/// HTTP, persistence, or domain error — must surface instead of silently swapping the
+/// dataset the caller asked for. The denials are matched exactly against the messages
+/// the Forum storefront resolvers emit (`forum_topics:list`, `forum_topics:read`, and
+/// the member-card variant); renaming one of those owner messages has to update this
+/// list in the same change.
 fn personalization_unavailable(error: &GraphqlHttpError) -> bool {
     match error {
         GraphqlHttpError::Unauthorized => true,
         GraphqlHttpError::Graphql(message) => {
-            message == "Authentication required" || message.starts_with("Permission denied:")
+            message == "Authentication required"
+                || message == "Permission denied: forum_topics:list required"
+                || message == "Permission denied: forum_topics:read required"
+                || message == "Permission denied: forum_topics:read required for member cards"
         }
         GraphqlHttpError::Network | GraphqlHttpError::Http(_) => false,
     }
@@ -301,7 +316,7 @@ pub async fn fetch_storefront_forum_graphql(
             category_id: resolved_category_id.clone(),
             locale: locale.clone(),
             after: None,
-            limit: 20,
+            limit: None,
         },
     )
     .await;
@@ -315,7 +330,7 @@ pub async fn fetch_storefront_forum_graphql(
                     category_id: resolved_category_id.clone(),
                     locale: locale.clone(),
                     after: None,
-                    per_page: 20,
+                    per_page: None,
                 },
             )
             .await?;
@@ -352,7 +367,7 @@ pub async fn fetch_storefront_forum_graphql(
                 topic_id,
                 locale: locale.clone(),
                 after: None,
-                per_page: 20,
+                per_page: None,
             },
         )
         .await?;
@@ -374,6 +389,65 @@ pub async fn fetch_storefront_forum_graphql(
         member_cards,
         read_state_available,
     })
+}
+
+/// One more page of the topic list this surface already holds.
+///
+/// `read_state_available` selects the variant whose cursor the surface is holding: the unread-aware
+/// storefront query or the public audience query. The page size stays omitted so the owner applies
+/// the tenant setting that produced the first page.
+pub async fn fetch_storefront_forum_topic_page_graphql(
+    selected_category_id: Option<String>,
+    after: String,
+    locale: Option<String>,
+    read_state_available: bool,
+) -> Result<ForumTopicPage, ApiError> {
+    if read_state_available {
+        let response: StorefrontForumUnreadTopicsResponse = request(
+            STOREFRONT_FORUM_UNREAD_TOPICS_QUERY,
+            UnreadTopicsVariables {
+                tenant_id: None,
+                category_id: selected_category_id,
+                locale: locale.clone(),
+                after: Some(after),
+                limit: None,
+            },
+        )
+        .await?;
+        return Ok(response.forum_storefront_unread_topics);
+    }
+    let response: StorefrontForumAudienceTopicsResponse = request(
+        STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY,
+        TopicsVariables {
+            tenant_id: None,
+            category_id: selected_category_id,
+            locale: locale.clone(),
+            after: Some(after),
+            per_page: None,
+        },
+    )
+    .await?;
+    Ok(response.forum_storefront_audience_topics)
+}
+
+/// One more page of thread replies, on the same owner query as the first page.
+pub async fn fetch_storefront_forum_reply_page_graphql(
+    topic_id: String,
+    after: String,
+    locale: Option<String>,
+) -> Result<ForumReplyPage, ApiError> {
+    let response: StorefrontForumRepliesResponse = request(
+        STOREFRONT_FORUM_REPLIES_QUERY,
+        RepliesVariables {
+            tenant_id: None,
+            topic_id,
+            locale: locale.clone(),
+            after: Some(after),
+            per_page: None,
+        },
+    )
+    .await?;
+    Ok(response.forum_storefront_replies)
 }
 
 async fn load_storefront_member_cards(
@@ -540,6 +614,21 @@ mod tests {
         )));
         assert!(personalization_unavailable(&GraphqlHttpError::Graphql(
             "Permission denied: forum_topics:list required".to_string()
+        )));
+        assert!(personalization_unavailable(&GraphqlHttpError::Graphql(
+            "Permission denied: forum_topics:read required".to_string()
+        )));
+        assert!(personalization_unavailable(&GraphqlHttpError::Graphql(
+            "Permission denied: forum_topics:read required for member cards".to_string()
+        )));
+        assert!(!personalization_unavailable(&GraphqlHttpError::Graphql(
+            "Permission denied: forum_topics:moderate required".to_string()
+        )));
+        assert!(!personalization_unavailable(&GraphqlHttpError::Graphql(
+            "Permission denied: forum_replies:create required".to_string()
+        )));
+        assert!(!personalization_unavailable(&GraphqlHttpError::Graphql(
+            "Permission denied: something else".to_string()
         )));
         assert!(!personalization_unavailable(&GraphqlHttpError::Network));
         assert!(!personalization_unavailable(&GraphqlHttpError::Http(

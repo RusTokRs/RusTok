@@ -11,11 +11,35 @@ forum-categories-total =
         [many] { $count } قسمًا منشورًا من وحدة المنتدى.
        *[other] { $count } قسم منشور من وحدة المنتدى.
     }
+forum-composer-bodyPlaceholder = اكتب مشاركتك هنا. سطر فارغ يبدأ فقرة جديدة.
+forum-composer-cancel = إلغاء
+forum-composer-categoryPlaceholder = اختر التصنيف
+forum-composer-close = إغلاق
+forum-composer-draft = مسودة
+forum-composer-draftActive = مسودة نشطة
+forum-composer-expand = توسيع
+forum-composer-minimize = تصغير
+forum-composer-newTopicTitle = إنشاء موضوع جديد
+forum-composer-previewEmpty = لا يوجد شيء للمعاينة بعد.
+forum-composer-previewHint = معاينة مباشرة
+forum-composer-quotesLabel = الاقتباسات
+forum-composer-replyTitle = رد
+forum-composer-submitFailed = رفض المنتدى هذه المشاركة
+forum-composer-submitReply = نشر الرد
+forum-composer-submitTopic = إنشاء الموضوع
+forum-composer-submitting = جارٍ النشر…
+forum-composer-tabPreview = معاينة
+forum-composer-tabWrite = كتابة
+forum-composer-topicTitlePlaceholder = عنوان الموضوع…
 forum-error-loadStorefront = تعذر تحميل بيانات واجهة المنتدى
 forum-error-updateReadState = تعذر تحديث حالة القراءة في المنتدى
 forum-feed-emptyBody = انشر موضوعًا من حزمة إدارة المنتدى ليظهر في هذه الخلاصة.
 forum-feed-emptyTitle = لا توجد مواضيع بعد
 forum-feed-label = خلاصة المواضيع
+forum-feed-loaded = تم تحميل { $count }
+forum-feed-loading = جارٍ التحميل…
+forum-feed-loadMore = تحميل المزيد من المواضيع
+forum-feed-pageFailed = تعذر تحميل الصفحة التالية من المواضيع
 forum-feed-threads =
     { $count ->
         [zero] لا توجد مواضيع
@@ -39,18 +63,53 @@ forum-richContent-summary =
        *[other] مخزّن بتنسيق `{ $format }`. طول المحتوى الخام: { $count } حرف.
     }
 forum-subtitle = واجهة متجر مستوحاة من NodeBB تقرأ التصنيفات وخلاصة المواضيع وردود النقاش عبر عقد GraphQL العام لوحدة المنتدى.
+forum-thread-loaded = تم تحميل { $count }
+forum-thread-loading = جارٍ التحميل…
+forum-thread-loadMore = تحميل المزيد من الردود
 forum-thread-markRead = وضع علامة مقروء على الموضوع
 forum-thread-markingRead = جارٍ وضع علامة مقروء…
 forum-thread-noReplies = لا توجد ردود بعد.
 forum-thread-openBody = اختر موضوعًا من الخلاصة لقراءة المشاركة الافتتاحية وأحدث الردود.
 forum-thread-openTitle = افتح موضوعًا
+forum-thread-pageFailed = تعذر تحميل الصفحة التالية من الردود
+forum-thread-quote = اقتباس
+forum-thread-quoteTitle = اقتباس هذا الرد
 forum-thread-repliesTitle = الردود
 forum-thread-repliesTotal = الإجمالي { $count }
+forum-thread-reply = رد
+forum-thread-replyClosed = الردود مغلقة في هذا الموضوع.
 forum-thread-slug = المعرّف النصي: { $slug }
+forum-timeline-loaded =
+    { $count ->
+        [one] تم تحميل { $count } مشاركة
+        [two] تم تحميل { $count } مشاركتين
+        [few] تم تحميل { $count } مشاركات
+       *[other] تم تحميل { $count } مشاركة
+    }
+forum-timeline-toEnd = الانتقال إلى أحدث مشاركة
+forum-timeline-toTop = الانتقال إلى أول مشاركة
+forum-timeline-total =
+    { $count ->
+        [one] { $count } مشاركة في هذا الموضوع
+        [two] { $count } مشاركتان في هذا الموضوع
+        [few] { $count } مشاركات في هذا الموضوع
+       *[other] { $count } مشاركة في هذا الموضوع
+    }
 forum-title = مواضيع المجتمع من حزمة الوحدة
 forum-topic-locked = مغلق
+forum-topic-statusOpen = مفتوحة
+forum-topic-statusClosed = مغلقة
+forum-topic-statusArchived = مؤرشفة
+forum-topic-statusPending = قيد المراجعة
+forum-topic-statusApproved = مقبول
+forum-topic-statusRejected = مرفوض
+forum-topic-statusFlagged = مُبلَّغ عنه
+forum-topic-statusHidden = مخفي
+forum-topic-statusDeleted = محذوف
 forum-topic-pinned = مثبّت
 forum-topic-replies = الردود
 forum-topic-slug = المعرّف النصي للموضوع: { $slug }
 forum-topic-unreadCount = { $count } غير مقروء
 forum-topic-updatedUnread = محدّث
+forum-view-categories = التصنيفات
+forum-view-discussions = النقاشات

@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { moduleComposition, containsMarker, markeredIndexes } from "./lib/forum-source-verification.mjs";
 
 const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
@@ -51,15 +52,20 @@ function parseJson(relativePath) {
   }
 }
 
+/**
+ * A guard pins what the code does, not how rustfmt happened to break the line, so markers are compared
+ * on a layout-normalized copy of the source and of the marker (`spaced`). `markeredIndexes` gives the
+ * ordering rules below the same tolerance.
+ */
 function requireAll(source, markers, label) {
   for (const marker of markers) {
-    if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
+    if (!containsMarker(source, marker)) failures.push(`${label}: missing ${marker}`);
   }
 }
 
 function rejectAll(source, markers, label) {
   for (const marker of markers) {
-    if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+    if (containsMarker(source, marker)) failures.push(`${label}: forbidden ${marker}`);
   }
 }
 
@@ -186,10 +192,12 @@ requireAll(
     "resolve_storefront_search_result_candidates",
     '"forum_category" => true',
     '"forum_topic" | "forum_reply"',
-    ".skip(query.offset)",
-    ".take(query.limit)",
+    ".skip(request.query.offset)",
+    ".take(request.query.limit)",
     "build_forum_result_facets(&visible_items)",
-    "SearchDictionaryService::apply_query_rules",
+    // The storefront entry point resolves the trusted channel, so the execution owner calls the
+    // storefront variant of the dictionary-rule helper; both names are one pipeline.
+    "SearchDictionaryService::apply_storefront_query_rules",
   ],
   paths.searchExecution,
 );
@@ -230,10 +238,19 @@ requireAll(
   ],
   paths.serverAdapter,
 );
+// The host composes each forum Search adapter as a `#[path]` module rather than an `include!` of
+// the same file, so what the rule needs is that the module is declared and the host file behind it
+// carries the port - pinning one Rust item form would rot the moment the composition style moved.
+const eligibilityModule = moduleComposition(root, paths.serverComposition, "forum_search_result_eligibility", "apps/server/src/services/forum_search_result_eligibility.rs");
+if (eligibilityModule.finding) failures.push(eligibilityModule.finding);
+requireAll(
+  eligibilityModule.text,
+  ["ServerForumSearchResultEligibilityPort", "StorefrontSearchResultEligibilityPort"],
+  "apps/server/src/services/forum_search_result_eligibility.rs",
+);
 requireAll(
   serverComposition,
   [
-    'include!("forum_search_result_eligibility.rs")',
     "ServerForumSearchResultEligibilityPort::shared",
     "extensions.insert(result_eligibility)",
     "SharedStorefrontSearchResultEligibilityPort",
@@ -248,7 +265,9 @@ requireAll(
     "result_eligibility_port",
     "execute_forum_storefront_search(",
     "StorefrontSearchTransport::Graphql",
-    "forum_category_scope_result_eligibility_then_fts",
+    // The shipped telemetry label names the full order, including the document filters that landed
+    // after this guard was drafted, so the stable tail of that label is what has to stay.
+    "result_eligibility_then_fts",
   ],
   paths.graphqlOwner,
 );

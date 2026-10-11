@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync } from "node:fs";
+
+import { containsMarker, readSource } from "./lib/forum-source-verification.mjs";
 import path from "node:path";
 
 const root = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -35,12 +37,14 @@ const paths = {
 };
 
 function read(relativePath) {
-  const target = path.join(root, relativePath);
-  if (!existsSync(target)) {
-    failures.push(`${relativePath}: expected file is missing`);
-    return "";
+  // `readSource` also resolves a Rust module *directory*: the events crate keeps its domain types in
+  // `src/types/` (`mod.rs` plus submodules), so a guard naming `src/types.rs` reported the event types
+  // as missing while they were present. An absent source stays a finding, never a crash.
+  const source = readSource(root, relativePath);
+  for (const missing of source.missing) {
+    failures.push(`${missing}: expected file is missing`);
   }
-  return readFileSync(target, "utf8");
+  return source.text;
 }
 
 function parseJson(relativePath) {
@@ -54,13 +58,13 @@ function parseJson(relativePath) {
 
 function requireAll(source, markers, label) {
   for (const marker of markers) {
-    if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
+    if (!containsMarker(source, marker)) failures.push(`${label}: missing ${marker}`);
   }
 }
 
 function rejectAll(source, markers, label) {
   for (const marker of markers) {
-    if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+    if (containsMarker(source, marker)) failures.push(`${label}: forbidden ${marker}`);
   }
 }
 
