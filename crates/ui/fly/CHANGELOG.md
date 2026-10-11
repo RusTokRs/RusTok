@@ -99,6 +99,15 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **The `raw_html` block no longer advertises a capability the engine does not have.** The palette
+  offered a block called "Raw html" whose content the renderer escapes and prints as text: the
+  engine has no raw HTML sink at all, so a pasted `<iframe>` published as visible markup with
+  nothing anywhere explaining why (functional audit `G-28`). The type stays — the codec must
+  round-trip documents authored elsewhere — but its palette label now reads "Raw HTML (escaped as
+  text)", its template text says the same, and `validation` reports `raw_html_not_rendered` as a
+  warning for any document carrying visible content in one. A warning rather than an error, so
+  documents that already use the block keep publishing.
+
 - **`fly-web` can deliver outbound iframe messages to the sandboxed canvas.** `IframeMessagePort`
   validated its destination with the inbound rule, which accepts `"null"` — the origin a sandboxed
   `srcdoc` iframe reports — and then handed that same string to `postMessage`. The platform accepts
@@ -203,3 +212,8 @@ Engineering audit remediation — see
   that the cookie-only transport now leans on — are the admin shell's change, tracked as
   `CLEAN-060` in `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`.
 - 48 glob re-exports (`pub use module::*`) remain.
+- The provider capability catalog is a host contract nobody fills yet: `InteractionCapabilityRegistry`
+  and `evaluate_runtime_publish_gate_with_capabilities` are implemented and tested, the default
+  `InteractionCapabilityPolicy` is `Allow` for actions and forms, and no crate in this repository
+  registers a capability or calls the capability-aware gate. See the *Known Limitations* section of
+  `README.md`.

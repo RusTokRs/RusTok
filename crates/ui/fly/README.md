@@ -182,6 +182,37 @@ caps. The `fly` crate has no cross-page store: consumer modules such as
 `rustok-pages` own the site catalog, revision checks, and re-publish workflow
 ([ADR](../../../DECISIONS/2026-10-09-site-symbols-shared-definitions.md)).
 
+## Known Limitations / Pending Implementation
+
+`CHANGELOG.md` carries the release-level *Known gaps*. This section lists the boundaries an
+integrator can hit today, each implemented to a stated point and deliberately no further. An
+unrecorded incompleteness is treated as a defect in this repository, so every entry below names
+the owner of the missing half.
+
+- **`raw_html` has no raw HTML sink.** The type exists so the codec can round-trip documents
+  authored elsewhere, and the renderer escapes its `content` like any other text: no code path
+  emits author-supplied markup, and none is planned while embeds stay out of the static publish
+  policy (`DANGEROUS_COMPONENT_TYPES` in `rustok-page-builder`). The palette block is labelled
+  `Raw HTML (escaped as text)` and validation reports `raw_html_not_rendered` (warning) for a
+  document that carries visible content in one.
+- **Provider interaction capabilities are an unwired host contract.** `fly` ships
+  `InteractionCapabilityRegistry` and `evaluate_runtime_publish_gate_with_capabilities`, and the
+  default `InteractionCapabilityPolicy` is `Allow` for both actions and forms. No crate in this
+  repository registers capabilities or calls the capability-aware gate, so a `ProviderAction` or a
+  provider form whose provider does not exist publishes exactly like one whose provider does. The
+  gate starts rejecting only once a host supplies the catalog — that catalog is the missing half.
+  Draft editing and GrapesJS round-tripping stay permissive by design.
+- **`RICH_TEXT_PAYLOAD_FORMAT` and `RichTextPayload` are declared and unused.** They are the
+  intended shape for a host rich-text editor to carry an opaque payload through a Fly field; the
+  platform's rich-text path (`rustok_api::RichTextDocument`) does not go through them, and no
+  crate in this repository consumes them.
+- **The framework adapters are layout shells.** `fly-leptos` and `fly-dioxus` render the four
+  `<section>` wrappers and re-export `fly-web`; they contain no canvas, drag & drop, panels, or
+  state wiring. Authoring surfaces drive `fly` and `fly-ui` directly (see *Status* above).
+- **Session and CSRF posture of the standalone admin.** The intent route authenticates with the
+  same-origin session cookie; issuing that session server-side and adding an explicit server-side
+  CSRF check are the admin shell's change, tracked as `CLEAN-060` — see `SECURITY.md`.
+
 ## Standalone Usage
 
 See [Extraction readiness](#extraction-readiness) first, in particular what a standalone build

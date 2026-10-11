@@ -12,6 +12,21 @@
 - Implement keyboard shortcut translation and resize sessions (`BrowserResizeSession`).
 - Implement authenticated real-DOM inline edit grants and request validation.
 
+## Known Limitations / Pending Implementation
+
+- **The outbound half of the iframe bridge has no caller inside this repository.**
+  `IframeMessagePort` and `WindowMessageSubscription` are covered by their own tests only; the Page
+  Builder canvas speaks its own subscription protocol (`IframeJsonSubscription` in
+  `rustok-page-builder/admin/src/editor/isolated_canvas.rs`). `IframeMessagePort::post` translates an
+  opaque destination — a `sandbox="allow-scripts"` `srcdoc` frame — through `outbound_target_origin`,
+  which is what makes the port deliver at all: it used to pass `"null"`, a `postMessage` target the
+  platform rejects.
+- **The wasm-only surface is type-checked, not executed, in CI.** `browser_interaction`,
+  `browser_runtime`, and `real_dom_inline`'s editor mounting are gated by
+  `cfg(target_arch = "wasm32")` plus the `wasm-client` feature, so the `Check Fly browser runtime on
+  wasm32` job compiles them and `cargo test` never runs them. Browser behaviour is asserted only by
+  the Playwright/browser-evidence specs under `apps/next-admin/tests`, in the Browser E2E workflow.
+
 ## Architectural Boundaries
 
 This crate is strictly framework-neutral:
