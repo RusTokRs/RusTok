@@ -694,7 +694,7 @@ fn ForumThreadPanel(
                         paging_locale.as_deref(),
                         "forum.thread.loaded",
                         "{count} loaded",
-                        u64::try_from(page.items.len()).unwrap_or(u64::MAX) + 1,
+                        u64::try_from(page.items.len()).unwrap_or(u64::MAX).saturating_add(1),
                     );
                     let body = if page.items.is_empty() {
                         view! {
@@ -766,8 +766,10 @@ fn ForumThreadPanel(
         </aside>
 
         {move || {
-            let loaded = u64::try_from(replies.get().items.len()).unwrap_or(u64::MAX) + 1;
-            view! { <TimelineScroller loaded_posts=loaded total_posts=replies_total + 1 /> }
+            let loaded = u64::try_from(replies.get().items.len())
+                .unwrap_or(u64::MAX)
+                .saturating_add(1);
+            view! { <TimelineScroller loaded_posts=loaded total_posts=replies_total.saturating_add(1) /> }
         }}
     </div>
     }.into_any()

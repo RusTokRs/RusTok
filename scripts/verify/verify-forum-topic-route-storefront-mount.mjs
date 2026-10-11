@@ -110,11 +110,24 @@ for (const marker of [
 }
 
 for (const marker of [
-  "pub use transport::{TransportError, resolve_storefront_topic_route}",
   "StorefrontForumTopicRouteDisposition",
   "StorefrontForumTopicRouteResolution",
 ]) {
   requireText(source.packageLib, marker, paths.packageLib);
+}
+
+// The host reaches the resolver and its error type through one `pub use transport::{...}` block.
+// The block is read instead of a single literal line, because rustfmt wraps and grows that list and
+// an exact-line pin silently stops asserting anything once it wraps.
+const transportReexports = /pub use transport::\{([^}]*)\}/s.exec(source.packageLib);
+if (transportReexports === null) {
+  failures.push(`${paths.packageLib}: missing a \`pub use transport::{...}\` re-export block`);
+} else {
+  for (const name of ["TransportError", "resolve_storefront_topic_route"]) {
+    if (!transportReexports[1].split(",").map((entry) => entry.trim()).includes(name)) {
+      failures.push(`${paths.packageLib}: must re-export ${name} for host route composition`);
+    }
+  }
 }
 
 for (const marker of [

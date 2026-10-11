@@ -18,11 +18,14 @@ rustok_ui_i18n::declare_module_i18n!(
 /// the message yet, where the caller literal is what renders.
 pub fn count_message<Count>(locale: Option<&str>, key: &str, fallback: &str, count: Count) -> String
 where
-    rustok_ui_i18n::FluentValue<'static>: From<Count>,
-    Count: ToString,
+    Count: Into<rustok_ui_i18n::FluentValue<'static>> + ToString,
 {
     let count_text = count.to_string();
-    let arguments = rustok_ui_i18n::fluent_args!("count" => count);
+    // The `'static` annotation is what makes the bound usable: `FluentArgs` is invariant in its
+    // argument lifetime, so an inferred region would ask for `Into<FluentValue<'args>>` for a local
+    // `'args` the caller bound cannot satisfy.
+    let mut arguments: rustok_ui_i18n::FluentArgs<'static> = rustok_ui_i18n::FluentArgs::new();
+    arguments.set("count", count);
     let resolved = format(locale, key, Some(&arguments), fallback);
     crate::core::forum_storefront_count_label(resolved.as_str(), count_text)
 }
@@ -32,8 +35,11 @@ where
 /// Resolved with a bound argument for the same reason as [`count_message`]: without one the catalog
 /// text never renders. The trailing substitution keeps the caller literal usable when a locale has
 /// no such message.
-pub fn slug_message(locale: Option<&str>, key: &str, fallback: &str, slug: &str) -> String {
-    let arguments = rustok_ui_i18n::fluent_args!("slug" => slug);
+pub fn slug_message<'a>(locale: Option<&str>, key: &str, fallback: &str, slug: &'a str) -> String {
+    // Annotated for the same reason as in [`count_message`]: the argument borrows the caller's
+    // string, so the `FluentArgs` lifetime is named instead of left to inference.
+    let mut arguments: rustok_ui_i18n::FluentArgs<'a> = rustok_ui_i18n::FluentArgs::new();
+    arguments.set("slug", slug);
     let resolved = format(locale, key, Some(&arguments), fallback);
     crate::core::forum_storefront_slug_label(resolved.as_str(), slug)
 }

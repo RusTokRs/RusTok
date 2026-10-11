@@ -240,9 +240,11 @@ forbidText(timeline, "<button", "timeline controls must be actionable links");
 // the forum storefront keeps the shape the ratchet was shrunk with.
 const i18n = read(paths.i18n);
 requireText(i18n, "pub fn count_message", "count message resolver");
-requireText(i18n, 'fluent_args!("count" => count)', "count Fluent argument");
+requireText(i18n, 'arguments.set("count", count)', "count Fluent argument");
+requireText(i18n, "Count: Into<rustok_ui_i18n::FluentValue<'static>> + ToString", "count argument type policy");
+forbidText(i18n, "i64::MAX", "counts must not be clamped to i64");
 requireText(i18n, "pub fn slug_message", "slug message resolver");
-requireText(i18n, 'fluent_args!("slug" => slug)', "slug Fluent argument");
+requireText(i18n, 'arguments.set("slug", slug)', "slug Fluent argument");
 forbidText(timeline, "forum_storefront_count_label(", "timeline must resolve with arguments");
 for (const [label, source] of [
   ["topic feed", feed],
