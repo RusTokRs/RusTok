@@ -66,6 +66,26 @@ Slug rename uses the additive FORUM-24F GraphQL mutation in all Leptos build pro
 - Merge/split/fork/reply-range workflows require `forum_topics:manage` and retain their existing operation identity policies.
 - The route rename result displays the owner-provided previous path, canonical path, locale, immutable alias ID and `changed` replay flag.
 
+## Known Limitations / Pending Implementation
+
+- Six admin labels still resolve a variable-bearing Fluent message through a pre-resolved template:
+  `forum.render.topicsCount`, `forum.render.repliesCount`, `forum.render.icon`,
+  `forum.render.threadPath`, `forum.topics.ready` and `forum.topics.shown` are read with the
+  no-argument `t()`, which cannot bind `$count`, `$value`, `$category` or `$slug`. `fluent-bundle`
+  records a reference error for every unbound placeable and the shared resolver maps any format error
+  to a failed lookup, so the caller literal wins: the label renders in English whatever the runtime
+  locale is, and the catalog entry - including the `# plural-exempt` note beside two of these keys -
+  never renders. The canonical shape is the storefront's `count_message` / `slug_message` resolvers
+  (`../storefront/src/i18n.rs`), which pass `fluent_args!` and delegate the placeholder tail to a
+  core label helper. The admin side needs one extra step: `forum_admin_topic_tag_count_label` derives
+  the count from the raw tag string inside `src/core.rs`, so the UI cannot resolve the message before
+  the count exists and that helper has to return the count instead of a rendered label. Each migrated
+  site must also drop its `*_template` field, so no unresolved template reaches a view. These six
+  sites are listed in
+  [`scripts/verify/ui-i18n-argument-baseline.json`](../../../../scripts/verify/ui-i18n-argument-baseline.json),
+  which `verify-ui-i18n-keys.mjs` treats as shrink-only: a new template-style site fails the gate, and
+  finishing this work means deleting those entries rather than adding more.
+
 ## Documentation
 
 - See [platform docs](../../../../docs/index.md).
