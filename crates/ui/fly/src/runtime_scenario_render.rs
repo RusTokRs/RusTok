@@ -1,7 +1,7 @@
 use crate::{
-    PageSelection, ProjectDocument, ProjectHash, RenderPolicy, RuntimeContextScenario,
-    RuntimeRenderResult, ValidationDiagnostic, ValidationSeverity,
-    render_page_with_runtime_context,
+    FormProviderEndpointResolver, PageSelection, ProjectDocument, ProjectHash, RenderPolicy,
+    RuntimeContextScenario, RuntimeRenderResult, ValidationDiagnostic, ValidationSeverity,
+    render_page_with_runtime_context, render_page_with_runtime_context_with_providers,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -80,6 +80,17 @@ pub fn render_runtime_scenario_matrix(
     policy: &RenderPolicy,
     scenarios: &[RuntimeContextScenario],
 ) -> RuntimeScenarioRenderMatrix {
+    render_runtime_scenario_matrix_with_providers(document, selection, policy, scenarios, None)
+}
+
+/// Matrix variant for hosts that serve provider form endpoints.
+pub fn render_runtime_scenario_matrix_with_providers(
+    document: &ProjectDocument,
+    selection: &PageSelection,
+    policy: &RenderPolicy,
+    scenarios: &[RuntimeContextScenario],
+    providers: Option<&dyn FormProviderEndpointResolver>,
+) -> RuntimeScenarioRenderMatrix {
     let mut matrix = RuntimeScenarioRenderMatrix::default();
     let mut ids = BTreeSet::new();
 
@@ -92,9 +103,9 @@ pub fn render_runtime_scenario_matrix(
                 format!("runtime scenario id `{}` is duplicated", scenario.id),
             ));
         }
-        matrix
-            .cases
-            .push(render_case(document, selection, policy, scenario));
+        matrix.cases.push(render_case(
+            document, selection, policy, scenario, providers,
+        ));
     }
 
     matrix.rendered_count = matrix.cases.iter().filter(|case| case.rendered).count();
@@ -122,8 +133,19 @@ fn render_case(
     selection: &PageSelection,
     policy: &RenderPolicy,
     scenario: &RuntimeContextScenario,
+    providers: Option<&dyn FormProviderEndpointResolver>,
 ) -> RuntimeScenarioRenderCase {
-    match render_page_with_runtime_context(document, selection, policy, &scenario.context) {
+    let rendered = match providers {
+        Some(providers) => render_page_with_runtime_context_with_providers(
+            document,
+            selection,
+            policy,
+            &scenario.context,
+            providers,
+        ),
+        None => render_page_with_runtime_context(document, selection, policy, &scenario.context),
+    };
+    match rendered {
         Ok(result) => successful_case(scenario, result),
         Err(error) => RuntimeScenarioRenderCase {
             scenario_id: scenario.id.clone(),

@@ -2,13 +2,13 @@ use crate::model::{AdminCanvasController, AdminCanvasEffect};
 use fly::{
     GrapesJsCodec, ProjectHash, RuntimeContextScenario, RuntimePublishGateEvaluation,
     RuntimePublishGatePolicy, TraitSchemaRegistry, ValidationSeverity,
-    evaluate_runtime_publish_gate,
 };
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderPreviewRuntime, PreviewPageBuilderInput,
     PreviewPageBuilderResult,
 };
+use rustok_page_builder::evaluate_host_runtime_publish_gate;
 use serde_json::{Map, Value};
 use std::sync::Arc;
 
@@ -137,7 +137,7 @@ impl EditorSessionState {
     pub fn evaluate_runtime_publish_gate(&self) -> Option<RuntimePublishGateEvaluation> {
         let policy = self.runtime_publish_gate_policy.as_ref()?;
         let configured = self.runtime_context_configured;
-        Some(evaluate_runtime_publish_gate(
+        Some(evaluate_host_runtime_publish_gate(
             self.controller.editor().document(),
             configured.then_some(&self.runtime_context),
             self.runtime_scenarios.as_slice(),

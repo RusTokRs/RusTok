@@ -15,7 +15,7 @@ Read this before planning against the architecture diagram below: the layers dif
 | `fly-web` | `web/` | **Beta** | Geometry, hit-testing, iframe bridge, real-DOM inline grants, cleanup registry |
 | `fly-browser` | `browser/` | **Beta** | SSR JS bridge (`assets/fly-browser.js`) and its Rust-side config contract |
 | `fly-leptos` | `leptos/` | **Foundation only** | Four layout shells (`FlyFullEditor`, `FlyInlineEditor`, `FlyPreview`, `FlyReadOnly`) that render a `<section>` wrapper, plus re-exports of `fly-web`. **No canvas, drag & drop, panels or state wiring.** |
-| `fly-dioxus` | `dioxus/` | **Foundation only** | The same four layout shells for Dioxus 0.6. **No canvas, drag & drop, panels or state wiring.** |
+| `fly-dioxus` | `dioxus/` | **Foundation only** | The same four layout shells for Dioxus 0.7. **No canvas, drag & drop, panels or state wiring.** |
 
 Authoring surfaces that need a working editor today drive `fly` and `fly-ui` directly and render
 through SSR plus `fly-browser`; see `crates/modules/rustok-page-builder/admin`.
@@ -94,7 +94,7 @@ crates/ui/fly/
 │   ├── Cargo.toml
 │   └── src/
 │
-└── dioxus/                     <-- `fly-dioxus`: layout shells for Dioxus 0.6 (foundation only)
+└── dioxus/                     <-- `fly-dioxus`: layout shells for Dioxus 0.7 (foundation only)
     ├── Cargo.toml
     └── src/
 ```
@@ -106,7 +106,7 @@ crates/ui/fly/
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     UI Adapters Layer                       │
-│     fly-leptos (Leptos 0.8)       fly-dioxus (Dioxus 0.6)   │
+│     fly-leptos (Leptos 0.8)       fly-dioxus (Dioxus 0.7)   │
 │     foundation only               foundation only          │
 │     - FlyFullEditor  (shell)      - FlyFullEditor  (shell)  │
 │     - FlyInlineEditor (shell)     - FlyInlineEditor (shell) │
@@ -149,7 +149,7 @@ crates/ui/fly/
 | `fly-web` | `web/` | Browser geometry, hit-testing, iframe bridge, real DOM inline | `fly`, `fly-ui`, `web-sys` (WASM) |
 | `fly-browser` | `browser/` | Standalone JS bridge asset for classic SSR | Pure Rust |
 | `fly-leptos` | `leptos/` | Leptos 0.8 layout shells (foundation only) | `fly-web`, `leptos` |
-| `fly-dioxus` | `dioxus/` | Dioxus 0.6 layout shells (foundation only) | `fly-web`, `dioxus` |
+| `fly-dioxus` | `dioxus/` | Dioxus 0.7 layout shells (foundation only) | `fly-web`, `dioxus` |
 
 ---
 
@@ -181,6 +181,46 @@ and reference cycles fail closed. Definition content has its own size and count
 caps. The `fly` crate has no cross-page store: consumer modules such as
 `rustok-pages` own the site catalog, revision checks, and re-publish workflow
 ([ADR](../../../DECISIONS/2026-10-09-site-symbols-shared-definitions.md)).
+
+## Known Limitations / Pending Implementation
+
+`CHANGELOG.md` carries the release-level *Known gaps*. This section lists the boundaries an
+integrator can hit today, each implemented to a stated point and deliberately no further. An
+unrecorded incompleteness is treated as a defect in this repository, so every entry below names
+the owner of the missing half.
+
+- **`raw_html` has no raw HTML sink.** The type exists so the codec can round-trip documents
+  authored elsewhere, and the renderer escapes its `content` like any other text: no code path
+  emits author-supplied markup, and none is planned while embeds stay out of the static publish
+  policy (`DANGEROUS_COMPONENT_TYPES` in `rustok-page-builder`). The palette block is labelled
+  `Raw HTML (escaped as text)` and validation reports `raw_html_not_rendered` (warning) for a
+  document that carries visible content in one.
+- **Provider interaction capabilities are a contract the host fills.** `fly` ships
+  `InteractionCapabilityRegistry`, `evaluate_runtime_publish_gate_with_capabilities` and
+  `FormProviderEndpointResolver`; a bare `fly` consumer keeps `InteractionCapabilityPolicy::Allow`
+  and marker-only form rendering. The RusTok host does fill it:
+  `rustok-page-builder::interaction_providers` registers the `forms`/`submit` form capability
+  (routed to `rustok-forms`), blocks the gate for unregistered provider forms, and binds registered
+  providers to a native `action` in the storefront, preview, static-artifact and scenario-matrix
+  renders through `HostFormProviderEndpoints`. Release-baseline captures stay marker-only (baseline
+  and candidate are compared inside the same renderer). Draft editing and GrapesJS round-tripping
+  stay permissive by design.
+- **Custom actions have no runtime in this repository either.** `emit_event` and `provider_action`
+  materialize to a `<button>` carrying `data-fly-action-kind` and a JSON payload in
+  `data-fly-action`, and no crate here listens for them: on a published page such a button is
+  inert, and in the authoring canvas it is ignored by the editor's own click protocol. Those two
+  attributes are the contract a host implements (the `data-fly-*` prefix is reserved for it); Fly
+  ships the materialization, not a handler.
+- **`RICH_TEXT_PAYLOAD_FORMAT` and `RichTextPayload` are declared and unused.** They are the
+  intended shape for a host rich-text editor to carry an opaque payload through a Fly field; the
+  platform's rich-text path (`rustok_api::RichTextDocument`) does not go through them, and no
+  crate in this repository consumes them.
+- **The framework adapters are layout shells.** `fly-leptos` and `fly-dioxus` render the four
+  `<section>` wrappers and re-export `fly-web`; they contain no canvas, drag & drop, panels, or
+  state wiring. Authoring surfaces drive `fly` and `fly-ui` directly (see *Status* above).
+- **Session and CSRF posture of the standalone admin.** The intent route authenticates with the
+  same-origin session cookie; issuing that session server-side and adding an explicit server-side
+  CSRF check are the admin shell's change, tracked as `CLEAN-060` — see `SECURITY.md`.
 
 ## Standalone Usage
 

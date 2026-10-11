@@ -1,7 +1,7 @@
 use super::model::{
     ActionMaterialization, ComponentAction, ComponentForm, FLY_ACTION_DATA_ATTRIBUTE,
-    FLY_ACTION_FIELD, FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD, FormMethod,
-    GENERATED_INTERACTION_ATTRIBUTES,
+    FLY_ACTION_FIELD, FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD, FormEncoding, FormMethod,
+    FormProviderEndpointResolver, GENERATED_INTERACTION_ATTRIBUTES,
 };
 use super::validation::{
     FormIndex, action_diagnostic, collect_form_ids, decode_form, validate_action_contract,
@@ -29,11 +29,24 @@ struct ActionResolution<'a> {
     routes: &'a InteractionRouteCatalog,
     locale_candidates: &'a [String],
     form_ids: &'a FormIndex,
+    providers: Option<&'a dyn FormProviderEndpointResolver>,
 }
 
 pub fn materialize_component_actions(
     document: &ProjectDocument,
     context: &Value,
+) -> ActionMaterialization {
+    materialize_component_actions_with_providers(document, context, None)
+}
+
+/// Materializes component interactions with the host's provider form endpoints applied.
+///
+/// Equivalent to [`materialize_component_actions`] except that every provider form the resolver
+/// recognizes receives the host intake URL as its native `action`.
+pub fn materialize_component_actions_with_providers(
+    document: &ProjectDocument,
+    context: &Value,
+    providers: Option<&dyn FormProviderEndpointResolver>,
 ) -> ActionMaterialization {
     let routes = InteractionRouteCatalog::from_document(document);
     let locale_candidates =
@@ -43,6 +56,7 @@ pub fn materialize_component_actions(
         routes: &routes,
         locale_candidates: &locale_candidates,
         form_ids: &form_ids,
+        providers,
     };
     let mut materialized = document.clone();
     let mut diagnostics = Vec::new();
@@ -124,7 +138,7 @@ fn materialize_component(
         clear_interaction_materialization(component);
         match decode_form(raw) {
             Ok(form) => {
-                apply_form(component, &form);
+                apply_form(component, &form, resolution.providers);
                 counters.forms = counters.forms.saturating_add(1);
             }
             Err(error) => diagnostics.push(action_diagnostic(
@@ -199,26 +213,59 @@ fn clear_interaction_materialization(component: &mut ComponentObject) {
     }
 }
 
-fn apply_form(component: &mut ComponentObject, form: &ComponentForm) {
+fn apply_form(
+    component: &mut ComponentObject,
+    form: &ComponentForm,
+    providers: Option<&dyn FormProviderEndpointResolver>,
+) {
     component.tag_name = Some("form".to_string());
     component
         .attributes
         .insert("id".to_string(), Value::String(form.id.clone()));
+
+    let authored_action = form
+        .action_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|action_url| !action_url.is_empty());
+    // A host endpoint is POST url-encoded intake by construction, so a provider form bound to one
+    // ignores an authored method/encoding instead of rendering a form that cannot submit. An
+    // authored `action_url` keeps both, and `validate_form` already forbids combining the two.
+    let provider_endpoint = if authored_action.is_some() {
+        None
+    } else {
+        form.provider
+            .as_deref()
+            .map(str::trim)
+            .zip(form.action.as_deref().map(str::trim))
+            .and_then(|(provider, operation)| {
+                providers?.form_endpoint(provider, operation, form.id.trim())
+            })
+    };
+    let method = if provider_endpoint.is_some() {
+        FormMethod::Post
+    } else {
+        form.method
+    };
     component.attributes.insert(
         "method".to_string(),
-        Value::String(form.method.as_str().to_string()),
+        Value::String(method.as_str().to_string()),
     );
-    if form.method == FormMethod::Post {
+    if method == FormMethod::Post {
+        let encoding = if provider_endpoint.is_some() {
+            FormEncoding::UrlEncoded
+        } else {
+            form.encoding
+        };
         component.attributes.insert(
             "enctype".to_string(),
-            Value::String(form.encoding.as_str().to_string()),
+            Value::String(encoding.as_str().to_string()),
         );
     }
-    if let Some(action_url) = form.action_url.as_deref() {
-        component.attributes.insert(
-            "action".to_string(),
-            Value::String(action_url.trim().to_string()),
-        );
+    if let Some(action_url) = provider_endpoint.as_deref().or(authored_action) {
+        component
+            .attributes
+            .insert("action".to_string(), Value::String(action_url.to_string()));
     }
     if form.novalidate {
         component

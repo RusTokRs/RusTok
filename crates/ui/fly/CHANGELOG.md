@@ -77,7 +77,68 @@ Engineering audit remediation — see
   crates whose framework macros emit their own `allow` attributes.
 - Added `SECURITY.md` describing the trust boundaries and the threat model.
 
+- **The browser adapter's expected origin is fail-closed and has no default.** `expectedOrigin` used
+  to fall back to the literal `"null"` — the opaque origin a sandboxed `srcdoc` iframe reports — so
+  a host that never configured an origin silently accepted messages from the sandboxed canvas
+  instead of refusing to mount. `BrowserAdapterConfig::expected_origin` is now `Option<String>`
+  with no default, the shipped adapter throws `EXPECTED_ORIGIN_REQUIRED` from `start()` when
+  neither `expectedOrigin` nor `data-fly-expected-origin` is set, and the empty value and the `*`
+  wildcard resolve to "not configured" rather than to "accept anything" — the same rule
+  `fly_web::normalize_expected_origin` applies on the Rust side. The Page Builder admin host, whose
+  canvas is rendered `sandbox="allow-scripts"` with `srcdoc`, states the matching origin explicitly
+  through `PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN`.
+
+- **The browser adapter no longer reads the admin token or the tenant slug from `localStorage`.**
+  It used to scrape `rustok-admin-token` and `rustok-admin-tenant` and send them as
+  `authorization: Bearer` and `x-tenant-slug` on every intent request, although the request already
+  runs with `credentials: "same-origin"` and the admin session cookie is revalidated server-side
+  before it becomes a request-scoped auth snapshot. Copying a credential into script-readable
+  storage widened the XSS surface, and a client-supplied tenant was a claim the adapter had no
+  business making. Requests now authenticate solely through the session cookie; `x-csrf-token` is
+  still forwarded when the host configures one.
+
 ### Fixed
+
+- **Blurring an untouched inline-edit text no longer counts as an edit.** The real-DOM adapter
+  commits on `focusout`, and it emitted a request for whatever the element contained at that
+  moment — so entering a text and leaving it unchanged still produced a request the session
+  answered with `NoContentChange`, which the host surfaces as a validation error: a stray red
+  message and a round trip for every click-through. The adapter now keeps the text it last saw in
+  each editor and stays silent while it is unchanged (a rejected request is still retryable by
+  editing again, because the baseline only moves when a request is emitted). The same pass closes
+  the gap between what the DOM can contain and what the contract accepts: the value now goes
+  through `normalize_plain_text` before it is bound, so a pasted tab, carriage return or control
+  character is reported against the element that holds it instead of failing request validation in
+  the host.
+- **A form that submits nowhere now says so.** `ComponentForm` has three mutually exclusive
+  submission shapes — a native `action_url`, a provider action a host resolves, or `method: dialog`
+  for a host-driven dialog — and when none is present the browser falls back to the document URL,
+  so the field values land as query parameters on a page reload (the default `get`) or the page is
+  POSTed to itself. The palette's own form block is exactly that shape, so the first form most
+  authors build appeared finished and did nothing (functional audit G-7, "the form goes nowhere").
+  Validation now reports `form_without_submission_target` as a warning — for a block with a
+  `flyForm` contract and no target, and for a bare `form` component with no `action` attribute —
+  while exempting dialog forms and forms already wired to a host through
+  `ComponentAction::SubmitForm`. GET-to-self stays legal for search and filter forms, which is why
+  this is a warning rather than an error.
+
+- **The `raw_html` block no longer advertises a capability the engine does not have.** The palette
+  offered a block called "Raw html" whose content the renderer escapes and prints as text: the
+  engine has no raw HTML sink at all, so a pasted `<iframe>` published as visible markup with
+  nothing anywhere explaining why (functional audit `G-28`). The type stays — the codec must
+  round-trip documents authored elsewhere — but its palette label now reads "Raw HTML (escaped as
+  text)", its template text says the same, and `validation` reports `raw_html_not_rendered` as a
+  warning for any document carrying visible content in one. A warning rather than an error, so
+  documents that already use the block keep publishing.
+
+- **`fly-web` can deliver outbound iframe messages to the sandboxed canvas.** `IframeMessagePort`
+  validated its destination with the inbound rule, which accepts `"null"` — the origin a sandboxed
+  `srcdoc` iframe reports — and then handed that same string to `postMessage`. The platform accepts
+  only `*`, `/`, or an absolute URL as `targetOrigin`, so the call raised `SyntaxError: Invalid
+  target origin`, and substituting a real origin instead makes the browser drop the message because
+  it can never equal the recipient's reported origin. An opaque destination is now sent to `*`
+  through `outbound_target_origin`, a host-tested decision in `origin.rs` next to the inbound rule
+  it is deliberately asymmetric with; `OPAQUE_ORIGIN` names the value both rules turn on.
 
 - **`fly-web` geometry rejects non-finite input.** Browser geometry crosses the iframe bridge as
   JSON, where an out-of-range literal deserializes to an infinity rather than an error. An
@@ -125,6 +186,14 @@ Engineering audit remediation — see
 - Four separate copies of id-reference substitution consolidated into `id_reference`, which
   rewrites only declared reference positions instead of any string that happens to match an id.
 
+### Fixed
+
+- `verify-page-builder-runtime-context.mjs` failed on a correct pipeline. Its stage-order pins
+  read the first textual match in `runtime_pipeline.rs`, which is the crate's `use` block — where
+  rustfmt sorts `materialize_bindings` before `materialize_context` — and `materialize_runtime`
+  matched the `materialize_runtime_locale_context` prefix (a different stage). The check now reads
+  the pipeline function body and matches call forms; the workflow runs the verifier.
+
 ### Added
 
 - `MAX_REPEATER_DEPTH` (8) and `MAX_TOTAL_REPEATED_NODES` (50 000) with
@@ -143,9 +212,43 @@ Engineering audit remediation — see
 - CI: wasm32 jobs, adapter feature-combination checks, a dependency advisory job, and
   `verify-fly-gates-are-wired.mjs`, which failed loudly on the 7 verification gates that no
   workflow ran — all 4 rotted gates were among those 7.
+- Runtime context contract compatibility and migration: `diff_runtime_context_contracts` and
+  `diff_runtime_context_contracts_with_policy` compare the contract a runtime context payload was
+  authored against with a candidate one, naming every difference (`RuntimeContextContractChange`,
+  13 kinds) and deciding per kind which breaking changes stay warnings
+  (`RuntimeContextCompatibilityPolicy`); `migrate_runtime_context` moves a payload onto the target
+  contract — optionally dropping paths the target no longer declares, then applying the target's
+  defaults and computed values through the existing `materialize_context` — and returns the
+  compatibility report beside the migrated context. The migration is never silent: breaking
+  contract changes and dropped values are diagnostics on the result. Supporting API:
+  `RuntimeContextCompatibilityReport`, `RuntimeContextMigrationPolicy`,
+  `RuntimeContextMigration`, and `remove_context_path` in `context_schema.rs`, the removal
+  primitive the migration needs and the schema module did not have.
+- `RuntimeScenarioReleaseBaseline::snapshot_has_valid_hash()`, the named integrity check for the
+  embedded scenario render snapshot. `validate()` already reported
+  `runtime_scenario_baseline_snapshot_hash_invalid` by calling `self.snapshot.has_valid_hash()`
+  inline; the accessor makes the check part of the baseline contract, so a consumer can inspect a
+  retained baseline's snapshot integrity without re-deriving the rule, and the release verifier pins
+  the name.
+- `FormProviderEndpointResolver` and the provider-aware render variants a host uses to close a
+  provider form's submission target: `materialize_component_actions_with_providers`,
+  `materialize_project_with_runtime_context_with_providers`,
+  `render_page_with_runtime_context_with_providers`,
+  `render_runtime_scenario_matrix_with_providers` and
+  `RuntimeScenarioRenderSnapshot::capture_with_providers`. Without a resolver every existing entry
+  point renders exactly as before (marker-only); with one, each form whose `provider.operation`
+  the resolver recognizes is lowered to a native `action`, POST and url-encoded, and the authored
+  document is never rewritten.
 
 ### Changed
 
+- `fly-leptos` has a conventional crate root. `Cargo.toml` declares `[lib] path = "src/root.rs"`, so
+  `root.rs` is the crate root; the layout-shell module it used to pull in through
+  `#[path = "lib.rs"] mod foundation;` is now the ordinary `src/foundation.rs` module. Nothing
+  leaves the public API: the shim `real_dom_inline.rs` duplicated names that `pub use fly_web::*`
+  already exported (and needed two `#[allow(unused_imports)]` suppressions to stay quiet), and
+  `#![deny(unsafe_code)]` moved to the crate root so it covers the feature-gated browser modules
+  rather than only the included file.
 - `FlyEditor::apply` performs one deep document copy per command instead of three, and `undo`/
   `redo` perform none, by sharing documents between the editor and adjacent history entries via
   `Arc`. History memory roughly halves. The public API is unchanged.
@@ -160,6 +263,25 @@ Engineering audit remediation — see
   entries share allocations (which keeps the budget conservative).
 - A standalone build (`--no-default-features`) loses CLDR likely-subtag inference: `zh-TW` falls
   back to `zh` rather than `zh-Hant`, and `iw` is not canonicalized to `he`.
-- The admin access token is still read from `localStorage`; moving it to an httpOnly cookie
-  requires a coordinated server change.
+- The admin session cookie is still issued by the browser rather than by the server: the admin
+  shell mirrors the `localStorage` session into `rustok-admin-session-v1` so SSR can revalidate it,
+  which keeps the token reachable by any script on the admin origin. Fly's adapter no longer reads
+  or forwards it, but server-issued HttpOnly sessions — and the explicit server-side CSRF check
+  that the cookie-only transport now leans on — are the admin shell's change, tracked as
+  `CLEAN-060` in `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`.
 - 48 glob re-exports (`pub use module::*`) remain.
+- The provider capability catalog is filled by the RusTok host, not by Fly.
+  `rustok-page-builder::interaction_providers` registers the `forms`/`submit` form capability from
+  `rustok-forms`, every host gate calls the capability-aware gate (missing provider forms block the
+  save/publish gate with the missing capability named, missing provider actions warn), and
+  `HostFormProviderEndpoints` binds that provider to the
+  storefront, preview, static-artifact and scenario-matrix renders. Fly itself still defaults to
+  `InteractionCapabilityPolicy::Allow` with no catalog, so a consumer of the standalone crate keeps
+  the permissive contract until it registers its own providers; the two identifiers and the route
+  template are kept in sync by `scripts/verify/verify-fly-interaction-capabilities.mjs` rather than
+  by a Cargo edge. Release-baseline captures (`RuntimeScenarioReleaseBaseline::capture`) stay
+  marker-only: baseline and candidate are compared inside the same renderer, and a provider-aware
+  baseline API does not exist yet. See the *Known Limitations* section of `README.md`.
+- Custom actions (`emit_event`, `provider_action`) have no runtime here either: materialization
+  produces `data-fly-action-kind` plus a JSON `data-fly-action` payload, and no crate listens for
+  them, so the button is inert until a host implements the contract. Same section of `README.md`.

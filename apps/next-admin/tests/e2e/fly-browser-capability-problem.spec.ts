@@ -71,6 +71,7 @@ async function mountProblemContract(page: Page) {
 
     scope.__FLY_BROWSER_CONFIG__ = {
       autoMount: true,
+      expectedOrigin: 'null',
       intentEndpoint: '/fly-intent'
     };
     scope.__flyBrowserProblems = [];

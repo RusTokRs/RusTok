@@ -1,8 +1,9 @@
 use fly::{
     GrapesJsCodec, LocalizedPageRouteResolution, RenderPolicy, RuntimeRenderResult,
-    render_page_with_runtime_context, resolve_localized_page_route,
+    render_page_with_runtime_context_with_providers, resolve_localized_page_route,
 };
 use leptos::prelude::*;
+use rustok_page_builder::HostFormProviderEndpoints;
 use rustok_page_builder::locale::PageBuilderLocaleContext;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -32,8 +33,15 @@ pub fn render_storefront_localized_slug(
     policy.instrument_components = false;
     let document = GrapesJsCodec::decode_value(project_data)?;
     let route = resolve_localized_page_route(&document, requested_slug, &context)?;
-    let result =
-        render_page_with_runtime_context(&document, &route.selection(), &policy, &route.context)?;
+    // Host-served provider forms are lowered to their intake endpoints here; Fly itself only
+    // materializes the `data-fly-form-provider` marker.
+    let result = render_page_with_runtime_context_with_providers(
+        &document,
+        &route.selection(),
+        &policy,
+        &route.context,
+        &HostFormProviderEndpoints,
+    )?;
     Ok(StorefrontLocalizedRouteOutput { route, result })
 }
 

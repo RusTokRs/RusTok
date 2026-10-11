@@ -206,6 +206,24 @@ persistence. Rich text remains an external dedicated capability.
 - [ ] Provider-health live exact-target execution/owner decisions and tenant Wave
   evidence remain incomplete.
 
+### Provider status/degraded controls
+
+Admin provider status is the typed seam between host policy and the editor surface:
+`PageBuilderAdminProviderStatus` carries the exact `BuilderCapabilityFlags` a consumer composed
+plus an optional `ProviderHealthSnapshot`, missing health is `unobserved`, and the status can only
+narrow the host's already evaluated tenant/RBAC capabilities. The Pages facade exposes both
+composition forms — `PagesBuilderFacade::with_provider_flags(...)` for flag-only consumers and
+`PagesBuilderFacade::with_provider_status(...)` for the health-aware workspace binding — so a
+consumer cannot claim observed health it does not hold.
+
+The observed provider-health evidence remains maintainer-owned and execution-pending: the bounded
+process-local observation, deployment-aggregatable metrics/freshness, exact-source deployment
+identity, expected-target inventory and evaluator are source-ready, but no accepted deployment
+observation is bound, so provider health stays `unobserved` in production and the editor narrows
+from rollout flags alone. The next production consumer of accepted deployment evidence is the
+Pages provider-status promotion itself; until that acceptance exists the workspace keeps
+reporting `unobserved` instead of a healthy provider.
+
 ### Fallback matrix
 
 | Profile | Preview | Tree/properties | Publish | Admin path | Read/storefront paths |

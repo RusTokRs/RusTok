@@ -3,8 +3,6 @@ const ADAPTER_VERSION = "fly_browser";
 const ADAPTER_KEY = Symbol.for("fly.browser.adapter");
 const ROOT_SELECTOR = "[data-fly-browser-root]";
 const IFRAME_SELECTOR = "iframe[data-fly-iframe-canvas]";
-const TOKEN_KEY = "rustok-admin-token";
-const TENANT_KEY = "rustok-admin-tenant";
 const DRAFT_PREFIX = "fly:ssr-draft:";
 const DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024;
 const DEFAULT_MAX_GEOMETRY_COMPONENTS = 4096;
@@ -16,6 +14,7 @@ const INTENT_REQUEST_ABORTED_CODE = "INTENT_REQUEST_ABORTED";
 const NETWORK_ERROR_CODE = "NETWORK_ERROR";
 const UNSAFE_NAVIGATION_CODE = "UNSAFE_NAVIGATION_TARGET";
 const UNSAFE_INTENT_ENDPOINT_CODE = "UNSAFE_INTENT_ENDPOINT";
+const EXPECTED_ORIGIN_REQUIRED_CODE = "EXPECTED_ORIGIN_REQUIRED";
 const INTENT_ABORT_KIND = Object.freeze({
   EXTERNAL: "external",
   TIMEOUT: "timeout",
@@ -67,8 +66,9 @@ function nonEmptyString(value) {
  * Resolve `value` against the current document, returning it only when it stays on this origin.
  *
  * Two call sites need this and neither can trust its input:
- *  - the intent endpoint comes from a DOM data attribute and receives the admin access token, so
- *    a foreign URL there is credential exfiltration;
+ *  - the intent endpoint comes from a DOM data attribute and is requested with
+ *    `credentials: "same-origin"`, so a foreign URL there would send the operator's session
+ *    cookie off-origin;
  *  - the post-intent navigation target comes from a server response body, so a `javascript:` or
  *    `data:` URL there is script execution and an absolute URL is an open redirect.
  *
@@ -309,19 +309,23 @@ function forwardAbortSignal(signal, controller, abort) {
   return () => signal.removeEventListener("abort", forward);
 }
 
-function storedString(key) {
-  try {
-    const raw = globalThis.localStorage?.getItem(key);
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw);
-      return typeof parsed === "string" && parsed.trim() ? parsed.trim() : null;
-    } catch (_) {
-      return raw.trim() || null;
-    }
-  } catch (_) {
-    return null;
-  }
+/**
+ * Normalize a configured expected origin, or return `null` when there is none.
+ *
+ * Fail closed: an empty value, a whitespace-only value and the `*` wildcard all resolve to
+ * `null`, and the adapter refuses to start rather than comparing incoming messages against a
+ * meaningless origin. The wildcard is rejected explicitly because accepting it would turn the
+ * iframe bridge into a cross-origin hole — the same rule `fly_web::normalize_expected_origin`
+ * applies on the Rust side.
+ *
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+function normalizeExpectedOrigin(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "*") return null;
+  return trimmed;
 }
 
 function draftStorageKey(pageId) {
@@ -497,8 +501,14 @@ export class FlyBrowserAdapter {
     }
     this.instanceId = instanceIdFor(this.iframe);
     this.pageId = root.dataset.flyPageId || null;
+    // Resolved here, enforced by `start()`: there is no default. An unset origin used to fall
+    // back to the opaque-origin literal `"null"`, so a host that forgot to configure one still
+    // accepted messages from the sandboxed canvas instead of refusing to mount. The dataset
+    // attribute remains a fallback for hosts that do not emit `__FLY_BROWSER_CONFIG__`, and
+    // `"null"` is still a valid value when the canvas really is a sandboxed `srcdoc` iframe.
     this.expectedOrigin =
-      options.expectedOrigin || root.dataset.flyExpectedOrigin || "null";
+      normalizeExpectedOrigin(options.expectedOrigin) ||
+      normalizeExpectedOrigin(root.dataset.flyExpectedOrigin);
     // Validated before any credential is attached: this URL is read from the DOM.
     this.intentEndpoint = sameOriginUrl(
       options.intentEndpoint || root.dataset.flyIntentEndpoint || null,
@@ -507,8 +517,9 @@ export class FlyBrowserAdapter {
       !this.intentEndpoint &&
       Boolean(options.intentEndpoint || root.dataset.flyIntentEndpoint);
     this.csrfToken = options.csrfToken || root.dataset.flyCsrfToken || null;
-    this.accessToken = options.accessToken || storedString(TOKEN_KEY);
-    this.tenantSlug = options.tenantSlug || storedString(TENANT_KEY);
+    // No credential is read from `localStorage`. The same-origin session cookie is sent by
+    // `credentials: "same-origin"` on the intent request, so a token copy in script-readable
+    // storage would only widen the XSS surface without authenticating anything new.
     this.draftSession = readDraftSession(this.pageId);
     this.drawOverlays = options.drawOverlays !== false;
     this.postIntents = options.postIntents !== false;
@@ -540,6 +551,15 @@ export class FlyBrowserAdapter {
       throw lifecycleError(
         ADAPTER_STOPPED_CODE,
         "Fly browser adapter cannot start after it has stopped.",
+      );
+    }
+    if (!this.expectedOrigin) {
+      // Fail closed. Without an origin the inbound filter would compare against `undefined` and
+      // drop everything (silently broken) or have to accept everything (cross-origin hole);
+      // neither is acceptable, so the mount itself is refused.
+      throw lifecycleError(
+        EXPECTED_ORIGIN_REQUIRED_CODE,
+        "Fly browser adapter requires an explicit expected origin: set `expectedOrigin` or the `data-fly-expected-origin` attribute (use \"null\" for a sandboxed srcdoc canvas).",
       );
     }
     this.lifecycleState = ADAPTER_LIFECYCLE.STARTED;
@@ -1148,10 +1168,6 @@ export class FlyBrowserAdapter {
       "x-fly-browser": ADAPTER_VERSION,
     };
     if (this.csrfToken) headers["x-csrf-token"] = this.csrfToken;
-    if (this.accessToken) {
-      headers.authorization = `Bearer ${this.accessToken}`;
-    }
-    if (this.tenantSlug) headers["x-tenant-slug"] = this.tenantSlug;
 
     if (!controller.signal.aborted) {
       record.timeoutId = globalThis.setTimeout(() => {

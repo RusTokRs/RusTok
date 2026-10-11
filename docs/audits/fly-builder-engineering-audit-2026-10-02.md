@@ -66,7 +66,8 @@ Fly — это зрелое по объёму и дисциплинирован�
 | H-2 | Обход валидации через `Opaque` закрыт: лимиты и проверка id теперь тотальны | ✅ Сделано | `validation.rs::validate_opaque_components` |
 | H-3 | Лимит глубины при декодировании | ✅ Сделано | `MAXIMUM_DECODE_DEPTH`, итеративный `ensure_depth_within_limit` |
 | H-4 | Навигация по ответу сервера и intent-endpoint ограничены same-origin | ✅ Сделано | `fly-browser.js`: `sameOriginUrl()` |
-| H-4 | Токен из `localStorage` → httpOnly-cookie | ⏳ Фаза 1 | требует изменений сервера (`apps/admin/src/main.rs` читает `x-fly-access-token`) |
+| H-4 | `expectedOrigin` fail-closed: нет значения → адаптер не стартует | ✅ Сделано | `fly-browser.js::normalizeExpectedOrigin` + `EXPECTED_ORIGIN_REQUIRED`; `BrowserAdapterConfig::expected_origin: Option<String>` без дефолта; хост Page Builder передаёт `"null"` явно (`PAGE_BUILDER_CANVAS_EXPECTED_ORIGIN`) |
+| H-4 | Токен из `localStorage` → httpOnly-cookie | ⏳ Частично | адаптер больше не читает токен/тенант из `localStorage` и не отправляет их заголовками — интенты идут на сессионной cookie с `credentials: "same-origin"`; серверно-издаваемая HttpOnly-сессия остаётся за админ-шеллом (`CLEAN-060` в `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`) |
 | H-5 | Единый модуль политики URL | ✅ Сделано | `safe_url.rs` — оказалось **пять** реализаций, не три |
 | H-6 | CI: добавлены `fly-ui`, `fly-web`, `fly-leptos`, `fly-dioxus`; убран `--lib`; wasm32-джоба; исправлены path-фильтры | ✅ Сделано | `.github/workflows/fly-page-builder.yml` |
 | H-7 | Починены 4 сгнивших гейта; 6 сирот подключены в CI; мета-гейт против сирот | ✅ Сделано | `verify-fly-gates-are-wired.mjs` |
@@ -92,6 +93,7 @@ Fly — это зрелое по объёму и дисциплинирован�
 | L-4 | Нет `CHANGELOG` | ✅ Сделано | `crates/ui/fly/CHANGELOG.md` |
 | L-7 | `cargo audit` не в CI | ✅ Сделано | джоба `advisories` (advisory-only) |
 | — | Клоны правил стилей в предикатах | ✅ Сделано | `StyleRuleIdentity` |
+| — | Реестр provider-capabilities объявлен и покрыт тестами, но ни один хост его не заполняет → политика `Allow` по умолчанию | ✅ Сделано | хост заполняет каталог: `rustok-page-builder/src/interaction_providers.rs` (капабилити `forms`/`submit`, `HostFormProviderEndpoints`, capability-aware гейты администратора и сервера, привязка эндпоинта в storefront/превью/static/матрице), `rustok-forms` route-константы, пин `scripts/verify/verify-fly-interaction-capabilities.mjs` |
 | C-3 | История на инверсных командах | ⏳ Фаза 4 | уже не критично: память разделена |
 
 ### Уточнение к H-1 (неиспользуемые зависимости)
@@ -686,7 +688,8 @@ O(n) сдвиг вектора из тяжёлых элементов вмест
 
 * `README.md` обещает: «`fly-leptos`: Thin Leptos 0.8 components (`FlyFullEditor`, `FlyInlineEditor`,
   `FlyPreview`, `FlyReadOnly`)» и аналогично для Dioxus.
-  Факт: `leptos/src/lib.rs` — 62 строки, четыре компонента вида
+  Факт: `leptos/src/foundation.rs` (до 2026-10-11 — `leptos/src/lib.rs`, см. L-2) — четыре
+  компонента вида
   `<section class="fly-editor--full">{children()}</section>`. Ни состояния, ни интентов,
   ни канваса, ни drag&drop. `dioxus/src/lib.rs` — то же самое, 72 строки.
   При этом `fly-leptos` и `fly-dioxus` объявляют зависимости на `fly` и `fly-ui`, которые
@@ -897,6 +900,10 @@ bidirectional codec», это недостаточно. Фикстуры GrapesJ
   `[workspace.lints]`. Нет `#![forbid(unsafe_code)]`, `#![deny(missing_docs)]` при 1299 pub-элементах.
 * `L-2` — `leptos/src/root.rs:1-2`: `#[path = "lib.rs"] mod foundation;` при `[lib] path = "src/root.rs"`.
   Файл `lib.rs`, который не является крейт-корнем, — ловушка для IDE и новых разработчиков.
+  **Исправлено 2026-10-11**: модуль переименован в `foundation.rs`, `#[path]` убран, `#![deny(unsafe_code)]`
+  перенесён в крейт-корень (раньше он покрывал только включаемый модуль, а не браузерные shim-модули);
+  дублирующий shim `real_dom_inline.rs` с двумя `#[allow(unused_imports)]` удалён — его поверхность и так
+  идёт через `pub use fly_web::*`.
 * `L-3` — `SequentialIdGenerator` (`ids.rs`) предсказуем; для многопользовательского
   редактирования нужен ULID/UUIDv7, иначе параллельные сессии дают конфликты id.
 * `L-4` — `escape_html` (`render.rs:697-702`) делает 3 прохода `String::replace` с 3 аллокациями;
@@ -937,7 +944,7 @@ bidirectional codec», это недостаточно. Фикстуры GrapesJ
 | 1.3 **C-2** | Валидация charset `component.id` / `page.id` (`^[A-Za-z0-9_:.-]{1,128}$`, severity `Error`). |
 | 1.4 **C-2** | Полный CSS-escape в `escape_css_attribute`; нейтрализация `</` при вставке CSS в `<style>` в `compose_document_html`. Тесты: `</style>`, `</script>`, `<!--`, `]]>`. |
 | 1.5 **H-3** | `MAX_DECODE_DEPTH` (512) в `GrapesJsCodec::decode_slice/decode_value` до построения модели; новый `FlyError::MaximumDepthExceeded`. Fuzz-тест глубокого JSON. |
-| 1.6 **H-4** | `fly-browser.js`: fail-closed `expectedOrigin` (нет значения → `start()` бросает); whitelist схем для `result.location` (только относительный путь либо same-origin); `intentEndpoint` только относительный; убрать чтение токена из `localStorage` и дублирующий `x-fly-access-token`, перейти на httpOnly-cookie + CSRF-токен. |
+| 1.6 **H-4** | `fly-browser.js`: fail-closed `expectedOrigin` (нет значения → `start()` бросает) ✅ 2026-10-11; whitelist схем для `result.location` (только относительный путь либо same-origin) ✅; `intentEndpoint` только относительный либо same-origin ✅; чтение токена из `localStorage` удалено из адаптера, дублирующих заголовков нет ✅ 2026-10-11; серверно-издаваемая httpOnly-сессия + серверная проверка CSRF — за админ-шеллом (`CLEAN-060`). |
 | 1.7 **H-5** | Выделить `src/url_policy.rs` как единственный источник правды; `safe_url.rs`, `render.rs::url_allowed`, `validation.rs::public_url_allowed` — тонкие обёртки. Общий табличный тест-корпус (≥60 кейсов), прогоняемый через все три точки входа. |
 | 1.8 | `cargo fuzz` таргет на `GrapesJsCodec::decode_slice` (или `arbitrary` + proptest, если fuzz инфраструктуры нет). |
 
@@ -1041,8 +1048,15 @@ grep по исходникам; любой рефактор `apply()` или `vi
   `fly-web`/`fly-browser` — beta, `fly-leptos`/`fly-dioxus` — только фундамент (оболочки из
   четырёх `<section>`, без канвы, DnD и панелей). Пункт H-1 остаётся закрытым в части README;
   ADR, описывающие полноценные редакторы, по-прежнему опережают код.
-- **H-4 (токен в localStorage → httpOnly cookie)** — открыт; серверная часть по-прежнему читает
-  `x-fly-access-token` (`apps/admin/src/main.rs`), альтернативный транспорт не появился.
+- **H-4 (токен в localStorage → httpOnly cookie)** — частично закрыт (2026-10-11). `x-fly-access-token`
+  в серверном коде отсутствует: маршрут интентов читает `AUTHORIZATION: Bearer` и сессионную cookie
+  `rustok-admin-session-v1` (ревалидируется `verify_auth_snapshot`), а адаптер больше не читает
+  `localStorage` вовсе и шлёт интенты только на сессионной cookie с `credentials: "same-origin"`.
+  Тем же изменением у маршрута интентов остался **один источник authority** на запрос: Bearer-клиент
+  задаёт тенант заголовком `x-tenant-slug`, а cookie-запрос берёт и токен, и тенант из собственной
+  сессии — раньше сессионный токен мог быть склеен с произвольным клиентским тенантом.
+  Остаётся серверно-издаваемая HttpOnly-сессия и явная серверная CSRF-проверка — это изменение
+  админ-шелла, отслеживается как `CLEAN-060` в `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`.
 
 ### 10.2. Уточнение C-1: переведён один хеш из четырёх (исправлено 2026-10-08)
 

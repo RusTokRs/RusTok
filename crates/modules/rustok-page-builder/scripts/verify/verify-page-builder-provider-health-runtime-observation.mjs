@@ -113,7 +113,9 @@ for (const marker of [
   "PageBuilderRuntimeOperation::LoadProject => None",
   "Some(PageBuilderErrorKind::Sanitize) => ProviderHealthOutcome::SanitizeFailed",
   "Some(PageBuilderErrorKind::Runtime) => ProviderHealthOutcome::RuntimeFailed",
-  "record_provider_health_observation(operation, pending_call.started_at.elapsed(), outcome)",
+  // The elapsed value is sampled once and shared with the platform metrics call below, so the
+  // reachable form is the `elapsed` binding; pinning the inlined expression matched nothing.
+  "record_provider_health_observation(operation, elapsed, outcome)",
 ]) need(sources.telemetry, marker, "runtime telemetry observer");
 
 for (const marker of [

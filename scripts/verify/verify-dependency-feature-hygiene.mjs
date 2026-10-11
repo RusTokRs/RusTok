@@ -124,6 +124,37 @@ if (!postcard) {
   forbidSpec(postcard, '"heapless-cas"', "postcard");
 }
 
+// The root `[workspace] exclude` list holds packages that are deliberately outside the platform
+// workspace. A non-member cannot inherit `[workspace.dependencies]` — cargo rejects
+// `workspace = true` outside a workspace — so the inheritance rule below cannot apply to them.
+// Requiring it made every run fail on `crates/integration/rustok-content-revisions`. Standalone
+// manifests with their own `[workspace]` table are skipped for the same reason.
+function workspaceExcludedPaths(workspaceSource) {
+  const start = workspaceSource.indexOf("[workspace]");
+  if (start === -1) {
+    return [];
+  }
+  const nextSection = workspaceSource.indexOf("\n[", start + "[workspace]".length);
+  const section = workspaceSource.slice(
+    start,
+    nextSection === -1 ? workspaceSource.length : nextSection,
+  );
+  const excludeBlock = /\bexclude\s*=\s*\[([\s\S]*?)\]/.exec(section)?.[1] ?? "";
+  return [...excludeBlock.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+}
+
+const workspaceExcluded = workspaceExcludedPaths(cargo);
+
+function isOutsideWorkspace(relativePath, source) {
+  if (/^\[workspace\]/m.test(source)) {
+    return true;
+  }
+  const directory = path.posix.dirname(relativePath.split(path.sep).join("/"));
+  return workspaceExcluded.some(
+    (excluded) => directory === excluded || directory.startsWith(`${excluded}/`),
+  );
+}
+
 const memberManifests = [
   ...walkFiles("apps", (name) => name === "Cargo.toml"),
   ...walkFiles("crates", (name) => name === "Cargo.toml"),
@@ -136,6 +167,9 @@ const memberManifests = [
 for (const absolutePath of memberManifests) {
   const source = fs.readFileSync(absolutePath, "utf8");
   const relativePath = path.relative(repoRoot, absolutePath);
+  if (isOutsideWorkspace(relativePath, source)) {
+    continue;
+  }
   for (const dependency of ["sea-orm", "sea-orm-migration", "postcard"]) {
     for (const spec of dependencySpecs(source, dependency)) {
       if (!spec.includes("workspace = true")) {

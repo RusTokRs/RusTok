@@ -614,8 +614,56 @@ pub fn set_context_path(root: &mut Value, path: &str, value: Value) -> Result<()
     set_path_segments(root, &segments, value)
 }
 
+/// Remove the value stored at `path`, returning whether a value was removed.
+///
+/// A path that does not resolve, or that walks through a container of the wrong shape, is a
+/// no-op returning `false`: migration tooling treats "there was nothing to drop" as a fact to
+/// report, not as an error.
+pub fn remove_context_path(root: &mut Value, path: &str) -> bool {
+    let Some(segments) = parse_context_path(path) else {
+        return false;
+    };
+    remove_path_segments(root, &segments)
+}
+
 pub fn is_valid_context_path(path: &str) -> bool {
     parse_context_path(path).is_some()
+}
+
+fn remove_path_segments(current: &mut Value, segments: &[ContextPathSegment]) -> bool {
+    let Some((first, rest)) = segments.split_first() else {
+        return false;
+    };
+    match first {
+        ContextPathSegment::Key(key) => {
+            let Some(object) = current.as_object_mut() else {
+                return false;
+            };
+            if rest.is_empty() {
+                return object.remove(key).is_some();
+            }
+            match object.get_mut(key) {
+                Some(child) => remove_path_segments(child, rest),
+                None => false,
+            }
+        }
+        ContextPathSegment::Index(index) => {
+            let Some(array) = current.as_array_mut() else {
+                return false;
+            };
+            if rest.is_empty() {
+                if *index < array.len() {
+                    array.remove(*index);
+                    return true;
+                }
+                return false;
+            }
+            match array.get_mut(*index) {
+                Some(child) => remove_path_segments(child, rest),
+                None => false,
+            }
+        }
+    }
 }
 
 fn normalize_context(value: Value) -> Value {

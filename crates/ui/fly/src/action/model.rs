@@ -130,6 +130,22 @@ pub struct ComponentForm {
     pub extensions: Map<String, Value>,
 }
 
+/// Resolves the native submission endpoint a host serves for a provider form.
+///
+/// A provider form materializes as a `data-fly-form-provider` marker without a native target, so
+/// it posts back to the page URL unless the host answers where its provider runs. Callers that
+/// render for a provider host pass a resolver to
+/// [`materialize_component_actions_with_providers`](crate::materialize_component_actions_with_providers)
+/// or [`render_page_with_runtime_context_with_providers`](crate::render_page_with_runtime_context_with_providers);
+/// every recognized `provider.operation` then receives a native `action` (POST, URL-encoded),
+/// while unregistered providers keep the marker-only rendering and the document is never
+/// rewritten.
+pub trait FormProviderEndpointResolver: Send + Sync {
+    /// Returns the intake URL for `provider.operation` bound to a Fly `form_id`, or `None` when
+    /// the host does not serve that provider interaction.
+    fn form_endpoint(&self, provider: &str, operation: &str, form_id: &str) -> Option<String>;
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ActionMaterialization {
     pub document: ProjectDocument,

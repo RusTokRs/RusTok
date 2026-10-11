@@ -7,7 +7,6 @@ git-fetch-with-cli = true
 # docs/security/advisory-exceptions.md.
 ignore = [
     "RUSTSEC-2026-0253",
-    "RUSTSEC-2026-0257",
 ]
 
 [licenses]

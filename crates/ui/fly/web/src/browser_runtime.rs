@@ -276,6 +276,9 @@ pub struct IframeMessagePort {
 }
 
 impl IframeMessagePort {
+    /// `target_origin` is the origin the caller believes the iframe has; [`crate::OPAQUE_ORIGIN`]
+    /// selects the sandboxed-`srcdoc` case, which is addressable only with `*` — see
+    /// [`crate::outbound_target_origin`].
     pub fn new(
         instance_id: impl Into<String>,
         target_origin: impl Into<String>,
@@ -297,10 +300,15 @@ impl IframeMessagePort {
         let envelope = IframeBridgeEnvelope::new(&self.instance_id, sequence, message);
         let payload = serde_json::to_string(&envelope)
             .map_err(|error| BrowserRuntimeError::Serialization(error.to_string()))?;
+        // The configured origin is normalized for comparison; `postMessage` needs the deliverable
+        // form. Passing `"null"` straight through cannot work — the platform accepts only `*`,
+        // `/` or an absolute URL there — so an opaque destination is sent to `*` and validated by
+        // the receiver instead.
+        let deliver_to = crate::outbound_target_origin(&self.target_origin);
         iframe
             .content_window()
             .ok_or(BrowserRuntimeError::MissingContentWindow)?
-            .post_message(&JsValue::from_str(&payload), &self.target_origin)
+            .post_message(&JsValue::from_str(&payload), deliver_to)
             .map_err(browser_error)?;
         self.next_sequence = self.next_sequence.saturating_add(1);
         Ok(sequence)

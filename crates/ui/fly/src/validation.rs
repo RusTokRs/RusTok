@@ -463,6 +463,7 @@ fn walk_component(
     }
 
     check_component_public_urls(component, path, &mut report.diagnostics);
+    check_raw_html_content(component, path, &mut report.diagnostics);
 
     // A *child list* can be opaque too (`ComponentChildren::Opaque`), and `children()` reports it
     // as empty — a second blind spot of the same kind as an opaque node.
@@ -517,6 +518,45 @@ pub fn validate_component_public_urls(document: &ProjectDocument) -> Vec<Validat
         check_component_public_urls(component, path, &mut diagnostics);
     });
     diagnostics
+}
+
+/// Report that a `raw_html` component's content is shown as text rather than parsed as markup.
+///
+/// The type is kept because the codec must round-trip documents authored elsewhere, but the
+/// renderer has no raw HTML sink — by design, and none is planned while embeds stay out of the
+/// static publish policy (`DANGEROUS_COMPONENT_TYPES` in `rustok-page-builder`). Without this
+/// warning the degradation was silent: an author pasted markup into the block, published, and saw
+/// the source itself on the page with nothing anywhere saying why (functional audit `G-28`).
+///
+/// A warning, not an error: the document is still safe to publish, and existing documents that
+/// carry the block must not start failing their publish gates because the diagnostic was added.
+fn check_raw_html_content(
+    component: &ComponentObject,
+    path: &str,
+    diagnostics: &mut Vec<ValidationDiagnostic>,
+) {
+    if !component
+        .component_type()
+        .trim()
+        .eq_ignore_ascii_case("raw_html")
+    {
+        return;
+    }
+    let has_visible_content = component
+        .extensions
+        .get("content")
+        .and_then(Value::as_str)
+        .is_some_and(|content| !content.trim().is_empty());
+    if !has_visible_content {
+        return;
+    }
+    diagnostics.push(diagnostic(
+        ValidationSeverity::Warning,
+        "raw_html_not_rendered",
+        format!("{path}.content"),
+        "raw_html content is escaped and rendered as text, never as markup; the type exists for \
+         lossless round-tripping of documents authored elsewhere",
+    ));
 }
 
 /// URL-attribute checks for a single component.

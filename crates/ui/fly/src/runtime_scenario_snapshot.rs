@@ -1,7 +1,7 @@
 use crate::{
-    PageSelection, ProjectDocument, ProjectHash, RenderPolicy, RuntimeContextScenario,
-    RuntimeScenarioRenderMatrix, ValidationDiagnostic, ValidationSeverity,
-    render_runtime_scenario_matrix,
+    FormProviderEndpointResolver, PageSelection, ProjectDocument, ProjectHash, RenderPolicy,
+    RuntimeContextScenario, RuntimeScenarioRenderMatrix, ValidationDiagnostic, ValidationSeverity,
+    render_runtime_scenario_matrix, render_runtime_scenario_matrix_with_providers,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -42,6 +42,27 @@ impl RuntimeScenarioRenderSnapshot {
             selection.clone(),
             policy.clone(),
             render_runtime_scenario_matrix(document, selection, policy, scenarios),
+        )
+    }
+
+    /// Capture variant for hosts that serve provider form endpoints.
+    pub fn capture_with_providers(
+        document: &ProjectDocument,
+        selection: &PageSelection,
+        policy: &RenderPolicy,
+        scenarios: &[RuntimeContextScenario],
+        providers: &dyn FormProviderEndpointResolver,
+    ) -> Self {
+        Self::from_matrix(
+            selection.clone(),
+            policy.clone(),
+            render_runtime_scenario_matrix_with_providers(
+                document,
+                selection,
+                policy,
+                scenarios,
+                Some(providers),
+            ),
         )
     }
 

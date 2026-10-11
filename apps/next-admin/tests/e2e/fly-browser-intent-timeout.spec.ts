@@ -64,6 +64,7 @@ async function mountTimeoutContract(page: Page, timeoutMs: number) {
 
       scope.__FLY_BROWSER_CONFIG__ = {
         autoMount: true,
+        expectedOrigin: 'null',
         intentEndpoint: '/fly-intent',
         maxPendingIntentRequests: 1,
         intentRequestTimeoutMs: timeoutMs,

@@ -48,3 +48,17 @@
   rebuild of earlier retained sanitized sources reports hash drift until the
   page is re-published (fail-closed by design, see
   `DECISIONS/2026-10-09-page-builder-media-asset-provider.md`).
+- Provider form runtime is host-owned and currently covers the `forms`
+  provider only. `src/interaction_providers.rs` registers the
+  `forms`/`submit` capability, every host gate uses it (unregistered provider
+  forms block the save/publish gate, unregistered provider actions warn), and
+  `HostFormProviderEndpoints` binds `POST /api/forms/{form_id}/submit/form`
+  into the storefront, admin preview, static-artifact and scenario-matrix
+  renders. Release-baseline captures
+  (`RuntimeScenarioReleaseBaseline::capture`) stay marker-only, so their case
+  HTML hashes are not comparable with artifact snapshot hashes for pages that
+  contain provider forms. Registering another provider means extending the
+  catalog and the resolver here; the provider id, operation and route template
+  are mirrored from `rustok-forms` and drift-checked by
+  `scripts/verify/verify-fly-interaction-capabilities.mjs` instead of a Cargo
+  edge, so this module stays buildable standalone.

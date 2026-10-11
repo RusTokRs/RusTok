@@ -1,6 +1,7 @@
+use crate::interaction_providers::HostFormProviderEndpoints;
 use fly::{
     FlyResult, GrapesJsCodec, PageSelection, RenderPolicy, RuntimeContextScenario,
-    RuntimeScenarioRenderMatrix, render_runtime_scenario_matrix,
+    RuntimeScenarioRenderMatrix, render_runtime_scenario_matrix_with_providers,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -30,11 +31,12 @@ impl PageBuilderRuntimeScenarioRenderer {
     ) -> FlyResult<PageBuilderRuntimeScenarioRenderResponse> {
         let document = GrapesJsCodec::decode_value(request.project_data)?;
         Ok(PageBuilderRuntimeScenarioRenderResponse {
-            matrix: render_runtime_scenario_matrix(
+            matrix: render_runtime_scenario_matrix_with_providers(
                 &document,
                 &request.selection,
                 &request.policy,
                 &request.scenarios,
+                Some(&HostFormProviderEndpoints),
             ),
         })
     }

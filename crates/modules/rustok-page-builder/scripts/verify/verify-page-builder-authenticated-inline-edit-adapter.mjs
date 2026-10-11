@@ -47,6 +47,7 @@ const evidence = JSON.parse(read(
 ));
 const flyCargo = read("crates/ui/fly/leptos/Cargo.toml");
 const flyRoot = read("crates/ui/fly/leptos/src/root.rs");
+const flyFoundation = read("crates/ui/fly/leptos/src/foundation.rs");
 const realDom = read("crates/ui/fly/web/src/real_dom_inline.rs");
 const storefrontCargo = read("crates/modules/rustok-page-builder-storefront/Cargo.toml");
 const storefrontLib = read("crates/modules/rustok-page-builder-storefront/src/lib.rs");
@@ -120,10 +121,14 @@ for (const key of [
   }
 }
 
-for (const marker of [
-  "mod real_dom_inline;",
-  "pub use real_dom_inline::*;",
-]) need(flyRoot, marker, "fly-leptos exports");
+// The inline-edit surface must stay reachable from `fly-leptos`: the crate root re-exports the
+// `foundation` module, which re-exports `fly-web`. The previous pins named a `real_dom_inline`
+// shim that duplicated the `fly_web::*` glob and carried two lint suppressions; the glob is the
+// canonical path, so the pins now assert that path instead of the duplicate.
+for (const marker of ["mod foundation;", "pub use foundation::*;"]) {
+  need(flyRoot, marker, "fly-leptos crate root");
+}
+need(flyFoundation, "pub use fly_web::*;", "fly-leptos exports");
 for (const marker of ['"Node"', '"NodeList"', '"HtmlElement"']) {
   need(flyCargo, marker, "fly-leptos browser capabilities");
 }
@@ -166,7 +171,8 @@ for (const marker of [
   "request.expected_project_hash != current_hash",
   "collect_runtime_owned_subtree",
   "NoContentChange",
-  "authorization.authorize(&request)",
+  ".authorize(&request)",
+  "InlineEditError::AuthorizationRejected",
   "EditorCommand::Patch",
   'ComponentPatch::default().set_field("content"',
   "GrapesJsCodec::encode_value(self.editor.document())",
@@ -197,7 +203,7 @@ ordered(apply, [
   "location.page_index != page_index",
   "runtime_owned.contains(&request.component_id)",
   "NoContentChange",
-  "authorization.authorize(&request)",
+  ".authorize(&request)",
   "self.editor.apply(EditorCommand::Patch",
   "GrapesJsCodec::encode_value(self.editor.document())",
 ], "identity eligibility authorization mutation ordering");

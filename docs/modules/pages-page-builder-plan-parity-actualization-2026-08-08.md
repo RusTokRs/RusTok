@@ -112,6 +112,13 @@ bounded process-local Preview/Publish observation [source-ready]
 -> Forum Wave owner review [pending after observed control-plane Wave]
 ```
 
+The promotion-relevant slices stay deliberately unbound: the bounded process-local observation and
+the deployment-aggregatable metrics + freshness signals are `source-ready`, while
+`deployment-observed-health-open` still covers exact source/deployment identity, expected-target
+inventory and the accepted observation that could promote them. Until that acceptance is bound,
+Pages remains `unobserved` for the provider status consumers, so transport readiness cannot raise
+editing, preview or publish capabilities by itself.
+
 Source inspection alone must not mark execution, current health, observed-health acceptance, Pages gate acceptance, Forum Wave admission execution, observed Wave or downstream promotion complete.
 
 ## Anti-drift guards
