@@ -50,7 +50,8 @@ export function ForumModuleSettingsFields({
         use_reactions:
           parsed.use_reactions === true || parsed.useReactions === true,
         allow_downvotes: parsed.allow_downvotes !== false,
-        allow_user_content_deletion: parsed.allow_user_content_deletion === true,
+        allow_user_content_deletion:
+          parsed.allow_user_content_deletion === true,
         pre_moderation_enabled: parsed.pre_moderation_enabled === true,
         topics_per_page:
           typeof parsed.topics_per_page === 'number'
@@ -224,8 +225,8 @@ export function ForumModuleSettingsFields({
             <label className='text-xs font-medium'>Pre-moderation</label>
             <p className='text-muted-foreground text-[11px]'>
               Hold newly submitted topics and replies for moderator review
-              before publishing. Held items are visible only to their author
-              and to moderators.
+              before publishing. Held items are visible only to their author and
+              to moderators.
             </p>
           </div>
           <Switch

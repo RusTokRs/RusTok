@@ -550,7 +550,7 @@ mod tests {
     async fn http_edge_stack_marks_custom_tokens_as_sensitive_headers() {
         let app = Router::new().route(
             "/sensitive",
-            get(|request: Request| async move {
+            get(|request: Request<Body>| async move {
                 let headers = request.headers();
                 let runner = headers.get("x-rustok-runner-token").map(|v| v.is_sensitive()).unwrap_or(false);
                 let host = headers.get("x-rustok-host-token").map(|v| v.is_sensitive()).unwrap_or(false);

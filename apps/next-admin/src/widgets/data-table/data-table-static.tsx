@@ -96,7 +96,7 @@ export function DataTableStatic<T>({
                     <button
                       type='button'
                       onClick={() => onSort?.(column.id)}
-                      className='text-muted-foreground hover:text-foreground -ml-1 inline-flex items-center gap-1 rounded px-1 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-ring'
+                      className='text-muted-foreground hover:text-foreground focus:ring-ring -ml-1 inline-flex items-center gap-1 rounded px-1 py-0.5 text-xs font-medium transition-colors focus:ring-1 focus:outline-none'
                     >
                       <span>{column.header}</span>
                       {isCurrentSort ? (
@@ -126,7 +126,9 @@ export function DataTableStatic<T>({
                     key={column.id}
                     className={isCompact ? 'px-2.5 py-1.5' : undefined}
                   >
-                    <Skeleton className={cn('w-full', isCompact ? 'h-3.5' : 'h-4')} />
+                    <Skeleton
+                      className={cn('w-full', isCompact ? 'h-3.5' : 'h-4')}
+                    />
                   </TableCell>
                 ))}
               </TableRow>

@@ -262,7 +262,9 @@ export function ModulesList({
   );
   const [loading, setLoading] = useState<string | null>(null);
   const [platformLoading, setPlatformLoading] = useState<string | null>(null);
-  const [installedViewMode, setInstalledViewMode] = useState<'grid' | 'table'>('grid');
+  const [installedViewMode, setInstalledViewMode] = useState<'grid' | 'table'>(
+    'grid'
+  );
   const [moduleSort, setModuleSort] = useState<{
     columnId: string;
     direction: 'asc' | 'desc';
@@ -814,9 +816,7 @@ export function ModulesList({
               {formatBuildSummary(build)}
             </p>
             {build.errorMessage && (
-              <p className='text-destructive text-xs'>
-                {build.errorMessage}
-              </p>
+              <p className='text-destructive text-xs'>{build.errorMessage}</p>
             )}
           </div>
         )
@@ -844,7 +844,9 @@ export function ModulesList({
         cell: (build) => (
           <div className='min-w-[120px] space-y-1 text-xs'>
             <div className='flex items-center justify-between gap-2'>
-              <span className='text-muted-foreground'>{humanizeLabel(build.stage)}</span>
+              <span className='text-muted-foreground'>
+                {humanizeLabel(build.stage)}
+              </span>
               <span className='font-mono font-medium'>{build.progress}%</span>
             </div>
             <Progress value={build.progress} className='h-1.5 w-full' />
@@ -866,7 +868,7 @@ export function ModulesList({
         cell: (build) =>
           build.logsUrl ? (
             <a
-              className='text-primary text-xs underline-offset-4 hover:underline whitespace-nowrap'
+              className='text-primary text-xs whitespace-nowrap underline-offset-4 hover:underline'
               href={build.logsUrl}
               target='_blank'
               rel='noreferrer'
@@ -891,11 +893,11 @@ export function ModulesList({
           <div className='space-y-0.5 py-1'>
             <div className='flex items-center gap-2'>
               <span className='text-sm font-medium'>{module.name}</span>
-              <code className='rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground'>
+              <code className='bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-[11px]'>
                 {module.moduleSlug}
               </code>
             </div>
-            <p className='text-xs text-muted-foreground line-clamp-1'>
+            <p className='text-muted-foreground line-clamp-1 text-xs'>
               {module.description}
             </p>
           </div>
@@ -922,8 +924,8 @@ export function ModulesList({
           const installed = installedMap.get(module.moduleSlug);
           const hasUpdate = Boolean(
             installed?.version &&
-              module.version &&
-              installed.version !== module.version
+            module.version &&
+            installed.version !== module.version
           );
           return (
             <div className='space-y-0.5 text-xs whitespace-nowrap'>
@@ -934,7 +936,7 @@ export function ModulesList({
                 <div>
                   <Badge
                     variant='outline'
-                    className='text-[10px] text-amber-600 border-amber-300'
+                    className='border-amber-300 text-[10px] text-amber-600'
                   >
                     Update v{module.version}
                   </Badge>
@@ -971,7 +973,7 @@ export function ModulesList({
                   handleToggle(module.moduleSlug, checked)
                 }
               />
-              <span className='text-xs text-muted-foreground'>
+              <span className='text-muted-foreground text-xs'>
                 {tenantEnabled ? t('enabled') : t('disabled')}
               </span>
             </div>
@@ -1014,9 +1016,10 @@ export function ModulesList({
                 <Button
                   variant='outline'
                   size='sm'
-                  className='h-8 px-2 text-xs text-destructive hover:text-destructive'
+                  className='text-destructive hover:text-destructive h-8 px-2 text-xs'
                   disabled={
-                    Boolean(activeBuild) || platformLoading === module.moduleSlug
+                    Boolean(activeBuild) ||
+                    platformLoading === module.moduleSlug
                   }
                   onClick={() => handleUninstall(module.moduleSlug)}
                 >
@@ -1442,11 +1445,11 @@ export function ModulesList({
                 {coreModules.length + installedOptionalModules.length} total
               </Badge>
             </div>
-            <div className='flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5'>
+            <div className='bg-muted/40 flex items-center gap-1 rounded-lg border p-0.5'>
               <Button
                 variant={installedViewMode === 'grid' ? 'secondary' : 'ghost'}
                 size='sm'
-                className='h-7 px-2.5 text-xs gap-1.5'
+                className='h-7 gap-1.5 px-2.5 text-xs'
                 onClick={() => setInstalledViewMode('grid')}
               >
                 <IconLayoutGrid className='h-3.5 w-3.5' />
@@ -1455,7 +1458,7 @@ export function ModulesList({
               <Button
                 variant={installedViewMode === 'table' ? 'secondary' : 'ghost'}
                 size='sm'
-                className='h-7 px-2.5 text-xs gap-1.5'
+                className='h-7 gap-1.5 px-2.5 text-xs'
                 onClick={() => setInstalledViewMode('table')}
               >
                 <IconTable className='h-3.5 w-3.5' />
@@ -1500,7 +1503,9 @@ export function ModulesList({
                       platformLoading={platformLoading === module.moduleSlug}
                       platformInstalled
                       platformBusy={Boolean(activeBuild)}
-                      platformVersion={installedMap.get(module.moduleSlug)?.version}
+                      platformVersion={
+                        installedMap.get(module.moduleSlug)?.version
+                      }
                       recommendedVersion={module.version}
                       onInspect={handleInspect}
                       onConfigureSettings={(slug) => {
@@ -1521,7 +1526,9 @@ export function ModulesList({
               <div className='space-y-3'>
                 <div className='flex items-center gap-2'>
                   <IconPackage className='text-muted-foreground h-5 w-5' />
-                  <h3 className='text-lg font-semibold'>{t('section.optional')}</h3>
+                  <h3 className='text-lg font-semibold'>
+                    {t('section.optional')}
+                  </h3>
                   <Badge variant='outline' className='text-xs'>
                     {installedOptionalModules.length} installed
                   </Badge>
@@ -1532,7 +1539,9 @@ export function ModulesList({
                       <ModuleCard
                         key={module.moduleSlug}
                         module={module}
-                        catalogModule={catalogMap.get(module.moduleSlug) ?? null}
+                        catalogModule={
+                          catalogMap.get(module.moduleSlug) ?? null
+                        }
                         loading={loading === module.moduleSlug}
                         platformLoading={platformLoading === module.moduleSlug}
                         platformInstalled
@@ -1551,7 +1560,9 @@ export function ModulesList({
                             slug,
                             settings: existing?.settings ?? '{}',
                             revision:
-                              existing?.revision ?? module.lifecycleRevision ?? 0
+                              existing?.revision ??
+                              module.lifecycleRevision ??
+                              0
                           });
                         }}
                       />
@@ -1561,8 +1572,8 @@ export function ModulesList({
                   <Card>
                     <CardContent className='pt-6'>
                       <p className='text-muted-foreground text-sm'>
-                        No optional modules are installed yet. Use the Marketplace
-                        tab to queue the first install.
+                        No optional modules are installed yet. Use the
+                        Marketplace tab to queue the first install.
                       </p>
                     </CardContent>
                   </Card>

@@ -36,7 +36,7 @@ const source = requireMarkers(sourcePath, [
   'SELECT module_name, entity_name, schema_version, schema_fingerprint, schema_json, status FROM index_schemas',
   'persisted.status != "active"',
   'persisted.fingerprint != expected_schema.fingerprint.to_string()',
-  'persisted.schema_json != expected_schema.schema_json',
+  'persisted.schema_json == expected_schema.schema_json',
   'IndexSchemaReadinessError::NotReady { failures }',
 ]);
 

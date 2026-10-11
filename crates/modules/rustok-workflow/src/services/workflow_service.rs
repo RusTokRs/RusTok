@@ -824,9 +824,9 @@ fn decode_hex_signature(value: &str) -> Result<Vec<u8>, ()> {
     }
     let bytes = value.as_bytes();
     let mut decoded = Vec::with_capacity(32);
-    for chunk in bytes.chunks_exact(2) {
-        let high = hex_nibble(chunk[0]).ok_or(())?;
-        let low = hex_nibble(chunk[1]).ok_or(())?;
+    for &[high_byte, low_byte] in bytes.as_chunks::<2>().0 {
+        let high = hex_nibble(high_byte).ok_or(())?;
+        let low = hex_nibble(low_byte).ok_or(())?;
         decoded.push((high << 4) | low);
     }
     Ok(decoded)

@@ -319,17 +319,18 @@ export default function PostForm({
           )}
 
           <div>
-            <label className='block text-sm font-medium mb-1'>
+            <label className='mb-1 block text-sm font-medium'>
               Schedule publication (optional)
             </label>
             <input
               type='datetime-local'
-              className='w-full rounded-md border border-input bg-background px-3 py-2 text-sm'
+              className='border-input bg-background w-full rounded-md border px-3 py-2 text-sm'
               {...form.register('scheduledAt')}
               disabled={form.watch('publish')}
             />
-            <p className='text-xs text-muted-foreground mt-1'>
-              Leave empty to save as draft. Set a future date to schedule automatic publication.
+            <p className='text-muted-foreground mt-1 text-xs'>
+              Leave empty to save as draft. Set a future date to schedule
+              automatic publication.
             </p>
           </div>
 

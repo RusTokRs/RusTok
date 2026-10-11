@@ -12,7 +12,16 @@ interface CategoriesTableProps {
   categories: CatalogCategorySummary[];
 }
 
-const indentScale = ['pl-0', 'pl-5', 'pl-10', 'pl-14', 'pl-20', 'pl-24', 'pl-28', 'pl-32'];
+const indentScale = [
+  'pl-0',
+  'pl-5',
+  'pl-10',
+  'pl-14',
+  'pl-20',
+  'pl-24',
+  'pl-28',
+  'pl-32'
+];
 function categoryIndentClass(d: number): string {
   return indentScale[Math.min(d, indentScale.length - 1)] ?? 'pl-36';
 }

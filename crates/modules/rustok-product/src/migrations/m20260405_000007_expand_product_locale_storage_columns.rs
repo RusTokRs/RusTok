@@ -21,14 +21,18 @@ ALTER TABLE product_translations
 ALTER TABLE product_image_translations
     ALTER COLUMN locale TYPE VARCHAR(32);
 
-ALTER TABLE product_option_translations
-    ALTER COLUMN locale TYPE VARCHAR(32);
-
-ALTER TABLE product_option_value_translations
-    ALTER COLUMN locale TYPE VARCHAR(32);
-
 ALTER TABLE product_variant_translations
     ALTER COLUMN locale TYPE VARCHAR(32);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'product_option_translations') THEN
+        ALTER TABLE product_option_translations ALTER COLUMN locale TYPE VARCHAR(32);
+    END IF;
+    IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'product_option_value_translations') THEN
+        ALTER TABLE product_option_value_translations ALTER COLUMN locale TYPE VARCHAR(32);
+    END IF;
+END $$;
 "#,
             )
             .await?;

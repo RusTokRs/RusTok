@@ -135,7 +135,6 @@ fn error_response(
 mod tests {
     use super::*;
     use axum::body::to_bytes;
-    use http_body_util::BodyExt;
 
     async fn parse_error_response(response: Response) -> (StatusCode, ErrorBody) {
         let status = response.status();

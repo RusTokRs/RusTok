@@ -236,7 +236,7 @@ export default function DesignSystemPage() {
                   Copy TSX
                 </Button>
               </div>
-              <pre className='overflow-x-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100 dark:bg-black font-mono'>
+              <pre className='overflow-x-auto rounded-md bg-slate-950 p-3 font-mono text-xs text-slate-100 dark:bg-black'>
                 <code>{nextSnippet}</code>
               </pre>
             </CardFooter>
@@ -535,8 +535,8 @@ export default function DesignSystemPage() {
             </CardHeader>
             <CardContent className='space-y-3'>
               <p className='text-muted-foreground text-xs'>
-                High-throughput transactional core managing inventory,
-                checkout, and tenant boundaries.
+                High-throughput transactional core managing inventory, checkout,
+                and tenant boundaries.
               </p>
               <div className='bg-muted/40 grid grid-cols-2 gap-2 rounded-md p-2 text-xs'>
                 <div>
@@ -549,7 +549,7 @@ export default function DesignSystemPage() {
                 </div>
               </div>
             </CardContent>
-            <CardFooter className='border-t flex justify-between pt-3'>
+            <CardFooter className='flex justify-between border-t pt-3'>
               <Button variant='outline' size='sm'>
                 Logs
               </Button>

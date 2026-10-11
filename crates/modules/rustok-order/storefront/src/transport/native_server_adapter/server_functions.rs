@@ -33,7 +33,7 @@ pub async fn fetch_order_server(
 ) -> Result<Option<crate::model::StorefrontOrder>, CheckoutCompletionTransportError> {
     storefront_order_fetch_native(order_id)
         .await
-        .map_err(|error| CheckoutCompletionTransportError::ServerFn(error.to_string()))
+        .map_err(|_| CheckoutCompletionTransportError::ServerFn("Failed to fetch order".to_string()))
 }
 
 pub async fn fetch_orders_server(
@@ -43,7 +43,7 @@ pub async fn fetch_orders_server(
 ) -> Result<crate::model::StorefrontOrdersResponse, CheckoutCompletionTransportError> {
     storefront_orders_fetch_native(page, per_page, status)
         .await
-        .map_err(|error| CheckoutCompletionTransportError::ServerFn(error.to_string()))
+        .map_err(|_| CheckoutCompletionTransportError::ServerFn("Failed to fetch orders".to_string()))
 }
 
 #[server(prefix = "/api/fn", endpoint = "order/fetch-one")]
