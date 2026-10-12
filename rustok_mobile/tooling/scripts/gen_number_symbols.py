@@ -342,7 +342,7 @@ def dart_entry(tag: str, data: dict) -> list[str]:
         parts.append(f'minimumGroupingDigits: {data["minimumGroupingDigits"]}')
     if data['primaryGroupingSize'] != 3:
         parts.append(f'primaryGroupingSize: {data["primaryGroupingSize"]}')
-    if data['secondaryGroupingSize'] != data['primaryGroupingSize']:
+    if data['secondaryGroupingSize'] != DEFAULT['secondaryGroupingSize']:
         parts.append(f'secondaryGroupingSize: {data["secondaryGroupingSize"]}')
     if data['minimumFractionDigits'] != 0:
         parts.append(f'minimumFractionDigits: {data["minimumFractionDigits"]}')

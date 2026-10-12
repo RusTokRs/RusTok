@@ -1724,6 +1724,7 @@ const Map<String, NumberSymbols> _numberSymbols = {
     decimal: ',',
     group: '\u00A0',
     primaryGroupingSize: 2,
+    secondaryGroupingSize: 2,
     currencyPattern: '¤#,#0.00',
   ),
   'tpi': NumberSymbols(decimal: '.', group: ',', currencyPattern: '#,##0.00\u00A0¤'),
