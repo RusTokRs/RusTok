@@ -8,13 +8,14 @@
 pub mod domain;
 pub mod error;
 
-pub use domain::{BlockType, CollaborativeDoc, DocBlock};
+pub use domain::{BlockType, CollaborativeDoc, DocBlock, EntityDisplayMode, EntityRef};
 pub use error::{DocsError, DocsResult};
 pub use loro::{Frontiers, LoroDoc, TreeID, VersionVector};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[test]
     fn test_create_blocks_and_render_markdown() {
@@ -95,5 +96,33 @@ mod tests {
         let blocks = doc.get_blocks();
         let item_block = blocks.iter().find(|b| b.content == "Item under section 1").unwrap();
         assert_eq!(item_block.parent_id, Some(root2.to_string()));
+    }
+
+    #[test]
+    fn test_entity_embed_and_block_mutation() {
+        let doc = CollaborativeDoc::new();
+
+        let tenant_id = Uuid::new_v4();
+        let product_id = Uuid::new_v4();
+        let entity_ref = EntityRef {
+            tenant_id,
+            module: "commerce".to_string(),
+            entity_type: "product".to_string(),
+            entity_id: product_id,
+            display_mode: EntityDisplayMode::CompactCard,
+        };
+
+        let block = doc.create_block(None, BlockType::EntityEmbed(entity_ref.clone()), "").unwrap();
+
+        // Update block properties with custom styling
+        doc.update_block_properties(block, serde_json::json!({ "theme": "dark", "badge": "New" })).unwrap();
+
+        let blocks = doc.get_blocks();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].block_type, BlockType::EntityEmbed(entity_ref));
+        assert_eq!(blocks[0].properties["theme"], "dark");
+
+        let md = doc.render_markdown();
+        assert!(md.contains("entity-embed"));
     }
 }

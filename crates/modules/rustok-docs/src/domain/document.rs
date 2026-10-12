@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use loro::{ExportMode, Frontiers, LoroDoc, TreeID, VersionVector};
 use crate::error::{DocsError, DocsResult};
-use super::block::{BlockType, DocBlock};
+use super::block::{BlockType, DocBlock, EntityRef, EntityDisplayMode};
 
 /// Collaborative document engine powered by Loro CRDT.
 ///
@@ -65,6 +65,24 @@ impl CollaborativeDoc {
         Ok(node_id)
     }
 
+    /// Updates the block kind/type (e.g., converting Paragraph to Heading or toggling a Todo).
+    pub fn update_block_type(&self, node_id: TreeID, block_type: BlockType) -> DocsResult<()> {
+        let meta = self.doc.get_map(format!("block_meta_{}", node_id));
+        let type_str = serde_json::to_string(&block_type).map_err(DocsError::from)?;
+        meta.insert("type", type_str.as_str()).map_err(|e| DocsError::Loro(e.to_string()))?;
+        self.doc.commit();
+        Ok(())
+    }
+
+    /// Updates arbitrary JSON properties of a block (e.g. style tokens, attributes, ERP config).
+    pub fn update_block_properties(&self, node_id: TreeID, properties: serde_json::Value) -> DocsResult<()> {
+        let meta = self.doc.get_map(format!("block_meta_{}", node_id));
+        let props_str = serde_json::to_string(&properties).map_err(DocsError::from)?;
+        meta.insert("props", props_str.as_str()).map_err(|e| DocsError::Loro(e.to_string()))?;
+        self.doc.commit();
+        Ok(())
+    }
+
     /// Moves a block to a new parent or index in the tree (zero merge conflict / cycle-safe).
     pub fn move_block(
         &self,
@@ -78,15 +96,27 @@ impl CollaborativeDoc {
         Ok(())
     }
 
-    /// Deletes a block and its subtree.
+    /// Deletes a block and its subtree, cleaning up associated Loro metadata and text containers.
     pub fn delete_block(&self, target: TreeID) -> DocsResult<()> {
         let tree = self.doc.get_tree("blocks");
+        
+        // Clean up text and metadata containers for this node
+        let text = self.doc.get_text(format!("block_text_{}", target));
+        let len = text.len_unicode();
+        if len > 0 {
+            text.delete(0, len).ok();
+        }
+        let meta = self.doc.get_map(format!("block_meta_{}", target));
+        meta.delete("type").ok();
+        meta.delete("props").ok();
+
+        // Delete node from hierarchical tree (deletes all descendants)
         tree.delete(target).map_err(|e| DocsError::Loro(e.to_string()))?;
         self.doc.commit();
         Ok(())
     }
 
-    /// Updates the text content of an individual block.
+    /// Updates the text content of an individual block completely.
     pub fn set_block_text(&self, node_id: TreeID, new_content: &str) -> DocsResult<()> {
         let text = self.doc.get_text(format!("block_text_{}", node_id));
         let current_len = text.len_unicode();
@@ -100,10 +130,18 @@ impl CollaborativeDoc {
         Ok(())
     }
 
-    /// Appends or inserts text to an existing block (CRDT rich-text delta).
+    /// Inserts text into an existing block at a specific character offset (CRDT delta).
     pub fn insert_block_text(&self, node_id: TreeID, pos: usize, text_to_insert: &str) -> DocsResult<()> {
         let text = self.doc.get_text(format!("block_text_{}", node_id));
         text.insert(pos, text_to_insert).map_err(|e| DocsError::Loro(e.to_string()))?;
+        self.doc.commit();
+        Ok(())
+    }
+
+    /// Deletes a character range from an existing block (CRDT delta).
+    pub fn delete_block_text(&self, node_id: TreeID, pos: usize, len: usize) -> DocsResult<()> {
+        let text = self.doc.get_text(format!("block_text_{}", node_id));
+        text.delete(pos, len).map_err(|e| DocsError::Loro(e.to_string()))?;
         self.doc.commit();
         Ok(())
     }
@@ -180,6 +218,12 @@ impl CollaborativeDoc {
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or(BlockType::Paragraph);
 
+        let props_val = meta.get("props").and_then(|v| v.into_value().ok());
+        let properties: serde_json::Value = props_val
+            .and_then(|v| v.into_string().ok())
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
         let tree = self.doc.get_tree("blocks");
         let child_ids = tree.children(Some(node_id)).unwrap_or_default();
         let children_str = child_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
@@ -189,7 +233,7 @@ impl CollaborativeDoc {
             parent_id,
             block_type,
             content: text,
-            properties: serde_json::json!({}),
+            properties,
             children: children_str,
         });
 
@@ -260,6 +304,13 @@ impl CollaborativeDoc {
             }
             BlockType::Table => {
                 out.push_str(&format!("{}[Table: {}]\n\n", indent, text));
+            }
+            BlockType::EntityEmbed(entity_ref) => {
+                out.push_str(&format!(
+                    "<!-- entity-embed: urn={} mode={:?} -->\n\n",
+                    entity_ref.to_urn(),
+                    entity_ref.display_mode
+                ));
             }
             BlockType::LiveErp { entity_type, entity_id } => {
                 out.push_str(&format!("<!-- live-erp: type={} id={} -->\n\n", entity_type, entity_id));

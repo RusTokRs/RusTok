@@ -82,8 +82,10 @@ To guarantee mathematical rigor without developing proprietary cryptography from
 
 | Candidate Library | Origin & Cryptographic Audit | Strengths & Protocols | Bloat & Protocol Risk | Role in RusToK SuperApp |
 | :--- | :--- | :--- | :--- | :--- |
-| **`vodozemac`** | **Matrix.org Foundation (Pure Rust)**<br>Audited by *Least Authority* (2022). | • Pure Rust replacement for legacy C `libolm`.<br>• **Olm:** Double Ratchet (Signal protocol) + X3DH key agreement.<br>• **Megolm:** High-throughput group ratcheting (symmetric ratchet with pairwise key distribution).<br>• **SAS:** Interactive Short Authentication String device verification (emoji/decimal QR).<br>• Zero external runtime dependencies; compiles cleanly to native Linux/macOS/Windows, Android/iOS FFI, and WASM. | Low-level cryptographic engine only (requires an application-level state machine for network queues). | **Core Cryptographic Engine (Winner for Phase 1):** Selected for all 1-on-1 chats and executive group rooms. |
-| **`matrix-sdk-crypto`** | **Matrix.org Foundation (Rust)** | • High-level cryptographic state machine handling key stores, one-time prekeys (OTKs), session backup, and verification workflows. | Hardwired to Matrix client-server JSON protocol types (`ruma_events`). Pulling it in would drag in heavy Matrix JSON schemas and protocol baggage. | **Architectural Reference Only:** We adopt the state-machine pattern for session tracking and key stores, but bind it directly to `vodozemac` and RusToK Protobuf/Postcard transport without Matrix protocol bloat. |
+| **`vodozemac`** | **Matrix.org Foundation (Pure Rust)**<br>Audited by *Least Authority* (2022). | • Pure Rust replacement for legacy C `libolm`.<br>• **Olm:** Double Ratchet (Signal protocol) + X3DH key agreement.<br>• **Megolm:** High-throughput group ratcheting (symmetric ratchet with pairwise key distribution).<br>• **SAS:** Interactive Short Authentication String device verification (emoji/decimal QR).<br>• Zero external runtime dependencies; compiles cleanly to native Linux/macOS/Windows, Android/iOS FFI, and WASM. | Low-level cryptographic engine only (requires an application-level state machine for network queues). | **Core Cryptographic Engine (Winner for Phase 1):** Selected for all internal 1-on-1 chats and executive group rooms. |
+| **`ruma`** | **Ruma Project / Matrix.org (Pure Rust)** | • Complete, strictly typed implementation of 100% of the Matrix protocol specification.<br>• `ruma-events`: Serde types for all Matrix events (`m.room.encrypted`, `m.room.message`, `m.room_key`).<br>• `ruma-client-api` & `ruma-federation-api`: Typed endpoint contracts for Client-Server and Server-Server federation.<br>• `ruma-state-res`: Canonical Matrix State Resolution v2 algorithm. | Matrix protocol uses verbose JSON structures with heavy DAG transaction history (`auth_events`, `prev_events`), causing high bandwidth and latency overhead if used as the internal messaging fabric. | **External Federation & Bridge Gateway (Winner for Gateway):** Selected as the foundation for the optional `rustok-matrix-gateway` module to federate with external Matrix homeservers and bridge third-party clients (Element X, FluffyChat, Mautrix bridges). |
+| **`matrix-sdk-crypto`** | **Matrix.org Foundation (Rust)** | • High-level cryptographic state machine handling key stores, one-time prekeys (OTKs), session backup, and verification workflows. | Hardwired to Matrix client-server JSON protocol types (`ruma_events`). Pulling it in would drag in heavy Matrix JSON schemas and protocol baggage into our native streaming core. | **Architectural Reference Only:** We adopt the state-machine pattern for session tracking and key stores, but bind it directly to `vodozemac` and RusToK Protobuf/Postcard transport without Matrix protocol bloat. |
+| **`conduit` / `conduwuit`** | **Independent / Rust Community** | • Ultra-lean, high-performance Matrix homeserver written in Rust using `ruma` and RocksDB/Sled.<br>• Proves that Matrix federation on Rust uses 10x–20x less RAM and CPU than Python Synapse. | Full standalone homeserver daemon, not an embedded library for micro-modular composition. | **Benchmarking & Reference Implementation:** Architecture reference for how `ruma` endpoints map efficiently onto async Rust runtimes (Tokio/Axum). |
 | **`openmls`** | **OpenMLS / IETF RFC 9420 (Rust)** | • **Messaging Layer Security (MLS)**: Modern IETF standard for asynchronous group key exchange via TreeKEM.<br>• $O(\log N)$ group membership changes (unlike Megolm $O(N)$ key re-distribution). | Higher implementation complexity; emerging specification; heavier client overhead for small groups (< 20 users). | **Enterprise Large-Group Engine (Phase 2):** Slated for company-wide encrypted broadcast channels with > 100 participants. |
 | **`libsignal-protocol-rs`** | **Signal Messenger LLC (Rust)** | • Official Signal Protocol implementation. | Pairwise encryption only: group messaging requires sending $N$ separately encrypted payloads across the network, causing battery and bandwidth drain on mobile clients. | Rejected in favor of Megolm / MLS group ratchets. |
 
@@ -137,6 +139,33 @@ Confidential PDFs, spreadsheets, voice messages, and video attachments are encry
   - **Self-Signing Key:** Authorizes new devices belonging to the same user (e.g. iPad, laptop).
   - **User-Signing Key:** Signs verified colleagues and external B2B partners. Once a top manager verifies a partner once, all authorized devices display a verified green trust badge 🛡️.
 * **Encrypted Key Backup & Secret Storage:** Multi-device session history is backed up to a client-side encrypted vault derived via Argon2id from a 48-character recovery key, allowing seamless device migration without server key disclosure.
+
+### 3.4 Matrix Federation, External Clients, and Bridge Gateway (`rustok-matrix-gateway` via `ruma`)
+
+While `rustok-messenger` relies on high-speed native streaming for internal operations, enterprise environments frequently require interoperability with external Matrix federations and legacy communication tools. Rather than compromising core performance, RusToK provides an optional gateway module:
+
+```
+[External Element / Element X]     [Partner Company Matrix Synapse]     [Telegram / WhatsApp / Slack]
+              │                                   │                                    │
+    (Matrix C-S API v3)                 (Matrix Federation API v1)              (Mautrix Appservices)
+              │                                   │                                    │
+              └─────────────────────────┬─────────┴────────────────────────────────────┘
+                                        ▼
+                         [rustok-matrix-gateway]
+                         • Powered by `ruma` (ruma-client-api, ruma-federation-api, ruma-events)
+                         • Protocol bidirectional translation: Matrix JSON Event ◄► RusToK Binary
+                         • Matrix State Resolution (ruma-state-res)
+                                        │
+                                        ▼
+                         [rustok-messenger Core Fabric]
+                         • Sub-millisecond Iggy streaming partitions
+                         • Snowflake sequence cursor ledgers
+```
+
+1. **Decoupled Architecture:** The highload internal messenger core remains 100% free of Matrix protocol overhead. The `rustok-matrix-gateway` exists as a separate sovereign module that consumes and publishes to [`rustok-iggy`](../../crates/modules/rustok-iggy).
+2. **Third-Party Matrix Clients:** Employees can optionally use open-source Matrix clients (Element X, Cinny, FluffyChat) to connect to RusToK workspaces via endpoints powered by `ruma-client-api`.
+3. **B2B Inter-Company Federation:** Organizations running RusToK can securely communicate with partner enterprises running self-hosted Synapse or Conduit servers via standard Matrix Server-Server federation (`ruma-federation-api`).
+4. **Unified Bridges (Mautrix Ecosystem):** Enables seamless integration of popular Mautrix bridges (Telegram, WhatsApp, Slack, MS Teams, Discord), routing inbound external messages directly into RusToK team channels.
 
 ---
 
