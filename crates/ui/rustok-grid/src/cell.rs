@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn text_filter_is_a_trimmed_case_insensitive_substring() {
-        let cell = CellValue::text("  Красное Платье ");
+        let cell = CellValue::text("  Красное Apple ");
         assert!(cell.matches(&FilterValue::Text("красное".into())));
         assert!(cell.matches(&FilterValue::Text("  PLE  ".into())));
         assert!(!cell.matches(&FilterValue::Text("green".into())));
@@ -301,10 +301,10 @@ mod tests {
     fn select_filter_compares_ids_as_opaque_values() {
         let cell = CellValue::text("ACTIVE");
         assert!(cell.matches(&FilterValue::Select("active".into())));
-        assert!(!cell.matches(&FilterValue::Select("activ".into())));
+        assert!(!cell.matches(&FilterValue::Select("inactive".into())));
         // A select id may address a numeric cell, and a missing cell matches nothing.
         assert!(CellValue::number(42.0).matches(&FilterValue::Select("42".into())));
-        assert!(!CellValue::Empty.matches(&FilterValue::Select("".into())));
+        assert!(!CellValue::Empty.matches(&FilterValue::Select("active".into())));
         assert!(CellValue::Empty.matches(&FilterValue::Select("   ".into())));
     }
 

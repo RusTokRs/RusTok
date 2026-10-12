@@ -108,7 +108,11 @@ export function DataTableStatic<T>({
                   key={column.id}
                   // `aria-sort` is the machine-readable counterpart of the arrow glyph: it reports
                   // the direction even on a column whose header only carries text.
-                  aria-sort={isSortable ? ariaSortForColumn(sortState, column.id) : undefined}
+                  aria-sort={
+                    isSortable
+                      ? ariaSortForColumn(sortState, column.id)
+                      : undefined
+                  }
                   className={cn(
                     isCompact && 'h-8 px-2.5 py-1 text-xs',
                     column.headerClassName

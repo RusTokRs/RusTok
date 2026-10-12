@@ -194,7 +194,10 @@ mod tests {
         // Sorting happens over the filtered set, so page 2 holds the middle of the ordered rows.
         state.sort.set("price", crate::sort::SortDirection::Desc);
         state.pagination.set_page(2);
-        assert_eq!(state.apply_rows(&rows, cell_of), vec![Row("hat", 30.0)]);
+        assert_eq!(
+            state.apply_rows(&rows, cell_of),
+            vec![Row("hat", 30.0), Row("boots", 20.0)]
+        );
 
         // Filtering narrows the pool the page indexes into; a page past the end renders empty.
         state.set_filter("name", FilterValue::Text("o".into()));

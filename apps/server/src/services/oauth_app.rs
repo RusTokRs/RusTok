@@ -94,14 +94,14 @@ impl OAuthAppService {
             icon_url: Set(input.icon_url),
             client_id: Set(client_id),
             client_secret_hash: Set(Some(client_secret_hash)),
-            redirect_uris: Set(serde_json::to_value(&input.redirect_uris)
-                .map_err(|_| Error::InternalServerError)?),
-            scopes: Set(
-                serde_json::to_value(&input.scopes).map_err(|_| Error::InternalServerError)?
-            ),
-            grant_types: Set(
-                serde_json::to_value(&input.grant_types).map_err(|_| Error::InternalServerError)?
-            ),
+            redirect_uris: Set(serde_json::to_value(&input.redirect_uris).map_err(|error| {
+                Error::Message(format!("failed to serialize redirect_uris: {error}"))
+            })?),
+            scopes: Set(serde_json::to_value(&input.scopes)
+                .map_err(|error| Error::Message(format!("failed to serialize scopes: {error}")))?),
+            grant_types: Set(serde_json::to_value(&input.grant_types).map_err(|error| {
+                Error::Message(format!("failed to serialize grant_types: {error}"))
+            })?),
             granted_permissions: Set(to_json_array(&granted_permissions)?),
             manifest_ref: Set(None),
             auto_created: Set(false),
@@ -114,7 +114,7 @@ impl OAuthAppService {
         }
         .insert(db)
         .await
-        .map_err(|_| Error::InternalServerError)?;
+        .map_err(|error| Error::Message(format!("failed to insert oauth app: {error}")))?;
 
         Ok(CreateOAuthAppResult {
             app,

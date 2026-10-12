@@ -11,7 +11,7 @@ function Table({ className, ...props }: React.ComponentProps<'table'>) {
       // A horizontally scrollable table is unreachable by keyboard unless the scroll box itself is
       // focusable; `role='region'` is deliberately not set here because this element has no
       // accessible name — a named region is the caller's job (see `DataTableStatic`).
-      className='relative w-full overflow-x-auto focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none'
+      className='focus-visible:ring-ring relative w-full overflow-x-auto focus-visible:ring-1 focus-visible:outline-none'
       tabIndex={0}
     >
       <table

@@ -7,7 +7,9 @@ use async_trait::async_trait;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
 use chrono::Utc;
-use rustok_api::{HostRuntimeContext, TenantContext, TenantContextExtension};
+use rustok_api::{
+    HostRuntimeContext, ResolvedRequestLocale, TenantContext, TenantContextExtension,
+};
 use rustok_core::MigrationSource;
 use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_page_builder::static_landing::StaticLandingCompiler;
@@ -27,7 +29,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 const RESPONSE_BODY_LIMIT: usize = 3 * 1024 * 1024;
-const EXPECTED_VARY: &str = "X-Tenant-ID, X-Channel-Slug, X-Channel-ID";
+const EXPECTED_VARY: &str = "X-Tenant-ID, X-Tenant-Slug, X-Channel-Slug, X-Channel-ID";
 const EXPECTED_CACHE_CONTROL: &str = "public, max-age=60, stale-while-revalidate=300";
 
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -401,6 +403,10 @@ fn artifact_request(fixture: &ArtifactFixture, if_none_match: Option<&str>) -> R
     request
         .extensions_mut()
         .insert(TenantContextExtension(tenant_context(fixture.tenant_id)));
+    request.extensions_mut().insert(ResolvedRequestLocale {
+        requested_locale: Some("en".to_string()),
+        effective_locale: "en".to_string(),
+    });
     request
 }
 

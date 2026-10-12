@@ -23,7 +23,7 @@ pub fn GridPaginationBar(
     on_load_more: Callback<()>,
     /// Selectable page sizes. The current page size is always included so the
     /// `<select>` can never end up showing a blank value.
-    #[prop(optional)]
+    #[prop(default = None)]
     page_size_options: Option<Vec<usize>>,
 ) -> impl IntoView {
     let sentinel_ref = NodeRef::<Div>::new();

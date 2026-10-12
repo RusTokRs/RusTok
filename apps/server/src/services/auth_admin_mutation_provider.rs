@@ -34,7 +34,7 @@ where
         error = %error,
         "Auth administration operation failed"
     );
-    AuthAdminMutationError::Internal("Auth administration operation failed".to_string())
+    AuthAdminMutationError::Internal(format!("Auth administration operation failed: {error}"))
 }
 
 pub(crate) async fn build_oauth_app_record<C>(

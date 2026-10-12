@@ -66,12 +66,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let other_tenant_id = Uuid::new_v4();
     seed_tenant(&seed_connection, tenant_id, "inventory-stock-location").await?;
-    seed_tenant(
-        &seed_connection,
-        other_tenant_id,
-        "inventory-stock-location-isolation",
-    )
-    .await?;
+    seed_tenant(&seed_connection, other_tenant_id, "inv-loc-isolation").await?;
 
     let bootstrap_txn = seed_connection.begin().await?;
     let location =
