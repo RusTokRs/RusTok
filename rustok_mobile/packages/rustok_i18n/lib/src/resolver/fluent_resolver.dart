@@ -479,6 +479,19 @@ class _FluentResolver {
     return '';
   }
 
+  /// Numeric value of a selector that is a variable or `NUMBER()` call, if any.
+  num? _selectorNumber(FtlExpression selector) {
+    if (selector is FtlVariableReference) {
+      return _numericValue(args[selector.id]);
+    }
+    if (selector is FtlFunctionReference &&
+        selector.name == 'NUMBER' &&
+        selector.positional.isNotEmpty) {
+      return _numericValue(_rawValue(selector.positional.first));
+    }
+    return null;
+  }
+
   String _resolveSelect(FtlSelectExpression expr, {required int depth}) {
     final selectorValue = resolveExpression(expr.selector, depth: depth);
     final cleanSelector =
@@ -491,7 +504,9 @@ class _FluentResolver {
       }
     }
 
-    final numericValue = num.tryParse(cleanSelector);
+    // Plural selection uses the raw number, not the display string: `1,234`
+    // from NUMBER() must still select by its numeric value.
+    final numericValue = _selectorNumber(expr.selector) ?? num.tryParse(cleanSelector);
     if (numericValue != null) {
       // 2a. Exact numeric key (e.g. [0]) takes precedence over plural categories.
       for (final variant in expr.variants) {
