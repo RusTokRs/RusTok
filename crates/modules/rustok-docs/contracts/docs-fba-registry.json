@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "module": "docs",
+  "role": "provider",
+  "status": "boundary_ready",
+  "services": [
+    {
+      "name": "DocumentService",
+      "operations": [
+        "create_page",
+        "get_page",
+        "get_page_by_slug",
+        "list_pages",
+        "get_page_tree",
+        "update_page",
+        "delete_page",
+        "load_document",
+        "append_updates",
+        "compact_snapshot",
+        "get_sync_payload",
+        "sync_entity_links",
+        "render_markdown"
+      ]
+    }
+  ],
+  "crdt_engine": {
+    "name": "Loro",
+    "version": "1.16.2",
+    "capabilities": [
+      "MovableTree",
+      "LoroText",
+      "Frontiers",
+      "ExportMode::Snapshot",
+      "ExportMode::Updates"
+    ]
+  },
+  "evidence": {
+    "local_plan": "crates/modules/rustok-docs/docs/implementation-plan.md",
+    "crate_api": "crates/modules/rustok-docs/CRATE_API.md",
+    "central_board": "docs/modules/registry.md"
+  }
+}
