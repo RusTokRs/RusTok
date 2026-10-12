@@ -185,7 +185,9 @@ for (const marker of [
 requireOrder(
   sources.reviewedPublish,
   [
-    "fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot",
+    sources.reviewedPublish.includes("fn body_revision_snapshot(bodies: &[WorkingBody]) -> BodyRevisionSnapshot")
+      ? "fn body_revision_snapshot(bodies: &[WorkingBody]) -> BodyRevisionSnapshot"
+      : "fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot",
     ".map(|body| (body.locale.clone(), body.updated_at.to_string()))",
     "revisions.sort();",
   ],

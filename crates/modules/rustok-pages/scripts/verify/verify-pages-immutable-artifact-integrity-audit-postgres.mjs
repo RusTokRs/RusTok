@@ -134,7 +134,9 @@ for (const forbidden of [
   "use sha2::{Digest, Sha256};",
 ]) forbidText(harness, forbidden, "PostgreSQL reviewed publish revision fixture");
 requireOrder(reviewedPublish, [
-  "fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot",
+  reviewedPublish.includes("fn body_revision_snapshot(bodies: &[WorkingBody]) -> BodyRevisionSnapshot")
+    ? "fn body_revision_snapshot(bodies: &[WorkingBody]) -> BodyRevisionSnapshot"
+    : "fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot",
   ".map(|body| (body.locale.clone(), body.updated_at.to_string()))",
   "revisions.sort();",
 ], "reviewed publish owner revision snapshot");
