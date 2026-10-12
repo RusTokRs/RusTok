@@ -21,6 +21,7 @@ The strategic goal is to establish RusToK as the foundation for a high-performan
 - **Statutory & General Accounting:** Universal double-entry Chart of Accounts, Journal transactions ($\sum \text{Dr} = \sum \text{Cr}$), Configurable posting rules (Posting Profiles), Indexed relational subconto analytics, Trial balances (Оборотно-сальдовая ведомость), Balance sheets (`rustok-accounting`).
 - **Auxiliary No-Code Automation:** Visual automation engine (`rustok-workflow` as an n8n analogue) for user-defined rapid notifications, webhooks, and third-party integrations, strictly decoupled from core system guarantees.
 - **Mobile SuperApp (Flutter / FFA):** Role-based workspaces (Warehouse, Courier, Sales, Executive) with offline-first draft collection and server-authoritative transactional posting.
+- **Workplace & Collaboration SuperApp:** Highload distributed messaging (`rustok-messenger`), Notion-grade collaborative docs with Live ERP blocks (`rustok-docs`), WebRTC conferencing (`rustok-calls`), and calendar scheduling (`rustok-calendar`), detailed in the companion plan [Workplace & Collaboration SuperApp Plan](./workplace-collaboration-superapp-plan.md).
 
 ---
 
@@ -321,3 +322,10 @@ gantt
 - **Backend:** `rustok-accounting` (Chart of accounts, Posting Rules Engine, double-entry postings $\sum \text{Dr} = \sum \text{Cr}$, typed relational subconto).
 - **Invariants:** Balanced journal lines, immutable postings (storno only), strict period closing locks.
 - **Client:** Trial Balance (Оборотно-сальдовая ведомость), Ledger journal view, P&L / Balance Sheet reports.
+
+---
+
+## 7. Companion Workplace and Collaboration Architecture
+
+For team communication, collaborative knowledge bases, video meetings, and scheduling (the office productivity and digital HQ layer that complements our transaction/accounting core), see the companion architecture plan:
+- [Unified Workplace & Collaboration SuperApp: Messenger, Notion-Grade Docs, LiveKit Calls, and Calendar](./workplace-collaboration-superapp-plan.md)
