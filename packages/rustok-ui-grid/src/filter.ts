@@ -1,9 +1,22 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
 /**
  * Column filter specifications and values for RusTok DataGrid — the TypeScript twin of
  * `crates/ui/rustok-grid/src/filter.rs`.
  *
- * Framework-free: normalized non-empty filter representations.
+ * Framework-free: normalized non-empty filter representations. "A key is present" therefore means
+ * "this filter is active", which is what makes the map safe to hand to a query.
  */
+
+import { compareCodePoints } from './order';
 
 /** One option of a select filter. Counts are owned by facets, not filter options. */
 export interface FilterOption {
@@ -164,8 +177,18 @@ export function normalizeFilterValue(value: unknown): FilterValue | null {
   }
 }
 
+/**
+ * True when the value carries no constraint at all.
+ *
+ * `booleanFilter(false)` is *not* empty: filtering on "false" is a real query. This is the twin of
+ * Rust's `FilterValue::is_empty`; the map-level question is `hasActiveFilters`.
+ */
+export function isFilterValueEmpty(value: unknown): boolean {
+  return !isFilterValueActive(value);
+}
+
 /** True when the value carries an active constraint. `Boolean(false)` remains active. */
-export function isFilterActive(value: unknown): boolean {
+export function isFilterValueActive(value: unknown): boolean {
   const normalized = normalizeFilterValue(value);
   if (normalized === null || normalized.kind === 'empty') return false;
 
@@ -182,16 +205,35 @@ export function isFilterActive(value: unknown): boolean {
   }
 }
 
-function compareCodePoints(left: string, right: string): number {
-  const leftPoints = Array.from(left, (character) => character.codePointAt(0) ?? 0);
-  const rightPoints = Array.from(right, (character) => character.codePointAt(0) ?? 0);
-  const length = Math.min(leftPoints.length, rightPoints.length);
-  for (let index = 0; index < length; index += 1) {
-    const difference = leftPoints[index] - rightPoints[index];
-    if (difference !== 0) return difference;
-  }
-  return leftPoints.length - rightPoints.length;
+/** The text of a `text` filter value, mirroring Rust's `FilterValue::as_text`. */
+export function filterValueText(value: FilterValue | undefined): string | null {
+  return value?.kind === 'text' ? value.value : null;
 }
+
+/** The option id of a `select` filter value, mirroring `FilterValue::as_select`. */
+export function filterValueSelect(value: FilterValue | undefined): string | null {
+  return value?.kind === 'select' ? value.value : null;
+}
+
+/** The bounds of a `number_range`, mirroring `FilterValue::as_number_range`. */
+export function filterValueNumberRange(
+  value: FilterValue | undefined,
+): [number | null, number | null] | null {
+  return value?.kind === 'number_range' ? [value.min, value.max] : null;
+}
+
+/** The bounds of a `date_range`, mirroring `FilterValue::as_date_range`. */
+export function filterValueDateRange(
+  value: FilterValue | undefined,
+): [string | null, string | null] | null {
+  return value?.kind === 'date_range' ? [value.from, value.to] : null;
+}
+
+/** The answer of a `boolean` filter value, mirroring `FilterValue::as_bool`. */
+export function filterValueBoolean(value: FilterValue | undefined): boolean | null {
+  return value?.kind === 'boolean' ? value.value : null;
+}
+
 
 function defineFilter(target: Record<string, FilterValue>, key: string, value: FilterValue): void {
   Object.defineProperty(target, key, {
@@ -207,29 +249,38 @@ export function normalizeFilters(filters: Readonly<Record<string, unknown>>): Co
   const normalized: Record<string, FilterValue> = {};
   for (const key of Object.keys(filters ?? {}).sort(compareCodePoints)) {
     const value = normalizeFilterValue(filters[key]);
-    if (value !== null && isFilterActive(value)) defineFilter(normalized, key, value);
+    if (value !== null && isFilterValueActive(value)) defineFilter(normalized, key, value);
   }
   return normalized;
 }
 
-function sameFilterValue(left: FilterValue, right: FilterValue): boolean {
-  if (left.kind !== right.kind) return false;
-  switch (left.kind) {
-    case 'text':
-    case 'select':
-      return right.kind === left.kind && left.value === right.value;
-    case 'number_range':
-      return right.kind === left.kind && left.min === right.min && left.max === right.max;
-    case 'date_range':
-      return right.kind === left.kind && left.from === right.from && left.to === right.to;
-    case 'boolean':
-      return right.kind === left.kind && left.value === right.value;
+/** Structural equality of two filter values after normalization, mirroring Rust's derived `Eq`. */
+export function isFilterEqual(left: unknown, right: unknown): boolean {
+  const a = normalizeFilterValue(left);
+  const b = normalizeFilterValue(right);
+  if (a === null || b === null) return a === b;
+  switch (a.kind) {
     case 'empty':
-      return true;
+      return b.kind === 'empty';
+    case 'text':
+      return b.kind === 'text' && a.value === b.value;
+    case 'select':
+      return b.kind === 'select' && a.value === b.value;
+    case 'boolean':
+      return b.kind === 'boolean' && a.value === b.value;
+    case 'number_range':
+      return b.kind === 'number_range' && a.min === b.min && a.max === b.max;
+    case 'date_range':
+      return b.kind === 'date_range' && a.from === b.from && a.to === b.to;
   }
 }
 
-/** Immutable counterpart of `ColumnFilters::set`; reports whether canonical state changed. */
+/**
+ * Immutable counterpart of `ColumnFilters::set`; reports whether canonical state changed.
+ *
+ * An empty or invalid value removes the entry instead of persisting a no-op constraint, so the map
+ * never carries a filter that changes nothing.
+ */
 export function setColumnFilter(
   filters: ColumnFilters,
   columnId: string,
@@ -239,14 +290,14 @@ export function setColumnFilter(
   const value = normalizeFilterValue(rawValue);
   const hasCurrent = Object.prototype.hasOwnProperty.call(current, columnId);
 
-  if (value === null || !isFilterActive(value)) {
+  if (value === null || !isFilterValueActive(value)) {
     if (!hasCurrent) return { filters: current, changed: false };
     const next = { ...current };
     delete next[columnId];
     return { filters: next, changed: true };
   }
 
-  if (hasCurrent && sameFilterValue(current[columnId], value)) {
+  if (hasCurrent && isFilterEqual(current[columnId], value)) {
     return { filters: current, changed: false };
   }
 
@@ -309,68 +360,7 @@ export function columnFilterCount(filters: ColumnFilters): number {
   return columnFilterKeys(filters).length;
 }
 
-/**
- * Checks whether two filter values are equal.
- */
-export function isFilterEqual(a: FilterValue | undefined, b: FilterValue | undefined): boolean {
-  if (a === b) return true;
-  if (a === undefined || a === null) return b === undefined || b === null;
-  if (b === undefined || b === null) return false;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    return a.every((v, i) => v === b[i]);
-  }
-  return false;
-}
-
-/**
- * Stores a filter value immutably. Empty values remove the entry.
- * Returns `{ filters, changed }`.
- */
-export function setFilter(
-  filters: ColumnFilters,
-  columnId: string,
-  value: unknown
-): { filters: ColumnFilters; changed: boolean } {
-  return setColumnFilter(filters, columnId, value);
-}
-
-/**
- * Removes a filter by columnId immutably.
- */
-export function removeFilter(
-  filters: ColumnFilters,
-  columnId: string
-): { filters: ColumnFilters; changed: boolean } {
-  if (!(columnId in filters)) {
-    return { filters, changed: false };
-  }
-  const next = { ...filters };
-  delete next[columnId];
-  return { filters: next, changed: true };
-}
-
-/**
- * Clears all active filters immutably.
- */
-export function clearFilters(filters: ColumnFilters): {
-  filters: ColumnFilters;
-  changed: boolean;
-} {
-  const hasAny = Object.keys(filters).length > 0;
-  return { filters: {}, changed: hasAny };
-}
-
-/**
- * Checks whether any filters are active.
- */
+/** True when at least one filter is active — the map-level twin of Rust's `ColumnFilters::is_empty`. */
 export function hasActiveFilters(filters: ColumnFilters): boolean {
-  return Object.keys(normalizeFilters(filters)).length > 0;
-}
-
-/**
- * Returns the count of active column filters.
- */
-export function activeFilterCount(filters: ColumnFilters): number {
-  return Object.keys(normalizeFilters(filters)).length;
+  return columnFilterCount(filters) > 0;
 }

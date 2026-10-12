@@ -334,6 +334,31 @@ impl ColumnFilters {
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.filters.keys()
     }
+
+    /// The rows satisfying every active filter, in their original order.
+    ///
+    /// The filter map is already normalized (only active values are stored), so this is a plain
+    /// `all`-over-predicates sweep; the row-to-cell mapping stays owner-side. A grid whose rows are
+    /// projected by a server query keeps pushing its predicates down instead — this is the
+    /// client-side path, and it exists so a table does not write its own `matches_*_filter` loop.
+    pub fn retain_matching<T, F>(&self, items: &[T], cell_of: F) -> Vec<T>
+    where
+        T: Clone,
+        F: Fn(&T, &str) -> crate::cell::CellValue,
+    {
+        if self.filters.is_empty() {
+            return items.to_vec();
+        }
+        items
+            .iter()
+            .filter(|item| {
+                self.filters
+                    .iter()
+                    .all(|(column_id, filter)| cell_of(item, column_id).matches(filter))
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 impl<'a> IntoIterator for &'a ColumnFilters {
@@ -460,6 +485,36 @@ mod tests {
         assert!(filters.set("status", FilterValue::Select(String::new())));
         assert!(filters.is_empty());
         assert!(!filters.clear());
+    }
+
+    #[test]
+    fn retain_matching_keeps_declaration_order_and_needs_no_cell_for_an_empty_map() {
+        let rows = [("a", 1.0), ("b", 2.0), ("c", 3.0)];
+        let cell_of = |row: &(&str, f64), column_id: &str| match column_id {
+            "name" => crate::cell::CellValue::text(row.0),
+            "price" => crate::cell::CellValue::number(row.1),
+            _ => crate::cell::CellValue::Empty,
+        };
+        assert_eq!(
+            ColumnFilters::new().retain_matching(&rows, cell_of),
+            vec![("a", 1.0), ("b", 2.0), ("c", 3.0)]
+        );
+
+        let mut filters = ColumnFilters::new();
+        filters.set("name", FilterValue::Text("  B ".into()));
+        filters.set(
+            "price",
+            FilterValue::NumberRange {
+                min: Some(1.0),
+                max: None,
+            },
+        );
+        assert_eq!(filters.retain_matching(&rows, cell_of), vec![("b", 2.0)]);
+
+        // A filter over a column the row does not answer for excludes that row rather than crashing.
+        let mut unknown = ColumnFilters::new();
+        unknown.set("missing", FilterValue::Text("anything".into()));
+        assert!(unknown.retain_matching(&rows, cell_of).is_empty());
     }
 
     #[test]

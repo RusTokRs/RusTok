@@ -240,7 +240,9 @@ export function evaluateHostRules({ files, manifests }) {
     "export function DataTablePaginationBar",
     "export function dataTableRangeLabel",
     "emptyState",
-    "colSpan={columns.length}",
+    // The empty row spans every declared column, with a floor of one so a header-only table still
+    // has a cell to hold it — the same rule both Rust grid adapters apply to their `colspan`.
+    "colSpan={Math.max(1, columns.length)}",
   ]) {
     if (!staticHost.includes(marker)) failures.push(`${STATIC_HOST}: missing ${marker}`);
   }

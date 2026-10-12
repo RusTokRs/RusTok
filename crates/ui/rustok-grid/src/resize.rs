@@ -63,6 +63,18 @@ impl ColumnWidths {
         self.widths.clear();
     }
 
+    /// Drop every override whose column id is not in `known_ids`, returning how many went away.
+    ///
+    /// A width stored for a column that has since been removed would otherwise live in the
+    /// persisted state forever — and silently win again if that id ever came back with other bounds.
+    pub fn prune_to<'a>(&mut self, known_ids: impl IntoIterator<Item = &'a str>) -> usize {
+        let keep: std::collections::BTreeSet<&str> = known_ids.into_iter().collect();
+        let before = self.widths.len();
+        self.widths
+            .retain(|column_id, _| keep.contains(column_id.as_str()));
+        before - self.widths.len()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.widths.is_empty()
     }
@@ -144,6 +156,18 @@ mod tests {
     fn keyboard_steps_respect_bounds() {
         assert_eq!(step_resized_width(150, KEYBOARD_RESIZE_STEP, 50, 400), 166);
         assert_eq!(step_resized_width(60, -KEYBOARD_RESIZE_STEP, 50, 400), 50);
+    }
+
+    #[test]
+    fn stale_overrides_are_pruned_and_the_count_is_reported() {
+        let mut widths = ColumnWidths::new();
+        widths.set("title", 240);
+        widths.set("ghost", 120);
+        assert_eq!(widths.prune_to(["title"]), 1);
+        assert!(widths.get_stored("ghost").is_none());
+        assert_eq!(widths.get_stored("title"), Some(240));
+        // Pruning again is a no-op, so a caller can tell nothing was dropped.
+        assert_eq!(widths.prune_to(["title"]), 0);
     }
 
     #[test]

@@ -4,8 +4,11 @@ use dioxus::prelude::*;
 
 use rustok_grid::{GridPagination, PaginationMode};
 
-/// Default choices offered by the "rows per page" selector.
-pub const DEFAULT_PAGE_SIZE_OPTIONS: [usize; 4] = [10, 20, 50, 100];
+/// The choices offered by the "rows per page" selector when the caller does not configure any.
+///
+/// Re-exported from the core rather than repeated here: the picker and the state machine that
+/// validates a page size must agree on the list, and only the core can guarantee that.
+pub use rustok_grid::DEFAULT_PAGE_SIZE_OPTIONS;
 
 /// Footer bar of the grid.
 ///
@@ -40,16 +43,12 @@ pub fn GridPaginationBar(
     let has_next = pagination.has_next;
     let is_infinite = pagination.mode == PaginationMode::Infinite;
 
-    let size_options = {
-        let mut options = page_size_options.unwrap_or_else(|| DEFAULT_PAGE_SIZE_OPTIONS.to_vec());
-        options.retain(|size| *size > 0);
-        if !options.contains(&page_size) {
-            options.push(page_size);
-        }
-        options.sort_unstable();
-        options.dedup();
-        options
-    };
+    // An unset list stays empty; the core's normalizer turns "unset" into the default choices and
+    // keeps the current size selectable, which is the same rule the Leptos bar follows.
+    let size_options = GridPagination::normalize_page_size_options(
+        &page_size_options.unwrap_or_default(),
+        page_size,
+    );
 
     let pager: Option<Element> = (!is_infinite).then(|| {
         rsx! {
@@ -87,6 +86,9 @@ pub fn GridPaginationBar(
         rsx! {
             button {
                 r#type: "button",
+                // The visible text alone does not say what is loaded; the Leptos bar names the
+                // same action, so both hosts announce it identically.
+                "aria-label": "Load more rows",
                 class: "text-[11px] px-2 py-1 rounded border border-border hover:bg-muted font-medium text-foreground transition-colors",
                 onclick: move |_| on_load_more.call(()),
                 "Load more"

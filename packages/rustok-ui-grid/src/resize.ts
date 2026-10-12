@@ -1,11 +1,29 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
 /**
  * Column resize math and persisted width state — the TypeScript twin of
  * `crates/ui/rustok-grid/src/resize.rs`.
  *
  * No DOM or pointer APIs live here: adapters provide the pointer delta and render the result.
+ *
+ * `ColumnWidths` is persisted state (local storage, a URL, a user profile), so **reads repair**:
+ * a stale, hand-edited or out-of-range value is clamped instead of throwing in a render path.
+ * **Writes stay strict**: a caller that hands us a non-integer or a negative width is a bug, and a
+ * thrown `RangeError` is the honest answer.
  */
 
+import { compareCodePoints } from './order';
+
 import {
+  MAX_COLUMN_WIDTH,
   assertColumnWidthPx,
   type ColumnWidth,
 } from './column';
@@ -16,41 +34,18 @@ export const KEYBOARD_RESIZE_STEP = 16;
 /** User-overridden column widths, stored as a JSON-friendly record keyed by column id. */
 export type ColumnWidths = Readonly<Record<string, number>>;
 
-/**
- * Compatibility class for object-oriented ColumnWidths usage.
- */
-export class ColumnWidthsStore {
-  private widths: Record<string, number>;
-  constructor(initial?: Record<string, number>) {
-    this.widths = { ...(initial ?? {}) };
-  }
-  getStored(columnId: string): number | undefined {
-    return getStoredColumnWidth(this.widths, columnId);
-  }
-  get(columnId: string, defaultWidth: number): number {
-    return getColumnWidth(this.widths, columnId, defaultWidth);
-  }
-  getClamped(columnId: string, defaultWidth: number, min: number, max: number): number {
-    return getClampedColumnWidth(this.widths, columnId, defaultWidth, min, max);
-  }
-  set(columnId: string, width: number): void {
-    const res = setColumnWidth(this.widths, columnId, width);
-    this.widths = { ...res.widths };
-  }
-  setClamped(columnId: string, width: number, min: number, max: number): boolean {
-    const res = setClampedColumnWidth(this.widths, columnId, width, min, max);
-    this.widths = { ...res.widths };
-    return res.changed;
-  }
-  toRecord(): Record<string, number> {
-    return { ...this.widths };
-  }
+/** Repair one persisted width: non-finite input means "no usable override". */
+function repairStoredWidth(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  const truncated = Math.trunc(value);
+  if (truncated <= 0) return 0;
+  return truncated > MAX_COLUMN_WIDTH ? MAX_COLUMN_WIDTH : truncated;
 }
 
-/** Stored override, if the user ever resized this column. */
+/** Stored override, if the user ever resized this column. Repairs a corrupted value. */
 export function getStoredColumnWidth(widths: ColumnWidths, columnId: string): number | undefined {
   if (!Object.prototype.hasOwnProperty.call(widths, columnId)) return undefined;
-  return assertColumnWidthPx(widths[columnId], 'stored column width');
+  return repairStoredWidth(widths[columnId]);
 }
 
 /** Read a stored width or return the column's default width. */
@@ -59,10 +54,17 @@ export function getColumnWidth(
   columnId: string,
   defaultWidth: number,
 ): number {
-  return getStoredColumnWidth(widths, columnId) ?? assertColumnWidthPx(defaultWidth, 'default width');
+  const stored = getStoredColumnWidth(widths, columnId);
+  if (stored !== undefined) return stored;
+  return repairStoredWidth(defaultWidth) ?? 0;
 }
 
-/** Read a persisted width while enforcing the current column constraints. */
+/**
+ * Read a persisted width while enforcing the current column constraints.
+ *
+ * This is what protects the renderer from stale or hand-edited serialized state: reversed bounds
+ * are ordered and any number is pulled into the range, so the answer is always a drawable width.
+ */
 export function getClampedColumnWidth(
   widths: ColumnWidths,
   columnId: string,
@@ -70,11 +72,15 @@ export function getClampedColumnWidth(
   minWidth: number,
   maxWidth: number,
 ): number {
-  const min = assertColumnWidthPx(minWidth, 'min width');
-  const max = assertColumnWidthPx(maxWidth, 'max width');
-  const lower = Math.min(min, max);
-  const upper = Math.max(min, max);
-  return Math.min(upper, Math.max(lower, getColumnWidth(widths, columnId, defaultWidth)));
+  const [low, high] = orderedBounds(minWidth, maxWidth);
+  const value = getColumnWidth(widths, columnId, defaultWidth);
+  return Math.min(high, Math.max(low, value));
+}
+
+function orderedBounds(minWidth: number, maxWidth: number): [number, number] {
+  const min = repairStoredWidth(minWidth) ?? 0;
+  const max = repairStoredWidth(maxWidth) ?? MAX_COLUMN_WIDTH;
+  return min <= max ? [min, max] : [max, min];
 }
 
 /** Store a width without applying column bounds. */
@@ -88,7 +94,7 @@ export function setColumnWidth(
   return { widths: { ...widths, [columnId]: value }, changed: true };
 }
 
-/** Store a width while enforcing the column's current constraints. */
+/** Store a width while enforcing the column's constraints; reports whether it actually changed. */
 export function setClampedColumnWidth(
   widths: ColumnWidths,
   columnId: string,
@@ -96,12 +102,9 @@ export function setClampedColumnWidth(
   minWidth: number,
   maxWidth: number,
 ): { widths: ColumnWidths; changed: boolean } {
-  const min = assertColumnWidthPx(minWidth, 'min width');
-  const max = assertColumnWidthPx(maxWidth, 'max width');
-  const low = Math.min(min, max);
-  const high = Math.max(min, max);
-  const clamped = Math.min(high, Math.max(low, assertColumnWidthPx(width)));
-  return setColumnWidth(widths, columnId, clamped);
+  const [low, high] = orderedBounds(minWidth, maxWidth);
+  const value = assertColumnWidthPx(width);
+  return setColumnWidth(widths, columnId, Math.min(high, Math.max(low, value)));
 }
 
 /** Remove one stored override. */
@@ -126,25 +129,20 @@ export function columnWidthsAreEmpty(widths: ColumnWidths): boolean {
   return Object.keys(widths).length === 0;
 }
 
-function compareCodePoints(left: string, right: string): number {
-  const leftPoints = Array.from(left, (character) => character.codePointAt(0) ?? 0);
-  const rightPoints = Array.from(right, (character) => character.codePointAt(0) ?? 0);
-  const length = Math.min(leftPoints.length, rightPoints.length);
-  for (let index = 0; index < length; index += 1) {
-    const difference = leftPoints[index] - rightPoints[index];
-    if (difference !== 0) return difference;
-  }
-  return leftPoints.length - rightPoints.length;
-}
-
 /** Stored width overrides in Rust-compatible deterministic key order. */
 export function columnWidthEntries(widths: ColumnWidths): Array<[string, number]> {
-  return Object.keys(widths)
-    .sort(compareCodePoints)
-    .map((columnId) => [columnId, assertColumnWidthPx(widths[columnId], 'stored column width')]);
+  const entries: Array<[string, number]> = [];
+  for (const columnId of Object.keys(widths).sort(compareCodePoints)) {
+    const width = repairStoredWidth(widths[columnId]);
+    // An override that carries no usable width is dropped rather than rendered: repairing it here
+    // is what keeps `normalizeColumnWidths` a repair and not a validation error.
+    if (width === undefined) continue;
+    entries.push([columnId, width]);
+  }
+  return entries;
 }
 
-/** Repair a serialized width record to valid Rust-compatible `u32` values. */
+/** Repair a serialized width record to valid Rust-compatible `u32` values, in key order. */
 export function normalizeColumnWidths(widths: ColumnWidths): ColumnWidths {
   const normalized: Record<string, number> = {};
   for (const [columnId, width] of columnWidthEntries(widths)) {
@@ -158,7 +156,33 @@ export function normalizeColumnWidths(widths: ColumnWidths): ColumnWidths {
   return normalized;
 }
 
-/** Clamp every stored override against the current column definitions. */
+/**
+ * Keep only the overrides of columns that still exist.
+ *
+ * A width stored for a column that has since been removed would otherwise live in the persisted
+ * state forever, and silently win again if the column id ever comes back with other bounds.
+ */
+export function pruneColumnWidths(
+  widths: ColumnWidths,
+  columns: readonly { id: string }[],
+): { widths: ColumnWidths; changed: boolean } {
+  const known = new Set(columns.map((column) => column.id));
+  const next: Record<string, number> = {};
+  let changed = false;
+  for (const [columnId, width] of columnWidthEntries(widths)) {
+    if (!known.has(columnId)) {
+      changed = true;
+      continue;
+    }
+    next[columnId] = width;
+  }
+  return changed ? { widths: next, changed } : { widths, changed };
+}
+
+/**
+ * Clamp every stored override against the current column definitions and drop the overrides of
+ * removed columns. Mirrors `GridState::clamp_widths`.
+ */
 export function clampColumnWidths(
   widths: ColumnWidths,
   columns: readonly { id: string; width: ColumnWidth }[],
@@ -167,15 +191,15 @@ export function clampColumnWidths(
   for (const column of columns) {
     const stored = getStoredColumnWidth(next, column.id);
     if (stored === undefined) continue;
-    next = setClampedColumnWidth(
-      next,
-      column.id,
-      stored,
-      column.width.min,
-      column.width.max,
-    ).widths;
+    next = setClampedColumnWidth(next, column.id, stored, column.width.min, column.width.max)
+      .widths;
   }
-  return next;
+  const known = new Set(columns.map((column) => column.id));
+  const kept: Record<string, number> = {};
+  for (const [columnId, width] of columnWidthEntries(next)) {
+    if (known.has(columnId)) kept[columnId] = width;
+  }
+  return kept;
 }
 
 function roundTiesAwayFromZero(value: number): number {
@@ -186,6 +210,7 @@ function roundTiesAwayFromZero(value: number): number {
  * Calculate a resized width with min/max bounds. Non-finite pointer deltas leave the current width
  * in place, and reversed bounds are normalized before use.
  */
+
 export function calculateResizedWidth(
   initialWidth: number,
   deltaX: number,
@@ -193,10 +218,7 @@ export function calculateResizedWidth(
   maxWidth: number,
 ): number {
   const initial = assertColumnWidthPx(initialWidth, 'initial width');
-  const min = assertColumnWidthPx(minWidth, 'min width');
-  const max = assertColumnWidthPx(maxWidth, 'max width');
-  const low = Math.min(min, max);
-  const high = Math.max(min, max);
+  const [low, high] = orderedBounds(minWidth, maxWidth);
   if (!Number.isFinite(deltaX)) return Math.min(high, Math.max(low, initial));
 
   const proposed = initial + deltaX;
