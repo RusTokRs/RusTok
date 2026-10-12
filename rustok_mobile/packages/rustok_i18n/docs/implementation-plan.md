@@ -3,6 +3,13 @@
 > **Canonical Document**: Library implementation plan and architectural specification.
 > **Scope**: Pure Dart core (`rustok_i18n`) and Flutter bindings (`rustok_flutter_i18n`).
 > **Goal**: Community-grade, multi-catalog Project Fluent i18n platform with zero runtime coupling.
+>
+> **Status note (audit, 0.1.0+)**: this document is the original design. Where it differs from the code, the code is authoritative:
+> - The parser is hand-written, not PetitParser; `petitparser` and `intl` are no longer dependencies.
+> - `LazyCatalog` is implemented for on-demand asynchronous loading (`loadLocale`, `loadForLocale`). Remote sources are supplied as a loader function; there is no built-in HTTP client. `AsyncRemoteCatalog` and `appLocaleProvider` are **not implemented**; the Riverpod locale provider is `currentLocaleProvider`.
+> - Riverpod state is a `StateNotifier`, not an `AsyncNotifier`. Locale changes are validated. `localeReadyProvider` and `RiverpodFluentScope` load and gate a lazy catalog.
+> - `DATETIME()` is implemented for a subset of locales. `NUMBER()` supports grouping and percent style; `CURRENCY()` is implemented as `NUMBER(..., style: "currency")` for common codes.
+> - Flutter widget and Riverpod tests live in `rustok_flutter_i18n/test`; CI runs them in `.github/workflows/rustok-i18n.yml`.
 
 ---
 

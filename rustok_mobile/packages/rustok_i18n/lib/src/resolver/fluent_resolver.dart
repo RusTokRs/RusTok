@@ -1,5 +1,8 @@
 import '../ast/ast_nodes.dart';
 import '../parser/ftl_parser.dart';
+import '../format/currency.dart';
+import '../format/datetime_format.dart';
+import '../format/number_symbols.dart';
 import 'cldr_plurals.dart';
 
 /// Unicode BiDi isolation characters.
@@ -18,13 +21,33 @@ class FluentBundle {
 
   final Map<String, FtlMessage> _messages = {};
   final Map<String, FtlTerm> _terms = {};
+  final List<String> _diagnostics = [];
 
+  /// Problems found while loading resources: junk entries and duplicate IDs.
+  ///
+  /// Empty when the loaded sources are fully valid.
+  List<String> get diagnostics => List.unmodifiable(_diagnostics);
+
+  /// Adds parsed entries. When an ID is defined more than once, the first
+  /// definition is kept and the duplicate is reported in [diagnostics].
   void addResource(FtlResource resource) {
     for (final entry in resource.entries) {
       if (entry is FtlMessage) {
-        _messages[entry.id] = entry;
+        if (_messages.containsKey(entry.id)) {
+          _diagnostics.add('Duplicate message "${entry.id}" ignored; first definition wins');
+        } else {
+          _messages[entry.id] = entry;
+        }
       } else if (entry is FtlTerm) {
-        _terms[entry.id] = entry;
+        if (_terms.containsKey(entry.id)) {
+          _diagnostics.add('Duplicate term "-${entry.id}" ignored; first definition wins');
+        } else {
+          _terms[entry.id] = entry;
+        }
+      } else if (entry is FtlJunk) {
+        final reason = entry.message ?? 'unparseable entry';
+        final firstLine = entry.content.split('\n').first;
+        _diagnostics.add('Junk ($reason): $firstLine');
       }
     }
   }
@@ -52,22 +75,16 @@ class FluentBundle {
     final message = _messages[id];
     if (message == null) return null;
 
-    FtlPattern? pattern;
-    if (attribute != null) {
-      final attr = message.findAttribute(attribute);
-      if (attr == null) return null;
-      pattern = attr.value;
-    } else {
-      pattern = message.value;
-    }
-
+    final FtlPattern? pattern = attribute != null
+        ? message.findAttribute(attribute)?.value
+        : message.value;
     if (pattern == null) return null;
 
-    final entryKey = 'msg:$id${attribute != null ? ".$attribute" : ""}';
+    final suffix = attribute != null ? '.$attribute' : '';
     final resolver = _FluentResolver(
       bundle: this,
-      args: args ?? const {},
-      activeEntries: {entryKey},
+      args: args ?? const <String, dynamic>{},
+      activeEntries: <String>{'msg:$id$suffix'},
     );
     return resolver.resolvePattern(pattern);
   }
@@ -81,33 +98,141 @@ class FluentBundle {
     final term = _terms[id];
     if (term == null) return null;
 
-    FtlPattern? pattern;
-    if (attribute != null) {
-      final attr = term.findAttribute(attribute);
-      if (attr == null) return null;
-      pattern = attr.value;
-    } else {
-      pattern = term.value;
-    }
+    final FtlPattern? pattern = attribute != null
+        ? term.findAttribute(attribute)?.value
+        : term.value;
+    if (pattern == null) return null;
 
-    final entryKey = 'term:$id${attribute != null ? ".$attribute" : ""}';
+    final suffix = attribute != null ? '.$attribute' : '';
     final resolver = _FluentResolver(
       bundle: this,
-      args: args ?? const {},
-      activeEntries: {entryKey},
+      args: args ?? const <String, dynamic>{},
+      activeEntries: <String>{'term:$id$suffix'},
     );
     return resolver.resolvePattern(pattern);
   }
+}
+
+/// Formats [value] for [locale] with fraction digits, grouping and sign.
+///
+/// Digits beyond [minimumFractionDigits] are dropped when they are zero.
+/// Separators come from [numberSymbolsFor]; unknown locales use `1,234.5`.
+String formatFluentNumber(
+  num value, {
+  int minimumFractionDigits = 0,
+  int maximumFractionDigits = 3,
+  int minimumIntegerDigits = 1,
+  bool useGrouping = true,
+  String locale = 'en',
+}) {
+  if (value is double && !value.isFinite) return value.toString();
+
+  final maximum = _clampDigits(maximumFractionDigits);
+  final minimum = _clampDigits(minimumFractionDigits) > maximum
+      ? maximum
+      : _clampDigits(minimumFractionDigits);
+
+  final text = value.abs().toStringAsFixed(maximum);
+  final dot = text.indexOf('.');
+  var integerPart = dot >= 0 ? text.substring(0, dot) : text;
+  var fractionPart = dot >= 0 ? text.substring(dot + 1) : '';
+
+  var fractionEnd = fractionPart.length;
+  while (fractionEnd > minimum &&
+      fractionPart.codeUnitAt(fractionEnd - 1) == 0x30) {
+    fractionEnd--;
+  }
+  fractionPart = fractionPart.substring(0, fractionEnd);
+
+  final isZero = !(integerPart + fractionPart).contains(RegExp(r'[1-9]'));
+  final negative = value < 0 && !isZero;
+
+  final minInt = _clampDigits(minimumIntegerDigits);
+  if (integerPart.length < minInt) {
+    integerPart = integerPart.padLeft(minInt, '0');
+  }
+
+  final symbols = numberSymbolsFor(locale);
+  final grouped = useGrouping ? groupDigits(integerPart, symbols) : integerPart;
+
+  final buffer = StringBuffer();
+  if (negative) buffer.write('-');
+  buffer.write(grouped);
+  if (fractionPart.isNotEmpty) {
+    buffer.write(symbols.decimal);
+    buffer.write(fractionPart);
+  }
+  return buffer.toString();
+}
+
+int _clampDigits(int digits) {
+  if (digits < 0) return 0;
+  if (digits > 20) return 20;
+  return digits;
+}
+
+/// Formats [value] as money in [currency] (ISO 4217 code) for [locale].
+///
+/// [display] is `symbol` (default) or `code`. Fraction digits default to the
+/// currency's standard count (for example 0 for JPY) unless given explicitly.
+String formatFluentCurrency(
+  num value, {
+  required String currency,
+  required String locale,
+  String display = 'symbol',
+  int? minimumFractionDigits,
+  int? maximumFractionDigits,
+  bool useGrouping = true,
+}) {
+  final code = currency.toUpperCase();
+  final defaults = currencyFractionDigits(code);
+  final minimum = minimumFractionDigits ?? defaults;
+  var maximum = maximumFractionDigits ?? (defaults > minimum ? defaults : minimum);
+  if (maximum < minimum) maximum = minimum;
+
+  final number = formatFluentNumber(
+    value,
+    minimumFractionDigits: minimum,
+    maximumFractionDigits: maximum,
+    useGrouping: useGrouping,
+    locale: locale,
+  );
+
+  var sign = '';
+  var amount = number;
+  if (amount.startsWith('-')) {
+    sign = '-';
+    amount = amount.substring(1);
+  }
+
+  final symbol = display == 'code' ? code : currencySymbol(code);
+  if (currencySymbolPrecedes(locale)) {
+    final gap = isAlphabeticSymbol(symbol) ? '\u00A0' : '';
+    return '$sign$symbol$gap$amount';
+  }
+  return '$sign$amount\u00A0$symbol';
+}
+
+/// Display form of a variable or number literal: integral doubles print without
+/// a fraction (`3.0` -> `3`), everything else uses its default string form.
+String _formatValue(Object value) {
+  if (value is double && value.isFinite && value == value.truncateToDouble()) {
+    return value.toStringAsFixed(0);
+  }
+  return value.toString();
 }
 
 class _FluentResolver {
   _FluentResolver({
     required this.bundle,
     required this.args,
-    Set<String>? activeEntries,
-  }) : _activeEntries = activeEntries ?? <String>{};
+    required Set<String> activeEntries,
+  }) : _activeEntries = activeEntries;
 
   final FluentBundle bundle;
+
+  /// Variables visible to the pattern being resolved. Messages receive none
+  /// from their callers; terms only see their own named arguments.
   final Map<String, dynamic> args;
   final Set<String> _activeEntries;
 
@@ -140,77 +265,250 @@ class _FluentResolver {
     }
 
     if (expr is FtlNumberLiteral) {
-      return expr.value.toString();
+      return _formatValue(expr.value);
     }
 
     if (expr is FtlVariableReference) {
       final val = args[expr.id];
       if (val == null) return '{\$${expr.id}}';
-      return val.toString();
+      return _formatValue(val as Object);
     }
 
     if (expr is FtlTermReference) {
-      final entryKey = 'term:${expr.id}${expr.attribute != null ? ".${expr.attribute}" : ""}';
-      if (_activeEntries.contains(entryKey) || depth > _maxDepth) {
-        return '{???}';
-      }
-      _activeEntries.add(entryKey);
-      try {
-        final term = bundle.getTerm(expr.id);
-        if (term == null) return '{-${expr.id}}';
-        final pattern = expr.attribute != null
-            ? term.findAttribute(expr.attribute!)?.value
-            : term.value;
-        return resolvePattern(pattern, depth: depth + 1);
-      } finally {
-        _activeEntries.remove(entryKey);
-      }
+      return _resolveTerm(expr, depth: depth);
     }
 
     if (expr is FtlMessageReference) {
-      final entryKey = 'msg:${expr.id}${expr.attribute != null ? ".${expr.attribute}" : ""}';
-      if (_activeEntries.contains(entryKey) || depth > _maxDepth) {
-        return '{???}';
-      }
-      _activeEntries.add(entryKey);
-      try {
-        final message = bundle.getMessage(expr.id);
-        if (message == null) return '{${expr.id}}';
-        final pattern = expr.attribute != null
-            ? message.findAttribute(expr.attribute!)?.value
-            : message.value;
-        if (pattern == null) return '{${expr.id}}';
-        return resolvePattern(pattern, depth: depth + 1);
-      } finally {
-        _activeEntries.remove(entryKey);
-      }
+      return _resolveMessage(expr, depth: depth);
+    }
+
+    if (expr is FtlFunctionReference) {
+      return _resolveFunction(expr, depth: depth);
     }
 
     if (expr is FtlSelectExpression) {
-      return _resolveSelectExpression(expr, depth: depth + 1);
+      return _resolveSelect(expr, depth: depth + 1);
     }
 
     return '{???}';
   }
 
-  String _resolveSelectExpression(FtlSelectExpression expr, {required int depth}) {
-    final selectorValue = resolveExpression(expr.selector, depth: depth);
-    final cleanSelector = selectorValue
-        .replaceAll(bidiFsi, '')
-        .replaceAll(bidiPdi, '')
-        .trim();
+  String _resolveTerm(FtlTermReference expr, {required int depth}) {
+    final suffix = expr.attribute != null ? '.${expr.attribute}' : '';
+    final entryKey = 'term:${expr.id}$suffix';
+    if (_activeEntries.contains(entryKey)) return '{???}';
 
-    // 1. Exact string match
+    final term = bundle.getTerm(expr.id);
+    if (term == null) return '{-${expr.id}}';
+    final pattern = expr.attribute != null
+        ? term.findAttribute(expr.attribute!)?.value
+        : term.value;
+    if (pattern == null) return '{-${expr.id}$suffix}';
+
+    // Terms get their own scope: only their named arguments are visible.
+    final termArgs = <String, dynamic>{};
+    final namedArgs = expr.arguments;
+    if (namedArgs != null) {
+      namedArgs.forEach((name, value) {
+        termArgs[name] = _literalValue(value);
+      });
+    }
+
+    _activeEntries.add(entryKey);
+    try {
+      return _FluentResolver(
+        bundle: bundle,
+        args: termArgs,
+        activeEntries: _activeEntries,
+      ).resolvePattern(pattern, depth: depth + 1);
+    } finally {
+      _activeEntries.remove(entryKey);
+    }
+  }
+
+  String _resolveMessage(FtlMessageReference expr, {required int depth}) {
+    final suffix = expr.attribute != null ? '.${expr.attribute}' : '';
+    final entryKey = 'msg:${expr.id}$suffix';
+    if (_activeEntries.contains(entryKey)) return '{???}';
+
+    final message = bundle.getMessage(expr.id);
+    if (message == null) return '{${expr.id}}';
+    final pattern = expr.attribute != null
+        ? message.findAttribute(expr.attribute!)?.value
+        : message.value;
+    if (pattern == null) return '{${expr.id}$suffix}';
+
+    // Messages referenced from a placeable do not inherit the caller's variables.
+    _activeEntries.add(entryKey);
+    try {
+      return _FluentResolver(
+        bundle: bundle,
+        args: const <String, dynamic>{},
+        activeEntries: _activeEntries,
+      ).resolvePattern(pattern, depth: depth + 1);
+    } finally {
+      _activeEntries.remove(entryKey);
+    }
+  }
+
+  String _resolveFunction(FtlFunctionReference expr, {required int depth}) {
+    if (expr.name == 'NUMBER' && expr.positional.isNotEmpty) {
+      final number = _numericValue(_rawValue(expr.positional.first));
+      if (number != null) return _formatNumberFunction(expr, number);
+    }
+    if (expr.name == 'DATETIME' && expr.positional.isNotEmpty) {
+      final date = _dateValue(_rawValue(expr.positional.first));
+      if (date != null) return _formatDateFunction(expr, date);
+    }
+
+    // Unknown or non-applicable calls fall back to the first positional argument.
+    if (expr.positional.isEmpty) return '{${expr.name}()}';
+    return resolveExpression(expr.positional.first, depth: depth + 1);
+  }
+
+  String _formatNumberFunction(FtlFunctionReference expr, num number) {
+    final style = _stringOption(expr.named['style']);
+    final code = _stringOption(expr.named['currency']);
+    if (style == 'currency' && code != null && isValidCurrencyCode(code)) {
+      return formatFluentCurrency(
+        number,
+        currency: code,
+        locale: bundle.locale,
+        display: _stringOption(expr.named['currencyDisplay']) ?? 'symbol',
+        minimumFractionDigits:
+            _optionalDigits(expr.named['minimumFractionDigits']),
+        maximumFractionDigits:
+            _optionalDigits(expr.named['maximumFractionDigits']),
+        useGrouping: _boolOption(expr.named['useGrouping']) ?? true,
+      );
+    }
+
+    final percent = style == 'percent';
+    final minimum = _digitsOption(expr.named['minimumFractionDigits'], 0);
+    final maximumRaw = _digitsOption(
+      expr.named['maximumFractionDigits'],
+      percent ? 0 : 3,
+    );
+    final maximum = maximumRaw < minimum ? minimum : maximumRaw;
+    final text = formatFluentNumber(
+      percent ? number * 100 : number,
+      minimumFractionDigits: minimum,
+      maximumFractionDigits: maximum,
+      minimumIntegerDigits:
+          _digitsOption(expr.named['minimumIntegerDigits'], 1),
+      useGrouping: _boolOption(expr.named['useGrouping']) ?? true,
+      locale: bundle.locale,
+    );
+    return percent ? '$text%' : text;
+  }
+
+  String _formatDateFunction(FtlFunctionReference expr, DateTime date) {
+    final value = _stringOption(expr.named['timeZone']) == 'UTC'
+        ? date.toUtc()
+        : date;
+    return formatFluentDateTime(
+      value,
+      locale: bundle.locale,
+      dateStyle: _stringOption(expr.named['dateStyle']),
+      timeStyle: _stringOption(expr.named['timeStyle']),
+      weekday: _stringOption(expr.named['weekday']),
+      year: _stringOption(expr.named['year']),
+      month: _stringOption(expr.named['month']),
+      day: _stringOption(expr.named['day']),
+      hour: _stringOption(expr.named['hour']),
+      minute: _stringOption(expr.named['minute']),
+      second: _stringOption(expr.named['second']),
+      hour12: _boolOption(expr.named['hour12']),
+    );
+  }
+
+  /// Numeric value of a raw argument: numbers, or strings holding a number.
+  num? _numericValue(Object? raw) {
+    if (raw is num) return raw;
+    if (raw is String) return num.tryParse(raw.trim());
+    return null;
+  }
+
+  /// Date value of a raw argument: a [DateTime], an ISO-8601 string, or epoch
+  /// milliseconds (interpreted as UTC).
+  DateTime? _dateValue(Object? raw) {
+    if (raw is DateTime) return raw;
+    if (raw is num) {
+      return DateTime.fromMillisecondsSinceEpoch(raw.toInt(), isUtc: true);
+    }
+    if (raw is String) return DateTime.tryParse(raw.trim());
+    return null;
+  }
+
+  String? _stringOption(FtlExpression? option) {
+    return option is FtlStringLiteral ? option.value : null;
+  }
+
+  /// Boolean option written as the string `"true"`/`"false"` or as a number.
+  bool? _boolOption(FtlExpression? option) {
+    if (option is FtlStringLiteral) {
+      if (option.value == 'true') return true;
+      if (option.value == 'false') return false;
+    }
+    if (option is FtlNumberLiteral) return option.value != 0;
+    return null;
+  }
+
+  int? _optionalDigits(FtlExpression? option) {
+    return option is FtlNumberLiteral ? _clampDigits(option.value.toInt()) : null;
+  }
+
+  int _digitsOption(FtlExpression? option, int fallback) {
+    if (option is FtlNumberLiteral) {
+      return _clampDigits(option.value.toInt());
+    }
+    return fallback;
+  }
+
+  /// Raw (unformatted) value of an argument expression, used by built-in functions.
+  Object? _rawValue(FtlExpression expr) {
+    if (expr is FtlNumberLiteral) return expr.value;
+    if (expr is FtlStringLiteral) return expr.value;
+    if (expr is FtlVariableReference) return args[expr.id] as Object?;
+    return null;
+  }
+
+  Object _literalValue(FtlExpression expr) {
+    if (expr is FtlNumberLiteral) return expr.value;
+    if (expr is FtlStringLiteral) return expr.value;
+    return '';
+  }
+
+  /// Numeric value of a selector that is a variable or `NUMBER()` call, if any.
+  num? _selectorNumber(FtlExpression selector) {
+    if (selector is FtlVariableReference) {
+      return _numericValue(args[selector.id]);
+    }
+    if (selector is FtlFunctionReference &&
+        selector.name == 'NUMBER' &&
+        selector.positional.isNotEmpty) {
+      return _numericValue(_rawValue(selector.positional.first));
+    }
+    return null;
+  }
+
+  String _resolveSelect(FtlSelectExpression expr, {required int depth}) {
+    final selectorValue = resolveExpression(expr.selector, depth: depth);
+    final cleanSelector =
+        selectorValue.replaceAll(bidiFsi, '').replaceAll(bidiPdi, '').trim();
+
+    // 1. Exact match on non-numeric keys (case-sensitive, as the spec requires).
     for (final variant in expr.variants) {
       if (variant.key == cleanSelector) {
         return resolvePattern(variant.value, depth: depth + 1);
       }
     }
 
-    // 2. Numeric matching: exact numeric key takes precedence over CLDR category
-    final numericValue = num.tryParse(cleanSelector);
+    // Plural selection uses the raw number, not the display string: `1,234`
+    // from NUMBER() must still select by its numeric value.
+    final numericValue = _selectorNumber(expr.selector) ?? num.tryParse(cleanSelector);
     if (numericValue != null) {
-      // 2a. Exact numeric match (e.g. [0] or [1])
+      // 2a. Exact numeric key (e.g. [0]) takes precedence over plural categories.
       for (final variant in expr.variants) {
         final variantNum = num.tryParse(variant.key);
         if (variantNum != null && variantNum == numericValue) {
@@ -218,23 +516,16 @@ class _FluentResolver {
         }
       }
 
-      // 2b. CLDR plural category match (e.g. [one], [few], [many], [other])
-      final pluralCategory = resolveCldrPluralCategory(bundle.locale, numericValue);
+      // 2b. CLDR plural category (e.g. [one], [few], [many]).
+      final category = resolveCldrPluralCategory(bundle.locale, numericValue);
       for (final variant in expr.variants) {
-        if (variant.key.toLowerCase() == pluralCategory) {
+        if (variant.key == category) {
           return resolvePattern(variant.value, depth: depth + 1);
         }
       }
     }
 
-    // 3. Case-insensitive string match
-    for (final variant in expr.variants) {
-      if (variant.key.toLowerCase() == cleanSelector.toLowerCase()) {
-        return resolvePattern(variant.value, depth: depth + 1);
-      }
-    }
-
-    // 4. Fallback to default variant
+    // 3. Default variant.
     return resolvePattern(expr.defaultVariant.value, depth: depth + 1);
   }
 }
