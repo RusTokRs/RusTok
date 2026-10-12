@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use loro::{ExportMode, Frontiers, LoroDoc, TreeID, VersionVector};
 use crate::error::{DocsError, DocsResult};
-use super::block::{BlockType, DocBlock, EntityRef, EntityDisplayMode};
+use super::block::{BlockType, DocBlock};
 
 /// Collaborative document engine powered by Loro CRDT.
 ///
@@ -37,6 +37,16 @@ impl CollaborativeDoc {
     /// Returns the underlying LoroDoc reference.
     pub fn inner(&self) -> &LoroDoc {
         &self.doc
+    }
+
+    /// Returns the current OpLog frontiers of the document.
+    pub fn oplog_frontiers(&self) -> Frontiers {
+        self.doc.oplog_frontiers()
+    }
+
+    /// Returns the OpLog frontiers formatted as a string for snapshot persistence.
+    pub fn oplog_frontiers_string(&self) -> String {
+        format!("{:?}", self.doc.oplog_frontiers())
     }
 
     /// Appends a new block to the document tree.
@@ -176,6 +186,11 @@ impl CollaborativeDoc {
     pub fn import_updates(&self, updates: &[u8]) -> DocsResult<()> {
         self.doc.import(updates).map_err(|e| DocsError::Loro(e.to_string()))?;
         Ok(())
+    }
+
+    /// Applies a delta update log slice (alias for `import_updates`).
+    pub fn apply_delta(&self, updates: &[u8]) -> DocsResult<()> {
+        self.import_updates(updates)
     }
 
     /// Returns the current state version vector (Frontiers).

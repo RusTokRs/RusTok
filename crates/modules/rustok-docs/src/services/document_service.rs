@@ -1,13 +1,13 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use std::collections::HashMap;
 use tracing::{info, instrument};
 use uuid::Uuid;
 
-use crate::domain::{BlockType, CollaborativeDoc, EntityDisplayMode, EntityRef};
+use crate::domain::{BlockType, CollaborativeDoc, EntityDisplayMode};
 use crate::dto::{
     CreatePageDto, DocUpdateItemDto, DocumentSyncDto, PageSummaryDto,
     PageTreeNodeDto, UpdatePageDto,
@@ -65,7 +65,7 @@ impl DocumentService {
         // 3. Initialize empty CollaborativeDoc and initial snapshot
         let doc = CollaborativeDoc::new();
         let snapshot_data = doc.export_snapshot()?;
-        let frontiers_json = serde_json::to_string(&doc.frontiers())?;
+        let frontiers_json = doc.oplog_frontiers_string();
 
         let now = Utc::now();
         let page_id = Uuid::new_v4();
@@ -520,7 +520,7 @@ impl DocumentService {
         let (doc, latest_seq) = Self::load_document(db, tenant_id, page_id).await?;
 
         let snapshot_data = doc.export_snapshot()?;
-        let frontiers_json = serde_json::to_string(&doc.frontiers())?;
+        let frontiers_json = doc.oplog_frontiers_string();
 
         let txn = db.begin().await?;
 
@@ -615,21 +615,21 @@ impl DocumentService {
         page_id: Uuid,
         doc: &CollaborativeDoc,
     ) -> DocsResult<()> {
-        let blocks = doc.get_blocks()?;
+        let blocks = doc.get_blocks();
         let mut links: Vec<(String, String, String, String)> = Vec::new();
 
         for block in blocks {
             if let BlockType::EntityEmbed(eref) = block.block_type {
                 let mode = match eref.display_mode {
-                    EntityDisplayMode::Inline => "inline",
-                    EntityDisplayMode::Card => "card",
-                    EntityDisplayMode::Embed => "embed",
-                    EntityDisplayMode::DatabaseRow => "database_row",
+                    EntityDisplayMode::InlineMention => "inline_mention",
+                    EntityDisplayMode::CompactCard => "compact_card",
+                    EntityDisplayMode::InteractiveWidget => "interactive_widget",
+                    EntityDisplayMode::DatabaseRelation => "database_relation",
                 };
                 links.push((
-                    eref.target_module,
-                    eref.target_entity_type,
-                    eref.target_entity_id,
+                    eref.module.clone(),
+                    eref.entity_type.clone(),
+                    eref.entity_id.to_string(),
                     mode.to_string(),
                 ));
             }
@@ -672,7 +672,7 @@ impl DocumentService {
         page_id: Uuid,
     ) -> DocsResult<String> {
         let (doc, _) = Self::load_document(db, tenant_id, page_id).await?;
-        doc.render_markdown()
+        Ok(doc.render_markdown())
     }
 }
 

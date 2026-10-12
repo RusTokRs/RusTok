@@ -21,16 +21,6 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(
-        belongs_to = "Entity",
-        from = "Column::ParentId",
-        to = "Column::Id",
-        on_update = "NoAction",
-        on_delete = "SetNull"
-    )]
-    Parent,
-    #[sea_orm(has_many = "Entity")]
-    Children,
     #[sea_orm(has_many = "super::snapshot::Entity")]
     Snapshots,
     #[sea_orm(has_many = "super::update::Entity")]
@@ -38,6 +28,7 @@ pub enum Relation {
     #[sea_orm(has_many = "super::entity_link::Entity")]
     EntityLinks,
 }
+
 
 impl Related<super::snapshot::Entity> for Entity {
     fn to() -> RelationDef {
