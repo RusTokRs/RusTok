@@ -13,5 +13,5 @@ fn module_metadata() {
 #[test]
 fn module_migrations_count() {
     let module = RbacModule;
-    assert_eq!(module.migrations().len(), 5);
+    assert_eq!(module.migrations().len(), 6);
 }

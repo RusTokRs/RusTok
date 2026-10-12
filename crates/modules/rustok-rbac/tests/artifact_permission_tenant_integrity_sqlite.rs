@@ -25,7 +25,7 @@ async fn database() -> DatabaseConnection {
     let migrations = RbacModule.migrations();
     assert_eq!(
         migrations.len(),
-        5,
+        6,
         "artifact integrity cutover must append after unchanged historical migrations"
     );
     for migration in migrations {

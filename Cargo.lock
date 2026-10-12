@@ -14773,11 +14773,15 @@ dependencies = [
 name = "rustok-docs"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
+ "axum",
  "chrono",
+ "futures-util",
  "loro",
  "rustok-api",
  "rustok-core",
+ "rustok-web",
  "sea-orm",
  "sea-orm-migration",
  "serde",

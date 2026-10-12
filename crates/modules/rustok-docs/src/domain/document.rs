@@ -340,6 +340,13 @@ impl CollaborativeDoc {
                     entity_ref.display_mode
                 ));
             }
+            BlockType::DatabaseView { view_type, database_id } => {
+                let db_id = database_id.map(|id| id.to_string()).unwrap_or_else(|| "inline".to_string());
+                out.push_str(&format!(
+                    "<!-- database-view: type={:?} database_id={} title={} -->\n\n",
+                    view_type, db_id, text
+                ));
+            }
             BlockType::LiveErp { entity_type, entity_id } => {
                 out.push_str(&format!("<!-- live-erp: type={} id={} -->\n\n", entity_type, entity_id));
             }

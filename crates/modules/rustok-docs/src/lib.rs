@@ -5,6 +5,7 @@
 //! Provides real-time multiplayer editing, hierarchical MovableTree block structures,
 //! rich-text delta logs, snapshots, and offline-first synchronization.
 
+pub mod controllers;
 pub mod domain;
 pub mod dto;
 pub mod entities;
@@ -13,14 +14,19 @@ pub mod migrations;
 pub mod module;
 pub mod services;
 
-pub use domain::{BlockType, CollaborativeDoc, DocBlock, EntityDisplayMode, EntityRef};
+pub use controllers::{
+    ClientMessage, DocsHttpRuntime, DocsRoomHub, ServerMessage, axum_router, router,
+};
+pub use domain::{
+    BlockType, CollaborativeDoc, DatabaseViewType, DocBlock, EntityDisplayMode, EntityRef,
+};
 pub use dto::{
     ApplyDeltaDto, CreatePageDto, DocUpdateItemDto, DocumentSyncDto, PageSummaryDto,
     PageTreeNodeDto, UpdatePageDto,
 };
 pub use error::{DocsError, DocsResult};
 pub use module::DocsModule;
-pub use services::{DocumentService, COMPACTION_THRESHOLD};
+pub use services::{COMPACTION_THRESHOLD, DocumentService};
 pub use loro::{Frontiers, LoroDoc, TreeID, VersionVector};
 
 #[cfg(test)]

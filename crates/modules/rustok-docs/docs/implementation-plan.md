@@ -34,8 +34,8 @@ status: active
 | :--- | :--- | :--- | :--- |
 | **DOCS-01** | **Domain Core & Loro CRDT** | `CollaborativeDoc`, `DocBlock`, `BlockType`, tree operations, delta sync, Markdown projections | **Completed** |
 | **DOCS-02** | **Persistence & Snapshots** | SeaORM migrations, `docs_pages`, `docs_snapshots`, append-only `docs_updates` log, `DocumentService`, snapshot compaction | **Completed** |
-| **DOCS-03** | **Real-Time Sync Transport** | WebSocket binary update broadcaster in `apps/server`, authorization via `rustok-rbac` | In Progress |
-| **DOCS-04** | **Flex & Grid Integration** | Notion-like database views (Table, Kanban) over structured document properties | Planned |
+| **DOCS-03** | **Real-Time Sync Transport & HTTP Controllers** | WebSocket broadcaster (`DocsRoomHub`, session rooms, binary deltas, presence/awareness) + Axum REST controllers (`pages`, `tree`, `sync`, `deltas`), tenant admission guard & RBAC | **Completed** |
+| **DOCS-04** | **Flex & Grid Integration** | Notion-like database views (Table, Kanban) over structured document properties | In Progress |
 | **DOCS-05** | **Universal Entity Embedding & Backlinks** | UER (`EntityRef`), 4 projection modes, live embedding of Media, Blog, Forum, Wiki/Pages, and ERP entities, `docs_entity_links` reverse backlinks ledger | Planned |
 | **DOCS-06** | **Client Adapters** | `@rustok/docs-editor` (`loro-wasm`) and Flutter FFI (`rustok_mobile`) | Planned |
 

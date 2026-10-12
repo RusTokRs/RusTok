@@ -12,6 +12,7 @@ transport roots, or explicit ports.
 
 Deliberate public modules and facades:
 
+- `controllers` — Axum REST endpoints (`router`, `axum_router`, `DocsHttpRuntime`, page CRUD, tree hierarchy, markdown export, delta sync) and WebSocket session management (`ws_handler`, `DocsRoomHub`, `ClientMessage`, `ServerMessage`);
 - `domain` — CRDT core (`CollaborativeDoc`), block models (`DocBlock`, `BlockType`), Universal Entity Reference (`EntityRef`, `EntityDisplayMode`);
 - `dto` — Owner command/query/response contracts (`CreatePageDto`, `UpdatePageDto`, `PageSummaryDto`, `PageTreeNodeDto`, `DocumentSyncDto`, `DocUpdateItemDto`, `ApplyDeltaDto`);
 - `error` — `DocsError`, `DocsResult`;

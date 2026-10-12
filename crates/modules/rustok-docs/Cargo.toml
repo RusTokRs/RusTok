@@ -17,8 +17,14 @@ async-trait.workspace = true
 sea-orm = { workspace = true, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
 sea-orm-migration.workspace = true
 rustok-core.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["server", "runtime"] }
+rustok-web.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+futures-util.workspace = true
+tokio = { workspace = true, features = ["full", "sync"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
+
 

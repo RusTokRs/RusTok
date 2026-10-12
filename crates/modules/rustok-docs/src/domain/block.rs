@@ -41,6 +41,23 @@ impl EntityRef {
     }
 }
 
+/// 5 Polymorphic Views for Embedded Notion-like Databases.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabaseViewType {
+    Table,
+    Kanban,
+    List,
+    Calendar,
+    Gallery,
+}
+
+impl Default for DatabaseViewType {
+    fn default() -> Self {
+        Self::Table
+    }
+}
+
 /// Supported atomic block kinds in a collaborative document.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -59,6 +76,11 @@ pub enum BlockType {
     Divider,
     /// Universal Entity Reference (Media, Blog, Forum, Wiki/Pages, Commerce, ERP).
     EntityEmbed(EntityRef),
+    /// Dynamic Notion-like Database View (Table, Kanban, List, Calendar, Gallery).
+    DatabaseView {
+        view_type: DatabaseViewType,
+        database_id: Option<Uuid>,
+    },
     /// Live embedded ERP / Commerce object (legacy alias, preserved for backward-compatibility).
     LiveErp {
         entity_type: String,

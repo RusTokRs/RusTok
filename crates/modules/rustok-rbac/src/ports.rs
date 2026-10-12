@@ -83,9 +83,13 @@ where
             .permissions
             .iter()
             .filter(|permission| {
-                resolved_permissions
-                    .iter()
-                    .any(|resolved| resolved == *permission)
+                if let Ok(parsed) = permission.parse::<rustok_api::Permission>() {
+                    crate::has_effective_permission_in_set(&resolution.permissions, &parsed)
+                } else {
+                    resolved_permissions
+                        .iter()
+                        .any(|resolved| resolved == *permission)
+                }
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -160,4 +164,91 @@ fn validate_permission_request(request: &RbacPermissionCheckRequest) -> Result<(
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::PermissionResolution;
+    use rustok_api::{Permission, PortActor, PortCallPolicy, PortContext};
+
+    struct MockResolver {
+        permissions: Vec<Permission>,
+    }
+
+    #[async_trait]
+    impl PermissionResolver for MockResolver {
+        type Error = String;
+
+        async fn resolve_permissions(
+            &self,
+            _tenant_id: &Uuid,
+            _user_id: &Uuid,
+        ) -> Result<PermissionResolution, Self::Error> {
+            Ok(PermissionResolution {
+                permissions: self.permissions.clone(),
+                cache_hit: false,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn decision_port_respects_manage_wildcard() {
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let provider = RbacPermissionDecisionProvider::new(MockResolver {
+            permissions: vec![Permission::USERS_MANAGE],
+        });
+
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(user_id.to_string()),
+            PortCallPolicy::read(),
+        );
+
+        let response = provider
+            .check_permissions(
+                context,
+                RbacPermissionCheckRequest {
+                    permissions: vec!["users:read".to_string(), "users:delete".to_string()],
+                    mode: RbacPermissionCheckMode::All,
+                },
+            )
+            .await
+            .expect("check_permissions should succeed");
+
+        assert!(response.allowed);
+        assert_eq!(response.matched_permissions.len(), 2);
+        assert!(response.missing_permissions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn decision_port_denies_missing_permission() {
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let provider = RbacPermissionDecisionProvider::new(MockResolver {
+            permissions: vec![Permission::USERS_READ],
+        });
+
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(user_id.to_string()),
+            PortCallPolicy::read(),
+        );
+
+        let response = provider
+            .check_permissions(
+                context,
+                RbacPermissionCheckRequest {
+                    permissions: vec!["users:read".to_string(), "users:delete".to_string()],
+                    mode: RbacPermissionCheckMode::All,
+                },
+            )
+            .await
+            .expect("check_permissions should succeed");
+
+        assert!(!response.allowed);
+        assert_eq!(response.matched_permissions, vec!["users:read".to_string()]);
+        assert_eq!(response.missing_permissions, vec!["users:delete".to_string()]);
+    }
 }

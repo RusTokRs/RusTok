@@ -58,3 +58,54 @@ impl From<serde_json::Error> for DocsError {
         Self::Serialization(err.to_string())
     }
 }
+
+impl From<DocsError> for rustok_web::HttpError {
+    fn from(err: DocsError) -> Self {
+        match err {
+            DocsError::PageNotFound(id) => {
+                rustok_web::HttpError::not_found("page_not_found", format!("Page '{id}' not found"))
+            }
+            DocsError::PageSlugNotFound { slug, .. } => {
+                rustok_web::HttpError::not_found("page_slug_not_found", format!("Page slug '{slug}' not found"))
+            }
+            DocsError::SlugConflict { slug, .. } => {
+                rustok_web::HttpError::new(axum::http::StatusCode::CONFLICT, "slug_conflict", format!("Slug '{slug}' already exists"))
+            }
+            DocsError::InvalidParent(id) => {
+                rustok_web::HttpError::bad_request("invalid_parent", format!("Invalid parent page: {id}"))
+            }
+            DocsError::InvalidHierarchy(msg) => {
+                rustok_web::HttpError::bad_request("invalid_hierarchy", msg)
+            }
+            DocsError::BlockNotFound(id) => {
+                rustok_web::HttpError::not_found("block_not_found", format!("Block '{id}' not found"))
+            }
+            DocsError::Unauthorized => {
+                rustok_web::HttpError::unauthorized("unauthorized", "Unauthorized")
+            }
+            DocsError::Loro(msg) => {
+                rustok_web::HttpError::bad_request("crdt_error", msg)
+            }
+            DocsError::Serialization(msg) => {
+                rustok_web::HttpError::bad_request("serialization_error", msg)
+            }
+            DocsError::Database(err) => {
+                tracing::error!("Database error in docs module: {err}");
+                rustok_web::HttpError::internal("A database error occurred")
+            }
+            DocsError::Storage(msg) => {
+                tracing::error!("Storage error in docs module: {msg}");
+                rustok_web::HttpError::internal("Storage error")
+            }
+            DocsError::Compaction(msg) => {
+                tracing::error!("Compaction error in docs module: {msg}");
+                rustok_web::HttpError::internal("Snapshot compaction error")
+            }
+            DocsError::Internal(msg) => {
+                tracing::error!("Internal error in docs module: {msg}");
+                rustok_web::HttpError::internal("Internal server error")
+            }
+        }
+    }
+}
+
