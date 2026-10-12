@@ -71,8 +71,9 @@ jobs:
             | sed -E 's/\x1b\[[0-9;]*m//g' \
             | grep -E 'Expected:|Actual:|Which:|^ +package:|rustok_i18n/test/|\.dart [0-9]+:[0-9]+' \
             | tr '\n' '|' | cut -c1-60000)
-          printf '::error::TESTS_FAILED %s\n' "${names//%/%25}"
-          printf '::error::TEST_DETAILS %s\n' "${details//%/%25}"
+          if [ $an -ne 0 ] || [ $te -ne 0 ]; then
+            cat /tmp/diag.log
+          fi
           [ $an -ne 0 ] && exit $an
           exit $te
       - name: CLI parity check (fails on mismatch)
@@ -127,5 +128,8 @@ jobs:
             | sed -E 's/\x1b\[[0-9;]*m//g' \
             | grep -E 'DIAG|Expected:|Actual:|Which:' | tr '\n' '|' | cut -c1-60000)
           printf '::error::FT %s\n' "${diag//%/%25}"
+          if [ $fa -ne 0 ] || [ $ft -ne 0 ]; then
+            cat /tmp/fdiag.log
+          fi
           [ $fa -ne 0 ] && exit $fa
           exit $ft

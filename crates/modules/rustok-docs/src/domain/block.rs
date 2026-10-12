@@ -2,23 +2,18 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// 4 Polymorphic Display Modes for Universal Entity References (UER).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum EntityDisplayMode {
     /// Inline pill / @mention in running text with popover preview.
     InlineMention,
     /// Compact preview bookmark card (title, excerpt, thumbnail, badge).
+    #[default]
     CompactCard,
     /// Fully functional interactive UI widget with real-time state.
     InteractiveWidget,
     /// Structured database relation cell with rollup capability.
     DatabaseRelation,
-}
-
-impl Default for EntityDisplayMode {
-    fn default() -> Self {
-        Self::CompactCard
-    }
 }
 
 /// Canonical Uniform Entity Reference (UER) protocol for cross-module embedding.
@@ -42,9 +37,10 @@ impl EntityRef {
 }
 
 /// 5 Polymorphic Views for Embedded Notion-like Databases.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum DatabaseViewType {
+    #[default]
     Table,
     Kanban,
     List,
@@ -52,16 +48,11 @@ pub enum DatabaseViewType {
     Gallery,
 }
 
-impl Default for DatabaseViewType {
-    fn default() -> Self {
-        Self::Table
-    }
-}
-
 /// Supported atomic block kinds in a collaborative document.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BlockType {
+    #[default]
     Paragraph,
     Heading1,
     Heading2,
@@ -92,12 +83,6 @@ pub enum BlockType {
         entity_type: String,
         entity_id: String,
     },
-}
-
-impl Default for BlockType {
-    fn default() -> Self {
-        Self::Paragraph
-    }
 }
 
 /// Normalized projection of an individual document block.

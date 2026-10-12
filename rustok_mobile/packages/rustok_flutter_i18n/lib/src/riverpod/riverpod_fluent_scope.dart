@@ -37,9 +37,10 @@ class RiverpodFluentScope extends ConsumerWidget {
     final showLoading = ready.isLoading && loading != null;
 
     return FluentScope(
+      key: ValueKey('${locale}_${ready.isLoading ? 0 : 1}'),
       messages: messages,
       currentLocale: locale,
-      revision: ready.hasValue ? 1 : 0,
+      revision: ready.isLoading ? 0 : 1,
       child: showLoading ? loading! : child,
     );
   }

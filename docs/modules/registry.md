@@ -452,6 +452,7 @@ Synchronization with `modules.toml`: updated per manifest composition as of 2026
 | `translation` | `rustok-translation` | — | Translation inventory, manual workflow, review, memory, glossaries, interchange, and AI orchestration control plane |
 | `alloy` | `alloy` | — | Script execution, scheduler, hook runtime and capability-oriented automation surface |
 | `flex` | `flex` | — | Capability-only ghost module custom fields: attached/standalone orchestration, owner-owned attached field-definition and standalone GraphQL roots/runtime/DTO, owner-owned attached field-definition row/view/command/persisted-json/cache-invalidation mapping and lifecycle policy helpers in `flex::registry`, owner-owned standalone REST DTO/command mapping contract in `flex::rest`, owner-owned standalone fields_config/schema/key-derivation/row-view/entry validation/split/merge in `flex::standalone`, RBAC/runtime metadata and extension contracts without donor persistence ownership; server composes concrete SeaORM/registry/cache adapters through `FlexGraphqlRuntime` and Axum REST/bootstrap adapters |
+| `docs` | `rustok-docs` | `outbox`, `flex` | Collaborative rich-text document engine, Loro CRDT document domain core, Universal Entity Reference (UER) embeddings, SeaORM persistence, snapshot/delta compaction, and DocumentService |
 
 The dependency column above records current executable composition; it is not proof
 that every edge is canonical target architecture. The accepted

@@ -156,10 +156,11 @@ async fn handle_socket(
     // Spawn task to forward broadcast messages from the room to the client WebSocket
     let mut send_task = tokio::spawn(async move {
         while let Ok(msg) = room_receiver.recv().await {
-            if let Ok(json) = serde_json::to_string(&msg) {
-                if sender.send(Message::Text(json.into())).await.is_err() {
-                    break;
-                }
+            let Ok(json) = serde_json::to_string(&msg) else {
+                continue;
+            };
+            if sender.send(Message::Text(json.into())).await.is_err() {
+                break;
             }
         }
     });

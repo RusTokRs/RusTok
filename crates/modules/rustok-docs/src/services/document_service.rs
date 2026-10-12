@@ -569,10 +569,8 @@ impl DocumentService {
             .one(db)
             .await?;
 
-        if let Some(snap) = latest_snap {
-            if latest_seq <= snap.seq_id {
-                return Ok(());
-            }
+        if latest_snap.as_ref().is_some_and(|snap| latest_seq <= snap.seq_id) {
+            return Ok(());
         }
 
         let snapshot_data = doc.export_snapshot()?;

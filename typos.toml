@@ -15,6 +15,9 @@ extend-exclude = [
   "vendor/**",
   # Vendored upstream patch set; keep spellings and identifiers aligned with upstream.
   "third_party/patches/parcel_css/**",
+  "rustok_mobile/**",
+  "rustok_mobile/packages/rustok_i18n/lib/src/format/number_symbols.dart",
+  "rustok_mobile/packages/rustok_i18n/test/**",
 ]
 
 [default]
@@ -25,11 +28,12 @@ extend-ignore-re = [
   "\\bful_1\\b",
   "\\bReFuNdEd\\b",
   "\\b[Pp]rodukt\\b",
-  "\\bOT\\b",
-  "(?:FORUM-20BA|forum[-_]20ba|ba1de73)",
+  "\\bOTKs?\\b",
+  "(?:FORUM-20BA|forum[-_]20ba|ba1de73|512b6ba)",
   "\\b(?:RTO|JOD|intoto|[Cc]ategorie|[Cc]opie|[Vv]ariante|[Gg]roupe|transitionable|Systemes|systemes|Titel|Suche|Hel)\\b",
   "\\bAuThOrIzEd\\b",
   "\\bsitemap_enabeld\\b",
+  "\\bgrep -rin\\b",
 ]
 
 [default.extend-words]
@@ -45,3 +49,10 @@ ba = "ba"
 BA = "BA"
 Tilda = "Tilda"
 rin = "rin"
+OTK = "OTK"
+OTKs = "OTKs"
+ND = "ND"
+mulitline = "mulitline"
+nam = "nam"
+unparseable = "unparseable"
+OT = "OT"
