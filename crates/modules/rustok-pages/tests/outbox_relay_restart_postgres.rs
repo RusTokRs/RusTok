@@ -159,16 +159,24 @@ impl RestartTarget {
 #[async_trait]
 impl EventTransport for RestartTarget {
     async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
-        if self
-            .failures_remaining
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
-                value.checked_sub(1)
-            })
-            .is_ok()
-        {
-            return Err(Error::External(
-                "simulated Pages cache target outage".to_string(),
-            ));
+        let mut remaining = self.failures_remaining.load(Ordering::SeqCst);
+        loop {
+            if remaining == 0 {
+                break;
+            }
+            match self.failures_remaining.compare_exchange_weak(
+                remaining,
+                remaining - 1,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    return Err(Error::External(
+                        "simulated Pages cache target outage".to_string(),
+                    ));
+                }
+                Err(actual) => remaining = actual,
+            }
         }
         self.handler.handle(&envelope).await?;
         self.delivered_event_ids
