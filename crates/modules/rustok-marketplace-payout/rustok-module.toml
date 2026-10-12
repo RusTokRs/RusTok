@@ -27,4 +27,4 @@ fallback_profiles = ["embedded_native", "remote_adapter_placeholder"]
 degraded_modes = ["payout_storage_unavailable", "ledger_provider_unavailable", "payout_receipt_requires_review"]
 
 [dependencies]
-marketplace_ledger = { version_req = ">=0.1.0" }
+marketplace_balance = { version_req = ">=0.1.0" }

@@ -149,6 +149,8 @@ for (const [source, label] of forbiddenCheckoutSources) {
     'rustok_marketplace_allocation::MarketplaceAllocationService::new(',
     'rustok_marketplace_commission::MarketplaceCommissionService::new(',
     'rustok_marketplace_ledger::MarketplaceLedgerService::new(',
+    'rustok_marketplace_balance::MarketplaceBalanceService::new(',
+    'rustok_marketplace_balance::MarketplaceLedgerService::new(',
   ]) {
     forbidText(source, value, 'duplicate, foreign-service, or legacy checkout construction in ' + label);
   }

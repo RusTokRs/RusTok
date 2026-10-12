@@ -7,7 +7,7 @@ use rustok_marketplace_commission::{
     AssessMarketplaceOrderCommissionsInput, AssessMarketplaceOrderCommissionsResponse,
     MarketplaceCommissionCommandPort,
 };
-use rustok_marketplace_ledger::{
+use rustok_marketplace_balance::{
     MarketplaceLedgerCommandPort, MarketplaceLedgerReversalResponse,
     MarketplaceLedgerTransactionResponse, PostMarketplaceLedgerReversalInput,
     PostMarketplaceOrderLedgerInput,

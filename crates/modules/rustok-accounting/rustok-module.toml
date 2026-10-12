@@ -1,0 +1,18 @@
+[module]
+slug = "accounting"
+name = "Accounting"
+version = "0.1.0"
+description = "Universal double-entry General Ledger, Chart of Accounts, and Posting Rules"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "no_ui"
+
+[marketplace]
+category = "finance"
+tags = ["accounting", "ledger", "general-ledger", "double-entry", "finance"]
+
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "AccountingModule"

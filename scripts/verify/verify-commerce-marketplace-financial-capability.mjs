@@ -40,7 +40,7 @@ for (const dependency of [
   "dep:rustok-marketplace",
   "dep:rustok-marketplace-allocation",
   "dep:rustok-marketplace-commission",
-  "dep:rustok-marketplace-ledger",
+  "dep:rustok-marketplace-balance",
 ]) {
   if (!commerceFeature.includes(dependency)) {
     fail(`marketplace-financial must enable ${dependency}`);
@@ -50,7 +50,7 @@ for (const dependency of [
   "rustok-marketplace",
   "rustok-marketplace-allocation",
   "rustok-marketplace-commission",
-  "rustok-marketplace-ledger",
+  "rustok-marketplace-balance",
 ]) {
   requireMatch(
     commerceCargo,
@@ -77,7 +77,7 @@ for (const dependency of [
   "mod-commerce",
   "mod-marketplace_allocation",
   "mod-marketplace_commission",
-  "mod-marketplace_ledger",
+  "mod-marketplace_balance",
   "rustok-commerce/marketplace-financial",
 ]) {
   if (!distributionCapability.includes(dependency)) {
@@ -95,7 +95,7 @@ for (const dependency of [
   "mod-commerce",
   "mod-marketplace_allocation",
   "mod-marketplace_commission",
-  "mod-marketplace_ledger",
+  "mod-marketplace_balance",
   "rustok-commerce/marketplace-financial",
   "rustok-distribution/commerce-marketplace-financial",
 ]) {
@@ -172,11 +172,11 @@ requireMatch(
   "base staged checkout must fail closed for marketplace lines before capture",
 );
 
-const storefront = read("crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs");
+const runtime = read("crates/modules/rustok-commerce/src/services/marketplace_financial_runtime.rs");
 requireMatch(
-  storefront,
-  /#\[cfg\(feature = "marketplace-financial"\)\][\s\S]*MarketplaceAllocationService[\s\S]*MarketplaceCommissionService[\s\S]*MarketplaceLedgerService/,
-  "mounted marketplace owner construction must only exist inside the explicit capability",
+  runtime,
+  /MarketplaceAllocationService[\s\S]*MarketplaceCommissionService[\s\S]*(?:MarketplaceLedgerService|MarketplaceBalanceService)/,
+  "mounted marketplace owner construction must exist inside marketplace financial runtime",
 );
 
 const providerRuntime = read("apps/server/src/services/commerce_provider_runtime.rs");

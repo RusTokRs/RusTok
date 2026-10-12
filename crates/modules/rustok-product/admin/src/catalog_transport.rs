@@ -2,7 +2,7 @@
 //!
 //! Every Product admin surface reads the owner through this module. It owns the
 //! final read boundary: each primary and category read is wrapped in a
-//! correlation-aware [`graphql_error_safety::GraphqlReadContext`] before the
+//! correlation-aware `graphql_error_safety::GraphqlReadContext` before the
 //! private gateway executes it, so backend-controlled text never reaches the UI
 //! and the complete typed error is never logged.
 //!

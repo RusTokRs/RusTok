@@ -6,7 +6,7 @@ use std::sync::{
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use rustok_api::{PortActor, PortContext, PortError};
-use rustok_marketplace_ledger::{
+use rustok_marketplace_balance::{
     ListMarketplaceSellerLedgerEntriesRequest, MarketplaceLedgerAccountCode,
     MarketplaceLedgerEntryDirection, MarketplaceLedgerEntryListResponse,
     MarketplaceLedgerEntryResponse, MarketplaceLedgerReadPort,

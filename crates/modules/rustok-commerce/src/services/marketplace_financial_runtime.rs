@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rustok_marketplace::{
     MarketplaceFinancialCommandPort, MarketplaceFinancialOrchestrationService,
 };
-use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
+use rustok_marketplace_balance::MarketplaceLedgerCommandPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentProviderEventObservers;
 use sea_orm::DatabaseConnection;
@@ -47,7 +47,7 @@ impl MarketplaceFinancialRuntime {
                 allocation,
             ),
         );
-        let ledger = Arc::new(rustok_marketplace_ledger::MarketplaceLedgerService::new(
+        let ledger = Arc::new(rustok_marketplace_balance::MarketplaceLedgerService::new(
             db,
             commission.clone(),
         ));

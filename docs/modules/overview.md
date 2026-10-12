@@ -94,9 +94,10 @@ It is important to distinguish:
 | `marketplace_listing` | `rustok-marketplace-listing` | `marketplace_seller`, `product` |
 | `marketplace_allocation` | `rustok-marketplace-allocation` | `order`, `marketplace_seller`, `marketplace_listing` |
 | `marketplace_commission` | `rustok-marketplace-commission` | `marketplace_allocation` |
-| `marketplace_ledger` | `rustok-marketplace-ledger` | `marketplace_commission` |
-| `marketplace_payout` | `rustok-marketplace-payout` | `marketplace_ledger` |
-| `marketplace` | `rustok-marketplace` | `marketplace_seller`, `marketplace_listing`, `marketplace_allocation`, `marketplace_commission`, `marketplace_ledger`, `marketplace_payout` |
+| `marketplace_balance` | `rustok-marketplace-balance` | `marketplace_commission`, `accounting` |
+| `marketplace_payout` | `rustok-marketplace-payout` | `marketplace_balance` |
+| `marketplace` | `rustok-marketplace` | `marketplace_seller`, `marketplace_listing`, `marketplace_allocation`, `marketplace_commission`, `marketplace_balance`, `marketplace_payout` |
+| `accounting` | `rustok-accounting` | `outbox` |
 | `moderation` | `rustok-moderation` | — |
 | `blog` | `rustok-blog` | `content`, `outbox`, `taxonomy`, `channel` |
 | `forum` | `rustok-forum` | `content`, `media`, `taxonomy` |

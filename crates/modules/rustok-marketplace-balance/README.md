@@ -1,8 +1,8 @@
-# rustok-marketplace-ledger
+# rustok-marketplace-balance
 
 ## Purpose
 
-`rustok-marketplace-ledger` owns immutable, balanced accounting entries produced
+`rustok-marketplace-balance` owns seller balances, escrow holds, and financial bucket transitions
 from marketplace commission assessments, append-only financial corrections, and
 seller balance bucket transfers.
 

@@ -297,8 +297,9 @@ rustok-marketplace-listing = { path = "crates/modules/rustok-marketplace-listing
 rustok-marketplace-listing-admin = { path = "crates/modules/rustok-marketplace-listing/admin" }
 rustok-marketplace-allocation = { path = "crates/modules/rustok-marketplace-allocation" }
 rustok-marketplace-commission = { path = "crates/modules/rustok-marketplace-commission" }
-rustok-marketplace-ledger = { path = "crates/modules/rustok-marketplace-ledger" }
+rustok-marketplace-balance = { path = "crates/modules/rustok-marketplace-balance" }
 rustok-marketplace-payout = { path = "crates/modules/rustok-marketplace-payout" }
+rustok-accounting = { path = "crates/modules/rustok-accounting" }
 rustok-moderation = { path = "crates/modules/rustok-moderation" }
 rustok-cart = { path = "crates/modules/rustok-cart" }
 rustok-cart-storefront = { path = "crates/modules/rustok-cart/storefront" }

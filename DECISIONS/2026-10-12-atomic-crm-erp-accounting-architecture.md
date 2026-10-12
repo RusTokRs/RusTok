@@ -22,7 +22,7 @@ Two extreme implementation models were evaluated and rejected:
 1. *A monolithic 1C-like dynamic configurator:* Implementing an interpretation engine over dynamic schemas, EAV tables, and runtime UI generators. This eliminates Rust's compile-time correctness guarantees, degrades PostgreSQL relational integrity and indexing, and creates heavy, non-native mobile user experiences unsuited for responsive Flutter SuperApp clients.
 2. *Unbounded micro-crate fragmentation (15+ crates):* Decomposing every single table into an isolated crate (e.g. separating waybills, warehouse topology, movements, costing, and reconciliation into distinct crates). This breaks relational atomicity, forces complex multi-phase distributed sagas for simple operational tasks, and multiplies build overhead without semantic justification.
 
-Furthermore, historical implementations in the codebase (e.g. `rustok-marketplace-ledger`) created localized, private double-entry ledgers inside feature modules due to the lack of a universal accounting core. An authoritative target architecture is required to define how CRM, ERP, Finance, and Accounting functionality decompose into sovereign, ACID-bound domain modules while establishing clean separation between operational money management (`rustok-finance`) and formal double-entry bookkeeping (`rustok-accounting`).
+Furthermore, historical implementations in the codebase (e.g. `rustok-marketplace-balance`, formerly named marketplace ledger) created localized, private double-entry ledgers inside feature modules due to the lack of a universal accounting core. An authoritative target architecture is required to define how CRM, ERP, Finance, and Accounting functionality decompose into sovereign, ACID-bound domain modules while establishing clean separation between operational money management (`rustok-finance`) and formal double-entry bookkeeping (`rustok-accounting`).
 
 ## Decision
 
@@ -40,7 +40,7 @@ RusToK adopts a **Sovereign Domain Modules + Operational Finance + Universal Acc
 
 2. **Decoupling Double-Entry Accounting from Feature Domains:**
    - Double-entry accounting is decoupled from feature modules. `rustok-accounting` is the sole platform owner of the chart of accounts and journal transactions.
-   - Feature modules (Orders, Invoices, Warehouse Waybills, Marketplace Commissions) produce operational business facts. In the target state, the private ledgering in `rustok-marketplace-ledger` migrates into standard entries in `rustok-accounting` categorized by `party_id` (vendor subconto).
+   - Feature modules (Orders, Invoices, Warehouse Waybills, Marketplace Commissions) produce operational business facts. `rustok-marketplace-balance` is retained as the dedicated Seller Balance / Escrow Wallet (`pending` $\to$ `available` $\to$ `reserved` $\to$ `paid`) and integrates with `rustok-accounting` through typed FBA port contracts and `TransactionalEventBus` to translate seller balance operations into standard G/L postings.
 
 3. **Dual-Layer Communication: Compiled Core vs Auxiliary No-Code Automation:**
    - **Core Transactional Paths (Compiled Rust):** Mission-critical business workflows (e.g. `WaybillDispatched` $\to$ `Inventory` deduction $\to$ `Accounting` posting) are executed strictly by **statically typed, compiled Rust event handlers** subscribing to the Transactional Outbox (`sys_events`). These handlers provide atomic guarantees, idempotency, and high throughput.
@@ -148,7 +148,7 @@ Consumers must never mutate another module's ledger or tables directly; all cros
 - Existing modules (`rustok-customer`, `rustok-inventory`, `rustok-order`, `rustok-payment`, `rustok-tax`, `rustok-commerce-foundation`) remain fully operational.
 - `rustok-party` is introduced as the foundational counterparty layer; `rustok-customer` is migrated to reference `Party` without breaking existing storefront contracts.
 - `rustok-inventory` evolves in-place into v2, introducing multi-tier topology, primary waybills, and append-only stock movement tables while keeping checkout reservations compatible.
-- `rustok-accounting` provides universal double-entry accounting, enabling future migration of marketplace commission and clearing entries out of `rustok-marketplace-ledger`.
+- `rustok-accounting` provides universal double-entry accounting, enabling future migration of marketplace commission and clearing entries out of `rustok-marketplace-balance`.
 
 ## Alternatives considered
 

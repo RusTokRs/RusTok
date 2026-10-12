@@ -12,7 +12,7 @@ marketplace-financial = [
     "dep:rustok-marketplace",
     "dep:rustok-marketplace-allocation",
     "dep:rustok-marketplace-commission",
-    "dep:rustok-marketplace-ledger",
+    "dep:rustok-marketplace-balance",
 ]
 
 [dependencies]
@@ -39,7 +39,7 @@ rustok-tenant.workspace = true
 rustok-marketplace = { path = "../rustok-marketplace", optional = true }
 rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation", optional = true }
 rustok-marketplace-commission = { path = "../rustok-marketplace-commission", optional = true }
-rustok-marketplace-ledger = { path = "../rustok-marketplace-ledger", optional = true }
+rustok-marketplace-balance = { path = "../rustok-marketplace-balance", optional = true }
 flex.workspace = true
 async-trait.workspace = true
 axum.workspace = true

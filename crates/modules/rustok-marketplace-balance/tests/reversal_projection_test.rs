@@ -10,14 +10,14 @@ use rustok_marketplace_commission::{
     MarketplaceCommissionAssessmentStatus, MarketplaceCommissionReadPort,
     MarketplaceCommissionRuleListResponse, ReadMarketplaceCommissionAssessmentRequest,
 };
-use rustok_marketplace_ledger::dto::{
+use rustok_marketplace_balance::dto::{
     MarketplaceLedgerAccountCode, MarketplaceLedgerEntryDirection, MarketplaceLedgerReversalKind,
     MarketplaceLedgerReversalLineInput, MarketplaceSellerBalanceBucket,
     PostMarketplaceLedgerReversalInput, PostMarketplaceOrderLedgerInput,
     ReadMarketplaceSellerBalanceRequest, RebuildMarketplaceSellerBalanceInput,
 };
-use rustok_marketplace_ledger::entities::{entry, reversal, seller_balance, transaction};
-use rustok_marketplace_ledger::{MarketplaceLedgerError, MarketplaceLedgerService};
+use rustok_marketplace_balance::entities::{entry, reversal, seller_balance, transaction};
+use rustok_marketplace_balance::{MarketplaceLedgerError, MarketplaceLedgerService};
 use sea_orm::{
     ActiveModelTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, IntoActiveModel,
     PaginatorTrait, Set,
@@ -323,7 +323,7 @@ async fn setup_database() -> DatabaseConnection {
         .sqlx_logging(false);
     let db = Database::connect(options).await.unwrap();
     let manager = SchemaManager::new(&db);
-    for migration in rustok_marketplace_ledger::migrations::migrations() {
+    for migration in rustok_marketplace_balance::migrations::migrations() {
         migration.up(&manager).await.unwrap();
     }
     db

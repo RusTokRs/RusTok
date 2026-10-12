@@ -1,9 +1,9 @@
 [package]
-name = "rustok-marketplace-ledger"
+name = "rustok-marketplace-balance"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Marketplace Family immutable double-entry ledger owner"
+description = "Marketplace Family seller balance, escrow hold, and balance operations owner"
 
 [lints]
 workspace = true
@@ -12,6 +12,7 @@ workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 hex.workspace = true
+rustok-accounting.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation" }

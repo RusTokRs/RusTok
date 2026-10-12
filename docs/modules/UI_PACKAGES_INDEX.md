@@ -90,10 +90,10 @@ integration. The canonical source of truth here is only manifest wiring.
 - `rustok-outbox` admin UI: [README](../../crates/modules/rustok-outbox/admin/README.md)
 - `events` admin UI: [README](../../crates/modules/rustok-events-module/admin/README.md);
   the sibling Next package is
-  `crates/modules/rustok-events-module/next-admin`.
+  `apps/next-admin/packages/events`.
 - `iggy_connector` admin UI:
   [README](../../crates/modules/rustok-iggy-connector/admin/README.md); the sibling
-  Next package is `crates/modules/rustok-iggy-connector/next-admin`.
+  Next package is `apps/next-admin/packages/iggy-connector`.
 - `rustok-auth` admin UI: [README](../../crates/modules/rustok-auth/admin/README.md), fast boundary gate `npm run verify:auth:admin-boundary`
 - `rustok-tenant` admin UI: [README](../../crates/modules/rustok-tenant/admin/README.md)
 - `rustok-rbac` admin UI: [README](../../crates/modules/rustok-rbac/admin/README.md)

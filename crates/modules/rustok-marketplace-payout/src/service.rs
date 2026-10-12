@@ -6,7 +6,7 @@ use std::{
 use chrono::Utc;
 use rustok_api::PortContext;
 use rustok_core::generate_id;
-use rustok_marketplace_ledger::{
+use rustok_marketplace_balance::{
     ListMarketplaceSellerLedgerEntriesRequest, MarketplaceLedgerAccountCode,
     MarketplaceLedgerEntryDirection, MarketplaceLedgerEntryResponse, MarketplaceLedgerReadPort,
 };

@@ -1,0 +1,27 @@
+[package]
+name = "rustok-accounting"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Universal double-entry General Ledger, Chart of Accounts, and Posting Rules"
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
+rustok-core.workspace = true
+rustok-outbox.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+utoipa = { workspace = true, features = ["uuid", "chrono"] }
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

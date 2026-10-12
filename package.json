@@ -19,6 +19,7 @@
     "audit:all": "npm run audit:deps && npm run audit:deadcode && npm run audit:clones",
     "format:next-admin": "npm --prefix apps/next-admin run format",
     "format:next-admin:check": "npm --prefix apps/next-admin run format:check",
+    "typecheck:next-admin": "npm --prefix apps/next-admin run typecheck",
     "test:e2e:rust": "cargo test -p rustok-e2e-rust --test leptos_admin_smoke -- --nocapture",
     "test:e2e:next-admin": "npm --prefix apps/next-admin run test:e2e",
     "test:e2e:next-frontend": "npm --prefix apps/next-frontend run test:e2e",

@@ -12,6 +12,7 @@ mod reversal;
 #[cfg(test)]
 mod tests;
 
+pub mod accounting_bridge;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -19,26 +20,41 @@ pub mod migrations;
 pub mod ports;
 pub mod service;
 
+pub use accounting_bridge::*;
 pub use dto::*;
 pub use error::{MarketplaceLedgerError, MarketplaceLedgerResult};
 pub use ports::*;
 pub use service::MarketplaceLedgerService;
 
-/// Owns immutable, balanced marketplace ledger transactions and entries.
-pub struct MarketplaceLedgerModule;
+pub type MarketplaceBalanceError = MarketplaceLedgerError;
+pub type MarketplaceBalanceResult<T> = MarketplaceLedgerResult<T>;
+pub type MarketplaceBalanceService = MarketplaceLedgerService;
+
+/// Owns seller balances, escrow holds, and financial bucket transitions.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MarketplaceBalanceModule;
+
+impl MarketplaceBalanceModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[allow(non_camel_case_types)]
+pub type Marketplace_balanceModule = MarketplaceBalanceModule;
 
 #[async_trait]
-impl RusToKModule for MarketplaceLedgerModule {
+impl RusToKModule for MarketplaceBalanceModule {
     fn slug(&self) -> &'static str {
-        "marketplace_ledger"
+        "marketplace_balance"
     }
 
     fn name(&self) -> &'static str {
-        "Marketplace Ledger"
+        "Marketplace Balance"
     }
 
     fn description(&self) -> &'static str {
-        "Marketplace Family immutable double-entry ledger owner"
+        "Marketplace Family seller balance, escrow hold, and financial tracking owner"
     }
 
     fn version(&self) -> &'static str {
@@ -46,7 +62,7 @@ impl RusToKModule for MarketplaceLedgerModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["marketplace_commission"]
+        &["marketplace_commission", "accounting"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -59,7 +75,7 @@ impl RusToKModule for MarketplaceLedgerModule {
     }
 }
 
-impl MigrationSource for MarketplaceLedgerModule {
+impl MigrationSource for MarketplaceBalanceModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
     }

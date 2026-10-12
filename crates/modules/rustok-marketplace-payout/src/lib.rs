@@ -43,7 +43,7 @@ impl RusToKModule for MarketplacePayoutModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["marketplace_ledger"]
+        &["marketplace_balance"]
     }
 
     fn permissions(&self) -> Vec<Permission> {

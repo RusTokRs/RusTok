@@ -27,7 +27,7 @@ pub const MARKETPLACE_FAMILY_MODULES: &[&str] = &[
     "marketplace_listing",
     "marketplace_allocation",
     "marketplace_commission",
-    "marketplace_ledger",
+    "marketplace_balance",
     "marketplace_payout",
 ];
 
@@ -77,7 +77,7 @@ impl RusToKModule for MarketplaceModule {
             "marketplace_listing",
             "marketplace_allocation",
             "marketplace_commission",
-            "marketplace_ledger",
+            "marketplace_balance",
             "marketplace_payout",
         ]
     }

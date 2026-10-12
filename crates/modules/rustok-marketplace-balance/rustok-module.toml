@@ -1,8 +1,8 @@
 [module]
-slug = "marketplace_ledger"
-name = "Marketplace Ledger"
+slug = "marketplace_balance"
+name = "Marketplace Balance"
 version = "0.1.0"
-description = "Marketplace Family immutable double-entry ledger owner"
+description = "Marketplace Family seller balance, escrow hold, and financial tracking owner"
 ownership = "first_party"
 trust_level = "verified"
 ui_classification = "no_ui"
@@ -11,17 +11,15 @@ ui_classification = "no_ui"
 category = "commerce"
 tags = [
     "marketplace",
-    "ledger",
-    "accounting",
-    "commission",
-    "seller-payable",
-    "refund",
-    "chargeback",
+    "balance",
     "seller-balance",
+    "escrow",
+    "hold",
+    "payout-reserve",
 ]
 
 [crate]
-entry_type = "MarketplaceLedgerModule"
+entry_type = "MarketplaceBalanceModule"
 
 [fba.provider]
 status = "in_progress"
@@ -44,3 +42,4 @@ degraded_modes = [
 
 [dependencies]
 marketplace_commission = { version_req = ">=0.1.0" }
+accounting = { version_req = ">=0.1.0" }

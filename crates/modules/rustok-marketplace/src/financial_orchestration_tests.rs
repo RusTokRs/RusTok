@@ -8,7 +8,7 @@ use rustok_marketplace_commission::{
     MarketplaceCommissionAssessmentResponse, MarketplaceCommissionAssessmentStatus,
     MarketplaceCommissionCommandPort,
 };
-use rustok_marketplace_ledger::{
+use rustok_marketplace_balance::{
     MarketplaceLedgerCommandPort, MarketplaceLedgerTransactionResponse,
     MarketplaceLedgerTransactionStatus, PostMarketplaceOrderLedgerInput,
 };

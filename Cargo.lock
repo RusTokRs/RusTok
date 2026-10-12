@@ -13174,6 +13174,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-accounting"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-outbox",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-admin"
 version = "0.1.0"
 dependencies = [
@@ -14088,8 +14108,8 @@ dependencies = [
  "rustok-inventory",
  "rustok-marketplace",
  "rustok-marketplace-allocation",
+ "rustok-marketplace-balance",
  "rustok-marketplace-commission",
- "rustok-marketplace-ledger",
  "rustok-order",
  "rustok-outbox",
  "rustok-payment",
@@ -14364,6 +14384,7 @@ dependencies = [
  "flex",
  "hex",
  "rust_decimal",
+ "rustok-accounting",
  "rustok-ai",
  "rustok-ai-translation",
  "rustok-api",
@@ -14389,8 +14410,8 @@ dependencies = [
  "rustok-inventory",
  "rustok-marketplace",
  "rustok-marketplace-allocation",
+ "rustok-marketplace-balance",
  "rustok-marketplace-commission",
- "rustok-marketplace-ledger",
  "rustok-marketplace-listing",
  "rustok-marketplace-payout",
  "rustok-marketplace-seller",
@@ -14522,6 +14543,7 @@ dependencies = [
  "leptos",
  "leptos-auth",
  "rustok-graphql",
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
  "uuid",
@@ -15055,8 +15077,8 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-marketplace-allocation",
+ "rustok-marketplace-balance",
  "rustok-marketplace-commission",
- "rustok-marketplace-ledger",
  "rustok-marketplace-listing",
  "rustok-marketplace-payout",
  "rustok-marketplace-seller",
@@ -15089,15 +15111,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-marketplace-commission"
+name = "rustok-marketplace-balance"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
  "hex",
+ "rustok-accounting",
  "rustok-api",
  "rustok-core",
  "rustok-marketplace-allocation",
+ "rustok-marketplace-commission",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -15110,7 +15134,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-marketplace-ledger"
+name = "rustok-marketplace-commission"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -15119,7 +15143,6 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-marketplace-allocation",
- "rustok-marketplace-commission",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -15185,7 +15208,7 @@ dependencies = [
  "hex",
  "rustok-api",
  "rustok-core",
- "rustok-marketplace-ledger",
+ "rustok-marketplace-balance",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -15418,8 +15441,8 @@ dependencies = [
  "rustok-index",
  "rustok-inventory",
  "rustok-marketplace-allocation",
+ "rustok-marketplace-balance",
  "rustok-marketplace-commission",
- "rustok-marketplace-ledger",
  "rustok-marketplace-listing",
  "rustok-marketplace-payout",
  "rustok-marketplace-seller",
@@ -16987,6 +17010,7 @@ dependencies = [
  "reqwest 0.12.28",
  "rhai",
  "rust-embed",
+ "rustok-accounting",
  "rustok-admin",
  "rustok-ai",
  "rustok-api",
@@ -17019,8 +17043,8 @@ dependencies = [
  "rustok-inventory",
  "rustok-marketplace",
  "rustok-marketplace-allocation",
+ "rustok-marketplace-balance",
  "rustok-marketplace-commission",
- "rustok-marketplace-ledger",
  "rustok-marketplace-listing",
  "rustok-marketplace-payout",
  "rustok-marketplace-seller",

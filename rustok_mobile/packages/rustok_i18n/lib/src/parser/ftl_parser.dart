@@ -55,7 +55,7 @@ class FtlParser {
         continue;
       }
 
-      // Junk / skip unparseable line safely
+      // Junk / skip unparsable line safely
       _skipToNextLine();
     }
 

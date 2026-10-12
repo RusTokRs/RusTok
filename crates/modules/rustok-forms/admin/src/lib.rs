@@ -1,7 +1,10 @@
 //! Leptos admin surface for the forms module: submission triage inbox.
 
+mod i18n;
 mod model;
 mod transport;
+
+pub use i18n::*;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;

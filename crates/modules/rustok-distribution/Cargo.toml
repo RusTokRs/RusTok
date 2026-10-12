@@ -22,14 +22,15 @@ mod-order = ["dep:rustok-order"]
 mod-payment = ["dep:rustok-payment"]
 mod-fulfillment = ["dep:rustok-fulfillment"]
 mod-commerce = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product", "mod-region", "mod-pricing", "mod-inventory", "mod-order", "mod-payment", "mod-fulfillment"]
-commerce-marketplace-financial = ["mod-commerce", "mod-marketplace_allocation", "mod-marketplace_commission", "mod-marketplace_ledger", "rustok-commerce/marketplace-financial"]
+commerce-marketplace-financial = ["mod-commerce", "mod-marketplace_allocation", "mod-marketplace_commission", "mod-marketplace_balance", "rustok-commerce/marketplace-financial"]
 mod-marketplace_seller = ["dep:rustok-marketplace-seller"]
 mod-marketplace_listing = ["dep:rustok-marketplace-listing", "mod-marketplace_seller", "mod-product"]
 mod-marketplace_allocation = ["dep:rustok-marketplace-allocation", "mod-order", "mod-marketplace_seller", "mod-marketplace_listing"]
 mod-marketplace_commission = ["dep:rustok-marketplace-commission", "mod-marketplace_allocation"]
-mod-marketplace_ledger = ["dep:rustok-marketplace-ledger", "mod-marketplace_commission"]
-mod-marketplace_payout = ["dep:rustok-marketplace-payout", "mod-marketplace_ledger"]
-mod-marketplace = ["dep:rustok-marketplace", "mod-marketplace_seller", "mod-marketplace_listing", "mod-marketplace_allocation", "mod-marketplace_commission", "mod-marketplace_ledger", "mod-marketplace_payout"]
+mod-marketplace_balance = ["dep:rustok-marketplace-balance", "mod-marketplace_commission", "mod-accounting"]
+mod-marketplace_payout = ["dep:rustok-marketplace-payout", "mod-marketplace_balance"]
+mod-marketplace = ["dep:rustok-marketplace", "mod-marketplace_seller", "mod-marketplace_listing", "mod-marketplace_allocation", "mod-marketplace_commission", "mod-marketplace_balance", "mod-marketplace_payout"]
+mod-accounting = ["dep:rustok-accounting"]
 mod-moderation = ["dep:rustok-moderation"]
 mod-content = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content"]
 mod-blog = ["dep:rustok-blog", "dep:rustok-content", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog"]
@@ -91,9 +92,10 @@ rustok-marketplace-seller = { workspace = true, optional = true }
 rustok-marketplace-listing = { workspace = true, optional = true }
 rustok-marketplace-allocation = { workspace = true, optional = true }
 rustok-marketplace-commission = { workspace = true, optional = true }
-rustok-marketplace-ledger = { workspace = true, optional = true }
+rustok-marketplace-balance = { workspace = true, optional = true }
 rustok-marketplace-payout = { workspace = true, optional = true }
 rustok-marketplace = { workspace = true, optional = true }
+rustok-accounting = { workspace = true, optional = true }
 rustok-moderation = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-content-orchestration.workspace = true

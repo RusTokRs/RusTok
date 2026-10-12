@@ -107,6 +107,7 @@ fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> 
     }
 }
 
+#[allow(dead_code)]
 async fn execute_server_graphql(request: ServerGraphqlRequest) -> Result<Value, GraphqlHttpError> {
     let mut graphql_request = GraphqlRequest::new(request.query, Some(request.variables));
 

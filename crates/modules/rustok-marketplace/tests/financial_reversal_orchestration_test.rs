@@ -12,7 +12,7 @@ use rustok_marketplace_commission::{
     CreateMarketplaceCommissionRuleVersionInput, MarketplaceCommissionCommandPort,
     MarketplaceCommissionRuleResponse,
 };
-use rustok_marketplace_ledger::{
+use rustok_marketplace_balance::{
     MarketplaceLedgerCommandPort, MarketplaceLedgerReversalKind,
     MarketplaceLedgerReversalLineInput, MarketplaceLedgerReversalResponse,
     MarketplaceLedgerTransactionResponse, MarketplaceLedgerTransactionStatus,

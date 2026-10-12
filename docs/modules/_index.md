@@ -125,8 +125,9 @@ Module local documentation lives inside the crates themselves at
 | `rustok-marketplace-listing` | [docs](../../crates/modules/rustok-marketplace-listing/docs/README.md) | [plan](../../crates/modules/rustok-marketplace-listing/docs/implementation-plan.md) |
 | `rustok-marketplace-allocation` | [docs](../../crates/modules/rustok-marketplace-allocation/docs/README.md) | [plan](../../crates/modules/rustok-marketplace-allocation/docs/implementation-plan.md) |
 | `rustok-marketplace-commission` | [docs](../../crates/modules/rustok-marketplace-commission/docs/README.md) | [plan](../../crates/modules/rustok-marketplace-commission/docs/implementation-plan.md) |
-| `rustok-marketplace-ledger` | [docs](../../crates/modules/rustok-marketplace-ledger/docs/README.md) | [plan](../../crates/modules/rustok-marketplace-ledger/docs/implementation-plan.md) |
+| `rustok-marketplace-balance` | [docs](../../crates/modules/rustok-marketplace-balance/docs/README.md) | [plan](../../crates/modules/rustok-marketplace-balance/docs/implementation-plan.md) |
 | `rustok-marketplace-payout` | [docs](../../crates/modules/rustok-marketplace-payout/docs/README.md) | [plan](../../crates/modules/rustok-marketplace-payout/docs/implementation-plan.md) |
+| `rustok-accounting` | [docs](../../crates/modules/rustok-accounting/docs/README.md) | [plan](../../crates/modules/rustok-accounting/docs/implementation-plan.md) |
 | `rustok-moderation` | [docs](../../crates/modules/rustok-moderation/docs/README.md) | [plan](../../crates/modules/rustok-moderation/docs/implementation-plan.md) |
 | `rustok-blog` | [docs](../../crates/modules/rustok-blog/docs/README.md) | [plan](../../crates/modules/rustok-blog/docs/implementation-plan.md) |
 | `rustok-comments` | [docs](../../crates/modules/rustok-comments/docs/README.md) | [plan](../../crates/modules/rustok-comments/docs/implementation-plan.md) |

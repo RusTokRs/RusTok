@@ -67,9 +67,10 @@ marketplace_seller = { crate = "rustok-marketplace-seller", source = "path", pat
 marketplace_listing = { crate = "rustok-marketplace-listing", source = "path", path = "crates/modules/rustok-marketplace-listing", depends_on = ["marketplace_seller", "product"] }
 marketplace_allocation = { crate = "rustok-marketplace-allocation", source = "path", path = "crates/modules/rustok-marketplace-allocation", depends_on = ["order", "marketplace_seller", "marketplace_listing"] }
 marketplace_commission = { crate = "rustok-marketplace-commission", source = "path", path = "crates/modules/rustok-marketplace-commission", depends_on = ["marketplace_allocation"] }
-marketplace_ledger = { crate = "rustok-marketplace-ledger", source = "path", path = "crates/modules/rustok-marketplace-ledger", depends_on = ["marketplace_commission"] }
-marketplace_payout = { crate = "rustok-marketplace-payout", source = "path", path = "crates/modules/rustok-marketplace-payout", depends_on = ["marketplace_ledger"] }
-marketplace = { crate = "rustok-marketplace", source = "path", path = "crates/modules/rustok-marketplace", depends_on = ["marketplace_seller", "marketplace_listing", "marketplace_allocation", "marketplace_commission", "marketplace_ledger", "marketplace_payout"] }
+marketplace_balance = { crate = "rustok-marketplace-balance", source = "path", path = "crates/modules/rustok-marketplace-balance", depends_on = ["marketplace_commission", "accounting"] }
+marketplace_payout = { crate = "rustok-marketplace-payout", source = "path", path = "crates/modules/rustok-marketplace-payout", depends_on = ["marketplace_balance"] }
+marketplace = { crate = "rustok-marketplace", source = "path", path = "crates/modules/rustok-marketplace", depends_on = ["marketplace_seller", "marketplace_listing", "marketplace_allocation", "marketplace_commission", "marketplace_balance", "marketplace_payout"] }
+accounting = { crate = "rustok-accounting", source = "path", path = "crates/modules/rustok-accounting", depends_on = ["outbox"] }
 moderation = { crate = "rustok-moderation", source = "path", path = "crates/modules/rustok-moderation" }
 blog = { crate = "rustok-blog", source = "path", path = "crates/modules/rustok-blog", depends_on = ["content", "outbox", "taxonomy", "channel"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/modules/rustok-forum", depends_on = ["content", "media", "taxonomy"] }

@@ -278,8 +278,8 @@ static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
         source: &rustok_marketplace_commission::MarketplaceCommissionModule,
     },
     ModuleMigrationSource {
-        slug: "marketplace_ledger",
-        source: &rustok_marketplace_ledger::MarketplaceLedgerModule,
+        slug: "marketplace_balance",
+        source: &rustok_marketplace_balance::MarketplaceBalanceModule,
     },
     ModuleMigrationSource {
         slug: "marketplace_payout",
@@ -496,7 +496,7 @@ impl MigratorTrait for Migrator {
             &rustok_marketplace_commission::MarketplaceCommissionModule,
         ));
         all.extend(rustok_core::MigrationSource::migrations(
-            &rustok_marketplace_ledger::MarketplaceLedgerModule,
+            &rustok_marketplace_balance::MarketplaceBalanceModule,
         ));
         all.extend(rustok_core::MigrationSource::migrations(
             &rustok_marketplace_payout::MarketplacePayoutModule,
@@ -769,7 +769,7 @@ mod tests {
                 "marketplace_listing",
                 "marketplace_allocation",
                 "marketplace_commission",
-                "marketplace_ledger",
+                "marketplace_balance",
                 "marketplace_payout",
                 "moderation",
                 "content",

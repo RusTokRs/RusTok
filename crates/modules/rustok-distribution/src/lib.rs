@@ -173,8 +173,8 @@ pub fn build_registry() -> ModuleRegistry {
     let registry = registry.register(rustok_marketplace_allocation::MarketplaceAllocationModule);
     #[cfg(feature = "mod-marketplace_commission")]
     let registry = registry.register(rustok_marketplace_commission::MarketplaceCommissionModule);
-    #[cfg(feature = "mod-marketplace_ledger")]
-    let registry = registry.register(rustok_marketplace_ledger::MarketplaceLedgerModule);
+    #[cfg(feature = "mod-marketplace_balance")]
+    let registry = registry.register(rustok_marketplace_balance::MarketplaceBalanceModule);
     #[cfg(feature = "mod-marketplace_payout")]
     let registry = registry.register(rustok_marketplace_payout::MarketplacePayoutModule);
     #[cfg(feature = "mod-marketplace")]

@@ -933,7 +933,7 @@ pub fn FormRadioGroup(
                     let opt_disabled = is_disabled || opt.disabled;
                     let item_id = format!("{name_attr}-{opt_val}");
                     let field_opt = field.clone();
-                    let on_change_opt = on_change.clone();
+                    let on_change_opt = on_change;
                     let name_attr_item = name_attr.clone();
 
                     rsx! {
@@ -1250,8 +1250,8 @@ pub fn FormOtpInput(
                     let display_str = if char_val != ' ' { char_val.to_string() } else { String::new() };
                     let cell_id = input_id.as_ref().map(|n| format!("{n}-digit-{i}"));
                     let field_opt = field.clone();
-                    let on_change_opt = on_change.clone();
-                    let on_complete_opt = on_complete.clone();
+                    let on_change_opt = on_change;
+                    let on_complete_opt = on_complete;
                     let cur_value = value.clone();
 
                     rsx! {
@@ -1280,10 +1280,8 @@ pub fn FormOtpInput(
                                 if let Some(ref cb) = on_change_opt {
                                     cb.call(new_code.clone());
                                 }
-                                if new_code.len() == length {
-                                    if let Some(ref cb_comp) = on_complete_opt {
-                                        cb_comp.call(new_code);
-                                    }
+                                if let (true, Some(cb_comp)) = (new_code.len() == length, on_complete_opt) {
+                                    cb_comp.call(new_code);
                                 }
                             }
                         }
