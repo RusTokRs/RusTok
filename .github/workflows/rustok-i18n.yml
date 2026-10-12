@@ -67,7 +67,9 @@ jobs:
             | grep -nE 'error -|warning -|info -|\.dart:[0-9]+' \
             | head -n 20 | cut -c1-900 \
             | while IFS= read -r line; do printf '::error::DT %s\n' "${line//%/%25}"; done
-          tr '\r' '\n' < /tmp/te.log | tail -n 30 | cut -c1-900 \
+          tr '\r' '\n' < /tmp/te.log | grep -nE '\[E\]' | head -n 25 | cut -c1-900 \
+            | while IFS= read -r line; do printf '::error::TE %s\n' "${line//%/%25}"; done
+          tr '\r' '\n' < /tmp/te.log | grep -nE 'Expected:|Actual:|Which:|\.dart [0-9]+:[0-9]+' | head -n 60 | cut -c1-900 \
             | while IFS= read -r line; do printf '::error::TT %s\n' "${line//%/%25}"; done
           [ $an -ne 0 ] && exit $an
           exit $te

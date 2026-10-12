@@ -204,6 +204,12 @@ void main() {
       );
       addTearDown(container.dispose);
       var builds = 0;
+      container.listen<void>(
+        localeReadyProvider('en'),
+        (previous, next) =>
+            debugPrint('DIAG listen: ${previous.runtimeType} -> $next'),
+        fireImmediately: true,
+      );
 
       await tester.pumpWidget(
         UncontrolledProviderScope(
@@ -233,6 +239,7 @@ void main() {
           'loaded=${catalog.isLoaded('en')} '
           'getMessage=${catalog.getMessage('en', 'welcome')}');
       await tester.pumpAndSettle();
+      debugPrint('DIAG provider now: ${container.read(localeReadyProvider('en'))}');
       debugPrint('DIAG after settle: builds=$builds '
           'loaded=${catalog.isLoaded('en')} '
           'texts=${find.byType(Text).evaluate().map((e) => (e.widget as Text).data).toList()}');
