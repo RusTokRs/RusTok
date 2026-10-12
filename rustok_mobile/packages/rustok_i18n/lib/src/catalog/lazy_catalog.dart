@@ -55,13 +55,14 @@ class LazyCatalog extends MessageCatalog {
     String locale, {
     String defaultLocale = 'en',
     String platformFallback = 'en',
-  }) {
+  }) async {
     final candidates = localeCandidates(
       locale: locale,
       defaultLocale: defaultLocale,
       platformFallback: platformFallback,
     );
-    return Future.wait(candidates.map(loadLocale));
+    // Future.wait yields a List; the method itself completes with void.
+    await Future.wait(candidates.map(loadLocale));
   }
 
   /// Diagnostics for [locale]'s source, empty if none or not loaded.

@@ -283,30 +283,36 @@ String formatFluentDateTime(
       year ??= '2-digit';
       month ??= 'numeric';
       day ??= 'numeric';
+      break;
     case 'medium':
       year ??= 'numeric';
       month ??= 'short';
       day ??= 'numeric';
+      break;
     case 'long':
       year ??= 'numeric';
       month ??= 'long';
       day ??= 'numeric';
+      break;
     case 'full':
       weekday ??= 'long';
       year ??= 'numeric';
       month ??= 'long';
       day ??= 'numeric';
+      break;
   }
   switch (timeStyle) {
     case 'short':
       hour ??= 'numeric';
       minute ??= '2-digit';
+      break;
     case 'medium':
     case 'long':
     case 'full':
       hour ??= 'numeric';
       minute ??= '2-digit';
       second ??= '2-digit';
+      break;
   }
 
   final hasDate =
