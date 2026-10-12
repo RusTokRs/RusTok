@@ -8,6 +8,7 @@ use crate::graphql::types::*;
 use crate::services::{CampaignService, SubscriberService};
 
 /// Newsletter GraphQL mutations.
+#[derive(Default)]
 pub struct NewsletterMutation;
 
 #[Object]

@@ -88,7 +88,7 @@ function groupSidebarItems(items: NavItem[]): SidebarNavGroup[] {
 }
 
 function getNavLabel(t: ReturnType<typeof useTranslations>, item: NavItem) {
-  return item.i18nKey ? t(item.i18nKey) : item.title;
+  return item.i18nKey ? t(item.i18nKey as any) : item.title;
 }
 
 export default function AppSidebar() {

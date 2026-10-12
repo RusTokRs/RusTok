@@ -17,9 +17,6 @@ async function initSentry() {
     // Add optional integrations for additional features
     integrations: [Sentry.replayIntegration()],
 
-    // Adds request headers and IP for users, for more info visit
-    sendDefaultPii: true,
-
     // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
     tracesSampleRate: 1,
 

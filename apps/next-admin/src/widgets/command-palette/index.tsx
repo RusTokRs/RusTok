@@ -17,7 +17,7 @@ import { useFilteredNavItems } from '@/shared/hooks/use-nav';
 import type { NavItem } from '@/shared/types';
 
 function getNavLabel(t: ReturnType<typeof useTranslations>, item: NavItem) {
-  return item.i18nKey ? t(item.i18nKey) : item.title;
+  return item.i18nKey ? t(item.i18nKey as any) : item.title;
 }
 
 function KBar({ children }: { children: React.ReactNode }) {

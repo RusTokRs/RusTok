@@ -7,6 +7,7 @@ use crate::graphql::types::*;
 use crate::services::{CampaignService, SubscriberService};
 
 /// Newsletter GraphQL queries.
+#[derive(Default)]
 pub struct NewsletterQuery;
 
 #[Object]

@@ -2982,7 +2982,9 @@ function OperationReceipt({
   const facts = responseFacts(response);
   return (
     <Alert className='border-emerald-200 bg-emerald-50 text-emerald-900'>
-      <AlertTitle>{t(`receipt.${receiptKey(response.kind)}`)}</AlertTitle>
+      <AlertTitle>
+        {t(`receipt.${receiptKey(response.kind)}` as any)}
+      </AlertTitle>
       <AlertDescription>
         <dl className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
           {facts.map(([label, value]) => (

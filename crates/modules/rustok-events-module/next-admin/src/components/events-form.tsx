@@ -80,7 +80,7 @@ export function EventsForm({ status, configuration, token, tenantSlug }: EventsF
           <p className='text-muted-foreground text-sm'>{t('transport.help')}</p>
           {restartRequired && <p className='text-xs text-amber-600'>{t('transport.restartRequired')}</p>}
           {profile === 'outbox_iggy' && (
-            <p className='text-sm text-amber-700 dark:text-amber-300'>{t('transport.iggyDeployment', { mode: configuration.iggyMode })}</p>
+            <p className='text-sm text-amber-700 dark:text-amber-300'>{t('transport.iggyDeployment' as any, { mode: configuration.iggyMode } as any)}</p>
           )}
         </CardContent>
       </Card>
