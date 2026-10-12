@@ -66,12 +66,8 @@ const success = {
 
 async function mountOrderContract(page: Page) {
   const adapterSource = await readFile(adapterPath, 'utf8');
-  await page.goto('/auth/sign-in', { waitUntil: 'networkidle' });
-  await page.evaluate(
-    (html) => {
-      document.body.innerHTML = html;
-    },
-    `
+  await page.goto('/auth/sign-in', { waitUntil: 'domcontentloaded' });
+  await page.setContent(`
     <div
       id="fly-root"
       data-fly-browser-root
@@ -82,8 +78,7 @@ async function mountOrderContract(page: Page) {
     >
       <iframe id="canvas-a-frame" data-fly-iframe-canvas title="Fly response order canvas"></iframe>
     </div>
-  `
-  );
+  `);
 
   await page.evaluate(async (source) => {
     const scope = globalThis as OrderScope;
