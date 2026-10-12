@@ -32,8 +32,10 @@ import {
   selectionAfterClearKey,
   selectionAfterToggle,
   selectionEntry,
+  selectionExcept,
+  selectionForKey,
   normalizeFacetSource,
-  type FacetSource,
+  type FacetSourceInput,
 } from "./facet";
 
 /** Copy and markers an adapter supplies for one panel rendering. */
@@ -122,7 +124,7 @@ export type FacetPanelView = {
  * never ask the UI to draw more than the grid is allowed to request.
  */
 export function buildFacetPanel(
-  facets: readonly FacetSource[],
+  facets: readonly FacetSourceInput[],
   selected: readonly string[],
   labels: FacetPanelLabels,
 ): FacetPanelView {
@@ -203,4 +205,22 @@ export function isFacetValueSelected(
   value: string,
 ): boolean {
   return isSelectionSelected(panel.selected, code, value);
+}
+
+/**
+ * The selected entries that belong to one facet of this panel, in their original order.
+ * Mirrors `FacetPanel::selected_for_key`; a panel-level "clear this facet" affordance reads it to
+ * decide whether it has anything to clear.
+ */
+export function facetEntriesForCode(panel: FacetPanelView, code: string): string[] {
+  return selectionForKey(panel.selected, code);
+}
+
+/**
+ * The selection to hand the owner when it counts one facet of this panel.
+ * Mirrors `FacetPanel::other_selection_for_key`: a facet's counts must ignore its own selection,
+ * otherwise an active facet reports the filtered count instead of the drill-down count.
+ */
+export function otherFacetSelectionForCode(panel: FacetPanelView, code: string): string[] {
+  return selectionExcept(panel.selected, code);
 }

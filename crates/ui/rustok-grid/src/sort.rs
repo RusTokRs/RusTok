@@ -1,8 +1,8 @@
 //! Single-column sort state machine.
 //!
-//! The actual ordering is intentionally *not* performed here: server-driven
-//! grids forward this state to the backend, client-side grids can apply it
-//! with their own comparator.
+//! Ordering rules live with the cell vocabulary in [`crate::cell`]: a cell knows how it compares,
+//! and [`SortState::sort_items`] is the loop-shaped entry point a client-side grid uses. A
+//! server-driven grid forwards this state to its backend instead.
 
 use serde::{Deserialize, Serialize};
 
@@ -150,6 +150,27 @@ impl SortState {
         self.column_id = None;
         self.direction = None;
     }
+
+    /// Order `items` in place by the active sort column, stably.
+    ///
+    /// Equal cells keep their input order — `slice::sort_by` is stable — so a page refresh cannot
+    /// reshuffle a column of duplicate values. An inactive (or half-filled, hence ascending) state
+    /// leaves the slice untouched.
+    pub fn sort_items<T, F>(&self, items: &mut [T], cell_of: F)
+    where
+        F: Fn(&T, &str) -> crate::cell::CellValue,
+    {
+        let Some((column_id, direction)) = self.active() else {
+            return;
+        };
+        items.sort_by(|left, right| {
+            let order = cell_of(left, column_id).compare(&cell_of(right, column_id));
+            match direction {
+                SortDirection::Asc => order,
+                SortDirection::Desc => order.reverse(),
+            }
+        });
+    }
 }
 
 #[cfg(test)]
@@ -217,6 +238,36 @@ mod tests {
 
         half_filled.set("  ", SortDirection::Asc);
         assert!(!half_filled.is_active());
+    }
+
+    #[test]
+    fn sort_items_orders_by_the_active_column_and_leaves_ties_in_place() {
+        #[derive(Clone, Debug, PartialEq)]
+        struct Row(&'static str, i64);
+
+        let rows = &mut [Row("c", 2), Row("a", 3), Row("b", 1), Row("d", 2)];
+        let cell_of = |row: &Row, column_id: &str| match column_id {
+            "name" => crate::cell::CellValue::text(row.0),
+            "qty" => crate::cell::CellValue::number(row.1 as f64),
+            _ => crate::cell::CellValue::Empty,
+        };
+
+        SortState::new("name", SortDirection::Asc).sort_items(rows, cell_of);
+        assert_eq!(*rows, [Row("a", 3), Row("b", 1), Row("c", 2), Row("d", 2)]);
+
+        // Descending reverses the comparison, not the tie order: qty 2 keeps c before d.
+        SortState::new("qty", SortDirection::Desc).sort_items(rows, cell_of);
+        assert_eq!(*rows, [Row("a", 3), Row("c", 2), Row("d", 2), Row("b", 1)]);
+
+        // A half-filled state sorts ascending, and an inactive state is a no-op.
+        let half = SortState {
+            column_id: Some("qty".into()),
+            direction: None,
+        };
+        half.sort_items(rows, cell_of);
+        assert_eq!(rows[0].1, 1);
+        SortState::default().sort_items(rows, cell_of);
+        assert_eq!(rows[0].1, 1);
     }
 
     #[test]

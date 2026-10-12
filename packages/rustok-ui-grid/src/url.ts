@@ -19,10 +19,25 @@
 
 export type QueryPair = readonly [string, string | null | undefined];
 
+/**
+ * Split a route target into everything before the fragment and the `#fragment` itself.
+ *
+ * A fragment is part of the URL, not part of the last query value. Without this split
+ * `/products?color=red#reviews` parses `color` as `red#reviews`, that poisoned value is sent to
+ * the API as a real filter term, and the anchor is silently destroyed on the way back out.
+ * The Rust surfaces strip the fragment the same way in `apply_ui_query_pairs`.
+ */
+function splitFragment(target: string): [before: string, fragment: string] {
+  const index = target.indexOf("#");
+  if (index < 0) return [target, ""];
+  return [target.slice(0, index), target.slice(index)];
+}
+
 export function applyQueryPairs(base: string, pairs: readonly QueryPair[]): string {
-  const separator = base.indexOf("?");
-  const path = separator >= 0 ? base.slice(0, separator) : base;
-  const query = separator >= 0 ? base.slice(separator + 1) : "";
+  const [target, fragment] = splitFragment(base);
+  const separator = target.indexOf("?");
+  const path = separator >= 0 ? target.slice(0, separator) : target;
+  const query = separator >= 0 ? target.slice(separator + 1) : "";
   const merged: Array<[string, string]> = [];
   for (const [key, value] of new URLSearchParams(query).entries()) {
     merged.push([key, value]);
@@ -46,15 +61,24 @@ export function applyQueryPairs(base: string, pairs: readonly QueryPair[]): stri
       merged.push([key, nextValue]);
     }
   }
-  if (merged.length === 0) return path;
+  if (merged.length === 0) return path + fragment;
   const params = new URLSearchParams();
   for (const [key, value] of merged) params.append(key, value);
-  return `${path}?${params.toString()}`;
+  return `${path}?${params.toString()}${fragment}`;
 }
 
-/** Reads one query key of a route path with an optional query string. */
+/**
+ * Reads one query key of a route path with an optional query string.
+ *
+ * A missing key and an empty key are both reported as `null`, so a caller never has to decide
+ * whether an empty value means "unset". Use this only on route strings: `URLSearchParams` is
+ * available in the server runtime of every Next app in this repo, and the helper has no DOM need.
+ */
 export function queryParam(base: string, key: string): string | null {
-  const separator = base.indexOf("?");
+  const [target] = splitFragment(base);
+  const separator = target.indexOf("?");
   if (separator < 0) return null;
-  return new URLSearchParams(base.slice(separator + 1)).get(key);
+  const value = new URLSearchParams(target.slice(separator + 1)).get(key);
+  if (value === null || value.length === 0) return null;
+  return value;
 }

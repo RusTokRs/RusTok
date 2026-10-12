@@ -11,6 +11,13 @@ import { Button } from '@/shared/ui/shadcn/button';
 import { Skeleton } from '@/shared/ui/shadcn/skeleton';
 import { cn } from '@/shared/lib/utils';
 import {
+  DEFAULT_PAGE_SIZE,
+  ariaSortForColumn,
+  clampPage,
+  dataTableRangeLabel as gridRangeLabel,
+  emptySortState
+} from '@rustok/ui-grid';
+import {
   Table,
   TableBody,
   TableCell,
@@ -59,6 +66,11 @@ export interface DataTableStaticProps<T> {
   onSort?: (columnId: string) => void;
   /** Controls table row padding density. Defaults to 'default'. */
   density?: 'default' | 'compact';
+  /**
+   * Accessible name of the scrollable table region. Set it on tables whose columns do not announce
+   * themselves (a wide, horizontally scrolled table is otherwise impossible to orient in).
+   */
+  ariaLabel?: string;
 }
 
 export function DataTableStatic<T>({
@@ -71,12 +83,19 @@ export function DataTableStatic<T>({
   className,
   sort,
   onSort,
-  density = 'default'
+  density = 'default',
+  ariaLabel
 }: DataTableStaticProps<T>) {
   const isCompact = density === 'compact';
+  const sortState = sort ?? emptySortState();
 
   return (
-    <div className={cn('rounded-md border', className)}>
+    <div
+      className={cn('rounded-md border', className)}
+      role={ariaLabel ? 'region' : undefined}
+      aria-label={ariaLabel}
+      aria-busy={isLoading || undefined}
+    >
       <Table>
         <TableHeader>
           <TableRow>
@@ -87,6 +106,9 @@ export function DataTableStatic<T>({
               return (
                 <TableHead
                   key={column.id}
+                  // `aria-sort` is the machine-readable counterpart of the arrow glyph: it reports
+                  // the direction even on a column whose header only carries text.
+                  aria-sort={isSortable ? ariaSortForColumn(sortState, column.id) : undefined}
                   className={cn(
                     isCompact && 'h-8 px-2.5 py-1 text-xs',
                     column.headerClassName
@@ -136,7 +158,9 @@ export function DataTableStatic<T>({
           ) : rows.length === 0 ? (
             <TableRow>
               <TableCell
-                colSpan={columns.length}
+                // At least one, so a table with a header but no column definitions still has a cell
+                // to hold the empty state instead of rendering a broken row.
+                colSpan={Math.max(1, columns.length)}
                 className={cn(
                   'text-muted-foreground text-center text-sm',
                   isCompact ? 'py-4' : 'py-8'
@@ -202,25 +226,31 @@ export interface DataTablePaginationBarProps {
   pageCount: number;
   onPageChange: (page: number) => void;
   disabled?: boolean;
-  /** Left-hand copy, e.g. "Showing 1 to 20 of 137 rows"; built with `dataTableRangeLabel`. */
+  /** Left-hand copy, e.g. "Showing 1–20 of 137 orders"; built with `dataTableRangeLabel`. */
   rangeLabel?: React.ReactNode;
   className?: string;
 }
 
+/**
+ * The one "Showing … of … rows" sentence every admin table writes.
+ *
+ * The math itself is not here: `dataTableRangeLabel` in `@rustok/ui-grid` clamps the page into the
+ * real page count and resolves an out-of-range page size, so a table fed `page=99` by a hand-edited
+ * URL reports the last window instead of "Showing 1961 to 20 of 20 rows". This function only adds the
+ * leading word and the row noun the shared helper does not know about.
+ */
 export function dataTableRangeLabel({
   page,
-  perPage,
+  perPage = DEFAULT_PAGE_SIZE,
   total,
   noun
 }: {
   page: number;
-  perPage: number;
+  perPage?: number;
   total: number;
   noun: string;
 }): string {
-  const first = total === 0 ? 0 : (page - 1) * perPage + 1;
-  const last = Math.min(page * perPage, total);
-  return `Showing ${first} to ${last} of ${total} ${noun}`;
+  return `Showing ${gridRangeLabel(clampPage(page, total, perPage), perPage, total)} ${noun}`;
 }
 
 export function DataTablePaginationBar({

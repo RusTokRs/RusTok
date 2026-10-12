@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
 /**
  * Column definitions for RusTok DataGrid — the TypeScript twin of
  * `crates/ui/rustok-grid/src/column.rs`.
@@ -21,6 +31,12 @@ export type ColumnAlign = 'left' | 'center' | 'right';
 
 /** Pinned side for fixed columns. */
 export type PinnedSide = 'left' | 'right';
+
+/*
+ * No `text_align` twin of the Rust helper is needed here: `ColumnAlign` is already the CSS keyword
+ * union, while the Rust enum has to translate itself. That is a language-shape difference, not a
+ * missing capability, and it is listed as such in `scripts/verify/verify-ui-grid-parity.mjs`.
+ */
 
 /** Width constraints of a column; `min <= current <= max` always holds. */
 export interface ColumnWidth {
@@ -272,39 +288,3 @@ export function hasFilterRow(
 ): boolean {
   return visibleColumns(columns).some(hasFilter);
 }
-
-/** Compatibility alias for createGridColumnDef with optional options. */
-export function createColumnDef(
-  id: ColumnId,
-  title: string,
-  options?: Partial<GridColumnDef> & { header?: string }
-): GridColumnDef {
-  let col = createGridColumnDef(id, options?.title ?? options?.header ?? title);
-  if (options?.align) col = withColumnAlign(col, options.align);
-  if (options?.sortable === false) col = withColumnNotSortable(col);
-  if (options?.resizable === false) col = withColumnNotResizable(col);
-  if (options?.visible === false) col = hideColumn(col);
-  if (options?.filterType) col = withColumnFilter(col, options.filterType);
-  if (options?.pinned) col = pinColumn(col, options.pinned);
-  if (options?.width) col = { ...col, width: options.width };
-  return col;
-}
-
-/** Compatibility alias for createResizableColumnWidth. */
-export function createColumnWidth(
-  defaultPx = 150,
-  minPx = 50,
-  maxPx = 800
-): ColumnWidth & { default: number } {
-  const w = createResizableColumnWidth(defaultPx, minPx, maxPx);
-  return { ...w, default: w.current };
-}
-
-/** Compatibility alias for createFixedColumnWidth. */
-export function fixedColumnWidth(px: number): ColumnWidth & { default: number } {
-  const w = createFixedColumnWidth(px);
-  return { ...w, default: w.current };
-}
-
-/** Compatibility alias for hasFilter. */
-export const hasColumnFilter = hasFilter;

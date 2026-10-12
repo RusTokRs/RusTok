@@ -101,7 +101,8 @@ impl GridState {
         self.selection.retain_ids(visible_ids);
     }
 
-    /// Clamp persisted widths to the current column definitions.
+    /// Clamp persisted widths to the current column definitions and drop the overrides of columns
+    /// that no longer exist.
     pub fn clamp_widths(&mut self, columns: &[GridColumnDef]) {
         for column in columns {
             let id = column.id.as_str();
@@ -110,6 +111,25 @@ impl GridState {
                     .set_clamped(id, width, column.width.min, column.width.max);
             }
         }
+        self.column_widths
+            .prune_to(columns.iter().map(|column| column.id.as_str()));
+    }
+
+    /// Turn a full data set into the rows this state renders: filter, then sort, then page.
+    ///
+    /// The order is part of the contract — paging before sorting would sort a single page, and
+    /// sorting before filtering would sort rows that are about to be dropped — and it is the order
+    /// the TypeScript twin's `applyGridRows` uses. The owner still supplies the only piece the grid
+    /// cannot know: which cell of a row belongs to which column.
+    pub fn apply_rows<T, F>(&self, items: &[T], cell_of: F) -> Vec<T>
+    where
+        T: Clone,
+        F: Fn(&T, &str) -> crate::cell::CellValue,
+    {
+        let mut rows = self.filters.retain_matching(items, &cell_of);
+        self.sort.sort_items(&mut rows, &cell_of);
+        let (start, end) = self.pagination.slice_bounds(rows.len());
+        rows[start..end].to_vec()
     }
 }
 
@@ -142,6 +162,60 @@ mod tests {
         state.column_widths.set("title", 9_000);
         state.clamp_widths(&columns);
         assert_eq!(state.column_widths.get("title", 200), 300);
+    }
+
+    #[test]
+    fn apply_rows_filters_sorts_and_pages_in_that_order() {
+        use crate::cell::CellValue;
+        use crate::filter::FilterValue;
+
+        #[derive(Clone, Debug, PartialEq)]
+        struct Row(&'static str, f64);
+
+        let rows: Vec<Row> = vec![
+            Row("hat", 30.0),
+            Row("shirt", 10.0),
+            Row("coat", 50.0),
+            Row("boots", 20.0),
+            Row("dress", 40.0),
+        ];
+        let cell_of = |row: &Row, column_id: &str| match column_id {
+            "name" => CellValue::text(row.0),
+            "price" => CellValue::number(row.1),
+            _ => CellValue::Empty,
+        };
+
+        let mut state = GridState::new().with_pagination(1, 2, 5);
+        assert_eq!(
+            state.apply_rows(&rows, cell_of),
+            vec![Row("hat", 30.0), Row("shirt", 10.0)]
+        );
+
+        // Sorting happens over the filtered set, so page 2 holds the middle of the ordered rows.
+        state.sort.set("price", crate::sort::SortDirection::Desc);
+        state.pagination.set_page(2);
+        assert_eq!(state.apply_rows(&rows, cell_of), vec![Row("hat", 30.0)]);
+
+        // Filtering narrows the pool the page indexes into; a page past the end renders empty.
+        state.set_filter("name", FilterValue::Text("o".into()));
+        state.pagination.set_page(1);
+        assert_eq!(
+            state.apply_rows(&rows, cell_of),
+            vec![Row("coat", 50.0), Row("boots", 20.0)]
+        );
+        state.pagination.set_page(2);
+        assert!(state.apply_rows(&rows, cell_of).is_empty());
+    }
+
+    #[test]
+    fn stale_width_overrides_are_pruned_by_clamping() {
+        let columns = vec![GridColumnDef::new("title", "Title").width_range(200, 120, 300)];
+        let mut state = GridState::new();
+        state.column_widths.set("title", 240);
+        state.column_widths.set("retired", 800);
+        state.clamp_widths(&columns);
+        assert_eq!(state.column_widths.get_stored("title"), Some(240));
+        assert_eq!(state.column_widths.get_stored("retired"), None);
     }
 
     #[test]

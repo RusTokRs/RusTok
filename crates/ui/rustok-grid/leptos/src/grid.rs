@@ -38,6 +38,11 @@ pub fn DataGrid<T, K, KF>(
     #[prop(optional)] pagination: Option<RwSignal<GridPagination>>,
     #[prop(optional)] on_page_change: Option<Callback<usize>>,
     #[prop(optional)] on_page_size_change: Option<Callback<usize>>,
+    /// Selectable page sizes for the footer's "rows per page" picker. The current size is always
+    /// offered, and an unset list falls back to the core's `DEFAULT_PAGE_SIZE_OPTIONS` — the same
+    /// contract the Dioxus grid exposes, so either host can configure its picker.
+    #[prop(optional)]
+    page_size_options: Option<Vec<usize>>,
     #[prop(optional)] on_load_more: Option<Callback<()>>,
     #[prop(optional)] filters: Option<RwSignal<ColumnFilters>>,
     #[prop(optional)] on_filter_change: Option<Callback<ColumnFilters>>,
@@ -349,6 +354,7 @@ where
                 on_page_size_change=handle_page_size_change
                 on_mode_change=handle_mode_change
                 on_load_more=handle_load_more
+                page_size_options=page_size_options
             />
         </div>
     }

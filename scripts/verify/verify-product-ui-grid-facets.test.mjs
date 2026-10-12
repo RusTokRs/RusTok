@@ -93,7 +93,7 @@ const behaviour = runInModuleScope(`
   checks.unicodeKeys = grid.isSelectionSelected(["Ä=red"], "ä", "red");
   checks.codePointIds = grid.rowSelectionIds(["😀", "", "a"]);
   checks.rowSelection = {
-    created: grid.rowSelectionIds(grid.selectAllRows(new Set(["b", "a", "b"]))),
+    created: grid.rowSelectionIds(grid.rowSelectionFromIds(new Set(["b", "a", "b"]))),
     added: grid.rowSelectionIds(grid.addRowsToSelection(
       new Set(["outside", "a"]),
       new Set(["a", "b"])
@@ -119,7 +119,7 @@ const behaviour = runInModuleScope(`
     count: grid.columnFilterCount(filterMap),
     title: grid.getColumnFilter(filterMap, "title"),
     price: grid.getColumnFilter(filterMap, "price"),
-    falseActive: grid.isFilterActive(grid.getColumnFilter(filterMap, "activeFalse")),
+    falseActive: grid.isFilterValueActive(grid.getColumnFilter(filterMap, "activeFalse")),
     hasEmpty: grid.hasColumnFilterValue(filterMap, "empty"),
     prototypeKeyMissing: grid.getColumnFilter(filterMap, "toString") === undefined,
     entries: grid.columnFilterEntries(filterMap)
@@ -501,7 +501,8 @@ test("sort transitions cycle through ascending, descending and cleared", () => {
   assert.deepEqual(behaviour.sort, {
     first: { columnId: "title", direction: "asc" },
     second: { columnId: "title", direction: "desc" },
-    third: null,
+    // Clearing returns the empty state, never null: a transition answers with a state.
+    third: { columnId: null, direction: null },
     direction: "asc",
     aria: "descending",
     halfActive: true,

@@ -122,7 +122,10 @@ pub fn GridHeader(
             }
         };
 
-        let resize_handle: Option<Element> = col.resizable.then(|| {
+        // A fixed-width column has `min == max`, so a handle on it could never change anything:
+        // drawing one would put a focusable, draggable separator in the tab order that does nothing.
+        // The Leptos header gates on the same pair of conditions.
+        let resize_handle: Option<Element> = (col.resizable && col.width.is_flexible()).then(|| {
             rsx! {
                 ColumnResizeHandle {
                     column_id: id.clone(),

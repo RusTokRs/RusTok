@@ -30,35 +30,45 @@ export const MAX_GRID_FACETS = 8;
 /** Maximum number of bucket values one enumerable facet carries. */
 export const MAX_GRID_FACET_VALUES = 20;
 
-/** Largest count exactly representable by the JavaScript number surface. */
-export const MAX_SAFE_FACET_COUNT = Number.MAX_SAFE_INTEGER;
-
 /** What a facet's value domain is, mirroring `rustok_grid::FacetDomain`. */
 export type FacetDomain =
   | { kind: 'dictionary'; multi: boolean }
   | { kind: 'boolean' }
   | { kind: 'open' };
 
-/** One counted bucket of a facet. */
-export type FacetBucket = {
+/** One counted bucket of an enumerable facet — the twin of Rust's `FacetValue`. */
+export type FacetValue = {
   value: string;
   label: string;
   count: number;
 };
 
-/** A facet an owner resolved for the current filter set. */
+/**
+ * A facet an owner resolved for the current filter set, as the panel renders it.
+ */
 export type FacetSource = {
   code: string;
   label: string;
   domain: FacetDomain;
-  /** Derived from the domain, never independently supplied by an owner. */
+  /**
+   * Derived from the domain by `normalizeFacetSource`; a value supplied by an owner is never
+   * trusted, and any disagreement with the domain is repaired rather than validated.
+   */
   isEnumerable: boolean;
   /** True when the bucket list was cut at `MAX_GRID_FACET_VALUES`. */
   isTruncated: boolean;
   /** Number of rows matching every other active facet that carry a value for this facet. */
   total: number;
-  values: FacetBucket[];
+  values: FacetValue[];
 };
+
+/**
+ * The facet shape an owner hands over.
+ *
+ * `isEnumerable` is accepted for back-compat with snapshots that carried it and is always derived
+ * from the domain; nothing about the panel's behaviour may depend on what an owner supplied.
+ */
+export type FacetSourceInput = Omit<FacetSource, "isEnumerable"> & { isEnumerable?: boolean };
 
 function normalizeFacetCount(value: number, name: string): number {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -111,7 +121,7 @@ export function facetDomainIsEnumerable(domain: FacetDomain): boolean {
  * enumerable domains are capped and report truncation. Bucket records are copied so later mutation
  * of the owner's input cannot rewrite the panel's snapshot.
  */
-export function normalizeFacetSource(facet: FacetSource): FacetSource {
+export function normalizeFacetSource(facet: FacetSourceInput): FacetSource {
   if (typeof facet !== 'object' || facet === null) {
     throw new TypeError('facet source must be an object');
   }
@@ -122,7 +132,7 @@ export function normalizeFacetSource(facet: FacetSource): FacetSource {
 
   const domain = normalizeFacetDomain(facet.domain);
   const isEnumerable = facetDomainIsEnumerable(domain);
-  const values: FacetBucket[] = [];
+  const values: FacetValue[] = [];
   let isTruncated = false;
 
   if (isEnumerable) {
@@ -160,7 +170,7 @@ export function facetFromBuckets(input: {
   label: string;
   domain: FacetDomain;
   total: number;
-  values: readonly FacetBucket[];
+  values: readonly FacetValue[];
 }): FacetSource {
   return normalizeFacetSource({
     code: input.code,
@@ -193,7 +203,7 @@ export function openFacet(input: {
 }
 
 /** The counted buckets as select-filter options; counts remain facet-owned. */
-export function facetFilterOptions(facet: FacetSource): FilterOption[] {
+export function facetFilterOptions(facet: FacetSourceInput): FilterOption[] {
   return normalizeFacetSource(facet).values.map(({ value, label }) => ({ value, label }));
 }
 
