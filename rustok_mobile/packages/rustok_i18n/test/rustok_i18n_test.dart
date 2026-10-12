@@ -669,4 +669,45 @@ iso = { DATETIME("2026-01-05T14:03:09Z", dateStyle: "long") }
       expect(messages.t('welcome', locale: 'en'), 'Welcome');
     });
   });
+
+  group('CURRENCY()', () {
+    test('symbol placement follows the locale', () {
+      expect(formatFluentCurrency(1234.5, currency: 'USD', locale: 'en'),
+          '\$1,234.50');
+      expect(formatFluentCurrency(1234.5, currency: 'EUR', locale: 'ru'),
+          '1\u00A0234,50\u00A0€');
+      expect(formatFluentCurrency(3, currency: 'CHF', locale: 'en'),
+          'CHF\u00A03.00');
+    });
+
+    test('uses the standard fraction digits of the currency', () {
+      expect(formatFluentCurrency(1234.4, currency: 'JPY', locale: 'en'),
+          '¥1,234');
+      expect(formatFluentCurrency(1.5, currency: 'KWD', locale: 'en'),
+          'KWD\u00A01.500');
+    });
+
+    test('negative amounts keep the sign in front of the symbol', () {
+      expect(formatFluentCurrency(-5, currency: 'USD', locale: 'en'),
+          '-\$5.00');
+    });
+
+    test('display "code" shows the ISO code instead of the symbol', () {
+      expect(
+        formatFluentCurrency(1234.5,
+            currency: 'USD', locale: 'en', display: 'code'),
+        'USD\u00A01,234.50',
+      );
+    });
+
+    test('NUMBER() with style currency in a bundle', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource(
+        'price = { NUMBER(\$v, style: "currency", currency: "USD") }\n'
+        'bad = { NUMBER(\$v, style: "currency", currency: "us") }\n',
+      );
+      expect(bundle.format('price', args: {'v': 3}), '\$3.00');
+      expect(bundle.format('bad', args: {'v': 1234.5}), '1,234.5');
+    });
+  });
 }

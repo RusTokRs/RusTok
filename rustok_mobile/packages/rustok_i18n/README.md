@@ -205,7 +205,8 @@ print(t.itemsCount(count: 3));
 * `NUMBER()`: fraction digits, locale-aware grouping and decimal separators, `minimumIntegerDigits`, `useGrouping`, and `style: "percent"`. Separator data covers common languages; unknown languages use English style.
 * `DATETIME()`: `dateStyle`, `timeStyle`, and the `weekday`, `year`, `month`, `day`, `hour`, `minute`, `second` and `hour12` options, for en, ru, uk, de, fr, es and pl (English for other languages). Accepts `DateTime`, ISO-8601 strings, and epoch milliseconds (read as UTC). `timeZone: "UTC"` converts to UTC; other zones are not supported, and time zone names are not rendered.
 * `LazyCatalog`: asynchronous, on-demand loading of each locale (use it for remote or asset sources). Lookups stay synchronous, so load a locale before using it. Use `loadForLocale` to load the whole fallback chain.
-* Not implemented: `CURRENCY()` and other `NUMBER` styles, full CLDR data (no `intl`), and calendars other than Gregorian.
+* `CURRENCY()` (as `NUMBER(..., style: "currency", currency: "USD")`): symbols and standard fraction digits for common ISO 4217 codes, symbol placement by locale, `currencyDisplay: "code"`. Unknown codes show the ISO code.
+* Not implemented: full CLDR data (no `intl`), calendars other than Gregorian, and currency names.
 * The parser is hand-written; the package has no runtime dependency on PetitParser or `intl`.
 * Duplicate message IDs within a locale keep the first definition and report a diagnostic.
 

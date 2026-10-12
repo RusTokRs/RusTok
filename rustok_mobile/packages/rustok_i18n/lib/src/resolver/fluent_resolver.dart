@@ -1,5 +1,6 @@
 import '../ast/ast_nodes.dart';
 import '../parser/ftl_parser.dart';
+import '../format/currency.dart';
 import '../format/datetime_format.dart';
 import '../format/number_symbols.dart';
 import 'cldr_plurals.dart';
@@ -170,6 +171,48 @@ int _clampDigits(int digits) {
   return digits;
 }
 
+/// Formats [value] as money in [currency] (ISO 4217 code) for [locale].
+///
+/// [display] is `symbol` (default) or `code`. Fraction digits default to the
+/// currency's standard count (for example 0 for JPY) unless given explicitly.
+String formatFluentCurrency(
+  num value, {
+  required String currency,
+  required String locale,
+  String display = 'symbol',
+  int? minimumFractionDigits,
+  int? maximumFractionDigits,
+  bool useGrouping = true,
+}) {
+  final code = currency.toUpperCase();
+  final defaults = currencyFractionDigits(code);
+  final minimum = minimumFractionDigits ?? defaults;
+  var maximum = maximumFractionDigits ?? (defaults > minimum ? defaults : minimum);
+  if (maximum < minimum) maximum = minimum;
+
+  final number = formatFluentNumber(
+    value,
+    minimumFractionDigits: minimum,
+    maximumFractionDigits: maximum,
+    useGrouping: useGrouping,
+    locale: locale,
+  );
+
+  var sign = '';
+  var amount = number;
+  if (amount.startsWith('-')) {
+    sign = '-';
+    amount = amount.substring(1);
+  }
+
+  final symbol = display == 'code' ? code : currencySymbol(code);
+  if (currencySymbolPrecedes(locale)) {
+    final gap = isAlphabeticSymbol(symbol) ? '\u00A0' : '';
+    return '$sign$symbol$gap$amount';
+  }
+  return '$sign$amount\u00A0$symbol';
+}
+
 /// Display form of a variable or number literal: integral doubles print without
 /// a fraction (`3.0` -> `3`), everything else uses its default string form.
 String _formatValue(Object value) {
@@ -324,7 +367,23 @@ class _FluentResolver {
   }
 
   String _formatNumberFunction(FtlFunctionReference expr, num number) {
-    final percent = _stringOption(expr.named['style']) == 'percent';
+    final style = _stringOption(expr.named['style']);
+    final code = _stringOption(expr.named['currency']);
+    if (style == 'currency' && code != null && isValidCurrencyCode(code)) {
+      return formatFluentCurrency(
+        number,
+        currency: code,
+        locale: bundle.locale,
+        display: _stringOption(expr.named['currencyDisplay']) ?? 'symbol',
+        minimumFractionDigits:
+            _optionalDigits(expr.named['minimumFractionDigits']),
+        maximumFractionDigits:
+            _optionalDigits(expr.named['maximumFractionDigits']),
+        useGrouping: _boolOption(expr.named['useGrouping']) ?? true,
+      );
+    }
+
+    final percent = style == 'percent';
     final minimum = _digitsOption(expr.named['minimumFractionDigits'], 0);
     final maximumRaw = _digitsOption(
       expr.named['maximumFractionDigits'],
@@ -393,6 +452,10 @@ class _FluentResolver {
     }
     if (option is FtlNumberLiteral) return option.value != 0;
     return null;
+  }
+
+  int? _optionalDigits(FtlExpression? option) {
+    return option is FtlNumberLiteral ? _clampDigits(option.value.toInt()) : null;
   }
 
   int _digitsOption(FtlExpression? option, int fallback) {

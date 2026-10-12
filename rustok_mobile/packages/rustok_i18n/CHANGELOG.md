@@ -15,6 +15,7 @@
 * Removed unused dependencies `petitparser` and `intl`.
 * `NUMBER()` formats digits with locale grouping and decimal separators. **Behaviour change:** `1234.5` now renders as `1,234.5` in English (previously `1234.5`). Pass `useGrouping: "false"` to keep the old digits-only output.
 * `NUMBER()` supports `style: "percent"`, `minimumIntegerDigits`, and `useGrouping`.
+* `CURRENCY()` implemented as `NUMBER` style `currency` with symbols, ISO 4217 fraction digits and locale placement.
 * `DATETIME()` implemented with `dateStyle`/`timeStyle` and component options (en, ru, uk, de, fr, es, pl).
 * `LazyCatalog` with asynchronous per-locale loading, `loadLocale` / `loadForLocale`, and retry after failure.
 * Example locale files in `example/locales` are used by CI (`check` and `typegen`).

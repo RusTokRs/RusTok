@@ -4,6 +4,7 @@ library rustok_i18n;
 export 'src/ast/ast_nodes.dart';
 export 'src/parser/ftl_parser.dart';
 export 'src/format/number_symbols.dart';
+export 'src/format/currency.dart';
 export 'src/format/datetime_format.dart';
 export 'src/resolver/cldr_plurals.dart';
 export 'src/resolver/fluent_resolver.dart';
