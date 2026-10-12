@@ -1,7 +1,15 @@
 // The CLDR cardinal plural table below is generated from
 // `cldr-core@48.2.0/supplemental/plurals.json` and validated against the
-// sample values shipped in that file (3420 representable samples, 0
-// mismatches). Regenerate it rather than editing the rules by hand.
+// sample values shipped in that file:
+//
+//   python3 rustok_mobile/tooling/scripts/verify_cldr_plurals.py \
+//       --cldr-core /path/to/cldr-core/package
+//   # 9570 samples checked, 0 mismatches, 0 structural problems
+//
+// The verifier also fails when a case body can complete normally: Dart rejects
+// an implicit fall-through, and such a body would otherwise run the *next*
+// rule (that is how the 34 `other`-only languages once followed Breton).
+// Regenerate the table rather than editing the rules by hand.
 /// Resolves the CLDR plural category (`zero`, `one`, `two`, `few`, `many`,
 /// `other`) for a number and a BCP-47 language tag.
 ///
@@ -142,6 +150,7 @@ String resolveCldrPluralCategory(String language, num value) {
     case 'xh':
     case 'xog':
       if (n == 1) return 'one';
+      return 'other';
 
     // one: n=0..1
     case 'ak':
@@ -155,6 +164,7 @@ String resolveCldrPluralCategory(String language, num value) {
     case 'ti':
     case 'wa':
       if (_inRange(n, 0, 1)) return 'one';
+      return 'other';
 
     // one: i=0orn=1
     case 'am':
@@ -170,6 +180,7 @@ String resolveCldrPluralCategory(String language, num value) {
     case 'zu':
       if ((i == 0) ||
           (n == 1)) return 'one';
+      return 'other';
 
     // zero: n=0; one: n=1; two: n=2; few: n%100=3..10; many: n%100=11..99
     case 'ar':
@@ -179,6 +190,7 @@ String resolveCldrPluralCategory(String language, num value) {
       if (n == 2) return 'two';
       if (_inRange(n100, 3, 10)) return 'few';
       if (_inRange(n100, 11, 99)) return 'many';
+      return 'other';
 
     // one: i=1andv=0
     case 'ast':
@@ -199,6 +211,7 @@ String resolveCldrPluralCategory(String language, num value) {
     case 'ur':
     case 'yi':
       if (i == 1 && v == 0) return 'one';
+      return 'other';
 
     // one: n%10=1andn%100!=11; few: n%10=2..4andn%100!=12..14; many: n%10=0orn%10=5..9orn%100=11..14
     case 'be':
@@ -207,6 +220,7 @@ String resolveCldrPluralCategory(String language, num value) {
       if ((n10 == 0) ||
           (_inRange(n10, 5, 9)) ||
           (_inRange(n100, 11, 14))) return 'many';
+      return 'other';
 
     // zero: n=0; one: n=1
     case 'blo':
@@ -214,6 +228,7 @@ String resolveCldrPluralCategory(String language, num value) {
     case 'ksh':
       if (n == 0) return 'zero';
       if (n == 1) return 'one';
+      return 'other';
 
     // No categories: every value resolves to `other`.
     case 'bm':
@@ -250,6 +265,7 @@ String resolveCldrPluralCategory(String language, num value) {
     case 'yo':
     case 'yue':
     case 'zh':
+      return 'other';
 
     // one: n%10=1andn%100!=11,71,91; two: n%10=2andn%100!=12,72,92; few: n%10=3..4,9andn%100!=10..19,70..79,90..99; many: n!=0andn%1000000=0
     case 'br':
@@ -257,6 +273,7 @@ String resolveCldrPluralCategory(String language, num value) {
       if (n10 == 2 && !(n100 == 12 || n100 == 72 || n100 == 92)) return 'two';
       if ((_inRange(n10, 3, 4) || n10 == 9) && !(_inRange(n100, 10, 19) || _inRange(n100, 70, 79) || _inRange(n100, 90, 99))) return 'few';
       if (n != 0 && n1000000 == 0) return 'many';
+      return 'other';
 
     // one: v=0andi%10=1andi%100!=11orf%10=1andf%100!=11; few: v=0andi%10=2..4andi%100!=12..14orf%10=2..4andf%100!=12..14
     case 'bs':
@@ -267,6 +284,7 @@ String resolveCldrPluralCategory(String language, num value) {
           (f10 == 1 && f100 != 11)) return 'one';
       if ((v == 0 && _inRange(i10, 2, 4) && !_inRange(i100, 12, 14)) ||
           (_inRange(f10, 2, 4) && !_inRange(f100, 12, 14))) return 'few';
+      return 'other';
 
     // one: i=1andv=0; many: e=0andi!=0andi%1000000=0andv=0ore!=0..5
     case 'ca':
@@ -277,6 +295,7 @@ String resolveCldrPluralCategory(String language, num value) {
     case 'vec':
       if (i == 1 && v == 0) return 'one';
       if (i != 0 && i1000000 == 0 && v == 0) return 'many';
+      return 'other';
 
     // one: v=0andi=1,2,3orv=0andi%10!=4,6,9orv!=0andf%10!=4,6,9
     case 'ceb':
@@ -285,6 +304,7 @@ String resolveCldrPluralCategory(String language, num value) {
       if ((v == 0 && (i == 1 || i == 2 || i == 3)) ||
           (v == 0 && !(i10 == 4 || i10 == 6 || i10 == 9)) ||
           (v != 0 && !(f10 == 4 || f10 == 6 || f10 == 9))) return 'one';
+      return 'other';
 
     // one: i=1andv=0; few: i=2..4andv=0; many: v!=0
     case 'cs':
@@ -292,6 +312,7 @@ String resolveCldrPluralCategory(String language, num value) {
       if (i == 1 && v == 0) return 'one';
       if (_inRange(i, 2, 4) && v == 0) return 'few';
       if (v != 0) return 'many';
+      return 'other';
 
     // zero: n=0; one: n=1; two: n=2; few: n=3; many: n=6
     case 'cy':
@@ -300,11 +321,13 @@ String resolveCldrPluralCategory(String language, num value) {
       if (n == 2) return 'two';
       if (n == 3) return 'few';
       if (n == 6) return 'many';
+      return 'other';
 
     // one: n=1ort!=0andi=0,1
     case 'da':
       if ((n == 1) ||
           (f != 0 && (i == 0 || i == 1))) return 'one';
+      return 'other';
 
     // one: v=0andi%100=1orf%100=1; two: v=0andi%100=2orf%100=2; few: v=0andi%100=3..4orf%100=3..4
     case 'dsb':
@@ -315,22 +338,26 @@ String resolveCldrPluralCategory(String language, num value) {
           (f100 == 2)) return 'two';
       if ((v == 0 && _inRange(i100, 3, 4)) ||
           (_inRange(f100, 3, 4))) return 'few';
+      return 'other';
 
     // one: n=1; many: e=0andi!=0andi%1000000=0andv=0ore!=0..5
     case 'es':
       if (n == 1) return 'one';
       if (i != 0 && i1000000 == 0 && v == 0) return 'many';
+      return 'other';
 
     // one: i=0,1
     case 'ff':
     case 'hy':
     case 'kab':
       if ((i == 0 || i == 1)) return 'one';
+      return 'other';
 
     // one: i=0,1; many: e=0andi!=0andi%1000000=0andv=0ore!=0..5
     case 'fr':
       if ((i == 0 || i == 1)) return 'one';
       if (i != 0 && i1000000 == 0 && v == 0) return 'many';
+      return 'other';
 
     // one: n=1; two: n=2; few: n=3..6; many: n=7..10
     case 'ga':
@@ -338,12 +365,14 @@ String resolveCldrPluralCategory(String language, num value) {
       if (n == 2) return 'two';
       if (_inRange(n, 3, 6)) return 'few';
       if (_inRange(n, 7, 10)) return 'many';
+      return 'other';
 
     // one: n=1,11; two: n=2,12; few: n=3..10,13..19
     case 'gd':
       if ((n == 1 || n == 11)) return 'one';
       if ((n == 2 || n == 12)) return 'two';
       if ((_inRange(n, 3, 10) || _inRange(n, 13, 19))) return 'few';
+      return 'other';
 
     // one: v=0andi%10=1; two: v=0andi%10=2; few: v=0andi%100=0,20,40,60,80; many: v!=0
     case 'gv':
@@ -351,17 +380,20 @@ String resolveCldrPluralCategory(String language, num value) {
       if (v == 0 && i10 == 2) return 'two';
       if (v == 0 && (i100 == 0 || i100 == 20 || i100 == 40 || i100 == 60 || i100 == 80)) return 'few';
       if (v != 0) return 'many';
+      return 'other';
 
     // one: i=1andv=0ori=0andv!=0; two: i=2andv=0
     case 'he':
       if ((i == 1 && v == 0) ||
           (i == 0 && v != 0)) return 'one';
       if (i == 2 && v == 0) return 'two';
+      return 'other';
 
     // one: t=0andi%10=1andi%100!=11ort%10=1andt%100!=11
     case 'is':
       if ((f == 0 && i10 == 1 && i100 != 11) ||
           (f10 == 1 && f100 != 11)) return 'one';
+      return 'other';
 
     // one: n=1; two: n=2
     case 'iu':
@@ -375,6 +407,7 @@ String resolveCldrPluralCategory(String language, num value) {
     case 'sms':
       if (n == 1) return 'one';
       if (n == 2) return 'two';
+      return 'other';
 
     // zero: n=0; one: n=1; two: n%100=2,22,42,62,82orn%1000=0andn%100000=1000..20000,40000,60000,80000orn!=0andn%1000000=100000; few: n%100=3,23,43,63,83; many: n!=1andn%100=1,21,41,61,81
     case 'kw':
@@ -385,17 +418,20 @@ String resolveCldrPluralCategory(String language, num value) {
           (n != 0 && n1000000 == 100000)) return 'two';
       if ((n100 == 3 || n100 == 23 || n100 == 43 || n100 == 63 || n100 == 83)) return 'few';
       if (n != 1 && (n100 == 1 || n100 == 21 || n100 == 41 || n100 == 61 || n100 == 81)) return 'many';
+      return 'other';
 
     // zero: n=0; one: i=0,1andn!=0
     case 'lag':
       if (n == 0) return 'zero';
       if ((i == 0 || i == 1) && n != 0) return 'one';
+      return 'other';
 
     // one: n%10=1andn%100!=11..19; few: n%10=2..9andn%100!=11..19; many: f!=0
     case 'lt':
       if (n10 == 1 && !_inRange(n100, 11, 19)) return 'one';
       if (_inRange(n10, 2, 9) && !_inRange(n100, 11, 19)) return 'few';
       if (f != 0) return 'many';
+      return 'other';
 
     // zero: n%10=0orn%100=11..19orv=2andf%100=11..19; one: n%10=1andn%100!=11orv=2andf%10=1andf%100!=11orv!=2andf%10=1
     case 'lv':
@@ -406,11 +442,13 @@ String resolveCldrPluralCategory(String language, num value) {
       if ((n10 == 1 && n100 != 11) ||
           (v == 2 && f10 == 1 && f100 != 11) ||
           (v != 2 && f10 == 1)) return 'one';
+      return 'other';
 
     // one: v=0andi%10=1andi%100!=11orf%10=1andf%100!=11
     case 'mk':
       if ((v == 0 && i10 == 1 && i100 != 11) ||
           (f10 == 1 && f100 != 11)) return 'one';
+      return 'other';
 
     // one: i=1andv=0; few: v!=0orn=0orn!=1andn%100=1..19
     case 'mo':
@@ -419,6 +457,7 @@ String resolveCldrPluralCategory(String language, num value) {
       if ((v != 0) ||
           (n == 0) ||
           (n != 1 && _inRange(n100, 1, 19))) return 'few';
+      return 'other';
 
     // one: n=1; two: n=2; few: n=0orn%100=3..10; many: n%100=11..19
     case 'mt':
@@ -427,6 +466,7 @@ String resolveCldrPluralCategory(String language, num value) {
       if ((n == 0) ||
           (_inRange(n100, 3, 10))) return 'few';
       if (_inRange(n100, 11, 19)) return 'many';
+      return 'other';
 
     // one: i=1andv=0; few: v=0andi%10=2..4andi%100!=12..14; many: v=0andi!=1andi%10=0..1orv=0andi%10=5..9orv=0andi%100=12..14
     case 'pl':
@@ -435,11 +475,13 @@ String resolveCldrPluralCategory(String language, num value) {
       if ((v == 0 && i != 1 && _inRange(i10, 0, 1)) ||
           (v == 0 && _inRange(i10, 5, 9)) ||
           (v == 0 && _inRange(i100, 12, 14))) return 'many';
+      return 'other';
 
     // one: i=0..1; many: e=0andi!=0andi%1000000=0andv=0ore!=0..5
     case 'pt':
       if (_inRange(i, 0, 1)) return 'one';
       if (i != 0 && i1000000 == 0 && v == 0) return 'many';
+      return 'other';
 
     // one: v=0andi%10=1andi%100!=11; few: v=0andi%10=2..4andi%100!=12..14; many: v=0andi%10=0orv=0andi%10=5..9orv=0andi%100=11..14
     case 'ru':
@@ -449,6 +491,7 @@ String resolveCldrPluralCategory(String language, num value) {
       if ((v == 0 && i10 == 0) ||
           (v == 0 && _inRange(i10, 5, 9)) ||
           (v == 0 && _inRange(i100, 11, 14))) return 'many';
+      return 'other';
 
     // one: n%10=1andn%100!=11; two: n=2; few: n!=2andn%10=2..9andn%100!=11..19; many: f!=0
     case 'sgs':
@@ -456,17 +499,20 @@ String resolveCldrPluralCategory(String language, num value) {
       if (n == 2) return 'two';
       if (n != 2 && _inRange(n10, 2, 9) && !_inRange(n100, 11, 19)) return 'few';
       if (f != 0) return 'many';
+      return 'other';
 
     // one: i=0orn=1; few: n=2..10
     case 'shi':
       if ((i == 0) ||
           (n == 1)) return 'one';
       if (_inRange(n, 2, 10)) return 'few';
+      return 'other';
 
     // one: n=0,1ori=0andf=1
     case 'si':
       if (((n == 0 || n == 1)) ||
           (i == 0 && f == 1)) return 'one';
+      return 'other';
 
     // one: v=0andi%100=1; two: v=0andi%100=2; few: v=0andi%100=3..4orv!=0
     case 'sl':
@@ -474,11 +520,13 @@ String resolveCldrPluralCategory(String language, num value) {
       if (v == 0 && i100 == 2) return 'two';
       if ((v == 0 && _inRange(i100, 3, 4)) ||
           (v != 0)) return 'few';
+      return 'other';
 
     // one: n=0..1orn=11..99
     case 'tzm':
       if ((_inRange(n, 0, 1)) ||
           (_inRange(n, 11, 99))) return 'one';
+      return 'other';
     default:
       // CLDR has no cardinal rule for this tag: no plural variation.
       return 'other';

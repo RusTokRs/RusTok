@@ -940,9 +940,9 @@ literal = { "quoted" } and { \$name }
 
       expect(bundle.format('lone', args: {'name': 'Alex'}), 'Alex');
       expect(bundle.format('mixed', args: {'name': 'Alex'}),
-          'Hello, $bidiFsiAlex$bidiPdi!');
+          'Hello, ${bidiFsi}Alex${bidiPdi}!');
       expect(bundle.format('literal', args: {'name': 'Alex'}),
-          'quoted and $bidiFsiAlex$bidiPdi');
+          'quoted and ${bidiFsi}Alex${bidiPdi}');
     });
 
     test('a referenced message sees the caller variables', () {

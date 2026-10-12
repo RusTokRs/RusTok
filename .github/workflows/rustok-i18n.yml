@@ -34,38 +34,16 @@ jobs:
         with:
           sdk: '3.0.0'
       - run: dart pub get
-      # TEMPORARY DIAGNOSTIC
-      - name: 'CLI typegen (diagnostic)'
-        run: |
-          set +e
-          dart run bin/i18n_cli.dart typegen \
-            --input example/locales/en.ftl \
-            --output example/generated/smoke_messages.g.dart \
-            --className SmokeMessages > /tmp/tg.log 2>&1
-          code=$?
-          cat /tmp/tg.log
-          if [ $code -ne 0 ]; then
-            head -n 40 /tmp/tg.log | cut -c1-900 | while IFS= read -r line; do printf '::error::TG %s\n' "${line//%/%25}"; done
-          fi
-          exit $code
-      # TEMPORARY DIAGNOSTIC
-      - name: 'Dart analyze and test (diagnostic)'
-        if: always()
-        run: |
-          set +e
-          dart analyze > /tmp/an.log 2>&1
-          dart test --reporter expanded > /tmp/te.log 2>&1
-          {
-            echo '##### dart analyze #####'
-            cat /tmp/an.log
-            echo '##### dart test #####'
-            tail -n 300 /tmp/te.log
-          } > /tmp/diag.log 2>&1
-          tr '\r' '\n' < /tmp/diag.log \
-            | grep -nE '\[E\]|Expected:|Actual:|Which:|Some tests failed|passed|error |Unhandled|Exception' \
-            | grep -vE '^\s*$' | head -n 45 | cut -c1-900 \
-            | while IFS= read -r line; do printf '::error::DT %s\n' "${line//%/%25}"; done
-          exit 0
+      - name: CLI typegen (fails on invalid input)
+        run: >-
+          dart run bin/i18n_cli.dart typegen
+          --input example/locales/en.ftl
+          --output example/generated/smoke_messages.g.dart
+          --className SmokeMessages
+      # `dart analyze` runs after typegen so the generated file is compiled too:
+      # a rename or an escaped literal that produces invalid Dart fails the job.
+      - run: dart analyze
+      - run: dart test
       - name: CLI parity check (fails on mismatch)
         run: dart run bin/i18n_cli.dart check --dir example/locales --baseline en
 
@@ -99,20 +77,5 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
-      # TEMPORARY DIAGNOSTIC
-      - name: 'Flutter analyze and test (diagnostic)'
-        run: |
-          set +e
-          flutter analyze > /tmp/fa.log 2>&1
-          flutter test > /tmp/ft.log 2>&1
-          {
-            echo '##### flutter analyze #####'
-            tail -n 60 /tmp/fa.log
-            echo '##### flutter test #####'
-            tail -n 80 /tmp/ft.log
-          } > /tmp/fdiag.log 2>&1
-          tr '\r' '\n' < /tmp/fdiag.log \
-            | grep -nE 'error|warning|Expected:|Actual:|Which:|\[E\]|failed' \
-            | head -n 45 | cut -c1-900 \
-            | while IFS= read -r line; do printf '::error::FL %s\n' "${line//%/%25}"; done
-          exit 0
+      - run: flutter analyze
+      - run: flutter test
