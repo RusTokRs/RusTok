@@ -154,10 +154,31 @@ return Text(t('cart-items', args: {'count': 5}));
 
 ---
 
+## Lazy (asynchronous) catalogs
+
+Use a `LazyCatalog` when translations come from assets, files, or a server. Override `messageCatalogProvider` with it. `RiverpodFluentScope` loads the active locale and its fallback chain through `localeReadyProvider`, and rebuilds when loading finishes. Use `loading:` to show a placeholder meanwhile:
+
+```dart
+final catalog = LazyCatalog(loader: (locale) async {
+  try {
+    return await rootBundle.loadString('assets/i18n/$locale.ftl');
+  } catch (_) {
+    return null; // no source for this locale
+  }
+});
+
+RiverpodFluentScope(
+  loading: const Center(child: CircularProgressIndicator()),
+  child: MaterialApp(...),
+);
+```
+
+---
+
 ## Status and limitations
 
-* The package has no automated tests yet.
-* Async (remote or lazy) catalogs are not implemented.
+* Widget and Riverpod tests live in `test/` and run in CI (`.github/workflows/rustok-i18n.yml`).
+* `CURRENCY()` and remote catalog clients are not provided by this package.
 
 ---
 

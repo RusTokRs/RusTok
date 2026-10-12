@@ -527,4 +527,146 @@ items = { \$count ->
           LocaleTextDirection.ltr);
     });
   });
+
+  group('Locale-aware NUMBER()', () {
+    test('groups digits and uses locale separators', () {
+      expect(formatFluentNumber(1234567.5, locale: 'en', maximumFractionDigits: 1),
+          '1,234,567.5');
+      expect(formatFluentNumber(1234567.5, locale: 'ru', maximumFractionDigits: 1),
+          '1\u00A0234\u00A0567,5');
+      expect(formatFluentNumber(-1500), '-1,500');
+      expect(formatFluentNumber(-0.0001), '0');
+      expect(formatFluentNumber(1234567, useGrouping: false), '1234567');
+      expect(formatFluentNumber(5, minimumIntegerDigits: 2), '05');
+    });
+
+    test('Polish and Spanish group only from five digits', () {
+      expect(formatFluentNumber(1234, locale: 'pl'), '1234');
+      expect(formatFluentNumber(12345, locale: 'pl'), '12\u00A0345');
+      expect(formatFluentNumber(12345, locale: 'es'), '12.345');
+    });
+
+    test('NUMBER() in a bundle uses the bundle locale and percent style', () {
+      final bundle = FluentBundle(locale: 'de', useIsolating: false);
+      bundle.addSource('''
+price = { NUMBER(\$n) }
+pct = { NUMBER(\$v, style: "percent") }
+''');
+      expect(bundle.format('price', args: {'n': 1234.5}), '1.234,5');
+      expect(bundle.format('pct', args: {'v': 0.256}), '26%');
+    });
+  });
+
+  group('DATETIME()', () {
+    final date = DateTime.utc(2026, 1, 5, 14, 3, 9);
+
+    test('date styles in English', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('''
+numeric = { DATETIME(\$d) }
+short = { DATETIME(\$d, dateStyle: "short") }
+medium = { DATETIME(\$d, dateStyle: "medium") }
+long = { DATETIME(\$d, dateStyle: "long") }
+full = { DATETIME(\$d, dateStyle: "full") }
+''');
+      final args = {'d': date};
+      expect(bundle.format('numeric', args: args), '1/5/2026');
+      expect(bundle.format('short', args: args), '1/5/26');
+      expect(bundle.format('medium', args: args), 'Jan 5, 2026');
+      expect(bundle.format('long', args: args), 'January 5, 2026');
+      expect(bundle.format('full', args: args), 'Monday, January 5, 2026');
+    });
+
+    test('time styles, 12 and 24 hour clocks', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('''
+t12 = { DATETIME(\$d, timeStyle: "short") }
+t24 = { DATETIME(\$d, timeStyle: "short", hour12: "false") }
+both = { DATETIME(\$d, dateStyle: "medium", timeStyle: "short") }
+''');
+      final args = {'d': date};
+      expect(bundle.format('t12', args: args), '2:03 PM');
+      expect(bundle.format('t24', args: args), '14:03');
+      expect(bundle.format('both', args: args), 'Jan 5, 2026, 2:03 PM');
+    });
+
+    test('Russian long date uses the genitive month', () {
+      final bundle = FluentBundle(locale: 'ru', useIsolating: false);
+      bundle.addSource('d = { DATETIME(\$d, dateStyle: "long") }\n');
+      expect(bundle.format('d', args: {'d': date}), '5 января 2026 г.');
+    });
+
+    test('accepts ISO strings and time zone UTC', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('''
+iso = { DATETIME("2026-01-05T14:03:09Z", dateStyle: "long") }
+''');
+      expect(bundle.format('iso'), 'January 5, 2026');
+    });
+
+    test('unparseable values fall back to the argument text', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('bad = { DATETIME("not a date") }\n');
+      expect(bundle.format('bad'), 'not a date');
+    });
+  });
+
+  group('LazyCatalog', () {
+    test('loads a locale once and then serves it synchronously', () async {
+      var loads = 0;
+      final catalog = LazyCatalog(loader: (locale) async {
+        loads++;
+        return locale.split('-').first == 'ru' ? 'hi = Привет\n' : null;
+      });
+
+      expect(catalog.getMessage('ru-RU', 'hi'), isNull);
+      await Future.wait([
+        catalog.loadLocale('ru-RU'),
+        catalog.loadLocale('ru_RU'),
+      ]);
+      expect(loads, 1);
+      expect(catalog.getMessage('ru-RU', 'hi'), 'Привет');
+      expect(catalog.getSupportedLocales(), {'ru-RU'});
+
+      await catalog.loadLocale('de');
+      expect(catalog.isLoaded('de'), isTrue);
+      expect(catalog.hasMessage('de', 'hi'), isFalse);
+    });
+
+    test('a failed load is retried, not cached', () async {
+      var attempts = 0;
+      final catalog = LazyCatalog(loader: (locale) async {
+        attempts++;
+        if (attempts == 1) throw StateError('network down');
+        return 'hi = Hi\n';
+      });
+
+      await expectLater(catalog.loadLocale('en'), throwsA(isA<StateError>()));
+      expect(catalog.isLoaded('en'), isFalse);
+
+      await catalog.loadLocale('en');
+      expect(catalog.getMessage('en', 'hi'), 'Hi');
+      expect(attempts, 2);
+    });
+
+    test('loadForLocale preloads the whole fallback chain', () async {
+      final requested = <String>[];
+      final catalog = LazyCatalog(loader: (locale) async {
+        requested.add(locale);
+        return null;
+      });
+      await catalog.loadForLocale('ru-RU');
+      expect(requested, containsAll(['ru-RU', 'ru', 'en']));
+    });
+
+    test('UiMessages resolves through a loaded LazyCatalog', () async {
+      final catalog = LazyCatalog(loader: (locale) async {
+        return locale == 'en' ? 'welcome = Welcome\n' : null;
+      });
+      final messages = UiMessages(catalog: catalog);
+      expect(messages.t('welcome', locale: 'en'), 'welcome');
+      await catalog.loadLocale('en');
+      expect(messages.t('welcome', locale: 'en'), 'Welcome');
+    });
+  });
 }

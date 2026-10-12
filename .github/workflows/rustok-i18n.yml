@@ -1,0 +1,54 @@
+name: rustok_i18n packages
+
+on:
+  pull_request:
+    paths:
+      - 'rustok_mobile/packages/rustok_i18n/**'
+      - 'rustok_mobile/packages/rustok_flutter_i18n/**'
+      - '.github/workflows/rustok-i18n.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'rustok_mobile/packages/rustok_i18n/**'
+      - 'rustok_mobile/packages/rustok_flutter_i18n/**'
+      - '.github/workflows/rustok-i18n.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Dart core (analyze + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rustok_mobile/packages/rustok_i18n
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: '3.0.0'
+      - run: dart pub get
+      - run: dart analyze
+      - run: dart test
+      - name: CLI parity check (fails on mismatch)
+        run: dart run bin/i18n_cli.dart check --dir example/locales --baseline en
+      - name: CLI typegen (fails on invalid input)
+        run: dart run bin/i18n_cli.dart typegen --input example/locales/en.ftl --output /tmp/messages.g.dart --className SmokeMessages
+
+  flutter:
+    name: Flutter wrapper (analyze + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rustok_mobile/packages/rustok_flutter_i18n
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test

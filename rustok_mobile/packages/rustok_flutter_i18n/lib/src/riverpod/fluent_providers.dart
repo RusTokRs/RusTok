@@ -94,3 +94,21 @@ final isRtlLocaleProvider = Provider<bool>((ref) {
   final locale = ref.watch(currentLocaleProvider);
   return LocaleTag.tryParse(locale)?.isRtl ?? false;
 });
+
+/// Completes when the messages for [locale] are available.
+///
+/// For a [LazyCatalog] this loads the locale and its fallback chain. For other
+/// catalogs it completes immediately. Watch it with `ref.watch(localeReadyProvider(locale))`.
+final localeReadyProvider =
+    FutureProvider.family<void, String>((ref, locale) async {
+  final catalog = ref.watch(messageCatalogProvider);
+  final defaultLocale = ref.watch(defaultLocaleProvider);
+  final platformFallback = ref.watch(platformFallbackProvider);
+  if (catalog is LazyCatalog) {
+    await catalog.loadForLocale(
+      locale,
+      defaultLocale: defaultLocale,
+      platformFallback: platformFallback,
+    );
+  }
+});

@@ -13,6 +13,11 @@
 * Provenance is computed from canonical locale forms.
 * CLI `check` reports counts of missing and extra keys, compares attributes, and reports parser diagnostics. CLI `typegen` detects member and parameter name collisions, validates the class name, and reports invalid input.
 * Removed unused dependencies `petitparser` and `intl`.
+* `NUMBER()` formats digits with locale grouping and decimal separators. **Behaviour change:** `1234.5` now renders as `1,234.5` in English (previously `1234.5`). Pass `useGrouping: "false"` to keep the old digits-only output.
+* `NUMBER()` supports `style: "percent"`, `minimumIntegerDigits`, and `useGrouping`.
+* `DATETIME()` implemented with `dateStyle`/`timeStyle` and component options (en, ru, uk, de, fr, es, pl).
+* `LazyCatalog` with asynchronous per-locale loading, `loadLocale` / `loadForLocale`, and retry after failure.
+* Example locale files in `example/locales` are used by CI (`check` and `typegen`).
 
 ## 0.1.0
 

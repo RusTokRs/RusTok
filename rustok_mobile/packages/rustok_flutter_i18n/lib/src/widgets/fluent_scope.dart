@@ -7,11 +7,16 @@ class FluentScope extends InheritedWidget {
     super.key,
     required this.messages,
     required this.currentLocale,
+    this.revision = 0,
     required super.child,
   });
 
   final UiMessages messages;
   final String currentLocale;
+
+  /// Changes whenever the messages become available (for example after a
+  /// lazy catalog finishes loading). Dependents rebuild when it changes.
+  final int revision;
 
   static FluentScope? maybeOf(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<FluentScope>();
@@ -41,7 +46,8 @@ class FluentScope extends InheritedWidget {
   @override
   bool updateShouldNotify(FluentScope oldWidget) {
     return currentLocale != oldWidget.currentLocale ||
-        messages != oldWidget.messages;
+        messages != oldWidget.messages ||
+        revision != oldWidget.revision;
   }
 }
 

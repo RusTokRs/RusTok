@@ -191,6 +191,8 @@ print(t.itemsCount(count: 3));
 | `FtlParser` | Recursive-descent AST parser for Project Fluent 1.0 syntax. |
 | `FluentBundle` | In-memory message and term registry with BiDi isolation. |
 | `cldr_plurals` | CLDR plural rule evaluator (Slavic, Romance, Germanic, Arabic, CJK). |
+| `number_symbols` / `datetime_format` | Locale symbols for `NUMBER()` and `DATETIME()`. |
+| `LazyCatalog` | On-demand asynchronous loading of locale sources. |
 | `UiMessages` | High-level facade with fallback resolution and provenance tracking. |
 | `UiLocaleTranslator` | Pre-computed locale candidate translator for high-speed batch lookups. |
 | `AcceptLanguageParser` | RFC 9110 bounded `Accept-Language` quality ranking and negotiation. |
@@ -199,8 +201,11 @@ print(t.itemsCount(count: 3));
 
 ## Status and limitations
 
-* Implemented: Fluent 1.0 messages, attributes, terms with arguments, select expressions, `NUMBER()` with fraction-digit options, and junk recovery (an invalid entry becomes a diagnostic; the rest of the resource still loads).
-* Not implemented: `DATETIME()`, locale-aware number grouping, and asynchronous or lazy catalogs.
+* Implemented: Fluent 1.0 messages, attributes, terms with arguments, select expressions, junk recovery (an invalid entry becomes a diagnostic; the rest of the resource still loads).
+* `NUMBER()`: fraction digits, locale-aware grouping and decimal separators, `minimumIntegerDigits`, `useGrouping`, and `style: "percent"`. Separator data covers common languages; unknown languages use English style.
+* `DATETIME()`: `dateStyle`, `timeStyle`, and the `weekday`, `year`, `month`, `day`, `hour`, `minute`, `second` and `hour12` options, for en, ru, uk, de, fr, es and pl (English for other languages). Accepts `DateTime`, ISO-8601 strings, and epoch milliseconds (read as UTC). `timeZone: "UTC"` converts to UTC; other zones are not supported, and time zone names are not rendered.
+* `LazyCatalog`: asynchronous, on-demand loading of each locale (use it for remote or asset sources). Lookups stay synchronous, so load a locale before using it. Use `loadForLocale` to load the whole fallback chain.
+* Not implemented: `CURRENCY()` and other `NUMBER` styles, full CLDR data (no `intl`), and calendars other than Gregorian.
 * The parser is hand-written; the package has no runtime dependency on PetitParser or `intl`.
 * Duplicate message IDs within a locale keep the first definition and report a diagnostic.
 

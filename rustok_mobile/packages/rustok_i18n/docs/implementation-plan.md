@@ -6,10 +6,10 @@
 >
 > **Status note (audit, 0.1.0+)**: this document is the original design. Where it differs from the code, the code is authoritative:
 > - The parser is hand-written, not PetitParser; `petitparser` and `intl` are no longer dependencies.
-> - `LazyCatalog`, `AsyncRemoteCatalog`, and `appLocaleProvider` are **not implemented**. The Riverpod locale provider is `currentLocaleProvider`.
-> - Riverpod state is a `StateNotifier`, not an `AsyncNotifier`. Locale changes are validated.
-> - `DATETIME()` and locale-aware number formatting are **not implemented**; `NUMBER()` supports fraction-digit options only.
-> - The Flutter package has no automated tests yet.
+> - `LazyCatalog` is implemented for on-demand asynchronous loading (`loadLocale`, `loadForLocale`). Remote sources are supplied as a loader function; there is no built-in HTTP client. `AsyncRemoteCatalog` and `appLocaleProvider` are **not implemented**; the Riverpod locale provider is `currentLocaleProvider`.
+> - Riverpod state is a `StateNotifier`, not an `AsyncNotifier`. Locale changes are validated. `localeReadyProvider` and `RiverpodFluentScope` load and gate a lazy catalog.
+> - `DATETIME()` is implemented for a subset of locales. `NUMBER()` supports grouping and percent style; `CURRENCY()` is **not implemented**.
+> - Flutter widget and Riverpod tests live in `rustok_flutter_i18n/test`; CI runs them in `.github/workflows/rustok-i18n.yml`.
 
 ---
 

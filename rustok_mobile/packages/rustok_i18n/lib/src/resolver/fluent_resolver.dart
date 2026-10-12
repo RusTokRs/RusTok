@@ -1,5 +1,7 @@
 import '../ast/ast_nodes.dart';
 import '../parser/ftl_parser.dart';
+import '../format/datetime_format.dart';
+import '../format/number_symbols.dart';
 import 'cldr_plurals.dart';
 
 /// Unicode BiDi isolation characters.
@@ -110,14 +112,17 @@ class FluentBundle {
   }
 }
 
-/// Formats [value] with a fixed number of fraction digits.
+/// Formats [value] for [locale] with fraction digits, grouping and sign.
 ///
 /// Digits beyond [minimumFractionDigits] are dropped when they are zero.
-/// Grouping separators are not added; use `package:intl` for locale-aware output.
+/// Separators come from [numberSymbolsFor]; unknown locales use `1,234.5`.
 String formatFluentNumber(
   num value, {
   int minimumFractionDigits = 0,
   int maximumFractionDigits = 3,
+  int minimumIntegerDigits = 1,
+  bool useGrouping = true,
+  String locale = 'en',
 }) {
   if (value is double && !value.isFinite) return value.toString();
 
@@ -126,19 +131,37 @@ String formatFluentNumber(
       ? maximum
       : _clampDigits(minimumFractionDigits);
 
-  var text = value.toStringAsFixed(maximum);
-  if (maximum > 0) {
-    final dot = text.indexOf('.');
-    if (dot >= 0) {
-      var end = text.length;
-      while (end > dot + 1 + minimum && text.codeUnitAt(end - 1) == 0x30) {
-        end--;
-      }
-      if (end == dot + 1) end = dot;
-      text = text.substring(0, end);
-    }
+  final text = value.abs().toStringAsFixed(maximum);
+  final dot = text.indexOf('.');
+  var integerPart = dot >= 0 ? text.substring(0, dot) : text;
+  var fractionPart = dot >= 0 ? text.substring(dot + 1) : '';
+
+  var fractionEnd = fractionPart.length;
+  while (fractionEnd > minimum &&
+      fractionPart.codeUnitAt(fractionEnd - 1) == 0x30) {
+    fractionEnd--;
   }
-  return text;
+  fractionPart = fractionPart.substring(0, fractionEnd);
+
+  final isZero = !(integerPart + fractionPart).contains(RegExp(r'[1-9]'));
+  final negative = value < 0 && !isZero;
+
+  final minInt = _clampDigits(minimumIntegerDigits);
+  if (integerPart.length < minInt) {
+    integerPart = integerPart.padLeft(minInt, '0');
+  }
+
+  final symbols = numberSymbolsFor(locale);
+  final grouped = useGrouping ? groupDigits(integerPart, symbols) : integerPart;
+
+  final buffer = StringBuffer();
+  if (negative) buffer.write('-');
+  buffer.write(grouped);
+  if (fractionPart.isNotEmpty) {
+    buffer.write(symbols.decimal);
+    buffer.write(fractionPart);
+  }
+  return buffer.toString();
 }
 
 int _clampDigits(int digits) {
@@ -287,25 +310,89 @@ class _FluentResolver {
 
   String _resolveFunction(FtlFunctionReference expr, {required int depth}) {
     if (expr.name == 'NUMBER' && expr.positional.isNotEmpty) {
-      final raw = _rawValue(expr.positional.first);
-      num? number;
-      if (raw is num) number = raw;
-      if (raw is String) number = num.tryParse(raw.trim());
-      if (number != null) {
-        final minimum = _digitsOption(expr.named['minimumFractionDigits'], 0);
-        final maximumRaw = _digitsOption(expr.named['maximumFractionDigits'], 3);
-        final maximum = maximumRaw < minimum ? minimum : maximumRaw;
-        return formatFluentNumber(
-          number,
-          minimumFractionDigits: minimum,
-          maximumFractionDigits: maximum,
-        );
-      }
+      final number = _numericValue(_rawValue(expr.positional.first));
+      if (number != null) return _formatNumberFunction(expr, number);
+    }
+    if (expr.name == 'DATETIME' && expr.positional.isNotEmpty) {
+      final date = _dateValue(_rawValue(expr.positional.first));
+      if (date != null) return _formatDateFunction(expr, date);
     }
 
-    // Unknown or non-numeric calls fall back to the first positional argument.
+    // Unknown or non-applicable calls fall back to the first positional argument.
     if (expr.positional.isEmpty) return '{${expr.name}()}';
     return resolveExpression(expr.positional.first, depth: depth + 1);
+  }
+
+  String _formatNumberFunction(FtlFunctionReference expr, num number) {
+    final percent = _stringOption(expr.named['style']) == 'percent';
+    final minimum = _digitsOption(expr.named['minimumFractionDigits'], 0);
+    final maximumRaw = _digitsOption(
+      expr.named['maximumFractionDigits'],
+      percent ? 0 : 3,
+    );
+    final maximum = maximumRaw < minimum ? minimum : maximumRaw;
+    final text = formatFluentNumber(
+      percent ? number * 100 : number,
+      minimumFractionDigits: minimum,
+      maximumFractionDigits: maximum,
+      minimumIntegerDigits:
+          _digitsOption(expr.named['minimumIntegerDigits'], 1),
+      useGrouping: _boolOption(expr.named['useGrouping']) ?? true,
+      locale: bundle.locale,
+    );
+    return percent ? '$text%' : text;
+  }
+
+  String _formatDateFunction(FtlFunctionReference expr, DateTime date) {
+    final value = _stringOption(expr.named['timeZone']) == 'UTC'
+        ? date.toUtc()
+        : date;
+    return formatFluentDateTime(
+      value,
+      locale: bundle.locale,
+      dateStyle: _stringOption(expr.named['dateStyle']),
+      timeStyle: _stringOption(expr.named['timeStyle']),
+      weekday: _stringOption(expr.named['weekday']),
+      year: _stringOption(expr.named['year']),
+      month: _stringOption(expr.named['month']),
+      day: _stringOption(expr.named['day']),
+      hour: _stringOption(expr.named['hour']),
+      minute: _stringOption(expr.named['minute']),
+      second: _stringOption(expr.named['second']),
+      hour12: _boolOption(expr.named['hour12']),
+    );
+  }
+
+  /// Numeric value of a raw argument: numbers, or strings holding a number.
+  num? _numericValue(Object? raw) {
+    if (raw is num) return raw;
+    if (raw is String) return num.tryParse(raw.trim());
+    return null;
+  }
+
+  /// Date value of a raw argument: a [DateTime], an ISO-8601 string, or epoch
+  /// milliseconds (interpreted as UTC).
+  DateTime? _dateValue(Object? raw) {
+    if (raw is DateTime) return raw;
+    if (raw is num) {
+      return DateTime.fromMillisecondsSinceEpoch(raw.toInt(), isUtc: true);
+    }
+    if (raw is String) return DateTime.tryParse(raw.trim());
+    return null;
+  }
+
+  String? _stringOption(FtlExpression? option) {
+    return option is FtlStringLiteral ? option.value : null;
+  }
+
+  /// Boolean option written as the string `"true"`/`"false"` or as a number.
+  bool? _boolOption(FtlExpression? option) {
+    if (option is FtlStringLiteral) {
+      if (option.value == 'true') return true;
+      if (option.value == 'false') return false;
+    }
+    if (option is FtlNumberLiteral) return option.value != 0;
+    return null;
   }
 
   int _digitsOption(FtlExpression? option, int fallback) {

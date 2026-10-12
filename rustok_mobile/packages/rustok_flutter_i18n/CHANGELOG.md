@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+* `localeReadyProvider` loads a `LazyCatalog` for the active locale and its fallback chain.
+* `RiverpodFluentScope.loading` shows a placeholder while a lazy locale loads. `FluentScope.revision` makes dependents rebuild when messages become available.
+* Widget and Riverpod tests added in `test/`.
+
 * `RiverpodFluentScope`: publishes Riverpod's locale and `UiMessages` into the widget tree, making Riverpod the single source of truth.
 * `setLocale` and the initial locale now validate BCP-47 tags and store the canonical form; invalid tags throw `ArgumentError`.
 * `currentLocaleProvider` starts from `defaultLocaleProvider` instead of a hard-coded `'en'`.
