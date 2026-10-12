@@ -195,9 +195,17 @@ pub fn ForumComposer(
 
     let draft_label = t(route_locale.as_deref(), "forum.composer.draft", "Draft");
     let expand_label = t(route_locale.as_deref(), "forum.composer.expand", "Expand");
-    let minimize_label = t(route_locale.as_deref(), "forum.composer.minimize", "Minimize");
+    let minimize_label = t(
+        route_locale.as_deref(),
+        "forum.composer.minimize",
+        "Minimize",
+    );
     let close_label = t(route_locale.as_deref(), "forum.composer.close", "Close");
-    let reply_label = t(route_locale.as_deref(), "forum.composer.replyTitle", "Reply");
+    let reply_label = t(
+        route_locale.as_deref(),
+        "forum.composer.replyTitle",
+        "Reply",
+    );
     let new_topic_label = t(
         route_locale.as_deref(),
         "forum.composer.newTopicTitle",
@@ -213,9 +221,17 @@ pub fn ForumComposer(
         "forum.composer.categoryPlaceholder",
         "Select a category",
     );
-    let quotes_label = t(route_locale.as_deref(), "forum.composer.quotesLabel", "Quotes");
+    let quotes_label = t(
+        route_locale.as_deref(),
+        "forum.composer.quotesLabel",
+        "Quotes",
+    );
     let write_tab_label = t(route_locale.as_deref(), "forum.composer.tabWrite", "Write");
-    let preview_tab_label = t(route_locale.as_deref(), "forum.composer.tabPreview", "Preview");
+    let preview_tab_label = t(
+        route_locale.as_deref(),
+        "forum.composer.tabPreview",
+        "Preview",
+    );
     let body_placeholder = t(
         route_locale.as_deref(),
         "forum.composer.bodyPlaceholder",

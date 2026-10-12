@@ -6,8 +6,8 @@
 //! - Customer profiles with address history
 
 use rustok_revisions::{
-    ChangeSource, Revisionable, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
-    RetentionPolicy, SeaOrmBackend,
+    ChangeSource, RetentionPolicy, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
+    Revisionable, SeaOrmBackend,
 };
 use sea_orm::{Database, DatabaseConnection};
 use serde::{Deserialize, Serialize};
@@ -118,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Scenario 1: Product pricing history
     println!("--- Scenario 1: Product Pricing History ---\n");
-    
+
     let mut product = Product {
         id: Uuid::new_v4(),
         name: "Wireless Headphones".to_string(),
@@ -186,7 +186,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let revisions = service
         .list_revisions(tenant_id, product.id, "en", None, None)
         .await?;
-    
+
     if let Some(latest) = revisions.first() {
         service
             .create_named_version(tenant_id, product.id, "en", latest.id, "current-price")
@@ -201,13 +201,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         id: Uuid::new_v4(),
         customer_id: customer_user,
         status: OrderStatus::Pending,
-        items: vec![
-            OrderItem {
-                product_id: product.id,
-                quantity: 2,
-                price: product.price,
-            },
-        ],
+        items: vec![OrderItem {
+            product_id: product.id,
+            quantity: 2,
+            price: product.price,
+        }],
         total: product.price * 2.0,
         shipping_address: Address {
             street: "123 Main St".to_string(),
@@ -235,7 +233,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Order status progression
     let status_changes = vec![
         (OrderStatus::Processing, None, "Order confirmed"),
-        (OrderStatus::Shipped, Some("TRACK123456".to_string()), "Shipped via FedEx"),
+        (
+            OrderStatus::Shipped,
+            Some("TRACK123456".to_string()),
+            "Shipped via FedEx",
+        ),
         (OrderStatus::Delivered, None, "Delivered to customer"),
     ];
 
@@ -265,7 +267,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await?;
 
         if let Some(rev) = revision {
-            println!("Order status: {:?} - {} (Revision #{})", order.status, reason, rev.revision_number);
+            println!(
+                "Order status: {:?} - {} (Revision #{})",
+                order.status, reason, rev.revision_number
+            );
         }
     }
 
@@ -404,7 +409,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .get("tracking_number")
                     .and_then(|t| t.as_str())
                     .unwrap_or("N/A");
-                
+
                 println!(
                     "  Revision #{} - Status: {} - Tracking: {} - {}",
                     rev.revision_number,
@@ -439,7 +444,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
 
-    println!("Deleted {} old product revisions (kept last 3)", deleted_products);
+    println!(
+        "Deleted {} old product revisions (kept last 3)",
+        deleted_products
+    );
 
     println!("\n=== E-commerce Demo Complete ===");
 

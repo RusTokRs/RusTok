@@ -178,14 +178,12 @@ mod tests {
 
     #[test]
     fn deserialization_repairs_half_filled_sort_state() {
-        let state: SortState = serde_json::from_str(
-            r#"{"column_id":"title","direction":null}"#,
-        )
-        .expect("valid sort JSON");
+        let state: SortState = serde_json::from_str(r#"{"column_id":"title","direction":null}"#)
+            .expect("valid sort JSON");
         assert_eq!(state.active(), Some(("title", SortDirection::Asc)));
 
-        let dangling: SortState = serde_json::from_str(r#"{"direction":"Desc"}"#)
-            .expect("valid sort JSON");
+        let dangling: SortState =
+            serde_json::from_str(r#"{"direction":"Desc"}"#).expect("valid sort JSON");
         assert!(!dangling.is_active());
     }
 

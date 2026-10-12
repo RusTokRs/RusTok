@@ -405,10 +405,8 @@ mod tests {
 
     #[test]
     fn deserialization_repairs_width_invariants() {
-        let width: ColumnWidth = serde_json::from_str(
-            r#"{"min":300,"max":100,"current":500}"#,
-        )
-        .expect("valid width JSON");
+        let width: ColumnWidth = serde_json::from_str(r#"{"min":300,"max":100,"current":500}"#)
+            .expect("valid width JSON");
         assert_eq!((width.min, width.max, width.current), (100, 300, 300));
     }
 

@@ -8,8 +8,8 @@
 //! - Advanced diff analysis
 
 use rustok_revisions::{
-    ChangeSource, Revisionable, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
-    RetentionPolicy, SeaOrmBackend,
+    ChangeSource, RetentionPolicy, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
+    Revisionable, SeaOrmBackend,
 };
 use sea_orm::{Database, DatabaseConnection};
 use serde::{Deserialize, Serialize};
@@ -186,7 +186,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
 
-        println!("  Updated product price to ${:.2}, stock to {}", product.price, product.stock);
+        println!(
+            "  Updated product price to ${:.2}, stock to {}",
+            product.price, product.stock
+        );
     }
 
     // Tenant 1: Create user profile
@@ -242,18 +245,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tenant_1_blog_count = service
         .count_revisions(tenant_1, blog_post.id, "en")
         .await?;
-    let tenant_1_profile_count = service
-        .count_revisions(tenant_1, profile.id, "en")
-        .await?;
+    let tenant_1_profile_count = service.count_revisions(tenant_1, profile.id, "en").await?;
 
     println!("Tenant 1:");
     println!("  Blog post revisions: {}", tenant_1_blog_count);
     println!("  Profile revisions: {}", tenant_1_profile_count);
 
     // Tenant 2 stats
-    let tenant_2_product_count = service
-        .count_revisions(tenant_2, product.id, "en")
-        .await?;
+    let tenant_2_product_count = service.count_revisions(tenant_2, product.id, "en").await?;
 
     println!("Tenant 2:");
     println!("  Product revisions: {}", tenant_2_product_count);
@@ -270,8 +269,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let diff = service.compare_revisions(first.id, last.id).await?;
 
-        println!("Blog post changes from revision #1 to #{}:", blog_revisions.len());
-        
+        println!(
+            "Blog post changes from revision #1 to #{}:",
+            blog_revisions.len()
+        );
+
         if let Some(changed) = diff.changed.as_object() {
             for (field, change) in changed {
                 println!("  Field: {}", field);
@@ -306,17 +308,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create named versions for important milestones
     println!("\n=== Creating named versions ===");
-    
+
     // Blog post final version
     if let Some(last_blog_rev) = blog_revisions.first() {
         service
-            .create_named_version(
-                tenant_1,
-                blog_post.id,
-                "en",
-                last_blog_rev.id,
-                "blog-final",
-            )
+            .create_named_version(tenant_1, blog_post.id, "en", last_blog_rev.id, "blog-final")
             .await?;
         println!("  Created named version: blog-final");
     }
@@ -376,16 +372,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let final_blog_count = service
         .count_revisions(tenant_1, blog_post.id, "en")
         .await?;
-    let final_product_count = service
-        .count_revisions(tenant_2, product.id, "en")
-        .await?;
-    let final_profile_count = service
-        .count_revisions(tenant_1, profile.id, "en")
-        .await?;
+    let final_product_count = service.count_revisions(tenant_2, product.id, "en").await?;
+    let final_profile_count = service.count_revisions(tenant_1, profile.id, "en").await?;
 
-    println!("Blog post revisions: {} (was {})", final_blog_count, tenant_1_blog_count);
-    println!("Product revisions: {} (was {})", final_product_count, tenant_2_product_count);
-    println!("Profile revisions: {} (was {})", final_profile_count, tenant_1_profile_count);
+    println!(
+        "Blog post revisions: {} (was {})",
+        final_blog_count, tenant_1_blog_count
+    );
+    println!(
+        "Product revisions: {} (was {})",
+        final_product_count, tenant_2_product_count
+    );
+    println!(
+        "Profile revisions: {} (was {})",
+        final_profile_count, tenant_1_profile_count
+    );
 
     println!("\n=== Advanced example completed successfully! ===");
     Ok(())

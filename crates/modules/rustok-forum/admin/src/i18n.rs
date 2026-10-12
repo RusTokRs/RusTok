@@ -109,15 +109,13 @@ mod tests {
         // reader; a bound argument is what makes the localized form render.
         assert_eq!(
             visible(
-                count_message(Some("en"), "forum.topics.shown", "{count} shown", 1_usize)
-                    .as_str()
+                count_message(Some("en"), "forum.topics.shown", "{count} shown", 1_usize).as_str()
             ),
             "1 shown"
         );
         assert_eq!(
             visible(
-                count_message(Some("ru"), "forum.topics.shown", "{count} shown", 7_usize)
-                    .as_str()
+                count_message(Some("ru"), "forum.topics.shown", "{count} shown", 7_usize).as_str()
             ),
             "показано: 7"
         );
@@ -127,8 +125,7 @@ mod tests {
     fn value_and_path_messages_bind_every_variable() {
         assert_eq!(
             visible(
-                value_message(Some("en"), "forum.render.icon", "icon: {value}", " chat ")
-                    .as_str()
+                value_message(Some("en"), "forum.render.icon", "icon: {value}", " chat ").as_str()
             ),
             "icon:  chat "
         );
@@ -150,11 +147,21 @@ mod tests {
     #[test]
     fn resolvers_keep_the_caller_literal_usable_for_unknown_keys() {
         assert_eq!(
-            count_message(Some("en"), "forum.topics.absentKey", "{count} left", 2_usize),
+            count_message(
+                Some("en"),
+                "forum.topics.absentKey",
+                "{count} left",
+                2_usize
+            ),
             "2 left"
         );
         assert_eq!(
-            value_message(Some("en"), "forum.render.absentKey", "icon: {value}", "star"),
+            value_message(
+                Some("en"),
+                "forum.render.absentKey",
+                "icon: {value}",
+                "star"
+            ),
             "icon: star"
         );
     }

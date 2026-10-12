@@ -1,8 +1,8 @@
 //! Integration tests for rustok-revisions.
 
 use rustok_revisions::{
-    ChangeSource, Revisionable, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
-    RetentionPolicy, SeaOrmBackend,
+    ChangeSource, RetentionPolicy, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
+    Revisionable, SeaOrmBackend,
 };
 use sea_orm::{Database, DatabaseConnection, DbErr};
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ impl RevisionConfig for TestPost {
 async fn setup_test_db() -> Result<DatabaseConnection, DbErr> {
     let database_url = std::env::var("TEST_DATABASE_URL")
         .unwrap_or_else(|_| "postgres://localhost/rustok_revisions_test".to_string());
-    
+
     Database::connect(&database_url).await
 }
 
@@ -63,7 +63,7 @@ async fn test_update_revision() -> Result<(), Box<dyn std::error::Error>> {
 
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
-    
+
     let old_post = TestPost {
         id: Uuid::new_v4(),
         title: "Old Title".to_string(),
@@ -72,7 +72,14 @@ async fn test_update_revision() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create initial revision
     service
-        .create_revision_for_create(tenant_id, old_post.id, "en", &old_post, user_id, ChangeSource::Web)
+        .create_revision_for_create(
+            tenant_id,
+            old_post.id,
+            "en",
+            &old_post,
+            user_id,
+            ChangeSource::Web,
+        )
         .await?;
 
     // Update the post
@@ -113,7 +120,7 @@ async fn test_list_revisions() -> Result<(), Box<dyn std::error::Error>> {
 
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
-    
+
     let post = TestPost {
         id: Uuid::new_v4(),
         title: "Test Post".to_string(),
@@ -171,7 +178,7 @@ async fn test_compare_revisions() -> Result<(), Box<dyn std::error::Error>> {
 
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
-    
+
     let post = TestPost {
         id: Uuid::new_v4(),
         title: "Original Title".to_string(),
@@ -224,7 +231,7 @@ async fn test_restore_revision() -> Result<(), Box<dyn std::error::Error>> {
 
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
-    
+
     let post = TestPost {
         id: Uuid::new_v4(),
         title: "Original Title".to_string(),
@@ -282,7 +289,7 @@ async fn test_named_versions() -> Result<(), Box<dyn std::error::Error>> {
 
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
-    
+
     let post = TestPost {
         id: Uuid::new_v4(),
         title: "Test Post".to_string(),
@@ -299,9 +306,7 @@ async fn test_named_versions() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     // Get named versions
-    let named_versions = service
-        .get_named_versions(tenant_id, post.id, "en")
-        .await?;
+    let named_versions = service.get_named_versions(tenant_id, post.id, "en").await?;
 
     assert_eq!(named_versions.len(), 1);
     assert_eq!(named_versions[0].version_name, Some("v1.0".to_string()));
@@ -317,7 +322,7 @@ async fn test_retention_policy() -> Result<(), Box<dyn std::error::Error>> {
 
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
-    
+
     let post = TestPost {
         id: Uuid::new_v4(),
         title: "Test Post".to_string(),
@@ -383,7 +388,7 @@ async fn test_multi_tenant_isolation() -> Result<(), Box<dyn std::error::Error>>
     let tenant_1 = Uuid::new_v4();
     let tenant_2 = Uuid::new_v4();
     let user_id = Uuid::new_v4();
-    
+
     let post = TestPost {
         id: Uuid::new_v4(),
         title: "Test Post".to_string(),

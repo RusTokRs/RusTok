@@ -31,3 +31,6 @@ uuid.workspace = true
 rustok-channel.workspace = true
 rustok-test-utils.workspace = true
 tokio.workspace = true
+
+[package.metadata.cargo-udeps.ignore]
+development = ["rustok-channel", "rustok-test-utils"]

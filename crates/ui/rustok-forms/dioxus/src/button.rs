@@ -26,8 +26,12 @@ impl ButtonVariant {
         match self {
             Self::Primary => "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
             Self::Secondary => "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-            Self::Destructive => "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
-            Self::Outline => "border border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground",
+            Self::Destructive => {
+                "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm"
+            }
+            Self::Outline => {
+                "border border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
+            }
             Self::Ghost => "text-foreground hover:bg-accent hover:text-accent-foreground",
         }
     }
@@ -89,7 +93,9 @@ pub fn SubmitButton(
     let size_cls = size.class_names();
     let width_cls = if full_width { "w-full" } else { "" };
     let custom_class = class.unwrap_or_default();
-    let btn_class = format!("{base} {var_cls} {size_cls} {width_cls} {custom_class}").trim().to_string();
+    let btn_class = format!("{base} {var_cls} {size_cls} {width_cls} {custom_class}")
+        .trim()
+        .to_string();
 
     let has_submitting_text = submitting_text.is_some();
 
@@ -152,7 +158,9 @@ pub fn ResetButton(
     let size_cls = size.class_names();
     let width_cls = if full_width { "w-full" } else { "" };
     let custom_class = class.unwrap_or_default();
-    let btn_class = format!("{base} {var_cls} {size_cls} {width_cls} {custom_class}").trim().to_string();
+    let btn_class = format!("{base} {var_cls} {size_cls} {width_cls} {custom_class}")
+        .trim()
+        .to_string();
 
     rsx! {
         button {

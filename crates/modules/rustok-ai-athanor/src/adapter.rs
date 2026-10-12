@@ -402,9 +402,7 @@ fn source_ref(external_id: &str, revision: &str, locator: Option<String>) -> Rag
 }
 
 async fn canonical_root(root: &Path) -> RagResult<PathBuf> {
-    tokio::fs::canonicalize(root)
-        .await
-        .map_err(provider_error)
+    tokio::fs::canonicalize(root).await.map_err(provider_error)
 }
 
 async fn load_project_config(root: &Path) -> RagResult<ProjectConfig> {

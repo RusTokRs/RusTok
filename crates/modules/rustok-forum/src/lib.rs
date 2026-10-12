@@ -90,9 +90,7 @@ pub use reaction_subject::{
     FORUM_REACTION_SOURCE, FORUM_REACTION_V1_KEY, FORUM_REPLY_REACTION_KIND,
     FORUM_TOPIC_REACTION_KIND, ForumReactionSubjectProviderFactory,
 };
-pub use reply_create_transport::{
-    ForumReplyCreateTransport, reply_create_audience_port_context,
-};
+pub use reply_create_transport::{ForumReplyCreateTransport, reply_create_audience_port_context};
 pub use reply_read_transport::{
     ForumReplyReadOperation, ForumReplyReadTransport, reply_read_audience_port_context,
 };
@@ -193,9 +191,7 @@ pub use services::{
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};
-pub use topic_create_transport::{
-    ForumTopicCreateTransport, topic_create_audience_port_context,
-};
+pub use topic_create_transport::{ForumTopicCreateTransport, topic_create_audience_port_context};
 pub use topic_read_transport::{
     ForumTopicReadOperation, ForumTopicReadTransport, topic_read_audience_port_context,
 };

@@ -260,9 +260,7 @@ fn map_product_relation_error(
 #[cfg(feature = "ssr")]
 fn map_product_relation_command_error(error: ProductRelationCommandError) -> ServerFnError {
     match error {
-        ProductRelationCommandError::Domain(domain_err) => {
-            map_product_relation_error(domain_err)
-        }
+        ProductRelationCommandError::Domain(domain_err) => map_product_relation_error(domain_err),
         ProductRelationCommandError::Receipt(port_err) => {
             tracing::error!(%port_err, "Product relations receipt error");
             ServerFnError::new(port_err.message)

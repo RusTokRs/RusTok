@@ -32,7 +32,10 @@ pub fn compute_diff(from: &Revision, to: &Revision) -> Result<RevisionDiff, Revi
                 }
                 None => {
                     // Field was added
-                    added.as_object_mut().unwrap().insert(key.clone(), to_value.clone());
+                    added
+                        .as_object_mut()
+                        .unwrap()
+                        .insert(key.clone(), to_value.clone());
                 }
             }
         }
@@ -40,7 +43,10 @@ pub fn compute_diff(from: &Revision, to: &Revision) -> Result<RevisionDiff, Revi
         // Find removed fields
         for (key, from_value) in from_obj {
             if !to_obj.contains_key(key) {
-                removed.as_object_mut().unwrap().insert(key.clone(), from_value.clone());
+                removed
+                    .as_object_mut()
+                    .unwrap()
+                    .insert(key.clone(), from_value.clone());
             }
         }
     }

@@ -1,4 +1,4 @@
-import { getTranslations } from '@rustok/next-fluent/server';
+import { getTranslations } from '@/shared/lib/i18n';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import {
   Card,

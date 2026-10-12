@@ -232,7 +232,10 @@ async fn import_revisions(
         format!(
             "Backup contains {} revisions (created {})",
             backup_data.metadata.revision_count,
-            backup_data.metadata.created_at.format("%Y-%m-%d %H:%M:%S UTC")
+            backup_data
+                .metadata
+                .created_at
+                .format("%Y-%m-%d %H:%M:%S UTC")
         )
         .blue()
     );
@@ -245,7 +248,9 @@ async fn import_revisions(
     let pb = ProgressBar::new(backup_data.metadata.revision_count as u64);
     pb.set_style(
         ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+            .template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
+            )
             .unwrap()
             .progress_chars("#>-"),
     );
@@ -302,7 +307,10 @@ fn list_backup(input: &PathBuf) -> Result<()> {
     println!("  Version: {}", backup_data.metadata.version);
     println!(
         "  Created: {}",
-        backup_data.metadata.created_at.format("%Y-%m-%d %H:%M:%S UTC")
+        backup_data
+            .metadata
+            .created_at
+            .format("%Y-%m-%d %H:%M:%S UTC")
     );
     println!("  Revisions: {}", backup_data.metadata.revision_count);
     if let Some(tenant) = backup_data.metadata.tenant_filter {
@@ -355,7 +363,10 @@ fn verify_backup(input: &PathBuf) -> Result<()> {
             println!("  Revisions: {}", backup_data.metadata.revision_count);
             println!(
                 "  Created: {}",
-                backup_data.metadata.created_at.format("%Y-%m-%d %H:%M:%S UTC")
+                backup_data
+                    .metadata
+                    .created_at
+                    .format("%Y-%m-%d %H:%M:%S UTC")
             );
         }
         Err(e) => {

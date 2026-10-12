@@ -92,15 +92,11 @@ async fn persist_seo_settings(
     let settings = SeoSettingsService::normalize_settings(current);
 
     let mut active: tenant_module::ActiveModel = model.into();
-    active.settings =
-        Set(serde_json::to_value(&settings).map_err(|err| {
-            tracing::error!(%err, "Failed to serialize SEO settings");
-            ServerFnError::new("Failed to serialize SEO settings")
-        })?);
-    active
-        .update(db)
-        .await
-        .map_err(map_db_error)?;
+    active.settings = Set(serde_json::to_value(&settings).map_err(|err| {
+        tracing::error!(%err, "Failed to serialize SEO settings");
+        ServerFnError::new("Failed to serialize SEO settings")
+    })?);
+    active.update(db).await.map_err(map_db_error)?;
 
     Ok(settings)
 }
@@ -506,8 +502,8 @@ pub(super) async fn seo_bulk_job_native(
             &[rustok_api::Permission::SEO_MANAGE],
             "seo:manage required",
         )?;
-        let job_id =
-            Uuid::parse_str(job_id.as_str()).map_err(|_| ServerFnError::new("Invalid bulk job ID"))?;
+        let job_id = Uuid::parse_str(job_id.as_str())
+            .map_err(|_| ServerFnError::new("Invalid bulk job ID"))?;
 
         service
             .bulk()

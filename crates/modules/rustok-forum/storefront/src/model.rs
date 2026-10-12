@@ -388,7 +388,11 @@ mod tests {
             next_cursor: Some("cursor-2".to_string()),
         });
 
-        let ids = page.items.iter().map(|item| item.id.as_str()).collect::<Vec<_>>();
+        let ids = page
+            .items
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect::<Vec<_>>();
         assert_eq!(ids, vec!["a", "b"]);
         assert_eq!(page.next_cursor.as_deref(), Some("cursor-2"));
     }
@@ -433,7 +437,10 @@ mod tests {
         let encoded = serde_json::to_value(&draft).expect("topic draft");
         assert_eq!(encoded["categoryId"], serde_json::json!(draft.category_id));
         assert_eq!(encoded["bodyText"], serde_json::json!("What changed"));
-        assert_eq!(encoded["quotes"][0]["targetKind"], serde_json::json!("REPLY"));
+        assert_eq!(
+            encoded["quotes"][0]["targetKind"],
+            serde_json::json!("REPLY")
+        );
         assert_eq!(encoded["quotes"][0]["revisionId"], serde_json::json!(7));
 
         let reply = CreateStorefrontForumReplyDraft {

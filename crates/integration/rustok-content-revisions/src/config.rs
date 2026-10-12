@@ -56,10 +56,7 @@ impl ContentRevisionConfig {
                     "content".to_string(),
                     "status".to_string(),
                 ],
-                ignored_fields: vec![
-                    "updated_at".to_string(),
-                    "view_count".to_string(),
-                ],
+                ignored_fields: vec!["updated_at".to_string(), "view_count".to_string()],
             },
         );
 
@@ -88,10 +85,7 @@ impl ContentRevisionConfig {
                 condition_field: None,
                 condition_value: None,
                 retention: RetentionPolicy::KeepLast(20),
-                tracked_fields: vec![
-                    "title".to_string(),
-                    "content".to_string(),
-                ],
+                tracked_fields: vec!["title".to_string(), "content".to_string()],
                 ignored_fields: vec![
                     "updated_at".to_string(),
                     "reply_count".to_string(),

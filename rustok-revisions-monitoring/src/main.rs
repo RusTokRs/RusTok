@@ -94,7 +94,9 @@ async fn health_handler(State(state): State<AppState>) -> impl IntoResponse {
 
     // Get database stats
     let revision_count = get_total_revision_count(&state.service).await.unwrap_or(0);
-    let (oldest, newest) = get_revision_date_range(&state.service).await.unwrap_or((None, None));
+    let (oldest, newest) = get_revision_date_range(&state.service)
+        .await
+        .unwrap_or((None, None));
 
     // Get system stats
     let mut sys = System::new();
@@ -213,8 +215,11 @@ async fn get_total_revision_count(service: &RevisionService) -> Result<i64> {
     // For now, we'll use a dummy tenant/content to get a count
     let dummy_tenant = Uuid::nil();
     let dummy_content = Uuid::nil();
-    
-    match service.count_revisions(dummy_tenant, dummy_content, "en").await {
+
+    match service
+        .count_revisions(dummy_tenant, dummy_content, "en")
+        .await
+    {
         Ok(count) => Ok(count),
         Err(_) => Ok(0),
     }
@@ -259,7 +264,10 @@ async fn main() -> Result<()> {
         .route("/health", get(health_handler))
         .route("/metrics", get(metrics_handler))
         .route("/dashboard", get(dashboard_handler))
-        .route("/", get(|| async { "Rustok Revisions Monitor - Visit /dashboard" }))
+        .route(
+            "/",
+            get(|| async { "Rustok Revisions Monitor - Visit /dashboard" }),
+        )
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 

@@ -340,9 +340,7 @@ pub use topic_move::{
 // named seam, the same shape `moderation` and `read_model` use above. Re-exporting it straight from
 // the owner module made an internal owner path part of the public surface.
 pub mod route_tombstone_visibility {
-    pub use super::topic_owner::route_tombstone_visibility::{
-        ForumTopicRouteTombstoneVisibilityService,
-    };
+    pub use super::topic_owner::route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 }
 pub use route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 pub use topic_reply_create_audience::{

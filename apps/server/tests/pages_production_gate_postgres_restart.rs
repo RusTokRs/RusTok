@@ -123,13 +123,14 @@ impl FailNextTransport {
 #[async_trait]
 impl EventTransport for FailNextTransport {
     async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
-        if self
+        #[allow(deprecated)]
+        let should_fail = self
             .failures_remaining
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
                 value.checked_sub(1)
             })
-            .is_ok()
-        {
+            .is_ok();
+        if should_fail {
             return Err(Error::External(
                 "synthetic downstream rejection after Pages generation rotation".to_string(),
             ));

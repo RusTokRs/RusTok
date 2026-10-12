@@ -69,13 +69,20 @@ pub async fn fetch_search_with_current_channel(
     current_channel_only: Option<bool>,
 ) -> Result<SearchPreviewPayload, ApiError> {
     forum_storefront_search_by_current_channel_native(
-        query, locale, preset_key, filters, current_channel_only,
+        query,
+        locale,
+        preset_key,
+        filters,
+        current_channel_only,
     )
     .await
     .map_err(ApiError::from)
 }
 
-#[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search-by-current-channel")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "search/forum-storefront-search-by-current-channel"
+)]
 async fn forum_storefront_search_by_current_channel_native(
     query: String,
     locale: Option<String>,
@@ -128,7 +135,10 @@ async fn forum_storefront_search_native(
     .await
 }
 
-#[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search-by-authors")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "search/forum-storefront-search-by-authors"
+)]
 async fn forum_storefront_search_by_authors_native(
     query: String,
     locale: Option<String>,
@@ -151,7 +161,10 @@ async fn forum_storefront_search_by_authors_native(
     .await
 }
 
-#[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search-by-filters")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "search/forum-storefront-search-by-filters"
+)]
 async fn forum_storefront_search_by_filters_native(
     query: String,
     locale: Option<String>,
@@ -175,7 +188,10 @@ async fn forum_storefront_search_by_filters_native(
     .await
 }
 
-#[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search-by-date-window")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "search/forum-storefront-search-by-date-window"
+)]
 async fn forum_storefront_search_by_date_window_native(
     query: String,
     locale: Option<String>,

@@ -1,9 +1,9 @@
 //! Benchmarks for rustok-revisions.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use rustok_revisions::{
-    ChangeSource, Revisionable, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
-    RetentionPolicy, SeaOrmBackend,
+    ChangeSource, RetentionPolicy, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
+    Revisionable, SeaOrmBackend,
 };
 use sea_orm::{Database, DatabaseConnection};
 use serde::{Deserialize, Serialize};
@@ -29,11 +29,11 @@ impl RevisionConfig for BenchmarkPost {
 async fn setup_service() -> RevisionService {
     let database_url = std::env::var("BENCH_DATABASE_URL")
         .unwrap_or_else(|_| "postgres://localhost/rustok_revisions_bench".to_string());
-    
+
     let db: DatabaseConnection = Database::connect(&database_url)
         .await
         .expect("Failed to connect to database");
-    
+
     let backend = SeaOrmBackend::new(db);
     RevisionService::new(Box::new(backend))
 }
@@ -44,7 +44,11 @@ fn create_test_post(index: i32) -> BenchmarkPost {
         title: format!("Benchmark Post {}", index),
         content: format!("This is benchmark content number {}. ", index).repeat(100),
         author: "Benchmark Author".to_string(),
-        tags: vec!["benchmark".to_string(), "test".to_string(), format!("tag-{}", index)],
+        tags: vec![
+            "benchmark".to_string(),
+            "test".to_string(),
+            format!("tag-{}", index),
+        ],
         views: index * 10,
     }
 }
@@ -52,7 +56,7 @@ fn create_test_post(index: i32) -> BenchmarkPost {
 fn bench_create_revision(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let service = rt.block_on(setup_service());
-    
+
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
     let post = create_test_post(1);
@@ -77,11 +81,11 @@ fn bench_create_revision(c: &mut Criterion) {
 fn bench_update_revision(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let service = rt.block_on(setup_service());
-    
+
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
     let post = create_test_post(2);
-    
+
     // Create initial revision
     rt.block_on(async {
         service
@@ -100,7 +104,7 @@ fn bench_update_revision(c: &mut Criterion) {
             let old_post = post.clone();
             let mut new_post = post.clone();
             new_post.views += 1;
-            
+
             service
                 .create_revision_with_tracker(
                     black_box(tenant_id),
@@ -121,25 +125,25 @@ fn bench_update_revision(c: &mut Criterion) {
 fn bench_list_revisions(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let service = rt.block_on(setup_service());
-    
+
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
     let post = create_test_post(3);
-    
+
     // Create 100 revisions
     rt.block_on(async {
         service
             .create_revision_for_create(tenant_id, post.id, "en", &post, user_id, ChangeSource::Web)
             .await
             .unwrap();
-        
+
         let tracker = RevisionTracker::builder().enabled(true).build();
-        
+
         for i in 0..99 {
             let old_post = post.clone();
             let mut new_post = post.clone();
             new_post.views = i;
-            
+
             service
                 .create_revision_with_tracker(
                     tenant_id,
@@ -190,25 +194,25 @@ fn bench_list_revisions(c: &mut Criterion) {
 fn bench_compare_revisions(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let service = rt.block_on(setup_service());
-    
+
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
     let post = create_test_post(4);
-    
+
     // Create two revisions
     let (rev1, rev2) = rt.block_on(async {
         let rev1 = service
             .create_revision_for_create(tenant_id, post.id, "en", &post, user_id, ChangeSource::Web)
             .await
             .unwrap();
-        
+
         let mut updated_post = post.clone();
         updated_post.title = "Updated Title".to_string();
         updated_post.content = "Updated content".repeat(100);
         updated_post.views = 999;
-        
+
         let tracker = RevisionTracker::builder().enabled(true).build();
-        
+
         let rev2 = service
             .create_revision_with_tracker(
                 tenant_id,
@@ -223,7 +227,7 @@ fn bench_compare_revisions(c: &mut Criterion) {
             .await
             .unwrap()
             .unwrap();
-        
+
         (rev1, rev2)
     });
 
@@ -240,17 +244,17 @@ fn bench_compare_revisions(c: &mut Criterion) {
 fn bench_batch_operations(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let service = rt.block_on(setup_service());
-    
+
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
 
     let mut group = c.benchmark_group("batch_operations");
-    
+
     for size in [10, 50, 100].iter() {
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
             b.to_async(&rt).iter(|| async {
                 let posts: Vec<_> = (0..size).map(|i| create_test_post(i as i32)).collect();
-                
+
                 for post in posts {
                     service
                         .create_revision_for_create(
@@ -267,7 +271,7 @@ fn bench_batch_operations(c: &mut Criterion) {
             })
         });
     }
-    
+
     group.finish();
 }
 

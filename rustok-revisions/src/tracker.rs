@@ -1,6 +1,6 @@
 //! Revision tracking configuration.
 
-use crate::{ChangeSource, RevisionEvent, RetentionPolicy};
+use crate::{ChangeSource, RetentionPolicy, RevisionEvent};
 
 /// Builder for configuring revision tracking behavior.
 #[derive(Debug, Clone)]

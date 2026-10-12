@@ -112,7 +112,9 @@ pub fn FormLabel(
     let base = "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70";
     let error_class = if is_invalid { " text-destructive" } else { "" };
     let custom_class = class.unwrap_or_default();
-    let label_class = format!("{base}{error_class} {custom_class}").trim().to_string();
+    let label_class = format!("{base}{error_class} {custom_class}")
+        .trim()
+        .to_string();
 
     rsx! {
         label {
@@ -201,7 +203,9 @@ pub fn FormMessage(
     }
 
     let custom_class = class.unwrap_or_default();
-    let text_class = format!("text-destructive text-sm font-medium {custom_class}").trim().to_string();
+    let text_class = format!("text-destructive text-sm font-medium {custom_class}")
+        .trim()
+        .to_string();
 
     rsx! {
         div {
@@ -234,7 +238,9 @@ pub fn FormDescription(
     let desc_id = field_ctx.map(|f| format!("{}-description", f.id));
 
     let custom_class = class.unwrap_or_default();
-    let merged_class = format!("text-muted-foreground text-sm {custom_class}").trim().to_string();
+    let merged_class = format!("text-muted-foreground text-sm {custom_class}")
+        .trim()
+        .to_string();
 
     rsx! {
         p {

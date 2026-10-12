@@ -1575,7 +1575,10 @@ mod tests {
             &labels,
         );
         assert_eq!(vm.status_class, "success");
-        assert_eq!(visible(vm.thread_path.as_str()), "thread/category-1/welcome");
+        assert_eq!(
+            visible(vm.thread_path.as_str()),
+            "thread/category-1/welcome"
+        );
         assert_eq!(vm.action_label, "Open thread");
         assert!(!vm.is_busy);
         assert!(vm.pinned);
@@ -1840,8 +1843,7 @@ mod tests {
 
     #[test]
     fn maps_reply_preview_labels() {
-        let preview =
-            forum_admin_reply_preview_labels("Preview".to_string(), "Title".to_string());
+        let preview = forum_admin_reply_preview_labels("Preview".to_string(), "Title".to_string());
         assert_eq!(preview.preview_label, "Preview");
         assert_eq!(preview.preview_title, "Title");
     }

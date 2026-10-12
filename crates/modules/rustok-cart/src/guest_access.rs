@@ -49,10 +49,13 @@ where
 pub fn current_guest_cart_token() -> Option<String> {
     CURRENT_GUEST_CART_SCOPE
         .try_with(|scope| {
-            scope
-                .presented_token
-                .clone()
-                .or_else(|| scope.issued_token.lock().ok().and_then(|guard| guard.clone()))
+            scope.presented_token.clone().or_else(|| {
+                scope
+                    .issued_token
+                    .lock()
+                    .ok()
+                    .and_then(|guard| guard.clone())
+            })
         })
         .ok()
         .flatten()

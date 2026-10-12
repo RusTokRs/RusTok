@@ -58,6 +58,6 @@ pub use service::ContentRevisionService;
 
 // Re-export commonly used types from rustok-revisions
 pub use rustok_revisions::{
-    ChangeSource, Revision, RevisionDiff, RevisionEvent, RevisionMetadata,
-    Revisionable, RetentionPolicy, RevisionTracker,
+    ChangeSource, RetentionPolicy, Revision, RevisionDiff, RevisionEvent, RevisionMetadata,
+    RevisionTracker, Revisionable,
 };

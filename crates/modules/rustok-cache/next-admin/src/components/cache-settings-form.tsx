@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/shared/ui/shadcn/select';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/shadcn/sonner';
 import {
   updateCacheSettings,
   type CacheSettings,

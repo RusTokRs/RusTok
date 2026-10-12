@@ -432,9 +432,7 @@ impl ForumNotificationSourceProvider {
         recipient_id: Uuid,
     ) -> NotificationProviderResult<ForumTargetAvailability> {
         if self.recipient_context_port.is_none() {
-            return self
-                .load_public_target(tenant_id, "reply", reply_id)
-                .await;
+            return self.load_public_target(tenant_id, "reply", reply_id).await;
         }
         let Some(viewer) = self
             .resolve_recipient_viewer(
@@ -482,7 +480,10 @@ impl ForumNotificationSourceProvider {
             .map_err(retryable_database_error)?;
         let has_more = rows.len() > limit;
         Ok((
-            rows.into_iter().take(limit).map(|row| row.user_id).collect(),
+            rows.into_iter()
+                .take(limit)
+                .map(|row| row.user_id)
+                .collect(),
             has_more,
         ))
     }
@@ -946,10 +947,7 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
             REPLY_CREATED_TYPE => {
                 self.validate_reply_descriptor(&event, &request.descriptor)?;
                 let reply_id = event.aggregate_id;
-                let Some(reply) = self
-                    .load_approved_reply(event.tenant_id, reply_id)
-                    .await?
-                else {
+                let Some(reply) = self.load_approved_reply(event.tenant_id, reply_id).await? else {
                     return Ok(NotificationAudiencePage::empty());
                 };
                 let topic = if self.recipient_context_port.is_none() {
@@ -1027,9 +1025,7 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                 };
                 let next_cursor = next_cursor
                     .map(|(stage, after)| {
-                        NotificationAudienceCursor::new(encode_reply_audience_cursor(
-                            stage, after,
-                        ))
+                        NotificationAudienceCursor::new(encode_reply_audience_cursor(stage, after))
                     })
                     .transpose()
                     .map_err(|_| NotificationProviderError::Internal { retryable: false })?;
@@ -1186,7 +1182,9 @@ fn encode_reply_audience_cursor(stage: ReplyAudienceStage, after: Uuid) -> Strin
 fn parse_reply_audience_cursor(
     cursor: &str,
 ) -> NotificationProviderResult<(ReplyAudienceStage, Option<Uuid>)> {
-    let (prefix, raw) = cursor.split_once(':').ok_or(NotificationProviderError::InvalidEvent)?;
+    let (prefix, raw) = cursor
+        .split_once(':')
+        .ok_or(NotificationProviderError::InvalidEvent)?;
     let stage = match prefix {
         REPLY_AUDIENCE_TOPIC_STAGE => ReplyAudienceStage::Topic,
         REPLY_AUDIENCE_CATEGORY_STAGE => ReplyAudienceStage::Category,
@@ -1273,8 +1271,8 @@ mod tests {
         ] {
             let cursor = encode_reply_audience_cursor(stage, user_id);
             assert!(cursor.starts_with(&format!("{prefix}:")));
-            let (parsed_stage, parsed_user) = parse_reply_audience_cursor(&cursor)
-                .expect("encoded stage cursors should parse");
+            let (parsed_stage, parsed_user) =
+                parse_reply_audience_cursor(&cursor).expect("encoded stage cursors should parse");
             assert_eq!(parsed_stage, stage);
             assert_eq!(parsed_user, Some(user_id));
         }

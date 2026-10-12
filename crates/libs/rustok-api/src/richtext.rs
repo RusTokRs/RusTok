@@ -82,8 +82,7 @@ impl RichTextDocument {
                     .filter(|line| !line.is_empty())
                     .collect::<Vec<_>>()
                     .join(" ");
-                (!paragraph.is_empty())
-                    .then(|| Self::single_paragraph(paragraph).content)
+                (!paragraph.is_empty()).then(|| Self::single_paragraph(paragraph).content)
             })
             .flatten()
             .collect();

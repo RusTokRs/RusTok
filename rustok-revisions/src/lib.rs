@@ -71,7 +71,7 @@ pub use error::{RevisionError, RevisionResult};
 pub use revision::{ChangeSource, Revision, RevisionDiff, RevisionEvent, RevisionMetadata};
 pub use service::RevisionService;
 pub use tracker::{RevisionTracker, RevisionTrackerBuilder};
-pub use traits::{RevisionConfig, Revisionable, RetentionPolicy};
+pub use traits::{RetentionPolicy, RevisionConfig, Revisionable};
 
 #[cfg(feature = "seaorm")]
 pub use seaorm_backend::{RevisionEntity, SeaOrmBackend};

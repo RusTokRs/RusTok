@@ -1,7 +1,7 @@
 'use client';
 
 import { useTheme } from 'next-themes';
-import { Toaster as Sonner, ToasterProps } from 'sonner';
+import { Toaster as Sonner, ToasterProps, toast } from 'sonner';
 
 import { cn } from '@/shared/lib/utils';
 
@@ -22,4 +22,4 @@ const Toaster = ({ className, ...props }: RusTokToasterProps) => {
   );
 };
 
-export { Toaster };
+export { Toaster, toast };

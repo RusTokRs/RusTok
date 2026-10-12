@@ -29,11 +29,7 @@ mod m0001_create_content_revisions {
                                 .not_null()
                                 .primary_key(),
                         )
-                        .col(
-                            ColumnDef::new(ContentRevisions::TenantId)
-                                .uuid()
-                                .not_null(),
-                        )
+                        .col(ColumnDef::new(ContentRevisions::TenantId).uuid().not_null())
                         .col(
                             ColumnDef::new(ContentRevisions::ContentType)
                                 .string_len(100)

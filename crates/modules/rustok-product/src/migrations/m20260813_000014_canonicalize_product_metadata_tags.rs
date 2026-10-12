@@ -11,17 +11,24 @@ use rustok_taxonomy::{
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, TransactionTrait, sea_query::Expr,
+    FromQueryResult, QueryFilter, Statement, TransactionTrait,
 };
 use sea_orm_migration::prelude::*;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::entities::{product, product_tag};
+use crate::entities::product_tag;
 
 const PRODUCT_SCOPE_VALUE: &str = "product";
 const BACKFILL_BATCH_SIZE: u64 = 256;
 const METADATA_TAG_CONSTRAINT: &str = "ck_products_metadata_tags_absent";
+
+#[derive(Debug, FromQueryResult)]
+struct MigrationProductRow {
+    id: Uuid,
+    tenant_id: Uuid,
+    metadata: Value,
+}
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -61,17 +68,26 @@ ALTER TABLE products
 }
 
 async fn backfill_legacy_metadata_tags(txn: &sea_orm::DatabaseTransaction) -> Result<(), DbErr> {
-    let mut last_product_id = None;
+    let mut last_product_id: Option<Uuid> = None;
 
     loop {
-        let mut query = product::Entity::find()
-            .order_by_asc(product::Column::Id)
-            .limit(BACKFILL_BATCH_SIZE);
-        if let Some(last_product_id) = last_product_id {
-            query = query.filter(product::Column::Id.gt(last_product_id));
-        }
-
-        let products = query.all(txn).await?;
+        let (sql, values) = match last_product_id {
+            Some(last_id) => (
+                "SELECT id, tenant_id, metadata FROM products WHERE id > $1 ORDER BY id ASC LIMIT $2",
+                vec![last_id.into(), (BACKFILL_BATCH_SIZE as i64).into()],
+            ),
+            None => (
+                "SELECT id, tenant_id, metadata FROM products ORDER BY id ASC LIMIT $1",
+                vec![(BACKFILL_BATCH_SIZE as i64).into()],
+            ),
+        };
+        let products = MigrationProductRow::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            sql,
+            values,
+        ))
+        .all(txn)
+        .await?;
         if products.is_empty() {
             break;
         }
@@ -116,13 +132,14 @@ async fn backfill_legacy_metadata_tags(txn: &sea_orm::DatabaseTransaction) -> Re
             if let Some(object) = metadata.as_object_mut() {
                 object.remove("tags");
             }
-            let updated = product::Entity::update_many()
-                .col_expr(product::Column::Metadata, Expr::value(metadata))
-                .filter(product::Column::Id.eq(product.id))
-                .filter(product::Column::TenantId.eq(product.tenant_id))
-                .exec(txn)
+            let updated = txn
+                .execute_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "UPDATE products SET metadata = $1 WHERE id = $2 AND tenant_id = $3",
+                    vec![metadata.into(), product.id.into(), product.tenant_id.into()],
+                ))
                 .await?;
-            if updated.rows_affected != 1 {
+            if updated.rows_affected() != 1 {
                 return Err(DbErr::Migration(format!(
                     "product metadata-tag canonicalization lost product {} during backfill",
                     product.id

@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 use super::graphql_adapter::{ApiError, request};
 use crate::core::forum_storefront_quote_target_kind;
 use crate::model::{
-    CreateStorefrontForumReplyDraft, CreateStorefrontForumTopicDraft, StorefrontForumCreatedReply,
-    StorefrontForumCreatedTopic, StorefrontForumComposerQuote,
+    CreateStorefrontForumReplyDraft, CreateStorefrontForumTopicDraft, StorefrontForumComposerQuote,
+    StorefrontForumCreatedReply, StorefrontForumCreatedTopic,
 };
 
 const CREATE_STOREFRONT_FORUM_TOPIC_MUTATION: &str = "mutation CreateStorefrontForumTopic($tenantId: UUID, $input: CreateForumTopicWithQuotesInput!) { createForumTopicWithQuotes(tenantId: $tenantId, input: $input) { id slug } }";

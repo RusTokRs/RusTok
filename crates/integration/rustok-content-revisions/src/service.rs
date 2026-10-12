@@ -2,8 +2,8 @@ use crate::config::ContentRevisionConfig;
 use crate::error::ContentRevisionError;
 use async_trait::async_trait;
 use rustok_revisions::{
-    ChangeSource, Revision, RevisionDiff, RevisionEvent, RevisionMetadata,
-    RevisionService, RevisionTracker, Revisionable, RetentionPolicy, SeaOrmBackend,
+    ChangeSource, RetentionPolicy, Revision, RevisionDiff, RevisionEvent, RevisionMetadata,
+    RevisionService, RevisionTracker, Revisionable, SeaOrmBackend,
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -50,13 +50,14 @@ impl ContentRevisionService {
         }
 
         // Get configuration for this content type
-        let type_config = self
-            .config
-            .get_content_type(content_type)
-            .ok_or_else(|| ContentRevisionError::ContentTypeNotConfigured(content_type.to_string()))?;
+        let type_config = self.config.get_content_type(content_type).ok_or_else(|| {
+            ContentRevisionError::ContentTypeNotConfigured(content_type.to_string())
+        })?;
 
         // Check condition if specified
-        if let (Some(field), Some(value)) = (&type_config.condition_field, &type_config.condition_value) {
+        if let (Some(field), Some(value)) =
+            (&type_config.condition_field, &type_config.condition_value)
+        {
             let new_json = new_content.to_revision_json();
             if let Some(field_value) = new_json.get(field) {
                 if field_value.as_str() != Some(value.as_str()) {
@@ -118,10 +119,9 @@ impl ContentRevisionService {
             return Ok(None);
         }
 
-        let type_config = self
-            .config
-            .get_content_type(content_type)
-            .ok_or_else(|| ContentRevisionError::ContentTypeNotConfigured(content_type.to_string()))?;
+        let type_config = self.config.get_content_type(content_type).ok_or_else(|| {
+            ContentRevisionError::ContentTypeNotConfigured(content_type.to_string())
+        })?;
 
         // Only track create if configured to do so
         if !type_config.track_on.contains(&RevisionEvent::Create) {
@@ -181,7 +181,13 @@ impl ContentRevisionService {
     ) -> Result<T, ContentRevisionError> {
         let content = self
             .revision_service
-            .get_content_at_revision(tenant_id, content_id, locale, target_revision, current_content)
+            .get_content_at_revision(
+                tenant_id,
+                content_id,
+                locale,
+                target_revision,
+                current_content,
+            )
             .await?;
 
         Ok(content)
@@ -199,7 +205,14 @@ impl ContentRevisionService {
     ) -> Result<T, ContentRevisionError> {
         let restored = self
             .revision_service
-            .restore_revision(tenant_id, content_id, locale, target_revision, current_content, restored_by)
+            .restore_revision(
+                tenant_id,
+                content_id,
+                locale,
+                target_revision,
+                current_content,
+                restored_by,
+            )
             .await?;
 
         Ok(restored)
@@ -217,7 +230,14 @@ impl ContentRevisionService {
     ) -> Result<Revision, ContentRevisionError> {
         let revision = self
             .revision_service
-            .create_named_version(tenant_id, content_id, locale, current_content, version_name, created_by)
+            .create_named_version(
+                tenant_id,
+                content_id,
+                locale,
+                current_content,
+                version_name,
+                created_by,
+            )
             .await?;
 
         Ok(revision)
@@ -251,7 +271,14 @@ impl ContentRevisionService {
     ) -> Result<RevisionDiff, ContentRevisionError> {
         let diff = self
             .revision_service
-            .diff_revisions(tenant_id, content_type, content_id, locale, from_revision, to_revision)
+            .diff_revisions(
+                tenant_id,
+                content_type,
+                content_id,
+                locale,
+                from_revision,
+                to_revision,
+            )
             .await?;
 
         Ok(diff)

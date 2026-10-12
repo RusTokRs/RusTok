@@ -309,7 +309,7 @@ is deferred to the final production-validation phase.
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
 | `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
 | `FORUM-19` | `done` | Bounded Forum/Moderation integration is complete: neutral topic/reply adapters, Forum-owned revision fencing and exact supported effects, Moderation-owned durable dispatch/scheduler/audit/recovery, dedicated `moderation_cases` RBAC, authorized recovery GraphQL transport, replay-safe fresh-revision new-case/new-decision re-review, and retained PostgreSQL/SQLite/host/concurrency/lost-response/accounting evidence are present. `Unpublished`, temporary restrictions and broader neutral effects remain separate future feature scope rather than lossy approximations. Deployment/promotion evidence is deferred to `PROD-FORUM-19`; Moderation keeps cases, decisions, appeals and audit. |
-| `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Reply anchoring on the Next.js surfaces is delivered through the `?reply=<uuid>` route contract (`DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md`); remaining: an owner-side read for the page containing a reply, remaining reads, reconciliation, delivery and PostgreSQL evidence. |
+| `FORUM-20` | `in_progress` | FORUM-20A-G provide rich visibility and recipient-aware source/inbox slices. Reply anchoring on the Next.js surfaces is delivered through the `?reply=<uuid>` route contract (`DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md`); remaining: an owner-side read for the page containing a reply, remaining reads, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
 | `FORUM-23` | `in_progress` | Search projection/filtering, ordering, owner revisions and repair exist. PostgreSQL/Iggy and cross-module evidence remain. |
@@ -1345,6 +1345,23 @@ catalogs, state, commands, aggregate ownership or copied Reactions presentation
 to Forum.
 
 FORUM-19 implementation is complete. Do not reopen it for deployment-only promotion; track deployed-host/runtime/release proof under `PROD-FORUM-19`. Unsupported `SetVisibility(Unpublished)`, temporary restrictions and other neutral effects remain fail-closed until a separately accepted feature slice defines exact Forum owner semantics. The broader Moderation admin UI, public event family and additional producer adapters remain Moderation-platform work rather than Forum-owned recovery or queue logic.
+
+## `FORUM-20` — ACL and visibility inheritance
+
+**Status:** `in_progress`  
+**Priority:** P0  
+**Dependencies:** RBAC, channel/group capability contracts
+
+### Scope
+
+Model typed category visibility and create/reply/moderate audience rules:
+public, authenticated, roles, trust level, channel members, group members and
+explicit allow/deny. Child categories inherit unless explicitly overridden.
+A topic may narrow but cannot broaden parent visibility without a privileged
+command.
+
+Forum reads, notifications, search, SEO and deep links must call the same
+visibility policy. Do not place ACL policy in arbitrary JSON.
 
 ## Verification checklist
 

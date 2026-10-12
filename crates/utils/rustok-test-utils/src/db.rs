@@ -206,7 +206,15 @@ pub fn unique_postgres_database_name(prefix: &str) -> String {
         .duration_since(UNIX_EPOCH)
         .expect("system clock must be after UNIX_EPOCH")
         .as_millis();
-    let name = format!("{prefix}_{millis}_{}", std::process::id());
+    let pid = std::process::id();
+    let suffix = format!("_{millis}_{pid}");
+    let max_prefix_len = 63usize.saturating_sub(suffix.len());
+    let prefix = if prefix.len() > max_prefix_len {
+        &prefix[..max_prefix_len]
+    } else {
+        prefix
+    };
+    let name = format!("{prefix}{suffix}");
     assert_valid_postgres_database_name(&name);
     name
 }

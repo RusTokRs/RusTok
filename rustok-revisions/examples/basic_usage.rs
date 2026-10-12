@@ -8,8 +8,8 @@
 //! - Restore to a previous revision
 
 use rustok_revisions::{
-    ChangeSource, Revisionable, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
-    RetentionPolicy, SeaOrmBackend,
+    ChangeSource, RetentionPolicy, RevisionConfig, RevisionEvent, RevisionService, RevisionTracker,
+    Revisionable, SeaOrmBackend,
 };
 use sea_orm::{Database, DatabaseConnection};
 use serde::{Deserialize, Serialize};
@@ -67,10 +67,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create the first revision (Create event)
     let first_revision = service
-        .create_revision_for_create(tenant_id, post.id, locale, &post, user_id, ChangeSource::Web)
+        .create_revision_for_create(
+            tenant_id,
+            post.id,
+            locale,
+            &post,
+            user_id,
+            ChangeSource::Web,
+        )
         .await?;
 
-    println!("Created revision #{}: {:?}", first_revision.revision_number, first_revision.id);
+    println!(
+        "Created revision #{}: {:?}",
+        first_revision.revision_number, first_revision.id
+    );
 
     // Update the post
     println!("\n=== Updating post ===");
@@ -124,7 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(rev) = third_revision {
         println!("Created revision #{}: {:?}", rev.revision_number, rev.id);
-        
+
         // Create a named version for this published state
         service
             .create_named_version(tenant_id, post.id, locale, rev.id, "v1.0-published")
@@ -201,9 +211,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Restored post: {:?}", restored_post);
 
     // Count total revisions
-    let total = service
-        .count_revisions(tenant_id, post.id, locale)
-        .await?;
+    let total = service.count_revisions(tenant_id, post.id, locale).await?;
     println!("\nTotal revisions after restore: {}", total);
 
     // Apply retention policy
@@ -219,9 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Deleted {} old revisions", deleted);
 
-    let remaining = service
-        .count_revisions(tenant_id, post.id, locale)
-        .await?;
+    let remaining = service.count_revisions(tenant_id, post.id, locale).await?;
     println!("Remaining revisions: {}", remaining);
 
     println!("\n=== Example completed successfully! ===");

@@ -22,8 +22,7 @@ use crate::core::{
 };
 use crate::i18n::{count_message, slug_message, t};
 use crate::model::{
-    ForumCategoryListItem, ForumReplyDetail, ForumReplyPage, ForumTopicDetail,
-    StorefrontForumData,
+    ForumCategoryListItem, ForumReplyDetail, ForumReplyPage, ForumTopicDetail, StorefrontForumData,
 };
 use crate::transport;
 
@@ -65,7 +64,9 @@ pub fn ForumView() -> impl IntoView {
     // query value, so an in-page switch is kept as a local override that feeds the
     // same read transport instead of inventing a second selection source.
     let (category_override, set_category_override) = signal(Option::<String>::None);
-    let selected_category_id = category_override.get().or_else(|| selected_category_id.clone());
+    let selected_category_id = category_override
+        .get()
+        .or_else(|| selected_category_id.clone());
     let (mutation_busy, set_mutation_busy) = signal(false);
     let (mutation_error, set_mutation_error) = signal(Option::<transport::TransportError>::None);
 
@@ -517,10 +518,7 @@ fn ForumThreadPanel(
     let status_class = topic_status_class(topic.status.as_str());
     // The owner refuses replies into a locked or non-open topic, so the composer
     // affordances are hidden here instead of failing after submit.
-    let can_reply = forum_storefront_topic_accepts_reply(
-        topic.status.as_str(),
-        topic.is_locked,
-    );
+    let can_reply = forum_storefront_topic_accepts_reply(topic.status.as_str(), topic.is_locked);
     let reply_label = t(locale.as_deref(), "forum.thread.reply", "Reply");
     let reply_closed_label = t(
         locale.as_deref(),
@@ -798,7 +796,11 @@ fn ReplyCard(
     let reply_id = reply.id.clone();
     let quoted_text = reply.content_plain_text.clone();
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let quote_label = t(route_context.locale.as_deref(), "forum.thread.quote", "Quote");
+    let quote_label = t(
+        route_context.locale.as_deref(),
+        "forum.thread.quote",
+        "Quote",
+    );
     let quote_title = t(
         route_context.locale.as_deref(),
         "forum.thread.quoteTitle",

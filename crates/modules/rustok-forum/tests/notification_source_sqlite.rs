@@ -277,7 +277,10 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
         reply_descriptor.notification_type.as_str(),
         "forum.topic.replied"
     );
-    assert_eq!(reply_descriptor.template_key.as_str(), "forum.topic.replied");
+    assert_eq!(
+        reply_descriptor.template_key.as_str(),
+        "forum.topic.replied"
+    );
     assert_eq!(reply_descriptor.target.id, reply.id);
     assert_eq!(
         reply_descriptor.target.kind,
@@ -341,7 +344,10 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
             }
         }
     }
-    assert!(complete, "the reply audience walk must terminate with a complete page");
+    assert!(
+        complete,
+        "the reply audience walk must terminate with a complete page"
+    );
     assert_eq!(
         reply_recipients,
         BTreeSet::from([first_recipient, topic_watcher])

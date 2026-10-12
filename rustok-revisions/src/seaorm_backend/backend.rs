@@ -5,11 +5,9 @@ use chrono::{Duration, Utc};
 use sea_orm::*;
 use uuid::Uuid;
 
-use crate::{
-    ChangeSource, Revision, RevisionError, RevisionEvent, RevisionMetadata,
-};
-use crate::backend::RevisionBackend;
 use super::entities;
+use crate::backend::RevisionBackend;
+use crate::{ChangeSource, Revision, RevisionError, RevisionEvent, RevisionMetadata};
 
 /// SeaORM-based revision backend.
 pub struct SeaOrmBackend {
@@ -138,8 +136,7 @@ impl RevisionBackend for SeaOrmBackend {
         limit: Option<usize>,
         offset: Option<usize>,
     ) -> Result<Vec<Revision>, RevisionError> {
-        let mut query = entities::Entity::find()
-            .filter(entities::Column::TenantId.eq(tenant_id));
+        let mut query = entities::Entity::find().filter(entities::Column::TenantId.eq(tenant_id));
 
         if let Some(content_id) = content_id {
             query = query.filter(entities::Column::ContentId.eq(content_id));

@@ -39,10 +39,7 @@ impl EventTransport for MockEventTransport {
         Ok(())
     }
 
-    async fn publish_contract(
-        &self,
-        envelope: ContractEventEnvelope,
-    ) -> rustok_core::Result<()> {
+    async fn publish_contract(&self, envelope: ContractEventEnvelope) -> rustok_core::Result<()> {
         let mut events = self.recorded_contract_events.lock().unwrap();
         events.push(envelope);
         Ok(())

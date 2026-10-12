@@ -78,10 +78,10 @@ mod tests {
 
     #[test]
     fn every_catalog_locale_names_the_topic_statuses() {
-        for (
-            locale, open, closed, archived, pending, approved, deleted,
-        ) in [
-            ("en", "Open", "Closed", "Archived", "Pending", "Approved", "Deleted"),
+        for (locale, open, closed, archived, pending, approved, deleted) in [
+            (
+                "en", "Open", "Closed", "Archived", "Pending", "Approved", "Deleted",
+            ),
             (
                 "ru",
                 "Открыта",

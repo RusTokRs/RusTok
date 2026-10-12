@@ -143,13 +143,8 @@ impl<'de> Deserialize<'de> for GridFacet {
 
         let data = GridFacetData::deserialize(deserializer)?;
         let was_truncated = data.is_truncated;
-        let mut facet = Self::from_buckets(
-            data.key,
-            data.label,
-            data.domain,
-            data.total,
-            data.values,
-        );
+        let mut facet =
+            Self::from_buckets(data.key, data.label, data.domain, data.total, data.values);
         if facet.is_enumerable() {
             facet.is_truncated |= was_truncated;
         }
@@ -348,11 +343,7 @@ mod tests {
         assert!(!open.is_truncated);
 
         let values = (0..MAX_GRID_FACET_VALUES + 1)
-            .map(|index| {
-                format!(
-                    r#"{{"value":"{index}","label":"Option","count":1}}"#
-                )
-            })
+            .map(|index| format!(r#"{{"value":"{index}","label":"Option","count":1}}"#))
             .collect::<Vec<_>>()
             .join(",");
         let json = format!(

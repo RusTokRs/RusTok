@@ -396,7 +396,10 @@ mod tests {
         )
         .expect("valid filter JSON");
         assert_eq!(filters.count(), 2);
-        assert_eq!(filters.get("title"), Some(&FilterValue::Text("hello".into())));
+        assert_eq!(
+            filters.get("title"),
+            Some(&FilterValue::Text("hello".into()))
+        );
         assert_eq!(
             filters.get("range"),
             Some(&FilterValue::NumberRange {

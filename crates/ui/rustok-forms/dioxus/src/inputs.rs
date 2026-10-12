@@ -120,7 +120,9 @@ pub fn FormInput(
         "border-border focus:border-primary focus:ring-1 focus:ring-primary/20"
     };
     let custom_class = class.unwrap_or_default();
-    let input_class = format!("{base} {state_border} {custom_class}").trim().to_string();
+    let input_class = format!("{base} {state_border} {custom_class}")
+        .trim()
+        .to_string();
 
     rsx! {
         input {
@@ -221,7 +223,11 @@ pub fn FormPasswordInput(
 ) -> Element {
     let mut show_password = use_signal(|| false);
 
-    let input_type = if *show_password.read() { "text" } else { "password" };
+    let input_type = if *show_password.read() {
+        "text"
+    } else {
+        "password"
+    };
     let custom_class = class.unwrap_or_default();
     let input_class = format!("pr-9 {custom_class}").trim().to_string();
 
@@ -545,7 +551,9 @@ pub fn FormTextarea(
         "border-border focus:border-primary focus:ring-1 focus:ring-primary/20"
     };
     let custom_class = class.unwrap_or_default();
-    let textarea_class = format!("{base} {state_border} {custom_class}").trim().to_string();
+    let textarea_class = format!("{base} {state_border} {custom_class}")
+        .trim()
+        .to_string();
 
     rsx! {
         textarea {
@@ -642,7 +650,9 @@ pub fn FormSelect(
         "border-border focus:border-primary focus:ring-1 focus:ring-primary/20"
     };
     let custom_class = class.unwrap_or_default();
-    let select_class = format!("{base} {state_border} {custom_class}").trim().to_string();
+    let select_class = format!("{base} {state_border} {custom_class}")
+        .trim()
+        .to_string();
 
     rsx! {
         div {
@@ -825,7 +835,11 @@ pub fn FormSwitch(
     let switch_id = id.or(field_id).or_else(|| name_attr.clone());
 
     let track_bg = if checked { "bg-primary" } else { "bg-muted" };
-    let thumb_translate = if checked { "translate-x-4" } else { "translate-x-0" };
+    let thumb_translate = if checked {
+        "translate-x-4"
+    } else {
+        "translate-x-0"
+    };
     let custom_class = class.unwrap_or_default();
 
     rsx! {
@@ -897,9 +911,15 @@ pub fn FormRadioGroup(
     let is_submitting = field.as_ref().map(|f| f.is_submitting()).unwrap_or(false);
     let is_disabled = disabled || is_submitting;
 
-    let name_attr = name.or(field_name).unwrap_or_else(|| "radio_group".to_string());
+    let name_attr = name
+        .or(field_name)
+        .unwrap_or_else(|| "radio_group".to_string());
 
-    let layout_class = if horizontal { "flex flex-wrap gap-4" } else { "space-y-2" };
+    let layout_class = if horizontal {
+        "flex flex-wrap gap-4"
+    } else {
+        "space-y-2"
+    };
     let custom_class = class.unwrap_or_default();
 
     rsx! {
@@ -1002,7 +1022,9 @@ pub fn FormFileInput(
         "border-border focus:border-primary"
     };
     let custom_class = class.unwrap_or_default();
-    let input_class = format!("{base} {state_border} {custom_class}").trim().to_string();
+    let input_class = format!("{base} {state_border} {custom_class}")
+        .trim()
+        .to_string();
 
     rsx! {
         input {

@@ -314,10 +314,7 @@ mod tests {
             "/products?tag=green&search=bag"
         );
         assert_eq!(
-            apply_ui_query_pairs(
-                "/products?tag=red&search=bag&tag=blue",
-                &[("tag", None)],
-            ),
+            apply_ui_query_pairs("/products?tag=red&search=bag&tag=blue", &[("tag", None)],),
             "/products?search=bag"
         );
     }

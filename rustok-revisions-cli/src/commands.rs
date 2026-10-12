@@ -118,10 +118,7 @@ pub async fn show_revision(service: &RevisionService, revision_id: Uuid) -> Resu
     }
 
     println!("\n{}", "Content".bold().underline());
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&revision.content)?
-    );
+    println!("{}", serde_json::to_string_pretty(&revision.content)?);
 
     if !revision.custom_metadata.is_null() {
         println!("\n{}", "Custom Metadata".bold().underline());
@@ -134,11 +131,7 @@ pub async fn show_revision(service: &RevisionService, revision_id: Uuid) -> Resu
     Ok(())
 }
 
-pub async fn diff_revisions(
-    service: &RevisionService,
-    from_id: Uuid,
-    to_id: Uuid,
-) -> Result<()> {
+pub async fn diff_revisions(service: &RevisionService, from_id: Uuid, to_id: Uuid) -> Result<()> {
     println!(
         "{}",
         format!("Comparing revisions {} → {}", from_id, to_id).bold()
@@ -299,10 +292,7 @@ pub async fn count_revisions(
         .count_revisions(tenant_id, content_id, locale)
         .await?;
 
-    println!(
-        "{}",
-        format!("Total revisions: {}", count).bold()
-    );
+    println!("{}", format!("Total revisions: {}", count).bold());
 
     Ok(())
 }
@@ -364,10 +354,7 @@ pub async fn export_revisions(
     locale: &str,
     output: &str,
 ) -> Result<()> {
-    println!(
-        "{}",
-        format!("Exporting revisions to {}...", output).cyan()
-    );
+    println!("{}", format!("Exporting revisions to {}...", output).cyan());
 
     let revisions = service
         .list_revisions(tenant_id, content_id, locale, None, None)

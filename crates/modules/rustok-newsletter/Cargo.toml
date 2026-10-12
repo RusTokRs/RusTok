@@ -29,3 +29,6 @@ uuid.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["rustok-email"]

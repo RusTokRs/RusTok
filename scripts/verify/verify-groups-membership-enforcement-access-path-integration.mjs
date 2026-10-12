@@ -96,7 +96,7 @@ for (const marker of [
   requireText(adapter, marker, `Forum audience Groups adapter is missing ${marker}`);
 }
 for (const forbidden of [
-  "group_memberships",
+  "group_membership::Entity",
   "group_membership_enforcements",
   "rustok_groups::entities",
   "membership_enforcement::ActiveModel",

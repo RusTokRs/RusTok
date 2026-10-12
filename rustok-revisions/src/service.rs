@@ -4,11 +4,11 @@ use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::{
-    compute_diff, ChangeSource, Revision, RevisionDiff, RevisionError, RevisionEvent,
-    RevisionMetadata, RevisionTracker, Revisionable, RetentionPolicy,
-};
 use crate::backend::RevisionBackend;
+use crate::{
+    compute_diff, ChangeSource, RetentionPolicy, Revision, RevisionDiff, RevisionError,
+    RevisionEvent, RevisionMetadata, RevisionTracker, Revisionable,
+};
 
 /// Main service for managing content revisions.
 pub struct RevisionService {
@@ -183,11 +183,10 @@ impl RevisionService {
         from_id: Uuid,
         to_id: Uuid,
     ) -> Result<RevisionDiff, RevisionError> {
-        let from = self
-            .backend
-            .get_revision(from_id)
-            .await?
-            .ok_or_else(|| RevisionError::NotFound(format!("Revision {} not found", from_id)))?;
+        let from =
+            self.backend.get_revision(from_id).await?.ok_or_else(|| {
+                RevisionError::NotFound(format!("Revision {} not found", from_id))
+            })?;
 
         let to = self
             .backend
@@ -267,7 +266,9 @@ impl RevisionService {
             .backend
             .get_revision(revision_id)
             .await?
-            .ok_or_else(|| RevisionError::NotFound(format!("Revision {} not found", revision_id)))?;
+            .ok_or_else(|| {
+                RevisionError::NotFound(format!("Revision {} not found", revision_id))
+            })?;
 
         // Verify it belongs to the specified content
         if revision.tenant_id != tenant_id

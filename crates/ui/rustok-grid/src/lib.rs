@@ -29,8 +29,8 @@ pub use column::{
 };
 pub use facet::{
     FacetDomain, FacetValue, GridFacet, MAX_GRID_FACET_VALUES, MAX_GRID_FACETS,
-    SELECTION_LIST_SEPARATOR, SELECTION_SEPARATOR, parse_selection, selection_except, selection_key,
-    serialize_selection,
+    SELECTION_LIST_SEPARATOR, SELECTION_SEPARATOR, parse_selection, selection_except,
+    selection_key, serialize_selection,
 };
 pub use facet_panel::{
     FacetPanel, FacetPanelFacet, FacetPanelLabels, FacetPanelValue, count_label,
