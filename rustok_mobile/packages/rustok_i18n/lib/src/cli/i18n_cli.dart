@@ -334,10 +334,21 @@ GeneratedSource? generateTypedMessages(
   return GeneratedSource(buffer.toString(), generated);
 }
 
-String _escapeSingleQuoted(String input) => input
-    .replaceAll(r'\', r'\\')
-    .replaceAll("'", r"\'")
-    .replaceAll(r'$', r'\$');
+/// Escapes [input] for use inside a single-quoted Dart string literal.
+/// Backslash, single quote and dollar sign are prefixed with a backslash.
+String _escapeSingleQuoted(String input) {
+  const int backslash = 0x5C;
+  const int singleQuote = 0x27;
+  const int dollar = 0x24;
+  final buffer = StringBuffer();
+  for (final unit in input.codeUnits) {
+    if (unit == backslash || unit == singleQuote || unit == dollar) {
+      buffer.writeCharCode(backslash);
+    }
+    buffer.writeCharCode(unit);
+  }
+  return buffer.toString();
+}
 
 void _collectVariables(FtlPattern pattern, Set<String> vars) {
   for (final elem in pattern.elements) {
