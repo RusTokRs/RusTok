@@ -37,4 +37,3 @@ impl MigrationSource for AccountingModule {
         Vec::new()
     }
 }
-

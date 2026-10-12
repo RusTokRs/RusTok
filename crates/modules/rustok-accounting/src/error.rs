@@ -6,7 +6,9 @@ pub enum AccountingError {
     #[error("Accounting invariant violation: {0}")]
     InvariantViolation(String),
 
-    #[error("Unbalanced journal transaction: total debits ({debit_total_minor}) != total credits ({credit_total_minor}) in currency {currency_code}")]
+    #[error(
+        "Unbalanced journal transaction: total debits ({debit_total_minor}) != total credits ({credit_total_minor}) in currency {currency_code}"
+    )]
     UnbalancedTransaction {
         debit_total_minor: i64,
         credit_total_minor: i64,

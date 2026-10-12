@@ -569,7 +569,10 @@ impl DocumentService {
             .one(db)
             .await?;
 
-        if latest_snap.as_ref().is_some_and(|snap| latest_seq <= snap.seq_id) {
+        if latest_snap
+            .as_ref()
+            .is_some_and(|snap| latest_seq <= snap.seq_id)
+        {
             return Ok(());
         }
 

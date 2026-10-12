@@ -162,7 +162,8 @@ async fn concurrent_super_admin_demotions_preserve_one_active_super_admin() {
             .find_map(|outcome| outcome.as_ref().err())
             .ok_or("one concurrent super-admin demotion must be rejected")?;
         let rejection_text = rejection.to_string();
-        if !rejection_text.contains("cannot remove, demote, or deactivate the last active super administrator")
+        if !rejection_text
+            .contains("cannot remove, demote, or deactivate the last active super administrator")
             && !rejection_text.contains("cannot demote the last active super administrator")
         {
             return Err(format!("unexpected continuity rejection: {rejection}").into());
