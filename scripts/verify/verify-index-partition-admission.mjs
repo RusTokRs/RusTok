@@ -106,7 +106,7 @@ requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/partitio
   'PartitionAdmissionReason::QueryPlanRegressions',
   'PartitionAdmissionReason::WalAmplification',
   'PartitionAdmissionReason::CutoverLockExceeded',
-  'PartitionAdmissionPolicy::new(1, 1, 2, 9_999',
+  'required_tenant_predicate_coverage_bps: 9_999,',
   '!sql.contains("DROP TABLE")',
   '!sql.contains("RENAME TO")',
 ]);
