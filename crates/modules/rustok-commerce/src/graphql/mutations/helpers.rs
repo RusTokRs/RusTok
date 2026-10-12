@@ -22,9 +22,7 @@ use crate::{
     CreateReturnDecisionInput, ReturnClaimDecisionInput, ReturnDecisionInput,
     ReturnExchangeDecisionInput, ReturnRefundDecisionInput,
     storefront_channel::{is_metadata_visible_for_public_channel, normalize_public_channel_slug},
-    storefront_shipping::{
-        effective_shipping_profile_slug, enrich_cart_delivery_groups,
-    },
+    storefront_shipping::{effective_shipping_profile_slug, enrich_cart_delivery_groups},
 };
 
 use super::super::types::*;
@@ -164,9 +162,7 @@ pub(crate) fn convert_create_variant_input(
         axis_values,
         prices,
         inventory_quantity: input.inventory_quantity.unwrap_or(0),
-        inventory_policy: input
-            .inventory_policy
-            .unwrap_or_else(|| "deny".to_string()),
+        inventory_policy: input.inventory_policy.unwrap_or_else(|| "deny".to_string()),
         weight: None,
         weight_unit: None,
     })
@@ -703,39 +699,48 @@ pub(crate) async fn resolve_storefront_line_item_input(
         add_line_item: crate::dto::AddCartLineItemInput {
             product_id: Some(product_model.id),
             variant_id: Some(variant.id),
-            fulfillment_requirement: match rustok_product::ProductFulfillmentRequirement::from_product_type(
-                product_model.product_type.as_deref(),
-            ) {
-                rustok_product::ProductFulfillmentRequirement::Digital => {
-                    rustok_cart::CartLineFulfillmentRequirement::Digital
-                }
-                rustok_product::ProductFulfillmentRequirement::Physical => {
-                    rustok_cart::CartLineFulfillmentRequirement::Physical
-                }
-            },
-            shipping_profile_slug: match rustok_product::ProductFulfillmentRequirement::from_product_type(
-                product_model.product_type.as_deref(),
-            ) {
-                rustok_product::ProductFulfillmentRequirement::Digital => None,
-                rustok_product::ProductFulfillmentRequirement::Physical => Some(
-                    effective_shipping_profile_slug(
-                        product_model.shipping_profile_slug.as_deref(),
-                        &product_model.metadata,
-                        variant.shipping_profile_slug.as_deref(),
-                    ),
-                ),
-            },
+            fulfillment_requirement:
+                match rustok_product::ProductFulfillmentRequirement::from_product_type(
+                    product_model.product_type.as_deref(),
+                ) {
+                    rustok_product::ProductFulfillmentRequirement::Digital => {
+                        rustok_cart::CartLineFulfillmentRequirement::Digital
+                    }
+                    rustok_product::ProductFulfillmentRequirement::Physical => {
+                        rustok_cart::CartLineFulfillmentRequirement::Physical
+                    }
+                },
+            shipping_profile_slug:
+                match rustok_product::ProductFulfillmentRequirement::from_product_type(
+                    product_model.product_type.as_deref(),
+                ) {
+                    rustok_product::ProductFulfillmentRequirement::Digital => None,
+                    rustok_product::ProductFulfillmentRequirement::Physical => {
+                        Some(effective_shipping_profile_slug(
+                            product_model.shipping_profile_slug.as_deref(),
+                            &product_model.metadata,
+                            variant.shipping_profile_slug.as_deref(),
+                        ))
+                    }
+                },
             sku: variant.sku.clone(),
             title,
             quantity: input.quantity,
             unit_price: base_unit_price,
             metadata: {
-                let mut item_metadata = sanitize_storefront_metadata(
-                    parse_optional_metadata(input.metadata.as_deref())?,
-                );
-                if let Some(tax_class) = product_model.metadata.get("tax_class").and_then(serde_json::Value::as_str) {
+                let mut item_metadata = sanitize_storefront_metadata(parse_optional_metadata(
+                    input.metadata.as_deref(),
+                )?);
+                if let Some(tax_class) = product_model
+                    .metadata
+                    .get("tax_class")
+                    .and_then(serde_json::Value::as_str)
+                {
                     if let serde_json::Value::Object(ref mut map) = item_metadata {
-                        map.insert("tax_class".to_string(), serde_json::Value::String(tax_class.to_string()));
+                        map.insert(
+                            "tax_class".to_string(),
+                            serde_json::Value::String(tax_class.to_string()),
+                        );
                     }
                 }
                 merge_graphql_metadata(

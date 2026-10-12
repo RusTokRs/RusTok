@@ -430,8 +430,13 @@ pub async fn show_order(
                 error,
             )
         })?;
-    let payment_context =
-        admin_order_read_port_context(tenant.id, &auth, &request_context, Some(id), "get_order_payment");
+    let payment_context = admin_order_read_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "get_order_payment",
+    );
     let payment_collection = runtime
         .payment_order_read_port()
         .find_latest_collection_by_order(
@@ -518,10 +523,7 @@ fn map_order_detail_payment_port_error(order_id: Uuid, error: PortError) -> Http
     HttpError::new(status, code, message)
 }
 
-fn map_order_detail_fulfillment_port_error(
-    order_id: Uuid,
-    error: PortError,
-) -> HttpError {
+fn map_order_detail_fulfillment_port_error(order_id: Uuid, error: PortError) -> HttpError {
     let (status, code, message, error_kind) = match error.kind {
         PortErrorKind::Validation => (
             axum::http::StatusCode::BAD_REQUEST,
@@ -574,10 +576,6 @@ fn map_order_detail_fulfillment_port_error(
     );
     HttpError::new(status, code, message)
 }
-
-
-
-
 
 /// Mark admin ecommerce order as paid
 #[utoipa::path(

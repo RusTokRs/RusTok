@@ -535,9 +535,9 @@ function fixture(options = {}) {
     'crates/modules/rustok-marketplace-commission/src/service.rs',
     'crates/modules/rustok-marketplace-commission/src/error.rs',
     'crates/modules/rustok-marketplace-commission/src/ports.rs',
-    'crates/modules/rustok-marketplace-ledger/src/service.rs',
-    'crates/modules/rustok-marketplace-ledger/src/error.rs',
-    'crates/modules/rustok-marketplace-ledger/src/ports.rs',
+    'crates/modules/rustok-marketplace-balance/src/service.rs',
+    'crates/modules/rustok-marketplace-balance/src/error.rs',
+    'crates/modules/rustok-marketplace-balance/src/ports.rs',
   ];
   for (const rel of staticSources) {
     put(root, rel, readFileSync(path.join(repoRoot, rel), 'utf8'));

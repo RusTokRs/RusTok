@@ -38,16 +38,15 @@ class LazyCatalog extends MessageCatalog {
     final key = catalogLocaleKey(canonical);
     if (_bundles.containsKey(key)) return Future<void>.value();
 
-    return _inFlight.putIfAbsent(key, () async {
-      try {
-        final source = await loader(canonical);
+    // Future.sync turns a synchronous throw into an error future. whenComplete
+    // runs asynchronously, so the entry is removed after putIfAbsent stores it.
+    return _inFlight.putIfAbsent(key, () {
+      return Future<String?>.sync(() => loader(canonical)).then<void>((source) {
         _bundles[key] = source == null
             ? null
             : (FluentBundle(locale: canonical, useIsolating: useIsolating)
               ..addSource(source));
-      } finally {
-        _inFlight.remove(key);
-      }
+      }).whenComplete(() => _inFlight.remove(key));
     });
   }
 

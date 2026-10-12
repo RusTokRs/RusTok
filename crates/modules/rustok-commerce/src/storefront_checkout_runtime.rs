@@ -7,10 +7,10 @@ use rustok_cart::{
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_fulfillment::ShippingOptionReadPort;
 use rustok_outbox::TransactionalEventBus;
-use std::sync::Arc;
 use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
+use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -58,7 +58,6 @@ impl StorefrontCheckoutRuntime {
         self.shipping_option_read_port.as_ref()
     }
 }
-
 
 #[derive(Clone, Debug)]
 pub struct StorefrontPaymentCollectionCommand {
@@ -288,9 +287,11 @@ pub async fn select_storefront_shipping_option(
         resolve_storefront_customer_id(runtime.db_clone(), tenant.id, auth.0).await?;
     ensure_storefront_cart_access(&cart, storefront_customer_id)?;
 
-    let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref()).or_else(
-        || request_context.and_then(|context| normalize_public_channel_slug(context.channel_slug.as_deref())),
-    );
+    let public_channel_slug =
+        normalize_public_channel_slug(cart.channel_slug.as_deref()).or_else(|| {
+            request_context
+                .and_then(|context| normalize_public_channel_slug(context.channel_slug.as_deref()))
+        });
     let owner_locale = request_context
         .map(|context| context.locale.as_str())
         .filter(|locale| !locale.trim().is_empty())
@@ -335,9 +336,9 @@ pub async fn select_storefront_shipping_option(
             runtime.shipping_option_read_port(),
         )
         .await
-        .map_err(|_| StorefrontCheckoutRuntimeError::new(
-            "storefront shipping selection validation failed",
-        ))?;
+        .map_err(|_| {
+            StorefrontCheckoutRuntimeError::new("storefront shipping selection validation failed")
+        })?;
     }
 
     let updated_cart = cart_storefront_port
@@ -374,7 +375,6 @@ pub async fn select_storefront_shipping_option(
 
     Ok(())
 }
-
 
 async fn resolve_storefront_customer_id(
     db: sea_orm::DatabaseConnection,

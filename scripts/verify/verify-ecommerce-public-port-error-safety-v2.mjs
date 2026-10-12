@@ -84,9 +84,9 @@ const marketplacePayoutPorts = read('crates/modules/rustok-marketplace-payout/sr
 const marketplaceCommissionService = read('crates/modules/rustok-marketplace-commission/src/service.rs');
 const marketplaceCommissionError = read('crates/modules/rustok-marketplace-commission/src/error.rs');
 const marketplaceCommissionPorts = read('crates/modules/rustok-marketplace-commission/src/ports.rs');
-const marketplaceLedgerService = read('crates/modules/rustok-marketplace-ledger/src/service.rs');
-const marketplaceLedgerError = read('crates/modules/rustok-marketplace-ledger/src/error.rs');
-const marketplaceLedgerPorts = read('crates/modules/rustok-marketplace-ledger/src/ports.rs');
+const marketplaceLedgerService = read('crates/modules/rustok-marketplace-balance/src/service.rs');
+const marketplaceLedgerError = read('crates/modules/rustok-marketplace-balance/src/error.rs');
+const marketplaceLedgerPorts = read('crates/modules/rustok-marketplace-balance/src/ports.rs');
 
 for (const [source, label] of [
   [channel, 'channel port'],

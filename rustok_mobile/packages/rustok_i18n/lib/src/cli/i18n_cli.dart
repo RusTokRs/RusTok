@@ -68,10 +68,18 @@ int runI18nCli(
     return exitUsage;
   }
 
-  if (command.name == 'check') {
-    return _runCheck(command, write, writeErr);
+  try {
+    if (command.name == 'check') {
+      return _runCheck(command, write, writeErr);
+    }
+    return _runTypegen(command, write, writeErr);
+  } on ArgumentError catch (e) {
+    writeErr('Error: ${e.message}');
+    return exitUsage;
+  } on FormatException catch (e) {
+    writeErr('Error: ${e.message}');
+    return exitUsage;
   }
-  return _runTypegen(command, write, writeErr);
 }
 
 void _printLine(String line) => stdout.writeln(line);
@@ -134,9 +142,16 @@ String _preview(Set<String> items) {
 }
 
 int _runCheck(ArgResults options, CliOutput write, CliOutput writeErr) {
-  final dirPath = options['dir'] as String?;
-  if (dirPath == null) {
-    writeErr('Error: Option "--dir" is mandatory.');
+  final String dirPath;
+  try {
+    final raw = options['dir'] as String?;
+    if (raw == null) {
+      writeErr('Error: Option "--dir" is mandatory.');
+      return exitUsage;
+    }
+    dirPath = raw;
+  } on ArgumentError catch (e) {
+    writeErr('Error: ${e.message}');
     return exitUsage;
   }
   final baseline = options['baseline'] as String;
@@ -256,10 +271,19 @@ int _runCheck(ArgResults options, CliOutput write, CliOutput writeErr) {
 }
 
 int _runTypegen(ArgResults options, CliOutput write, CliOutput writeErr) {
-  final inputPath = options['input'] as String?;
-  final outputPath = options['output'] as String?;
-  if (inputPath == null || outputPath == null) {
-    writeErr('Error: Options "--input" and "--output" are mandatory.');
+  final String inputPath;
+  final String outputPath;
+  try {
+    final rawInput = options['input'] as String?;
+    final rawOutput = options['output'] as String?;
+    if (rawInput == null || rawOutput == null) {
+      writeErr('Error: Options "--input" and "--output" are mandatory.');
+      return exitUsage;
+    }
+    inputPath = rawInput;
+    outputPath = rawOutput;
+  } on ArgumentError catch (e) {
+    writeErr('Error: ${e.message}');
     return exitUsage;
   }
   final className = options['className'] as String;
