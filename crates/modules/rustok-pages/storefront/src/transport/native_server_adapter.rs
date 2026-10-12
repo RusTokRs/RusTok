@@ -57,6 +57,12 @@ async fn storefront_pages_native(
         let tenant_context = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .ok();
+        let channel_context = match leptos_axum::extract::<rustok_api::OptionalChannel>().await {
+            Ok(rustok_api::OptionalChannel(Some(channel))) => Some(channel),
+            _ => leptos_axum::extract::<rustok_api::ChannelContext>()
+                .await
+                .ok(),
+        };
 
         let (tenant_id, fallback_locale) = if let Some(tenant) = tenant_context.as_ref() {
             (
@@ -75,7 +81,11 @@ async fn storefront_pages_native(
             )
         };
 
-        if let Some(channel_id) = request_context.as_ref().and_then(|ctx| ctx.channel_id) {
+        let channel_id = request_context
+            .as_ref()
+            .and_then(|ctx| ctx.channel_id)
+            .or_else(|| channel_context.as_ref().map(|ctx| ctx.id));
+        if let Some(channel_id) = channel_id {
             let enabled = ChannelService::new(runtime_ctx.db_clone())
                 .is_module_enabled(channel_id, MODULE_SLUG)
                 .await
@@ -86,6 +96,7 @@ async fn storefront_pages_native(
                     request_context
                         .as_ref()
                         .and_then(|ctx| ctx.channel_slug.as_deref())
+                        .or_else(|| channel_context.as_ref().map(|ctx| ctx.slug.as_str()))
                         .unwrap_or("current"),
                 )));
             }
@@ -100,7 +111,12 @@ async fn storefront_pages_native(
             .unwrap_or_else(|| fallback_locale.clone());
         let public_channel_slug = request_context
             .as_ref()
-            .and_then(|ctx| normalize_channel_slug(ctx.channel_slug.as_deref()));
+            .and_then(|ctx| normalize_channel_slug(ctx.channel_slug.as_deref()))
+            .or_else(|| {
+                channel_context
+                    .as_ref()
+                    .and_then(|ctx| normalize_channel_slug(Some(&ctx.slug)))
+            });
 
         let cache_runtime = runtime_ctx.shared_get::<PagesCacheReadRuntime>();
         let cache_variant = storefront_cache_variant(

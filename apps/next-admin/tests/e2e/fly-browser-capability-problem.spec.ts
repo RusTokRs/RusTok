@@ -45,7 +45,12 @@ type ProblemScope = typeof globalThis & {
 
 async function mountProblemContract(page: Page) {
   const adapterSource = await readFile(adapterPath, 'utf8');
-  await page.setContent(`
+  await page.goto('/auth/sign-in', { waitUntil: 'networkidle' });
+  await page.evaluate(
+    (html) => {
+      document.body.innerHTML = html;
+    },
+    `
     <div
       id="fly-root"
       data-fly-browser-root
@@ -56,7 +61,8 @@ async function mountProblemContract(page: Page) {
     >
       <iframe id="canvas-a-frame" data-fly-iframe-canvas title="Fly capability canvas"></iframe>
     </div>
-  `);
+  `
+  );
 
   await page.evaluate(async (source) => {
     const scope = globalThis as ProblemScope;

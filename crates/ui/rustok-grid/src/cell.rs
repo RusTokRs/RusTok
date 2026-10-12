@@ -18,7 +18,7 @@ use crate::filter::FilterValue;
 /// One cell of a row, in the vocabulary filters and sorting understand.
 ///
 /// A cell carries no display concern: labels, formatting and links stay with the owner.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum CellValue {
     /// Any textual value, including an id or an ISO-8601 date.
     Text(String),
@@ -27,13 +27,8 @@ pub enum CellValue {
     /// A tri-state value; "missing" is [`CellValue::Empty`], not a third boolean.
     Bool(bool),
     /// No value at all.
+    #[default]
     Empty,
-}
-
-impl Default for CellValue {
-    fn default() -> Self {
-        Self::Empty
-    }
 }
 
 impl CellValue {

@@ -43,7 +43,6 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 #[ignore = "requires PostgreSQL admin access"]
 async fn oauth_application_registered_translation_provider_multi_replica_evidence_postgres()
 -> TestResult<()> {
-    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
