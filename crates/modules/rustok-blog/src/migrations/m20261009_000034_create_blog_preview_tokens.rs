@@ -97,11 +97,18 @@ impl MigrationTrait for Migration {
 enum BlogPreviewTokens {
     #[iden = "blog_preview_tokens"]
     Table,
+    #[iden = "id"]
     Id,
+    #[iden = "tenant_id"]
     TenantId,
+    #[iden = "post_id"]
     PostId,
+    #[iden = "token"]
     Token,
+    #[iden = "created_by"]
     CreatedBy,
+    #[iden = "expires_at"]
     ExpiresAt,
+    #[iden = "created_at"]
     CreatedAt,
 }

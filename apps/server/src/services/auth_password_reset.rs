@@ -2,8 +2,7 @@ use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionTrait, sea_query::Expr};
 
 use crate::auth::{
-    AuthConfig, decode_password_reset_token, hash_password_async,
-    password_reset_credential_matches,
+    AuthConfig, decode_password_reset_token, hash_password_async, password_reset_credential_matches,
 };
 use crate::models::{sessions, users};
 

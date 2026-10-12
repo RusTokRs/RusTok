@@ -2492,18 +2492,16 @@ async fn first_party_catalog_modules(
             }
         }
     };
-    let modules = tokio::task::spawn_blocking(move || {
-        ManifestManager::catalog_modules(&manifest)
-    })
-    .await
-    .map_err(|error| {
-        tracing::error!(%error, "Marketplace catalog worker join error");
-        Error::InternalServerError
-    })?
-    .map_err(|error| {
-        tracing::error!(%error, "Failed to build marketplace catalog");
-        Error::InternalServerError
-    })?;
+    let modules = tokio::task::spawn_blocking(move || ManifestManager::catalog_modules(&manifest))
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "Marketplace catalog worker join error");
+            Error::InternalServerError
+        })?
+        .map_err(|error| {
+            tracing::error!(%error, "Failed to build marketplace catalog");
+            Error::InternalServerError
+        })?;
 
     let first_party_modules = modules
         .into_iter()

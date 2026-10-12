@@ -1164,7 +1164,6 @@ fn checkout_port_error(stage: &'static str, error: PortError) -> CheckoutError {
     }
 }
 
-
 fn stage_error<E>(stage: &'static str) -> impl FnOnce(E) -> CheckoutError
 where
     E: std::error::Error + Send + Sync + 'static,

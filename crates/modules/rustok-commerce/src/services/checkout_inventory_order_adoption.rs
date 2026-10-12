@@ -308,8 +308,7 @@ impl CheckoutInventoryOrderAdoptionService {
                 )
                 .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
                 .filter(
-                    checkout_inventory_reservation::Column::CheckoutOperationId
-                        .eq(operation_id),
+                    checkout_inventory_reservation::Column::CheckoutOperationId.eq(operation_id),
                 )
                 .filter(checkout_inventory_reservation::Column::Status.eq("reserved"))
                 .filter(
@@ -405,11 +404,12 @@ where
     Ok(rows
         .into_iter()
         .filter_map(|row| {
-            row.order_line_item_id.map(|order_line_item_id| CheckoutInventoryOrderAdoption {
-                reservation_id: row.reservation_id,
-                cart_line_item_id: row.cart_line_item_id,
-                order_line_item_id,
-            })
+            row.order_line_item_id
+                .map(|order_line_item_id| CheckoutInventoryOrderAdoption {
+                    reservation_id: row.reservation_id,
+                    cart_line_item_id: row.cart_line_item_id,
+                    order_line_item_id,
+                })
         })
         .collect())
 }

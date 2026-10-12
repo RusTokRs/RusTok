@@ -617,14 +617,8 @@ mod tests {
         let session_id = Some(Uuid::new_v4());
         let tenant_id = Some(Uuid::new_v4());
         let now = Utc::now();
-        let model = sample_http_job_model(
-            "succeeded",
-            Some(now),
-            session_id,
-            tenant_id,
-            None,
-            None,
-        );
+        let model =
+            sample_http_job_model("succeeded", Some(now), session_id, tenant_id, None, None);
         let job_id = model.id;
 
         let response = install_job_status_response(model).expect("maps succeeded status");

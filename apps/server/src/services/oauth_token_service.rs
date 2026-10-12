@@ -253,12 +253,10 @@ async fn authenticate_client(
         .as_deref()
         .filter(|value| !value.is_empty())
         .ok_or_else(|| OAuthTokenProtocolError::invalid_client("client_secret is required"))?;
-    let valid = OAuthAppService::verify_client_secret_async(
-        secret.to_string(),
-        secret_hash.to_string(),
-    )
-    .await
-    .map_err(|_| OAuthTokenProtocolError::invalid_client("Invalid client credentials"))?;
+    let valid =
+        OAuthAppService::verify_client_secret_async(secret.to_string(), secret_hash.to_string())
+            .await
+            .map_err(|_| OAuthTokenProtocolError::invalid_client("Invalid client credentials"))?;
 
     if valid {
         Ok(())

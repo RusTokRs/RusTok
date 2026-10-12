@@ -8,8 +8,8 @@ use rustok_core::field_schema::FieldType;
 use rustok_product::CatalogService;
 use rustok_product::CommerceError;
 use rustok_product::dto::{
-    CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
-    VariantAxisInput, VariantAxisValueInput,
+    CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
+    UpdateProductInput, VariantAxisInput, VariantAxisValueInput,
 };
 use rustok_product::entities;
 use rustok_product::entities::product::ProductStatus;

@@ -40,12 +40,11 @@ const between = (content, start, end, label) => {
   return content.slice(startIndex, endIndex);
 };
 
-const applyRoute = between(
-  controller,
-  'pub async fn apply_order_change(',
-  '/// Cancel admin order change',
-  'mounted REST apply route',
-);
+const applyRouteStart = controller.indexOf('pub async fn apply_order_change(');
+if (applyRouteStart < 0) {
+  failures.push('mounted REST apply route: unable to isolate source block');
+}
+const applyRoute = applyRouteStart >= 0 ? controller.slice(applyRouteStart) : '';
 const portMapper = between(
   controller,
   'fn map_admin_order_change_port_error(',
@@ -91,15 +90,16 @@ for (const [value, label] of [
   ['fn admin_order_change_read_context(', 'read context builder'],
   ['fn admin_order_change_apply_context(', 'write context builder'],
   ['PortActor::user(auth.user_id.to_string())', 'authenticated owner actor'],
-  ['format!("commerce-admin-order-change:read:{change_id}")', 'read correlation identity'],
-  ['format!("commerce-admin-order-change:apply:{change_id}")', 'write correlation identity'],
+  ['format!("commerce-admin-order-change:read:{resource_id}")', 'read correlation identity'],
+  ['format!("commerce-admin-order-change:apply:{resource_id}")', 'write correlation identity'],
   ['.with_idempotency_key(idempotency_key)', 'caller-owned write identity'],
+  ['fn require_idempotency_key(headers: &HeaderMap)', 'caller idempotency admission helper'],
 ]) requireText(controller, value, label);
 
 for (const [value, label] of [
   ['request_context: RequestContext,', 'request context extractor'],
   ['headers: HeaderMap,', 'caller idempotency header'],
-  ['fn require_idempotency_key(headers: &HeaderMap)', 'caller idempotency admission'],
+  ['require_idempotency_key(&headers)', 'caller idempotency admission'],
   ['OrderChangeOrchestrationService::from_order_ports(', 'host-composed orchestration'],
   ['runtime.order_read_port()', 'host-selected Order read'],
   ['runtime.order_post_order_command_port()', 'host-selected Order command'],
@@ -171,7 +171,8 @@ for (const [value, label] of [
   ['context.require_policy(PortCallPolicy::write())?', 'default write admission'],
   ['"order.post_order_apply_change_unavailable"', 'default fail-closed capability'],
   ['request: ApplyOrderChangeRequest', 'in-process apply request'],
-  ['.apply_order_change(tenant_id, request.change_id, request.input)', 'owner-local concrete execution'],
+  ['.apply_order_change(', 'owner-local concrete execution'],
+  ['request.change_id,', 'owner-local change identity forwarding'],
 ]) requireText(ownerCommand, value, label);
 requireText(ownerLib, 'ApplyOrderChangeRequest', 'Order owner request export');
 
@@ -243,7 +244,7 @@ for (const [value, label] of [
   ['# Commerce REST admin order-change apply owner-port cutover', 'record title'],
   ['Status: `source_complete_unvalidated`', 'record status'],
   ['OrderPostOrderCommandPort::apply_change', 'record owner command'],
-  ['write-admission metadata only', 'record replay limitation'],
+  ['persists the command receipt atomically', 'record replay receipt semantics'],
   ['mounted GraphQL `applyOrderChange`', 'historical deferred GraphQL scope'],
   ['no tests, Cargo commands, Node verifiers, formatter', 'record validation status'],
 ]) requireText(record, value, label);

@@ -11,10 +11,11 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const routing = read('crates/modules/rustok-commerce/src/graphql/mutations/mod.rs');
-const facade = read('crates/modules/rustok-commerce/src/graphql/mutations/safe_legacy_helpers.rs');
-const helperSource = read('crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs');
+const shippingContext = read('crates/modules/rustok-commerce/src/graphql/mutations/shipping_option_read_context.rs');
+const typedHelper = read('crates/modules/rustok-commerce/src/graphql/mutations/typed_shipping_option_helper.rs');
+const storefrontShipping = read('crates/modules/rustok-commerce/src/storefront_shipping.rs');
 const graphqlRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
-const publicFacade = read('crates/modules/rustok-commerce/src/graphql/mutations/safe_helpers.rs');
+const cartMutation = read('crates/modules/rustok-commerce/src/graphql/mutations/cart.rs');
 const failures = [];
 
 const requireText = (source, value, label) => {
@@ -25,43 +26,41 @@ const forbidText = (source, value, label) => {
 };
 
 for (const [value, label] of [
-  ['#[path = "safe_legacy_helpers.rs"]\nmod legacy_helpers;', 'safe legacy helper routing'],
+  ['#[path = "shipping_option_read_context.rs"]\nmod shipping_option_read_context;', 'shipping option read context routing'],
+  ['#[path = "typed_shipping_option_helper.rs"]\nmod typed_shipping_option_helper;', 'typed shipping option helper routing'],
 ]) {
   requireText(routing, value, label);
 }
-for (const value of ['#[path = "helpers.rs"]\nmod legacy_helpers;']) {
-  forbidText(routing, value, 'unsafe legacy helper routing');
-}
 
 for (const [value, label] of [
-  ['mod rustok_fulfillment_shim {', 'fulfillment compatibility shim'],
-  ['shipping_option_reads: Arc<dyn ShippingOptionReadPort>', 'typed shipping-option owner port'],
-  ['shipping_option_read_runtime_for_current_graphql_scope(', 'host-selected GraphQL runtime lookup'],
+  ['pub(crate) fn storefront_shipping_option_read_port(', 'shipping option read port factory'],
+  ['shipping_option_read_runtime_for_current_graphql_scope(db)', 'host-selected GraphQL runtime lookup'],
   ['.shipping_option_read_port()', 'host-selected shipping-option capability'],
-  ['pub async fn get_shipping_option(', 'shipping option compatibility method'],
-  ['ReadShippingOptionProjectionRequest {', 'typed owner read request'],
-  ['.read_shipping_option_projection(', 'typed owner read call'],
-  ['PortActor::service(', 'service actor construction'],
-  ['"rustok-commerce.graphql-cart-shipping-option"', 'stable service actor identity'],
+  ['pub(crate) fn storefront_shipping_option_read_context(', 'shipping option context constructor'],
+  ['PortActor::service("rustok-commerce.storefront-shipping")', 'stable service actor identity'],
   ['.with_deadline(std::time::Duration::from_secs(2))', 'bounded read deadline'],
-  ['fulfillment_read_call_context_for_current_graphql_scope()', 'trusted scoped channel lookup'],
-  ['.channel()', 'scoped channel accessor'],
-  ['.with_channel(channel)', 'channel propagation'],
-  ['requested_locale.map(str::to_owned)', 'requested locale propagation'],
-  ['tenant_default_locale.map(str::to_owned)', 'tenant fallback locale propagation'],
-  ['use self::rustok_fulfillment_shim as rustok_fulfillment;', 'fulfillment shim alias'],
-  ['include!("helpers.rs");', 'unchanged legacy helper inclusion'],
+  ['context.clone().with_channel(channel)', 'channel propagation'],
 ]) {
-  requireText(facade, value, label);
+  requireText(shippingContext, value, label);
 }
 
 for (const [value, label] of [
-  ['inner: ::rustok_fulfillment::FulfillmentService', 'stored concrete fulfillment service'],
-  ['::rustok_fulfillment::FulfillmentService::new(', 'concrete fulfillment owner construction'],
-  ['FulfillmentError::', 'concrete fulfillment error remapping'],
-  ['error = ?error', 'raw owner error logging'],
+  ['pub(crate) async fn validate_selected_shipping_option(', 'typed shipping option validation entrypoint'],
+  ['super::shipping_option_read_context::storefront_shipping_option_read_context(', 'delegates to shipping context'],
+  ['super::shipping_option_read_context::storefront_shipping_option_read_port(', 'delegates to shipping port'],
+  ['validate_storefront_shipping_option_selection(', 'calls domain selection validation'],
+  ['"Selected shipping option is invalid"', 'unchanged public message'],
+  ['"SHIPPING_OPTION_INVALID"', 'unchanged public code'],
+  ['false,', 'unchanged public retryability'],
 ]) {
-  forbidText(facade, value, label);
+  requireText(typedHelper, value, label);
+}
+
+for (const [value, label] of [
+  ['::rustok_fulfillment::FulfillmentService::new(', 'concrete fulfillment owner construction'],
+  ['FulfillmentService::new(', 'direct fulfillment service construction'],
+]) {
+  forbidText(typedHelper, value, label);
 }
 
 for (const [value, label] of [
@@ -74,34 +73,20 @@ for (const [value, label] of [
 }
 
 for (const [value, label] of [
-  ['use rustok_fulfillment::FulfillmentService;', 'legacy helper facade import'],
-  ['let option = FulfillmentService::new(db.clone())', 'legacy helper routed constructor call'],
-  ['.get_shipping_option(', 'legacy shipping option compatibility call'],
+  ['pub(crate) async fn validate_storefront_shipping_option_selection(', 'storefront shipping selection validation'],
+  ['ReadShippingOptionProjectionRequest {', 'typed owner read request'],
+  ['.read_shipping_option_projection(', 'typed owner read call'],
+  ['requested_locale.map(str::to_owned)', 'requested locale propagation'],
+  ['tenant_default_locale.map(str::to_owned)', 'tenant fallback locale propagation'],
 ]) {
-  requireText(helperSource, value, label);
-}
-
-const concreteOwnerConstructors =
-  facade.match(/::rustok_fulfillment::FulfillmentService::new\(/g) ?? [];
-if (concreteOwnerConstructors.length !== 0) {
-  failures.push(
-    `expected no concrete fulfillment owner constructors in the mounted facade, found ${concreteOwnerConstructors.length}`,
-  );
-}
-const legacyConstructors = helperSource.match(/FulfillmentService::new\(/g) ?? [];
-if (legacyConstructors.length !== 1) {
-  failures.push(
-    `expected one legacy helper constructor routed through the typed facade, found ${legacyConstructors.length}`,
-  );
+  requireText(storefrontShipping, value, label);
 }
 
 for (const [value, label] of [
-  ['"validate_selected_shipping_option"', 'public operation mapping'],
-  ['"Selected shipping option is invalid"', 'unchanged public message'],
-  ['"SHIPPING_OPTION_INVALID"', 'unchanged public code'],
-  ['false,', 'unchanged public retryability'],
+  ['use super::typed_shipping_option_helper::validate_selected_shipping_option;', 'cart mutation imports typed helper'],
+  ['validate_selected_shipping_option(', 'cart mutation calls typed helper'],
 ]) {
-  requireText(publicFacade, value, label);
+  requireText(cartMutation, value, label);
 }
 
 if (failures.length > 0) {

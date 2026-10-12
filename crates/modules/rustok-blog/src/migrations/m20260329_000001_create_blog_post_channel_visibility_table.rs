@@ -1,8 +1,8 @@
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, FromQueryResult};
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
 
-use crate::entities::{blog_post, blog_post_channel_visibility};
+use crate::entities::blog_post_channel_visibility;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -80,10 +80,20 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        let posts = blog_post::Entity::find()
-            .filter(blog_post::Column::Metadata.is_not_null())
-            .all(manager.get_connection())
-            .await?;
+        #[derive(sea_orm::FromQueryResult)]
+        struct PostMetadataRow {
+            id: Uuid,
+            tenant_id: Uuid,
+            metadata: serde_json::Value,
+        }
+
+        let posts = PostMetadataRow::find_by_statement(sea_orm::Statement::from_sql_and_values(
+            manager.get_database_backend(),
+            "SELECT id, tenant_id, metadata FROM blog_posts WHERE metadata IS NOT NULL",
+            vec![],
+        ))
+        .all(manager.get_connection())
+        .await?;
 
         for post in posts {
             for channel_slug in extract_channel_slugs(&post.metadata) {

@@ -35,8 +35,7 @@ use rustok_product::entities::{
 use rustok_region::entities::{region, region_country_tax_policy, region_translation};
 use rustok_taxonomy::entities::{
     taxonomy_category_hierarchy, taxonomy_category_presentation, taxonomy_term,
-    taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation,
-    translation_change,
+    taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation, translation_change,
 };
 use rustok_tenant::entities::tenant_module;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbBackend, Schema, Statement};

@@ -221,184 +221,184 @@ export type AppMessageKey =
   | 'Comments-composer-title'
   | 'Comments.composer.title'
   | 'Forum-allTopics'
-  | 'Forum-allTopicsHint'
-  | 'Forum-backToDiscussions'
-  | 'Forum-browse'
-  | 'Forum-cancel'
-  | 'Forum-categories'
-  | 'Forum-clear'
-  | 'Forum-clearFilters'
-  | 'Forum-close'
-  | 'Forum-communityMap'
-  | 'Forum-createTopic'
-  | 'Forum-discussions'
-  | 'Forum-draftSavedLocally'
-  | 'Forum-draftTitle'
-  | 'Forum-errorEmptyMessage'
-  | 'Forum-errorGeneric'
-  | 'Forum-errorLoad'
-  | 'Forum-errorMarkRead'
-  | 'Forum-errorMissingCategory'
-  | 'Forum-errorMissingTitle'
-  | 'Forum-errorReplyFailed'
-  | 'Forum-errorTopicFailed'
-  | 'Forum-expand'
-  | 'Forum-filterPlaceholder'
-  | 'Forum-forumIndex'
-  | 'Forum-fresh'
-  | 'Forum-grid'
-  | 'Forum-joinTheConversation'
-  | 'Forum-joinTheConversationHint'
-  | 'Forum-jumpToBeginning'
-  | 'Forum-jumpToEnd'
-  | 'Forum-latest'
-  | 'Forum-latestDiscussions'
-  | 'Forum-linkedPostUnavailable'
-  | 'Forum-livePreview'
-  | 'Forum-loading'
-  | 'Forum-locked'
-  | 'Forum-minimize'
-  | 'Forum-newReply'
-  | 'Forum-newTopic'
-  | 'Forum-noMatchingCategories'
-  | 'Forum-noMatchingCategoriesHint'
-  | 'Forum-noMatchingDiscussions'
-  | 'Forum-noMatchingDiscussionsHint'
-  | 'Forum-noRepliesYet'
-  | 'Forum-noSectionDescription'
-  | 'Forum-nothingToPreview'
-  | 'Forum-noTopicsYet'
-  | 'Forum-noTopicsYetHint'
-  | 'Forum-openAThread'
-  | 'Forum-openAThreadHint'
-  | 'Forum-openCategoryMatrix'
-  | 'Forum-openTopicFullPage'
-  | 'Forum-pinned'
-  | 'Forum-postedOn'
-  | 'Forum-posting'
-  | 'Forum-postReply'
-  | 'Forum-preview'
-  | 'Forum-quote'
-  | 'Forum-quotedFrom'
-  | 'Forum-replies'
-  | 'Forum-repliesCount'
-  | 'Forum-reply'
-  | 'Forum-replyContent'
-  | 'Forum-replyToMessage'
-  | 'Forum-replyToTopic'
-  | 'Forum-retry'
-  | 'Forum-searchPlaceholder'
-  | 'Forum-sectionDescription'
-  | 'Forum-sectionsPublished'
-  | 'Forum-sectionSubtitle'
-  | 'Forum-solved'
-  | 'Forum-startDiscussion'
-  | 'Forum-statusArchived'
-  | 'Forum-statusClosed'
-  | 'Forum-statusOpen'
-  | 'Forum-statusPending'
-  | 'Forum-subcategories'
-  | 'Forum-threads'
-  | 'Forum-top'
-  | 'Forum-topicContent'
-  | 'Forum-topicFeed'
-  | 'Forum-topicNotFound'
-  | 'Forum-topicNotFoundHint'
-  | 'Forum-topicTitlePlaceholder'
-  | 'Forum-total'
-  | 'Forum-totalTopics'
-  | 'Forum-unknownAuthor'
-  | 'Forum-unread'
-  | 'Forum-write'
   | 'Forum.allTopics'
+  | 'Forum-allTopicsHint'
   | 'Forum.allTopicsHint'
+  | 'Forum-backToDiscussions'
   | 'Forum.backToDiscussions'
+  | 'Forum-browse'
   | 'Forum.browse'
+  | 'Forum-cancel'
   | 'Forum.cancel'
+  | 'Forum-categories'
   | 'Forum.categories'
+  | 'Forum-clear'
   | 'Forum.clear'
+  | 'Forum-clearFilters'
   | 'Forum.clearFilters'
+  | 'Forum-close'
   | 'Forum.close'
+  | 'Forum-communityMap'
   | 'Forum.communityMap'
+  | 'Forum-createTopic'
   | 'Forum.createTopic'
+  | 'Forum-discussions'
   | 'Forum.discussions'
+  | 'Forum-draftSavedLocally'
   | 'Forum.draftSavedLocally'
+  | 'Forum-draftTitle'
   | 'Forum.draftTitle'
+  | 'Forum-errorEmptyMessage'
   | 'Forum.errorEmptyMessage'
+  | 'Forum-errorGeneric'
   | 'Forum.errorGeneric'
+  | 'Forum-errorLoad'
   | 'Forum.errorLoad'
+  | 'Forum-errorMarkRead'
   | 'Forum.errorMarkRead'
+  | 'Forum-errorMissingCategory'
   | 'Forum.errorMissingCategory'
+  | 'Forum-errorMissingTitle'
   | 'Forum.errorMissingTitle'
+  | 'Forum-errorReplyFailed'
   | 'Forum.errorReplyFailed'
+  | 'Forum-errorTopicFailed'
   | 'Forum.errorTopicFailed'
+  | 'Forum-expand'
   | 'Forum.expand'
+  | 'Forum-filterPlaceholder'
   | 'Forum.filterPlaceholder'
+  | 'Forum-forumIndex'
   | 'Forum.forumIndex'
+  | 'Forum-fresh'
   | 'Forum.fresh'
+  | 'Forum-grid'
   | 'Forum.grid'
+  | 'Forum-joinTheConversation'
   | 'Forum.joinTheConversation'
+  | 'Forum-joinTheConversationHint'
   | 'Forum.joinTheConversationHint'
+  | 'Forum-jumpToBeginning'
   | 'Forum.jumpToBeginning'
+  | 'Forum-jumpToEnd'
   | 'Forum.jumpToEnd'
+  | 'Forum-latest'
   | 'Forum.latest'
+  | 'Forum-latestDiscussions'
   | 'Forum.latestDiscussions'
+  | 'Forum-linkedPostUnavailable'
   | 'Forum.linkedPostUnavailable'
+  | 'Forum-livePreview'
   | 'Forum.livePreview'
+  | 'Forum-loading'
   | 'Forum.loading'
+  | 'Forum-locked'
   | 'Forum.locked'
+  | 'Forum-minimize'
   | 'Forum.minimize'
+  | 'Forum-newReply'
   | 'Forum.newReply'
+  | 'Forum-newTopic'
   | 'Forum.newTopic'
+  | 'Forum-noMatchingCategories'
   | 'Forum.noMatchingCategories'
+  | 'Forum-noMatchingCategoriesHint'
   | 'Forum.noMatchingCategoriesHint'
+  | 'Forum-noMatchingDiscussions'
   | 'Forum.noMatchingDiscussions'
+  | 'Forum-noMatchingDiscussionsHint'
   | 'Forum.noMatchingDiscussionsHint'
+  | 'Forum-noRepliesYet'
   | 'Forum.noRepliesYet'
+  | 'Forum-noSectionDescription'
   | 'Forum.noSectionDescription'
+  | 'Forum-nothingToPreview'
   | 'Forum.nothingToPreview'
+  | 'Forum-noTopicsYet'
   | 'Forum.noTopicsYet'
+  | 'Forum-noTopicsYetHint'
   | 'Forum.noTopicsYetHint'
+  | 'Forum-openAThread'
   | 'Forum.openAThread'
+  | 'Forum-openAThreadHint'
   | 'Forum.openAThreadHint'
+  | 'Forum-openCategoryMatrix'
   | 'Forum.openCategoryMatrix'
+  | 'Forum-openTopicFullPage'
   | 'Forum.openTopicFullPage'
+  | 'Forum-pinned'
   | 'Forum.pinned'
+  | 'Forum-postedOn'
   | 'Forum.postedOn'
+  | 'Forum-posting'
   | 'Forum.posting'
+  | 'Forum-postReply'
   | 'Forum.postReply'
+  | 'Forum-preview'
   | 'Forum.preview'
+  | 'Forum-quote'
   | 'Forum.quote'
+  | 'Forum-quotedFrom'
   | 'Forum.quotedFrom'
+  | 'Forum-replies'
   | 'Forum.replies'
+  | 'Forum-repliesCount'
   | 'Forum.repliesCount'
+  | 'Forum-reply'
   | 'Forum.reply'
+  | 'Forum-replyContent'
   | 'Forum.replyContent'
+  | 'Forum-replyToMessage'
   | 'Forum.replyToMessage'
+  | 'Forum-replyToTopic'
   | 'Forum.replyToTopic'
+  | 'Forum-retry'
   | 'Forum.retry'
+  | 'Forum-searchPlaceholder'
   | 'Forum.searchPlaceholder'
+  | 'Forum-sectionDescription'
   | 'Forum.sectionDescription'
+  | 'Forum-sectionsPublished'
   | 'Forum.sectionsPublished'
+  | 'Forum-sectionSubtitle'
   | 'Forum.sectionSubtitle'
+  | 'Forum-solved'
   | 'Forum.solved'
+  | 'Forum-startDiscussion'
   | 'Forum.startDiscussion'
+  | 'Forum-statusArchived'
   | 'Forum.statusArchived'
+  | 'Forum-statusClosed'
   | 'Forum.statusClosed'
+  | 'Forum-statusOpen'
   | 'Forum.statusOpen'
+  | 'Forum-statusPending'
   | 'Forum.statusPending'
+  | 'Forum-subcategories'
   | 'Forum.subcategories'
+  | 'Forum-threads'
   | 'Forum.threads'
+  | 'Forum-top'
   | 'Forum.top'
+  | 'Forum-topicContent'
   | 'Forum.topicContent'
+  | 'Forum-topicFeed'
   | 'Forum.topicFeed'
+  | 'Forum-topicNotFound'
   | 'Forum.topicNotFound'
+  | 'Forum-topicNotFoundHint'
   | 'Forum.topicNotFoundHint'
+  | 'Forum-topicTitlePlaceholder'
   | 'Forum.topicTitlePlaceholder'
+  | 'Forum-total'
   | 'Forum.total'
+  | 'Forum-totalTopics'
   | 'Forum.totalTopics'
+  | 'Forum-unknownAuthor'
   | 'Forum.unknownAuthor'
+  | 'Forum-unread'
   | 'Forum.unread'
+  | 'Forum-write'
   | 'Forum.write'
   | 'Order-backToCatalog'
   | 'Order.backToCatalog'
@@ -558,12 +558,24 @@ export type AppMessageKey =
   | 'Storefront.cards.launchTitle'
   | 'Storefront-cards-stackTitle'
   | 'Storefront.cards.stackTitle'
-  | 'Storefront-chips'
-  | 'Storefront.chips'
+  | 'Storefront-chips.item0'
+  | 'Storefront.chips.item0'
+  | 'Storefront-chips.item1'
+  | 'Storefront.chips.item1'
+  | 'Storefront-chips.item2'
+  | 'Storefront.chips.item2'
+  | 'Storefront-chips.item3'
+  | 'Storefront.chips.item3'
+  | 'Storefront-chips.item4'
+  | 'Storefront.chips.item4'
   | 'Storefront-eyebrow'
   | 'Storefront.eyebrow'
-  | 'Storefront-features'
-  | 'Storefront.features'
+  | 'Storefront-features.item0'
+  | 'Storefront.features.item0'
+  | 'Storefront-features.item1'
+  | 'Storefront.features.item1'
+  | 'Storefront-features.item2'
+  | 'Storefront.features.item2'
   | 'Storefront-primaryCta'
   | 'Storefront.primaryCta'
   | 'Storefront-secondaryCta'
@@ -574,574 +586,1176 @@ export type AppMessageKey =
   | 'Storefront.title';
 
 export interface AppMessageArgs {
-  'Account.emptyOrders'?: Record<string, never>;
   'Account-emptyOrders'?: Record<string, never>;
-  'Account.emptyOrdersDesc'?: Record<string, never>;
+  'Account.emptyOrders'?: Record<string, never>;
   'Account-emptyOrdersDesc'?: Record<string, never>;
-  'Account.emptySearch'?: Record<string, never>;
+  'Account.emptyOrdersDesc'?: Record<string, never>;
   'Account-emptySearch'?: Record<string, never>;
-  'Account.lookupEmptyError'?: Record<string, never>;
+  'Account.emptySearch'?: Record<string, never>;
   'Account-lookupEmptyError'?: Record<string, never>;
-  'Account.lookupPlaceholder'?: Record<string, never>;
+  'Account.lookupEmptyError'?: Record<string, never>;
   'Account-lookupPlaceholder'?: Record<string, never>;
-  'Account.lookupSubmit'?: Record<string, never>;
+  'Account.lookupPlaceholder'?: Record<string, never>;
   'Account-lookupSubmit'?: Record<string, never>;
-  'Account.lookupSubtitle'?: Record<string, never>;
+  'Account.lookupSubmit'?: Record<string, never>;
   'Account-lookupSubtitle'?: Record<string, never>;
-  'Account.lookupTitle'?: Record<string, never>;
+  'Account.lookupSubtitle'?: Record<string, never>;
   'Account-lookupTitle'?: Record<string, never>;
-  'Account.ordersSubtitle'?: Record<string, never>;
+  'Account.lookupTitle'?: Record<string, never>;
   'Account-ordersSubtitle'?: Record<string, never>;
-  'Account.ordersTitle'?: Record<string, never>;
+  'Account.ordersSubtitle'?: Record<string, never>;
   'Account-ordersTitle'?: Record<string, never>;
-  'Account.searchPlaceholder'?: Record<string, never>;
+  'Account.ordersTitle'?: Record<string, never>;
   'Account-searchPlaceholder'?: Record<string, never>;
-  'Account.tabActive'?: Record<string, never>;
+  'Account.searchPlaceholder'?: Record<string, never>;
   'Account-tabActive'?: Record<string, never>;
-  'Account.tabAll'?: Record<string, never>;
+  'Account.tabActive'?: Record<string, never>;
   'Account-tabAll'?: Record<string, never>;
-  'Account.tabCancelled'?: Record<string, never>;
+  'Account.tabAll'?: Record<string, never>;
   'Account-tabCancelled'?: Record<string, never>;
-  'Account.tabDelivered'?: Record<string, never>;
+  'Account.tabCancelled'?: Record<string, never>;
   'Account-tabDelivered'?: Record<string, never>;
-  'Account.tabLookup'?: Record<string, never>;
+  'Account.tabDelivered'?: Record<string, never>;
   'Account-tabLookup'?: Record<string, never>;
-  'Account.title'?: Record<string, never>;
+  'Account.tabLookup'?: Record<string, never>;
   'Account-title'?: Record<string, never>;
-  'Account.trackOrder'?: Record<string, never>;
+  'Account.title'?: Record<string, never>;
   'Account-trackOrder'?: Record<string, never>;
-  'Blog.comments.empty'?: Record<string, never>;
+  'Account.trackOrder'?: Record<string, never>;
   'Blog-comments-empty'?: Record<string, never>;
-  'Blog.comments.timeout'?: Record<string, never>;
+  'Blog.comments.empty'?: Record<string, never>;
   'Blog-comments-timeout'?: Record<string, never>;
-  'Blog.comments.timeoutCached'?: Record<string, never>;
+  'Blog.comments.timeout'?: Record<string, never>;
   'Blog-comments-timeoutCached'?: Record<string, never>;
-  'Blog.comments.title'?: Record<string, never>;
+  'Blog.comments.timeoutCached'?: Record<string, never>;
   'Blog-comments-title'?: Record<string, never>;
-  'Blog.comments.unavailable'?: Record<string, never>;
+  'Blog.comments.title'?: Record<string, never>;
   'Blog-comments-unavailable'?: Record<string, never>;
-  'Blog.comments.unavailableCached'?: Record<string, never>;
+  'Blog.comments.unavailable'?: Record<string, never>;
   'Blog-comments-unavailableCached'?: Record<string, never>;
-  'Blog.latest.subtitle'?: Record<string, never>;
+  'Blog.comments.unavailableCached'?: Record<string, never>;
   'Blog-latest-subtitle'?: Record<string, never>;
-  'Blog.latest.title'?: Record<string, never>;
+  'Blog.latest.subtitle'?: Record<string, never>;
   'Blog-latest-title'?: Record<string, never>;
-  'Cart.browseCatalog'?: Record<string, never>;
+  'Blog.latest.title'?: Record<string, never>;
   'Cart-browseCatalog'?: Record<string, never>;
-  'Cart.calculatedAtCheckout'?: Record<string, never>;
+  'Cart.browseCatalog'?: Record<string, never>;
   'Cart-calculatedAtCheckout'?: Record<string, never>;
-  'Cart.continueShopping'?: Record<string, never>;
+  'Cart.calculatedAtCheckout'?: Record<string, never>;
   'Cart-continueShopping'?: Record<string, never>;
-  'Cart.currentlyEmpty'?: Record<string, never>;
+  'Cart.continueShopping'?: Record<string, never>;
   'Cart-currentlyEmpty'?: Record<string, never>;
-  'Cart.discount'?: Record<string, never>;
+  'Cart.currentlyEmpty'?: Record<string, never>;
   'Cart-discount'?: Record<string, never>;
-  'Cart.empty'?: Record<string, never>;
+  'Cart.discount'?: Record<string, never>;
   'Cart-empty'?: Record<string, never>;
-  'Cart.emptySubtitle'?: Record<string, never>;
+  'Cart.empty'?: Record<string, never>;
   'Cart-emptySubtitle'?: Record<string, never>;
-  'Cart.itemsCount': { 'count': string | number | Date };
+  'Cart.emptySubtitle'?: Record<string, never>;
   'Cart-itemsCount': { 'count': string | number | Date };
-  'Cart.loading'?: Record<string, never>;
+  'Cart.itemsCount': { 'count': string | number | Date };
   'Cart-loading'?: Record<string, never>;
-  'Cart.open'?: Record<string, never>;
+  'Cart.loading'?: Record<string, never>;
   'Cart-open'?: Record<string, never>;
-  'Cart.proceedToCheckout'?: Record<string, never>;
+  'Cart.open'?: Record<string, never>;
   'Cart-proceedToCheckout'?: Record<string, never>;
-  'Cart.remove'?: Record<string, never>;
+  'Cart.proceedToCheckout'?: Record<string, never>;
   'Cart-remove'?: Record<string, never>;
-  'Cart.shipping'?: Record<string, never>;
+  'Cart.remove'?: Record<string, never>;
   'Cart-shipping'?: Record<string, never>;
-  'Cart.subtotal'?: Record<string, never>;
+  'Cart.shipping'?: Record<string, never>;
   'Cart-subtotal'?: Record<string, never>;
-  'Cart.title'?: Record<string, never>;
+  'Cart.subtotal'?: Record<string, never>;
   'Cart-title'?: Record<string, never>;
-  'Cart.total'?: Record<string, never>;
+  'Cart.title'?: Record<string, never>;
   'Cart-total'?: Record<string, never>;
-  'Cart.unitPrice'?: Record<string, never>;
+  'Cart.total'?: Record<string, never>;
   'Cart-unitPrice'?: Record<string, never>;
-  'Catalog.allCategories'?: Record<string, never>;
+  'Cart.unitPrice'?: Record<string, never>;
   'Catalog-allCategories'?: Record<string, never>;
-  'Catalog.bundleBadge'?: Record<string, never>;
+  'Catalog.allCategories'?: Record<string, never>;
   'Catalog-bundleBadge'?: Record<string, never>;
-  'Catalog.empty'?: Record<string, never>;
+  'Catalog.bundleBadge'?: Record<string, never>;
   'Catalog-empty'?: Record<string, never>;
-  'Catalog.fromPrice'?: Record<string, never>;
+  'Catalog.empty'?: Record<string, never>;
   'Catalog-fromPrice'?: Record<string, never>;
-  'Catalog.inStock'?: Record<string, never>;
+  'Catalog.fromPrice'?: Record<string, never>;
   'Catalog-inStock'?: Record<string, never>;
-  'Catalog.outOfStock'?: Record<string, never>;
+  'Catalog.inStock'?: Record<string, never>;
   'Catalog-outOfStock'?: Record<string, never>;
-  'Catalog.resetFilters'?: Record<string, never>;
+  'Catalog.outOfStock'?: Record<string, never>;
   'Catalog-resetFilters'?: Record<string, never>;
-  'Catalog.saleBadge'?: Record<string, never>;
+  'Catalog.resetFilters'?: Record<string, never>;
   'Catalog-saleBadge'?: Record<string, never>;
-  'Catalog.searchPlaceholder'?: Record<string, never>;
+  'Catalog.saleBadge'?: Record<string, never>;
   'Catalog-searchPlaceholder'?: Record<string, never>;
-  'Catalog.sortBy'?: Record<string, never>;
+  'Catalog.searchPlaceholder'?: Record<string, never>;
   'Catalog-sortBy'?: Record<string, never>;
-  'Catalog.sortCreated'?: Record<string, never>;
+  'Catalog.sortBy'?: Record<string, never>;
   'Catalog-sortCreated'?: Record<string, never>;
-  'Catalog.sortNewest'?: Record<string, never>;
+  'Catalog.sortCreated'?: Record<string, never>;
   'Catalog-sortNewest'?: Record<string, never>;
-  'Catalog.sortOldest'?: Record<string, never>;
+  'Catalog.sortNewest'?: Record<string, never>;
   'Catalog-sortOldest'?: Record<string, never>;
-  'Catalog.subtitle'?: Record<string, never>;
+  'Catalog.sortOldest'?: Record<string, never>;
   'Catalog-subtitle'?: Record<string, never>;
-  'Catalog.title'?: Record<string, never>;
+  'Catalog.subtitle'?: Record<string, never>;
   'Catalog-title'?: Record<string, never>;
-  'Catalog.viewAll'?: Record<string, never>;
+  'Catalog.title'?: Record<string, never>;
   'Catalog-viewAll'?: Record<string, never>;
-  'Checkout.address'?: Record<string, never>;
+  'Catalog.viewAll'?: Record<string, never>;
   'Checkout-address'?: Record<string, never>;
-  'Checkout.backToCatalog'?: Record<string, never>;
+  'Checkout.address'?: Record<string, never>;
   'Checkout-backToCatalog'?: Record<string, never>;
-  'Checkout.backToHome'?: Record<string, never>;
+  'Checkout.backToCatalog'?: Record<string, never>;
   'Checkout-backToHome'?: Record<string, never>;
-  'Checkout.city'?: Record<string, never>;
+  'Checkout.backToHome'?: Record<string, never>;
   'Checkout-city'?: Record<string, never>;
-  'Checkout.contactSection'?: Record<string, never>;
+  'Checkout.city'?: Record<string, never>;
   'Checkout-contactSection'?: Record<string, never>;
-  'Checkout.country'?: Record<string, never>;
+  'Checkout.contactSection'?: Record<string, never>;
   'Checkout-country'?: Record<string, never>;
-  'Checkout.discount'?: Record<string, never>;
+  'Checkout.country'?: Record<string, never>;
   'Checkout-discount'?: Record<string, never>;
-  'Checkout.email'?: Record<string, never>;
+  'Checkout.discount'?: Record<string, never>;
   'Checkout-email'?: Record<string, never>;
-  'Checkout.emptyCart'?: Record<string, never>;
+  'Checkout.email'?: Record<string, never>;
   'Checkout-emptyCart'?: Record<string, never>;
-  'Checkout.emptyCartSubtitle'?: Record<string, never>;
+  'Checkout.emptyCart'?: Record<string, never>;
   'Checkout-emptyCartSubtitle'?: Record<string, never>;
-  'Checkout.free'?: Record<string, never>;
+  'Checkout.emptyCartSubtitle'?: Record<string, never>;
   'Checkout-free'?: Record<string, never>;
-  'Checkout.fullName'?: Record<string, never>;
+  'Checkout.free'?: Record<string, never>;
   'Checkout-fullName'?: Record<string, never>;
-  'Checkout.notes'?: Record<string, never>;
+  'Checkout.fullName'?: Record<string, never>;
   'Checkout-notes'?: Record<string, never>;
-  'Checkout.orderCustomer'?: Record<string, never>;
+  'Checkout.notes'?: Record<string, never>;
   'Checkout-orderCustomer'?: Record<string, never>;
-  'Checkout.orderDestination'?: Record<string, never>;
+  'Checkout.orderCustomer'?: Record<string, never>;
   'Checkout-orderDestination'?: Record<string, never>;
-  'Checkout.orderDetails'?: Record<string, never>;
+  'Checkout.orderDestination'?: Record<string, never>;
   'Checkout-orderDetails'?: Record<string, never>;
-  'Checkout.orderId'?: Record<string, never>;
+  'Checkout.orderDetails'?: Record<string, never>;
   'Checkout-orderId'?: Record<string, never>;
-  'Checkout.orderStatus'?: Record<string, never>;
+  'Checkout.orderId'?: Record<string, never>;
   'Checkout-orderStatus'?: Record<string, never>;
-  'Checkout.orderSummary'?: Record<string, never>;
+  'Checkout.orderStatus'?: Record<string, never>;
   'Checkout-orderSummary'?: Record<string, never>;
-  'Checkout.orderTotal'?: Record<string, never>;
+  'Checkout.orderSummary'?: Record<string, never>;
   'Checkout-orderTotal'?: Record<string, never>;
-  'Checkout.paymentCard'?: Record<string, never>;
+  'Checkout.orderTotal'?: Record<string, never>;
   'Checkout-paymentCard'?: Record<string, never>;
-  'Checkout.paymentCardDesc'?: Record<string, never>;
+  'Checkout.paymentCard'?: Record<string, never>;
   'Checkout-paymentCardDesc'?: Record<string, never>;
-  'Checkout.paymentCod'?: Record<string, never>;
+  'Checkout.paymentCardDesc'?: Record<string, never>;
   'Checkout-paymentCod'?: Record<string, never>;
-  'Checkout.paymentCodDesc'?: Record<string, never>;
+  'Checkout.paymentCod'?: Record<string, never>;
   'Checkout-paymentCodDesc'?: Record<string, never>;
-  'Checkout.paymentSection'?: Record<string, never>;
+  'Checkout.paymentCodDesc'?: Record<string, never>;
   'Checkout-paymentSection'?: Record<string, never>;
-  'Checkout.paymentTransfer'?: Record<string, never>;
+  'Checkout.paymentSection'?: Record<string, never>;
   'Checkout-paymentTransfer'?: Record<string, never>;
-  'Checkout.paymentTransferDesc'?: Record<string, never>;
+  'Checkout.paymentTransfer'?: Record<string, never>;
   'Checkout-paymentTransferDesc'?: Record<string, never>;
-  'Checkout.phone'?: Record<string, never>;
+  'Checkout.paymentTransferDesc'?: Record<string, never>;
   'Checkout-phone'?: Record<string, never>;
-  'Checkout.placeOrder'?: Record<string, never>;
+  'Checkout.phone'?: Record<string, never>;
   'Checkout-placeOrder'?: Record<string, never>;
-  'Checkout.postalCode'?: Record<string, never>;
+  'Checkout.placeOrder'?: Record<string, never>;
   'Checkout-postalCode'?: Record<string, never>;
-  'Checkout.processing'?: Record<string, never>;
+  'Checkout.postalCode'?: Record<string, never>;
   'Checkout-processing'?: Record<string, never>;
-  'Checkout.secure'?: Record<string, never>;
+  'Checkout.processing'?: Record<string, never>;
   'Checkout-secure'?: Record<string, never>;
-  'Checkout.shipping'?: Record<string, never>;
+  'Checkout.secure'?: Record<string, never>;
   'Checkout-shipping'?: Record<string, never>;
-  'Checkout.shippingMethod'?: Record<string, never>;
+  'Checkout.shipping'?: Record<string, never>;
   'Checkout-shippingMethod'?: Record<string, never>;
-  'Checkout.shippingSection'?: Record<string, never>;
+  'Checkout.shippingMethod'?: Record<string, never>;
   'Checkout-shippingSection'?: Record<string, never>;
-  'Checkout.subtitle'?: Record<string, never>;
+  'Checkout.shippingSection'?: Record<string, never>;
   'Checkout-subtitle'?: Record<string, never>;
-  'Checkout.subtotal'?: Record<string, never>;
+  'Checkout.subtitle'?: Record<string, never>;
   'Checkout-subtotal'?: Record<string, never>;
-  'Checkout.successBadge'?: Record<string, never>;
+  'Checkout.subtotal'?: Record<string, never>;
   'Checkout-successBadge'?: Record<string, never>;
-  'Checkout.successTitle'?: Record<string, never>;
+  'Checkout.successBadge'?: Record<string, never>;
   'Checkout-successTitle'?: Record<string, never>;
-  'Checkout.title'?: Record<string, never>;
+  'Checkout.successTitle'?: Record<string, never>;
   'Checkout-title'?: Record<string, never>;
-  'Checkout.total'?: Record<string, never>;
+  'Checkout.title'?: Record<string, never>;
   'Checkout-total'?: Record<string, never>;
-  'Comments.composer.editorLabel'?: Record<string, never>;
+  'Checkout.total'?: Record<string, never>;
   'Comments-composer-editorLabel'?: Record<string, never>;
-  'Comments.composer.emptyError'?: Record<string, never>;
+  'Comments.composer.editorLabel'?: Record<string, never>;
   'Comments-composer-emptyError'?: Record<string, never>;
-  'Comments.composer.hint'?: Record<string, never>;
+  'Comments.composer.emptyError'?: Record<string, never>;
   'Comments-composer-hint'?: Record<string, never>;
-  'Comments.composer.signInRequired'?: Record<string, never>;
+  'Comments.composer.hint'?: Record<string, never>;
   'Comments-composer-signInRequired'?: Record<string, never>;
-  'Comments.composer.submit'?: Record<string, never>;
+  'Comments.composer.signInRequired'?: Record<string, never>;
   'Comments-composer-submit'?: Record<string, never>;
-  'Comments.composer.submitError'?: Record<string, never>;
+  'Comments.composer.submit'?: Record<string, never>;
   'Comments-composer-submitError'?: Record<string, never>;
-  'Comments.composer.submitting'?: Record<string, never>;
+  'Comments.composer.submitError'?: Record<string, never>;
   'Comments-composer-submitting'?: Record<string, never>;
-  'Comments.composer.success'?: Record<string, never>;
+  'Comments.composer.submitting'?: Record<string, never>;
   'Comments-composer-success'?: Record<string, never>;
-  'Comments.composer.title'?: Record<string, never>;
+  'Comments.composer.success'?: Record<string, never>;
   'Comments-composer-title'?: Record<string, never>;
+  'Comments.composer.title'?: Record<string, never>;
   'Forum-allTopics'?: Record<string, never>;
-  'Forum-allTopicsHint'?: Record<string, never>;
-  'Forum-backToDiscussions'?: Record<string, never>;
-  'Forum-browse'?: Record<string, never>;
-  'Forum-cancel'?: Record<string, never>;
-  'Forum-categories'?: Record<string, never>;
-  'Forum-clear'?: Record<string, never>;
-  'Forum-clearFilters'?: Record<string, never>;
-  'Forum-close'?: Record<string, never>;
-  'Forum-communityMap'?: Record<string, never>;
-  'Forum-createTopic'?: Record<string, never>;
-  'Forum-discussions'?: Record<string, never>;
-  'Forum-draftSavedLocally'?: Record<string, never>;
-  'Forum-draftTitle': { 'title': string | number | Date };
-  'Forum-errorEmptyMessage'?: Record<string, never>;
-  'Forum-errorGeneric'?: Record<string, never>;
-  'Forum-errorLoad'?: Record<string, never>;
-  'Forum-errorMarkRead'?: Record<string, never>;
-  'Forum-errorMissingCategory'?: Record<string, never>;
-  'Forum-errorMissingTitle'?: Record<string, never>;
-  'Forum-errorReplyFailed'?: Record<string, never>;
-  'Forum-errorTopicFailed'?: Record<string, never>;
-  'Forum-expand'?: Record<string, never>;
-  'Forum-filterPlaceholder'?: Record<string, never>;
-  'Forum-forumIndex'?: Record<string, never>;
-  'Forum-fresh'?: Record<string, never>;
-  'Forum-grid'?: Record<string, never>;
-  'Forum-joinTheConversation'?: Record<string, never>;
-  'Forum-joinTheConversationHint'?: Record<string, never>;
-  'Forum-jumpToBeginning'?: Record<string, never>;
-  'Forum-jumpToEnd'?: Record<string, never>;
-  'Forum-latest'?: Record<string, never>;
-  'Forum-latestDiscussions'?: Record<string, never>;
-  'Forum-linkedPostUnavailable'?: Record<string, never>;
-  'Forum-livePreview'?: Record<string, never>;
-  'Forum-loading'?: Record<string, never>;
-  'Forum-locked'?: Record<string, never>;
-  'Forum-minimize'?: Record<string, never>;
-  'Forum-newReply'?: Record<string, never>;
-  'Forum-newTopic'?: Record<string, never>;
-  'Forum-noMatchingCategories'?: Record<string, never>;
-  'Forum-noMatchingCategoriesHint'?: Record<string, never>;
-  'Forum-noMatchingDiscussions'?: Record<string, never>;
-  'Forum-noMatchingDiscussionsHint'?: Record<string, never>;
-  'Forum-noRepliesYet'?: Record<string, never>;
-  'Forum-noSectionDescription'?: Record<string, never>;
-  'Forum-nothingToPreview'?: Record<string, never>;
-  'Forum-noTopicsYet'?: Record<string, never>;
-  'Forum-noTopicsYetHint'?: Record<string, never>;
-  'Forum-openAThread'?: Record<string, never>;
-  'Forum-openAThreadHint'?: Record<string, never>;
-  'Forum-openCategoryMatrix'?: Record<string, never>;
-  'Forum-openTopicFullPage'?: Record<string, never>;
-  'Forum-pinned'?: Record<string, never>;
-  'Forum-postedOn': { 'date': string | number | Date };
-  'Forum-posting'?: Record<string, never>;
-  'Forum-postReply'?: Record<string, never>;
-  'Forum-preview'?: Record<string, never>;
-  'Forum-quote'?: Record<string, never>;
-  'Forum-quotedFrom': { 'author': string | number | Date };
-  'Forum-replies'?: Record<string, never>;
-  'Forum-repliesCount'?: Record<string, never>;
-  'Forum-reply'?: Record<string, never>;
-  'Forum-replyContent'?: Record<string, never>;
-  'Forum-replyToMessage'?: Record<string, never>;
-  'Forum-replyToTopic'?: Record<string, never>;
-  'Forum-retry'?: Record<string, never>;
-  'Forum-searchPlaceholder'?: Record<string, never>;
-  'Forum-sectionDescription'?: Record<string, never>;
-  'Forum-sectionsPublished'?: Record<string, never>;
-  'Forum-sectionSubtitle'?: Record<string, never>;
-  'Forum-solved'?: Record<string, never>;
-  'Forum-startDiscussion'?: Record<string, never>;
-  'Forum-statusArchived'?: Record<string, never>;
-  'Forum-statusClosed'?: Record<string, never>;
-  'Forum-statusOpen'?: Record<string, never>;
-  'Forum-statusPending'?: Record<string, never>;
-  'Forum-subcategories'?: Record<string, never>;
-  'Forum-threads'?: Record<string, never>;
-  'Forum-top'?: Record<string, never>;
-  'Forum-topicContent'?: Record<string, never>;
-  'Forum-topicFeed'?: Record<string, never>;
-  'Forum-topicNotFound'?: Record<string, never>;
-  'Forum-topicNotFoundHint'?: Record<string, never>;
-  'Forum-topicTitlePlaceholder'?: Record<string, never>;
-  'Forum-total'?: Record<string, never>;
-  'Forum-totalTopics'?: Record<string, never>;
-  'Forum-unknownAuthor'?: Record<string, never>;
-  'Forum-unread'?: Record<string, never>;
-  'Forum-write'?: Record<string, never>;
   'Forum.allTopics'?: Record<string, never>;
+  'Forum-allTopicsHint'?: Record<string, never>;
   'Forum.allTopicsHint'?: Record<string, never>;
+  'Forum-backToDiscussions'?: Record<string, never>;
   'Forum.backToDiscussions'?: Record<string, never>;
+  'Forum-browse'?: Record<string, never>;
   'Forum.browse'?: Record<string, never>;
+  'Forum-cancel'?: Record<string, never>;
   'Forum.cancel'?: Record<string, never>;
+  'Forum-categories'?: Record<string, never>;
   'Forum.categories'?: Record<string, never>;
+  'Forum-clear'?: Record<string, never>;
   'Forum.clear'?: Record<string, never>;
+  'Forum-clearFilters'?: Record<string, never>;
   'Forum.clearFilters'?: Record<string, never>;
+  'Forum-close'?: Record<string, never>;
   'Forum.close'?: Record<string, never>;
+  'Forum-communityMap'?: Record<string, never>;
   'Forum.communityMap'?: Record<string, never>;
+  'Forum-createTopic'?: Record<string, never>;
   'Forum.createTopic'?: Record<string, never>;
+  'Forum-discussions'?: Record<string, never>;
   'Forum.discussions'?: Record<string, never>;
+  'Forum-draftSavedLocally'?: Record<string, never>;
   'Forum.draftSavedLocally'?: Record<string, never>;
+  'Forum-draftTitle': { 'title': string | number | Date };
   'Forum.draftTitle': { 'title': string | number | Date };
+  'Forum-errorEmptyMessage'?: Record<string, never>;
   'Forum.errorEmptyMessage'?: Record<string, never>;
+  'Forum-errorGeneric'?: Record<string, never>;
   'Forum.errorGeneric'?: Record<string, never>;
+  'Forum-errorLoad'?: Record<string, never>;
   'Forum.errorLoad'?: Record<string, never>;
+  'Forum-errorMarkRead'?: Record<string, never>;
   'Forum.errorMarkRead'?: Record<string, never>;
+  'Forum-errorMissingCategory'?: Record<string, never>;
   'Forum.errorMissingCategory'?: Record<string, never>;
+  'Forum-errorMissingTitle'?: Record<string, never>;
   'Forum.errorMissingTitle'?: Record<string, never>;
+  'Forum-errorReplyFailed'?: Record<string, never>;
   'Forum.errorReplyFailed'?: Record<string, never>;
+  'Forum-errorTopicFailed'?: Record<string, never>;
   'Forum.errorTopicFailed'?: Record<string, never>;
+  'Forum-expand'?: Record<string, never>;
   'Forum.expand'?: Record<string, never>;
+  'Forum-filterPlaceholder'?: Record<string, never>;
   'Forum.filterPlaceholder'?: Record<string, never>;
+  'Forum-forumIndex'?: Record<string, never>;
   'Forum.forumIndex'?: Record<string, never>;
+  'Forum-fresh'?: Record<string, never>;
   'Forum.fresh'?: Record<string, never>;
+  'Forum-grid'?: Record<string, never>;
   'Forum.grid'?: Record<string, never>;
+  'Forum-joinTheConversation'?: Record<string, never>;
   'Forum.joinTheConversation'?: Record<string, never>;
+  'Forum-joinTheConversationHint'?: Record<string, never>;
   'Forum.joinTheConversationHint'?: Record<string, never>;
+  'Forum-jumpToBeginning'?: Record<string, never>;
   'Forum.jumpToBeginning'?: Record<string, never>;
+  'Forum-jumpToEnd'?: Record<string, never>;
   'Forum.jumpToEnd'?: Record<string, never>;
+  'Forum-latest'?: Record<string, never>;
   'Forum.latest'?: Record<string, never>;
+  'Forum-latestDiscussions'?: Record<string, never>;
   'Forum.latestDiscussions'?: Record<string, never>;
+  'Forum-linkedPostUnavailable'?: Record<string, never>;
   'Forum.linkedPostUnavailable'?: Record<string, never>;
+  'Forum-livePreview'?: Record<string, never>;
   'Forum.livePreview'?: Record<string, never>;
+  'Forum-loading'?: Record<string, never>;
   'Forum.loading'?: Record<string, never>;
+  'Forum-locked'?: Record<string, never>;
   'Forum.locked'?: Record<string, never>;
+  'Forum-minimize'?: Record<string, never>;
   'Forum.minimize'?: Record<string, never>;
+  'Forum-newReply'?: Record<string, never>;
   'Forum.newReply'?: Record<string, never>;
+  'Forum-newTopic'?: Record<string, never>;
   'Forum.newTopic'?: Record<string, never>;
+  'Forum-noMatchingCategories'?: Record<string, never>;
   'Forum.noMatchingCategories'?: Record<string, never>;
+  'Forum-noMatchingCategoriesHint'?: Record<string, never>;
   'Forum.noMatchingCategoriesHint'?: Record<string, never>;
+  'Forum-noMatchingDiscussions'?: Record<string, never>;
   'Forum.noMatchingDiscussions'?: Record<string, never>;
+  'Forum-noMatchingDiscussionsHint'?: Record<string, never>;
   'Forum.noMatchingDiscussionsHint'?: Record<string, never>;
+  'Forum-noRepliesYet'?: Record<string, never>;
   'Forum.noRepliesYet'?: Record<string, never>;
+  'Forum-noSectionDescription'?: Record<string, never>;
   'Forum.noSectionDescription'?: Record<string, never>;
+  'Forum-nothingToPreview'?: Record<string, never>;
   'Forum.nothingToPreview'?: Record<string, never>;
+  'Forum-noTopicsYet'?: Record<string, never>;
   'Forum.noTopicsYet'?: Record<string, never>;
+  'Forum-noTopicsYetHint'?: Record<string, never>;
   'Forum.noTopicsYetHint'?: Record<string, never>;
+  'Forum-openAThread'?: Record<string, never>;
   'Forum.openAThread'?: Record<string, never>;
+  'Forum-openAThreadHint'?: Record<string, never>;
   'Forum.openAThreadHint'?: Record<string, never>;
+  'Forum-openCategoryMatrix'?: Record<string, never>;
   'Forum.openCategoryMatrix'?: Record<string, never>;
+  'Forum-openTopicFullPage'?: Record<string, never>;
   'Forum.openTopicFullPage'?: Record<string, never>;
+  'Forum-pinned'?: Record<string, never>;
   'Forum.pinned'?: Record<string, never>;
+  'Forum-postedOn': { 'date': string | number | Date };
   'Forum.postedOn': { 'date': string | number | Date };
+  'Forum-posting'?: Record<string, never>;
   'Forum.posting'?: Record<string, never>;
+  'Forum-postReply'?: Record<string, never>;
   'Forum.postReply'?: Record<string, never>;
+  'Forum-preview'?: Record<string, never>;
   'Forum.preview'?: Record<string, never>;
+  'Forum-quote'?: Record<string, never>;
   'Forum.quote'?: Record<string, never>;
+  'Forum-quotedFrom': { 'author': string | number | Date };
   'Forum.quotedFrom': { 'author': string | number | Date };
+  'Forum-replies'?: Record<string, never>;
   'Forum.replies'?: Record<string, never>;
+  'Forum-repliesCount'?: Record<string, never>;
   'Forum.repliesCount'?: Record<string, never>;
+  'Forum-reply'?: Record<string, never>;
   'Forum.reply'?: Record<string, never>;
+  'Forum-replyContent'?: Record<string, never>;
   'Forum.replyContent'?: Record<string, never>;
+  'Forum-replyToMessage'?: Record<string, never>;
   'Forum.replyToMessage'?: Record<string, never>;
+  'Forum-replyToTopic'?: Record<string, never>;
   'Forum.replyToTopic'?: Record<string, never>;
+  'Forum-retry'?: Record<string, never>;
   'Forum.retry'?: Record<string, never>;
+  'Forum-searchPlaceholder'?: Record<string, never>;
   'Forum.searchPlaceholder'?: Record<string, never>;
+  'Forum-sectionDescription'?: Record<string, never>;
   'Forum.sectionDescription'?: Record<string, never>;
+  'Forum-sectionsPublished'?: Record<string, never>;
   'Forum.sectionsPublished'?: Record<string, never>;
+  'Forum-sectionSubtitle'?: Record<string, never>;
   'Forum.sectionSubtitle'?: Record<string, never>;
+  'Forum-solved'?: Record<string, never>;
   'Forum.solved'?: Record<string, never>;
+  'Forum-startDiscussion'?: Record<string, never>;
   'Forum.startDiscussion'?: Record<string, never>;
+  'Forum-statusArchived'?: Record<string, never>;
   'Forum.statusArchived'?: Record<string, never>;
+  'Forum-statusClosed'?: Record<string, never>;
   'Forum.statusClosed'?: Record<string, never>;
+  'Forum-statusOpen'?: Record<string, never>;
   'Forum.statusOpen'?: Record<string, never>;
+  'Forum-statusPending'?: Record<string, never>;
   'Forum.statusPending'?: Record<string, never>;
+  'Forum-subcategories'?: Record<string, never>;
   'Forum.subcategories'?: Record<string, never>;
+  'Forum-threads'?: Record<string, never>;
   'Forum.threads'?: Record<string, never>;
+  'Forum-top'?: Record<string, never>;
   'Forum.top'?: Record<string, never>;
+  'Forum-topicContent'?: Record<string, never>;
   'Forum.topicContent'?: Record<string, never>;
+  'Forum-topicFeed'?: Record<string, never>;
   'Forum.topicFeed'?: Record<string, never>;
+  'Forum-topicNotFound'?: Record<string, never>;
   'Forum.topicNotFound'?: Record<string, never>;
+  'Forum-topicNotFoundHint'?: Record<string, never>;
   'Forum.topicNotFoundHint'?: Record<string, never>;
+  'Forum-topicTitlePlaceholder'?: Record<string, never>;
   'Forum.topicTitlePlaceholder'?: Record<string, never>;
+  'Forum-total'?: Record<string, never>;
   'Forum.total'?: Record<string, never>;
+  'Forum-totalTopics'?: Record<string, never>;
   'Forum.totalTopics'?: Record<string, never>;
+  'Forum-unknownAuthor'?: Record<string, never>;
   'Forum.unknownAuthor'?: Record<string, never>;
+  'Forum-unread'?: Record<string, never>;
   'Forum.unread'?: Record<string, never>;
+  'Forum-write'?: Record<string, never>;
   'Forum.write'?: Record<string, never>;
-  'Order.backToCatalog'?: Record<string, never>;
   'Order-backToCatalog'?: Record<string, never>;
-  'Order.browseCatalog'?: Record<string, never>;
+  'Order.backToCatalog'?: Record<string, never>;
   'Order-browseCatalog'?: Record<string, never>;
-  'Order.carrier'?: Record<string, never>;
+  'Order.browseCatalog'?: Record<string, never>;
   'Order-carrier'?: Record<string, never>;
-  'Order.copied'?: Record<string, never>;
+  'Order.carrier'?: Record<string, never>;
   'Order-copied'?: Record<string, never>;
-  'Order.copy'?: Record<string, never>;
+  'Order.copied'?: Record<string, never>;
   'Order-copy'?: Record<string, never>;
-  'Order.deliveryAddress'?: Record<string, never>;
+  'Order.copy'?: Record<string, never>;
   'Order-deliveryAddress'?: Record<string, never>;
-  'Order.discount'?: Record<string, never>;
+  'Order.deliveryAddress'?: Record<string, never>;
   'Order-discount'?: Record<string, never>;
-  'Order.estimatedArrival'?: Record<string, never>;
+  'Order.discount'?: Record<string, never>;
   'Order-estimatedArrival'?: Record<string, never>;
-  'Order.estimatedDays'?: Record<string, never>;
+  'Order.estimatedArrival'?: Record<string, never>;
   'Order-estimatedDays'?: Record<string, never>;
-  'Order.financialSummary'?: Record<string, never>;
+  'Order.estimatedDays'?: Record<string, never>;
   'Order-financialSummary'?: Record<string, never>;
-  'Order.free'?: Record<string, never>;
+  'Order.financialSummary'?: Record<string, never>;
   'Order-free'?: Record<string, never>;
-  'Order.fulfillment'?: Record<string, never>;
+  'Order.free'?: Record<string, never>;
   'Order-fulfillment'?: Record<string, never>;
-  'Order.guaranteeQuality'?: Record<string, never>;
+  'Order.fulfillment'?: Record<string, never>;
   'Order-guaranteeQuality'?: Record<string, never>;
-  'Order.guaranteeReturn'?: Record<string, never>;
+  'Order.guaranteeQuality'?: Record<string, never>;
   'Order-guaranteeReturn'?: Record<string, never>;
-  'Order.itemsCount': { 'count': string | number | Date };
+  'Order.guaranteeReturn'?: Record<string, never>;
   'Order-itemsCount': { 'count': string | number | Date };
-  'Order.itemsTitle'?: Record<string, never>;
+  'Order.itemsCount': { 'count': string | number | Date };
   'Order-itemsTitle'?: Record<string, never>;
-  'Order.notFoundSubtitle': { 'id': string | number | Date };
+  'Order.itemsTitle'?: Record<string, never>;
   'Order-notFoundSubtitle': { 'id': string | number | Date };
-  'Order.notFoundTitle'?: Record<string, never>;
+  'Order.notFoundSubtitle': { 'id': string | number | Date };
   'Order-notFoundTitle'?: Record<string, never>;
-  'Order.paid'?: Record<string, never>;
+  'Order.notFoundTitle'?: Record<string, never>;
   'Order-paid'?: Record<string, never>;
-  'Order.paymentMethod'?: Record<string, never>;
+  'Order.paid'?: Record<string, never>;
   'Order-paymentMethod'?: Record<string, never>;
-  'Order.paymentStatus'?: Record<string, never>;
+  'Order.paymentMethod'?: Record<string, never>;
   'Order-paymentStatus'?: Record<string, never>;
-  'Order.pending'?: Record<string, never>;
+  'Order.paymentStatus'?: Record<string, never>;
   'Order-pending'?: Record<string, never>;
-  'Order.printReceipt'?: Record<string, never>;
+  'Order.pending'?: Record<string, never>;
   'Order-printReceipt'?: Record<string, never>;
-  'Order.progressTitle'?: Record<string, never>;
+  'Order.printReceipt'?: Record<string, never>;
   'Order-progressTitle'?: Record<string, never>;
-  'Order.shipping'?: Record<string, never>;
+  'Order.progressTitle'?: Record<string, never>;
   'Order-shipping'?: Record<string, never>;
-  'Order.sku'?: Record<string, never>;
+  'Order.shipping'?: Record<string, never>;
   'Order-sku'?: Record<string, never>;
-  'Order.statusCancelled'?: Record<string, never>;
+  'Order.sku'?: Record<string, never>;
   'Order-statusCancelled'?: Record<string, never>;
-  'Order.statusDelivered'?: Record<string, never>;
+  'Order.statusCancelled'?: Record<string, never>;
   'Order-statusDelivered'?: Record<string, never>;
-  'Order.statusDeliveredDesc'?: Record<string, never>;
+  'Order.statusDelivered'?: Record<string, never>;
   'Order-statusDeliveredDesc'?: Record<string, never>;
-  'Order.statusPaid'?: Record<string, never>;
+  'Order.statusDeliveredDesc'?: Record<string, never>;
   'Order-statusPaid'?: Record<string, never>;
-  'Order.statusPaidDesc'?: Record<string, never>;
+  'Order.statusPaid'?: Record<string, never>;
   'Order-statusPaidDesc'?: Record<string, never>;
-  'Order.statusPlaced'?: Record<string, never>;
+  'Order.statusPaidDesc'?: Record<string, never>;
   'Order-statusPlaced'?: Record<string, never>;
-  'Order.statusPlacedDesc'?: Record<string, never>;
+  'Order.statusPlaced'?: Record<string, never>;
   'Order-statusPlacedDesc'?: Record<string, never>;
-  'Order.statusProcessing'?: Record<string, never>;
+  'Order.statusPlacedDesc'?: Record<string, never>;
   'Order-statusProcessing'?: Record<string, never>;
-  'Order.statusProcessingDesc'?: Record<string, never>;
+  'Order.statusProcessing'?: Record<string, never>;
   'Order-statusProcessingDesc'?: Record<string, never>;
-  'Order.statusShipped'?: Record<string, never>;
+  'Order.statusProcessingDesc'?: Record<string, never>;
   'Order-statusShipped'?: Record<string, never>;
-  'Order.statusShippedDesc'?: Record<string, never>;
+  'Order.statusShipped'?: Record<string, never>;
   'Order-statusShippedDesc'?: Record<string, never>;
-  'Order.subtotal'?: Record<string, never>;
+  'Order.statusShippedDesc'?: Record<string, never>;
   'Order-subtotal'?: Record<string, never>;
-  'Order.supportHint'?: Record<string, never>;
+  'Order.subtotal'?: Record<string, never>;
   'Order-supportHint'?: Record<string, never>;
-  'Order.tax'?: Record<string, never>;
+  'Order.supportHint'?: Record<string, never>;
   'Order-tax'?: Record<string, never>;
-  'Order.title': { 'id': string | number | Date };
+  'Order.tax'?: Record<string, never>;
   'Order-title': { 'id': string | number | Date };
-  'Order.total'?: Record<string, never>;
+  'Order.title': { 'id': string | number | Date };
   'Order-total'?: Record<string, never>;
-  'Order.tracking'?: Record<string, never>;
+  'Order.total'?: Record<string, never>;
   'Order-tracking'?: Record<string, never>;
-  'Product.addedToCart'?: Record<string, never>;
+  'Order.tracking'?: Record<string, never>;
   'Product-addedToCart'?: Record<string, never>;
-  'Product.addToCart'?: Record<string, never>;
+  'Product.addedToCart'?: Record<string, never>;
   'Product-addToCart'?: Record<string, never>;
-  'Product.backToCatalog'?: Record<string, never>;
+  'Product.addToCart'?: Record<string, never>;
   'Product-backToCatalog'?: Record<string, never>;
-  'Product.bundleIncludes'?: Record<string, never>;
+  'Product.backToCatalog'?: Record<string, never>;
   'Product-bundleIncludes'?: Record<string, never>;
-  'Product.description'?: Record<string, never>;
+  'Product.bundleIncludes'?: Record<string, never>;
   'Product-description'?: Record<string, never>;
-  'Product.details'?: Record<string, never>;
+  'Product.description'?: Record<string, never>;
   'Product-details'?: Record<string, never>;
-  'Product.quantity'?: Record<string, never>;
+  'Product.details'?: Record<string, never>;
   'Product-quantity'?: Record<string, never>;
-  'Product.selectVariant'?: Record<string, never>;
+  'Product.quantity'?: Record<string, never>;
   'Product-selectVariant'?: Record<string, never>;
-  'Product.shipping'?: Record<string, never>;
+  'Product.selectVariant'?: Record<string, never>;
   'Product-shipping'?: Record<string, never>;
-  'Product.sku'?: Record<string, never>;
+  'Product.shipping'?: Record<string, never>;
   'Product-sku'?: Record<string, never>;
-  'Product.vendor'?: Record<string, never>;
+  'Product.sku'?: Record<string, never>;
   'Product-vendor'?: Record<string, never>;
-  'richText.apply_link'?: Record<string, never>;
+  'Product.vendor'?: Record<string, never>;
   'richText-apply_link'?: Record<string, never>;
-  'richText.blockquote'?: Record<string, never>;
+  'richText.apply_link'?: Record<string, never>;
   'richText-blockquote'?: Record<string, never>;
-  'richText.bold'?: Record<string, never>;
+  'richText.blockquote'?: Record<string, never>;
   'richText-bold'?: Record<string, never>;
-  'richText.bullet_list'?: Record<string, never>;
+  'richText.bold'?: Record<string, never>;
   'richText-bullet_list'?: Record<string, never>;
-  'richText.clear_formatting'?: Record<string, never>;
+  'richText.bullet_list'?: Record<string, never>;
   'richText-clear_formatting'?: Record<string, never>;
-  'richText.code'?: Record<string, never>;
+  'richText.clear_formatting'?: Record<string, never>;
   'richText-code'?: Record<string, never>;
-  'richText.code_block'?: Record<string, never>;
+  'richText.code'?: Record<string, never>;
   'richText-code_block'?: Record<string, never>;
-  'richText.editor'?: Record<string, never>;
+  'richText.code_block'?: Record<string, never>;
   'richText-editor'?: Record<string, never>;
-  'richText.heading'?: Record<string, never>;
+  'richText.editor'?: Record<string, never>;
   'richText-heading'?: Record<string, never>;
-  'richText.horizontal_rule'?: Record<string, never>;
+  'richText.heading'?: Record<string, never>;
   'richText-horizontal_rule'?: Record<string, never>;
-  'richText.italic'?: Record<string, never>;
+  'richText.horizontal_rule'?: Record<string, never>;
   'richText-italic'?: Record<string, never>;
-  'richText.link'?: Record<string, never>;
+  'richText.italic'?: Record<string, never>;
   'richText-link'?: Record<string, never>;
-  'richText.link_url'?: Record<string, never>;
+  'richText.link'?: Record<string, never>;
   'richText-link_url'?: Record<string, never>;
-  'richText.ordered_list'?: Record<string, never>;
+  'richText.link_url'?: Record<string, never>;
   'richText-ordered_list'?: Record<string, never>;
-  'richText.redo'?: Record<string, never>;
+  'richText.ordered_list'?: Record<string, never>;
   'richText-redo'?: Record<string, never>;
-  'richText.remove_link'?: Record<string, never>;
+  'richText.redo'?: Record<string, never>;
   'richText-remove_link'?: Record<string, never>;
-  'richText.strike'?: Record<string, never>;
+  'richText.remove_link'?: Record<string, never>;
   'richText-strike'?: Record<string, never>;
-  'richText.undo'?: Record<string, never>;
+  'richText.strike'?: Record<string, never>;
   'richText-undo'?: Record<string, never>;
-  'Storefront.alertDescription'?: Record<string, never>;
+  'richText.undo'?: Record<string, never>;
   'Storefront-alertDescription'?: Record<string, never>;
-  'Storefront.alertTitle'?: Record<string, never>;
+  'Storefront.alertDescription'?: Record<string, never>;
   'Storefront-alertTitle'?: Record<string, never>;
-  'Storefront.cards.flexDescription'?: Record<string, never>;
+  'Storefront.alertTitle'?: Record<string, never>;
   'Storefront-cards-flexDescription'?: Record<string, never>;
-  'Storefront.cards.flexTitle'?: Record<string, never>;
+  'Storefront.cards.flexDescription'?: Record<string, never>;
   'Storefront-cards-flexTitle'?: Record<string, never>;
-  'Storefront.cards.launchDescription'?: Record<string, never>;
+  'Storefront.cards.flexTitle'?: Record<string, never>;
   'Storefront-cards-launchDescription'?: Record<string, never>;
-  'Storefront.cards.launchTitle'?: Record<string, never>;
+  'Storefront.cards.launchDescription'?: Record<string, never>;
   'Storefront-cards-launchTitle'?: Record<string, never>;
-  'Storefront.cards.stackTitle'?: Record<string, never>;
+  'Storefront.cards.launchTitle'?: Record<string, never>;
   'Storefront-cards-stackTitle'?: Record<string, never>;
-  'Storefront.chips'?: Record<string, never>;
-  'Storefront-chips'?: Record<string, never>;
-  'Storefront.eyebrow'?: Record<string, never>;
+  'Storefront.cards.stackTitle'?: Record<string, never>;
+  'Storefront-chips.item0'?: Record<string, never>;
+  'Storefront.chips.item0'?: Record<string, never>;
+  'Storefront-chips.item1'?: Record<string, never>;
+  'Storefront.chips.item1'?: Record<string, never>;
+  'Storefront-chips.item2'?: Record<string, never>;
+  'Storefront.chips.item2'?: Record<string, never>;
+  'Storefront-chips.item3'?: Record<string, never>;
+  'Storefront.chips.item3'?: Record<string, never>;
+  'Storefront-chips.item4'?: Record<string, never>;
+  'Storefront.chips.item4'?: Record<string, never>;
   'Storefront-eyebrow'?: Record<string, never>;
-  'Storefront.features'?: Record<string, never>;
-  'Storefront-features'?: Record<string, never>;
-  'Storefront.primaryCta'?: Record<string, never>;
+  'Storefront.eyebrow'?: Record<string, never>;
+  'Storefront-features.item0'?: Record<string, never>;
+  'Storefront.features.item0'?: Record<string, never>;
+  'Storefront-features.item1'?: Record<string, never>;
+  'Storefront.features.item1'?: Record<string, never>;
+  'Storefront-features.item2'?: Record<string, never>;
+  'Storefront.features.item2'?: Record<string, never>;
   'Storefront-primaryCta'?: Record<string, never>;
-  'Storefront.secondaryCta'?: Record<string, never>;
+  'Storefront.primaryCta'?: Record<string, never>;
   'Storefront-secondaryCta'?: Record<string, never>;
-  'Storefront.subtitle'?: Record<string, never>;
+  'Storefront.secondaryCta'?: Record<string, never>;
   'Storefront-subtitle'?: Record<string, never>;
-  'Storefront.title'?: Record<string, never>;
+  'Storefront.subtitle'?: Record<string, never>;
   'Storefront-title'?: Record<string, never>;
+  'Storefront.title'?: Record<string, never>;
+}
+
+export interface AppMessages {
+  'Account-emptyOrders': Record<string, never>;
+  'Account.emptyOrders': Record<string, never>;
+  'Account-emptyOrdersDesc': Record<string, never>;
+  'Account.emptyOrdersDesc': Record<string, never>;
+  'Account-emptySearch': Record<string, never>;
+  'Account.emptySearch': Record<string, never>;
+  'Account-lookupEmptyError': Record<string, never>;
+  'Account.lookupEmptyError': Record<string, never>;
+  'Account-lookupPlaceholder': Record<string, never>;
+  'Account.lookupPlaceholder': Record<string, never>;
+  'Account-lookupSubmit': Record<string, never>;
+  'Account.lookupSubmit': Record<string, never>;
+  'Account-lookupSubtitle': Record<string, never>;
+  'Account.lookupSubtitle': Record<string, never>;
+  'Account-lookupTitle': Record<string, never>;
+  'Account.lookupTitle': Record<string, never>;
+  'Account-ordersSubtitle': Record<string, never>;
+  'Account.ordersSubtitle': Record<string, never>;
+  'Account-ordersTitle': Record<string, never>;
+  'Account.ordersTitle': Record<string, never>;
+  'Account-searchPlaceholder': Record<string, never>;
+  'Account.searchPlaceholder': Record<string, never>;
+  'Account-tabActive': Record<string, never>;
+  'Account.tabActive': Record<string, never>;
+  'Account-tabAll': Record<string, never>;
+  'Account.tabAll': Record<string, never>;
+  'Account-tabCancelled': Record<string, never>;
+  'Account.tabCancelled': Record<string, never>;
+  'Account-tabDelivered': Record<string, never>;
+  'Account.tabDelivered': Record<string, never>;
+  'Account-tabLookup': Record<string, never>;
+  'Account.tabLookup': Record<string, never>;
+  'Account-title': Record<string, never>;
+  'Account.title': Record<string, never>;
+  'Account-trackOrder': Record<string, never>;
+  'Account.trackOrder': Record<string, never>;
+  'Blog-comments-empty': Record<string, never>;
+  'Blog.comments.empty': Record<string, never>;
+  'Blog-comments-timeout': Record<string, never>;
+  'Blog.comments.timeout': Record<string, never>;
+  'Blog-comments-timeoutCached': Record<string, never>;
+  'Blog.comments.timeoutCached': Record<string, never>;
+  'Blog-comments-title': Record<string, never>;
+  'Blog.comments.title': Record<string, never>;
+  'Blog-comments-unavailable': Record<string, never>;
+  'Blog.comments.unavailable': Record<string, never>;
+  'Blog-comments-unavailableCached': Record<string, never>;
+  'Blog.comments.unavailableCached': Record<string, never>;
+  'Blog-latest-subtitle': Record<string, never>;
+  'Blog.latest.subtitle': Record<string, never>;
+  'Blog-latest-title': Record<string, never>;
+  'Blog.latest.title': Record<string, never>;
+  'Cart-browseCatalog': Record<string, never>;
+  'Cart.browseCatalog': Record<string, never>;
+  'Cart-calculatedAtCheckout': Record<string, never>;
+  'Cart.calculatedAtCheckout': Record<string, never>;
+  'Cart-continueShopping': Record<string, never>;
+  'Cart.continueShopping': Record<string, never>;
+  'Cart-currentlyEmpty': Record<string, never>;
+  'Cart.currentlyEmpty': Record<string, never>;
+  'Cart-discount': Record<string, never>;
+  'Cart.discount': Record<string, never>;
+  'Cart-empty': Record<string, never>;
+  'Cart.empty': Record<string, never>;
+  'Cart-emptySubtitle': Record<string, never>;
+  'Cart.emptySubtitle': Record<string, never>;
+  'Cart-itemsCount': { 'count': string | number | Date };
+  'Cart.itemsCount': { 'count': string | number | Date };
+  'Cart-loading': Record<string, never>;
+  'Cart.loading': Record<string, never>;
+  'Cart-open': Record<string, never>;
+  'Cart.open': Record<string, never>;
+  'Cart-proceedToCheckout': Record<string, never>;
+  'Cart.proceedToCheckout': Record<string, never>;
+  'Cart-remove': Record<string, never>;
+  'Cart.remove': Record<string, never>;
+  'Cart-shipping': Record<string, never>;
+  'Cart.shipping': Record<string, never>;
+  'Cart-subtotal': Record<string, never>;
+  'Cart.subtotal': Record<string, never>;
+  'Cart-title': Record<string, never>;
+  'Cart.title': Record<string, never>;
+  'Cart-total': Record<string, never>;
+  'Cart.total': Record<string, never>;
+  'Cart-unitPrice': Record<string, never>;
+  'Cart.unitPrice': Record<string, never>;
+  'Catalog-allCategories': Record<string, never>;
+  'Catalog.allCategories': Record<string, never>;
+  'Catalog-bundleBadge': Record<string, never>;
+  'Catalog.bundleBadge': Record<string, never>;
+  'Catalog-empty': Record<string, never>;
+  'Catalog.empty': Record<string, never>;
+  'Catalog-fromPrice': Record<string, never>;
+  'Catalog.fromPrice': Record<string, never>;
+  'Catalog-inStock': Record<string, never>;
+  'Catalog.inStock': Record<string, never>;
+  'Catalog-outOfStock': Record<string, never>;
+  'Catalog.outOfStock': Record<string, never>;
+  'Catalog-resetFilters': Record<string, never>;
+  'Catalog.resetFilters': Record<string, never>;
+  'Catalog-saleBadge': Record<string, never>;
+  'Catalog.saleBadge': Record<string, never>;
+  'Catalog-searchPlaceholder': Record<string, never>;
+  'Catalog.searchPlaceholder': Record<string, never>;
+  'Catalog-sortBy': Record<string, never>;
+  'Catalog.sortBy': Record<string, never>;
+  'Catalog-sortCreated': Record<string, never>;
+  'Catalog.sortCreated': Record<string, never>;
+  'Catalog-sortNewest': Record<string, never>;
+  'Catalog.sortNewest': Record<string, never>;
+  'Catalog-sortOldest': Record<string, never>;
+  'Catalog.sortOldest': Record<string, never>;
+  'Catalog-subtitle': Record<string, never>;
+  'Catalog.subtitle': Record<string, never>;
+  'Catalog-title': Record<string, never>;
+  'Catalog.title': Record<string, never>;
+  'Catalog-viewAll': Record<string, never>;
+  'Catalog.viewAll': Record<string, never>;
+  'Checkout-address': Record<string, never>;
+  'Checkout.address': Record<string, never>;
+  'Checkout-backToCatalog': Record<string, never>;
+  'Checkout.backToCatalog': Record<string, never>;
+  'Checkout-backToHome': Record<string, never>;
+  'Checkout.backToHome': Record<string, never>;
+  'Checkout-city': Record<string, never>;
+  'Checkout.city': Record<string, never>;
+  'Checkout-contactSection': Record<string, never>;
+  'Checkout.contactSection': Record<string, never>;
+  'Checkout-country': Record<string, never>;
+  'Checkout.country': Record<string, never>;
+  'Checkout-discount': Record<string, never>;
+  'Checkout.discount': Record<string, never>;
+  'Checkout-email': Record<string, never>;
+  'Checkout.email': Record<string, never>;
+  'Checkout-emptyCart': Record<string, never>;
+  'Checkout.emptyCart': Record<string, never>;
+  'Checkout-emptyCartSubtitle': Record<string, never>;
+  'Checkout.emptyCartSubtitle': Record<string, never>;
+  'Checkout-free': Record<string, never>;
+  'Checkout.free': Record<string, never>;
+  'Checkout-fullName': Record<string, never>;
+  'Checkout.fullName': Record<string, never>;
+  'Checkout-notes': Record<string, never>;
+  'Checkout.notes': Record<string, never>;
+  'Checkout-orderCustomer': Record<string, never>;
+  'Checkout.orderCustomer': Record<string, never>;
+  'Checkout-orderDestination': Record<string, never>;
+  'Checkout.orderDestination': Record<string, never>;
+  'Checkout-orderDetails': Record<string, never>;
+  'Checkout.orderDetails': Record<string, never>;
+  'Checkout-orderId': Record<string, never>;
+  'Checkout.orderId': Record<string, never>;
+  'Checkout-orderStatus': Record<string, never>;
+  'Checkout.orderStatus': Record<string, never>;
+  'Checkout-orderSummary': Record<string, never>;
+  'Checkout.orderSummary': Record<string, never>;
+  'Checkout-orderTotal': Record<string, never>;
+  'Checkout.orderTotal': Record<string, never>;
+  'Checkout-paymentCard': Record<string, never>;
+  'Checkout.paymentCard': Record<string, never>;
+  'Checkout-paymentCardDesc': Record<string, never>;
+  'Checkout.paymentCardDesc': Record<string, never>;
+  'Checkout-paymentCod': Record<string, never>;
+  'Checkout.paymentCod': Record<string, never>;
+  'Checkout-paymentCodDesc': Record<string, never>;
+  'Checkout.paymentCodDesc': Record<string, never>;
+  'Checkout-paymentSection': Record<string, never>;
+  'Checkout.paymentSection': Record<string, never>;
+  'Checkout-paymentTransfer': Record<string, never>;
+  'Checkout.paymentTransfer': Record<string, never>;
+  'Checkout-paymentTransferDesc': Record<string, never>;
+  'Checkout.paymentTransferDesc': Record<string, never>;
+  'Checkout-phone': Record<string, never>;
+  'Checkout.phone': Record<string, never>;
+  'Checkout-placeOrder': Record<string, never>;
+  'Checkout.placeOrder': Record<string, never>;
+  'Checkout-postalCode': Record<string, never>;
+  'Checkout.postalCode': Record<string, never>;
+  'Checkout-processing': Record<string, never>;
+  'Checkout.processing': Record<string, never>;
+  'Checkout-secure': Record<string, never>;
+  'Checkout.secure': Record<string, never>;
+  'Checkout-shipping': Record<string, never>;
+  'Checkout.shipping': Record<string, never>;
+  'Checkout-shippingMethod': Record<string, never>;
+  'Checkout.shippingMethod': Record<string, never>;
+  'Checkout-shippingSection': Record<string, never>;
+  'Checkout.shippingSection': Record<string, never>;
+  'Checkout-subtitle': Record<string, never>;
+  'Checkout.subtitle': Record<string, never>;
+  'Checkout-subtotal': Record<string, never>;
+  'Checkout.subtotal': Record<string, never>;
+  'Checkout-successBadge': Record<string, never>;
+  'Checkout.successBadge': Record<string, never>;
+  'Checkout-successTitle': Record<string, never>;
+  'Checkout.successTitle': Record<string, never>;
+  'Checkout-title': Record<string, never>;
+  'Checkout.title': Record<string, never>;
+  'Checkout-total': Record<string, never>;
+  'Checkout.total': Record<string, never>;
+  'Comments-composer-editorLabel': Record<string, never>;
+  'Comments.composer.editorLabel': Record<string, never>;
+  'Comments-composer-emptyError': Record<string, never>;
+  'Comments.composer.emptyError': Record<string, never>;
+  'Comments-composer-hint': Record<string, never>;
+  'Comments.composer.hint': Record<string, never>;
+  'Comments-composer-signInRequired': Record<string, never>;
+  'Comments.composer.signInRequired': Record<string, never>;
+  'Comments-composer-submit': Record<string, never>;
+  'Comments.composer.submit': Record<string, never>;
+  'Comments-composer-submitError': Record<string, never>;
+  'Comments.composer.submitError': Record<string, never>;
+  'Comments-composer-submitting': Record<string, never>;
+  'Comments.composer.submitting': Record<string, never>;
+  'Comments-composer-success': Record<string, never>;
+  'Comments.composer.success': Record<string, never>;
+  'Comments-composer-title': Record<string, never>;
+  'Comments.composer.title': Record<string, never>;
+  'Forum-allTopics': Record<string, never>;
+  'Forum.allTopics': Record<string, never>;
+  'Forum-allTopicsHint': Record<string, never>;
+  'Forum.allTopicsHint': Record<string, never>;
+  'Forum-backToDiscussions': Record<string, never>;
+  'Forum.backToDiscussions': Record<string, never>;
+  'Forum-browse': Record<string, never>;
+  'Forum.browse': Record<string, never>;
+  'Forum-cancel': Record<string, never>;
+  'Forum.cancel': Record<string, never>;
+  'Forum-categories': Record<string, never>;
+  'Forum.categories': Record<string, never>;
+  'Forum-clear': Record<string, never>;
+  'Forum.clear': Record<string, never>;
+  'Forum-clearFilters': Record<string, never>;
+  'Forum.clearFilters': Record<string, never>;
+  'Forum-close': Record<string, never>;
+  'Forum.close': Record<string, never>;
+  'Forum-communityMap': Record<string, never>;
+  'Forum.communityMap': Record<string, never>;
+  'Forum-createTopic': Record<string, never>;
+  'Forum.createTopic': Record<string, never>;
+  'Forum-discussions': Record<string, never>;
+  'Forum.discussions': Record<string, never>;
+  'Forum-draftSavedLocally': Record<string, never>;
+  'Forum.draftSavedLocally': Record<string, never>;
+  'Forum-draftTitle': { 'title': string | number | Date };
+  'Forum.draftTitle': { 'title': string | number | Date };
+  'Forum-errorEmptyMessage': Record<string, never>;
+  'Forum.errorEmptyMessage': Record<string, never>;
+  'Forum-errorGeneric': Record<string, never>;
+  'Forum.errorGeneric': Record<string, never>;
+  'Forum-errorLoad': Record<string, never>;
+  'Forum.errorLoad': Record<string, never>;
+  'Forum-errorMarkRead': Record<string, never>;
+  'Forum.errorMarkRead': Record<string, never>;
+  'Forum-errorMissingCategory': Record<string, never>;
+  'Forum.errorMissingCategory': Record<string, never>;
+  'Forum-errorMissingTitle': Record<string, never>;
+  'Forum.errorMissingTitle': Record<string, never>;
+  'Forum-errorReplyFailed': Record<string, never>;
+  'Forum.errorReplyFailed': Record<string, never>;
+  'Forum-errorTopicFailed': Record<string, never>;
+  'Forum.errorTopicFailed': Record<string, never>;
+  'Forum-expand': Record<string, never>;
+  'Forum.expand': Record<string, never>;
+  'Forum-filterPlaceholder': Record<string, never>;
+  'Forum.filterPlaceholder': Record<string, never>;
+  'Forum-forumIndex': Record<string, never>;
+  'Forum.forumIndex': Record<string, never>;
+  'Forum-fresh': Record<string, never>;
+  'Forum.fresh': Record<string, never>;
+  'Forum-grid': Record<string, never>;
+  'Forum.grid': Record<string, never>;
+  'Forum-joinTheConversation': Record<string, never>;
+  'Forum.joinTheConversation': Record<string, never>;
+  'Forum-joinTheConversationHint': Record<string, never>;
+  'Forum.joinTheConversationHint': Record<string, never>;
+  'Forum-jumpToBeginning': Record<string, never>;
+  'Forum.jumpToBeginning': Record<string, never>;
+  'Forum-jumpToEnd': Record<string, never>;
+  'Forum.jumpToEnd': Record<string, never>;
+  'Forum-latest': Record<string, never>;
+  'Forum.latest': Record<string, never>;
+  'Forum-latestDiscussions': Record<string, never>;
+  'Forum.latestDiscussions': Record<string, never>;
+  'Forum-linkedPostUnavailable': Record<string, never>;
+  'Forum.linkedPostUnavailable': Record<string, never>;
+  'Forum-livePreview': Record<string, never>;
+  'Forum.livePreview': Record<string, never>;
+  'Forum-loading': Record<string, never>;
+  'Forum.loading': Record<string, never>;
+  'Forum-locked': Record<string, never>;
+  'Forum.locked': Record<string, never>;
+  'Forum-minimize': Record<string, never>;
+  'Forum.minimize': Record<string, never>;
+  'Forum-newReply': Record<string, never>;
+  'Forum.newReply': Record<string, never>;
+  'Forum-newTopic': Record<string, never>;
+  'Forum.newTopic': Record<string, never>;
+  'Forum-noMatchingCategories': Record<string, never>;
+  'Forum.noMatchingCategories': Record<string, never>;
+  'Forum-noMatchingCategoriesHint': Record<string, never>;
+  'Forum.noMatchingCategoriesHint': Record<string, never>;
+  'Forum-noMatchingDiscussions': Record<string, never>;
+  'Forum.noMatchingDiscussions': Record<string, never>;
+  'Forum-noMatchingDiscussionsHint': Record<string, never>;
+  'Forum.noMatchingDiscussionsHint': Record<string, never>;
+  'Forum-noRepliesYet': Record<string, never>;
+  'Forum.noRepliesYet': Record<string, never>;
+  'Forum-noSectionDescription': Record<string, never>;
+  'Forum.noSectionDescription': Record<string, never>;
+  'Forum-nothingToPreview': Record<string, never>;
+  'Forum.nothingToPreview': Record<string, never>;
+  'Forum-noTopicsYet': Record<string, never>;
+  'Forum.noTopicsYet': Record<string, never>;
+  'Forum-noTopicsYetHint': Record<string, never>;
+  'Forum.noTopicsYetHint': Record<string, never>;
+  'Forum-openAThread': Record<string, never>;
+  'Forum.openAThread': Record<string, never>;
+  'Forum-openAThreadHint': Record<string, never>;
+  'Forum.openAThreadHint': Record<string, never>;
+  'Forum-openCategoryMatrix': Record<string, never>;
+  'Forum.openCategoryMatrix': Record<string, never>;
+  'Forum-openTopicFullPage': Record<string, never>;
+  'Forum.openTopicFullPage': Record<string, never>;
+  'Forum-pinned': Record<string, never>;
+  'Forum.pinned': Record<string, never>;
+  'Forum-postedOn': { 'date': string | number | Date };
+  'Forum.postedOn': { 'date': string | number | Date };
+  'Forum-posting': Record<string, never>;
+  'Forum.posting': Record<string, never>;
+  'Forum-postReply': Record<string, never>;
+  'Forum.postReply': Record<string, never>;
+  'Forum-preview': Record<string, never>;
+  'Forum.preview': Record<string, never>;
+  'Forum-quote': Record<string, never>;
+  'Forum.quote': Record<string, never>;
+  'Forum-quotedFrom': { 'author': string | number | Date };
+  'Forum.quotedFrom': { 'author': string | number | Date };
+  'Forum-replies': Record<string, never>;
+  'Forum.replies': Record<string, never>;
+  'Forum-repliesCount': Record<string, never>;
+  'Forum.repliesCount': Record<string, never>;
+  'Forum-reply': Record<string, never>;
+  'Forum.reply': Record<string, never>;
+  'Forum-replyContent': Record<string, never>;
+  'Forum.replyContent': Record<string, never>;
+  'Forum-replyToMessage': Record<string, never>;
+  'Forum.replyToMessage': Record<string, never>;
+  'Forum-replyToTopic': Record<string, never>;
+  'Forum.replyToTopic': Record<string, never>;
+  'Forum-retry': Record<string, never>;
+  'Forum.retry': Record<string, never>;
+  'Forum-searchPlaceholder': Record<string, never>;
+  'Forum.searchPlaceholder': Record<string, never>;
+  'Forum-sectionDescription': Record<string, never>;
+  'Forum.sectionDescription': Record<string, never>;
+  'Forum-sectionsPublished': Record<string, never>;
+  'Forum.sectionsPublished': Record<string, never>;
+  'Forum-sectionSubtitle': Record<string, never>;
+  'Forum.sectionSubtitle': Record<string, never>;
+  'Forum-solved': Record<string, never>;
+  'Forum.solved': Record<string, never>;
+  'Forum-startDiscussion': Record<string, never>;
+  'Forum.startDiscussion': Record<string, never>;
+  'Forum-statusArchived': Record<string, never>;
+  'Forum.statusArchived': Record<string, never>;
+  'Forum-statusClosed': Record<string, never>;
+  'Forum.statusClosed': Record<string, never>;
+  'Forum-statusOpen': Record<string, never>;
+  'Forum.statusOpen': Record<string, never>;
+  'Forum-statusPending': Record<string, never>;
+  'Forum.statusPending': Record<string, never>;
+  'Forum-subcategories': Record<string, never>;
+  'Forum.subcategories': Record<string, never>;
+  'Forum-threads': Record<string, never>;
+  'Forum.threads': Record<string, never>;
+  'Forum-top': Record<string, never>;
+  'Forum.top': Record<string, never>;
+  'Forum-topicContent': Record<string, never>;
+  'Forum.topicContent': Record<string, never>;
+  'Forum-topicFeed': Record<string, never>;
+  'Forum.topicFeed': Record<string, never>;
+  'Forum-topicNotFound': Record<string, never>;
+  'Forum.topicNotFound': Record<string, never>;
+  'Forum-topicNotFoundHint': Record<string, never>;
+  'Forum.topicNotFoundHint': Record<string, never>;
+  'Forum-topicTitlePlaceholder': Record<string, never>;
+  'Forum.topicTitlePlaceholder': Record<string, never>;
+  'Forum-total': Record<string, never>;
+  'Forum.total': Record<string, never>;
+  'Forum-totalTopics': Record<string, never>;
+  'Forum.totalTopics': Record<string, never>;
+  'Forum-unknownAuthor': Record<string, never>;
+  'Forum.unknownAuthor': Record<string, never>;
+  'Forum-unread': Record<string, never>;
+  'Forum.unread': Record<string, never>;
+  'Forum-write': Record<string, never>;
+  'Forum.write': Record<string, never>;
+  'Order-backToCatalog': Record<string, never>;
+  'Order.backToCatalog': Record<string, never>;
+  'Order-browseCatalog': Record<string, never>;
+  'Order.browseCatalog': Record<string, never>;
+  'Order-carrier': Record<string, never>;
+  'Order.carrier': Record<string, never>;
+  'Order-copied': Record<string, never>;
+  'Order.copied': Record<string, never>;
+  'Order-copy': Record<string, never>;
+  'Order.copy': Record<string, never>;
+  'Order-deliveryAddress': Record<string, never>;
+  'Order.deliveryAddress': Record<string, never>;
+  'Order-discount': Record<string, never>;
+  'Order.discount': Record<string, never>;
+  'Order-estimatedArrival': Record<string, never>;
+  'Order.estimatedArrival': Record<string, never>;
+  'Order-estimatedDays': Record<string, never>;
+  'Order.estimatedDays': Record<string, never>;
+  'Order-financialSummary': Record<string, never>;
+  'Order.financialSummary': Record<string, never>;
+  'Order-free': Record<string, never>;
+  'Order.free': Record<string, never>;
+  'Order-fulfillment': Record<string, never>;
+  'Order.fulfillment': Record<string, never>;
+  'Order-guaranteeQuality': Record<string, never>;
+  'Order.guaranteeQuality': Record<string, never>;
+  'Order-guaranteeReturn': Record<string, never>;
+  'Order.guaranteeReturn': Record<string, never>;
+  'Order-itemsCount': { 'count': string | number | Date };
+  'Order.itemsCount': { 'count': string | number | Date };
+  'Order-itemsTitle': Record<string, never>;
+  'Order.itemsTitle': Record<string, never>;
+  'Order-notFoundSubtitle': { 'id': string | number | Date };
+  'Order.notFoundSubtitle': { 'id': string | number | Date };
+  'Order-notFoundTitle': Record<string, never>;
+  'Order.notFoundTitle': Record<string, never>;
+  'Order-paid': Record<string, never>;
+  'Order.paid': Record<string, never>;
+  'Order-paymentMethod': Record<string, never>;
+  'Order.paymentMethod': Record<string, never>;
+  'Order-paymentStatus': Record<string, never>;
+  'Order.paymentStatus': Record<string, never>;
+  'Order-pending': Record<string, never>;
+  'Order.pending': Record<string, never>;
+  'Order-printReceipt': Record<string, never>;
+  'Order.printReceipt': Record<string, never>;
+  'Order-progressTitle': Record<string, never>;
+  'Order.progressTitle': Record<string, never>;
+  'Order-shipping': Record<string, never>;
+  'Order.shipping': Record<string, never>;
+  'Order-sku': Record<string, never>;
+  'Order.sku': Record<string, never>;
+  'Order-statusCancelled': Record<string, never>;
+  'Order.statusCancelled': Record<string, never>;
+  'Order-statusDelivered': Record<string, never>;
+  'Order.statusDelivered': Record<string, never>;
+  'Order-statusDeliveredDesc': Record<string, never>;
+  'Order.statusDeliveredDesc': Record<string, never>;
+  'Order-statusPaid': Record<string, never>;
+  'Order.statusPaid': Record<string, never>;
+  'Order-statusPaidDesc': Record<string, never>;
+  'Order.statusPaidDesc': Record<string, never>;
+  'Order-statusPlaced': Record<string, never>;
+  'Order.statusPlaced': Record<string, never>;
+  'Order-statusPlacedDesc': Record<string, never>;
+  'Order.statusPlacedDesc': Record<string, never>;
+  'Order-statusProcessing': Record<string, never>;
+  'Order.statusProcessing': Record<string, never>;
+  'Order-statusProcessingDesc': Record<string, never>;
+  'Order.statusProcessingDesc': Record<string, never>;
+  'Order-statusShipped': Record<string, never>;
+  'Order.statusShipped': Record<string, never>;
+  'Order-statusShippedDesc': Record<string, never>;
+  'Order.statusShippedDesc': Record<string, never>;
+  'Order-subtotal': Record<string, never>;
+  'Order.subtotal': Record<string, never>;
+  'Order-supportHint': Record<string, never>;
+  'Order.supportHint': Record<string, never>;
+  'Order-tax': Record<string, never>;
+  'Order.tax': Record<string, never>;
+  'Order-title': { 'id': string | number | Date };
+  'Order.title': { 'id': string | number | Date };
+  'Order-total': Record<string, never>;
+  'Order.total': Record<string, never>;
+  'Order-tracking': Record<string, never>;
+  'Order.tracking': Record<string, never>;
+  'Product-addedToCart': Record<string, never>;
+  'Product.addedToCart': Record<string, never>;
+  'Product-addToCart': Record<string, never>;
+  'Product.addToCart': Record<string, never>;
+  'Product-backToCatalog': Record<string, never>;
+  'Product.backToCatalog': Record<string, never>;
+  'Product-bundleIncludes': Record<string, never>;
+  'Product.bundleIncludes': Record<string, never>;
+  'Product-description': Record<string, never>;
+  'Product.description': Record<string, never>;
+  'Product-details': Record<string, never>;
+  'Product.details': Record<string, never>;
+  'Product-quantity': Record<string, never>;
+  'Product.quantity': Record<string, never>;
+  'Product-selectVariant': Record<string, never>;
+  'Product.selectVariant': Record<string, never>;
+  'Product-shipping': Record<string, never>;
+  'Product.shipping': Record<string, never>;
+  'Product-sku': Record<string, never>;
+  'Product.sku': Record<string, never>;
+  'Product-vendor': Record<string, never>;
+  'Product.vendor': Record<string, never>;
+  'richText-apply_link': Record<string, never>;
+  'richText.apply_link': Record<string, never>;
+  'richText-blockquote': Record<string, never>;
+  'richText.blockquote': Record<string, never>;
+  'richText-bold': Record<string, never>;
+  'richText.bold': Record<string, never>;
+  'richText-bullet_list': Record<string, never>;
+  'richText.bullet_list': Record<string, never>;
+  'richText-clear_formatting': Record<string, never>;
+  'richText.clear_formatting': Record<string, never>;
+  'richText-code': Record<string, never>;
+  'richText.code': Record<string, never>;
+  'richText-code_block': Record<string, never>;
+  'richText.code_block': Record<string, never>;
+  'richText-editor': Record<string, never>;
+  'richText.editor': Record<string, never>;
+  'richText-heading': Record<string, never>;
+  'richText.heading': Record<string, never>;
+  'richText-horizontal_rule': Record<string, never>;
+  'richText.horizontal_rule': Record<string, never>;
+  'richText-italic': Record<string, never>;
+  'richText.italic': Record<string, never>;
+  'richText-link': Record<string, never>;
+  'richText.link': Record<string, never>;
+  'richText-link_url': Record<string, never>;
+  'richText.link_url': Record<string, never>;
+  'richText-ordered_list': Record<string, never>;
+  'richText.ordered_list': Record<string, never>;
+  'richText-redo': Record<string, never>;
+  'richText.redo': Record<string, never>;
+  'richText-remove_link': Record<string, never>;
+  'richText.remove_link': Record<string, never>;
+  'richText-strike': Record<string, never>;
+  'richText.strike': Record<string, never>;
+  'richText-undo': Record<string, never>;
+  'richText.undo': Record<string, never>;
+  'Storefront-alertDescription': Record<string, never>;
+  'Storefront.alertDescription': Record<string, never>;
+  'Storefront-alertTitle': Record<string, never>;
+  'Storefront.alertTitle': Record<string, never>;
+  'Storefront-cards-flexDescription': Record<string, never>;
+  'Storefront.cards.flexDescription': Record<string, never>;
+  'Storefront-cards-flexTitle': Record<string, never>;
+  'Storefront.cards.flexTitle': Record<string, never>;
+  'Storefront-cards-launchDescription': Record<string, never>;
+  'Storefront.cards.launchDescription': Record<string, never>;
+  'Storefront-cards-launchTitle': Record<string, never>;
+  'Storefront.cards.launchTitle': Record<string, never>;
+  'Storefront-cards-stackTitle': Record<string, never>;
+  'Storefront.cards.stackTitle': Record<string, never>;
+  'Storefront-chips.item0': Record<string, never>;
+  'Storefront.chips.item0': Record<string, never>;
+  'Storefront-chips.item1': Record<string, never>;
+  'Storefront.chips.item1': Record<string, never>;
+  'Storefront-chips.item2': Record<string, never>;
+  'Storefront.chips.item2': Record<string, never>;
+  'Storefront-chips.item3': Record<string, never>;
+  'Storefront.chips.item3': Record<string, never>;
+  'Storefront-chips.item4': Record<string, never>;
+  'Storefront.chips.item4': Record<string, never>;
+  'Storefront-eyebrow': Record<string, never>;
+  'Storefront.eyebrow': Record<string, never>;
+  'Storefront-features.item0': Record<string, never>;
+  'Storefront.features.item0': Record<string, never>;
+  'Storefront-features.item1': Record<string, never>;
+  'Storefront.features.item1': Record<string, never>;
+  'Storefront-features.item2': Record<string, never>;
+  'Storefront.features.item2': Record<string, never>;
+  'Storefront-primaryCta': Record<string, never>;
+  'Storefront.primaryCta': Record<string, never>;
+  'Storefront-secondaryCta': Record<string, never>;
+  'Storefront.secondaryCta': Record<string, never>;
+  'Storefront-subtitle': Record<string, never>;
+  'Storefront.subtitle': Record<string, never>;
+  'Storefront-title': Record<string, never>;
+  'Storefront.title': Record<string, never>;
+}
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  interface FluentMessages extends AppMessages {}
 }

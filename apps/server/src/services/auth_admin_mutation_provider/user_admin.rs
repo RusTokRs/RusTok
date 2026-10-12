@@ -478,8 +478,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             active.status = Set(status.clone());
         }
         if let Some(password) = command.password {
-            active.password_hash =
-                Set(hash_password_async(password).await.map_err(super::internal_admin_error)?);
+            active.password_hash = Set(hash_password_async(password)
+                .await
+                .map_err(super::internal_admin_error)?);
         }
         if let Some(metadata) = prepared.metadata {
             active.metadata = Set(metadata);

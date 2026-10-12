@@ -47,8 +47,6 @@ export class ColumnWidthsStore {
   }
 }
 
-export { ColumnWidthsStore as ColumnWidths };
-
 /** Stored override, if the user ever resized this column. */
 export function getStoredColumnWidth(widths: ColumnWidths, columnId: string): number | undefined {
   if (!Object.prototype.hasOwnProperty.call(widths, columnId)) return undefined;

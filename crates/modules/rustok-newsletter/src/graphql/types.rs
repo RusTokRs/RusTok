@@ -1,5 +1,4 @@
 use async_graphql::*;
-use chrono::{DateTime, Utc};
 use rustok_newsletter_api::{
     CampaignStatus as ApiCampaignStatus, SubscriberStatus as ApiSubscriberStatus,
 };

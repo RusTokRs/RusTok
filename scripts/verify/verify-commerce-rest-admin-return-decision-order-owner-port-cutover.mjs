@@ -43,8 +43,8 @@ const between = (content, start, end, label) => {
 
 const decisionRoute = between(
   returns,
-  'pub async fn create_order_return_decision(',
-  '#[utoipa::path(\n    get,\n    path = "/admin/returns"',
+  'fn require_idempotency_key(',
+  'pub async fn complete_order_return(',
   'mounted REST return-decision route',
 );
 const orderPortMapper = between(

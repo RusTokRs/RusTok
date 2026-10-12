@@ -221,7 +221,7 @@ export {
 } from './panel';
 
 export {
-  ColumnWidths,
+  type ColumnWidths,
   KEYBOARD_RESIZE_STEP,
   calculateResizedWidth,
   clampColumnWidths,

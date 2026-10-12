@@ -282,9 +282,8 @@ impl MigrationTrait for Migration {
     }
 }
 
-#[derive(Iden)]
+#[derive(DeriveIden)]
 enum NewsletterSubscribers {
-    #[iden = "newsletter_subscribers"]
     Table,
     Id,
     TenantId,
@@ -300,9 +299,8 @@ enum NewsletterSubscribers {
     UpdatedAt,
 }
 
-#[derive(Iden)]
+#[derive(DeriveIden)]
 enum NewsletterCampaigns {
-    #[iden = "newsletter_campaigns"]
     Table,
     Id,
     TenantId,
@@ -319,9 +317,8 @@ enum NewsletterCampaigns {
     UpdatedAt,
 }
 
-#[derive(Iden)]
+#[derive(DeriveIden)]
 enum NewsletterSubscriptions {
-    #[iden = "newsletter_subscriptions"]
     Table,
     Id,
     TenantId,

@@ -491,6 +491,8 @@ fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
         .shared_map::<crate::services::app_lifecycle::SeoBulkWorkerHandle, _>(
             crate::services::app_lifecycle::SeoBulkWorkerHandle::is_finished,
         );
+    #[cfg(not(feature = "mod-seo"))]
+    let seo_worker_finished: Option<bool> = None;
     payload.push_str(&format_runtime_worker_state(
         "seo_bulk",
         settings.runtime.background_workers.seo_bulk_enabled,

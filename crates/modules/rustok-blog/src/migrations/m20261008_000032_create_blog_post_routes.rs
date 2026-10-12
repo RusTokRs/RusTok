@@ -78,10 +78,16 @@ impl MigrationTrait for Migration {
 enum BlogPostRoutes {
     #[iden = "blog_post_routes"]
     Table,
+    #[iden = "tenant_id"]
     TenantId,
+    #[iden = "source_route"]
     SourceRoute,
+    #[iden = "target_kind"]
     TargetKind,
+    #[iden = "target_id"]
     TargetId,
+    #[iden = "created_at"]
     CreatedAt,
+    #[iden = "updated_at"]
     UpdatedAt,
 }

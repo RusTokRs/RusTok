@@ -68,9 +68,7 @@ impl IntoResponse for Error {
             Self::Validation(message) => {
                 error_response(StatusCode::BAD_REQUEST, "validation_error", message)
             }
-            Self::Conflict(message) => {
-                error_response(StatusCode::CONFLICT, "conflict", message)
-            }
+            Self::Conflict(message) => error_response(StatusCode::CONFLICT, "conflict", message),
             Self::InvalidHeaderValue(error) => {
                 error_response(StatusCode::BAD_REQUEST, "invalid_header", error.to_string())
             }
@@ -210,7 +208,9 @@ mod tests {
 
     #[tokio::test]
     async fn error_into_response_sanitizes_internal_errors_without_leakage() {
-        let err = Error::Message("sensitive secret connection string postgres://admin:pass@host/db".into());
+        let err = Error::Message(
+            "sensitive secret connection string postgres://admin:pass@host/db".into(),
+        );
         let (status, body) = parse_error_response(err.into_response()).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body.code, "internal_error");
@@ -221,7 +221,10 @@ mod tests {
 
     #[tokio::test]
     async fn error_into_response_sanitizes_io_errors_without_path_leakage() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "/etc/secret/token.key not found");
+        let io_err = std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "/etc/secret/token.key not found",
+        );
         let err = Error::Io(io_err);
         let (status, body) = parse_error_response(err.into_response()).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);

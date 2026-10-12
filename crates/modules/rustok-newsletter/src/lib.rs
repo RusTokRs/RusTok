@@ -18,5 +18,7 @@ pub mod graphql;
 
 // Deliberate public re-exports for crate consumers.
 pub use error::{NewsletterError, NewsletterResult};
+#[cfg(feature = "server")]
+pub use graphql::NewsletterGraphqlRuntimeData;
 pub use module::NewsletterModule;
 pub use services::{CampaignService, SubscriberService};

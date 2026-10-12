@@ -552,13 +552,34 @@ mod tests {
             "/sensitive",
             get(|request: Request<Body>| async move {
                 let headers = request.headers();
-                let runner = headers.get("x-rustok-runner-token").map(|v| v.is_sensitive()).unwrap_or(false);
-                let host = headers.get("x-rustok-host-token").map(|v| v.is_sensitive()).unwrap_or(false);
-                let setup = headers.get("x-rustok-setup-token").map(|v| v.is_sensitive()).unwrap_or(false);
-                let auth = headers.get("authorization").map(|v| v.is_sensitive()).unwrap_or(false);
-                let obs = headers.get("x-rustok-observability-token").map(|v| v.is_sensitive()).unwrap_or(false);
-                let api_key = headers.get("x-api-key").map(|v| v.is_sensitive()).unwrap_or(false);
-                let proxy_auth = headers.get("proxy-authorization").map(|v| v.is_sensitive()).unwrap_or(false);
+                let runner = headers
+                    .get("x-rustok-runner-token")
+                    .map(|v| v.is_sensitive())
+                    .unwrap_or(false);
+                let host = headers
+                    .get("x-rustok-host-token")
+                    .map(|v| v.is_sensitive())
+                    .unwrap_or(false);
+                let setup = headers
+                    .get("x-rustok-setup-token")
+                    .map(|v| v.is_sensitive())
+                    .unwrap_or(false);
+                let auth = headers
+                    .get("authorization")
+                    .map(|v| v.is_sensitive())
+                    .unwrap_or(false);
+                let obs = headers
+                    .get("x-rustok-observability-token")
+                    .map(|v| v.is_sensitive())
+                    .unwrap_or(false);
+                let api_key = headers
+                    .get("x-api-key")
+                    .map(|v| v.is_sensitive())
+                    .unwrap_or(false);
+                let proxy_auth = headers
+                    .get("proxy-authorization")
+                    .map(|v| v.is_sensitive())
+                    .unwrap_or(false);
                 if runner && host && setup && auth && obs && api_key && proxy_auth {
                     StatusCode::OK
                 } else {

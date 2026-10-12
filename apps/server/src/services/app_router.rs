@@ -54,7 +54,9 @@ struct AdminAssets;
 #[cfg(feature = "embed-admin")]
 pub fn build_admin_router() -> AxumRouter {
     AxumRouter::new().fallback(move |request: axum::extract::Request| async move {
-        if request.method() != axum::http::Method::GET && request.method() != axum::http::Method::HEAD {
+        if request.method() != axum::http::Method::GET
+            && request.method() != axum::http::Method::HEAD
+        {
             return (
                 axum::http::StatusCode::METHOD_NOT_ALLOWED,
                 [(ALLOW, "GET, HEAD")],
@@ -139,7 +141,8 @@ fn admin_asset_response(
 
         if let Some(inm) = if_none_match {
             let matches = inm.split(',').map(str::trim).any(|candidate| {
-                candidate == "*" || candidate.strip_prefix("W/").unwrap_or(candidate) == etag.as_str()
+                candidate == "*"
+                    || candidate.strip_prefix("W/").unwrap_or(candidate) == etag.as_str()
             });
             if matches {
                 let mut response = axum::http::StatusCode::NOT_MODIFIED.into_response();
@@ -760,9 +763,11 @@ mod tests {
             .route("/", get(|| async { "storefront-root" }))
             .route(
                 "/{locale}",
-                get(|axum::extract::Path(loc): axum::extract::Path<String>| async move {
-                    format!("storefront-{loc}")
-                }),
+                get(
+                    |axum::extract::Path(loc): axum::extract::Path<String>| async move {
+                        format!("storefront-{loc}")
+                    },
+                ),
             );
 
         let app = mount_application_shell(
