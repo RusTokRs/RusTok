@@ -265,6 +265,11 @@ graph LR
 3. **Flex Metadata Form Integration:**
    Standard high-frequency screens are hand-tuned native Flutter widgets. Custom business attributes (e.g. industry-specific contract clauses or vehicle license numbers) render via `FlexDynamicFormWidget`, reading field metadata from `crates/modules/flex`.
 
+4. **Collaborative Documents & Live ERP Blocks ([`rustok-docs`](./workplace-collaboration-superapp-plan.md)):**
+   - **Live Business Embedding:** Commercial entities (Product, Party, Deal, Invoice) implement the `EntityCardResolverPort` adapter, providing live pills, summary cards, and interactive widgets inside collaborative documents.
+   - **Reverse Backlinks Panel:** Any CRM Deal, Counterparty card, or Invoice view queries `docs_entity_links` to render an accordion of "Attached Documentation, Technical Specs & Acts" without manual document copying.
+   - **RBAC Redaction Boundary:** Financial figures and sensitive contract terms are strictly filtered through canonical `SecurityContext`; unauthorized readers in shared team workspaces view graceful masked placeholders.
+
 ---
 
 ## 8. Pragmatic Implementation Roadmap: Vertical Slices

@@ -6,7 +6,7 @@
 
 ## Responsibilities
 
-- Implement the `rustok_content::ContentOrchestrationBridge` contract for blog/forum conversion flows.
+- Implement the `rustok_content::ContentOrchestrationBridge` contract for blog/forum conversion flows and `rustok-docs` collaborative document orchestration (`promote_topic_to_doc`, `publish_doc_to_blog`, `transclude_wiki_to_doc`).
 - Keep cross-module data movement, taxonomy mapping, and canonical URL hand-off
   outside `apps/server`.
 - Reject Blog-to-Forum or Forum-to-Blog conversion when comments/replies are

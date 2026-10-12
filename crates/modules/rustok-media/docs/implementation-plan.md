@@ -110,6 +110,7 @@ The database remains the index; consumers never derive or list these keys.
 4. **Implemented — restart-safe reconciliation.**
 5. **Implemented — metadata/write extraction control-plane conformance; rerun evidence after lifecycle/receipt changes.**
 6. **Source-complete — public image capability and remote descriptor control plane.** Media owns descriptor selection and HTTP byte delivery; embedded and loopback gRPC providers expose the same `MediaPublicImageAsset`; Profiles consumes the owner result without constructing URLs. Compiled/runtime Local/S3, HTTP cache/conditional GET, deployment ingress, degradation, and production remote-provider evidence remain pending.
+7. **Planned — Collaborative document reference retainment (`DocsMediaReferencePolicy`).** Support `rustok-docs` block-tree embeds via `MediaAssetWritePort::retain_asset_reference` and `release_asset_reference` so media assets embedded in active document blocks are retention-safe against automated orphan-cleanup jobs; provide signed streaming delivery capability for private workspace documents, alongside blurhash and responsive rendition exposure on `MediaAssetSummary`.
 
 ## Verification
 

@@ -1363,6 +1363,24 @@ command.
 Forum reads, notifications, search, SEO and deep links must call the same
 visibility policy. Do not place ACL policy in arbitrary JSON.
 
+## `FORUM-35` — Collaborative Documents Integration & Universal Entity Reference
+
+**Status:** `planned`  
+**Priority:** P1  
+**Dependencies:** `rustok-docs`, `rustok-content-orchestration`, `rustok-api`
+
+### Scope
+
+1. **EntityCardResolverPort Adapter:** Expose typed resolution of `EntityRef` (`urn:rustok:<tenant>:forum:topic:<id>`) across the 4 projection views:
+   - Inline Pill (`@Topic: <title>` with status badge and reply count);
+   - Compact Preview Card (Author, excerpt, category, tags, activity metrics);
+   - Interactive Live Widget (Embedded discussion thread preview with in-place reply composer and reaction buttons);
+   - Database Rollup (Computed columns for view count, reply count, solved status).
+2. **Reverse Backlinks Panel:** Expose a read-only accordion on the Topic Detail view querying `docs_entity_links` to display: *"Referenced in X Documentation Pages"*.
+3. **Cross-Domain Content Promotion:** Provide handler integration with `rustok-content-orchestration` for `promote_topic_to_doc`: promoting selected RFC / brainstorm threads directly into structured specifications in `rustok-docs`.
+4. **RBAC & Audience Alignment:** Topic resolution enforces `ForumAclPolicy` and tenant isolation; unauthorized viewers in shared documents receive a masked placeholder.
+
 ## Verification checklist
 
 - [x] Contract tests cover the current public use-cases.
+- [ ] FORUM-35: EntityCardResolverPort unit tests and reverse backlink read-path tests.

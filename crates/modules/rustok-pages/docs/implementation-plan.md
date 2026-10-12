@@ -464,6 +464,15 @@ bash scripts/build/build-pages-inline-edit-deployment.sh
 Execution evidence remains pending.
 
 
+## Collaborative Documents Integration (`rustok-docs`)
+
+1. **EntityCardResolverPort Adapter:** Resolve `EntityRef` (`urn:rustok:<tenant>:pages:page:<id>`) into typed projection views:
+   - Inline Pill (`@Page: <title>` with slug badge);
+   - Compact Bookmark Card (Title, slug, locale availability, published status, SEO description);
+   - Interactive Transcluded Widget (Live read-only or synchronized transcluded section inside `rustok-docs` workspaces).
+2. **Reverse Backlinks Panel:** Expose a read-only panel on Page metadata views querying `docs_entity_links` to track documentation and workspaces referencing the CMS/wiki page.
+3. **Cross-Domain Content Synchronization:** Provide `transclude_wiki_to_doc` support via `rustok-content-orchestration`, keeping team workspaces synchronized with canonical corporate wiki pages without manual copy-paste drift.
+
 ## Verification
 
 - Contract tests cover every public use case.

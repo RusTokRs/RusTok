@@ -1,0 +1,18 @@
+[package]
+name = "rustok-docs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Collaborative documents, wiki and knowledge base module powered by Loro CRDT for RusToK"
+
+[dependencies]
+loro = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+chrono = { workspace = true, features = ["serde"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

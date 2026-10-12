@@ -560,3 +560,7 @@ This comparison was written from the model's knowledge of the platforms and was
    depth limit, and notifications.
 5. M-6 series, sticky posts, and co-authors; M-9 and M-8 as product decisions;
    M-12 choice of the canonical storefront.
+6. H-10 integration with `rustok-docs` & Universal Entity Reference:
+   - Provide `EntityCardResolverPort` adapter for `BlogPost` (`urn:rustok:<tenant>:blog:post:<id>`) supporting Inline Pill, Compact Bookmark Card, and Interactive Article Widget with reading time and author bio.
+   - Reverse Backlinks Accordion: query `docs_entity_links` to display "Referenced in Documentation" in blog post management and public article footer.
+   - Cross-domain publishing: integrate with `rustok-content-orchestration` to support `publish_doc_to_blog` (direct export of finalized internal documents into blog drafts/posts).
