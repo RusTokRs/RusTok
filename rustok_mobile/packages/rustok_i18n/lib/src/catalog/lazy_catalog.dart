@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../locale/fallback_chain.dart';
 import '../locale/locale_tag.dart';
 import '../resolver/fluent_resolver.dart';
@@ -7,7 +9,7 @@ import 'message_catalog.dart';
 ///
 /// Receives the canonical locale tag (e.g. `ru-RU`). Returns `null` when the
 /// locale has no source. May read assets, files, or a remote endpoint.
-typedef FtlSourceLoader = Future<String?> Function(String locale);
+typedef FtlSourceLoader = FutureOr<String?> Function(String locale);
 
 /// A catalog that loads each locale once, asynchronously, and then serves it
 /// synchronously.
@@ -33,21 +35,32 @@ class LazyCatalog extends MessageCatalog {
   bool isLoaded(String locale) => _bundles.containsKey(catalogLocaleKey(locale));
 
   /// Loads [locale] once. Concurrent calls for the same locale share one request.
-  Future<void> loadLocale(String locale) {
+  Future<void> loadLocale(String locale) async {
     final canonical = LocaleTag.tryParse(locale)?.toCatalogTag() ?? locale.trim();
     final key = catalogLocaleKey(canonical);
-    if (_bundles.containsKey(key)) return Future<void>.value();
+    if (_bundles.containsKey(key)) return;
 
-    // Future.sync turns a synchronous throw into an error future. whenComplete
-    // runs asynchronously, so the entry is removed after putIfAbsent stores it.
-    return _inFlight.putIfAbsent(key, () {
-      return Future<String?>.sync(() => loader(canonical)).then<void>((source) {
-        _bundles[key] = source == null
-            ? null
-            : (FluentBundle(locale: canonical, useIsolating: useIsolating)
-              ..addSource(source));
-      }).whenComplete(() => _inFlight.remove(key));
-    });
+    if (_inFlight.containsKey(key)) {
+      await _inFlight[key];
+      return;
+    }
+
+    final completer = Completer<void>();
+    _inFlight[key] = completer.future;
+
+    try {
+      final source = await loader(canonical);
+      _bundles[key] = source == null
+          ? null
+          : (FluentBundle(locale: canonical, useIsolating: useIsolating)
+            ..addSource(source));
+      completer.complete();
+    } catch (e, st) {
+      completer.completeError(e, st);
+      rethrow;
+    } finally {
+      _inFlight.remove(key);
+    }
   }
 
   /// Loads every locale that [locale] can fall back to, in priority order.
