@@ -49,6 +49,9 @@ class FtlMessage extends FtlEntry {
   final String id;
   final FtlPattern? value;
   final List<FtlAttribute> attributes;
+
+  /// Translator comment: the `#` comment that immediately precedes the entry,
+  /// without a blank line in between.
   final String? comment;
 
   FtlAttribute? findAttribute(String attrName) {
@@ -71,6 +74,9 @@ class FtlTerm extends FtlEntry {
   final String id;
   final FtlPattern value;
   final List<FtlAttribute> attributes;
+
+  /// Translator comment: the `#` comment that immediately precedes the entry,
+  /// without a blank line in between.
   final String? comment;
 
   FtlAttribute? findAttribute(String attrName) {
@@ -94,9 +100,15 @@ class FtlAttribute extends FtlNode {
 
 /// A comment line or block.
 class FtlComment extends FtlEntry {
-  const FtlComment({required this.content});
+  const FtlComment({required this.content, this.level = 0});
 
   final String content;
+
+  /// Marker level of the block: `0` for `#`, `1` for `##`, `2` for `###`.
+  ///
+  /// The level is uniform inside one block: a line with a different marker
+  /// starts a new comment entry.
+  final int level;
 }
 
 /// Unparseable top-level content ("junk" in the Fluent specification).
@@ -139,6 +151,17 @@ class FtlPlaceable extends FtlPatternElement {
   final FtlExpression expression;
 }
 
+/// A placeable used as an expression, e.g. `{ { $count } }` or
+/// `{NUMBER({$count})}`.
+///
+/// The reference implementations keep this wrapper in the abstract syntax tree;
+/// the resolver resolves it to the value of the wrapped expression.
+class FtlPlaceableExpression extends FtlExpression {
+  const FtlPlaceableExpression(this.expression);
+
+  final FtlExpression expression;
+}
+
 /// Abstract expression inside a placeable.
 sealed class FtlExpression extends FtlNode {
   const FtlExpression();
@@ -171,6 +194,7 @@ class FtlTermReference extends FtlExpression {
     required this.id,
     this.attribute,
     this.arguments,
+    this.positionalArguments = const <FtlExpression>[],
   });
 
   final String id;
@@ -178,6 +202,10 @@ class FtlTermReference extends FtlExpression {
 
   /// Named literal arguments passed to the term, or `null` when none were given.
   final Map<String, FtlExpression>? arguments;
+
+  /// Positional arguments, which the Fluent syntax allows but the runtime never
+  /// passes to a term; they are kept so that the tree matches the source.
+  final List<FtlExpression> positionalArguments;
 }
 
 /// Message reference (e.g. `shared-title` or `shared-title.aria-label`).

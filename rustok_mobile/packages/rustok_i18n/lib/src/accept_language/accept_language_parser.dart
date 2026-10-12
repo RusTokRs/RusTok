@@ -26,7 +26,10 @@ class AcceptLanguagePreference {
 
 /// Parses an HTTP `Accept-Language` header string into prioritized [LocaleTag]s.
 ///
-/// Bounded to 4096 bytes and 64 ranges to guarantee safe execution.
+/// Bounded to 4096 bytes and 64 ranges to guarantee safe execution. Ranges that
+/// are explicitly unacceptable (`q=0`) and ranges with a malformed quality or a
+/// duplicated `q` parameter are omitted, so one broken client preference cannot
+/// discard later valid ones.
 List<AcceptLanguagePreference> parseAcceptLanguage(String? header) {
   if (header == null) return const [];
   final trimmed = header.trim();
@@ -43,29 +46,46 @@ List<AcceptLanguagePreference> parseAcceptLanguage(String? header) {
     final part = rawRange.trim();
     if (part.isEmpty) continue;
 
+    // The appearance index is captured before any validation so that it stays
+    // the true position of the range in the header.
+    final sourceIndex = order++;
+
     final subParts = part.split(';');
     final tag = subParts.first.trim();
     if (tag.isEmpty) continue;
 
     int quality = 1000;
+    var qualitySeen = false;
+    var malformed = false;
+
     for (int i = 1; i < subParts.length; i++) {
       final param = subParts[i].trim();
-      if (param.startsWith('q=') || param.startsWith('Q=')) {
-        final qStr = param.substring(2).trim();
-        final parsedQ = double.tryParse(qStr);
-        if (parsedQ != null && parsedQ >= 0.0 && parsedQ <= 1.0) {
-          quality = (parsedQ * 1000).round();
-        }
+      final separator = param.indexOf('=');
+      final name = (separator < 0 ? param : param.substring(0, separator)).trim();
+      if (name.toLowerCase() != 'q') continue;
+
+      if (separator < 0 || qualitySeen) {
+        // A bare `q` or a duplicated quality parameter is malformed.
+        malformed = true;
+        break;
       }
+      qualitySeen = true;
+
+      final parsed = _parseQuality(param.substring(separator + 1).trim());
+      if (parsed == null) {
+        malformed = true;
+        break;
+      }
+      quality = parsed;
     }
 
-    if (quality > 0) {
-      preferences.add(AcceptLanguagePreference(
-        tag: tag,
-        quality: quality,
-        order: order++,
-      ));
-    }
+    if (malformed || quality <= 0) continue;
+
+    preferences.add(AcceptLanguagePreference(
+      tag: tag,
+      quality: quality,
+      order: sourceIndex,
+    ));
   }
 
   // Strictly stable sort: by quality descending, then by appearance order ascending
@@ -75,6 +95,43 @@ List<AcceptLanguagePreference> parseAcceptLanguage(String? header) {
     return a.order.compareTo(b.order);
   });
   return List.unmodifiable(preferences);
+}
+
+/// Parses an RFC 9110 quality value into thousandths, or `null` when malformed.
+///
+/// Mirrors `rustok-ui-i18n::parse_quality`: only `0`, `1`, `0.<1..3 digits>` and
+/// `1.000` are accepted, so values such as `NaN`, `.5`, `1.001` or `0.1234` are
+/// rejected without relying on floating-point parsing.
+int? _parseQuality(String raw) {
+  if (raw == '0') return 0;
+  if (raw == '1') return 1000;
+
+  final dot = raw.indexOf('.');
+  if (dot < 0) return null;
+
+  final whole = raw.substring(0, dot);
+  final fraction = raw.substring(dot + 1);
+  if (fraction.length > 3) return null;
+  for (final unit in fraction.codeUnits) {
+    if (unit < 0x30 || unit > 0x39) return null;
+  }
+
+  if (whole == '0') {
+    final digits = fraction.isEmpty ? 0 : int.parse(fraction);
+    var quality = digits;
+    for (var i = fraction.length; i < 3; i++) {
+      quality *= 10;
+    }
+    return quality;
+  }
+
+  if (whole == '1') {
+    final isZeroFraction =
+        fraction.codeUnits.every((unit) => unit == 0x30);
+    return isZeroFraction ? 1000 : null;
+  }
+
+  return null;
 }
 
 /// Picks the best supported locale for an `Accept-Language` header.
@@ -129,8 +186,11 @@ String? negotiateLocale({
 
 /// Returns accepted complete Unicode locales in quality order.
 ///
-/// Wildcards and quality=0 ranges are omitted.
-/// Direct parity with `rustok-ui-i18n::accept_language_locales`.
+/// Wildcards and quality=0 ranges are omitted, duplicates keep their
+/// highest-quality earliest occurrence, and every tag is canonicalized
+/// (`iw` becomes `he`). Ranges that are not valid BCP-47 tags are skipped, so
+/// this mirrors `rustok-ui-i18n::accept_language_locales` with the package's own
+/// BCP-47 parser instead of ICU4X locale canonicalization.
 List<String> acceptLanguageLocales(String? header) {
   final preferences = parseAcceptLanguage(header);
   final locales = <String>[];
