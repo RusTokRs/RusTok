@@ -62,10 +62,13 @@ jobs:
             echo '##### dart test #####'
             tail -n 400 /tmp/te.log
           } > /tmp/diag.log 2>&1
+          printf '::error::DT analyze_exit=%s test_exit=%s\n' "$an" "$te"
           tr '\r' '\n' < /tmp/diag.log \
-            | grep -nE 'error -|warning -|info -|\[E\]|Expected:|Actual:|Which:|Some tests failed|All tests passed|^[0-9]+:[0-9]+' \
-            | head -n 45 | cut -c1-900 \
+            | grep -nE 'error -|warning -|info -|\.dart:[0-9]+' \
+            | head -n 20 | cut -c1-900 \
             | while IFS= read -r line; do printf '::error::DT %s\n' "${line//%/%25}"; done
+          tr '\r' '\n' < /tmp/te.log | tail -n 30 | cut -c1-900 \
+            | while IFS= read -r line; do printf '::error::TT %s\n' "${line//%/%25}"; done
           [ $an -ne 0 ] && exit $an
           exit $te
       - name: CLI parity check (fails on mismatch)
@@ -113,9 +116,10 @@ jobs:
             echo '##### flutter test #####'
             tail -n 120 /tmp/ft.log
           } > /tmp/fdiag.log 2>&1
-          tr '\r' '\n' < /tmp/fdiag.log \
-            | grep -nE 'error|warning|Expected:|Actual:|Which:|\[E\]|tests passed|tests failed' \
-            | head -n 45 | cut -c1-900 \
+          printf '::error::FL analyze_exit=%s test_exit=%s\n' "$fa" "$ft"
+          grep -nE 'error|warning' /tmp/fa.log | head -n 10 | cut -c1-900 \
             | while IFS= read -r line; do printf '::error::FL %s\n' "${line//%/%25}"; done
+          tail -n 60 /tmp/ft.log | cut -c1-900 \
+            | while IFS= read -r line; do printf '::error::FT %s\n' "${line//%/%25}"; done
           [ $fa -ne 0 ] && exit $fa
           exit $ft
