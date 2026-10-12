@@ -13,13 +13,13 @@ High-performance, pure Dart internationalization engine implementing the **Mozil
 * **Project Fluent 1.0 Standard**: Full support for `.ftl` resources, multiline indented patterns, attributes (`.placeholder`), variables (`$count`), terms (`-brand-name`), and select expressions.
 * **CLDR Plural Rules**: Accurate plural category resolution for Slavic languages (Russian, Ukrainian, Belarusian: *1 товар*, *3 товара*, *5 товаров*), Arabic, French, Polish, Brazilian Portuguese, and East Asian languages.
 * **Exact Numeric Matching**: Exact selectors (`[0]`) strictly take precedence over CLDR plural categories (`[other]`) for clean, natural translations (e.g. *"No unread messages"* vs *"0 unread messages"*).
-* **7-Tier Candidate Fallback Chain**: Robust locale candidate derivation adhering to BCP-47 (`ru-RU` -> `ru` -> `en`, `zh-TW` -> `zh-Hant-TW` -> `zh-Hant` -> `zh` -> `en`).
+* **BCP-47 Candidate Fallback Chain**: Ordered locale candidates derived from the requested tag, with likely scripts for regional tags (`ru-RU` -> `ru` -> `en`, `zh-TW` -> `zh-Hant-TW` -> `zh-Hant` -> `zh` -> `en`).
 * **Legacy Android / Java Code Canonicalization**: Automatic mapping of deprecated ISO 639-1 language tags (`iw` -> `he`, `in` -> `id`, `ji` -> `yi`).
 * **Cycle & Recursion Guard**: Prevents `StackOverflowError` crashes when messages or terms cross-reference each other circularly, gracefully returning fallback tokens (`{???}`).
 * **Unicode BiDi & RTL Support**: Built-in script and language text direction detection (`LocaleTextDirection.ltr` / `LocaleTextDirection.rtl`) and automatic directional isolation (`\u2068...\u2069`) to protect layout integrity.
 * **Bounded Security & DoS Protection**: Strictly bounded inputs (locale tags <= 64 bytes, message keys <= 128 bytes, Accept-Language headers <= 4096 bytes).
-* **High-Performance Batch Lookups**: `UiLocaleTranslator` pre-computes candidate hierarchies once, providing zero-allocation $O(1)$ lookups during high-frequency list rendering.
-* **Multi-Catalog Architecture**: Mix and match `FluentCatalog` (.ftl), zero-allocation `StaticCatalog` (Map tables), `JsonCatalog` (nested JSON dictionaries), and `CompositeCatalog`.
+* **High-Performance Batch Lookups**: `UiLocaleTranslator` pre-computes candidate hierarchies once, reusing the candidate list during high-frequency list rendering (map lookups per candidate).
+* **Multi-Catalog Architecture**: Mix and match `FluentCatalog` (.ftl), `StaticCatalog` (Map tables), `JsonCatalog` (nested JSON dictionaries), and `CompositeCatalog`.
 * **Built-in CLI Tooling**: Includes `i18n_cli` for continuous translation parity checks and compile-time type-safe Dart code generation (`typegen`).
 
 ---
@@ -191,9 +191,24 @@ print(t.itemsCount(count: 3));
 | `FtlParser` | Recursive-descent AST parser for Project Fluent 1.0 syntax. |
 | `FluentBundle` | In-memory message and term registry with BiDi isolation. |
 | `cldr_plurals` | CLDR plural rule evaluator (Slavic, Romance, Germanic, Arabic, CJK). |
+| `number_symbols` / `datetime_format` | Locale symbols for `NUMBER()` and `DATETIME()`. |
+| `LazyCatalog` | On-demand asynchronous loading of locale sources. |
 | `UiMessages` | High-level facade with fallback resolution and provenance tracking. |
 | `UiLocaleTranslator` | Pre-computed locale candidate translator for high-speed batch lookups. |
 | `AcceptLanguageParser` | RFC 9110 bounded `Accept-Language` quality ranking and negotiation. |
+
+---
+
+## Status and limitations
+
+* Implemented: Fluent 1.0 messages, attributes, terms with arguments, select expressions, junk recovery (an invalid entry becomes a diagnostic; the rest of the resource still loads).
+* `NUMBER()`: fraction digits, locale-aware grouping and decimal separators, `minimumIntegerDigits`, `useGrouping`, and `style: "percent"`. Separator data covers common languages; unknown languages use English style.
+* `DATETIME()`: `dateStyle`, `timeStyle`, and the `weekday`, `year`, `month`, `day`, `hour`, `minute`, `second` and `hour12` options, for en, ru, uk, de, fr, es and pl (English for other languages). Accepts `DateTime`, ISO-8601 strings, and epoch milliseconds (read as UTC). `timeZone: "UTC"` converts to UTC; other zones are not supported, and time zone names are not rendered.
+* `LazyCatalog`: asynchronous, on-demand loading of each locale (use it for remote or asset sources). Lookups stay synchronous, so load a locale before using it. Use `loadForLocale` to load the whole fallback chain.
+* `CURRENCY()` (as `NUMBER(..., style: "currency", currency: "USD")`): symbols and standard fraction digits for common ISO 4217 codes, symbol placement by locale, `currencyDisplay: "code"`. Unknown codes show the ISO code.
+* Not implemented: full CLDR data (no `intl`), calendars other than Gregorian, and currency names.
+* The parser is hand-written; the package has no runtime dependency on PetitParser or `intl`.
+* Duplicate message IDs within a locale keep the first definition and report a diagnostic.
 
 ---
 

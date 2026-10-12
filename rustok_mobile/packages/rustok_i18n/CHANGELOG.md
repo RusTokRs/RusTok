@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+* Parser conforms to Fluent 1.0: correct indentation handling for multiline values, values starting with `.`, no trailing newline, spec-only string escapes, junk recovery per entry, first-wins handling of duplicate IDs.
+* Term arguments (`-term(case: "gen")`) and function arguments are supported; term arguments do not leak into the term's message scope.
+* Resolver: `NUMBER()` with `minimumFractionDigits` / `maximumFractionDigits`; non-finite numeric selectors (`NaN`, `Infinity`) no longer crash and use the default variant.
+* CLDR plural rules extended and completed for Czech, Slovak, Croatian, Serbian, Bosnian, Slovenian, Lithuanian, Latvian, Romanian, French, and Portuguese.
+* `LocaleTag`: validates variants, canonicalizes legacy `iw`/`in`/`ji`, and includes extensions in equality. `ha` and `ku` are LTR by default; RTL is decided by script.
+* `TextDirection` typedef removed in favour of `LocaleTextDirection` (avoids clashes with Flutter's `TextDirection`).
+* Catalogs: locale keys are canonicalized (`ru_RU` == `ru-RU`); a missing attribute never falls back to the main message; argument substitution is single-pass; `null` JSON values are skipped.
+* `negotiateLocale` matches a language-only range to a regional locale (`ru` -> `ru-RU`).
+* Provenance is computed from canonical locale forms.
+* CLI `check` reports counts of missing and extra keys, compares attributes, and reports parser diagnostics. CLI `typegen` detects member and parameter name collisions, validates the class name, and reports invalid input.
+* Removed unused dependencies `petitparser` and `intl`.
+* `NUMBER()` formats digits with locale grouping and decimal separators. **Behaviour change:** `1234.5` now renders as `1,234.5` in English (previously `1234.5`). Pass `useGrouping: "false"` to keep the old digits-only output.
+* `NUMBER()` supports `style: "percent"`, `minimumIntegerDigits`, and `useGrouping`.
+* `CURRENCY()` implemented as `NUMBER` style `currency` with symbols, ISO 4217 fraction digits and locale placement.
+* `DATETIME()` implemented with `dateStyle`/`timeStyle` and component options (en, ru, uk, de, fr, es, pl).
+* `LazyCatalog` with asynchronous per-locale loading, `loadLocale` / `loadForLocale`, and retry after failure.
+* Example locale files in `example/locales` are used by CI (`check` and `typegen`).
+* The CLI logic moved to `lib/src/cli/i18n_cli.dart` (`runI18nCli`) so it can be tested. `bin/i18n_cli.dart` is a thin wrapper. The CLI is not exported from the package barrel, so `dart:io` stays out of the library API.
+* CLI tests in `test/cli_test.dart`.
+
 ## 0.1.0
 
 * Initial release of `rustok_i18n`.

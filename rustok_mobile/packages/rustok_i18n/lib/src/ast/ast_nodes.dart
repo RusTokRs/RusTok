@@ -9,10 +9,11 @@ class FtlResource extends FtlNode {
     final msgs = <String, FtlMessage>{};
     final trms = <String, FtlTerm>{};
     for (final entry in entries) {
+      // First definition wins, matching Fluent's duplicate-ID rule.
       if (entry is FtlMessage) {
-        msgs[entry.id] = entry;
+        msgs.putIfAbsent(entry.id, () => entry);
       } else if (entry is FtlTerm) {
-        trms[entry.id] = entry;
+        trms.putIfAbsent(entry.id, () => entry);
       }
     }
     messages = Map.unmodifiable(msgs);
@@ -21,11 +22,14 @@ class FtlResource extends FtlNode {
 
   final List<FtlEntry> entries;
 
-  /// Immutable lookup map of messages by ID.
+  /// Immutable lookup map of messages by ID (first definition wins).
   late final Map<String, FtlMessage> messages;
 
-  /// Immutable lookup map of terms by ID.
+  /// Immutable lookup map of terms by ID (first definition wins).
   late final Map<String, FtlTerm> terms;
+
+  /// Entries that could not be parsed. Parsing continues after them.
+  Iterable<FtlJunk> get junk => entries.whereType<FtlJunk>();
 }
 
 /// Abstract base for top-level entries in an FTL resource.
@@ -95,6 +99,20 @@ class FtlComment extends FtlEntry {
   final String content;
 }
 
+/// Unparseable top-level content ("junk" in the Fluent specification).
+///
+/// The parser records junk and continues with the next entry instead of
+/// aborting the whole resource.
+class FtlJunk extends FtlEntry {
+  const FtlJunk({required this.content, this.message});
+
+  /// The raw source text of the junk entry.
+  final String content;
+
+  /// Human-readable parse error, if known.
+  final String? message;
+}
+
 /// A pattern of text and placeable elements forming a translation value.
 class FtlPattern extends FtlNode {
   const FtlPattern({required this.elements});
@@ -147,7 +165,7 @@ class FtlVariableReference extends FtlExpression {
   final String id;
 }
 
-/// Term reference (e.g. `-brand-name` or `-brand-name.gender`).
+/// Term reference (e.g. `-brand-name`, `-brand-name.gender` or `-brand(case: "gen")`).
 class FtlTermReference extends FtlExpression {
   const FtlTermReference({
     required this.id,
@@ -157,6 +175,8 @@ class FtlTermReference extends FtlExpression {
 
   final String id;
   final String? attribute;
+
+  /// Named literal arguments passed to the term, or `null` when none were given.
   final Map<String, FtlExpression>? arguments;
 }
 
@@ -169,6 +189,19 @@ class FtlMessageReference extends FtlExpression {
 
   final String id;
   final String? attribute;
+}
+
+/// Built-in function call (e.g. `NUMBER($count, minimumFractionDigits: 2)`).
+class FtlFunctionReference extends FtlExpression {
+  const FtlFunctionReference({
+    required this.name,
+    this.positional = const <FtlExpression>[],
+    this.named = const <String, FtlExpression>{},
+  });
+
+  final String name;
+  final List<FtlExpression> positional;
+  final Map<String, FtlExpression> named;
 }
 
 /// Select expression with variant branches (e.g. `{ $count -> [one] ... *[other] ... }`).

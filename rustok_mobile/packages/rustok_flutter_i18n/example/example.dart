@@ -36,25 +36,24 @@ class _DemoAppState extends State<DemoApp> {
 
   @override
   Widget build(BuildContext context) {
-    return DirectionalityHandler(
-      child: MaterialApp(
-        title: context.t('app-title'),
-        home: Scaffold(
-          appBar: AppBar(title: Text(context.t('app-title'))),
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(context.t('greeting', args: {'name': 'Developer'})),
-                const SizedBox(height: 12),
-                Text(context.t('counter', args: {'count': _counter})),
-              ],
-            ),
+    return MaterialApp(
+      builder: (context, child) => DirectionalityHandler(child: child!),
+      title: context.t('app-title'),
+      home: Scaffold(
+        appBar: AppBar(title: Text(context.t('app-title'))),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(context.t('greeting', args: {'name': 'Developer'})),
+              const SizedBox(height: 12),
+              Text(context.t('counter', args: {'count': _counter})),
+            ],
           ),
-          floatingActionButton: FloatingActionButton(
-            onPressed: () => setState(() => _counter++),
-            child: const Icon(Icons.add),
-          ),
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => setState(() => _counter++),
+          child: const Icon(Icons.add),
         ),
       ),
     );

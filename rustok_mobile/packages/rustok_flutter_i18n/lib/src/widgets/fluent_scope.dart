@@ -7,11 +7,16 @@ class FluentScope extends InheritedWidget {
     super.key,
     required this.messages,
     required this.currentLocale,
+    this.revision = 0,
     required super.child,
   });
 
   final UiMessages messages;
   final String currentLocale;
+
+  /// Changes whenever the messages become available (for example after a
+  /// lazy catalog finishes loading). Dependents rebuild when it changes.
+  final int revision;
 
   static FluentScope? maybeOf(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<FluentScope>();
@@ -41,12 +46,22 @@ class FluentScope extends InheritedWidget {
   @override
   bool updateShouldNotify(FluentScope oldWidget) {
     return currentLocale != oldWidget.currentLocale ||
-        messages != oldWidget.messages;
+        messages != oldWidget.messages ||
+        revision != oldWidget.revision;
   }
 }
 
-/// A wrapper widget that automatically wraps its child in Flutter [Directionality]
-/// according to the active locale detected by [FluentScope].
+/// Wraps its child in Flutter [Directionality] according to the active locale
+/// published by the nearest [FluentScope].
+///
+/// The handler must be placed below a [FluentScope]. With `MaterialApp` this means
+/// using `MaterialApp.builder` (the scope itself must wrap `MaterialApp`):
+/// ```dart
+/// MaterialApp(
+///   builder: (context, child) => DirectionalityHandler(child: child!),
+/// );
+/// ```
+/// Without a scope it falls back to LTR.
 class DirectionalityHandler extends StatelessWidget {
   const DirectionalityHandler({
     super.key,

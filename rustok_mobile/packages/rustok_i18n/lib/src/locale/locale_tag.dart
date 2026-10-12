@@ -3,6 +3,10 @@ import 'text_direction.dart';
 /// Maximum allowable length for raw locale tag inputs (matches RusToK DoS boundary).
 const int maxLocaleTagLength = 64;
 
+/// BCP-47 variant subtag: 5-8 alphanumerics, or a digit followed by 3 alphanumerics.
+final RegExp _variantPattern = RegExp(r'^[a-z0-9]{5,8}$');
+final RegExp _digitVariantPattern = RegExp(r'^[0-9][a-z0-9]{3}$');
+
 /// Immutable representation of a parsed and canonicalized BCP-47 / Unicode locale identifier.
 class LocaleTag {
   const LocaleTag({
@@ -27,7 +31,8 @@ class LocaleTag {
 
   /// Parses a BCP-47 or POSIX locale string (e.g. `ru_RU.UTF-8`, `zh-Hant-TW`, `en-US`).
   ///
-  /// Returns `null` if the input is empty or exceeds [maxLocaleTagLength].
+  /// Returns `null` if the input is empty, exceeds [maxLocaleTagLength], or is
+  /// malformed (invalid language, script, region or variant subtag).
   static LocaleTag? tryParse(String? raw) {
     if (raw == null || raw.length > maxLocaleTagLength) return null;
     var trimmed = raw.trim();
@@ -101,12 +106,19 @@ class LocaleTag {
           extSubtags.add(segments[index].toLowerCase());
           index++;
         }
-        extensions[singleton] = extSubtags.join('-');
+        // A bare singleton without subtags is dropped: it cannot be serialized.
+        if (extSubtags.isNotEmpty) {
+          extensions[singleton] = extSubtags.join('-');
+        }
         continue;
       }
 
-      // Variant (4-8 alphanumeric chars)
-      variants.add(seg.toLowerCase());
+      // Variant: reject malformed subtags instead of silently accepting them.
+      final lower = seg.toLowerCase();
+      if (!_variantPattern.hasMatch(lower) && !_digitVariantPattern.hasMatch(lower)) {
+        return null;
+      }
+      variants.add(lower);
       index++;
     }
 
@@ -164,8 +176,11 @@ class LocaleTag {
           language == other.language &&
           script == other.script &&
           region == other.region &&
-          _listEquals(variants, other.variants);
+          _listEquals(variants, other.variants) &&
+          _mapEquals(extensions, other.extensions);
 
+  // Extensions are intentionally excluded from the hash: equal objects still
+  // hash equally, and the hash stays order-independent.
   @override
   int get hashCode => Object.hash(
         language,
@@ -178,6 +193,14 @@ class LocaleTag {
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
       if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  static bool _mapEquals(Map<String, String> a, Map<String, String> b) {
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (b[entry.key] != entry.value) return false;
     }
     return true;
   }
