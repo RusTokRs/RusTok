@@ -18,6 +18,8 @@
 * `DATETIME()` implemented with `dateStyle`/`timeStyle` and component options (en, ru, uk, de, fr, es, pl).
 * `LazyCatalog` with asynchronous per-locale loading, `loadLocale` / `loadForLocale`, and retry after failure.
 * Example locale files in `example/locales` are used by CI (`check` and `typegen`).
+* The CLI logic moved to `lib/src/cli/i18n_cli.dart` (`runI18nCli`) so it can be tested. `bin/i18n_cli.dart` is a thin wrapper. The CLI is not exported from the package barrel, so `dart:io` stays out of the library API.
+* CLI tests in `test/cli_test.dart`.
 
 ## 0.1.0
 
