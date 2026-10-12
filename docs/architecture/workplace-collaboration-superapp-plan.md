@@ -167,6 +167,76 @@ While `rustok-messenger` relies on high-speed native streaming for internal oper
 3. **B2B Inter-Company Federation:** Organizations running RusToK can securely communicate with partner enterprises running self-hosted Synapse or Conduit servers via standard Matrix Server-Server federation (`ruma-federation-api`).
 4. **Unified Bridges (Mautrix Ecosystem):** Enables seamless integration of popular Mautrix bridges (Telegram, WhatsApp, Slack, MS Teams, Discord), routing inbound external messages directly into RusToK team channels.
 
+### 3.5 Interactive Message Components & Live Action Hooks (Block Kit Model)
+Messages in `rustok-messenger` transcend plain text by supporting declarative UI components inspired by Slack Block Kit and Discord Message Components:
+
+```rust
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum MessageComponent {
+    ActionRow(Vec<MessageAction>),
+    EmbedCard {
+        title: String,
+        description: Option<String>,
+        color: u32,
+        fields: Vec<EmbedField>,
+        thumbnail_url: Option<String>,
+    },
+    EntityWidget(EntityRef),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum MessageAction {
+    Button {
+        custom_id: String,
+        label: String,
+        style: ButtonStyle, // Primary, Secondary, Success, Danger, Link
+        action_payload: serde_json::Value,
+    },
+    SelectMenu {
+        custom_id: String,
+        placeholder: String,
+        options: Vec<SelectOption>,
+    },
+}
+```
+
+* **Zero-Context Switching B2B Workflows:**
+  - *Billing Notification:* A bot or colleague posts an invoice notification containing an embedded `[Pay Invoice]` button. Clicking the button immediately invokes [`rustok-billing`](./crm-erp-accounting-matrix-and-plan.md) with an idempotent receipt.
+  - *CRM Deal Approval:* A deal stage transition alert embeds `[Approve Discount]` and `[Reject]` buttons, committing the state change in [`rustok-deal`](./crm-erp-accounting-matrix-and-plan.md) within the chat thread.
+  - *Warehouse Waybill Acceptance:* A warehouse picker confirms receipt of goods directly via action buttons.
+
+### 3.6 Pts Cursor Synchronization & Reconnect Resume Protocol
+To ensure instantaneous reconnection across flaky mobile networks without database load spikes, `rustok-messenger` combines Telegram's `pts` delta cursors with Discord's gateway memory resumes:
+
+1. **Persistent Timestamp Sequence (`pts`):**
+   - Each conversation maintains a monotonically increasing 64-bit atomic integer `pts`.
+   - Edits, deletions, reactions, and new messages increment `pts` deterministically.
+   - Reconnecting mobile clients request `GET /conversations/{id}/diff?since_pts=1042`. The server returns the exact compact binary delta slice, eliminating repetitive polling and massive history re-downloads.
+2. **Gateway Ring-Buffer Resumes:**
+   - Active gateway nodes buffer recent dispatches in an in-memory circular buffer (last 200 events).
+   - If a client's WebSocket drops momentarily (e.g. cellular handoff), it sends `Resume { session_id, last_seq }`. The gateway replays missing frames directly from RAM in < 2 ms without querying PostgreSQL or Iggy.
+
+### 3.7 Instant Full-Text Chat Search Engine (`tantivy`)
+To enable sub-5ms search across millions of messages with typo tolerance and morphology:
+* **Embedded Tantivy Core:** `rustok-messenger` embeds the high-performance pure-Rust search engine **Tantivy** (the Lucene counterpart in Rust).
+* **Faceted & Scoped Filtering:** Instant search queries can be filtered by tenant, conversation, author, date range, message type, or attachment presence.
+* **Offline Client Search:** The Flutter client maintains an offline index using SQLite FTS5 / Tantivy-WASM, enabling instantaneous local search even in airplane mode.
+
+### 3.8 Multi-Platform Push Notification Pipeline (APNs, FCM, WebPush)
+A unified push notification worker processes mentions, DMs, and high-priority alarms:
+* **iOS / macOS:** Native HTTP/2 client using `a2` with token-based p8 authentication.
+* **Android:** High-throughput Google Firebase Cloud Messaging (FCM v1 REST API).
+* **Web:** W3C WebPush (RFC 8291 / 8292) with VAPID key pairs.
+* **Zero-Knowledge E2EE Push Privacy:** When an end-to-end encrypted message arrives, the push payload contains only an opaque wake-up ping (`{"e2ee_wake": true, "conv_id": "..."}`) with zero plaintext. The mobile OS background handler wakes the app, fetches the ciphertext blob, decrypts it locally via `vodozemac`, and posts a local notification with the decrypted text.
+
+### 3.9 In-Chat Mini-Apps SuperApp Container & Bi-directional RPC Bridge
+Following the proven architecture of Telegram Mini Apps (TMA) and WeChat Mini Programs:
+* **Sandboxed Webview Container:** Any RusToK web surface or third-party partner app can be opened in an inline modal sheet directly inside the chat.
+* **Bi-directional SuperApp Bridge:** A secure postMessage RPC bridge (`window.RusTokBridge`) allows the embedded web app to:
+  - Access the current user's authenticated session without re-login;
+  - Trigger native haptic feedback, camera barcode scanning, and biometric authentication;
+  - Return structured data back to the conversation (e.g., sharing a finalized order cart or signing a contract).
+
 ---
 
 ## 4. Notion-Grade Collaborative Documents (`rustok-docs`)

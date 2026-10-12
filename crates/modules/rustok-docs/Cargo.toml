@@ -13,6 +13,12 @@ thiserror.workspace = true
 uuid.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 tracing.workspace = true
+async-trait.workspace = true
+sea-orm = { workspace = true, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
+sea-orm-migration.workspace = true
+rustok-core.workspace = true
+rustok-api.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
+

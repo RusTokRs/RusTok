@@ -1,4 +1,5 @@
 use thiserror::Error;
+use uuid::Uuid;
 
 /// Result alias for rustok-docs operations.
 pub type DocsResult<T> = Result<T, DocsError>;
@@ -18,11 +19,29 @@ pub enum DocsError {
     #[error("Serialization error: {0}")]
     Serialization(String),
 
+    #[error("Database error: {0}")]
+    Database(#[from] sea_orm::DbErr),
+
+    #[error("Page not found: {0}")]
+    PageNotFound(Uuid),
+
+    #[error("Slug conflict: slug '{slug}' already exists for tenant '{tenant_id}'")]
+    SlugConflict { slug: String, tenant_id: Uuid },
+
+    #[error("Invalid parent page: {0}")]
+    InvalidParent(Uuid),
+
     #[error("Storage error: {0}")]
     Storage(String),
 
+    #[error("Snapshot compaction error: {0}")]
+    Compaction(String),
+
     #[error("Tenant context missing or unauthorized")]
     Unauthorized,
+
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
 
 impl From<loro::LoroError> for DocsError {
