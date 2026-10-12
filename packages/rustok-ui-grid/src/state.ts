@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
 /**
  * Composite grid state and cross-field transitions — the TypeScript twin of
  * `crates/ui/rustok-grid/src/state.rs`.
@@ -10,6 +20,11 @@ import {
   type GridColumnDef,
 } from './column';
 import {
+  type CellAccessor,
+  filterRows,
+  sortRows,
+} from './cell';
+import {
   type ColumnFilters,
   clearColumnFilters,
   normalizeFilters,
@@ -20,6 +35,7 @@ import {
   createPagination,
   goToPage,
   normalizePagination,
+  sliceItems,
 } from './pagination';
 import {
   type ColumnWidths,
@@ -122,13 +138,17 @@ export function resetGridFilters(state: GridState): { state: GridState; changed:
   };
 }
 
-/** Toggle sorting on a column and reset pagination. */
+/**
+ * Toggle sorting on a column and reset pagination.
+ *
+ * `direction` is the direction the column ends up in, or `null` when the toggle cleared the sort —
+ * the same answer `GridState::toggle_sort` gives its adapter.
+ */
 export function toggleGridSort(
   state: GridState,
   columnId: string,
-): { state: GridState; direction: SortDirection | null; nextDirection: SortDirection | null } {
-  const next = cycleSort(state.sort, columnId);
-  const sort = next ?? emptySortState();
+): { state: GridState; direction: SortDirection | null } {
+  const sort = cycleSort(state.sort, columnId);
   return {
     state: {
       ...state,
@@ -136,7 +156,6 @@ export function toggleGridSort(
       pagination: goToPage(state.pagination, 1),
     },
     direction: sort.direction,
-    nextDirection: sort.direction,
   };
 }
 
@@ -145,10 +164,25 @@ export function pruneGridSelection(state: GridState, visibleIds: Iterable<string
   return { ...state, selection: retainRowIds(state.selection, visibleIds) };
 }
 
-/** Clamp persisted widths to the current column definitions. */
+/** Clamp persisted widths to the current column definitions, dropping removed columns. */
 export function clampGridWidths(state: GridState, columns: readonly GridColumnDef[]): GridState {
   return { ...state, columnWidths: clampColumnWidths(state.columnWidths, columns) };
 }
 
-/** Compatibility alias for clampGridWidths. */
-export const clampWidths = clampGridWidths;
+/**
+ * Turn a full data set into the rows this state renders: filter, then sort, then page.
+ *
+ * This is the client-side path a grid takes when the owner hands over all rows instead of a
+ * server-projected page. The order is part of the contract — paging before sorting would sort a
+ * single page, and sorting before filtering would sort rows that are about to be dropped — and it
+ * is the order `GridState::apply_rows` uses.
+ */
+export function applyGridRows<T>(
+  state: GridState,
+  items: readonly T[],
+  cellOf: CellAccessor<T>,
+): T[] {
+  const filtered = filterRows(state.filters, items, cellOf);
+  const sorted = sortRows(state.sort, filtered, cellOf);
+  return sliceItems(sorted, state.pagination);
+}

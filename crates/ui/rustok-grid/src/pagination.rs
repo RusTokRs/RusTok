@@ -61,6 +61,13 @@ impl<'de> Deserialize<'de> for GridPagination {
 /// Fallback page size used when a caller passes `0`.
 pub const DEFAULT_PAGE_SIZE: usize = 20;
 
+/// Page sizes a grid offers in its "rows per page" control when the owner does not choose its own.
+///
+/// The adapters used to each carry a copy of this list; one owner means the picker offers the same
+/// choices on every surface, and [`GridPagination::normalize_page_size_options`] keeps an
+/// out-of-list page size selectable instead of silently resetting a user's preference.
+pub const DEFAULT_PAGE_SIZE_OPTIONS: [usize; 4] = [10, 20, 50, 100];
+
 fn default_page() -> usize {
     1
 }
@@ -219,6 +226,32 @@ impl GridPagination {
         self.normalize();
     }
 
+    /// Zero-based index the current *fetch* window starts at, for a server that pages on request.
+    ///
+    /// Unlike [`Self::slice_bounds`] this is mode-independent: in infinite mode the window being
+    /// appended is still page `N`, even though the grid renders pages `1..=N`.
+    pub fn offset(&self) -> usize {
+        self.page
+            .saturating_sub(1)
+            .saturating_mul(self.page_size.max(1))
+    }
+
+    /// The rows to offer in a "rows per page" picker: `choices` plus the current size if it is not
+    /// already in the list, deduplicated and ascending. An empty choice list falls back to
+    /// [`DEFAULT_PAGE_SIZE_OPTIONS`].
+    pub fn normalize_page_size_options(choices: &[usize], current: usize) -> Vec<usize> {
+        let source: &[usize] = if choices.is_empty() {
+            DEFAULT_PAGE_SIZE_OPTIONS.as_slice()
+        } else {
+            choices
+        };
+        let mut options: Vec<usize> = source.iter().copied().filter(|size| *size > 0).collect();
+        options.push(current.max(1));
+        options.sort_unstable();
+        options.dedup();
+        options
+    }
+
     /// Zero-based `[start, end)` slice bounds for client-side paging over
     /// `len` locally available rows.
     pub fn slice_bounds(&self, len: usize) -> (usize, usize) {
@@ -236,6 +269,15 @@ impl GridPagination {
                 (0, self.page.max(1).saturating_mul(self.page_size).min(len))
             }
         }
+    }
+
+    /// The rows this state renders, for a grid whose owner hands over the whole data set.
+    ///
+    /// Borrowing rather than cloning is deliberate: an adapter draws these rows and nothing else, so
+    /// a page of an already-materialized list must not be copied per render.
+    pub fn slice_items<'a, T>(&self, items: &'a [T]) -> &'a [T] {
+        let (start, end) = self.slice_bounds(items.len());
+        &items[start..end]
     }
 }
 
@@ -354,6 +396,36 @@ mod tests {
 
         let p3 = GridPagination::new(3, 20, 55);
         assert_eq!(p3.range_label(), "41–55 of 55");
+    }
+
+    #[test]
+    fn offset_reports_the_fetch_window_and_slice_items_the_render_window() {
+        let paged = GridPagination::new(3, 10, 45);
+        assert_eq!(paged.offset(), 20);
+        let rows: Vec<u32> = (1..=45).collect();
+        assert_eq!(paged.slice_items(&rows), &rows[20..30]);
+
+        // Infinite mode renders everything up to and including the newest page, so the borrow is
+        // the prefix while the offset still points at the page that was just fetched.
+        let infinite = {
+            let mut state = GridPagination::new(3, 10, 45);
+            state.set_mode(PaginationMode::Infinite);
+            state
+        };
+        assert_eq!(infinite.offset(), 20);
+        assert_eq!(infinite.slice_items(&rows), &rows[0..30]);
+    }
+
+    #[test]
+    fn page_size_options_keep_the_current_size_selectable() {
+        assert_eq!(
+            GridPagination::normalize_page_size_options(&[], 25),
+            vec![10, 20, 25, 50, 100]
+        );
+        assert_eq!(
+            GridPagination::normalize_page_size_options(&[25, 0, 5, 25], 5),
+            vec![5, 25]
+        );
     }
 
     #[test]

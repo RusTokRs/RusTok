@@ -8,7 +8,11 @@ function Table({ className, ...props }: React.ComponentProps<'table'>) {
   return (
     <div
       data-slot='table-container'
-      className='relative w-full overflow-x-auto'
+      // A horizontally scrollable table is unreachable by keyboard unless the scroll box itself is
+      // focusable; `role='region'` is deliberately not set here because this element has no
+      // accessible name — a named region is the caller's job (see `DataTableStatic`).
+      className='relative w-full overflow-x-auto focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none'
+      tabIndex={0}
     >
       <table
         data-slot='table'
@@ -69,6 +73,9 @@ function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
   return (
     <th
       data-slot='table-head'
+      // A header cell that does not say which column it heads is read as an orphan by a screen
+      // reader; every table header in this app is a column header, so the default is `scope='col'`.
+      scope='col'
       className={cn(
         'text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
         className

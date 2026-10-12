@@ -213,9 +213,16 @@ pub fn safe_join_url(base: &str, path: &str) -> String {
 /// assert_eq!(href, "/products?attribute_filters=color%3Dred%3Bsize%3Dm");
 /// ```
 pub fn apply_ui_query_pairs(base: &str, pairs: &[(&str, Option<String>)]) -> String {
-    let (path, query) = base
+    // A fragment belongs to the URL, never to the last query value: without this cut
+    // `/products?color=red#reviews` filters on `red#reviews` and the anchor is lost on the way out.
+    // The TypeScript mirror (`packages/rustok-ui-grid/src/url.ts`) splits it the same way.
+    let (target, fragment) = match base.find('#') {
+        Some(index) => base.split_at(index),
+        None => (base, ""),
+    };
+    let (path, query) = target
         .split_once('?')
-        .map_or((base, ""), |(path, query)| (path, query));
+        .map_or((target, ""), |(path, query)| (path, query));
     let mut merged: Vec<(String, String)> = url::form_urlencoded::parse(query.as_bytes())
         .map(|(key, value)| (key.into_owned(), value.into_owned()))
         .collect();
@@ -252,13 +259,13 @@ pub fn apply_ui_query_pairs(base: &str, pairs: &[(&str, Option<String>)]) -> Str
         }
     }
     if merged.is_empty() {
-        return path.to_string();
+        return format!("{path}{fragment}");
     }
     let mut serializer = url::form_urlencoded::Serializer::new(String::new());
     for (key, value) in &merged {
         serializer.append_pair(key, value);
     }
-    format!("{path}?{}", serializer.finish())
+    format!("{path}?{}{fragment}", serializer.finish())
 }
 
 #[cfg(test)]
@@ -267,6 +274,23 @@ mod tests {
 
     #[test]
     fn ui_query_pairs_replace_remove_and_encode_route_values() {
+        // A fragment survives the rewrite and never leaks into the value beside it.
+        assert_eq!(
+            apply_ui_query_pairs(
+                "/products?search=bag#reviews",
+                &[("search", Some("shoe".into()))]
+            ),
+            "/products?search=shoe#reviews"
+        );
+        assert_eq!(
+            apply_ui_query_pairs("/products?search=bag#reviews", &[("search", None)]),
+            "/products#reviews"
+        );
+        assert_eq!(
+            apply_ui_query_pairs("/products#reviews", &[("sort_by", Some("price".into()))]),
+            "/products?sort_by=price#reviews"
+        );
+
         let href = apply_ui_query_pairs(
             "/products?search=bag&attribute_filters=color%3Dred",
             &[("attribute_filters", Some("color=red;size=m".to_string()))],

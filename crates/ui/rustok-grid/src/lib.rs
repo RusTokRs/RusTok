@@ -10,9 +10,14 @@
 //! Every type upholds its invariants internally: widths stay inside
 //! `min..=max`, pagination stays inside `1..=total_pages()`, and filters only
 //! ever store normalized, non-empty values.
+//!
+//! The [`cell`] module additionally owns *what a grid understands about a row* — the value kinds a
+//! filter or a sort can act on — so an admin table maps its rows onto cells instead of writing its
+//! own predicate and comparator loops.
 
 #![forbid(unsafe_code)]
 
+pub mod cell;
 pub mod column;
 pub mod facet;
 pub mod facet_panel;
@@ -23,6 +28,7 @@ pub mod selection;
 pub mod sort;
 pub mod state;
 
+pub use cell::{CellValue, text_contains_ignore_case};
 pub use column::{
     CHECKBOX_COLUMN_ID, ColumnAlign, ColumnId, ColumnWidth, GridColumnDef, PinnedSide,
     has_filter_row, visible_column_count, visible_columns,
@@ -38,13 +44,16 @@ pub use facet_panel::{
     selection_after_toggle, selection_entry, selection_for_key, split_selection,
 };
 pub use filter::{ColumnFilters, FilterOption, FilterValue, GridFilterType};
-pub use pagination::{DEFAULT_PAGE_SIZE, GridPagination, PaginationMode};
+pub use pagination::{
+    DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE_OPTIONS, GridPagination, PaginationMode,
+};
 pub use resize::{ColumnWidths, KEYBOARD_RESIZE_STEP, calculate_resized_width, step_resized_width};
 pub use selection::RowSelection;
 pub use sort::{SortDirection, SortState};
 pub use state::GridState;
 
 pub mod prelude {
+    pub use crate::cell::{CellValue, text_contains_ignore_case};
     pub use crate::column::{
         CHECKBOX_COLUMN_ID, ColumnAlign, ColumnId, ColumnWidth, GridColumnDef, PinnedSide,
         has_filter_row, visible_column_count, visible_columns,
@@ -61,7 +70,9 @@ pub mod prelude {
         split_selection,
     };
     pub use crate::filter::{ColumnFilters, FilterOption, FilterValue, GridFilterType};
-    pub use crate::pagination::{DEFAULT_PAGE_SIZE, GridPagination, PaginationMode};
+    pub use crate::pagination::{
+        DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE_OPTIONS, GridPagination, PaginationMode,
+    };
     pub use crate::resize::{
         ColumnWidths, KEYBOARD_RESIZE_STEP, calculate_resized_width, step_resized_width,
     };

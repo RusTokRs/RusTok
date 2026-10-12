@@ -1,58 +1,71 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
 /**
  * Single-column sort state machine for RusTok DataGrid — the TypeScript twin of
  * `crates/ui/rustok-grid/src/sort.rs`.
  *
- * The core owns state transitions and ARIA values; actual ordering remains with the data owner or
- * renderer, matching the Rust library's explicit boundary.
+ * The core owns state transitions and ARIA values; actual ordering stays with the data owner (a
+ * server-driven grid forwards this state) or with `sortRows` in `cell.ts` (a client-side grid).
+ * Comparators themselves live with the cell vocabulary, not here.
  */
 
 /** Sort direction. */
 export type SortDirection = 'asc' | 'desc';
 
-/** Which column the grid is sorted by, if any. */
+/** Which column the grid is sorted by, if any. Both fields are set or neither is. */
 export interface SortState {
   columnId: string | null;
   direction: SortDirection | null;
 }
 
-/** Unsorted state. */
+/** Unsorted state, mirroring `SortState::default`. */
 export function emptySortState(): SortState {
   return { columnId: null, direction: null };
 }
 
-/** Create a sort state with both fields active. */
+/** Create a sort state with both fields active, mirroring `SortState::new`. */
 export function createSortState(columnId: string, direction: SortDirection): SortState {
   return { columnId, direction };
 }
 
-/** Repair a half-filled state coming from a URL or storage. */
-export function normalizeSortState(state: Partial<SortState> = {}): SortState {
-  const columnId = state.columnId ?? null;
-  const direction = state.direction === 'asc' || state.direction === 'desc'
-    ? state.direction
-    : null;
+/**
+ * Repair a half-filled state coming from a URL or storage, mirroring `SortState::normalize`.
+ *
+ * A nonblank column with a missing direction sorts ascending; a blank column id clears the state.
+ */
+export function normalizeSortState(state: Partial<SortState> | null | undefined = {}): SortState {
+  const columnId = state?.columnId ?? null;
   if (columnId === null || columnId.trim().length === 0) return emptySortState();
-  return { columnId, direction: direction ?? 'asc' };
+  const direction = state?.direction === 'desc' ? 'desc' : 'asc';
+  return { columnId, direction };
 }
 
-/** True when both the column and direction are set. */
+/** True when a column is sorted (a missing direction still counts as ascending). */
 export function isSortActive(state?: SortState | null): boolean {
-  if (!state) return false;
-  return activeSort(state) !== null;
+  return state !== null && state !== undefined && activeSort(state) !== null;
 }
 
-/** Active sort as a pair, or null when the grid is unsorted. */
+/** Active sort as a normalized pair, or null when the grid is unsorted. */
 export function activeSort(state: SortState): [string, SortDirection] | null {
   const normalized = normalizeSortState(state);
   if (normalized.columnId === null || normalized.direction === null) return null;
   return [normalized.columnId, normalized.direction];
 }
 
-/** Direction when sorted by `columnId`, otherwise null. */
+/** Direction when sorted by `columnId`, otherwise null. Mirrors `SortState::is_sorted_by`. */
 export function sortDirectionForColumn(
-  state: SortState,
+  state: SortState | null | undefined,
   columnId: string,
 ): SortDirection | null {
+  if (!state) return null;
   const active = activeSort(state);
   return active !== null && active[0] === columnId ? active[1] : null;
 }
@@ -62,102 +75,46 @@ export function oppositeSortDirection(direction: SortDirection): SortDirection {
   return direction === 'asc' ? 'desc' : 'asc';
 }
 
-/** Compares two values according to sort direction. */
-export function compareValues<T>(a: T, b: T, direction: SortDirection = 'asc'): number {
-  const factor = direction === 'desc' ? -1 : 1;
-  if (typeof a === 'number' && typeof b === 'number') {
-    return (a - b) * factor;
-  }
-  return String(a).localeCompare(String(b)) * factor;
-}
-
 /** Value for the WAI-ARIA `aria-sort` attribute. */
-export function ariaSortValue(direction?: SortDirection | null): 'ascending' | 'descending' | 'none' {
+export function ariaSortValue(
+  direction?: SortDirection | null,
+): 'ascending' | 'descending' | 'none' {
   if (direction === 'asc') return 'ascending';
   if (direction === 'desc') return 'descending';
   return 'none';
 }
 
-/** `aria-sort` value for a header cell of `columnId`. */
+/** `aria-sort` value for a header cell of `columnId`. Mirrors `SortState::aria_sort_for`. */
 export function ariaSortForColumn(
-  state: SortState,
+  state: SortState | null | undefined,
   columnId: string,
 ): 'ascending' | 'descending' | 'none' {
   return ariaSortValue(sortDirectionForColumn(state, columnId));
 }
 
-/** Set the active sort. */
+/** Set the active sort, normalizing a blank column away. Mirrors `SortState::set`. */
 export function setSortState(columnId: string, direction: SortDirection): SortState {
   return normalizeSortState({ columnId, direction });
 }
 
-/** Clear sorting. */
+/** Clear sorting, mirroring `SortState::clear`. */
 export function clearSortState(): SortState {
   return emptySortState();
 }
 
 /**
- * Cycle through `none -> asc -> desc -> none` for one column. Selecting a different column starts
- * at ascending; a cleared state is returned as `null` for convenient adapter binding.
+ * Cycle through `none -> asc -> desc -> none` for one column, mirroring `SortState::toggle`.
+ *
+ * Selecting a different column restarts at ascending. Clearing returns the empty state, never
+ * `null`, so every caller handles exactly one shape.
  */
 export function cycleSort(
   current: SortState | null | undefined,
   columnId: string,
-): SortState | null {
-  const state = current === null || current === undefined
-    ? emptySortState()
-    : normalizeSortState(current);
+): SortState {
+  const state = normalizeSortState(current ?? undefined);
   const currentDirection = sortDirectionForColumn(state, columnId);
   if (currentDirection === 'asc') return { columnId, direction: 'desc' };
-  if (currentDirection === 'desc') return null;
+  if (currentDirection === 'desc') return emptySortState();
   return { columnId, direction: 'asc' };
 }
-
-/**
- * Repairs a half-filled sort state (e.g. from query params or storage).
- * Returns null if invalid or blank.
- */
-export function normalizeSort(state?: Partial<SortState> | null): SortState | null {
-  if (!state || !state.columnId) return null;
-  const colId = state.columnId.trim();
-  if (colId.length === 0) return null;
-  const dir: SortDirection = state.direction === 'desc' ? 'desc' : 'asc';
-  return { columnId: colId, direction: dir };
-}
-
-/**
- * Checks whether the grid is sorted by the given columnId.
- */
-export function isSortedBy(
-  state: SortState | null | undefined,
-  columnId: string
-): SortDirection | null {
-  if (!state || state.columnId !== columnId) return null;
-  return state.direction;
-}
-
-/**
- * Returns aria-sort string for a specific column header.
- */
-export function ariaSortFor(
-  state: SortState | null | undefined,
-  columnId: string
-): 'ascending' | 'descending' | 'none' {
-  return ariaSortValue(isSortedBy(state, columnId));
-}
-
-
-/**
- * Creates or sets a sort state.
- */
-export function setSort(columnId: string, direction: SortDirection = 'asc'): SortState {
-  return { columnId, direction };
-}
-
-/**
- * Clears sort state (returns null).
- */
-export function clearSort(): null {
-  return null;
-}
-

@@ -6,8 +6,11 @@ use leptos_use::use_intersection_observer;
 
 use rustok_grid::{GridPagination, PaginationMode};
 
-/// Default choices offered by the "rows per page" selector.
-pub const DEFAULT_PAGE_SIZE_OPTIONS: [usize; 4] = [10, 20, 50, 100];
+/// The choices offered by the "rows per page" selector when the caller does not configure any.
+///
+/// Re-exported from the core rather than repeated here: the picker and the state machine that
+/// validates a page size must agree on the list, and only the core can guarantee that.
+pub use rustok_grid::DEFAULT_PAGE_SIZE_OPTIONS;
 
 /// Footer bar: range summary, page size, mode switch, page navigation and the
 /// infinite-scroll sentinel.
@@ -24,8 +27,9 @@ pub fn GridPaginationBar(
     page_size_options: Option<Vec<usize>>,
 ) -> impl IntoView {
     let sentinel_ref = NodeRef::<Div>::new();
-    let configured_options =
-        StoredValue::new(page_size_options.unwrap_or_else(|| DEFAULT_PAGE_SIZE_OPTIONS.to_vec()));
+    // An unset list stays empty here; the core's normalizer is what turns "unset" into the default
+    // choices, exactly like every other page-size decision in the grid.
+    let configured_options = StoredValue::new(page_size_options.unwrap_or_default());
 
     // Infinite scroll: load the next page when the sentinel becomes visible.
     #[cfg(target_arch = "wasm32")]
@@ -52,15 +56,7 @@ pub fn GridPaginationBar(
     let is_infinite = move || pagination.get().mode == PaginationMode::Infinite;
 
     let size_options = move || {
-        let mut options = configured_options.get_value();
-        options.retain(|size| *size > 0);
-        let current = page_size();
-        if !options.contains(&current) {
-            options.push(current);
-        }
-        options.sort_unstable();
-        options.dedup();
-        options
+        GridPagination::normalize_page_size_options(&configured_options.get_value(), page_size())
     };
 
     view! {
