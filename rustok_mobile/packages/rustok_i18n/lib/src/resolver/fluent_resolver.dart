@@ -113,10 +113,24 @@ class FluentBundle {
   }
 }
 
-/// Formats [value] for [locale] with fraction digits, grouping and sign.
+/// Formats [value] the way `NUMBER()` and `fluent-bundle` do: with the locale
+/// separators, digit grouping and fraction digits of [numberSymbolsFor].
 ///
-/// Digits beyond [minimumFractionDigits] are dropped when they are zero.
-/// Separators come from [numberSymbolsFor]; unknown locales use `1,234.5`.
+/// Rounding follows `Intl.NumberFormat`: the value is written in its shortest
+/// decimal form (Dart's `toString` for doubles) and rounded half away from zero
+/// on those digits, so `2.675` with `maximumFractionDigits: 2` is `2.68` and
+/// `999999.9999` becomes `1,000,000`. Trailing zeros are dropped down to
+/// [minimumFractionDigits], an integer keeps full precision, `-0.0` keeps its
+/// sign (`-0`), and values whose shortest form uses an exponent (`1e+21`,
+/// `1e-7`) are written out in full before grouping. Non-finite values print the
+/// locale's `NaN` and infinity symbols.
+///
+/// [pattern] is a CLDR number pattern such as `#,##0 %` (see
+/// [NumberSymbols.percentPattern]). It supplies the literal text around the
+/// number and the sign layout of its optional `;`-separated negative
+/// subpattern; digits, separators and grouping sizes always come from the
+/// locale symbols. When [pattern] is omitted the number is printed without
+/// affixes.
 String formatFluentNumber(
   num value, {
   int minimumFractionDigits = 0,
@@ -124,45 +138,174 @@ String formatFluentNumber(
   int minimumIntegerDigits = 1,
   bool useGrouping = true,
   String locale = 'en',
+  String? pattern,
 }) {
-  if (value is double && !value.isFinite) return value.toString();
+  final symbols = numberSymbolsFor(locale);
+  final minimum = _clampDigits(minimumFractionDigits);
+  var maximum = _clampDigits(maximumFractionDigits);
+  // `Intl.NumberFormat` raises the maximum when only a minimum is given, so
+  // `%` with `minimumFractionDigits: 2` prints `35.00%`, not `35%`.
+  if (maximum < minimum) maximum = minimum;
 
-  final maximum = _clampDigits(maximumFractionDigits);
-  final minimum = _clampDigits(minimumFractionDigits) > maximum
-      ? maximum
-      : _clampDigits(minimumFractionDigits);
+  if (value is double && !value.isFinite) {
+    if (value.isNaN) return symbols.nan;
+    return '${symbols.minusSign}${symbols.infinity}';
+  }
 
-  final text = value.abs().toStringAsFixed(maximum);
-  final dot = text.indexOf('.');
-  var integerPart = dot >= 0 ? text.substring(0, dot) : text;
-  var fractionPart = dot >= 0 ? text.substring(dot + 1) : '';
+  final negative = value.isNegative;
+  final shortest = _shortestDecimalParts(value);
+  var integerPart = shortest.$1;
+  var fractionPart = shortest.$2;
+
+  final rounded = _roundFractionPart(fractionPart, maximum);
+  fractionPart = rounded.$1;
+  if (rounded.$2) integerPart = _incrementDigits(integerPart);
 
   var fractionEnd = fractionPart.length;
-  while (fractionEnd > minimum &&
-      fractionPart.codeUnitAt(fractionEnd - 1) == 0x30) {
+  while (fractionEnd > minimum && fractionPart.codeUnitAt(fractionEnd - 1) == 0x30) {
     fractionEnd--;
   }
-  fractionPart = fractionPart.substring(0, fractionEnd);
-
-  final isZero = !(integerPart + fractionPart).contains(RegExp(r'[1-9]'));
-  final negative = value < 0 && !isZero;
+  fractionPart = fractionPart.substring(0, fractionEnd).padRight(minimum, '0');
 
   final minInt = _clampDigits(minimumIntegerDigits);
   if (integerPart.length < minInt) {
     integerPart = integerPart.padLeft(minInt, '0');
   }
 
-  final symbols = numberSymbolsFor(locale);
-  final grouped = useGrouping ? groupDigits(integerPart, symbols) : integerPart;
-
-  final buffer = StringBuffer();
-  if (negative) buffer.write('-');
-  buffer.write(grouped);
+  final body = StringBuffer();
+  body.write(useGrouping ? groupDigits(integerPart, symbols) : integerPart);
   if (fractionPart.isNotEmpty) {
-    buffer.write(symbols.decimal);
-    buffer.write(fractionPart);
+    body.write(symbols.decimal);
+    body.write(fractionPart);
   }
-  return buffer.toString();
+  final text = localizeDigits(body.toString(), symbols);
+
+  if (pattern == null) {
+    return '${negative ? symbols.minusSign : ''}$text';
+  }
+  final affixes = _patternAffixes(
+    pattern.replaceAll('%', symbols.percentSign),
+    symbols,
+    negative: negative,
+  );
+  final sign = negative && !affixes.$3 ? symbols.minusSign : '';
+  return '$sign${affixes.$1}$text${affixes.$2}';
+}
+
+/// Splits a number pattern into the literal text before and after the number.
+///
+/// The pattern's first subpattern is used for positive values and the optional
+/// second one — after a `;` — for negative values, so `% #,#0;% -#,#0` (Welsh
+/// `blo`) puts the sign after the percent sign and `1.234,50-` (Faroese) puts
+/// it at the very end. A `-` written in a pattern becomes the locale's
+/// [NumberSymbols.minusSign].
+///
+/// [placeholder] is a pattern character that stands for text supplied by the
+/// caller: the currency patterns use CLDR's `\u00a4` for the currency symbol,
+/// which is replaced with [replacement] after the layout characters are gone.
+///
+/// The result is `(prefix, suffix, patternCarriesSign)`, where the last element
+/// tells whether the sign came from the pattern itself, in which case the
+/// caller must not add a sign of its own.
+(String, String, bool) _patternAffixes(
+  String pattern,
+  NumberSymbols symbols, {
+  required bool negative,
+  String placeholder = '',
+  String replacement = '',
+}) {
+  final parts = pattern.split(';');
+  final useNegative = negative && parts.length > 1;
+  final chosen = useNegative ? parts[1] : parts[0];
+  var firstDigit = -1;
+  for (var i = 0; i < chosen.length; i++) {
+    final unit = chosen.codeUnitAt(i);
+    if (unit == 0x30 || unit == 0x23) {
+      // '0' or '#'
+      firstDigit = i;
+      break;
+    }
+  }
+  if (firstDigit < 0) return ('', '', useNegative);
+
+  final placeholderUnit = placeholder.isEmpty ? -1 : placeholder.codeUnitAt(0);
+  String literal(String text) {
+    final buffer = StringBuffer();
+    for (final unit in text.codeUnits) {
+      if (unit == 0x30 || unit == 0x23 || unit == 0x2C || unit == 0x2E) {
+        continue; // 0 # , .
+      }
+      if (unit == 0x2D) {
+        buffer.write(symbols.minusSign);
+      } else if (unit == placeholderUnit) {
+        buffer.write(replacement);
+      } else {
+        buffer.writeCharCode(unit);
+      }
+    }
+    return buffer.toString();
+  }
+
+  return (
+    literal(chosen.substring(0, firstDigit)),
+    literal(chosen.substring(firstDigit)),
+    useNegative,
+  );
+}
+
+/// Integer and fraction digits of the shortest decimal form of [value], without
+/// its sign, with exponential forms expanded into plain digits.
+(String, String) _shortestDecimalParts(num value) {
+  final text = value.abs().toString();
+  final exponentIndex = text.indexOf('e');
+  if (exponentIndex < 0) {
+    final dot = text.indexOf('.');
+    if (dot < 0) return (text, '');
+    return (text.substring(0, dot), text.substring(dot + 1));
+  }
+  final mantissa = text.substring(0, exponentIndex);
+  final exponent = int.parse(text.substring(exponentIndex + 1));
+  final dot = mantissa.indexOf('.');
+  final digits = mantissa.replaceAll('.', '');
+  final point = (dot < 0 ? mantissa.length : dot) + exponent;
+  if (point <= 0) return ('0', '${'0' * -point}$digits');
+  if (point >= digits.length) {
+    return ('$digits${'0' * (point - digits.length)}', '');
+  }
+  return (digits.substring(0, point), digits.substring(point));
+}
+
+/// Rounds [fraction] to [maximum] digits, half away from zero. The flag in the
+/// result asks the caller to carry into the integer part.
+(String, bool) _roundFractionPart(String fraction, int maximum) {
+  if (fraction.length <= maximum) return (fraction, false);
+  final kept = fraction.substring(0, maximum).codeUnits.toList();
+  if (fraction.codeUnitAt(maximum) < 0x35) {
+    // below '5'
+    return (String.fromCharCodes(kept), false);
+  }
+  for (var i = kept.length - 1; i >= 0; i--) {
+    if (kept[i] != 0x39) {
+      // not '9'
+      kept[i]++;
+      return (String.fromCharCodes(kept), false);
+    }
+    kept[i] = 0x30;
+  }
+  return (String.fromCharCodes(kept), true);
+}
+
+/// Adds one to a non-negative digit string, growing it when every digit was 9.
+String _incrementDigits(String digits) {
+  final units = digits.codeUnits.toList();
+  for (var i = units.length - 1; i >= 0; i--) {
+    if (units[i] != 0x39) {
+      units[i]++;
+      return String.fromCharCodes(units);
+    }
+    units[i] = 0x30;
+  }
+  return '1${String.fromCharCodes(units)}';
 }
 
 int _clampDigits(int digits) {
@@ -173,8 +316,15 @@ int _clampDigits(int digits) {
 
 /// Formats [value] as money in [currency] (ISO 4217 code) for [locale].
 ///
-/// [display] is `symbol` (default) or `code`. Fraction digits default to the
-/// currency's standard count (for example 0 for JPY) unless given explicitly.
+/// The layout comes from the locale's CLDR currency pattern — `¤#,##0.00` for
+/// English (`$1,234.50`), `#,##0.00\u00A0¤` for Russian (`1\u00A0234,50\u00A0€`) — and
+/// the fraction digits from the currency itself (0 for JPY, 3 for KWD) unless
+/// [minimumFractionDigits] or [maximumFractionDigits] say otherwise.
+///
+/// [display] is `symbol` (the default) or `code` for the ISO code; any other
+/// value falls back to the symbol. An alphabetic symbol is separated from the
+/// amount by a no-break space, as CLDR `currencySpacing` requires, so `CHF` is
+/// `CHF 3.00` while `$` stays `$3.00`.
 String formatFluentCurrency(
   num value, {
   required String currency,
@@ -185,39 +335,55 @@ String formatFluentCurrency(
   bool useGrouping = true,
 }) {
   final code = currency.toUpperCase();
+  final symbols = numberSymbolsFor(locale);
   final defaults = currencyFractionDigits(code);
   final minimum = minimumFractionDigits ?? defaults;
-  var maximum = maximumFractionDigits ?? (defaults > minimum ? defaults : minimum);
+  var maximum =
+      maximumFractionDigits ?? (defaults > minimum ? defaults : minimum);
   if (maximum < minimum) maximum = minimum;
 
-  final number = formatFluentNumber(
-    value,
+  final currencyText = display == 'code' ? code : currencySymbol(code);
+  final affixes = _patternAffixes(
+    symbols.currencyPattern,
+    symbols,
+    negative: value.isNegative,
+    placeholder: '¤',
+    replacement: currencyText,
+  );
+  var prefix = affixes.$1;
+  var suffix = affixes.$2;
+  if (isAlphabeticSymbol(currencyText)) {
+    if (prefix == currencyText) prefix = '$currencyText\u00A0';
+    if (suffix == currencyText) suffix = '\u00A0$currencyText';
+  }
+
+  // The sign is only added when the pattern did not place one itself.
+  final sign = value.isNegative && !affixes.$3 ? symbols.minusSign : '';
+  final amount = formatFluentNumber(
+    value.abs(),
     minimumFractionDigits: minimum,
     maximumFractionDigits: maximum,
     useGrouping: useGrouping,
     locale: locale,
   );
-
-  var sign = '';
-  var amount = number;
-  if (amount.startsWith('-')) {
-    sign = '-';
-    amount = amount.substring(1);
-  }
-
-  final symbol = display == 'code' ? code : currencySymbol(code);
-  if (currencySymbolPrecedes(locale)) {
-    final gap = isAlphabeticSymbol(symbol) ? '\u00A0' : '';
-    return '$sign$symbol$gap$amount';
-  }
-  return '$sign$amount\u00A0$symbol';
+  return '$sign$prefix$amount$suffix';
 }
 
-/// Display form of a variable or number literal: integral doubles print without
-/// a fraction (`3.0` -> `3`), everything else uses its default string form.
+/// Display form of a variable, a number literal or a term argument.
+///
+/// Integral doubles print without a fraction (`3.0` -> `3`), and exponential
+/// forms are written out in full (`1e+21`, `1e-7`), which is what the reference
+/// runtime does for a bare number (`to_string` in `fluent-bundle`). No grouping
+/// and no locale symbols are applied: a bare `{$n}` is not a `NUMBER()` call.
 String _formatValue(Object value) {
-  if (value is double && value.isFinite && value == value.truncateToDouble()) {
-    return value.toStringAsFixed(0);
+  if (value is int) return value.toString();
+  if (value is double) {
+    if (value.isNaN) return 'NaN';
+    if (value.isInfinite) return value.isNegative ? '-Infinity' : 'Infinity';
+    final parts = _shortestDecimalParts(value);
+    final fraction =
+        parts.$2.contains(RegExp(r'[1-9]')) ? '.${parts.$2}' : '';
+    return '${value.isNegative ? '-' : ''}${parts.$1}$fraction';
   }
   return value.toString();
 }
@@ -231,8 +397,8 @@ class _FluentResolver {
 
   final FluentBundle bundle;
 
-  /// Variables visible to the pattern being resolved. Messages receive none
-  /// from their callers; terms only see their own named arguments.
+  /// Variables visible to the pattern being resolved. A referenced message
+  /// shares the caller's scope, while a term only sees its own named arguments.
   final Map<String, dynamic> args;
   final Set<String> _activeEntries;
 
@@ -241,13 +407,18 @@ class _FluentResolver {
   String resolvePattern(FtlPattern pattern, {int depth = 0}) {
     if (depth > _maxDepth) return '{???}';
 
+    // Isolation follows `fluent-bundle` (the Rust runtime this package mirrors):
+    // a pattern with more than one element isolates every placeable except a
+    // message reference, a term reference and a string literal.
+    final isolate = bundle.useIsolating && pattern.elements.length > 1;
+
     final buffer = StringBuffer();
     for (final element in pattern.elements) {
       if (element is FtlTextElement) {
         buffer.write(element.value);
       } else if (element is FtlPlaceable) {
         final resolved = resolveExpression(element.expression, depth: depth + 1);
-        if (bundle.useIsolating && !resolved.contains(bidiFsi)) {
+        if (isolate && _needsIsolation(element.expression)) {
           buffer.write('$bidiFsi$resolved$bidiPdi');
         } else {
           buffer.write(resolved);
@@ -257,8 +428,19 @@ class _FluentResolver {
     return buffer.toString();
   }
 
+  static bool _needsIsolation(FtlExpression expression) =>
+      expression is! FtlMessageReference &&
+      expression is! FtlTermReference &&
+      expression is! FtlStringLiteral;
+
   String resolveExpression(FtlExpression expr, {int depth = 0}) {
     if (depth > _maxDepth) return '{???}';
+
+    if (expr is FtlPlaceableExpression) {
+      // A nested placeable is transparent: it resolves to the value of the
+      // expression it wraps.
+      return resolveExpression(expr.expression, depth: depth + 1);
+    }
 
     if (expr is FtlStringLiteral) {
       return expr.value;
@@ -306,6 +488,8 @@ class _FluentResolver {
     if (pattern == null) return '{-${expr.id}$suffix}';
 
     // Terms get their own scope: only their named arguments are visible.
+    // Positional arguments (`{-term(1)}`) are accepted by the syntax but never
+    // passed to the term, matching `fluent-bundle`.
     final termArgs = <String, dynamic>{};
     final namedArgs = expr.arguments;
     if (namedArgs != null) {
@@ -338,12 +522,14 @@ class _FluentResolver {
         : message.value;
     if (pattern == null) return '{${expr.id}$suffix}';
 
-    // Messages referenced from a placeable do not inherit the caller's variables.
+    // A message reference is resolved in the caller's scope: the variables of
+    // the enclosing pattern stay visible, exactly as in the reference
+    // `FluentBundle` resolvers. (Terms, by contrast, get their own scope.)
     _activeEntries.add(entryKey);
     try {
       return _FluentResolver(
         bundle: bundle,
-        args: const <String, dynamic>{},
+        args: args,
         activeEntries: _activeEntries,
       ).resolvePattern(pattern, depth: depth + 1);
     } finally {
@@ -384,13 +570,19 @@ class _FluentResolver {
     }
 
     final percent = style == 'percent';
-    final minimum = _digitsOption(expr.named['minimumFractionDigits'], 0);
-    final maximumRaw = _digitsOption(
-      expr.named['maximumFractionDigits'],
-      percent ? 0 : 3,
-    );
+    final symbols = numberSymbolsFor(bundle.locale);
+    // `NUMBER()` without options formats with the locale's decimal pattern; the
+    // percent style uses the percent pattern, which carries the sign layout and
+    // the default fraction digits (`#,##0 %`, `%#,##0`, `#,##,##0%`).
+    final defaults = percent
+        ? patternFractionDigits(symbols.percentPattern)
+        : (symbols.minimumFractionDigits, symbols.maximumFractionDigits);
+    final minimum =
+        _digitsOption(expr.named['minimumFractionDigits'], defaults.$1);
+    final maximumRaw =
+        _digitsOption(expr.named['maximumFractionDigits'], defaults.$2);
     final maximum = maximumRaw < minimum ? minimum : maximumRaw;
-    final text = formatFluentNumber(
+    return formatFluentNumber(
       percent ? number * 100 : number,
       minimumFractionDigits: minimum,
       maximumFractionDigits: maximum,
@@ -398,8 +590,8 @@ class _FluentResolver {
           _digitsOption(expr.named['minimumIntegerDigits'], 1),
       useGrouping: _boolOption(expr.named['useGrouping']) ?? true,
       locale: bundle.locale,
+      pattern: percent ? symbols.percentPattern : null,
     );
-    return percent ? '$text%' : text;
   }
 
   String _formatDateFunction(FtlFunctionReference expr, DateTime date) {
@@ -467,6 +659,7 @@ class _FluentResolver {
 
   /// Raw (unformatted) value of an argument expression, used by built-in functions.
   Object? _rawValue(FtlExpression expr) {
+    if (expr is FtlPlaceableExpression) return _rawValue(expr.expression);
     if (expr is FtlNumberLiteral) return expr.value;
     if (expr is FtlStringLiteral) return expr.value;
     if (expr is FtlVariableReference) return args[expr.id] as Object?;

@@ -1,4 +1,5 @@
 import pathlib
+import re
 import unittest
 
 
@@ -59,10 +60,15 @@ class RustokI18nPackageTests(unittest.TestCase):
         cli = self.i18n_pkg / "bin/i18n_cli.dart"
         self.assertTrue(cli.is_file())
         content = cli.read_text(encoding="utf-8")
-        self.assertIn("check", content)
-        self.assertIn("typegen", content)
-        self.assertIn("_runCheck", content)
-        self.assertIn("_runTypegen", content)
+        self.assertIn("runI18nCli", content)  # thin wrapper over the library
+
+        library = (self.i18n_pkg / "lib/src/cli/i18n_cli.dart").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("addCommand('check')", library)
+        self.assertIn("addCommand('typegen')", library)
+        self.assertIn("_runCheck", library)
+        self.assertIn("_runTypegen", library)
 
     def test_dos_guard_and_bounded_input_constants(self):
         locale_tag = (self.i18n_pkg / "lib/src/locale/locale_tag.dart").read_text(
@@ -73,7 +79,13 @@ class RustokI18nPackageTests(unittest.TestCase):
         ui_messages = (self.i18n_pkg / "lib/src/messages/ui_messages.dart").read_text(
             encoding="utf-8"
         )
-        self.assertIn("maxMessageKeyLength = 128", ui_messages)
+        self.assertIn("maxMessageKeyLength = 256", ui_messages)
+
+        # Parity with the Rust contract (`rustok-ui-i18n::MAX_MESSAGE_KEY_LEN`).
+        rust_messages = (
+            self.repo_root / "crates/ui/rustok-ui-i18n/src/messages.rs"
+        ).read_text(encoding="utf-8")
+        self.assertIn("MAX_MESSAGE_KEY_LEN: usize = 256", rust_messages)
 
         accept_lang = (
             self.i18n_pkg / "lib/src/accept_language/accept_language_parser.dart"
@@ -152,7 +164,7 @@ class RustokI18nPackageTests(unittest.TestCase):
         messages = (self.i18n_pkg / "lib/src/messages/ui_messages.dart").read_text(
             encoding="utf-8"
         )
-        self.assertIn("_normalizeKebabKey", messages)
+        self.assertIn("String normalizeKebabKey(String input)", messages)
         self.assertIn("_normalizeDottedKey", messages)
         self.assertIn("resolve", messages)
         self.assertIn("t(", messages)
@@ -198,17 +210,19 @@ class RustokI18nPackageTests(unittest.TestCase):
             self.i18n_pkg / "lib/src/locale/text_direction.dart"
         ).read_text(encoding="utf-8")
         self.assertIn("enum LocaleTextDirection", text_dir)
-        self.assertIn("typedef TextDirection = LocaleTextDirection", text_dir)
+        # A `TextDirection` typedef would clash with Flutter's own enum.
+        self.assertNotIn("typedef TextDirection", text_dir)
 
     def test_parser_handles_crlf_multiline_negative_numbers_and_escapes(self):
         parser_code = (
             self.i18n_pkg / "lib/src/parser/ftl_parser.dart"
         ).read_text(encoding="utf-8")
         self.assertIn("replaceAll('\\r\\n', '\\n')", parser_code)
-        self.assertIn("_dedentPattern", parser_code)
-        self.assertIn("_parsePatternOrMultiline", parser_code)
+        self.assertIn("_buildPattern", parser_code)  # common-indent dedent
+        self.assertIn("_parsePattern", parser_code)
         self.assertIn("char == '-' && _isDigit(_peek(1))", parser_code)
-        self.assertIn("case 'n':", parser_code)
+        self.assertIn("Invalid escape sequence in string literal", parser_code)
+        self.assertIn("_isHexDigit", parser_code)
 
     def test_resolver_strips_bidi_and_has_cycle_guard(self):
         resolver_code = (
@@ -230,7 +244,7 @@ class RustokI18nPackageTests(unittest.TestCase):
         catalog_code = (
             self.i18n_pkg / "lib/src/catalog/message_catalog.dart"
         ).read_text(encoding="utf-8")
-        self.assertIn("table['$id.$attribute'] ?? table[id]", catalog_code)
+        self.assertIn("table['$id.$attribute']", catalog_code)
         self.assertIn("Map<dynamic, dynamic>", catalog_code)
 
     def test_accept_language_guarantees_stable_sort(self):
@@ -270,11 +284,71 @@ class RustokI18nPackageTests(unittest.TestCase):
         self.assertIn("String normalizeAdminLocale(String? locale)", locale_code)
 
     def test_typegen_escapes_reserved_keywords(self):
-        cli_code = (self.i18n_pkg / "bin/i18n_cli.dart").read_text(encoding="utf-8")
+        cli_code = (self.i18n_pkg / "lib/src/cli/i18n_cli.dart").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("_dartReservedWords", cli_code)
         self.assertIn("_toDartMethodName", cli_code)
         self.assertIn("_toDartParamName", cli_code)
         self.assertIn("recursive", cli_code)
+
+    def test_typegen_guards_its_own_api_and_follows_references(self):
+        cli_code = (self.i18n_pkg / "lib/src/cli/i18n_cli.dart").read_text(
+            encoding="utf-8"
+        )
+        # Members that would collide with the generated class API or with the
+        # members inherited from `Object` must be renamed, not emitted as is.
+        for reserved in (
+            "'locale'",
+            "'toString'",
+            "'hashCode'",
+            "'runtimeType'",
+            "'noSuchMethod'",
+        ):
+            self.assertIn(reserved, cli_code, f"{reserved} is not reserved")
+        self.assertIn("_reservedMemberNames", cli_code)
+        self.assertIn("_reservedParamNames", cli_code)
+        self.assertIn("_reservedClassNames", cli_code)
+        self.assertIn("_reserveMemberName(", cli_code)
+
+        # A message reference is resolved in the caller's scope, so parameters
+        # have to cover the variables of referenced messages as well.
+        self.assertIn("if (expr is FtlMessageReference)", cli_code)
+        self.assertIn("visited.add(", cli_code)
+
+        # The summary line must not claim that attribute-only messages vanish.
+        self.assertNotIn("attribute-only messages are skipped", cli_code)
+
+    def test_typegen_golden_sample_is_well_formed(self):
+        test_code = (self.i18n_pkg / "test/cli_test.dart").read_text(
+            encoding="utf-8"
+        )
+        marker = "const String _golden = '''"
+        self.assertIn(marker, test_code)
+        golden = test_code.split(marker, 1)[1]
+        golden = golden[: golden.index("'''")]
+
+        self.assertTrue(
+            golden.startswith("// Auto-generated by rustok_i18n typegen."),
+            "the golden must start with the generator banner",
+        )
+        self.assertEqual(golden.count("\nclass M {\n"), 1)
+        self.assertTrue(golden.endswith("}\n"))
+        self.assertEqual(golden.count("{"), golden.count("}"))
+        self.assertEqual(golden.count("("), golden.count(")"))
+        for line in golden.split("\n"):
+            self.assertEqual(line, line.rstrip(), f"trailing space in: {line!r}")
+
+        members = re.findall(
+            r"^  String (?:get )?([A-Za-z_][A-Za-z0-9_]*)", golden, re.M
+        )
+        self.assertEqual(members, ["greet", "countLabel", "countLabelAriaLabel"])
+        self.assertEqual(len(set(members)), len(members))
+        for banned in ("locale", "toString", "hashCode", "runtimeType"):
+            self.assertNotIn(banned, members)
+        # One instance-locale argument per accessor, and no parameter shadowing.
+        self.assertEqual(golden.count("        locale: locale,\n"), len(members))
+        self.assertNotIn("dynamic locale)", golden)
 
     def test_accept_language_locales_and_preferences_parity(self):
         accept_code = (

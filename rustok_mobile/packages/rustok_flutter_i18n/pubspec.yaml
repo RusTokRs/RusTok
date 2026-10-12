@@ -1,6 +1,10 @@
 name: rustok_flutter_i18n
 description: Flutter UI widgets, InheritedWidget, Directionality, and Riverpod bindings for rustok_i18n (Mozilla Project Fluent 1.0).
 version: 0.1.0
+# Internal monorepo package: it depends on `rustok_i18n` by path, so it cannot
+# be published to pub.dev. Declaring that keeps `flutter analyze` from
+# reporting `invalid_dependency` for every path dependency.
+publish_to: none
 repository: https://github.com/rustok/rustok
 homepage: https://github.com/rustok/rustok/tree/main/rustok_mobile/packages/rustok_flutter_i18n
 topics:

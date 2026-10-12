@@ -6,6 +6,10 @@
 # Note: Cargo.lock IS intentionally tracked for binary applications (server, admin, storefront)
 # See: https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
 
+# Python tooling
+__pycache__/
+*.pyc
+
 # IDEs and editors
 /.idea
 /.vscode

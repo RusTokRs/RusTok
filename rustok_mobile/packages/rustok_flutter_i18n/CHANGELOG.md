@@ -12,6 +12,8 @@
 * `messageCatalogProvider` has no default catalog and throws `UnimplementedError` until overridden (previously it silently used an empty catalog).
 * `DirectionalityHandler` documentation now shows the `MaterialApp.builder` placement.
 * `flutter_riverpod` is a required dependency (it was documented as optional).
+* The engine behind this package accepts nested placeables and attaches translator comments to messages and terms (`FtlMessage.comment`), so `# ...` comment blocks used as translator notes no longer show up as separate entries when the catalogs are inspected.
+* README: documented the `localeReadyProvider` error behaviour (a failed `LazyCatalog` load is not retried; invalidate the provider to retry), dotted attribute keys, and which extensions require a `FluentScope` ancestor.
 
 ## 0.1.0
 

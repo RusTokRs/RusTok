@@ -192,5 +192,57 @@ void main() {
       expect(catalog.isLoaded('en'), isTrue);
       expect(find.text('Welcome'), findsOneWidget);
     });
+
+    // TEMPORARY DIAGNOSTIC
+    testWidgets('DIAG lazy catalog rebuild', (tester) async {
+      final catalog = LazyCatalog(
+        loader: (locale) async =>
+            locale == 'en' ? 'welcome = Welcome\n' : null,
+      );
+      final container = ProviderContainer(
+        overrides: [messageCatalogProvider.overrideWithValue(catalog)],
+      );
+      addTearDown(container.dispose);
+      var builds = 0;
+      container.listen<void>(
+        localeReadyProvider('en'),
+        (previous, next) =>
+            debugPrint('DIAG listen: ${previous.runtimeType} -> $next'),
+        fireImmediately: true,
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: RiverpodFluentScope(
+            child: MaterialApp(
+              home: Builder(
+                builder: (context) {
+                  builds++;
+                  final scope = FluentScope.maybeOf(context);
+                  final value = context.maybeT('welcome', fallback: '...');
+                  debugPrint(
+                      'DIAG build=$builds rev=${scope?.revision} value=$value '
+                      'loaded=${catalog.isLoaded('en')} '
+                      'direct=${scope?.messages.t('welcome', locale: 'en')}');
+                  return Text(value);
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      debugPrint('DIAG after first pump: builds=$builds '
+          'loaded=${catalog.isLoaded('en')}');
+      await tester.pump();
+      debugPrint('DIAG after pump(): builds=$builds '
+          'loaded=${catalog.isLoaded('en')} '
+          'getMessage=${catalog.getMessage('en', 'welcome')}');
+      await tester.pumpAndSettle();
+      debugPrint('DIAG provider now: ${container.read(localeReadyProvider('en'))}');
+      debugPrint('DIAG after settle: builds=$builds '
+          'loaded=${catalog.isLoaded('en')} '
+          'texts=${find.byType(Text).evaluate().map((e) => (e.widget as Text).data).toList()}');
+    });
   });
 }

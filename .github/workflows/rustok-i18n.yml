@@ -18,6 +18,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+
 jobs:
   core:
     name: Dart core (analyze + test)
@@ -31,12 +34,67 @@ jobs:
         with:
           sdk: '3.0.0'
       - run: dart pub get
-      - run: dart analyze
-      - run: dart test
+      # TEMPORARY DIAGNOSTIC (строки помечены, чтобы читать вывод через
+      # check-run annotations: журналы загрузок недоступны в песочнице)
+      - name: 'CLI typegen'
+        run: |
+          set +e
+          dart run bin/i18n_cli.dart typegen \
+            --input example/locales/en.ftl \
+            --output example/generated/smoke_messages.g.dart \
+            --className SmokeMessages > /tmp/tg.log 2>&1
+          code=$?
+          cat /tmp/tg.log
+          if [ $code -ne 0 ]; then
+            head -n 40 /tmp/tg.log | cut -c1-900 | while IFS= read -r line; do printf '::error::TG %s\n' "${line//%/%25}"; done
+          fi
+          exit $code
+      # `dart analyze` runs after typegen so the generated file is compiled too.
+      - name: 'Dart analyze + test'
+        if: always()
+        run: |
+          set +e
+          dart analyze > /tmp/an.log 2>&1; an=$?
+          dart test --reporter expanded > /tmp/te.log 2>&1; te=$?
+          {
+            echo '##### dart analyze #####'
+            cat /tmp/an.log
+            echo '##### dart test #####'
+            tail -n 400 /tmp/te.log
+          } > /tmp/diag.log 2>&1
+          printf '::error::DT analyze_exit=%s test_exit=%s\n' "$an" "$te"
+          names=$(tr '\r' '\n' < /tmp/te.log \
+            | sed -E 's/\x1b\[[0-9;]*m//g' \
+            | grep -E '\[E\]$' | sed -E 's/^[0-9:]+ //' \
+            | sed -E 's/ *\[E\]$//' | tr '\n' ';' | cut -c1-60000)
+          details=$(tr '\r' '\n' < /tmp/te.log \
+            | sed -E 's/\x1b\[[0-9;]*m//g' \
+            | grep -E 'Expected:|Actual:|Which:|^ +package:|rustok_i18n/test/|\.dart [0-9]+:[0-9]+' \
+            | tr '\n' '|' | cut -c1-60000)
+          printf '::error::TESTS_FAILED %s\n' "${names//%/%25}"
+          printf '::error::TEST_DETAILS %s\n' "${details//%/%25}"
+          [ $an -ne 0 ] && exit $an
+          exit $te
       - name: CLI parity check (fails on mismatch)
         run: dart run bin/i18n_cli.dart check --dir example/locales --baseline en
-      - name: CLI typegen (fails on invalid input)
-        run: dart run bin/i18n_cli.dart typegen --input example/locales/en.ftl --output /tmp/messages.g.dart --className SmokeMessages
+
+  tooling:
+    name: Tooling contracts (Python + Node)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rustok_mobile/tooling
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+      - name: Package contract tests (no Dart SDK required)
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+      - name: i18n simulation + parity script
+        run: node scripts/verify_i18n_simulation.mjs
 
   flutter:
     name: Flutter wrapper (analyze + test)
@@ -50,5 +108,24 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
-      - run: flutter analyze
-      - run: flutter test
+      # TEMPORARY DIAGNOSTIC
+      - name: 'Flutter analyze + test'
+        run: |
+          set +e
+          flutter analyze > /tmp/fa.log 2>&1; fa=$?
+          flutter test > /tmp/ft.log 2>&1; ft=$?
+          {
+            echo '##### flutter analyze #####'
+            tail -n 80 /tmp/fa.log
+            echo '##### flutter test #####'
+            tail -n 120 /tmp/ft.log
+          } > /tmp/fdiag.log 2>&1
+          printf '::error::FL analyze_exit=%s test_exit=%s\n' "$fa" "$ft"
+          grep -nE 'error|warning' /tmp/fa.log | head -n 10 | cut -c1-900 \
+            | while IFS= read -r line; do printf '::error::FL %s\n' "${line//%/%25}"; done
+          diag=$(tr '\r' '\n' < /tmp/ft.log \
+            | sed -E 's/\x1b\[[0-9;]*m//g' \
+            | grep -E 'DIAG|Expected:|Actual:|Which:' | tr '\n' '|' | cut -c1-60000)
+          printf '::error::FT %s\n' "${diag//%/%25}"
+          [ $fa -ne 0 ] && exit $fa
+          exit $ft

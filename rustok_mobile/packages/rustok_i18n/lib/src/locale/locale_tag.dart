@@ -7,6 +7,41 @@ const int maxLocaleTagLength = 64;
 final RegExp _variantPattern = RegExp(r'^[a-z0-9]{5,8}$');
 final RegExp _digitVariantPattern = RegExp(r'^[0-9][a-z0-9]{3}$');
 
+/// Grandfathered tags of RFC 5646 §2.2.8, mapped to the preferred value of the
+/// IANA language subtag registry (lower case).
+///
+/// A `null` value marks one of the five tags without a preferred value: it is
+/// kept as an opaque `language`, so a catalog can still be looked up by exactly
+/// that string while the tag stays recognizable.
+const Map<String, String?> _grandfatheredPreferred = <String, String?>{
+  'art-lojban': 'jbo',
+  'cel-gaulish': null,
+  'en-gb-oed': 'en-GB-oxendict',
+  'i-ami': 'ami',
+  'i-bnn': 'bnn',
+  'i-default': null,
+  'i-enochian': null,
+  'i-hak': 'hak',
+  'i-klingon': 'tlh',
+  'i-lux': 'lb',
+  'i-mingo': null,
+  'i-navajo': 'nv',
+  'i-pwn': 'pwn',
+  'i-tao': 'tao',
+  'i-tay': 'tay',
+  'i-tsu': 'tsu',
+  'no-bok': 'nb',
+  'no-nyn': 'nn',
+  'sgn-be-fr': 'sfb',
+  'sgn-be-nl': 'vgt',
+  'sgn-ch-de': 'sgg',
+  'zh-guoyu': 'cmn',
+  'zh-hakka': 'hak',
+  'zh-min': null,
+  'zh-min-nan': 'nan',
+  'zh-xiang': 'hsn',
+};
+
 /// Immutable representation of a parsed and canonicalized BCP-47 / Unicode locale identifier.
 class LocaleTag {
   const LocaleTag({
@@ -50,6 +85,16 @@ class LocaleTag {
 
     // Normalize underscores to hyphens
     trimmed = trimmed.replaceAll('_', '-');
+
+    // Grandfathered tags have no subtag structure (`i-klingon`, `zh-min-nan`,
+    // `en-GB-oed`, `sgn-BE-FR`), so they are resolved before the tag is split.
+    final lower = trimmed.toLowerCase();
+    if (_grandfatheredPreferred.containsKey(lower)) {
+      final preferred = _grandfatheredPreferred[lower];
+      return preferred == null
+          ? LocaleTag(language: lower)
+          : tryParse(preferred);
+    }
 
     final segments = trimmed.split('-');
     if (segments.isEmpty || segments.first.isEmpty) return null;

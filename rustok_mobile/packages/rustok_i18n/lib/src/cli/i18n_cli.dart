@@ -82,21 +82,48 @@ String _localeOf(File file) {
   return name.endsWith('.ftl') ? name.substring(0, name.length - 4) : name;
 }
 
-/// Parses [file] into a bundle. Parser errors are appended to [errors].
-FluentBundle _loadBundle(File file, String locale, List<String> errors) {
+/// Parses [source] (read from [label]) into a bundle.
+///
+/// Parser errors are appended to [errors] together with the file label.
+FluentBundle _loadBundle(
+  String source,
+  String locale,
+  String label,
+  List<String> errors,
+) {
   final bundle = FluentBundle(locale: locale, useIsolating: false);
   try {
-    bundle.addSource(file.readAsStringSync());
+    bundle.addSource(source);
   } on FtlParseException catch (e) {
-    errors.add('Parse error in ${file.path}: $e');
+    errors.add('Parse error in $label: $e');
   }
   return bundle;
 }
 
-Set<String> _attributeNames(FluentBundle bundle, String id) {
-  final message = bundle.getMessage(id);
-  if (message == null) return <String>{};
-  return message.attributes.map((attr) => attr.id).toSet();
+/// The key and attribute contract declared by one locale source.
+///
+/// The contract is read from the parsed AST rather than from a loaded
+/// [FluentBundle]: a bundle indexes messages, but a message may validly have
+/// attributes and no value (`key =` followed by `.attribute = value`), and the
+/// contract has to cover those attributes too.
+class _SourceContract {
+  const _SourceContract(this.keys, this.attributes);
+
+  final Set<String> keys;
+  final Map<String, Set<String>> attributes;
+
+  Set<String> attributesOf(String id) => attributes[id] ?? const <String>{};
+}
+
+_SourceContract _contractOf(String source) {
+  final messages = FtlParser.parse(source).messages.values;
+  return _SourceContract(
+    messages.map((message) => message.id).toSet(),
+    {
+      for (final message in messages)
+        message.id: message.attributes.map((attribute) => attribute.id).toSet(),
+    },
+  );
 }
 
 /// First few sorted items of [items], for compact reporting.
@@ -135,10 +162,21 @@ int _runCheck(ArgResults options, CliOutput write, CliOutput writeErr) {
     return exitFailure;
   }
   final baselineFile = baselineFiles.first;
+  if (baselineFiles.length > 1) {
+    final others = baselineFiles
+        .skip(1)
+        .map((file) => file.path)
+        .join(', ');
+    write('Warning: ${baselineFiles.length} "$baseline.ftl" files found; '
+        'using ${baselineFile.path} (also found: $others).');
+  }
 
   final baselineErrors = <String>[];
-  final baselineBundle = _loadBundle(baselineFile, baseline, baselineErrors);
-  final baselineKeys = baselineBundle.messageIds.toSet();
+  final baselineSource = baselineFile.readAsStringSync();
+  final baselineBundle =
+      _loadBundle(baselineSource, baseline, baselineFile.path, baselineErrors);
+  final baselineContract = _contractOf(baselineSource);
+  final baselineKeys = baselineContract.keys;
 
   write('=== RusToK i18n Parity Check ===');
   write('Baseline: ${baselineFile.path} (${baselineKeys.length} keys)');
@@ -158,8 +196,10 @@ int _runCheck(ArgResults options, CliOutput write, CliOutput writeErr) {
     if (file.path == baselineFile.path) continue;
     final localeName = _localeOf(file);
     final problems = <String>[];
-    final bundle = _loadBundle(file, localeName, problems);
-    final keys = bundle.messageIds.toSet();
+    final source = file.readAsStringSync();
+    final bundle = _loadBundle(source, localeName, file.path, problems);
+    final contract = _contractOf(source);
+    final keys = contract.keys;
 
     final missing = baselineKeys.difference(keys);
     final extra = keys.difference(baselineKeys);
@@ -170,14 +210,22 @@ int _runCheck(ArgResults options, CliOutput write, CliOutput writeErr) {
       problems.add('Extra keys (${extra.length}): ${_preview(extra)}');
     }
 
-    // Attributes are part of the contract: a missing `.placeholder` is a parity bug.
+    // Attributes are part of the contract: a missing `.placeholder` is a parity
+    // bug, and an attribute the baseline does not define is one too.
     for (final id in baselineKeys.toList()..sort()) {
       if (!keys.contains(id)) continue;
-      final missingAttributes = _attributeNames(baselineBundle, id)
-          .difference(_attributeNames(bundle, id));
+      final expected = baselineContract.attributesOf(id);
+      final actual = contract.attributesOf(id);
+      final missingAttributes = expected.difference(actual);
       if (missingAttributes.isNotEmpty) {
         problems.add(
           'Message "$id" is missing attributes: ${_preview(missingAttributes)}',
+        );
+      }
+      final extraAttributes = actual.difference(expected);
+      if (extraAttributes.isNotEmpty) {
+        problems.add(
+          'Message "$id" has extra attributes: ${_preview(extraAttributes)}',
         );
       }
     }
@@ -213,6 +261,12 @@ int _runTypegen(ArgResults options, CliOutput write, CliOutput writeErr) {
     return exitFailure;
   }
 
+  if (_reservedClassNames.contains(className)) {
+    writeErr('Error: "$className" is already the name of a type the generated '
+        'file uses; choose another class name.');
+    return exitFailure;
+  }
+
   final inputFile = File(inputPath);
   if (!inputFile.existsSync()) {
     writeErr('Error: Input file "$inputPath" does not exist.');
@@ -220,7 +274,8 @@ int _runTypegen(ArgResults options, CliOutput write, CliOutput writeErr) {
   }
 
   final errors = <String>[];
-  final bundle = _loadBundle(inputFile, 'generated', errors);
+  final bundle =
+      _loadBundle(inputFile.readAsStringSync(), 'generated', inputPath, errors);
   final problems = [...errors, ...bundle.diagnostics];
   if (problems.isNotEmpty) {
     writeErr('Error: "$inputPath" contains invalid entries:');
@@ -243,8 +298,8 @@ int _runTypegen(ArgResults options, CliOutput write, CliOutput writeErr) {
   }
 
   write('Successfully generated $className at "$outputPath" '
-      '(${source.generated} of ${bundle.messageIds.length} keys; '
-      'attribute-only messages are skipped).');
+      '(accessors: ${source.generated}, keys: ${bundle.messageIds.length}; '
+      'a message without a value contributes attribute getters only).');
   return exitOk;
 }
 
@@ -259,8 +314,43 @@ class GeneratedSource {
   final int generated;
 }
 
+/// Typed accessor for one message value or attribute.
+class _TypedAccessor {
+  const _TypedAccessor({
+    required this.member,
+    required this.attribute,
+    required this.pattern,
+  });
+
+  /// Dart member name, e.g. `welcome` or `welcomeAriaLabel`.
+  final String member;
+
+  /// Attribute name, or `null` for the message value itself.
+  final String? attribute;
+
+  final FtlPattern pattern;
+
+  /// Human-readable name used in error messages.
+  String describe(String key) =>
+      attribute == null ? 'message key "$key"' : 'attribute "$key.$attribute"';
+}
+
 /// Builds the typed accessor class for [bundle]. Returns `null` (and reports
 /// through [writeErr]) when two keys or variables map to the same Dart name.
+///
+/// Every message value becomes a getter — or a method when the pattern uses
+/// variables — and every attribute becomes an additional accessor that calls
+/// `tAttr`, so `input.placeholder` is reachable as `inputPlaceholder`. A
+/// translator comment (`# ...` directly above the entry) becomes a doc comment.
+///
+/// The parameters of a method are the variables the resolver reads from the
+/// caller's scope: those written in the pattern plus those of every message it
+/// references, because a message reference is resolved in the caller's scope.
+/// Term references are not followed — a term is resolved with its own scope.
+/// Members that would collide with the generated class itself (`locale`), with
+/// `Object` (`toString`, `hashCode`, `runtimeType`, `noSuchMethod`) or with a
+/// Dart keyword get a `Message` suffix; a `locale` parameter becomes
+/// `localeArg`, so it cannot shadow the field passed as the bundle locale.
 GeneratedSource? generateTypedMessages(
   FluentBundle bundle, {
   required String className,
@@ -281,57 +371,96 @@ GeneratedSource? generateTypedMessages(
   buffer.writeln('  final String? locale;');
   buffer.writeln();
 
+  void writeDocComment(String? comment) {
+    if (comment == null) return;
+    final lines = comment.split('\n');
+    if (lines.every((line) => line.trim().isEmpty)) return;
+    for (final line in lines) {
+      buffer.writeln('  /// ${line.replaceFirst(RegExp(r'[ \t]+$'), '')}');
+    }
+  }
+
   for (final key in bundle.messageIds) {
+    final message = bundle.getMessage(key);
+    if (message == null) continue;
+
     final dartName = _toDartMethodName(key);
-    final owner = memberOwners[dartName];
-    if (owner != null) {
-      report('Error: message keys "$owner" and "$key" both map to Dart member "$dartName".');
-      return null;
+    final accessors = <_TypedAccessor>[];
+    if (message.value != null) {
+      accessors.add(_TypedAccessor(
+        member: dartName,
+        attribute: null,
+        pattern: message.value!,
+      ));
     }
-    memberOwners[dartName] = key;
-
-    final pattern = bundle.getMessage(key)?.value;
-    if (pattern == null) {
-      // Attribute-only messages have no main value to generate a getter for.
-      continue;
+    for (final attribute in message.attributes) {
+      accessors.add(_TypedAccessor(
+        member: _reserveMemberName(
+          '$dartName${_capitalize(_toDartParamName(attribute.id))}',
+        ),
+        attribute: attribute.id,
+        pattern: attribute.value,
+      ));
     }
 
-    final vars = <String>{};
-    _collectVariables(pattern, vars);
-
-    final params = <String, String>{};
-    final seenParams = <String>{};
-    for (final variable in vars) {
-      final param = _toDartParamName(variable);
-      if (!seenParams.add(param)) {
-        report('Error: variables in "$key" collide on Dart parameter "$param".');
+    writeDocComment(message.comment);
+    for (final accessor in accessors) {
+      final owner = memberOwners[accessor.member];
+      if (owner != null) {
+        report('Error: $owner and ${accessor.describe(key)} both map to '
+            'Dart member "${accessor.member}".');
         return null;
       }
-      params[variable] = param;
-    }
+      memberOwners[accessor.member] = accessor.describe(key);
 
-    if (params.isEmpty) {
-      buffer.writeln('  String get $dartName => _messages.t(');
+      final vars = <String>{};
+      _collectVariables(accessor.pattern, bundle, vars, <String>{});
+
+      final params = <String, String>{};
+      final seenParams = <String>{};
+      for (final variable in vars) {
+        final param = _toDartParamName(variable);
+        if (!seenParams.add(param)) {
+          report('Error: variables in "${accessor.member}" collide on Dart '
+              'parameter "$param".');
+          return null;
+        }
+        params[variable] = param;
+      }
+
+      final call = accessor.attribute == null ? 't' : 'tAttr';
+      if (params.isEmpty) {
+        buffer.writeln('  String get ${accessor.member} => _messages.$call(');
+      } else {
+        final paramList = params.values.map((p) => 'required dynamic $p').join(', ');
+        buffer.writeln('  String ${accessor.member}({$paramList}) => _messages.$call(');
+      }
       buffer.writeln("        '${_escapeSingleQuoted(key)}',");
+      if (accessor.attribute != null) {
+        buffer.writeln("        '${_escapeSingleQuoted(accessor.attribute!)}',");
+      }
       buffer.writeln('        locale: locale,');
+      if (params.isNotEmpty) {
+        final argMap = params.entries
+            .map((e) => "'${_escapeSingleQuoted(e.key)}': ${e.value}")
+            .join(', ');
+        buffer.writeln('        args: {$argMap},');
+      }
       buffer.writeln('      );');
-    } else {
-      final paramList = params.values.map((p) => 'required dynamic $p').join(', ');
-      final argMap = params.entries
-          .map((e) => "'${_escapeSingleQuoted(e.key)}': ${e.value}")
-          .join(', ');
-      buffer.writeln('  String $dartName({$paramList}) => _messages.t(');
-      buffer.writeln("        '${_escapeSingleQuoted(key)}',");
-      buffer.writeln('        locale: locale,');
-      buffer.writeln('        args: {$argMap},');
-      buffer.writeln('      );');
+      buffer.writeln();
+      generated++;
     }
-    buffer.writeln();
-    generated++;
   }
 
   buffer.writeln('}');
   return GeneratedSource(buffer.toString(), generated);
+}
+
+/// Upper-cases the first character of [input], for member names such as
+/// `inputPlaceholder`.
+String _capitalize(String input) {
+  if (input.isEmpty) return input;
+  return input[0].toUpperCase() + input.substring(1);
 }
 
 /// Escapes [input] for use inside a single-quoted Dart string literal.
@@ -350,25 +479,68 @@ String _escapeSingleQuoted(String input) {
   return buffer.toString();
 }
 
-void _collectVariables(FtlPattern pattern, Set<String> vars) {
+/// Collects the variables [pattern] reads from the caller's scope into [vars].
+///
+/// [visited] carries the message entries already followed, so a reference cycle
+/// (`a = { b }` next to `b = { a }`) stays finite; pass a fresh set per accessor.
+void _collectVariables(
+  FtlPattern pattern,
+  FluentBundle bundle,
+  Set<String> vars,
+  Set<String> visited,
+) {
   for (final elem in pattern.elements) {
     if (elem is FtlPlaceable) {
-      _collectExpressionVariables(elem.expression, vars);
+      _collectExpressionVariables(elem.expression, bundle, vars, visited);
     }
   }
 }
 
-void _collectExpressionVariables(FtlExpression expr, Set<String> vars) {
+void _collectExpressionVariables(
+  FtlExpression expr,
+  FluentBundle bundle,
+  Set<String> vars,
+  Set<String> visited,
+) {
   if (expr is FtlVariableReference) {
     vars.add(expr.id);
+  } else if (expr is FtlPlaceableExpression) {
+    _collectExpressionVariables(expr.expression, bundle, vars, visited);
   } else if (expr is FtlFunctionReference) {
     for (final arg in expr.positional) {
-      _collectExpressionVariables(arg, vars);
+      _collectExpressionVariables(arg, bundle, vars, visited);
     }
+    // A named argument is a string or number literal by the grammar, so it can
+    // never carry a variable; walking them anyway keeps the generated signature
+    // correct if the parser ever accepts a wider form.
+    for (final arg in expr.named.values) {
+      _collectExpressionVariables(arg, bundle, vars, visited);
+    }
+  } else if (expr is FtlTermReference) {
+    // A term is resolved with its own scope, so the variables inside its
+    // pattern are not read from the caller; only the arguments written at the
+    // call site are.
+    for (final arg in expr.positionalArguments) {
+      _collectExpressionVariables(arg, bundle, vars, visited);
+    }
+    for (final arg in (expr.arguments ?? const <String, FtlExpression>{}).values) {
+      _collectExpressionVariables(arg, bundle, vars, visited);
+    }
+  } else if (expr is FtlMessageReference) {
+    // A message reference is resolved in the caller's scope, so every variable
+    // its pattern reads is a variable the generated method must accept.
+    final suffix = expr.attribute != null ? '.${expr.attribute}' : '';
+    if (!visited.add('${expr.id}$suffix')) return;
+    final message = bundle.getMessage(expr.id);
+    if (message == null) return;
+    final pattern = expr.attribute != null
+        ? message.findAttribute(expr.attribute!)?.value
+        : message.value;
+    if (pattern != null) _collectVariables(pattern, bundle, vars, visited);
   } else if (expr is FtlSelectExpression) {
-    _collectExpressionVariables(expr.selector, vars);
+    _collectExpressionVariables(expr.selector, bundle, vars, visited);
     for (final variant in expr.variants) {
-      _collectVariables(variant.value, vars);
+      _collectVariables(variant.value, bundle, vars, visited);
     }
   }
 }
@@ -385,17 +557,44 @@ const Set<String> _dartReservedWords = {
   'part', 'required', 'set', 'static', 'typedef',
 };
 
-String _toDartMethodName(String input) {
-  var name = _toCamelCase(input);
-  if (_dartReservedWords.contains(name) || RegExp(r'^[0-9]').hasMatch(name)) {
-    name = '${name}Message';
+/// Class names the generated file cannot use: it imports `UiMessages` and holds
+/// one as a field, so a same-named class would shadow the type it needs.
+const Set<String> _reservedClassNames = {'UiMessages'};
+
+/// Members the generated class must not declare. `locale` is the field the
+/// generated bodies pass as the bundle locale; the rest come from `Object`,
+/// where a `String` getter is not a valid override.
+const Set<String> _reservedMemberNames = {
+  'locale',
+  'toString',
+  'hashCode',
+  'runtimeType',
+  'noSuchMethod',
+};
+
+/// Parameter names the generated methods must not use: a parameter called
+/// `locale` would shadow the field of the same name, so the accessor would pass
+/// the message argument as the bundle locale instead of the instance locale.
+const Set<String> _reservedParamNames = {'locale'};
+
+/// Appends `Message` when [name] cannot be declared as a member: a Dart keyword,
+/// a member of the generated class or of `Object`, or a leading digit.
+String _reserveMemberName(String name) {
+  if (_dartReservedWords.contains(name) ||
+      _reservedMemberNames.contains(name) ||
+      RegExp(r'^[0-9]').hasMatch(name)) {
+    return '${name}Message';
   }
   return name;
 }
 
+String _toDartMethodName(String input) => _reserveMemberName(_toCamelCase(input));
+
 String _toDartParamName(String input) {
   var name = _toCamelCase(input);
-  if (_dartReservedWords.contains(name) || RegExp(r'^[0-9]').hasMatch(name)) {
+  if (_dartReservedWords.contains(name) ||
+      _reservedParamNames.contains(name) ||
+      RegExp(r'^[0-9]').hasMatch(name)) {
     name = '${name}Arg';
   }
   return name;
