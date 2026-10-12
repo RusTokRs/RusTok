@@ -3,7 +3,7 @@ use rustok_fulfillment::{FulfillmentError, FulfillmentResponse, FulfillmentServi
 use rustok_inventory::InventoryReservationIdentityPort;
 use rustok_marketplace_allocation::MarketplaceAllocationCommandPort;
 use rustok_marketplace_commission::MarketplaceCommissionCommandPort;
-use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
+use rustok_marketplace_balance::MarketplaceLedgerCommandPort;
 use rustok_order::OrderResponse;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::error::PaymentError;

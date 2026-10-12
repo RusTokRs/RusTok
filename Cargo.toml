@@ -91,10 +91,12 @@ exclude = [
     "rustok-revisions-monitoring",
     "rustok-revisions-backup",
     "crates/integration/rustok-content-revisions",
+    "crates/utils/serde-columnar-vendored",
 ]
 
 [patch.crates-io]
 utoipa-swagger-ui-vendored = { path = "crates/utils/utoipa-swagger-ui-vendored" }
+serde_columnar = { path = "crates/utils/serde-columnar-vendored" }
 
 # Shared lint policy for the Fly crates.
 #

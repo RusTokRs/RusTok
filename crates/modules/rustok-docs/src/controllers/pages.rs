@@ -185,13 +185,8 @@ pub async fn delete_page(
         "Permission denied: pages:delete required",
     )?;
 
-    DocumentService::delete_page(
-        &runtime.db,
-        tenant.id,
-        page_id,
-        query.hard.unwrap_or(false),
-    )
-    .await?;
+    DocumentService::delete_page(&runtime.db, tenant.id, page_id, query.hard.unwrap_or(false))
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -229,13 +224,9 @@ pub async fn get_sync(
         "Permission denied: pages:read required",
     )?;
 
-    let payload = DocumentService::get_sync_payload(
-        &runtime.db,
-        tenant.id,
-        page_id,
-        query.client_seq_id,
-    )
-    .await?;
+    let payload =
+        DocumentService::get_sync_payload(&runtime.db, tenant.id, page_id, query.client_seq_id)
+            .await?;
 
     Ok(Json(payload))
 }
@@ -255,13 +246,9 @@ pub async fn append_deltas(
         "Permission denied: pages:update required",
     )?;
 
-    let latest_seq_id = DocumentService::append_updates(
-        &runtime.db,
-        tenant.id,
-        page_id,
-        dto.deltas.clone(),
-    )
-    .await?;
+    let latest_seq_id =
+        DocumentService::append_updates(&runtime.db, tenant.id, page_id, dto.deltas.clone())
+            .await?;
 
     // Broadcast deltas to active collaborative WebSocket peers
     runtime.room_hub.broadcast(

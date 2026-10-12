@@ -49,12 +49,10 @@ mutation UpdateEventDeliveryConfiguration($input: UpdateEventDeliveryConfigurati
 export async function getEventsStatus(
   opts: GqlOpts = {}
 ): Promise<EventsStatus> {
-  const data = await graphqlRequest<Record<string, never>, { eventsStatus: EventsStatus }>(
-    EVENTS_STATUS_QUERY,
-    {},
-    opts.token,
-    opts.tenantSlug
-  );
+  const data = await graphqlRequest<
+    Record<string, never>,
+    { eventsStatus: EventsStatus }
+  >(EVENTS_STATUS_QUERY, {}, opts.token, opts.tenantSlug);
   return data.eventsStatus;
 }
 
@@ -74,7 +72,12 @@ export async function saveEventDeliveryProfile(
 ): Promise<EventDeliveryConfiguration> {
   const data = await graphqlRequest<
     { input: { profile: string } },
-    { updateEventDeliveryConfiguration: Pick<EventDeliveryConfiguration, 'desiredProfile' | 'restartRequired'> }
+    {
+      updateEventDeliveryConfiguration: Pick<
+        EventDeliveryConfiguration,
+        'desiredProfile' | 'restartRequired'
+      >;
+    }
   >(
     UPDATE_EVENT_DELIVERY_CONFIGURATION_MUTATION,
     { input: { profile } },

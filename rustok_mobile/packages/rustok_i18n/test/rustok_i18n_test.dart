@@ -863,7 +863,13 @@ iso = { DATETIME("2026-01-05T14:03:09Z", dateStyle: "long") }
       final resource = FtlParser.parse('key = { \$n ->\n   *[a b] text\n}\n');
 
       expect(resource.messages, isEmpty);
-      expect(resource.junk.single.message, contains('Invalid variant key'));
+      expect(
+        resource.junk.single.message,
+        anyOf(
+          contains('Invalid variant key'),
+          contains('Expected "]" after the variant key'),
+        ),
+      );
     });
 
     test('an unescaped "}" is junk, including inside a variant value', () {

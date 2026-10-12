@@ -170,7 +170,7 @@ fn validate_permission_request(request: &RbacPermissionCheckRequest) -> Result<(
 mod tests {
     use super::*;
     use crate::PermissionResolution;
-    use rustok_api::{Permission, PortActor, PortCallPolicy, PortContext};
+    use rustok_api::{Permission, PortActor, PortContext};
 
     struct MockResolver {
         permissions: Vec<Permission>,
@@ -203,8 +203,10 @@ mod tests {
         let context = PortContext::new(
             tenant_id.to_string(),
             PortActor::user(user_id.to_string()),
-            PortCallPolicy::read(),
-        );
+            "en",
+            "corr-decision-manage",
+        )
+        .with_deadline(std::time::Duration::from_secs(5));
 
         let response = provider
             .check_permissions(
@@ -233,8 +235,10 @@ mod tests {
         let context = PortContext::new(
             tenant_id.to_string(),
             PortActor::user(user_id.to_string()),
-            PortCallPolicy::read(),
-        );
+            "en",
+            "corr-decision-denies",
+        )
+        .with_deadline(std::time::Duration::from_secs(5));
 
         let response = provider
             .check_permissions(
@@ -249,6 +253,9 @@ mod tests {
 
         assert!(!response.allowed);
         assert_eq!(response.matched_permissions, vec!["users:read".to_string()]);
-        assert_eq!(response.missing_permissions, vec!["users:delete".to_string()]);
+        assert_eq!(
+            response.missing_permissions,
+            vec!["users:delete".to_string()]
+        );
     }
 }

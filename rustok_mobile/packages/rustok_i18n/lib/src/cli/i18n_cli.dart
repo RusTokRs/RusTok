@@ -134,7 +134,11 @@ String _preview(Set<String> items) {
 }
 
 int _runCheck(ArgResults options, CliOutput write, CliOutput writeErr) {
-  final dirPath = options['dir'] as String;
+  final dirPath = options['dir'] as String?;
+  if (dirPath == null) {
+    writeErr('Error: Option "--dir" is mandatory.');
+    return exitUsage;
+  }
   final baseline = options['baseline'] as String;
   final recursive = options['recursive'] as bool;
   final dir = Directory(dirPath);
@@ -252,8 +256,12 @@ int _runCheck(ArgResults options, CliOutput write, CliOutput writeErr) {
 }
 
 int _runTypegen(ArgResults options, CliOutput write, CliOutput writeErr) {
-  final inputPath = options['input'] as String;
-  final outputPath = options['output'] as String;
+  final inputPath = options['input'] as String?;
+  final outputPath = options['output'] as String?;
+  if (inputPath == null || outputPath == null) {
+    writeErr('Error: Options "--input" and "--output" are mandatory.');
+    return exitUsage;
+  }
   final className = options['className'] as String;
 
   if (!RegExp(r'^[A-Z][A-Za-z0-9_]*$').hasMatch(className)) {

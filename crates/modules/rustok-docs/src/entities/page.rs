@@ -29,7 +29,6 @@ pub enum Relation {
     EntityLinks,
 }
 
-
 impl Related<super::snapshot::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Snapshots.def()

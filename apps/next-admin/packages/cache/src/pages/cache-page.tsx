@@ -7,11 +7,7 @@ import {
   CardHeader,
   CardTitle
 } from '@/shared/ui/shadcn/card';
-import {
-  getCacheHealth,
-  getCacheSettings,
-  type GqlOpts
-} from '../api/cache';
+import { getCacheHealth, getCacheSettings, type GqlOpts } from '../api/cache';
 import { CacheSettingsForm } from '../components/cache-settings-form';
 
 export async function CacheAdminPage(opts: GqlOpts = {}) {
@@ -41,21 +37,26 @@ export async function CacheAdminPage(opts: GqlOpts = {}) {
           </CardHeader>
           <CardContent className='space-y-2'>
             {error ? (
-              <p className='text-sm text-destructive'>{error}</p>
+              <p className='text-destructive text-sm'>{error}</p>
             ) : health ? (
               <div className='space-y-3 text-sm'>
                 <div className='flex items-center justify-between'>
                   <span className='text-muted-foreground'>
                     {t('health.backend')}
                   </span>
-                  <span className='font-mono font-medium'>{health.backend}</span>
+                  <span className='font-mono font-medium'>
+                    {health.backend}
+                  </span>
                 </div>
                 <div className='flex items-center justify-between'>
                   <span className='text-muted-foreground'>
                     {t('health.configured')}
                   </span>
                   {health.redisConfigured ? (
-                    <Badge variant='outline' className='text-emerald-600 border-emerald-500/30 bg-emerald-500/10'>
+                    <Badge
+                      variant='outline'
+                      className='border-emerald-500/30 bg-emerald-500/10 text-emerald-600'
+                    >
                       {t('yes')}
                     </Badge>
                   ) : (
@@ -67,7 +68,10 @@ export async function CacheAdminPage(opts: GqlOpts = {}) {
                     {t('health.healthy' as any)}
                   </span>
                   {health.redisHealthy ? (
-                    <Badge variant='outline' className='text-emerald-600 border-emerald-500/30 bg-emerald-500/10'>
+                    <Badge
+                      variant='outline'
+                      className='border-emerald-500/30 bg-emerald-500/10 text-emerald-600'
+                    >
                       {t('yes')}
                     </Badge>
                   ) : health.redisConfigured ? (
@@ -78,10 +82,10 @@ export async function CacheAdminPage(opts: GqlOpts = {}) {
                 </div>
                 {health.redisError && (
                   <div className='pt-2'>
-                    <p className='text-xs text-muted-foreground'>
+                    <p className='text-muted-foreground text-xs'>
                       {t('health.error')}:
                     </p>
-                    <p className='text-xs text-destructive break-all'>
+                    <p className='text-destructive text-xs break-all'>
                       {health.redisError}
                     </p>
                   </div>
@@ -92,12 +96,9 @@ export async function CacheAdminPage(opts: GqlOpts = {}) {
         </Card>
       </div>
 
-      {settings && (
-        <CacheSettingsForm initialSettings={settings} opts={opts} />
-      )}
+      {settings && <CacheSettingsForm initialSettings={settings} opts={opts} />}
     </div>
   );
 }
 
 export const CachePage = CacheAdminPage;
-

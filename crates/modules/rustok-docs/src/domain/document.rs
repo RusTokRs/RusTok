@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use loro::{ExportMode, Frontiers, LoroDoc, TreeID, VersionVector};
-use crate::error::{DocsError, DocsResult};
 use super::block::{BlockType, DocBlock};
+use crate::error::{DocsError, DocsResult};
+use loro::{ExportMode, Frontiers, LoroDoc, TreeID, VersionVector};
+use std::sync::Arc;
 
 /// Collaborative document engine powered by Loro CRDT.
 ///
@@ -30,7 +30,8 @@ impl CollaborativeDoc {
     /// Restores a document from a raw binary snapshot or update log.
     pub fn from_snapshot(bytes: &[u8]) -> DocsResult<Self> {
         let doc = LoroDoc::new();
-        doc.import(bytes).map_err(|e| DocsError::Loro(e.to_string()))?;
+        doc.import(bytes)
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
         Ok(Self { doc: Arc::new(doc) })
     }
 
@@ -57,18 +58,23 @@ impl CollaborativeDoc {
         initial_content: &str,
     ) -> DocsResult<TreeID> {
         let tree = self.doc.get_tree("blocks");
-        let node_id = tree.create(parent).map_err(|e| DocsError::Loro(e.to_string()))?;
+        let node_id = tree
+            .create(parent)
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
 
         // Initialize block properties
         let meta = self.doc.get_map(format!("block_meta_{}", node_id));
         let type_str = serde_json::to_string(&block_type).map_err(DocsError::from)?;
-        meta.insert("type", type_str.as_str()).map_err(|e| DocsError::Loro(e.to_string()))?;
-        meta.insert("props", "{}").map_err(|e| DocsError::Loro(e.to_string()))?;
+        meta.insert("type", type_str.as_str())
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
+        meta.insert("props", "{}")
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
 
         // Initialize block text content
         if !initial_content.is_empty() {
             let text = self.doc.get_text(format!("block_text_{}", node_id));
-            text.insert(0, initial_content).map_err(|e| DocsError::Loro(e.to_string()))?;
+            text.insert(0, initial_content)
+                .map_err(|e| DocsError::Loro(e.to_string()))?;
         }
 
         self.doc.commit();
@@ -79,16 +85,22 @@ impl CollaborativeDoc {
     pub fn update_block_type(&self, node_id: TreeID, block_type: BlockType) -> DocsResult<()> {
         let meta = self.doc.get_map(format!("block_meta_{}", node_id));
         let type_str = serde_json::to_string(&block_type).map_err(DocsError::from)?;
-        meta.insert("type", type_str.as_str()).map_err(|e| DocsError::Loro(e.to_string()))?;
+        meta.insert("type", type_str.as_str())
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
         self.doc.commit();
         Ok(())
     }
 
     /// Updates arbitrary JSON properties of a block (e.g. style tokens, attributes, ERP config).
-    pub fn update_block_properties(&self, node_id: TreeID, properties: serde_json::Value) -> DocsResult<()> {
+    pub fn update_block_properties(
+        &self,
+        node_id: TreeID,
+        properties: serde_json::Value,
+    ) -> DocsResult<()> {
         let meta = self.doc.get_map(format!("block_meta_{}", node_id));
         let props_str = serde_json::to_string(&properties).map_err(DocsError::from)?;
-        meta.insert("props", props_str.as_str()).map_err(|e| DocsError::Loro(e.to_string()))?;
+        meta.insert("props", props_str.as_str())
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
         self.doc.commit();
         Ok(())
     }
@@ -101,7 +113,8 @@ impl CollaborativeDoc {
         index: usize,
     ) -> DocsResult<()> {
         let tree = self.doc.get_tree("blocks");
-        tree.mov_to(target, new_parent, index).map_err(|e| DocsError::Loro(e.to_string()))?;
+        tree.mov_to(target, new_parent, index)
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
         self.doc.commit();
         Ok(())
     }
@@ -134,7 +147,8 @@ impl CollaborativeDoc {
         }
 
         // Delete root target from hierarchical tree (deletes all descendants)
-        tree.delete(target).map_err(|e| DocsError::Loro(e.to_string()))?;
+        tree.delete(target)
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
         self.doc.commit();
         Ok(())
     }
@@ -144,19 +158,27 @@ impl CollaborativeDoc {
         let text = self.doc.get_text(format!("block_text_{}", node_id));
         let current_len = text.len_unicode();
         if current_len > 0 {
-            text.delete(0, current_len).map_err(|e| DocsError::Loro(e.to_string()))?;
+            text.delete(0, current_len)
+                .map_err(|e| DocsError::Loro(e.to_string()))?;
         }
         if !new_content.is_empty() {
-            text.insert(0, new_content).map_err(|e| DocsError::Loro(e.to_string()))?;
+            text.insert(0, new_content)
+                .map_err(|e| DocsError::Loro(e.to_string()))?;
         }
         self.doc.commit();
         Ok(())
     }
 
     /// Inserts text into an existing block at a specific character offset (CRDT delta).
-    pub fn insert_block_text(&self, node_id: TreeID, pos: usize, text_to_insert: &str) -> DocsResult<()> {
+    pub fn insert_block_text(
+        &self,
+        node_id: TreeID,
+        pos: usize,
+        text_to_insert: &str,
+    ) -> DocsResult<()> {
         let text = self.doc.get_text(format!("block_text_{}", node_id));
-        text.insert(pos, text_to_insert).map_err(|e| DocsError::Loro(e.to_string()))?;
+        text.insert(pos, text_to_insert)
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
         self.doc.commit();
         Ok(())
     }
@@ -164,7 +186,8 @@ impl CollaborativeDoc {
     /// Deletes a character range from an existing block (CRDT delta).
     pub fn delete_block_text(&self, node_id: TreeID, pos: usize, len: usize) -> DocsResult<()> {
         let text = self.doc.get_text(format!("block_text_{}", node_id));
-        text.delete(pos, len).map_err(|e| DocsError::Loro(e.to_string()))?;
+        text.delete(pos, len)
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
         self.doc.commit();
         Ok(())
     }
@@ -177,17 +200,23 @@ impl CollaborativeDoc {
 
     /// Exports the full document snapshot in compact Loro binary format.
     pub fn export_snapshot(&self) -> DocsResult<Vec<u8>> {
-        self.doc.export(ExportMode::Snapshot).map_err(|e| DocsError::Loro(e.to_string()))
+        self.doc
+            .export(ExportMode::Snapshot)
+            .map_err(|e| DocsError::Loro(e.to_string()))
     }
 
     /// Exports all updates in binary format.
     pub fn export_all_updates(&self) -> DocsResult<Vec<u8>> {
-        self.doc.export(ExportMode::all_updates()).map_err(|e| DocsError::Loro(e.to_string()))
+        self.doc
+            .export(ExportMode::all_updates())
+            .map_err(|e| DocsError::Loro(e.to_string()))
     }
 
     /// Exports updates created since a given VersionVector.
     pub fn export_updates_from(&self, vv: &VersionVector) -> DocsResult<Vec<u8>> {
-        self.doc.export(ExportMode::updates(vv)).map_err(|e| DocsError::Loro(e.to_string()))
+        self.doc
+            .export(ExportMode::updates(vv))
+            .map_err(|e| DocsError::Loro(e.to_string()))
     }
 
     /// Returns the OpLog VersionVector of the document.
@@ -197,7 +226,9 @@ impl CollaborativeDoc {
 
     /// Merges updates from a remote peer or client.
     pub fn import_updates(&self, updates: &[u8]) -> DocsResult<()> {
-        self.doc.import(updates).map_err(|e| DocsError::Loro(e.to_string()))?;
+        self.doc
+            .import(updates)
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
         Ok(())
     }
 
@@ -213,7 +244,9 @@ impl CollaborativeDoc {
 
     /// Checks out a historical state of the document (Time-Travel).
     pub fn checkout(&self, frontiers: &Frontiers) -> DocsResult<()> {
-        self.doc.checkout(frontiers).map_err(|e| DocsError::Loro(e.to_string()))?;
+        self.doc
+            .checkout(frontiers)
+            .map_err(|e| DocsError::Loro(e.to_string()))?;
         Ok(())
     }
 
@@ -236,7 +269,12 @@ impl CollaborativeDoc {
         blocks
     }
 
-    fn collect_block_dto(&self, out: &mut Vec<DocBlock>, node_id: TreeID, parent_id: Option<String>) {
+    fn collect_block_dto(
+        &self,
+        out: &mut Vec<DocBlock>,
+        node_id: TreeID,
+        parent_id: Option<String>,
+    ) {
         let text = self.get_block_text(node_id);
         let meta = self.doc.get_map(format!("block_meta_{}", node_id));
         let type_val = meta.get("type").and_then(|v| v.into_value().ok());
@@ -254,7 +292,10 @@ impl CollaborativeDoc {
 
         let tree = self.doc.get_tree("blocks");
         let child_ids = tree.children(Some(node_id)).unwrap_or_default();
-        let children_str = child_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
+        let children_str = child_ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>();
 
         out.push(DocBlock {
             id: node_id.to_string(),
@@ -340,15 +381,26 @@ impl CollaborativeDoc {
                     entity_ref.display_mode
                 ));
             }
-            BlockType::DatabaseView { view_type, database_id } => {
-                let db_id = database_id.map(|id| id.to_string()).unwrap_or_else(|| "inline".to_string());
+            BlockType::DatabaseView {
+                view_type,
+                database_id,
+            } => {
+                let db_id = database_id
+                    .map(|id| id.to_string())
+                    .unwrap_or_else(|| "inline".to_string());
                 out.push_str(&format!(
                     "<!-- database-view: type={:?} database_id={} title={} -->\n\n",
                     view_type, db_id, text
                 ));
             }
-            BlockType::LiveErp { entity_type, entity_id } => {
-                out.push_str(&format!("<!-- live-erp: type={} id={} -->\n\n", entity_type, entity_id));
+            BlockType::LiveErp {
+                entity_type,
+                entity_id,
+            } => {
+                out.push_str(&format!(
+                    "<!-- live-erp: type={} id={} -->\n\n",
+                    entity_type, entity_id
+                ));
             }
         }
 

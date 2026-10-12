@@ -73,7 +73,7 @@ export function CacheSettingsForm({
           <CardDescription>{t('settings.description')}</CardDescription>
         </CardHeader>
         <CardContent className='space-y-4'>
-          <div className='space-y-2 max-w-md'>
+          <div className='max-w-md space-y-2'>
             <Label htmlFor='cache-mode'>{t('settings.mode')}</Label>
             <Select
               value={settings.mode}
@@ -176,7 +176,7 @@ export function CacheSettingsForm({
               </div>
             </div>
 
-            <div className='space-y-2 pt-2 border-t'>
+            <div className='space-y-2 border-t pt-2'>
               <Label htmlFor='redis-url'>{t('settings.redis.url')}</Label>
               <Input
                 id='redis-url'

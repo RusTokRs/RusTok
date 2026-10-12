@@ -1,0 +1,33 @@
+[package]
+name = "serde_columnar"
+version = "0.3.14"
+edition = "2021"
+authors = [
+    "leonzhao <leeeon233@gmail.com>",
+    "zxch3n <remch183@outlook.com>",
+]
+description = "Ergonomic columnar storage encoding crate with forward and backward compatible"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/loro-dev/columnar"
+
+[features]
+analyze = ["serde_columnar_derive/analyze"]
+bench = []
+
+[dependencies.itertools]
+version = "^0.11.0"
+
+[dependencies.postcard]
+version = "^1.1.0"
+default-features = false
+features = ["alloc"]
+
+[dependencies.serde]
+version = "^1"
+
+[dependencies.serde_columnar_derive]
+version = "0.3.7"
+
+[dependencies.thiserror]
+version = "1.0"

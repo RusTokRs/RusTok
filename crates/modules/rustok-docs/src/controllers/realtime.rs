@@ -18,10 +18,7 @@ use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::{
-    dto::DocUpdateItemDto,
-    services::DocumentService,
-};
+use crate::{dto::DocUpdateItemDto, services::DocumentService};
 
 /// Wire messages sent by WebSocket clients.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,7 +81,11 @@ impl DocsRoomHub {
     }
 
     /// Obtains or initializes the broadcast channel for a collaborative document room.
-    pub fn get_or_create_room(&self, tenant_id: Uuid, page_id: Uuid) -> broadcast::Sender<ServerMessage> {
+    pub fn get_or_create_room(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> broadcast::Sender<ServerMessage> {
         let key = (tenant_id, page_id);
         {
             let read_guard = self.rooms.read().unwrap();
@@ -175,7 +176,14 @@ async fn handle_socket(
                     let client_msg: Result<ClientMessage, _> = serde_json::from_str(&text);
                     match client_msg {
                         Ok(ClientMessage::SyncRequest { client_seq_id }) => {
-                            match DocumentService::get_sync_payload(&db_for_recv, tenant_id, page_id, client_seq_id).await {
+                            match DocumentService::get_sync_payload(
+                                &db_for_recv,
+                                tenant_id,
+                                page_id,
+                                client_seq_id,
+                            )
+                            .await
+                            {
                                 Ok(sync_dto) => {
                                     let resp = ServerMessage::SyncResponse {
                                         page_id,
@@ -193,9 +201,15 @@ async fn handle_socket(
                                 }
                             }
                         }
-                        Ok(ClientMessage::PushDeltas { sender_peer_id, deltas }) => {
+                        Ok(ClientMessage::PushDeltas {
+                            sender_peer_id,
+                            deltas,
+                        }) => {
                             // Check write permissions
-                            if !has_any_effective_permission(&auth_for_recv.permissions, &[Permission::PAGES_UPDATE]) {
+                            if !has_any_effective_permission(
+                                &auth_for_recv.permissions,
+                                &[Permission::PAGES_UPDATE],
+                            ) {
                                 let _ = room_sender_for_recv.send(ServerMessage::Error {
                                     code: "forbidden".to_string(),
                                     message: "pages:update required to push deltas".to_string(),
@@ -210,9 +224,17 @@ async fn handle_socket(
                             });
 
                             // 2. Persist deltas to PostgreSQL monotonically
-                            match DocumentService::append_updates(&db_for_recv, tenant_id, page_id, deltas).await {
+                            match DocumentService::append_updates(
+                                &db_for_recv,
+                                tenant_id,
+                                page_id,
+                                deltas,
+                            )
+                            .await
+                            {
                                 Ok(latest_seq_id) => {
-                                    let _ = room_sender_for_recv.send(ServerMessage::AckDeltas { latest_seq_id });
+                                    let _ = room_sender_for_recv
+                                        .send(ServerMessage::AckDeltas { latest_seq_id });
                                 }
                                 Err(err) => {
                                     error!(error = %err, page_id = %page_id, "Failed to persist document deltas");
@@ -223,7 +245,10 @@ async fn handle_socket(
                                 }
                             }
                         }
-                        Ok(ClientMessage::Awareness { sender_peer_id, cursor }) => {
+                        Ok(ClientMessage::Awareness {
+                            sender_peer_id,
+                            cursor,
+                        }) => {
                             let _ = room_sender_for_recv.send(ServerMessage::Awareness {
                                 sender_peer_id,
                                 cursor,

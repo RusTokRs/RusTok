@@ -1,5 +1,5 @@
-import { getIggyConnectorConfiguration } from "../api/iggy-connector";
-import { IggyConnectorForm } from "../components/iggy-connector-form";
+import { getIggyConnectorConfiguration } from '../api/iggy-connector';
+import { IggyConnectorForm } from '../components/iggy-connector-form';
 
 interface IggyConnectorPageProps {
   token: string | null;
@@ -8,12 +8,12 @@ interface IggyConnectorPageProps {
 
 export async function IggyConnectorPage({
   token,
-  tenantSlug,
+  tenantSlug
 }: IggyConnectorPageProps) {
   try {
     const configuration = await getIggyConnectorConfiguration({
       token,
-      tenantSlug,
+      tenantSlug
     });
     return (
       <IggyConnectorForm
@@ -24,7 +24,7 @@ export async function IggyConnectorPage({
     );
   } catch {
     return (
-      <p className="text-destructive text-sm">
+      <p className='text-destructive text-sm'>
         Iggy connector configuration could not be loaded.
       </p>
     );

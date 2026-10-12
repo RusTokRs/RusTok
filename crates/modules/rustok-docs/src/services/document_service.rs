@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use std::collections::HashMap;
 use tracing::{info, instrument};
@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 use crate::domain::{BlockType, CollaborativeDoc, EntityDisplayMode};
 use crate::dto::{
-    CreatePageDto, DocUpdateItemDto, DocumentSyncDto, PageSummaryDto,
-    PageTreeNodeDto, UpdatePageDto,
+    CreatePageDto, DocUpdateItemDto, DocumentSyncDto, PageSummaryDto, PageTreeNodeDto,
+    UpdatePageDto,
 };
 use crate::entities::{entity_link, page, snapshot, update};
 use crate::error::{DocsError, DocsResult};
@@ -189,10 +189,7 @@ impl DocumentService {
             query = query.filter(page::Column::IsArchived.eq(false));
         }
 
-        let pages = query
-            .order_by_asc(page::Column::Title)
-            .all(db)
-            .await?;
+        let pages = query.order_by_asc(page::Column::Title).all(db).await?;
 
         Ok(pages
             .into_iter()
@@ -652,10 +649,7 @@ impl DocumentService {
             .all(db)
             .await?;
 
-        let latest_seq = updates
-            .last()
-            .map(|u| u.seq_id)
-            .unwrap_or(start_seq);
+        let latest_seq = updates.last().map(|u| u.seq_id).unwrap_or(start_seq);
 
         let update_items = updates
             .into_iter()

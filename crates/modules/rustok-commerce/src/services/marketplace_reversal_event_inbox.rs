@@ -8,7 +8,7 @@ use rustok_marketplace::{
     MarketplaceFinancialCommandPort, MarketplaceFinancialOrchestrationError,
     ProcessMarketplaceFinancialReversalInput,
 };
-use rustok_marketplace_ledger::{
+use rustok_marketplace_balance::{
     MAX_LEDGER_REVERSAL_LINES, MarketplaceLedgerReversalKind, MarketplaceLedgerReversalLineInput,
     MarketplaceLedgerReversalResponse, PostMarketplaceLedgerReversalInput,
 };

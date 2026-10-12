@@ -5,9 +5,9 @@ use rustok_inventory::InventoryReservationIdentityPort;
 #[cfg(feature = "marketplace-financial")]
 use rustok_marketplace_allocation::MarketplaceAllocationCommandPort;
 #[cfg(feature = "marketplace-financial")]
-use rustok_marketplace_commission::MarketplaceCommissionCommandPort;
+use rustok_marketplace_balance::MarketplaceLedgerCommandPort;
 #[cfg(feature = "marketplace-financial")]
-use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
+use rustok_marketplace_commission::MarketplaceCommissionCommandPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::providers::PaymentProviderRegistry;
 use thiserror::Error;

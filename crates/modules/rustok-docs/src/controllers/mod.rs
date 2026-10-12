@@ -93,10 +93,7 @@ pub fn router(runtime: DocsHttpRuntime) -> Router {
             "/api/docs/pages",
             get(pages::list_pages).post(pages::create_page),
         )
-        .route(
-            "/api/docs/pages/tree",
-            get(pages::get_page_tree),
-        )
+        .route("/api/docs/pages/tree", get(pages::get_page_tree))
         .route(
             "/api/docs/pages/by-slug/{slug}",
             get(pages::get_page_by_slug),
@@ -108,28 +105,16 @@ pub fn router(runtime: DocsHttpRuntime) -> Router {
                 .delete(pages::delete_page),
         )
         // Markdown projection export
-        .route(
-            "/api/docs/pages/{id}/markdown",
-            get(pages::render_markdown),
-        )
+        .route("/api/docs/pages/{id}/markdown", get(pages::render_markdown))
         // CRDT Sync and delta ingestion
-        .route(
-            "/api/docs/pages/{id}/sync",
-            get(pages::get_sync),
-        )
-        .route(
-            "/api/docs/pages/{id}/deltas",
-            post(pages::append_deltas),
-        )
+        .route("/api/docs/pages/{id}/sync", get(pages::get_sync))
+        .route("/api/docs/pages/{id}/deltas", post(pages::append_deltas))
         .route(
             "/api/docs/pages/{id}/compact",
             post(pages::compact_snapshot),
         )
         // Real-time WebSocket collaborative session
-        .route(
-            "/api/docs/pages/{id}/ws",
-            get(realtime::ws_handler),
-        )
+        .route("/api/docs/pages/{id}/ws", get(realtime::ws_handler))
         .with_state(runtime)
 }
 

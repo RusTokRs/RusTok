@@ -1,4 +1,4 @@
-import { graphqlRequest } from "@/lib/graphql";
+import { graphqlRequest } from '@/lib/graphql';
 
 export interface GqlOpts {
   token?: string | null;
@@ -48,7 +48,7 @@ mutation UpdateIggyConnectorConfiguration($input: UpdateIggyConnectorConfigurati
 }`;
 
 export async function getIggyConnectorConfiguration(
-  opts: GqlOpts = {},
+  opts: GqlOpts = {}
 ): Promise<IggyConnectorConfiguration> {
   const data = await graphqlRequest<
     Record<string, never>,
@@ -59,11 +59,11 @@ export async function getIggyConnectorConfiguration(
 
 export async function saveIggyConnectorConfiguration(
   input: IggyConnectorInput,
-  opts: GqlOpts = {},
+  opts: GqlOpts = {}
 ): Promise<
   Pick<
     IggyConnectorConfiguration,
-    "desiredMode" | "configured" | "restartRequired"
+    'desiredMode' | 'configured' | 'restartRequired'
   >
 > {
   const data = await graphqlRequest<
@@ -71,7 +71,7 @@ export async function saveIggyConnectorConfiguration(
     {
       updateIggyConnectorConfiguration: Pick<
         IggyConnectorConfiguration,
-        "desiredMode" | "configured" | "restartRequired"
+        'desiredMode' | 'configured' | 'restartRequired'
       >;
     }
   >(UPDATE_MUTATION, { input }, opts.token, opts.tenantSlug);

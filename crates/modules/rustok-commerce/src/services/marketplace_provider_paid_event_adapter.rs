@@ -1,7 +1,7 @@
 use std::{str::FromStr, sync::Arc};
 
 use rust_decimal::Decimal;
-use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
+use rustok_marketplace_balance::MarketplaceLedgerCommandPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::{PROVIDER_EVENT_PROCESSED, PaymentService, entities::provider_event};
 use sea_orm::DatabaseConnection;

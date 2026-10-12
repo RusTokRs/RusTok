@@ -104,7 +104,9 @@ export async function getCacheSettings(
   );
 
   try {
-    const parsed = JSON.parse(data.platformSettings.settings) as Partial<CacheSettings>;
+    const parsed = JSON.parse(
+      data.platformSettings.settings
+    ) as Partial<CacheSettings>;
     return {
       ...DEFAULT_CACHE_SETTINGS,
       ...parsed
@@ -129,7 +131,9 @@ export async function updateCacheSettings(
   );
 
   try {
-    const parsed = JSON.parse(data.updatePlatformSettings.settings) as Partial<CacheSettings>;
+    const parsed = JSON.parse(
+      data.updatePlatformSettings.settings
+    ) as Partial<CacheSettings>;
     return {
       ...DEFAULT_CACHE_SETTINGS,
       ...parsed

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Duration, FixedOffset, Utc};
-use rustok_marketplace_ledger::MarketplaceLedgerTransactionResponse;
+use rustok_marketplace_balance::MarketplaceLedgerTransactionResponse;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, Set,
     sea_query::{Expr, ExprTrait},

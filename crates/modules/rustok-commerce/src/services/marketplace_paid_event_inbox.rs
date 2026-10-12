@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rust_decimal::Decimal;
 use rustok_core::generate_id;
-use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
+use rustok_marketplace_balance::MarketplaceLedgerCommandPort;
 use rustok_order::{OrderError, OrderResponse, OrderService};
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::{PaymentCollectionResponse, PaymentError, PaymentService};

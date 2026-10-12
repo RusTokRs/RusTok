@@ -68,10 +68,16 @@ pub enum BlockType {
     Heading3,
     BulletList,
     NumberedList,
-    TodoList { checked: bool },
+    TodoList {
+        checked: bool,
+    },
     Quote,
-    Callout { icon: String },
-    Code { language: String },
+    Callout {
+        icon: String,
+    },
+    Code {
+        language: String,
+    },
     Table,
     Divider,
     /// Universal Entity Reference (Media, Blog, Forum, Wiki/Pages, Commerce, ERP).

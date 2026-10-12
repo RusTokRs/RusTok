@@ -92,8 +92,16 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(DocsSnapshots::TenantId).uuid().not_null())
                     .col(ColumnDef::new(DocsSnapshots::PageId).uuid().not_null())
-                    .col(ColumnDef::new(DocsSnapshots::SeqId).big_integer().not_null())
-                    .col(ColumnDef::new(DocsSnapshots::SnapshotData).binary().not_null())
+                    .col(
+                        ColumnDef::new(DocsSnapshots::SeqId)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(DocsSnapshots::SnapshotData)
+                            .binary()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(DocsSnapshots::Frontiers).text().not_null())
                     .col(
                         ColumnDef::new(DocsSnapshots::CreatedAt)
@@ -193,10 +201,26 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(DocsEntityLinks::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(DocsEntityLinks::SourcePageId).uuid().not_null())
-                    .col(ColumnDef::new(DocsEntityLinks::TargetModule).string_len(64).not_null())
-                    .col(ColumnDef::new(DocsEntityLinks::TargetEntityType).string_len(64).not_null())
-                    .col(ColumnDef::new(DocsEntityLinks::TargetEntityId).string_len(255).not_null())
+                    .col(
+                        ColumnDef::new(DocsEntityLinks::SourcePageId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(DocsEntityLinks::TargetModule)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(DocsEntityLinks::TargetEntityType)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(DocsEntityLinks::TargetEntityId)
+                            .string_len(255)
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(DocsEntityLinks::DisplayMode)
                             .string_len(32)

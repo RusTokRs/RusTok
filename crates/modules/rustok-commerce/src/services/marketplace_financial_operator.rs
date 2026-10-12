@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, FixedOffset, Utc};
 use rust_decimal::Decimal;
-use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
+use rustok_marketplace_balance::MarketplaceLedgerCommandPort;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,

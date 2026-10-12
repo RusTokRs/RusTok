@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
-use rustok_marketplace_ledger::{
+use rustok_marketplace_balance::{
     MarketplaceLedgerCommandPort, MarketplaceLedgerTransactionResponse,
     MarketplaceLedgerTransactionStatus, PostMarketplaceOrderLedgerInput,
 };

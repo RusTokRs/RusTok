@@ -4,7 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
 use rust_decimal::Decimal;
-use rustok_marketplace_ledger::{
+use rustok_marketplace_balance::{
     MarketplaceLedgerReversalKind, MarketplaceLedgerReversalLineInput,
 };
 use rustok_payment::entities::provider_event;

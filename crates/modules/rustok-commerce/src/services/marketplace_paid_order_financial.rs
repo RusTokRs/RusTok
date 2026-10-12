@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use rustok_core::events::{DomainEvent, EventEnvelope, EventHandler, HandlerResult};
-use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
+use rustok_marketplace_balance::MarketplaceLedgerCommandPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentService;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
