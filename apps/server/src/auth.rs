@@ -212,7 +212,7 @@ pub fn hash_password(password: &str) -> Result<String> {
 pub async fn hash_password_async(password: String) -> Result<String> {
     tokio::task::spawn_blocking(move || hash_password(&password))
         .await
-        .map_err(|_| Error::InternalServerError)?
+        .map_err(|err| Error::Message(format!("hash_password_async spawn_blocking: {err}")))?
 }
 
 pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
@@ -222,7 +222,7 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
 pub async fn verify_password_async(password: String, password_hash: String) -> Result<bool> {
     tokio::task::spawn_blocking(move || verify_password(&password, &password_hash))
         .await
-        .map_err(|_| Error::InternalServerError)?
+        .map_err(|err| Error::Message(format!("verify_password_async spawn_blocking: {err}")))?
 }
 
 pub fn generate_refresh_token() -> Result<String> {
@@ -246,8 +246,10 @@ pub fn auth_err(err: AuthError) -> Error {
         | AuthError::InvalidInviteToken => Error::Unauthorized(err.to_string()),
         AuthError::TokenEncodingFailed
         | AuthError::PasswordHashFailed
-        | AuthError::RefreshTokenGenerationFailed => Error::InternalServerError,
-        AuthError::Internal(_) => Error::InternalServerError,
+        | AuthError::RefreshTokenGenerationFailed => Error::Message(format!("auth error: {err}")),
+        AuthError::Internal(ref message) => {
+            Error::Message(format!("auth internal error: {message}"))
+        }
     }
 }
 

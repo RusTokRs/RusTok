@@ -1,8 +1,14 @@
 # Newsletter Module Documentation
 
-## Overview
+## Purpose
 
 The newsletter module provides cross-domain email campaign management for the RusToK platform. It is a standalone bounded context that aggregates content from multiple source modules (blog, forum, commerce) and delivers email campaigns to subscriber lists.
+
+## Scope
+
+- Owns subscriber lists, preferences, opt-in confirmation, and suppression logic.
+- Owns campaign lifecycle management, draft editing, and scheduling.
+- Provides typed `NewsletterContentProvider` integration points for content sources.
 
 ## Architecture
 
@@ -185,7 +191,22 @@ src/
 - Campaign scheduler worker
 - Admin UI package (`rustok-newsletter-admin`)
 - Integration tests
-- FBA registry entry
+## Integration
+
+- Uses `EmailDeliveryPort` from `rustok-email` for email delivery transport.
+- Uses `rustok-outbox` for transactional domain events.
+- Consumes content from `rustok-blog`, `rustok-forum`, and `rustok-commerce` via typed `NewsletterContentProvider` port.
+
+## Verification
+
+- `cargo xtask module validate newsletter`
+- `cargo test -p rustok-newsletter`
+
+## Related Documents
+
+- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
+- [Central Registry](../../../docs/modules/registry.md)
 
 ## License
 

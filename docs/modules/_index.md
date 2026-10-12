@@ -132,9 +132,11 @@ Module local documentation lives inside the crates themselves at
 | `rustok-comments` | [docs](../../crates/modules/rustok-comments/docs/README.md) | [plan](../../crates/modules/rustok-comments/docs/implementation-plan.md) |
 | `rustok-forum` | [docs](../../crates/modules/rustok-forum/docs/README.md) | [plan](../../crates/modules/rustok-forum/docs/implementation-plan.md) |
 | `rustok-notifications` | [docs](../../crates/modules/rustok-notifications/docs/README.md) | [plan](../../crates/modules/rustok-notifications/docs/implementation-plan.md) |
+| `rustok-newsletter` | [docs](../../crates/modules/rustok-newsletter/docs/README.md) | [plan](../../crates/modules/rustok-newsletter/docs/implementation-plan.md) |
 | `rustok-pages` | [docs](../../crates/modules/rustok-pages/docs/README.md) | [plan](../../crates/modules/rustok-pages/docs/implementation-plan.md) |
 | `rustok-navigation` | [docs](../../crates/modules/rustok-navigation/docs/README.md) | [plan](../../crates/modules/rustok-navigation/docs/implementation-plan.md) |
 | `rustok-page-builder` | [docs](../../crates/modules/rustok-page-builder/docs/README.md) | [plan](../../crates/modules/rustok-page-builder/docs/implementation-plan.md) |
+| `rustok-forms` | [docs](../../crates/modules/rustok-forms/docs/README.md) | [plan](../../crates/modules/rustok-forms/docs/implementation-plan.md) |
 | `rustok-seo` | [docs](../../crates/modules/rustok-seo/docs/README.md) | [plan](../../crates/modules/rustok-seo/docs/implementation-plan.md) |
 | `rustok-taxonomy` | [docs](../../crates/modules/rustok-taxonomy/docs/README.md) | [plan](../../crates/modules/rustok-taxonomy/docs/implementation-plan.md) |
 | `rustok-media` | [docs](../../crates/modules/rustok-media/docs/README.md) | [plan](../../crates/modules/rustok-media/docs/implementation-plan.md) |

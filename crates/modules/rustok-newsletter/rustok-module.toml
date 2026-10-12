@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Subscriber management, campaign lifecycle, content aggregation, and email delivery orchestration"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "admin_only"
+ui_classification = "no_ui"
 
 [marketplace]
 category = "communication"

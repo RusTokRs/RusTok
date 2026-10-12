@@ -1,4 +1,12 @@
-# Newsletter Module Implementation Plan
+## Current state
+
+The `rustok-newsletter` module provides subscriber lists, preference management, and email campaign orchestration. API contracts, domain entities, migrations, and GraphQL resolvers are implemented.
+
+## Scope
+
+- Manage subscribers, opt-in/opt-out status, and confirmation tokens.
+- Orchestrate campaign drafts, scheduling, and email delivery via `rustok-email`.
+- Aggregate content from multiple sources via `NewsletterContentProvider`.
 
 ## Module Identity
 
@@ -34,7 +42,7 @@
 | Rollback eligibility | AutomaticSingleAttempt |
 | Recovery invariants | Monotonic epoch, idempotency receipts, zero-flapping |
 
-## Implementation Phases
+## Milestones
 
 ### Phase 1: Core Infrastructure ✅
 
@@ -191,6 +199,12 @@ impl NewsletterContentProvider for CommerceContentProvider {
 - `rustok-forum` — forum content provider
 - `rustok-commerce` — commerce content provider
 
-## Notes
+## Verification
 
-This module follows the canonical native module source layout as defined in the platform architecture. It is designed as a standalone bounded context, not a sub-feature of any source module, enabling cross-domain newsletter functionality.
+- `cargo xtask module validate newsletter`
+- `cargo test -p rustok-newsletter`
+
+## Update Rules
+
+- Keep this implementation plan synchronized with architectural decisions and owner contracts.
+- Document additions to subscriber states, campaign workflows, or delivery providers before changing contracts.

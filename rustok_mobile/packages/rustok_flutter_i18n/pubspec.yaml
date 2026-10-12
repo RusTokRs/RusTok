@@ -1,0 +1,26 @@
+name: rustok_flutter_i18n
+description: Flutter UI widgets, InheritedWidget, Directionality, and Riverpod bindings for rustok_i18n (Mozilla Project Fluent 1.0).
+version: 0.1.0
+repository: https://github.com/rustok/rustok
+homepage: https://github.com/rustok/rustok/tree/main/rustok_mobile/packages/rustok_flutter_i18n
+topics:
+  - flutter
+  - i18n
+  - fluent
+  - localization
+  - riverpod
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.16.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.0
+  rustok_i18n:
+    path: ../rustok_i18n
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

@@ -1,0 +1,10 @@
+forms_title = Form submissions
+forms_subtitle = newest first; honeypot captures are stored as spam
+forms_empty = No submissions yet
+forms_state_new = New
+forms_state_read = Read
+forms_state_handled = Handled
+forms_state_spam = Spam
+forms_action_mark_read = Mark read
+forms_action_mark_handled = Mark handled
+forms_action_mark_spam = Mark spam

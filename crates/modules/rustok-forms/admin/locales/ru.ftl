@@ -1,0 +1,10 @@
+forms_title = Отправленные формы
+forms_subtitle = сначала новые; спам-ловушки сохраняются как спам
+forms_empty = Нет отправленных форм
+forms_state_new = Новая
+forms_state_read = Прочитано
+forms_state_handled = Обработано
+forms_state_spam = Спам
+forms_action_mark_read = Отметить как прочитанное
+forms_action_mark_handled = Отметить как обработанное
+forms_action_mark_spam = В спам

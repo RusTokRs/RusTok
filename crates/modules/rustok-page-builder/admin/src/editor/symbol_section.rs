@@ -13,6 +13,7 @@ use fly_ui::{EditorCapability, UiIntent};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
+#[allow(dead_code)]
 #[component]
 pub(crate) fn SymbolSection(runtime: AdminEditorRuntime) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -93,7 +94,7 @@ pub(crate) fn SymbolSection(runtime: AdminEditorRuntime) -> impl IntoView {
                     });
                     convert_runtime.dispatch_result(result);
                 }
-            >{convert_label}</button>
+            >{convert_label.clone()}</button>
             <div class="space-y-1">
                 {move || {
                     let definitions = list_runtime.controller.with(|controller| {

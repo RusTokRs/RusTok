@@ -223,6 +223,7 @@ fn MediaLibraryPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         let port = upload_port.clone();
         let runtime = upload_runtime.clone();
         let failed = upload_failed.clone();
+        let choose_file = choose_file_first.clone();
         busy.set(true);
         error.set(None);
         spawn_local(async move {
@@ -239,7 +240,7 @@ fn MediaLibraryPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     }
                     Err(failure) => error.set(Some(format!("{failed}: {}", failure.message()))),
                 },
-                Ok(None) => error.set(Some(choose_file_first.clone())),
+                Ok(None) => error.set(Some(choose_file)),
                 Err(failure) => error.set(Some(format!("{failed}: {failure}"))),
             }
             busy.set(false);
@@ -286,6 +287,7 @@ fn MediaLibraryPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         Ok(page_items) => view! {
                             <ul class="space-y-1">
                                 {page_items.items.into_iter().map(|item| {
+                                    let use_gate_runtime = use_runtime.clone();
                                     let use_button_runtime = use_runtime.clone();
                                     let use_select_label = use_label.clone();
                                     let item_name = item.original_name.clone();
@@ -306,7 +308,7 @@ fn MediaLibraryPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                                 type="button"
                                                 class="rounded border border-border px-2 py-1"
                                                 aria-label=accessible_name
-                                                disabled=move || !use_button_runtime.capability_enabled(EditorCapability::Properties)
+                                                disabled=move || !use_gate_runtime.capability_enabled(EditorCapability::Properties)
                                                 on:click=move |_| {
                                                     use_button_runtime.dispatch(UiIntent::execute(
                                                         EditorCommand::Asset {

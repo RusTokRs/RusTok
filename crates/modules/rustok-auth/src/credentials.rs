@@ -92,4 +92,11 @@ mod tests {
             "Same password must produce different hashes (unique salt)"
         );
     }
+
+    #[test]
+    fn password_hash_long_secret() {
+        let secret = format!("sk_live_{}", "0123456789abcdef".repeat(8));
+        let hash = hash_password(&secret).unwrap();
+        assert!(verify_password(&secret, &hash).unwrap());
+    }
 }

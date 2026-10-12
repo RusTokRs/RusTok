@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Form submission intake, abuse controls and lead triage inbox"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "dual_surface"
+ui_classification = "admin_only"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [marketplace]
@@ -30,3 +30,8 @@ axum_router = "http::axum_router"
 leptos_crate = "rustok-forms-admin"
 route_segment = "forms"
 nav_label = "Forms"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
