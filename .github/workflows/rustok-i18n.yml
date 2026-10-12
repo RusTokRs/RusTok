@@ -18,6 +18,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+
 jobs:
   core:
     name: Dart core (analyze + test)
@@ -31,12 +34,36 @@ jobs:
         with:
           sdk: '3.0.0'
       - run: dart pub get
+      - name: CLI typegen (fails on invalid input)
+        run: >-
+          dart run bin/i18n_cli.dart typegen
+          --input example/locales/en.ftl
+          --output example/generated/smoke_messages.g.dart
+          --className SmokeMessages
+      # `dart analyze` runs after typegen so the generated file is compiled too:
+      # a rename or an escaped literal that produces invalid Dart fails the job.
       - run: dart analyze
       - run: dart test
       - name: CLI parity check (fails on mismatch)
         run: dart run bin/i18n_cli.dart check --dir example/locales --baseline en
-      - name: CLI typegen (fails on invalid input)
-        run: dart run bin/i18n_cli.dart typegen --input example/locales/en.ftl --output /tmp/messages.g.dart --className SmokeMessages
+
+  tooling:
+    name: Tooling contracts (Python + Node)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rustok_mobile/tooling
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+      - name: Package contract tests (no Dart SDK required)
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+      - name: i18n simulation + parity script
+        run: node scripts/verify_i18n_simulation.mjs
 
   flutter:
     name: Flutter wrapper (analyze + test)

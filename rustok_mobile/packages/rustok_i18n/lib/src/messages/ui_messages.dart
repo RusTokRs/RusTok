@@ -3,8 +3,9 @@ import '../locale/fallback_chain.dart';
 import '../locale/locale_tag.dart';
 import 'resolved_message.dart';
 
-/// Maximum allowable length for translation keys (DoS guard matching RusToK contract).
-const int maxMessageKeyLength = 128;
+/// Maximum allowable length for translation keys (DoS guard matching the
+/// `rustok-ui-i18n::MAX_MESSAGE_KEY_LEN` contract).
+const int maxMessageKeyLength = 256;
 
 final RegExp _controlCharPattern = RegExp(r'[\x00-\x1F\x7F-\x9F]');
 
@@ -211,7 +212,9 @@ class UiMessages {
 }
 
 /// Normalizes a message key by replacing dots and underscores with hyphens (kebab-case).
-/// Direct parity with `rustok-ui-i18n::with_kebab_key`.
+///
+/// A superset of `rustok-ui-i18n::with_kebab_key`, which only maps `.`; the
+/// underscore spelling is accepted as an additional alias for snake_case keys.
 String normalizeKebabKey(String input) =>
     input.replaceAll('.', '-').replaceAll('_', '-');
 

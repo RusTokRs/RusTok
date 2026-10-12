@@ -227,10 +227,33 @@ if (rawAccept[0].tag === 'en-US' && rawAccept[1].tag === 'ru' && rawAccept[2].ta
   fail('Accept-Language stable sorting failed');
 }
 
-// 11. Verify DoS bounds
-const maxLocaleTagLength = 64;
-const maxMessageKeyLength = 128;
-pass(`DoS bounds verified (maxLocale: ${maxLocaleTagLength}b, maxKey: ${maxMessageKeyLength}b)`);
+// 11. Verify DoS bounds against the sources themselves, including the Rust
+//     contract the Dart package mirrors.
+const localeTagSource = fs.readFileSync(
+  path.resolve(corePkgDir, 'lib/src/locale/locale_tag.dart'),
+  'utf8',
+);
+const uiMessagesSource = fs.readFileSync(
+  path.resolve(corePkgDir, 'lib/src/messages/ui_messages.dart'),
+  'utf8',
+);
+const rustMessagesSource = fs.readFileSync(
+  path.resolve(rootDir, 'crates/ui/rustok-ui-i18n/src/messages.rs'),
+  'utf8',
+);
+const localeTagBound = /maxLocaleTagLength = (\d+)/.exec(localeTagSource)?.[1];
+const messageKeyBound = /maxMessageKeyLength = (\d+)/.exec(uiMessagesSource)?.[1];
+const rustMessageKeyBound = /MAX_MESSAGE_KEY_LEN: usize = (\d+)/.exec(rustMessagesSource)?.[1];
+
+if (localeTagBound === '64' && messageKeyBound === '256' && rustMessageKeyBound === messageKeyBound) {
+  pass(
+    `DoS bounds verified (maxLocale: ${localeTagBound}b, maxKey: ${messageKeyBound}b, Rust parity: ${rustMessageKeyBound}b)`,
+  );
+} else {
+  fail(
+    `DoS bounds mismatch (locale: ${localeTagBound}, key: ${messageKeyBound}, rust: ${rustMessageKeyBound})`,
+  );
+}
 
 // 12. Verify Accept-Language Extractor & Preferred Locale Simulation
 function extractPreferredLocale(header) {

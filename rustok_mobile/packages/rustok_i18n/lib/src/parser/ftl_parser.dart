@@ -47,68 +47,171 @@ class FtlParser {
 
   FtlResource parseResource() {
     final entries = <FtlEntry>[];
+    // A `#` comment that is followed immediately by a message or a term is a
+    // *translator comment*: the reference attaches it to that entry and does not
+    // add it to the resource separately. The comment is held back until the
+    // next entry is known to be a message or a term, so that a following junk
+    // entry leaves the comment standalone.
+    FtlComment? pendingComment;
 
     while (true) {
-      _skipWhitespace();
+      _skipBlankLines();
       if (_isAtEnd()) break;
 
       final start = _pos;
+      late FtlEntry entry;
       try {
         final char = _peek();
         if (char == '#') {
-          entries.add(_parseComment());
+          entry = _parseComment();
         } else if (char == '-' && _isIdentifierStart(_peek(1))) {
-          entries.add(_parseTerm());
+          entry = _parseTerm();
         } else if (_isIdentifierStart(char)) {
-          entries.add(_parseMessage());
+          entry = _parseMessage();
         } else {
           throw FtlParseException(
-            'Expected a message, term or comment',
+            'Expected a message, term or comment at the start of the line',
             line: _line,
             column: _col,
           );
         }
       } on FtlParseException catch (error) {
-        _recoverToNextEntry();
-        entries.add(FtlJunk(
-          content: input.substring(start, _pos).trimRight(),
+        final errorPos = _pos;
+        final junkEnd = _nextEntryStart(start, errorPos);
+        if (junkEnd < errorPos) {
+          // The line that failed starts a new entry, so the junk ends before
+          // it. The resume position is on the same line as the error, which
+          // means only the column has to be rewound.
+          _col -= errorPos - junkEnd;
+          _pos = junkEnd;
+        } else {
+          _advanceTo(junkEnd);
+        }
+        entry = FtlJunk(
+          // Junk keeps the source as it was written, including the line ends
+          // and blank lines that separate it from the next entry.
+          content: input.substring(start, junkEnd),
           message: error.message,
-        ));
+        );
       }
+
+      if (entry is FtlComment && entry.level == 0 && !_isAtEnd() && _isAtContentLine()) {
+        // The comment may belong to the entry that follows it.
+        pendingComment = entry;
+        continue;
+      }
+
+      if (pendingComment != null) {
+        if (entry is FtlMessage || entry is FtlTerm) {
+          entry = _withComment(entry, pendingComment.content);
+        } else {
+          // The stashed comment does not belong to anything.
+          entries.add(pendingComment);
+        }
+        pendingComment = null;
+      }
+      entries.add(entry);
     }
 
+    if (pendingComment != null) entries.add(pendingComment);
+
     return FtlResource(entries: List.unmodifiable(entries));
+  }
+
+  /// Returns [entry] with [comment] attached as its translator comment.
+  static FtlEntry _withComment(FtlEntry entry, String comment) {
+    if (entry is FtlMessage) {
+      return FtlMessage(
+        id: entry.id,
+        value: entry.value,
+        attributes: entry.attributes,
+        comment: comment,
+      );
+    }
+    if (entry is FtlTerm) {
+      return FtlTerm(
+        id: entry.id,
+        value: entry.value,
+        attributes: entry.attributes,
+        comment: comment,
+      );
+    }
+    return entry;
+  }
+
+  /// True when the cursor stands at a line that has content, i.e. the current
+  /// line is neither blank nor the end of the input.
+  bool _isAtContentLine() {
+    var p = _pos;
+    while (p < input.length && input[p] == ' ') {
+      p++;
+    }
+    return p < input.length && input[p] != '\n';
   }
 
   // ---------------------------------------------------------------------------
   // Top-level entries
   // ---------------------------------------------------------------------------
 
+  /// Parses adjacent comment lines of the same level (`#`, `##`, `###`).
+  ///
+  /// The level marker is followed by a single space (or the end of the line),
+  /// and every line of the block must start at column 0. A line with a
+  /// different marker level — or a marker that is not followed by a space —
+  /// starts a new comment entry, so it never swallows a valid block.
   FtlComment _parseComment() {
     final lines = <String>[];
-    while (!_isAtEnd() && _peek() == '#') {
+    String? marker;
+    var level = 0;
+
+    while (true) {
+      if (_isAtEnd() || _peek() != '#') break;
+
+      final savePos = _pos;
+      final saveLine = _line;
+      final saveCol = _col;
+
+      var hashes = 0;
+      while (hashes < 3 && _peek() == '#') {
+        _advance();
+        hashes++;
+      }
+      final candidate = '#' * hashes;
+      final afterMarker = _peek();
+      // The marker must be followed by a space or a line end. A marker that
+      // ends the file without either (`#` on the last line, `#tooClose`) is
+      // junk in the reference, so the empty string counts as malformed too.
+      final malformedMarker = afterMarker != ' ' && afterMarker != '\n';
+      if (marker != null && (candidate != marker || malformedMarker)) {
+        // Only a line that repeats the exact same marker continues this
+        // comment; a different level — or a marker without the required space —
+        // starts a new entry, which reports its own error.
+        _restore(savePos, saveLine, saveCol);
+        break;
+      }
+      if (malformedMarker) {
+        _restore(savePos, saveLine, saveCol);
+        throw FtlParseException(
+          'A comment marker must be followed by a space, a line end '
+          'or the end of the file',
+          line: _line,
+          column: _col,
+        );
+      }
+      marker = candidate;
+      level = hashes - 1;
+
+      if (_peek() == ' ') _advance(); // the single space after the marker
       final line = StringBuffer();
       while (!_isAtEnd() && _peek() != '\n') {
         line.write(_advance());
       }
-      lines.add(_stripCommentMarker(line.toString()));
+      lines.add(line.toString());
       if (_isAtEnd()) break;
       _advance(); // '\n'
-      // Continue only while the next line is another comment line.
-      _skipInlineWhitespace();
-      if (_peek() != '#') break;
     }
-    return FtlComment(content: lines.join('\n'));
-  }
 
-  static String _stripCommentMarker(String line) {
-    var i = 0;
-    while (i < line.length && line[i] == '#') {
-      i++;
-    }
-    var rest = line.substring(i);
-    if (rest.startsWith(' ')) rest = rest.substring(1);
-    return rest;
+    return FtlComment(content: lines.join('\n'), level: level);
   }
 
   FtlTerm _parseTerm() {
@@ -120,12 +223,15 @@ class FtlParser {
     }
     _skipInlineWhitespace();
 
-    final value = _parsePattern(inVariant: false);
+    final value = _parsePattern();
+    if (value == null) {
+      throw FtlParseException('Term -$id must have a value', line: _line, column: _col);
+    }
     final attributes = _parseAttributes();
 
     return FtlTerm(
       id: id,
-      value: value ?? const FtlPattern(elements: []),
+      value: value,
       attributes: List.unmodifiable(attributes),
     );
   }
@@ -138,7 +244,7 @@ class FtlParser {
     }
     _skipInlineWhitespace();
 
-    final value = _parsePattern(inVariant: false);
+    final value = _parsePattern();
     final attributes = _parseAttributes();
     if (value == null && attributes.isEmpty) {
       throw FtlParseException(
@@ -168,28 +274,35 @@ class FtlParser {
         throw FtlParseException('Expected "=" after attribute ".$id"', line: _line, column: _col);
       }
       _skipInlineWhitespace();
-      final value = _parsePattern(inVariant: false) ?? const FtlPattern(elements: []);
+      final value = _parsePattern();
+      if (value == null) {
+        throw FtlParseException(
+          'Attribute ".$id" must have a value',
+          line: _line,
+          column: _col,
+        );
+      }
       attributes.add(FtlAttribute(id: id, value: value));
     }
     return attributes;
   }
 
-  /// Returns the index of the `.` that starts an attribute on the next line,
-  /// or -1 when the current position does not start an attribute.
+  /// Returns the index of the `.` that starts an attribute, or -1 when the
+  /// current position does not start one.
+  ///
+  /// The reference looks for `blank? "."` after the value, where `blank` is
+  /// spaces and line ends, so a `.` that follows a value — on a later line as
+  /// well as directly after the value — always starts an attribute. Text after
+  /// a value on the same line is consumed by the value itself, so in practice
+  /// the dot begins a new line. A dot that is not followed by an identifier is
+  /// still an attribute start, which makes the malformed line junk for the whole
+  /// entry, exactly as in the reference.
   int _attributeDotIndex() {
     var p = _pos;
-    while (p < input.length && (input[p] == ' ' || input[p] == '\t')) {
+    while (p < input.length && (input[p] == ' ' || input[p] == '\n')) {
       p++;
     }
-    if (p < input.length && input[p] == '\n') {
-      p++;
-      while (p < input.length && (input[p] == ' ' || input[p] == '\t')) {
-        p++;
-      }
-    }
-    if (p + 1 < input.length && input[p] == '.' && _isIdentifierStart(input[p + 1])) {
-      return p;
-    }
+    if (p < input.length && input[p] == '.') return p;
     return -1;
   }
 
@@ -199,9 +312,10 @@ class FtlParser {
 
   /// Parses a pattern starting at the current position (inline whitespace already skipped).
   ///
-  /// A pattern that starts with a newline must continue on an indented line;
-  /// otherwise `null` is returned and the newline is left unconsumed.
-  FtlPattern? _parsePattern({required bool inVariant}) {
+  /// A pattern that starts with a newline must continue on a following line
+  /// (indented, or a block placeable at column 0); otherwise `null` is returned
+  /// and the newline is left unconsumed.
+  FtlPattern? _parsePattern() {
     if (_isAtEnd()) return null;
 
     final tokens = <Object>[];
@@ -215,7 +329,7 @@ class FtlParser {
     }
 
     if (_peek() == '\n') {
-      final first = _continuationAt(_pos, inVariant: inVariant);
+      final first = _continuationAt(_pos);
       if (first == null) return null;
       _advanceTo(first.contentPos);
       // Blank lines before the first content line are not part of the value.
@@ -226,7 +340,7 @@ class FtlParser {
       final char = _peek();
 
       if (char == '\n') {
-        final next = _continuationAt(_pos, inVariant: inVariant);
+        final next = _continuationAt(_pos);
         if (next == null) break;
         _advanceTo(next.contentPos);
         if (next.blankLines > 0) {
@@ -244,7 +358,6 @@ class FtlParser {
       }
 
       if (char == '}') {
-        if (inVariant) break;
         throw FtlParseException(
           'Unescaped "}" in pattern; use { "}" } instead',
           line: _line,
@@ -261,16 +374,19 @@ class FtlParser {
 
   /// Inspects the line following the newline at [newlinePos].
   ///
-  /// Returns `null` when the pattern ends there: at end of input, at a column-0
-  /// entry, at an attribute (`.name`), or (in a variant) at a variant key or
-  /// closing brace. Otherwise returns the continuation line details.
-  _Continuation? _continuationAt(int newlinePos, {required bool inVariant}) {
+  /// Returns `null` when the pattern ends there. A line continues the pattern
+  /// when its first non-blank character is `{` (a block placeable, which may
+  /// stand at column 0) or when it is indented (with spaces, per
+  /// `blank_inline`) and does not start with `}`, `.`, `[` or `*` — those four
+  /// characters always end a pattern, and any other character at column 0
+  /// starts a new entry. A tab is never indentation.
+  _Continuation? _continuationAt(int newlinePos) {
     var lineStart = newlinePos + 1;
     var blankLines = 0;
 
     while (true) {
       var q = lineStart;
-      while (q < input.length && (input[q] == ' ' || input[q] == '\t')) {
+      while (q < input.length && input[q] == ' ') {
         q++;
       }
       if (q >= input.length) return null;
@@ -282,13 +398,10 @@ class FtlParser {
       }
 
       final indent = input.substring(lineStart, q);
-      if (indent.isEmpty) return null; // column 0: a new entry or junk
-
       final char = input[q];
-      if (inVariant) {
-        if (char == '[' || char == '*' || char == '}') return null;
-      } else if (char == '.' && q + 1 < input.length && _isIdentifierStart(input[q + 1])) {
-        return null; // attribute
+      if (char != '{') {
+        if (indent.isEmpty) return null; // column 0: a new entry, a term or junk
+        if (char == '}' || char == '.' || char == '[' || char == '*') return null;
       }
 
       return _Continuation(blankLines: blankLines, indent: indent, contentPos: q);
@@ -324,17 +437,42 @@ class FtlParser {
         flush();
         elements.add(token);
       } else if (token is _NewlineToken) {
-        if (token.leading) continue;
+        if (token.leading) {
+          // The line break that separates `key =` from a block pattern is not
+          // part of the value, but an indent that is larger than the common
+          // indent is: the common indent is measured over every continuation
+          // line, so one less indented line keeps the excess of the first one.
+          text.write(token.indent.substring(minIndent));
+          continue;
+        }
         text.write('\n');
         text.write(token.indent.substring(minIndent));
       }
     }
 
     flush();
+
+    // Trailing blank_inline and line ends are not part of a pattern: the
+    // reference implementation trims them from the last text element and drops
+    // the element entirely when nothing is left. Tabs are ordinary characters
+    // and survive the trim.
+    if (elements.isNotEmpty && elements.last is FtlTextElement) {
+      final last = elements.removeLast() as FtlTextElement;
+      final trimmed = last.value.replaceFirst(RegExp(r'[ \n\r]+$'), '');
+      if (trimmed.isNotEmpty) {
+        elements.add(FtlTextElement(trimmed));
+      }
+    }
+
     return FtlPattern(elements: List.unmodifiable(elements));
   }
 
   FtlPlaceable _parsePlaceable() {
+    return FtlPlaceable(_parsePlaceableExpression());
+  }
+
+  /// Parses `"{" blank? expression blank? "}"` and returns the inner expression.
+  FtlExpression _parsePlaceableExpression() {
     _advance(); // '{'
     _skipWhitespace();
     final expression = _parseExpression();
@@ -342,7 +480,7 @@ class FtlParser {
     if (!_match('}')) {
       throw FtlParseException('Unclosed placeable "{"', line: _line, column: _col);
     }
-    return FtlPlaceable(expression);
+    return expression;
   }
 
   // ---------------------------------------------------------------------------
@@ -350,12 +488,57 @@ class FtlParser {
   // ---------------------------------------------------------------------------
 
   /// Parses an inline expression, optionally followed by `->` and select variants.
+  ///
+  /// Enforces the spec's callee rules (E0016–E0019, E0029): only variables,
+  /// literals, functions and term attributes may act as selectors, a term
+  /// attribute is never a valid value on its own, and the `->` of a select must
+  /// be followed by a line end.
   FtlExpression _parseExpression() {
     _skipInlineWhitespace();
     final selector = _parseInlineExpression();
-    _skipInlineWhitespace();
+    _skipWhitespace();
     if (_peek() == '-' && _peek(1) == '>') {
+      if (selector is FtlMessageReference) {
+        throw FtlParseException(
+          'Message references cannot be used as selectors or parameterized',
+          line: _line,
+          column: _col,
+        );
+      }
+      if (selector is FtlTermReference && selector.attribute == null) {
+        throw FtlParseException(
+          'Term values may not be used as selectors',
+          line: _line,
+          column: _col,
+        );
+      }
+      if (selector is FtlPlaceableExpression) {
+        throw FtlParseException(
+          'Placeables may not be used as selectors',
+          line: _line,
+          column: _col,
+        );
+      }
+      _advance(); // '-'
+      _advance(); // '>'
+      // Select expressions are written as a block: after `->` only spaces may
+      // follow before the line end.
+      _skipInlineWhitespace();
+      if (!_isAtEnd() && _peek() != '\n') {
+        throw FtlParseException(
+          'Expected a line end after "->"',
+          line: _line,
+          column: _col,
+        );
+      }
       return _parseSelectExpression(selector);
+    }
+    if (selector is FtlTermReference && selector.attribute != null) {
+      throw FtlParseException(
+        'Term attributes may not be used in placeables',
+        line: _line,
+        column: _col,
+      );
     }
     return selector;
   }
@@ -363,6 +546,12 @@ class FtlParser {
   FtlExpression _parseInlineExpression() {
     final char = _peek();
 
+    if (char == '{') {
+      // A nested placeable is an inline expression: `{ { $count } }`,
+      // `{NUMBER({$count})}`. The wrapper is kept in the tree; the resolver
+      // resolves it to the value of the wrapped expression.
+      return FtlPlaceableExpression(_parsePlaceableExpression());
+    }
     if (char == '\$') {
       _advance();
       return FtlVariableReference(_parseIdentifier());
@@ -465,29 +654,38 @@ class FtlParser {
       attribute = _parseIdentifier();
     }
 
-    _skipInlineWhitespace();
+    final callIndex = _indexAfterBlank();
     Map<String, FtlExpression>? arguments;
-    if (_peek() == '(') {
+    var positional = const <FtlExpression>[];
+    if (callIndex < input.length && input[callIndex] == '(') {
+      _advanceTo(callIndex);
       final call = _parseCallArguments();
-      if (call.positional.isNotEmpty) {
-        throw FtlParseException(
-          'Term arguments must be named (-term(name: value))',
-          line: _line,
-          column: _col,
-        );
-      }
-      arguments = call.named;
+      // The grammar accepts positional arguments on a term reference even
+      // though the runtime never passes them to the term (`fluent-bundle`
+      // discards them). They are kept in the tree instead of rejecting the
+      // entry, so that the parser accepts what the reference accepts.
+      positional = List.unmodifiable(call.positional);
+      arguments = call.named.isEmpty ? null : call.named;
     }
 
-    return FtlTermReference(id: id, attribute: attribute, arguments: arguments);
+    return FtlTermReference(
+      id: id,
+      attribute: attribute,
+      arguments: arguments,
+      positionalArguments: positional,
+    );
   }
 
   /// `msg`, `msg.attribute`, or a function call `NUMBER(...)`.
+  ///
+  /// `CallArguments ::= blank? "(" ...` — the blanks before `(` are only part of
+  /// the call when a call actually follows, so the lookahead does not consume
+  /// them (a following `.attribute` must still be adjacent to the identifier).
   FtlExpression _parseIdentifierExpression() {
     final id = _parseIdentifier();
-    _skipInlineWhitespace();
+    final callIndex = _indexAfterBlank();
 
-    if (_peek() == '(') {
+    if (callIndex < input.length && input[callIndex] == '(') {
       if (!_functionNamePattern.hasMatch(id)) {
         throw FtlParseException(
           'Invalid function name "$id"; functions are upper-case',
@@ -495,6 +693,7 @@ class FtlParser {
           column: _col,
         );
       }
+      _advanceTo(callIndex);
       final call = _parseCallArguments();
       return FtlFunctionReference(
         name: id,
@@ -528,31 +727,35 @@ class FtlParser {
       }
 
       if (_isNamedArgumentAhead()) {
+        final savePos = _pos;
+        final saveLine = _line;
+        final saveCol = _col;
         final name = _parseIdentifier();
-        _skipInlineWhitespace();
-        _advance(); // ':'
+        // The reference decides whether this is a named argument by looking at
+        // the character after the blank without consuming the blank, so a `)`
+        // that follows the identifier ends the list instead of being skipped.
         _skipWhitespace();
-        final value = _parseInlineExpression();
-        if (value is! FtlStringLiteral && value is! FtlNumberLiteral) {
-          throw FtlParseException(
-            'Named argument "$name" must be a string or number literal',
-            line: _line,
-            column: _col,
-          );
+        if (_peek() != ':') {
+          _restore(savePos, saveLine, saveCol);
+          _addPositional(positional, named);
+        } else {
+          _advance(); // ':'
+          _skipWhitespace();
+          final value = _parseInlineExpression();
+          if (value is! FtlStringLiteral && value is! FtlNumberLiteral) {
+            throw FtlParseException(
+              'Named argument "$name" must be a string or number literal',
+              line: _line,
+              column: _col,
+            );
+          }
+          if (named.containsKey(name)) {
+            throw FtlParseException('Duplicate named argument "$name"', line: _line, column: _col);
+          }
+          named[name] = value;
         }
-        if (named.containsKey(name)) {
-          throw FtlParseException('Duplicate named argument "$name"', line: _line, column: _col);
-        }
-        named[name] = value;
       } else {
-        if (named.isNotEmpty) {
-          throw FtlParseException(
-            'Positional argument cannot follow a named argument',
-            line: _line,
-            column: _col,
-          );
-        }
-        positional.add(_parseInlineExpression());
+        _addPositional(positional, named);
       }
 
       _skipWhitespace();
@@ -570,29 +773,44 @@ class FtlParser {
     return _CallArguments(positional: positional, named: named);
   }
 
-  /// Looks ahead for `identifier :` without consuming input.
+  /// Adds a positional argument, rejecting it when a named argument was already
+  /// seen — the reference parses the argument first and reports the error after.
+  void _addPositional(List<FtlExpression> positional, Map<String, FtlExpression> named) {
+    if (named.isNotEmpty) {
+      throw FtlParseException(
+        'Positional argument cannot follow a named argument',
+        line: _line,
+        column: _col,
+      );
+    }
+    positional.add(_parseInlineExpression());
+  }
+
+  /// Looks ahead for `identifier blank? ":"` without consuming input.
   bool _isNamedArgumentAhead() {
     var p = _pos;
     if (p >= input.length || !_isIdentifierStart(input[p])) return false;
     while (p < input.length && _isIdentifierPart(input[p])) {
       p++;
     }
-    while (p < input.length && (input[p] == ' ' || input[p] == '\t')) {
+    while (p < input.length && (input[p] == ' ' || input[p] == '\n')) {
       p++;
     }
     return p < input.length && input[p] == ':';
   }
 
+  /// Parses the variants of a select expression; the `->` is already consumed
+  /// and is known to be followed by a line end.
   FtlSelectExpression _parseSelectExpression(FtlExpression selector) {
-    _advance(); // '-'
-    _advance(); // '>'
-
     final variants = <FtlSelectVariant>[];
     while (true) {
       _skipWhitespace();
       if (_isAtEnd()) break;
       final char = _peek();
       if (char != '[' && char != '*') break;
+      // Syntax 0.4 compatibility, as in the reference `is_variant_start`: a
+      // line that opens with `[[` does not start a variant.
+      if (char == '[' && _peek(1) == '[') break;
 
       var isDefault = false;
       if (char == '*') {
@@ -602,22 +820,24 @@ class FtlParser {
       if (!_match('[')) {
         throw FtlParseException('Expected "[" to start a variant key', line: _line, column: _col);
       }
-      _skipInlineWhitespace();
-
-      final keyBuffer = StringBuffer();
-      while (!_isAtEnd() && _peek() != ']' && _peek() != '\n') {
-        keyBuffer.write(_advance());
-      }
+      // `blank` inside the brackets: `*[key]`, `*[  key  ]` and even
+      // `*[\n  key\n]` are the same key.
+      _skipWhitespace();
+      final key = _parseVariantKey();
+      _skipWhitespace();
       if (!_match(']')) {
-        throw FtlParseException('Unclosed variant key', line: _line, column: _col);
-      }
-      final key = keyBuffer.toString().trim();
-      if (key.isEmpty) {
-        throw FtlParseException('Empty variant key', line: _line, column: _col);
+        throw FtlParseException(
+          'Expected "]" after the variant key',
+          line: _line,
+          column: _col,
+        );
       }
 
       _skipInlineWhitespace();
-      final value = _parsePattern(inVariant: true) ?? const FtlPattern(elements: []);
+      final value = _parsePattern();
+      if (value == null) {
+        throw FtlParseException('Variant "[$key]" must have a value', line: _line, column: _col);
+      }
       variants.add(FtlSelectVariant(key: key, value: value, isDefault: isDefault));
     }
 
@@ -643,6 +863,43 @@ class FtlParser {
     );
   }
 
+  /// Parses a variant key — an identifier or a number literal — and returns it
+  /// as written, so that keys such as `[01]` keep their text.
+  String _parseVariantKey() {
+    final char = _peek();
+    if (_isDigit(char) || char == '-') {
+      final start = _pos;
+      if (_peek() == '-') {
+        _advance();
+        if (!_isDigit(_peek())) {
+          throw FtlParseException(
+            'Invalid variant key; keys are identifiers or numbers',
+            line: _line,
+            column: _col,
+          );
+        }
+      }
+      while (_isDigit(_peek())) {
+        _advance();
+      }
+      if (_peek() == '.' && _isDigit(_peek(1))) {
+        _advance();
+        while (_isDigit(_peek())) {
+          _advance();
+        }
+      }
+      return input.substring(start, _pos);
+    }
+    if (!_isIdentifierStart(char)) {
+      throw FtlParseException(
+        'Invalid variant key; keys are identifiers or numbers',
+        line: _line,
+        column: _col,
+      );
+    }
+    return _parseIdentifier();
+  }
+
   String _parseIdentifier() {
     if (!_isIdentifierStart(_peek())) {
       throw FtlParseException('Expected identifier', line: _line, column: _col);
@@ -658,35 +915,95 @@ class FtlParser {
   // Low-level helpers
   // ---------------------------------------------------------------------------
 
-  /// Skips to the next line that starts an entry at column 0.
-  void _recoverToNextEntry() {
-    _skipToNextLine();
+  /// Index at which the junk starting at [entryStart] ends and the next entry
+  /// begins — the boundary the reference `skip_to_next_entry_start` computes.
+  ///
+  /// The reference rewinds to the line end before the error and then walks the
+  /// following lines until one starts like an entry: column 0 with a letter,
+  /// `-` or `#`. Lines that do not look like an entry — including lines starting
+  /// with a digit, `/` or `[` — stay inside the junk, together with their line
+  /// ends and blank lines. When the error is on the junk's first line there is
+  /// nothing to rewind to and the remainder of that line is skipped first.
+  int _nextEntryStart(int entryStart, int errorPos) {
+    // The search includes the error position, as in `@fluent/syntax`, where
+    // `lastIndexOf(EOL, index)` finds the line end the error sits on.
+    final previousLineEnd = input.lastIndexOf('\n', errorPos);
+    var p = entryStart < previousLineEnd
+        ? previousLineEnd + 1 // the failing line may itself start an entry
+        : _lineEndAfter(errorPos); // skip the rest of the failing line
+    while (p < input.length) {
+      final char = input[p];
+      if (_isIdentifierStart(char) || char == '-' || char == '#') return p;
+      p = _lineEndAfter(p);
+    }
+    return input.length;
+  }
+
+  /// Index of the first character after the line end at or after [pos].
+  int _lineEndAfter(int pos) {
+    final newline = input.indexOf('\n', pos);
+    return newline < 0 ? input.length : newline + 1;
+  }
+
+  /// Skips blank blocks — whitespace-only lines and blank lines — plus trailing
+  /// blanks at the end of the input.
+  ///
+  /// The indentation of the next line that has content is deliberately left
+  /// unconsumed: entries and comments only start at column 0, so a mis-indented
+  /// line is reported as junk instead of silently starting an entry.
+  void _skipBlankLines() {
     while (!_isAtEnd()) {
-      final char = _peek();
-      if (_isIdentifierStart(char) || char == '-' || char == '#') return;
-      _skipToNextLine();
+      var p = _pos;
+      while (p < input.length && input[p] == ' ') {
+        p++;
+      }
+      if (p >= input.length) {
+        _advanceTo(p);
+        return;
+      }
+      if (input[p] == '\n') {
+        _advanceTo(p + 1);
+        continue;
+      }
+      return;
     }
   }
 
-  void _skipToNextLine() {
-    while (!_isAtEnd() && _peek() != '\n') {
-      _advance();
-    }
-    if (!_isAtEnd() && _peek() == '\n') {
-      _advance();
-    }
+  /// Restores a previously saved scanner position.
+  void _restore(int pos, int line, int col) {
+    _pos = pos;
+    _line = line;
+    _col = col;
   }
 
+  /// Skips `blank_inline` — spaces only.
+  ///
+  /// The grammar defines `blank_inline ::= "\u0020"+`, so a tab is an ordinary
+  /// character in FTL and is never treated as layout (see the reference
+  /// `tab.ftl` fixtures, where a tab after `=` belongs to the value while a tab
+  /// before `=` or as indentation is an error).
   void _skipInlineWhitespace() {
-    while (!_isAtEnd() && (_peek() == ' ' || _peek() == '\t')) {
+    while (!_isAtEnd() && _peek() == ' ') {
       _advance();
     }
   }
 
+  /// Skips `blank` — spaces and line ends, but never tabs.
   void _skipWhitespace() {
-    while (!_isAtEnd() && (_peek() == ' ' || _peek() == '\t' || _peek() == '\n')) {
+    while (!_isAtEnd() && (_peek() == ' ' || _peek() == '\n')) {
       _advance();
     }
+  }
+
+  /// Index of the first character after `blank` starting at the cursor.
+  ///
+  /// Used for the non-committing lookahead of `CallArguments`.
+  int _indexAfterBlank() {
+    var p = _pos;
+    while (p < input.length && (input[p] == ' ' || input[p] == '\n')) {
+      p++;
+    }
+    return p;
   }
 
   String _peek([int offset = 0]) {

@@ -179,6 +179,9 @@ RiverpodFluentScope(
 
 * Widget and Riverpod tests live in `test/` and run in CI (`.github/workflows/rustok-i18n.yml`).
 * `CURRENCY()` and remote catalog clients are not provided by this package.
+* Attribute lookups use dotted keys: `context.t('login-form.placeholder')`. The `trProvider` function does not expose an `attribute` parameter — call `context.tAttr(id, 'attribute')` or `UiMessages.tAttr` for that.
+* `context.activeLocale`, `context.isRtlLocale`, `context.t` and `context.tAttr` throw a `StateError` when there is no `FluentScope` above the widget (keep `RiverpodFluentScope` above `MaterialApp`). Use `maybeT`, `FluentScope.maybeOf(context)` and a `null` check instead of a hard dependency.
+* If a `LazyCatalog` loader throws, `localeReadyProvider` enters an error state: loading is over, so `RiverpodFluentScope` replaces the placeholder with `child` and keeps rendering the fallback chain, and the failure is not retried automatically. Watch `localeReadyProvider(locale)` to surface the error, and retry with `ref.invalidate(localeReadyProvider(locale))`.
 
 ---
 
