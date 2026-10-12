@@ -86,12 +86,15 @@ function sameOriginUrl(value) {
 
   let base = null;
   try {
-    base = globalThis.location?.href || null;
+    const href = globalThis.location?.href || null;
+    if (href && (href.startsWith("http://") || href.startsWith("https://"))) {
+      base = href;
+    }
   } catch (_) {
     base = null;
   }
   if (!base) {
-    // No document to resolve against: accept only unambiguous root-relative paths.
+    // No http(s) document to resolve against: accept only unambiguous root-relative paths.
     return trimmed.startsWith("/") ? trimmed : null;
   }
 
@@ -99,7 +102,7 @@ function sameOriginUrl(value) {
     const resolved = new URL(trimmed, base);
     if (resolved.protocol !== "http:" && resolved.protocol !== "https:") return null;
     if (resolved.origin !== new URL(base).origin) return null;
-    return resolved.href;
+    return trimmed.startsWith("/") ? trimmed : resolved.href;
   } catch (_) {
     return null;
   }

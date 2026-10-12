@@ -15,7 +15,7 @@ use crate::{
         IndexQueryExecutionError, IndexQueryPage, IndexQueryPort, PersistedSchemaReadinessFailure,
         PostgresBindValue, SchemaRegistry,
     },
-    domain::{IndexQuery, LocalizedEntityQuery, SchemaRef},
+    domain::{IndexQuery, IndexSchema, LocalizedEntityQuery, SchemaRef},
 };
 
 use super::PostgresIndexQueryAdmissionCatalog;
@@ -262,7 +262,8 @@ fn required_schema_contracts(
                     reason: PersistedSchemaReadinessFailure::Missing,
                 }
             })?;
-            let schema_json = serde_json::to_value(&registered.schema).map_err(|error| {
+            let canonical = registered.schema.canonical();
+            let schema_json = serde_json::to_value(&canonical).map_err(|error| {
                 IndexQueryExecutionError::contract_preparation(reference.clone(), error)
             })?;
             Ok(RequiredSchemaContract {
@@ -322,7 +323,18 @@ async fn verify_persisted_schemas(
                 reason: PersistedSchemaReadinessFailure::FingerprintMismatch,
             });
         }
-        if schema_json != required.schema_json {
+        let canonical_persisted_json = serde_json::from_value::<IndexSchema>(schema_json.clone())
+            .ok()
+            .and_then(|s| serde_json::to_value(s.canonical()).ok());
+        let contract_matches = if schema_json == required.schema_json {
+            true
+        } else if let Some(ref persisted_norm) = canonical_persisted_json {
+            persisted_norm == &required.schema_json
+        } else {
+            false
+        };
+
+        if !contract_matches {
             return Err(IndexQueryExecutionError::SchemaNotReady {
                 reference: required.reference.clone(),
                 reason: PersistedSchemaReadinessFailure::ContractMismatch,

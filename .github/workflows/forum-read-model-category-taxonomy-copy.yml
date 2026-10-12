@@ -5,7 +5,6 @@ on:
     paths:
       - ".github/workflows/forum-read-model-category-taxonomy-copy.yml"
       - "crates/modules/rustok-forum/src/services/mod.rs"
-      - "crates/modules/rustok-forum/src/services/read_model.rs"
       - "crates/modules/rustok-forum/src/services/read_model_owner.rs"
       - "scripts/verify/verify-forum-read-model-category-taxonomy-copy.mjs"
   push:
@@ -14,7 +13,6 @@ on:
     paths:
       - ".github/workflows/forum-read-model-category-taxonomy-copy.yml"
       - "crates/modules/rustok-forum/src/services/mod.rs"
-      - "crates/modules/rustok-forum/src/services/read_model.rs"
       - "crates/modules/rustok-forum/src/services/read_model_owner.rs"
       - "scripts/verify/verify-forum-read-model-category-taxonomy-copy.mjs"
   workflow_dispatch:
@@ -68,7 +66,7 @@ jobs:
           components: rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       - name: Check changed legacy delegate formatting
-        run: rustfmt +1.96.0 --edition 2024 --check crates/modules/rustok-forum/src/services/read_model.rs
+        run: rustfmt +1.96.0 --edition 2024 --check crates/modules/rustok-forum/src/services/read_model_owner.rs
       - name: Compile Forum read-model owner and delegate
         run: cargo check --locked -p rustok-forum --lib
       - name: Exercise retained Topic unread delegate
