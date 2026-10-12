@@ -1322,14 +1322,25 @@ async fn assert_schema_contract(db: &DatabaseConnection) -> Result<(), Box<dyn s
     for index in [
         "uq_product_translations_tenant_locale_handle",
         "uq_product_variants_tenant_sku",
-        "uq_catalog_categories_tenant_root_slug",
         "idx_products_storefront_published",
         "idx_products_channel_visibility_jsonb",
     ] {
         assert_index_exists(db, index).await?;
     }
     assert_trigger_exists(db, "trg_products_normalize_channel_visibility").await?;
-    assert_trigger_exists(db, "trg_catalog_categories_validate_tree").await?;
+
+    if migration_is_applied(
+        db,
+        "m20260916_000032_clean_product_category_canonical_taxonomy",
+    )
+    .await?
+    {
+        assert_index_does_not_exist(db, "uq_catalog_categories_tenant_root_slug").await?;
+        assert_trigger_does_not_exist(db, "trg_catalog_categories_validate_tree").await?;
+    } else {
+        assert_index_exists(db, "uq_catalog_categories_tenant_root_slug").await?;
+        assert_trigger_exists(db, "trg_catalog_categories_validate_tree").await?;
+    }
 
     if migration_is_applied(
         db,
@@ -1485,6 +1496,53 @@ async fn assert_catalog_object_exists(
     let exists: bool = row.try_get("", "exists")?;
     if !exists {
         return Err(format!("expected {kind} `{name}` after migrations").into());
+    }
+    Ok(())
+}
+
+async fn assert_index_does_not_exist(
+    db: &DatabaseConnection,
+    index: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    assert_catalog_object_does_not_exist(
+        db,
+        "SELECT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = $1) AS exists",
+        index,
+        "index",
+    )
+    .await
+}
+
+async fn assert_trigger_does_not_exist(
+    db: &DatabaseConnection,
+    trigger: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    assert_catalog_object_does_not_exist(
+        db,
+        "SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = $1 AND NOT tgisinternal) AS exists",
+        trigger,
+        "trigger",
+    )
+    .await
+}
+
+async fn assert_catalog_object_does_not_exist(
+    db: &DatabaseConnection,
+    query: &str,
+    name: &str,
+    kind: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            query,
+            [name.to_owned().into()],
+        ))
+        .await?
+        .ok_or_else(|| format!("{kind} existence query returned no row"))?;
+    let exists: bool = row.try_get("", "exists")?;
+    if exists {
+        return Err(format!("unexpected {kind} `{name}` exists after migrations").into());
     }
     Ok(())
 }
