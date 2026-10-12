@@ -109,18 +109,31 @@ impl CollaborativeDoc {
     /// Deletes a block and its subtree, cleaning up associated Loro metadata and text containers.
     pub fn delete_block(&self, target: TreeID) -> DocsResult<()> {
         let tree = self.doc.get_tree("blocks");
-        
-        // Clean up text and metadata containers for this node
-        let text = self.doc.get_text(format!("block_text_{}", target));
-        let len = text.len_unicode();
-        if len > 0 {
-            text.delete(0, len).ok();
-        }
-        let meta = self.doc.get_map(format!("block_meta_{}", target));
-        meta.delete("type").ok();
-        meta.delete("props").ok();
 
-        // Delete node from hierarchical tree (deletes all descendants)
+        // Recursively collect all descendant TreeIDs before deleting from tree
+        let mut all_nodes = vec![target];
+        let mut idx = 0;
+        while idx < all_nodes.len() {
+            let current = all_nodes[idx];
+            if let Some(children) = tree.children(Some(current)) {
+                all_nodes.extend(children);
+            }
+            idx += 1;
+        }
+
+        // Clean up text and metadata containers for all deleted nodes
+        for node in all_nodes {
+            let text = self.doc.get_text(format!("block_text_{}", node));
+            let len = text.len_unicode();
+            if len > 0 {
+                text.delete(0, len).ok();
+            }
+            let meta = self.doc.get_map(format!("block_meta_{}", node));
+            meta.delete("type").ok();
+            meta.delete("props").ok();
+        }
+
+        // Delete root target from hierarchical tree (deletes all descendants)
         tree.delete(target).map_err(|e| DocsError::Loro(e.to_string()))?;
         self.doc.commit();
         Ok(())

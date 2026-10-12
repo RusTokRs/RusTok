@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use std::collections::HashMap;
 use tracing::{info, instrument};
@@ -156,7 +156,7 @@ impl DocumentService {
             .filter(page::Column::DeletedAt.is_null())
             .one(db)
             .await?
-            .ok_or_else(|| DocsError::SlugConflict {
+            .ok_or_else(|| DocsError::PageSlugNotFound {
                 slug: slug.to_string(),
                 tenant_id,
             })?;
@@ -223,9 +223,15 @@ impl DocumentService {
             .all(db)
             .await?;
 
+        let active_ids: std::collections::HashSet<Uuid> = pages.iter().map(|p| p.id).collect();
         let mut children_map: HashMap<Option<Uuid>, Vec<page::Model>> = HashMap::new();
         for p in pages {
-            children_map.entry(p.parent_id).or_default().push(p);
+            // Orphan safety: if parent is missing or soft-deleted, promote to root
+            let effective_parent = match p.parent_id {
+                Some(pid) if active_ids.contains(&pid) => Some(pid),
+                _ => None,
+            };
+            children_map.entry(effective_parent).or_default().push(p);
         }
 
         fn build_nodes(
@@ -305,8 +311,24 @@ impl DocumentService {
                     .one(db)
                     .await?;
 
-                if parent.is_none() {
-                    return Err(DocsError::InvalidParent(parent_id));
+                let parent_model = parent.ok_or(DocsError::InvalidParent(parent_id))?;
+
+                // Check transitive ancestor cycles (page_id cannot become a child of its own descendant)
+                let mut current_ancestor = parent_model.parent_id;
+                while let Some(ancestor_id) = current_ancestor {
+                    if ancestor_id == page_id {
+                        return Err(DocsError::InvalidHierarchy(format!(
+                            "Cycle detected: page '{}' is already an ancestor of target parent '{}'",
+                            page_id, parent_id
+                        )));
+                    }
+                    let ancestor = page::Entity::find()
+                        .filter(page::Column::TenantId.eq(tenant_id))
+                        .filter(page::Column::Id.eq(ancestor_id))
+                        .filter(page::Column::DeletedAt.is_null())
+                        .one(db)
+                        .await?;
+                    current_ancestor = ancestor.and_then(|a| a.parent_id);
                 }
             }
             active.parent_id = Set(parent_opt);
@@ -360,9 +382,31 @@ impl DocumentService {
         if hard_delete {
             existing.delete(db).await?;
         } else {
+            let txn = db.begin().await?;
+
+            // 1. Promote active children to deleted page's parent to maintain tree continuity
+            let children = page::Entity::find()
+                .filter(page::Column::TenantId.eq(tenant_id))
+                .filter(page::Column::ParentId.eq(page_id))
+                .filter(page::Column::DeletedAt.is_null())
+                .all(&txn)
+                .await?;
+
+            let now = Utc::now();
+            for child in children {
+                let mut child_am: page::ActiveModel = child.into();
+                child_am.parent_id = Set(existing.parent_id);
+                child_am.updated_at = Set(now.into());
+                child_am.update(&txn).await?;
+            }
+
+            // 2. Mark page as deleted
             let mut active: page::ActiveModel = existing.into();
-            active.deleted_at = Set(Some(Utc::now().into()));
-            active.update(db).await?;
+            active.deleted_at = Set(Some(now.into()));
+            active.updated_at = Set(now.into());
+            active.update(&txn).await?;
+
+            txn.commit().await?;
         }
 
         Ok(())
@@ -435,11 +479,12 @@ impl DocumentService {
 
         let txn = db.begin().await?;
 
-        // 1. Ensure page exists
+        // 1. Ensure page exists and acquire exclusive row lock to serialize concurrent delta writes
         let page_model = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
             .filter(page::Column::Id.eq(page_id))
             .filter(page::Column::DeletedAt.is_null())
+            .lock_exclusive()
             .one(&txn)
             .await?
             .ok_or(DocsError::PageNotFound(page_id))?;
@@ -519,6 +564,20 @@ impl DocumentService {
     ) -> DocsResult<()> {
         let (doc, latest_seq) = Self::load_document(db, tenant_id, page_id).await?;
 
+        // Skip redundant compaction if document is already compacted to latest_seq
+        let latest_snap = snapshot::Entity::find()
+            .filter(snapshot::Column::TenantId.eq(tenant_id))
+            .filter(snapshot::Column::PageId.eq(page_id))
+            .order_by_desc(snapshot::Column::SeqId)
+            .one(db)
+            .await?;
+
+        if let Some(snap) = latest_snap {
+            if latest_seq <= snap.seq_id {
+                return Ok(());
+            }
+        }
+
         let snapshot_data = doc.export_snapshot()?;
         let frontiers_json = doc.oplog_frontiers_string();
 
@@ -559,6 +618,15 @@ impl DocumentService {
         page_id: Uuid,
         client_seq_id: Option<i64>,
     ) -> DocsResult<DocumentSyncDto> {
+        // Verify page exists and is not soft-deleted
+        let _ = page::Entity::find()
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .filter(page::Column::Id.eq(page_id))
+            .filter(page::Column::DeletedAt.is_null())
+            .one(db)
+            .await?
+            .ok_or(DocsError::PageNotFound(page_id))?;
+
         let latest_snapshot = snapshot::Entity::find()
             .filter(snapshot::Column::TenantId.eq(tenant_id))
             .filter(snapshot::Column::PageId.eq(page_id))
@@ -634,6 +702,10 @@ impl DocumentService {
                 ));
             }
         }
+
+        // Deduplicate links before inserting to avoid redundant database rows
+        links.sort();
+        links.dedup();
 
         let txn = db.begin().await?;
 

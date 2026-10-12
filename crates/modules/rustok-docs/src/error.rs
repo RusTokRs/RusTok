@@ -25,6 +25,9 @@ pub enum DocsError {
     #[error("Page not found: {0}")]
     PageNotFound(Uuid),
 
+    #[error("Page not found for slug '{slug}' in tenant '{tenant_id}'")]
+    PageSlugNotFound { slug: String, tenant_id: Uuid },
+
     #[error("Slug conflict: slug '{slug}' already exists for tenant '{tenant_id}'")]
     SlugConflict { slug: String, tenant_id: Uuid },
 

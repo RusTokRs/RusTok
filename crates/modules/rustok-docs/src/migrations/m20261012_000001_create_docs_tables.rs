@@ -62,6 +62,7 @@ impl MigrationTrait for Migration {
                     .col(DocsPages::TenantId)
                     .col(DocsPages::Slug)
                     .unique()
+                    .and_where(Expr::col((DocsPages::Table, DocsPages::DeletedAt)).is_null())
                     .to_owned(),
             )
             .await?;
