@@ -119,7 +119,7 @@ jobs:
           printf '::error::FL analyze_exit=%s test_exit=%s\n' "$fa" "$ft"
           grep -nE 'error|warning' /tmp/fa.log | head -n 10 | cut -c1-900 \
             | while IFS= read -r line; do printf '::error::FL %s\n' "${line//%/%25}"; done
-          tail -n 60 /tmp/ft.log | cut -c1-900 \
+          grep -n -B 2 -A 30 -E 'Expected:|EXCEPTION CAUGHT|The following' /tmp/ft.log | head -n 90 | cut -c1-900 \
             | while IFS= read -r line; do printf '::error::FT %s\n' "${line//%/%25}"; done
           [ $fa -ne 0 ] && exit $fa
           exit $ft
