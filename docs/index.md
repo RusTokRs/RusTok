@@ -166,6 +166,7 @@ from complete operation safety and retention through serving cutover.
 ## Architecture and Foundation
 
 - [CRM, ERP, and Accounting Matrix and Plan](./architecture/crm-erp-accounting-matrix-and-plan.md) — exhaustive domain overlap matrix, atomic module decomposition, and FFA mobile integration plan for CRM, ERP, and Accounting capabilities in RusToK.
+- [Workplace & Collaboration SuperApp Plan](./architecture/workplace-collaboration-superapp-plan.md) — highload distributed messenger (Iggy streaming), Notion-grade collaborative docs (Loro CRDT), LiveKit WebRTC calls, calendar scheduling, and Live ERP block embedding.
 - [ADR: Atomic CRM, ERP, and Accounting Domain Architecture](../DECISIONS/2026-10-12-atomic-crm-erp-accounting-architecture.md) — sovereign domain decomposition into atomic crates, transactional outbox choreography, and Flex/FFA parity.
 - [Settings and Configuration Architecture](./architecture/settings.md) — canonical current-state inventory and accepted target for platform settings, module settings, lifecycle retention, update compatibility, minimal unconditional dependencies, tenant integrations, contextual capabilities, localization, secrets, activation, and verification.
 - [ADR: Checkout operation invariants are owned by typed Rust](../DECISIONS/2026-10-07-checkout-operation-invariants-owned-by-rust.md) — the checkout journal state machine, the compensation parking decision, and the cross-aggregate tenant checks live in typed Rust; the database keeps declarative schema shape only, and the behavioral triggers are removed.
