@@ -86,6 +86,7 @@ graph TD
         OPT_TRANSLATION["translation"]
         OPT_ALLOY["alloy"]
         OPT_FLEX["flex"]
+        OPT_DOCS["docs"]
     end
 
     subgraph Extensions["Capability extensions (runtime = \"extension\")"]

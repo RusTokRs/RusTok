@@ -115,6 +115,7 @@ It is important to distinguish:
 | `translation` | `rustok-translation` | — |
 | `alloy` | `alloy` | — |
 | `flex` | `flex` | — |
+| `docs` | `rustok-docs` | — |
 
 ### Capability Extensions
 

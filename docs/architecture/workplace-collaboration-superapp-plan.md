@@ -77,6 +77,67 @@ To guarantee zero database lock contention and scale horizontally across cluster
 3. **Decoupled Delivery Pipeline:** Incoming messages are immediately published to [`rustok-iggy`](../../crates/modules/rustok-iggy) and acknowledged to the client within < 5 ms. Persistence workers batch-insert records into PostgreSQL asynchronously, preventing database bottlenecks during traffic surges.
 4. **End-to-End Encryption (E2EE):** Direct 1-on-1 and sensitive executive channels support double-ratchet E2EE; the server persists and relays encrypted binary blobs without inspecting payloads.
 
+### 3.2 Matrix Cryptographic Stack Evaluation & Library Selection
+To guarantee mathematical rigor without developing proprietary cryptography from scratch, RusToK leverages the battle-tested, independently audited cryptographic ecosystem originally engineered by the Matrix.org Foundation and the IETF MLS working group:
+
+| Candidate Library | Origin & Cryptographic Audit | Strengths & Protocols | Bloat & Protocol Risk | Role in RusToK SuperApp |
+| :--- | :--- | :--- | :--- | :--- |
+| **`vodozemac`** | **Matrix.org Foundation (Pure Rust)**<br>Audited by *Least Authority* (2022). | • Pure Rust replacement for legacy C `libolm`.<br>• **Olm:** Double Ratchet (Signal protocol) + X3DH key agreement.<br>• **Megolm:** High-throughput group ratcheting (symmetric ratchet with pairwise key distribution).<br>• **SAS:** Interactive Short Authentication String device verification (emoji/decimal QR).<br>• Zero external runtime dependencies; compiles cleanly to native Linux/macOS/Windows, Android/iOS FFI, and WASM. | Low-level cryptographic engine only (requires an application-level state machine for network queues). | **Core Cryptographic Engine (Winner for Phase 1):** Selected for all 1-on-1 chats and executive group rooms. |
+| **`matrix-sdk-crypto`** | **Matrix.org Foundation (Rust)** | • High-level cryptographic state machine handling key stores, one-time prekeys (OTKs), session backup, and verification workflows. | Hardwired to Matrix client-server JSON protocol types (`ruma_events`). Pulling it in would drag in heavy Matrix JSON schemas and protocol baggage. | **Architectural Reference Only:** We adopt the state-machine pattern for session tracking and key stores, but bind it directly to `vodozemac` and RusToK Protobuf/Postcard transport without Matrix protocol bloat. |
+| **`openmls`** | **OpenMLS / IETF RFC 9420 (Rust)** | • **Messaging Layer Security (MLS)**: Modern IETF standard for asynchronous group key exchange via TreeKEM.<br>• $O(\log N)$ group membership changes (unlike Megolm $O(N)$ key re-distribution). | Higher implementation complexity; emerging specification; heavier client overhead for small groups (< 20 users). | **Enterprise Large-Group Engine (Phase 2):** Slated for company-wide encrypted broadcast channels with > 100 participants. |
+| **`libsignal-protocol-rs`** | **Signal Messenger LLC (Rust)** | • Official Signal Protocol implementation. | Pairwise encryption only: group messaging requires sending $N$ separately encrypted payloads across the network, causing battery and bandwidth drain on mobile clients. | Rejected in favor of Megolm / MLS group ratchets. |
+
+### 3.3 Zero-Knowledge End-to-End Encryption (E2EE) Architecture
+
+```
+[Alice Client (vodozemac)]                   [Bob Client (vodozemac)]
+   │                                            │
+   │ 1. Fetch Bob's Identity + OTK PreKey       │
+   │◄───────────────────────────────────────────┤ (via Server Key Directory)
+   │                                            │
+   │ 2. X3DH + Initialize Olm Double Ratchet     │
+   │    Encrypt message (AES-256-CBC + HMAC)    │
+   │                                            │
+   │ 3. Send Ciphertext Blob                    │
+   ├──────────────────► [rustok-messenger] ────►│ 4. Decrypt & Advance Ratchet
+   │                     (Zero-Knowledge Relay:  │    (Forward Secrecy &
+   │                      Blind storage & Iggy)  │     Post-Compromise Security)
+```
+
+#### 1. Zero-Knowledge Blind Relay (`rustok-messenger` Role)
+The RusToK messaging backend acts strictly as an untrusted, zero-knowledge blind broker:
+* **Payload Blindness:** The server stores and streams only opaque binary ciphertext blobs (`CiphertextType::OlmPreKey`, `CiphertextType::OlmMessage`, `CiphertextType::MegolmMessage`).
+* **Zero Key Access:** Master keys, identity private keys, and session ratchet states exist exclusively within client secure storage (iOS Keychain, Android Keystore, desktop SQLCipher). The server never touches or holds private keys.
+* **Key Directory:** The server maintains only public cryptographic materials:
+  - Long-term public Identity Keys (`Ed25519` for signing, `Curve25519` for key exchange);
+  - Signed Pre-Keys with expiration timestamps;
+  - Bundles of single-use One-Time Pre-Keys (OTK) replenished automatically by clients.
+
+#### 2. Group Ratchet Lifecycle & Executive Room Forward Secrecy
+For boardroom negotiations and closed B2B executive groups (3–100 participants):
+1. **Outbound Megolm Session:** The sender's client initializes an outbound Megolm ratchet session using `vodozemac::megolm::GroupSession`.
+2. **Pairwise Key Distribution:** The sender securely exports the room session key (`vodozemac::megolm::ExportedSessionKey`) and transmits it to every authorized room participant individually via their pairwise 1-on-1 Olm sessions.
+3. **Single-Payload Group Broadcast:** Every subsequent message in the executive room is encrypted once with the Megolm session key and broadcasted over [`rustok-iggy`](../../crates/modules/rustok-iggy) partitions to all room members simultaneously.
+4. **Immediate Ratchet Revocation on Member Departure (Forward Secrecy):** When a participant is removed or leaves the executive room:
+   - The room owner client **immediately discards the current Megolm Outbound Session**;
+   - A fresh session is generated and distributed exclusively to the remaining active participants;
+   - The departed participant is mathematically incapable of decrypting any subsequent messages, even if they intercept the encrypted transport blobs.
+
+#### 3. Zero-Knowledge Media & Document Attachments
+Confidential PDFs, spreadsheets, voice messages, and video attachments are encrypted client-side prior to storage:
+1. **Local Symmetric Encryption:** The sender client generates a random, cryptographically secure 256-bit AES-GCM key and 96-bit IV.
+2. **Ciphertext Upload:** The encrypted payload is uploaded to [`rustok-media`](../../crates/modules/rustok-media), returning an opaque blob storage URL and SHA-256 integrity hash.
+3. **Encrypted Key Envelope:** The AES-GCM decryption key, IV, and SHA-256 hash are packaged inside the encrypted Olm/Megolm text message payload.
+4. **Result:** `rustok-media` stores only encrypted pseudorandom noise. Neither platform administrators nor compromised database backups can reveal attachment contents.
+
+#### 4. Device Verification & Man-in-the-Middle Protection (SAS & Cross-Signing)
+* **Short Authentication String (SAS):** Users can establish cryptographic trust between devices by comparing an out-of-band 7-emoji sequence or 6-digit decimal code generated via interactive Diffie-Hellman ephemeral exchanges (`vodozemac::sas::Sas`).
+* **Hierarchical Cross-Signing:**
+  - **Master Identity Key:** Root of trust per user, kept in offline or encrypted backup.
+  - **Self-Signing Key:** Authorizes new devices belonging to the same user (e.g. iPad, laptop).
+  - **User-Signing Key:** Signs verified colleagues and external B2B partners. Once a top manager verifies a partner once, all authorized devices display a verified green trust badge 🛡️.
+* **Encrypted Key Backup & Secret Storage:** Multi-device session history is backed up to a client-side encrypted vault derived via Argon2id from a 48-character recovery key, allowing seamless device migration without server key disclosure.
+
 ---
 
 ## 4. Notion-Grade Collaborative Documents (`rustok-docs`)
@@ -245,10 +306,11 @@ Typing `@` or `/` in the rich-text editor triggers a unified fuzzy search across
 gantt
     title Workplace & Collaboration SuperApp Implementation Roadmap
     dateFormat  YYYY-MM-DD
-    section Phase 1: Highload Messenger Core
+    section Phase 1: Highload Messenger & E2EE Core
     Iggy Streaming Fabric & Gateways      :p1_1, 2026-11-01, 30d
     Sharded Storage & Sync Cursor Protocol :p1_2, after p1_1, 25d
-    Flutter Mobile UI & WebSocket Client   :p1_3, after p1_2, 20d
+    Zero-Knowledge E2EE (vodozemac Engine) :p1_3, after p1_2, 20d
+    Flutter Mobile UI & WebSocket Client   :p1_4, after p1_3, 20d
 
     section Phase 2: Collaborative Docs (Notion Alternative)
     Block Tree & Loro CRDT Rust Engine     :p2_1, 2026-12-15, 30d
@@ -267,8 +329,9 @@ gantt
 ```
 
 ### Milestone Checklist:
-- [ ] **Milestone 1 (`rustok-messenger`):** Standalone distributed messaging passing 10,000 msgs/sec in-process benchmarking with Iggy; offline-first replay verified with Flutter test harness.
-- [ ] **Milestone 2 (`rustok-docs`):** Concurrent editing of block trees with Loro CRDT; zero-conflict resolution under 10 concurrent synthetic writers; dynamic Table and Kanban views operational; Universal Entity Reference protocol (`EntityRef`), Media retainment policies (`DocsMediaReferencePolicy`), and bidirectional backlinks ledger (`docs_entity_links`) verified.
+- [ ] **Milestone 1 (`rustok-messenger`):** Standalone distributed messaging passing 10,000 msgs/sec in-process benchmarking with Iggy; offline-first replay verified with Flutter test harness; Zero-Knowledge E2EE operational via `vodozemac` (1-on-1 Olm Double Ratchet, Megolm executive group ratchets with forward secrecy revocation, and SAS device verification).
+- [x] **Milestone 2.1 (`rustok-docs` Core):** Concurrent editing of block trees with Loro CRDT (`CollaborativeDoc`); zero-conflict resolution, cycle-safe MovableTree drag-and-drop, and pure Markdown projections verified via unit tests.
+- [ ] **Milestone 2.2 (`rustok-docs` Enterprise):** Dynamic Table and Kanban views operational; Universal Entity Reference protocol (`EntityRef`), Media retainment policies (`DocsMediaReferencePolicy`), and bidirectional backlinks ledger (`docs_entity_links`) verified.
 - [ ] **Milestone 3 (`rustok-calls`):** LiveKit SFU integration; end-to-end room creation, audio/video broadcast, screen sharing, and transcription pipeline.
 - [ ] **Milestone 4 (`rustok-calendar`):** Bi-directional RFC 5545 sync; public booking links generating calendar events and CRM deals.
 
@@ -286,3 +349,4 @@ gantt
 - **Content & Forum Domain:** [`crates/modules/rustok-blog`](../../crates/modules/rustok-blog), [`crates/modules/rustok-forum`](../../crates/modules/rustok-forum), [`crates/modules/rustok-pages`](../../crates/modules/rustok-pages)
 - **Cross-Domain Content Orchestration:** [`crates/modules/rustok-content-orchestration`](../../crates/modules/rustok-content-orchestration)
 - **Taxonomy & Category Trees:** [`crates/modules/rustok-taxonomy`](../../crates/modules/rustok-taxonomy)
+
