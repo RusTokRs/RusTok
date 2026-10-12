@@ -46,6 +46,7 @@ class LazyCatalog extends MessageCatalog {
     }
 
     final completer = Completer<void>();
+    completer.future.ignore();
     _inFlight[key] = completer.future;
 
     try {

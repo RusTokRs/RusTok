@@ -10,12 +10,12 @@
 
 //! FBA Bridge connecting Marketplace Seller Escrow Ledger transactions to General Ledger journal entries.
 
-use std::sync::Arc;
 use rustok_accounting::{
     AccountingJournalPort, JournalPostingItem, JournalTransactionResponse,
     PostJournalTransactionInput, PostingDirection, validate_transaction_balance,
 };
 use rustok_api::{PortContext, PortError};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::dto::{
@@ -128,10 +128,7 @@ impl MarketplaceAccountingBridge {
         original_gl_transaction_id: Uuid,
         reversal: &MarketplaceLedgerReversalResponse,
     ) -> Result<JournalTransactionResponse, PortError> {
-        let reason = format!(
-            "Marketplace reversal {}: {:?}",
-            reversal.id, reversal.kind
-        );
+        let reason = format!("Marketplace reversal {}: {:?}", reversal.id, reversal.kind);
         self.journal_port
             .post_storno_reversal(context, original_gl_transaction_id, Some(reason))
             .await
@@ -141,11 +138,11 @@ impl MarketplaceAccountingBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{FixedOffset, TimeZone, Utc};
     use crate::dto::{
         MarketplaceLedgerAccountCode, MarketplaceLedgerEntryDirection,
         MarketplaceLedgerEntryResponse, MarketplaceLedgerTransactionStatus,
     };
+    use chrono::{FixedOffset, TimeZone, Utc};
 
     #[test]
     fn test_map_order_commission_to_balanced_gl() {
