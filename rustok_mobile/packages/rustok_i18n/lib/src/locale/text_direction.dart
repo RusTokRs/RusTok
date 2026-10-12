@@ -1,7 +1,8 @@
 /// Text directionality representation.
 ///
-/// Renamed to [LocaleTextDirection] to prevent ambiguous name collisions
-/// with Flutter framework's `dart:ui.TextDirection`.
+/// Named [LocaleTextDirection] (not `TextDirection`) so that importing this
+/// package together with `package:flutter/widgets.dart` never produces an
+/// ambiguous `TextDirection` name.
 enum LocaleTextDirection {
   ltr,
   rtl;
@@ -10,57 +11,87 @@ enum LocaleTextDirection {
   bool get isLtr => this == LocaleTextDirection.ltr;
 }
 
-/// Backwards-compatible alias for non-Flutter environments.
-typedef TextDirection = LocaleTextDirection;
-
-/// Known RTL language subtag prefixes per CLDR and BCP-47.
+/// Languages that are always written right-to-left.
 const Set<String> _rtlLanguages = {
   'ar', // Arabic
   'arc', // Aramaic
+  'azb', // South Azerbaijani (Perso-Arabic script)
   'ckb', // Sorani Kurdish
   'dv', // Divehi
   'fa', // Persian
-  'ha', // Hausa (when in Arabic script)
+  'glk', // Gilaki
   'he', // Hebrew
   'iw', // Hebrew (legacy)
   'ji', // Yiddish (legacy)
   'khw', // Khowar
-  'ks', // Kashmiri
-  'ku', // Kurdish
+  'lrc', // Northern Luri
   'mzn', // Mazanderani
   'pnb', // Western Punjabi
   'ps', // Pashto
-  'sd', // Sindhi
   'ug', // Uyghur
   'ur', // Urdu
   'yi', // Yiddish
 };
 
-/// Known RTL script codes (ISO 15924).
-const Set<String> _rtlScripts = {
-  'Arab',
-  'Armi',
-  'Hebr',
-  'Mand',
-  'Mend',
-  'Nkoo',
-  'Samr',
-  'Syrc',
-  'Thaa',
+/// Languages whose default script is Arabic-based (RTL) per CLDR.
+const Set<String> _arabicDefaultLanguages = {
+  'ks', // Kashmiri
+  'sd', // Sindhi
 };
 
-/// Determines the text direction for a language or script tag.
+/// Languages that are RTL only when written in an RTL script (their default
+/// script is Latin, e.g. Latin-script Kurmanji or Hausa).
+const Set<String> _arabicScriptOptionalLanguages = {
+  'ha', // Hausa
+  'ku', // Kurdish (Kurmanji)
+};
+
+/// Known RTL script codes (ISO 15924).
+const Set<String> _rtlScripts = {
+  'Adlm',
+  'Armi',
+  'Avst',
+  'Hebr',
+  'Hung',
+  'Khar',
+  'Mand',
+  'Mend',
+  'Narb',
+  'Nkoo',
+  'Palm',
+  'Phnx',
+  'Prti',
+  'Rohg',
+  'Samr',
+  'Sarb',
+  'Syrc',
+  'Thaa',
+  'Yezi',
+  'Arab',
+};
+
+String _normalizeScript(String script) {
+  if (script.isEmpty) return script;
+  return script.substring(0, 1).toUpperCase() + script.substring(1).toLowerCase();
+}
+
+/// Determines the text direction for a language and optional script.
+///
+/// An explicit script always decides the direction: `ku-Latn` is LTR and
+/// `ku-Arab` is RTL. Without a script, the language's default script decides.
 LocaleTextDirection detectTextDirection({required String language, String? script}) {
-  final langNormalized = language.trim().toLowerCase();
   if (script != null && script.isNotEmpty) {
-    final scriptNormalized =
-        script.substring(0, 1).toUpperCase() + script.substring(1).toLowerCase();
-    if (_rtlScripts.contains(scriptNormalized)) {
-      return LocaleTextDirection.rtl;
-    }
+    return _rtlScripts.contains(_normalizeScript(script))
+        ? LocaleTextDirection.rtl
+        : LocaleTextDirection.ltr;
   }
-  if (_rtlLanguages.contains(langNormalized)) {
+
+  final lang = language.trim().toLowerCase();
+  if (_rtlLanguages.contains(lang) || _arabicDefaultLanguages.contains(lang)) {
     return LocaleTextDirection.rtl;
+  }
+  if (_arabicScriptOptionalLanguages.contains(lang)) {
+    return LocaleTextDirection.ltr;
   }
   return LocaleTextDirection.ltr;
 }

@@ -45,8 +45,17 @@ class FluentScope extends InheritedWidget {
   }
 }
 
-/// A wrapper widget that automatically wraps its child in Flutter [Directionality]
-/// according to the active locale detected by [FluentScope].
+/// Wraps its child in Flutter [Directionality] according to the active locale
+/// published by the nearest [FluentScope].
+///
+/// The handler must be placed below a [FluentScope]. With `MaterialApp` this means
+/// using `MaterialApp.builder` (the scope itself must wrap `MaterialApp`):
+/// ```dart
+/// MaterialApp(
+///   builder: (context, child) => DirectionalityHandler(child: child!),
+/// );
+/// ```
+/// Without a scope it falls back to LTR.
 class DirectionalityHandler extends StatelessWidget {
   const DirectionalityHandler({
     super.key,

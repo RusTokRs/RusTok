@@ -1,9 +1,16 @@
 import '../catalog/message_catalog.dart';
 import '../locale/fallback_chain.dart';
+import '../locale/locale_tag.dart';
 import 'resolved_message.dart';
 
 /// Maximum allowable length for translation keys (DoS guard matching RusToK contract).
 const int maxMessageKeyLength = 128;
+
+final RegExp _controlCharPattern = RegExp(r'[\x00-\x1F\x7F-\x9F]');
+
+/// Canonical lower-case catalog form of a locale tag, or `null` if invalid.
+String? _canonicalLower(String raw) =>
+    LocaleTag.tryParse(raw)?.toCatalogTag().toLowerCase();
 
 /// Main high-level facade for resolving internationalized messages across catalogs and locales.
 class UiMessages {
@@ -53,77 +60,50 @@ class UiMessages {
     final trimmedKey = key.trim();
     if (trimmedKey.isEmpty ||
         trimmedKey.length > maxMessageKeyLength ||
-        trimmedKey.contains(RegExp(r'[\x00-\x1F\x7F-\x9F]'))) {
-      return ResolvedMessage(
-        value: fallback ?? key,
-        provenance: ResolutionProvenance.missingKeyFallback,
-        originalKey: key,
-      );
+        trimmedKey.contains(_controlCharPattern)) {
+      return _missing(key, fallback);
     }
 
-    final kebabKey = _normalizeKebabKey(trimmedKey);
+    final kebabKey = normalizeKebabKey(trimmedKey);
     final dottedKey = _normalizeDottedKey(trimmedKey);
 
-    for (int i = 0; i < candidates.length; i++) {
-      final candidate = candidates[i];
+    // Provenance compares canonical forms, so `ru_RU` and `ru-RU` are the same locale.
+    final targetKey = _canonicalLower(targetLocale) ?? targetLocale.toLowerCase();
+    final defaultKey = _canonicalLower(defaultLocale) ?? defaultLocale.toLowerCase();
+    final targetChain =
+        localeFallbackChain(targetLocale).map((c) => c.toLowerCase()).toSet();
 
-      // Try exact key, then kebab-case, then dotted key
-      String? value = catalog.getMessage(
-        candidate,
-        trimmedKey,
-        args: args,
-        attribute: attribute,
-      );
-
+    for (final candidate in candidates) {
+      // Try exact key, then kebab-case, then dotted key.
+      String? value = _lookup(candidate, trimmedKey, attribute, args);
       if (value == null && kebabKey != trimmedKey) {
-        value = catalog.getMessage(
-          candidate,
-          kebabKey,
-          args: args,
-          attribute: attribute,
-        );
+        value = _lookup(candidate, kebabKey, attribute, args);
       }
-
       if (value == null && dottedKey != trimmedKey) {
-        value = catalog.getMessage(
-          candidate,
-          dottedKey,
-          args: args,
-          attribute: attribute,
-        );
+        value = _lookup(candidate, dottedKey, attribute, args);
       }
 
-      // Check for dotted attribute syntax (e.g. 'login-input.placeholder') when attribute is not explicitly provided
+      // Dotted attribute syntax (e.g. 'login-input.placeholder') when no attribute was given.
       if (value == null && attribute == null && trimmedKey.contains('.')) {
         final lastDot = trimmedKey.lastIndexOf('.');
         final msgPart = trimmedKey.substring(0, lastDot);
         final attrPart = trimmedKey.substring(lastDot + 1);
         if (msgPart.isNotEmpty && attrPart.isNotEmpty) {
-          value = catalog.getMessage(
-            candidate,
-            msgPart,
-            args: args,
-            attribute: attrPart,
-          );
-          if (value == null) {
-            final kebabMsg = _normalizeKebabKey(msgPart);
-            if (kebabMsg != msgPart) {
-              value = catalog.getMessage(
-                candidate,
-                kebabMsg,
-                args: args,
-                attribute: attrPart,
-              );
-            }
+          value = _lookup(candidate, msgPart, attrPart, args);
+          final kebabMsg = normalizeKebabKey(msgPart);
+          if (value == null && kebabMsg != msgPart) {
+            value = _lookup(candidate, kebabMsg, attrPart, args);
           }
         }
       }
 
       if (value != null) {
-        ResolutionProvenance provenance;
-        if (candidate.toLowerCase() == targetLocale.toLowerCase()) {
+        final candidateKey = _canonicalLower(candidate) ?? candidate.toLowerCase();
+        final ResolutionProvenance provenance;
+        if (candidateKey == targetKey) {
           provenance = ResolutionProvenance.exactMatch;
-        } else if (candidate.toLowerCase() == defaultLocale.toLowerCase()) {
+        } else if (candidateKey == defaultKey || !targetChain.contains(candidateKey)) {
+          // Came from the default or platform chain, not from the requested locale.
           provenance = ResolutionProvenance.defaultLocale;
         } else {
           provenance = ResolutionProvenance.parentLanguage;
@@ -138,6 +118,26 @@ class UiMessages {
       }
     }
 
+    return _missing(key, fallback);
+  }
+
+  /// Looks up one key (and optional attribute) in one candidate locale.
+  /// An attribute given in kebab-case also matches an underscore or dotted spelling.
+  String? _lookup(
+    String candidate,
+    String key,
+    String? attribute,
+    Map<String, dynamic>? args,
+  ) {
+    final direct = catalog.getMessage(candidate, key, args: args, attribute: attribute);
+    if (direct != null || attribute == null) return direct;
+
+    final kebabAttribute = normalizeKebabKey(attribute);
+    if (kebabAttribute == attribute) return null;
+    return catalog.getMessage(candidate, key, args: args, attribute: kebabAttribute);
+  }
+
+  ResolvedMessage _missing(String key, String? fallback) {
     return ResolvedMessage(
       value: fallback ?? key,
       provenance: ResolutionProvenance.missingKeyFallback,
@@ -205,8 +205,6 @@ class UiMessages {
       locale: locale,
     );
   }
-
-  String _normalizeKebabKey(String input) => normalizeKebabKey(input);
 
   String _normalizeDottedKey(String input) =>
       input.replaceAll('-', '.').replaceAll('_', '.');
@@ -296,4 +294,3 @@ class UiLocaleTranslator {
     return res;
   }
 }
-

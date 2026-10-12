@@ -3,6 +3,13 @@
 > **Canonical Document**: Library implementation plan and architectural specification.
 > **Scope**: Pure Dart core (`rustok_i18n`) and Flutter bindings (`rustok_flutter_i18n`).
 > **Goal**: Community-grade, multi-catalog Project Fluent i18n platform with zero runtime coupling.
+>
+> **Status note (audit, 0.1.0+)**: this document is the original design. Where it differs from the code, the code is authoritative:
+> - The parser is hand-written, not PetitParser; `petitparser` and `intl` are no longer dependencies.
+> - `LazyCatalog`, `AsyncRemoteCatalog`, and `appLocaleProvider` are **not implemented**. The Riverpod locale provider is `currentLocaleProvider`.
+> - Riverpod state is a `StateNotifier`, not an `AsyncNotifier`. Locale changes are validated.
+> - `DATETIME()` and locale-aware number formatting are **not implemented**; `NUMBER()` supports fraction-digit options only.
+> - The Flutter package has no automated tests yet.
 
 ---
 

@@ -7,3 +7,4 @@ export 'package:rustok_i18n/rustok_i18n.dart';
 export 'src/widgets/fluent_scope.dart';
 export 'src/extensions/fluent_extensions.dart';
 export 'src/riverpod/fluent_providers.dart';
+export 'src/riverpod/riverpod_fluent_scope.dart';

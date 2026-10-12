@@ -1,3 +1,4 @@
+import '../locale/fallback_chain.dart';
 import '../locale/locale_tag.dart';
 
 const int maxAcceptLanguageLength = 4096;
@@ -76,7 +77,13 @@ List<AcceptLanguagePreference> parseAcceptLanguage(String? header) {
   return List.unmodifiable(preferences);
 }
 
-/// Extracts negotiated catalog locale tags from `Accept-Language`, matching against [supportedLocales].
+/// Picks the best supported locale for an `Accept-Language` header.
+///
+/// Matching is done in quality order. For each requested range the exact tag
+/// is tried first, then its less specific forms (`zh-Hant-TW` -> `zh-Hant` -> `zh`),
+/// then any supported locale with the same primary language (`ru` -> `ru-RU`).
+/// A `*` range is skipped. Returns [defaultLocale] (or the first supported
+/// locale) when no explicit range matches.
 String? negotiateLocale({
   required String? acceptLanguageHeader,
   required List<String> supportedLocales,
@@ -89,30 +96,31 @@ String? negotiateLocale({
   final preferences = parseAcceptLanguage(acceptLanguageHeader);
   if (preferences.isEmpty) return safeFallback;
 
-  final normalizedSupported = supportedLocales
-      .map((s) => LocaleTag.tryParse(s)?.toCatalogTag().toLowerCase())
-      .whereType<String>()
-      .toSet();
+  // Canonical lower-case tag -> original spelling supplied by the caller.
+  final canonicalToOriginal = <String, String>{};
+  for (final supported in supportedLocales) {
+    final canonical = LocaleTag.tryParse(supported)?.toCatalogTag().toLowerCase();
+    if (canonical != null) {
+      canonicalToOriginal.putIfAbsent(canonical, () => supported);
+    }
+  }
 
   for (final pref in preferences) {
-    if (pref.isWildcard) return safeFallback;
+    // `*` accepts anything, so it only means "use the default" when no explicit range matches.
+    if (pref.isWildcard) continue;
     final tag = LocaleTag.tryParse(pref.tag);
     if (tag == null) continue;
 
-    // Check exact match
-    final exact = tag.toCatalogTag().toLowerCase();
-    if (normalizedSupported.contains(exact)) {
-      return supportedLocales.firstWhere(
-        (s) => LocaleTag.tryParse(s)?.toCatalogTag().toLowerCase() == exact,
-      );
+    // 1. Exact tag, then progressively less specific forms.
+    for (final candidate in localeFallbackChain(pref.tag)) {
+      final match = canonicalToOriginal[candidate.toLowerCase()];
+      if (match != null) return match;
     }
 
-    // Check language-only match
-    final langOnly = tag.language.toLowerCase();
-    if (normalizedSupported.contains(langOnly)) {
-      return supportedLocales.firstWhere(
-        (s) => LocaleTag.tryParse(s)?.toCatalogTag().toLowerCase() == langOnly,
-      );
+    // 2. Same primary language, e.g. `ru` matches a supported `ru-RU`.
+    final language = tag.language.toLowerCase();
+    for (final entry in canonicalToOriginal.entries) {
+      if (entry.key.split('-').first == language) return entry.value;
     }
   }
 

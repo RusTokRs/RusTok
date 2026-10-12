@@ -168,21 +168,21 @@ unread-messages = { \$count ->
       expect(bundle.format('unread-messages', args: {'count': 5}), '5 unread messages');
     });
 
-    test('supports multiline values and escaped braces', () {
+    test('supports multiline values and spec-compliant escapes', () {
       final bundle = FluentBundle(locale: 'en', useIsolating: false);
       bundle.addSource('''
 multiline-msg =
     Line 1
     Line 2
-escaped-msg = Literal \\{escaped\\} braces
+escaped-msg = Literal { "{" }escaped{ "}" } braces
 negative-num = Balance: { -42 }
-unescaped-str = { "hello\\nworld" }
+unescaped-str = { "hello\\"world\\\\" }
 ''');
 
       expect(bundle.format('multiline-msg'), 'Line 1\nLine 2');
       expect(bundle.format('escaped-msg'), 'Literal {escaped} braces');
       expect(bundle.format('negative-num'), 'Balance: -42');
-      expect(bundle.format('unescaped-str'), 'hello\nworld');
+      expect(bundle.format('unescaped-str'), 'hello"world\\');
     });
 
     test('protects against circular cross-message and cross-term references', () {
@@ -319,6 +319,212 @@ blog-title = Блог RusToK
       expect(normalizeAdminLocale('en-US'), 'en');
       expect(normalizeAdminLocale('fr'), 'en');
       expect(normalizeAdminLocale(null), 'en');
+    });
+  });
+
+  group('Parser conformance (Fluent 1.0)', () {
+    test('value on the next line keeps only the common indent', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('''
+key =
+    first
+        nested
+    last
+''');
+      expect(bundle.format('key'), 'first\n    nested\nlast');
+    });
+
+    test('final newline is not part of the value', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('last = Done\n');
+      expect(bundle.format('last'), 'Done');
+    });
+
+    test('a value may start with a dot', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('loading = ...\nhidden = .Hidden\n');
+      expect(bundle.format('loading'), '...');
+      expect(bundle.format('hidden'), '.Hidden');
+    });
+
+    test('whitespace-only lines do not swallow the next entry', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('a = one\n   \nb = two\n');
+      expect(bundle.format('a'), 'one');
+      expect(bundle.format('b'), 'two');
+    });
+
+    test('invalid entry becomes a diagnostic and parsing continues', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('bad line here\ngood = ok\n');
+      expect(bundle.format('good'), 'ok');
+      expect(bundle.diagnostics.single, startsWith('Junk'));
+    });
+
+    test('duplicate message ids keep the first definition', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('dup = first\ndup = second\n');
+      expect(bundle.format('dup'), 'first');
+      expect(bundle.diagnostics, hasLength(1));
+    });
+
+    test('string literals accept only spec escapes', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('esc = { "a\\\\b" }\nbad = { "\\n" }\n');
+      expect(bundle.format('esc'), 'a\\b');
+      expect(bundle.format('bad'), isNull);
+    });
+
+    test('term arguments are visible only inside the term', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('''
+-noun = { \$case ->
+    [gen] RusToK-gen
+   *[nom] RusToK
+}
+-plain = { \$x }
+title = Title: { -noun(case: "gen") }
+leak = [{ -plain }]
+''');
+      expect(bundle.format('title'), 'Title: RusToK-gen');
+      expect(bundle.format('leak', args: {'x': 'LEAK'}), '[{\$x}]');
+    });
+
+    test('NUMBER() applies fraction digit options', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('''
+price = { NUMBER(\$amount, minimumFractionDigits: 2) }
+precise = { NUMBER(\$amount, maximumFractionDigits: 1) }
+''');
+      expect(bundle.format('price', args: {'amount': 3}), '3.00');
+      expect(bundle.format('precise', args: {'amount': 2.345}), '2.3');
+    });
+
+    test('integral doubles print without a fraction', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource('count-text = Items: { \$count }\n');
+      expect(bundle.format('count-text', args: {'count': 3.0}), 'Items: 3');
+    });
+
+    test('non-finite selectors fall back to the default variant', () {
+      final bundle = FluentBundle(locale: 'ru', useIsolating: false);
+      bundle.addSource('''
+items = { \$count ->
+    [one] один
+   *[other] много
+}
+''');
+      expect(bundle.format('items', args: {'count': double.nan}), 'много');
+      expect(bundle.format('items', args: {'count': double.infinity}), 'много');
+    });
+  });
+
+  group('CLDR plural categories', () {
+    test('handles non-finite values and additional languages', () {
+      expect(resolveCldrPluralCategory('ru', double.nan), 'other');
+      expect(resolveCldrPluralCategory('ru', double.infinity), 'other');
+      expect(resolveCldrPluralCategory('cs', 3), 'few');
+      expect(resolveCldrPluralCategory('cs', 5), 'other');
+      expect(resolveCldrPluralCategory('ro', 0), 'few');
+      expect(resolveCldrPluralCategory('lv', 10), 'zero');
+      expect(resolveCldrPluralCategory('lt', 21), 'one');
+      expect(resolveCldrPluralCategory('sl', 102), 'two');
+      expect(resolveCldrPluralCategory('fr', 0.5), 'one');
+      expect(resolveCldrPluralCategory('pt_BR', 1), 'one');
+    });
+  });
+
+  group('Locale and catalog correctness', () {
+    test('catalog accepts underscore locale spelling and canonicalizes it', () {
+      final catalog = FluentCatalog(useIsolating: false)
+        ..registerFtl('ru_RU', 'hi = Привет\n');
+      final messages = UiMessages(catalog: catalog);
+      final resolved = messages.resolve('hi', locale: 'ru-RU');
+      expect(resolved.value, 'Привет');
+      expect(resolved.provenance, ResolutionProvenance.exactMatch);
+      expect(catalog.getSupportedLocales(), {'ru-RU'});
+    });
+
+    test('provenance compares canonical forms of the locale', () {
+      final catalog = StaticCatalog({
+        'ru-RU': {'hi': 'Привет'},
+        'en': {'hi': 'Hi'},
+      });
+      final messages = UiMessages(catalog: catalog, defaultLocale: 'en_US');
+      expect(messages.resolve('hi', locale: 'ru_RU').provenance,
+          ResolutionProvenance.exactMatch);
+      expect(messages.resolve('hi', locale: 'de').provenance,
+          ResolutionProvenance.defaultLocale);
+    });
+
+    test('attribute lookups never fall back to the main message', () {
+      final catalog = StaticCatalog({
+        'en': {'btn': 'Save'},
+      });
+      final messages = UiMessages(catalog: catalog);
+      expect(catalog.getMessage('en', 'btn', attribute: 'placeholder'), isNull);
+      expect(
+        messages.resolve('btn', attribute: 'placeholder', locale: 'en').provenance,
+        ResolutionProvenance.missingKeyFallback,
+      );
+    });
+
+    test('argument substitution is single-pass', () {
+      final catalog = StaticCatalog({
+        'en': {'k': '{a} {b}'},
+      });
+      expect(catalog.getMessage('en', 'k', args: {'a': '{b}', 'b': 'X'}), '{b} X');
+    });
+
+    test('JSON catalog skips null values', () {
+      final catalog = JsonCatalog()..registerJson('en', {'a': null, 'b': 'x'});
+      expect(catalog.hasMessage('en', 'a'), isFalse);
+      expect(catalog.hasMessage('en', 'b'), isTrue);
+    });
+
+    test('language-only ranges match regional supported locales', () {
+      expect(
+        negotiateLocale(acceptLanguageHeader: 'ru', supportedLocales: ['en', 'ru-RU']),
+        'ru-RU',
+      );
+      expect(
+        negotiateLocale(
+          acceptLanguageHeader: 'zh-Hant-TW',
+          supportedLocales: ['en', 'zh-Hant'],
+        ),
+        'zh-Hant',
+      );
+    });
+
+    test('variants are validated and extensions take part in equality', () {
+      expect(LocaleTag.tryParse('en-US-abc'), isNull);
+      expect(LocaleTag.parse('de-DE-1996').toCatalogTag(), 'de-DE-1996');
+      expect(LocaleTag.parse('en-u-ca-buddhist') == LocaleTag.parse('en'), isFalse);
+    });
+
+    test('wildcard does not hide lower-priority explicit ranges', () {
+      expect(
+        negotiateLocale(
+          acceptLanguageHeader: '*;q=1.0, de;q=0.5',
+          supportedLocales: ['en', 'de'],
+        ),
+        'de',
+      );
+      expect(
+        negotiateLocale(
+          acceptLanguageHeader: '*;q=1.0',
+          supportedLocales: ['en', 'de'],
+        ),
+        'en',
+      );
+    });
+
+    test('Kurdish is RTL only with an Arabic script', () {
+      expect(LocaleTag.parse('ku').isRtl, isFalse);
+      expect(LocaleTag.parse('ku-Arab').isRtl, isTrue);
+      expect(LocaleTag.parse('ks').isRtl, isTrue);
+      expect(detectTextDirection(language: 'ku', script: 'Latn'),
+          LocaleTextDirection.ltr);
     });
   });
 }

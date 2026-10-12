@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+* `RiverpodFluentScope`: publishes Riverpod's locale and `UiMessages` into the widget tree, making Riverpod the single source of truth.
+* `setLocale` and the initial locale now validate BCP-47 tags and store the canonical form; invalid tags throw `ArgumentError`.
+* `currentLocaleProvider` starts from `defaultLocaleProvider` instead of a hard-coded `'en'`.
+* `messageCatalogProvider` has no default catalog and throws `UnimplementedError` until overridden (previously it silently used an empty catalog).
+* `DirectionalityHandler` documentation now shows the `MaterialApp.builder` placement.
+* `flutter_riverpod` is a required dependency (it was documented as optional).
+
 ## 0.1.0
 
 * Initial release of `rustok_flutter_i18n`.
@@ -7,4 +16,4 @@
 * `DirectionalityHandler` for automatic RTL/LTR text direction layout wrapping.
 * `BuildContext.t()` and `BuildContext.tAttr()` convenience extensions.
 * Safe `BuildContext.maybeT()` for unmounted preview environments and tests.
-* Full Riverpod bindings: `currentLocaleProvider`, `uiMessagesProvider`, `isRtlLocaleProvider`, and reactive `trProvider`.
+* Riverpod bindings: `currentLocaleProvider`, `uiMessagesProvider`, `isRtlLocaleProvider`, and reactive `trProvider`.

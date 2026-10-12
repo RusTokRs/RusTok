@@ -11,11 +11,12 @@ Flutter widgets, `BuildContext` extensions, automatic `Directionality`, and Rive
 ## Features
 
 * **Ergonomic BuildContext Extensions**: Translate with `context.t('auth.login_title')` and `context.tAttr('input', 'placeholder')`.
-* **Safe Rendering Fallback**: `context.maybeT('key', fallback: '...')` for safe widget unit testing and design previews without needing a mounted scope.
-* **InheritedWidget Scope (`FluentScope`)**: Provides [UiMessages] and the active locale down the widget tree with reactive rebuilds.
-* **Automatic Directionality (`DirectionalityHandler`)**: Automatically wraps UI subtrees in Flutter's `Directionality` (`TextDirection.ltr` or `TextDirection.rtl`) based on the active locale.
-* **Flutter Riverpod Integration**: Built-in `currentLocaleProvider`, `messageCatalogProvider`, `uiMessagesProvider`, `isRtlLocaleProvider`, and reactive `trProvider`.
-* **Zero Name Collisions**: Fully separated `LocaleTextDirection` so you never get `The name 'TextDirection' is ambiguous` conflicts with Flutter's `dart:ui.TextDirection`.
+* **Safe Rendering Fallback**: `context.maybeT('key', fallback: '...')` for widget tests and design previews without a mounted scope.
+* **InheritedWidget Scope (`FluentScope`)**: Provides `UiMessages` and the active locale down the widget tree.
+* **Riverpod as the single source of truth**: `RiverpodFluentScope` publishes `currentLocaleProvider` and `uiMessagesProvider` into the widget tree, so locale changes rebuild the UI.
+* **Automatic Directionality (`DirectionalityHandler`)**: Wraps UI subtrees in Flutter's `Directionality` (`ltr` / `rtl`) based on the active locale.
+* **Riverpod providers**: `currentLocaleProvider`, `messageCatalogProvider`, `uiMessagesProvider`, `isRtlLocaleProvider`, and `trProvider`.
+* **No name clashes with Flutter**: the core package uses `LocaleTextDirection`, so `TextDirection` stays unambiguous.
 
 ---
 
@@ -28,14 +29,18 @@ dependencies:
   flutter:
     sdk: flutter
   rustok_flutter_i18n: ^0.1.0
-  flutter_riverpod: ^2.5.0 # optional, for Riverpod state management
+  flutter_riverpod: ^2.5.0
 ```
+
+`flutter_riverpod` is a required dependency: the package's providers and `RiverpodFluentScope` are built on it.
 
 ---
 
 ## Usage
 
-### 1. Basic Setup with `FluentScope`
+### 1. Without Riverpod: `FluentScope`
+
+Put `FluentScope` **above** `MaterialApp`, and use `DirectionalityHandler` through `MaterialApp.builder` so that it sits below the scope.
 
 ```dart
 import 'package:flutter/material.dart';
@@ -77,14 +82,60 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DirectionalityHandler(
-      child: MaterialApp(
-        home: Scaffold(
-          appBar: AppBar(title: Text(context.t('welcome'))),
-          body: Center(
-            child: Text(
-              context.t('cart-items', args: {'count': 3}),
-            ),
+    return MaterialApp(
+      builder: (context, child) => DirectionalityHandler(child: child!),
+      home: Scaffold(
+        appBar: AppBar(title: Text(context.t('welcome'))),
+        body: Center(
+          child: Text(context.t('cart-items', args: {'count': 3})),
+        ),
+      ),
+    );
+  }
+}
+```
+
+### 2. With Riverpod
+
+Override `messageCatalogProvider` at bootstrap (it has no default and throws `UnimplementedError` if left unset), and put `RiverpodFluentScope` above `MaterialApp`.
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rustok_flutter_i18n/rustok_flutter_i18n.dart';
+
+void main() {
+  final catalog = FluentCatalog();
+  catalog.registerFtl('en', 'welcome = Welcome!\n');
+  catalog.registerFtl('ru', 'welcome = Добро пожаловать!\n');
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        messageCatalogProvider.overrideWithValue(catalog),
+        defaultLocaleProvider.overrideWithValue('en'),
+      ],
+      child: const RiverpodFluentScope(child: MyApp()),
+    ),
+  );
+}
+
+class MyApp extends ConsumerWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return MaterialApp(
+      builder: (context, child) => DirectionalityHandler(child: child!),
+      home: Scaffold(
+        appBar: AppBar(title: Text(context.t('welcome'))),
+        body: Center(
+          child: ElevatedButton(
+            onPressed: () {
+              // Invalid tags throw ArgumentError instead of being stored.
+              ref.read(currentLocaleProvider.notifier).setLocale('ru');
+            },
+            child: const Text('Русский'),
           ),
         ),
       ),
@@ -93,44 +144,20 @@ class MyApp extends StatelessWidget {
 }
 ```
 
-### 2. Riverpod Integration
+Inside any `ConsumerWidget` you can also use the providers directly:
 
 ```dart
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:rustok_flutter_i18n/rustok_flutter_i18n.dart';
-
-class HomeScreen extends ConsumerWidget {
-  const HomeScreen({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Reactive translation function bound to the active locale
-    final t = ref.watch(trProvider);
-    final isRtl = ref.watch(isRtlLocaleProvider);
-
-    return Scaffold(
-      appBar: AppBar(title: Text(t('welcome'))),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(t('cart-items', args: {'count': 5})),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                // Switch application locale reactively
-                ref.read(currentLocaleProvider.notifier).setLocale('ru');
-              },
-              child: const Text('Сменить на русский'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+final t = ref.watch(trProvider);
+final isRtl = ref.watch(isRtlLocaleProvider);
+return Text(t('cart-items', args: {'count': 5}));
 ```
+
+---
+
+## Status and limitations
+
+* The package has no automated tests yet.
+* Async (remote or lazy) catalogs are not implemented.
 
 ---
 
