@@ -710,4 +710,32 @@ iso = { DATETIME("2026-01-05T14:03:09Z", dateStyle: "long") }
       expect(bundle.format('bad', args: {'v': 1234.5}), '1,234.5');
     });
   });
+
+  group('Regression: review fixes', () {
+    test('plural selection works on NUMBER() output with grouping', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false);
+      bundle.addSource(
+        'items = { NUMBER(\$n) ->\n'
+        '    [one] one item\n'
+        '   *[other] many items\n'
+        '}\n',
+      );
+      expect(bundle.format('items', args: {'n': 1}), 'one item');
+      expect(bundle.format('items', args: {'n': 1234}), 'many items');
+    });
+
+    test('a loader that throws synchronously is retried, not cached', () async {
+      var attempts = 0;
+      final catalog = LazyCatalog(loader: (locale) {
+        attempts++;
+        if (attempts == 1) throw StateError('sync failure');
+        return Future<String?>.value('hi = Hi\n');
+      });
+
+      await expectLater(catalog.loadLocale('en'), throwsA(isA<StateError>()));
+      await catalog.loadLocale('en');
+      expect(catalog.getMessage('en', 'hi'), 'Hi');
+      expect(attempts, 2);
+    });
+  });
 }
