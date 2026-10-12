@@ -430,7 +430,8 @@ gantt
 ### Milestone Checklist:
 - [ ] **Milestone 1 (`rustok-messenger`):** Standalone distributed messaging passing 10,000 msgs/sec in-process benchmarking with Iggy; offline-first replay verified with Flutter test harness; Zero-Knowledge E2EE operational via `vodozemac` (1-on-1 Olm Double Ratchet, Megolm executive group ratchets with forward secrecy revocation, and SAS device verification).
 - [x] **Milestone 2.1 (`rustok-docs` Core):** Concurrent editing of block trees with Loro CRDT (`CollaborativeDoc`); zero-conflict resolution, cycle-safe MovableTree drag-and-drop, and pure Markdown projections verified via unit tests.
-- [ ] **Milestone 2.2 (`rustok-docs` Enterprise):** Dynamic Table and Kanban views operational; Universal Entity Reference protocol (`EntityRef`), Media retainment policies (`DocsMediaReferencePolicy`), and bidirectional backlinks ledger (`docs_entity_links`) verified.
+- [x] **Milestone 2.2 (`rustok-docs` Persistence & Backlinks Ledger):** SeaORM migrations (`docs_pages`, `docs_snapshots`, `docs_updates`, `docs_entity_links`), append-only delta log, monotonic sequence numbers, automated snapshot compaction, and Universal Entity Reference (`EntityRef`) reverse backlinks ledger in `DocumentService`.
+- [ ] **Milestone 2.3 (`rustok-docs` Enterprise Views):** Dynamic Table and Kanban views operational via `flex` and `rustok-grid`; Real-time WebSocket broadcaster and Media retainment policies (`DocsMediaReferencePolicy`).
 - [ ] **Milestone 3 (`rustok-calls`):** LiveKit SFU integration; end-to-end room creation, audio/video broadcast, screen sharing, and transcription pipeline.
 - [ ] **Milestone 4 (`rustok-calendar`):** Bi-directional RFC 5545 sync; public booking links generating calendar events and CRM deals.
 

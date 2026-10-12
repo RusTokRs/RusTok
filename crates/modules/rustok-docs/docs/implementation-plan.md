@@ -12,9 +12,19 @@ status: active
 `rustok-docs` owns collaborative documents, wikis, page trees, and Notion-grade knowledge bases across RusToK.
 
 - **Real-Time Multiplayer Core:** Loro CRDT (`CollaborativeDoc`, `MovableTree`, `LoroText`).
-- **Data Persistence:** PostgreSQL (`docs_pages`, `docs_snapshots`, `docs_updates`).
+- **Data Persistence:** PostgreSQL (`docs_pages`, `docs_snapshots`, `docs_updates`, `docs_entity_links`).
 - **Database Engine:** Schema powered by `flex` (`FieldDefinition`), views rendered by `rustok-grid` (Table, Kanban, Calendar).
 - **Transport:** Dual-path (WebSocket binary updates for real-time + GraphQL queries/mutations for CRUD).
+
+---
+
+## FFA / FBA Status
+
+| Dimension | Current Status | Notes |
+| :--- | :--- | :--- |
+| **FFA Status** | `in_progress` | Framework-agnostic pure domain core (`domain/`), block models, Markdown projection, zero UI imports in domain. |
+| **FBA Status** | `boundary_ready` | Sovereign `DocumentService`, DTO contracts (`dto/`), SeaORM migrations, monotonic delta log, periodic snapshot compaction, UER backlinks ledger. |
+| **Structural Shape** | `core_transport_ui` | Manifest and layout aligned with target native module architecture. |
 
 ---
 
@@ -23,10 +33,10 @@ status: active
 | Milestone | Scope | Key Deliverables | Status |
 | :--- | :--- | :--- | :--- |
 | **DOCS-01** | **Domain Core & Loro CRDT** | `CollaborativeDoc`, `DocBlock`, `BlockType`, tree operations, delta sync, Markdown projections | **Completed** |
-| **DOCS-02** | **Persistence & Snapshots** | SeaORM migrations, `docs_pages`, `docs_snapshots`, append-only `docs_updates` log | In Progress |
-| **DOCS-03** | **Real-Time Sync Transport** | WebSocket binary update broadcaster in `apps/server`, authorization via `rustok-rbac` | Planned |
+| **DOCS-02** | **Persistence & Snapshots** | SeaORM migrations, `docs_pages`, `docs_snapshots`, append-only `docs_updates` log, `DocumentService`, snapshot compaction | **Completed** |
+| **DOCS-03** | **Real-Time Sync Transport** | WebSocket binary update broadcaster in `apps/server`, authorization via `rustok-rbac` | In Progress |
 | **DOCS-04** | **Flex & Grid Integration** | Notion-like database views (Table, Kanban) over structured document properties | Planned |
-| **DOCS-05** | **Universal Entity Embedding & Backlinks** | UER (`EntityRef`), 4 projection modes, live embedding of Media, Blog, Forum, Wiki/Pages, and ERP entities, `DocsMediaReferencePolicy`, and `docs_entity_links` reverse backlinks ledger | Planned |
+| **DOCS-05** | **Universal Entity Embedding & Backlinks** | UER (`EntityRef`), 4 projection modes, live embedding of Media, Blog, Forum, Wiki/Pages, and ERP entities, `docs_entity_links` reverse backlinks ledger | Planned |
 | **DOCS-06** | **Client Adapters** | `@rustok/docs-editor` (`loro-wasm`) and Flutter FFI (`rustok_mobile`) | Planned |
 
 ---
@@ -34,5 +44,6 @@ status: active
 ## Verification Gates
 
 1. Pure Rust unit tests for `CollaborativeDoc` with concurrent synthetic writer convergence (`cargo test -p rustok-docs`).
-2. Cycle-safety test for drag-and-drop block reorganization.
-3. SeaORM snapshot & delta replay fidelity tests on PostgreSQL.
+2. Cycle-safety test for drag-and-drop block reorganization (`move_block`).
+3. Module metadata, permissions, and migration descriptors verification (`DocsModule`).
+4. SeaORM snapshot & delta replay fidelity tests on PostgreSQL.
