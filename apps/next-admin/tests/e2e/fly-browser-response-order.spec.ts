@@ -66,21 +66,23 @@ const success = {
 
 async function mountOrderContract(page: Page) {
   const adapterSource = await readFile(adapterPath, 'utf8');
-  await page.goto('/auth/sign-in', { waitUntil: 'domcontentloaded' });
-  await page.setContent(`
-    <div
-      id="fly-root"
-      data-fly-browser-root
-      data-fly-page-id="home"
-      data-fly-revision="rev-1"
-      data-fly-project-hash="hash-1"
-      data-fly-intent-endpoint="/fly-intent"
-    >
-      <iframe id="canvas-a-frame" data-fly-iframe-canvas title="Fly response order canvas"></iframe>
-    </div>
-  `);
+  await page.goto('/auth/sign-in', { waitUntil: 'networkidle' });
 
   await page.evaluate(async (source) => {
+    window.stop();
+    document.body.innerHTML = `
+      <div
+        id="fly-root"
+        data-fly-browser-root
+        data-fly-page-id="home"
+        data-fly-revision="rev-1"
+        data-fly-project-hash="hash-1"
+        data-fly-intent-endpoint="/fly-intent"
+      >
+        <iframe id="canvas-a-frame" data-fly-iframe-canvas title="Fly response order canvas"></iframe>
+      </div>
+    `;
+
     const scope = globalThis as OrderScope;
     const root = document.querySelector('#fly-root');
     if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
