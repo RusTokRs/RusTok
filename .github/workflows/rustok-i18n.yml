@@ -34,16 +34,33 @@ jobs:
         with:
           sdk: '3.0.0'
       - run: dart pub get
+      # TEMPORARY DIAGNOSTIC (remove before merge)
       - name: CLI typegen (fails on invalid input)
         run: >-
           dart run bin/i18n_cli.dart typegen
           --input example/locales/en.ftl
           --output example/generated/smoke_messages.g.dart
           --className SmokeMessages
-      # `dart analyze` runs after typegen so the generated file is compiled too:
-      # a rename or an escaped literal that produces invalid Dart fails the job.
-      - run: dart analyze
-      - run: dart test
+      - name: Diagnostic: typegen output
+        if: failure()
+        run: |
+          dart run bin/i18n_cli.dart typegen \
+            --input example/locales/en.ftl \
+            --output example/generated/smoke_messages.g.dart \
+            --className SmokeMessages > /tmp/tg.log 2>&1 || true
+          cat /tmp/tg.log
+          sed -n '1,40p' /tmp/tg.log | while IFS= read -r l; do printf '::error::%s\n' "${l//%/%25}"; done
+      # TEMPORARY DIAGNOSTIC (remove before merge)
+      - name: Run dart analyze
+        if: always()
+        run: |
+          dart analyze > /tmp/an.log 2>&1; code=$?
+          tail -n 60 /tmp/an.log
+          tail -n 60 /tmp/an.log | while IFS= read -r l; do printf '::error::AN %s\n' "${l//%/%25}"; done
+          exit $code
+      # TEMPORARY DIAGNOSTIC (remove before merge)
+      - name: Run dart test
+        run: dart test --reporter github
       - name: CLI parity check (fails on mismatch)
         run: dart run bin/i18n_cli.dart check --dir example/locales --baseline en
 
@@ -77,5 +94,18 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
-      - run: flutter analyze
-      - run: flutter test
+      # TEMPORARY DIAGNOSTIC (remove before merge)
+      - name: Run flutter analyze
+        run: |
+          flutter analyze > /tmp/fa.log 2>&1; code=$?
+          tail -n 60 /tmp/fa.log
+          tail -n 60 /tmp/fa.log | while IFS= read -r l; do printf '::error::FA %s\n' "${l//%/%25}"; done
+          exit $code
+      # TEMPORARY DIAGNOSTIC (remove before merge)
+      - name: Run flutter test
+        if: always()
+        run: |
+          flutter test > /tmp/ft.log 2>&1; code=$?
+          tail -n 80 /tmp/ft.log
+          grep -nE '\[E\]|Expected:|Actual:|Which:|Undefined|error •|Error:' /tmp/ft.log | head -n 40 | while IFS= read -r l; do printf '::error::FT %s\n' "${l//%/%25}"; done
+          exit $code
