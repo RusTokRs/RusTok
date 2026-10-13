@@ -86,9 +86,19 @@ impl ServerSharedValues {
     where
         T: 'static + Send + Sync,
     {
-        let value = self.write_lock().remove(&TypeId::of::<T>())?;
-        let typed = Arc::downcast::<T>(value).ok()?;
-        Arc::try_unwrap(typed).ok()
+        let mut lock = self.write_lock();
+        let value = lock.remove(&TypeId::of::<T>())?;
+        let Ok(typed) = Arc::downcast::<T>(value) else {
+            return None;
+        };
+        match Arc::try_unwrap(typed) {
+            Ok(inner) => Some(inner),
+            Err(arc) => {
+                // If another thread holds a strong reference, restore to map to prevent silent loss
+                lock.insert(TypeId::of::<T>(), arc);
+                None
+            }
+        }
     }
 
     fn contains<T>(&self) -> bool
@@ -197,6 +207,13 @@ impl ServerAuthRuntime {
         }
     }
 
+    pub fn without_auth(runtime_ctx: ServerRuntimeContext) -> Self {
+        Self {
+            runtime_ctx,
+            auth_config: None,
+        }
+    }
+
     pub fn runtime_ctx(&self) -> &ServerRuntimeContext {
         &self.runtime_ctx
     }
@@ -209,6 +226,18 @@ impl ServerAuthRuntime {
 impl FromRef<ServerAuthRuntime> for ServerRuntimeContext {
     fn from_ref(input: &ServerAuthRuntime) -> Self {
         input.runtime_ctx.clone()
+    }
+}
+
+impl FromRef<ServerAuthRuntime> for DatabaseConnection {
+    fn from_ref(input: &ServerAuthRuntime) -> Self {
+        input.runtime_ctx.db_clone()
+    }
+}
+
+impl FromRef<ServerRuntimeContext> for DatabaseConnection {
+    fn from_ref(input: &ServerRuntimeContext) -> Self {
+        input.db_clone()
     }
 }
 
@@ -244,4 +273,48 @@ mod tests {
         assert!(!values.insert_if_absent(String::from("second")));
         assert_eq!(values.get::<String>().as_deref(), Some("first"));
     }
+
+    #[test]
+    fn shared_take_restores_value_if_strong_reference_is_held() {
+        use std::any::TypeId;
+
+        let values = ServerSharedValues::default();
+        values.insert(vec![1, 2, 3]);
+
+        // Retain an extra reference to the internal Arc
+        let outer_clone = values
+            .read_lock()
+            .get(&TypeId::of::<Vec<i32>>())
+            .unwrap()
+            .clone();
+
+        // Strong count is 2 (values map + outer_clone), unwrapping fails and restores to map
+        assert!(values.take::<Vec<i32>>().is_none());
+        assert!(values.contains::<Vec<i32>>());
+
+        drop(outer_clone);
+        // Strong count is now 1, unwrapping succeeds and removes from map
+        let unwrapped = values.take::<Vec<i32>>();
+        assert_eq!(unwrapped.as_deref(), Some(&[1, 2, 3][..]));
+        assert!(!values.contains::<Vec<i32>>());
+    }
+
+    #[test]
+    fn server_auth_runtime_without_auth() {
+        use sea_orm::DatabaseConnection;
+        use crate::common::settings::RustokSettings;
+        use super::{ServerAuthRuntime, ServerRuntimeContext};
+        use axum::extract::FromRef;
+
+        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let auth_rt = ServerAuthRuntime::without_auth(ctx.clone());
+        assert!(auth_rt.auth_config().is_none());
+
+        let extracted_ctx: ServerRuntimeContext = FromRef::from_ref(&auth_rt);
+        assert_eq!(extracted_ctx.settings().runtime.host_mode, ctx.settings().runtime.host_mode);
+
+        let _: DatabaseConnection = FromRef::from_ref(&auth_rt);
+        let _: DatabaseConnection = FromRef::from_ref(&ctx);
+    }
 }
+
