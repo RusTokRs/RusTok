@@ -10,7 +10,7 @@ use rustok_web::CspNonce;
 const API_CSP: &str =
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 const RICHTEXT_FRAME_CSP: &str = "default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
-const ADMIN_UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+const ADMIN_UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 const SECURE_CONNECT_SOURCES: &str = "'self' https: wss:";
 const DEVELOPMENT_CONNECT_SOURCES: &str = "'self' https: ws: wss:";
 const HSTS: &str = "max-age=31536000; includeSubDomains";
@@ -199,6 +199,7 @@ mod tests {
             directive(development.as_str(), "connect-src").expect("connect-src");
 
         assert!(script.contains(nonce.source_expression().as_str()));
+        assert!(script.contains("'wasm-unsafe-eval'"));
         assert!(!script.contains("'unsafe-inline'"));
         assert!(!script.contains("'unsafe-eval'"));
         assert!(style.contains(nonce.source_expression().as_str()));

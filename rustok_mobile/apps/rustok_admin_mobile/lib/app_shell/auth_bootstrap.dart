@@ -82,22 +82,18 @@ const _bootstrapProbeDocument = r'''
 final authBootstrapProbeProvider = FutureProvider<BootstrapProbeResult>((
   ref,
 ) async {
-  print('DEBUG: authBootstrapProbeProvider started');
   final session = await ref.watch(authSessionProvider.future);
-  print('DEBUG: got session: $session');
   if (session == null) {
     return const BootstrapProbeResult.unauthenticated();
   }
 
   final client = ref.watch(graphQlClientProvider);
-  print('DEBUG: got client, calling client.query');
   final result = await client.query(
     QueryOptions(
       document: gql(_bootstrapProbeDocument),
       fetchPolicy: FetchPolicy.networkOnly,
     ),
   );
-  print('DEBUG: got result: hasException=${result.hasException}, exception=${result.exception}');
   if (result.hasException) {
     throw result.exception!;
   }

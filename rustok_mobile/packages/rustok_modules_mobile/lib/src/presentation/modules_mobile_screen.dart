@@ -199,7 +199,7 @@ class _ModuleCardState extends ConsumerState<_ModuleCard> {
                                 ? Icons.pause_circle_outline
                                 : Icons.play_circle_outline,
                           ),
-                    label: Text(canToggle ? toggleLabel : disabledReason!),
+                    label: Text(canToggle ? toggleLabel : disabledReason),
                   ),
                 ),
               ],
@@ -490,22 +490,24 @@ class _ModulesErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 40),
-            const SizedBox(height: 12),
-            const Text('Failed to load module registry.'),
-            const SizedBox(height: 8),
-            Text(
-              '$error',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: onRetry, child: const Text('Retry')),
-          ],
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 40),
+              const SizedBox(height: 12),
+              const Text('Failed to load module registry.'),
+              const SizedBox(height: 8),
+              Text(
+                '$error',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
+          ),
         ),
       ),
     );

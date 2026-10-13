@@ -41,6 +41,9 @@ GoRouter buildRouter(
             builder: (context, state) => ProviderScope(
               overrides: [
                 modulesRepositoryProvider.overrideWithValue(modulesRepository),
+                modulesControllerProvider.overrideWith(
+                  (ref) => ref.watch(modulesRepositoryProvider).listModules(),
+                ),
               ],
               child: Consumer(
                 builder: (context, ref, _) {
@@ -85,6 +88,10 @@ GoRouter buildRouter(
                     overrides: [
                       modulesRepositoryProvider.overrideWithValue(
                         modulesRepository,
+                      ),
+                      modulesControllerProvider.overrideWith(
+                        (ref) =>
+                            ref.watch(modulesRepositoryProvider).listModules(),
                       ),
                     ],
                     child: ModulesRecoveryScreen(
@@ -169,22 +176,25 @@ class ModulesHomePage extends StatelessWidget {
       const ListTile(title: Text('RusTok Modules')),
       RegistryWarningsCard(summary: adaptationSummary),
       for (final moduleRoute in moduleRoutes)
-        ExpansionTile(
-          leading: Icon(iconForModuleRoute(moduleRoute)),
-          title: Text(moduleRoute.navTitle),
-          subtitle: Text(moduleRoute.path),
-          children: [
-            ListTile(
-              title: const Text('Open module root'),
-              onTap: () => context.go(moduleRoute.path),
-            ),
-            for (final child in moduleRoute.childRoutes)
+        Material(
+          color: Colors.transparent,
+          child: ExpansionTile(
+            leading: Icon(iconForModuleRoute(moduleRoute)),
+            title: Text(moduleRoute.navTitle),
+            subtitle: Text(moduleRoute.path),
+            children: [
               ListTile(
-                title: Text(child.navLabel),
-                subtitle: Text(child.path),
-                onTap: () => context.go(child.path),
+                title: const Text('Open module root'),
+                onTap: () => context.go(moduleRoute.path),
               ),
-          ],
+              for (final child in moduleRoute.childRoutes)
+                ListTile(
+                  title: Text(child.navLabel),
+                  subtitle: Text(child.path),
+                  onTap: () => context.go(child.path),
+                ),
+            ],
+          ),
         ),
     ];
 

@@ -31,6 +31,14 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::cust("'open'")),
                     )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(CheckoutOperations::Table)
                     .add_column(
                         ColumnDef::new(CheckoutOperations::AdmissionEpoch)
                             .big_integer()

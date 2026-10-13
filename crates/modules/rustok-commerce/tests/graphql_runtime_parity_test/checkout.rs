@@ -3770,7 +3770,7 @@ async fn storefront_graphql_checkout_preserves_typed_adjustments_and_net_payment
         request_context(tenant_id, "de"),
         None,
     );
-    let cart_query = rustok_cart::with_guest_cart_request_scope(guest_token, async {
+    let cart_query = rustok_cart::with_guest_cart_request_scope(guest_token.clone(), async {
         schema
             .execute(Request::new(format!(
                 r#"
@@ -3844,9 +3844,10 @@ async fn storefront_graphql_checkout_preserves_typed_adjustments_and_net_payment
     assert!(cart_adjustment_metadata.get("display_label").is_none());
 
     let checkout_idempotency_key = Uuid::new_v4();
-    let checkout_response = schema
-        .execute(Request::new(format!(
-            r#"
+    let checkout_response = rustok_cart::with_guest_cart_request_scope(guest_token, async {
+        schema
+            .execute(Request::new(format!(
+                r#"
             mutation {{
               createStorefrontPaymentCollection(
                 tenantId: "{tenant_id}",
@@ -3910,9 +3911,11 @@ async fn storefront_graphql_checkout_preserves_typed_adjustments_and_net_payment
               }}
             }}
             "#,
-            cart_id = cart.id
-        )))
-        .await;
+                cart_id = cart.id
+            )))
+            .await
+    })
+    .await;
     assert!(
         checkout_response.errors.is_empty(),
         "unexpected storefront checkout adjustment errors: {:?}",
@@ -4090,7 +4093,7 @@ async fn storefront_graphql_checkout_preserves_shipping_total_and_shipping_promo
         request_context(tenant_id, "de"),
         None,
     );
-    let cart_query = rustok_cart::with_guest_cart_request_scope(guest_token, async {
+    let cart_query = rustok_cart::with_guest_cart_request_scope(guest_token.clone(), async {
         schema
             .execute(Request::new(format!(
                 r#"
@@ -4160,9 +4163,10 @@ async fn storefront_graphql_checkout_preserves_shipping_total_and_shipping_promo
     assert!(cart_adjustment_metadata.get("display_label").is_none());
 
     let checkout_idempotency_key = Uuid::new_v4();
-    let checkout_response = schema
-        .execute(Request::new(format!(
-            r#"
+    let checkout_response = rustok_cart::with_guest_cart_request_scope(guest_token, async {
+        schema
+            .execute(Request::new(format!(
+                r#"
             mutation {{
               createStorefrontPaymentCollection(
                 tenantId: "{tenant_id}",
@@ -4205,9 +4209,11 @@ async fn storefront_graphql_checkout_preserves_shipping_total_and_shipping_promo
               }}
             }}
             "#,
-            cart_id = cart.id
-        )))
-        .await;
+                cart_id = cart.id
+            )))
+            .await
+    })
+    .await;
     assert!(
         checkout_response.errors.is_empty(),
         "unexpected storefront shipping promotion checkout errors: {:?}",

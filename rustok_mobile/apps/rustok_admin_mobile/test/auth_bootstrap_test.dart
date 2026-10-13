@@ -18,8 +18,6 @@ void main() {
     return GraphQLClient(cache: GraphQLCache(), link: link);
   }
 
-
-
   test('returns unauthenticated when there is no valid session', () async {
     final container = ProviderContainer(
       overrides: [
@@ -40,11 +38,18 @@ void main() {
       options: QueryOptions(document: gql('query BootstrapProbe { me { email } currentTenant { slug } }')),
       source: QueryResultSource.network,
       data: {
+        '__typename': 'Query',
         'me': {
+          '__typename': 'User',
+          'id': 'operator-1',
           'email': 'operator@example.com',
           'permissions': ['modules:manage'],
         },
-        'currentTenant': {'slug': 'tenant-main'},
+        'currentTenant': {
+          '__typename': 'Tenant',
+          'id': 'tenant-1',
+          'slug': 'tenant-main',
+        },
       },
     );
 
@@ -92,9 +97,12 @@ void main() {
     );
     addTearDown(container.dispose);
 
+    container.listen(authBootstrapProbeProvider, (_, __) {});
+    await Future<void>.delayed(Duration.zero);
+
     expect(
-      container.read(authBootstrapProbeProvider.future),
-      throwsA(isA<OperationException>()),
+      container.read(authBootstrapProbeProvider).error,
+      isA<OperationException>(),
     );
   });
 
@@ -103,7 +111,18 @@ void main() {
       options: QueryOptions(document: gql('query BootstrapProbe { me { id } }')),
       source: QueryResultSource.network,
       data: {
-        'me': {'id': '1'},
+        '__typename': 'Query',
+        'me': {
+          '__typename': 'User',
+          'id': '1',
+          'email': null,
+          'permissions': <String>[],
+        },
+        'currentTenant': {
+          '__typename': 'Tenant',
+          'id': 'tenant-1',
+          'slug': null,
+        },
       },
     );
 
@@ -121,9 +140,12 @@ void main() {
     );
     addTearDown(container.dispose);
 
+    container.listen(authBootstrapProbeProvider, (_, __) {});
+    await Future<void>.delayed(Duration.zero);
+
     expect(
-      container.read(authBootstrapProbeProvider.future),
-      throwsA(isA<FormatException>()),
+      container.read(authBootstrapProbeProvider).error,
+      isA<FormatException>(),
     );
   });
 }

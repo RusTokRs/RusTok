@@ -72,9 +72,15 @@ const introspectionQuery = fs.readFileSync(
   path.join(scriptDir, "graphql-introspection-query.graphql"),
   "utf8",
 );
+const tenantId = process.env.RUSTOK_TENANT_ID ?? "00000000-0000-0000-0000-000000000001";
+const tenantSlug = process.env.RUSTOK_TENANT_SLUG ?? "default";
 await download(`${baseUrl}/api/graphql`, path.join(graphqlDir, "introspection.json"), {
   method: "POST",
-  headers: { "content-type": "application/json" },
+  headers: {
+    "content-type": "application/json",
+    "x-tenant-id": tenantId,
+    "x-tenant-slug": tenantSlug,
+  },
   body: JSON.stringify({ query: introspectionQuery }),
 });
 

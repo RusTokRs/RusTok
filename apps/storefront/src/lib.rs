@@ -149,9 +149,6 @@ fn render_document(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   {extra_head}
   <link rel="stylesheet" href="/assets/app.css" />
 </head>
@@ -633,9 +630,16 @@ async fn provide_leptos_request_context(
 }
 
 #[cfg(feature = "ssr")]
+async fn app_css_handler() -> impl axum::response::IntoResponse {
+    const APP_CSS: &str = include_str!("../static/app.css");
+    ([(axum::http::header::CONTENT_TYPE, "text/css; charset=utf-8")], APP_CSS)
+}
+
+#[cfg(feature = "ssr")]
 pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
     let _ = any_spawner::Executor::init_tokio();
     Router::new()
+        .route("/assets/app.css", get(app_css_handler))
         .route(
             "/",
             get(

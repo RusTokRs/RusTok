@@ -22,7 +22,12 @@ class AppShellPage extends ConsumerWidget {
           return Column(
             children: [
               if (kDebugMode) _AuthContextBanner(data: data),
-              Expanded(child: child),
+              Expanded(
+                child: Material(
+                  color: Colors.transparent,
+                  child: child,
+                ),
+              ),
             ],
           );
         },

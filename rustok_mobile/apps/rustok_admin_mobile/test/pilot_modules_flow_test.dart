@@ -104,7 +104,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Disable'));
     await tester.tap(find.text('Disable'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Open history'));
     await tester.pumpAndSettle();

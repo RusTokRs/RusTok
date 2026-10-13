@@ -25,7 +25,7 @@ const RICHTEXT_FRAME_CSP: &str = "default-src 'none'; script-src 'self'; script-
 ///
 /// Trusted inline scripts and style elements receive one per-response nonce. Inline event handlers,
 /// dynamic string compilation, and inline style attributes are prohibited.
-const UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+const UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 const SECURE_UI_CONNECT_SOURCES: &str = "'self' https: wss:";
 const DEVELOPMENT_UI_CONNECT_SOURCES: &str = "'self' https: ws: wss:";
 const RICHTEXT_FRAME_PATH: &str = "/richtext/frame";
@@ -34,7 +34,7 @@ const RICHTEXT_ADAPTER_ASSET: &str = "leptos-adapter.mjs";
 
 /// Reporting mirror for strict UI violations. It carries the same trusted nonce as the enforced
 /// policy, additionally fixes worker sources, and reports violations without weakening enforcement.
-const UI_CSP_REPORT_ONLY_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/security/csp-report; report-to rustok-csp";
+const UI_CSP_REPORT_ONLY_TEMPLATE: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/security/csp-report; report-to rustok-csp";
 const REPORTING_ENDPOINTS: &str = "rustok-csp=\"/api/security/csp-report\"";
 
 /// HSTS: 1 year, include subdomains.
@@ -323,6 +323,7 @@ mod tests {
             let style = directive(enforced.as_str(), "style-src").expect("style-src");
 
             assert!(script.contains(nonce.source_expression().as_str()));
+            assert!(script.contains("'wasm-unsafe-eval'"));
             assert!(!script.contains("'unsafe-inline'"));
             assert!(!script.contains("'unsafe-eval'"));
             assert!(style.contains(nonce.source_expression().as_str()));

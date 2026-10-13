@@ -9,29 +9,7 @@
  */
 
 #[cfg(all(feature = "ssr", not(feature = "csr")))]
-use axum::{
-    http::{StatusCode, header},
-    response::IntoResponse,
-    routing::get,
-};
-#[cfg(all(feature = "ssr", not(feature = "csr")))]
-use std::path::PathBuf;
-#[cfg(all(feature = "ssr", not(feature = "csr")))]
 use std::sync::Arc;
-
-#[cfg(all(feature = "ssr", not(feature = "csr")))]
-fn static_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static")
-}
-
-#[cfg(all(feature = "ssr", not(feature = "csr")))]
-async fn css_handler() -> impl IntoResponse {
-    let css_path = static_dir().join("app.css");
-    match tokio::fs::read(css_path).await {
-        Ok(contents) => ([(header::CONTENT_TYPE, "text/css")], contents).into_response(),
-        Err(_) => StatusCode::NOT_FOUND.into_response(),
-    }
-}
 
 #[cfg(all(feature = "ssr", not(feature = "csr")))]
 #[tokio::main]
@@ -42,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         rustok_outbox::OutboxTransport::new(database.clone()),
     ));
     let runtime = rustok_api::HostRuntimeContext::new(database).with_shared_value(event_bus);
-    let app = rustok_storefront::router(runtime).route("/assets/app.css", get(css_handler));
+    let app = rustok_storefront::router(runtime);
 
     let port = std::env::var("STOREFRONT_LEPTOS_PORT")
         .or_else(|_| std::env::var("PORT"))

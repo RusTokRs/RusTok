@@ -13,8 +13,9 @@ use rustok_commerce::entities::{
 };
 use rustok_customer::entities::customer;
 use rustok_fulfillment::entities::{
-    fulfillment, fulfillment_item, provider_operation as fulfillment_provider_operation,
-    shipping_option, shipping_option_translation,
+    checkout_identity as fulfillment_checkout_identity, fulfillment, fulfillment_item,
+    provider_operation as fulfillment_provider_operation, shipping_option,
+    shipping_option_translation,
 };
 use rustok_inventory::entities::{
     inventory_item, inventory_level, reservation_item, stock_location, stock_location_translation,
@@ -385,6 +386,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(fulfillment_provider_operation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(fulfillment_checkout_identity::Entity),
     )
     .await;
     create_entity_table(
