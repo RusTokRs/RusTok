@@ -72,6 +72,30 @@ impl IntoResponse for Error {
             Self::InvalidHeaderValue(error) => {
                 error_response(StatusCode::BAD_REQUEST, "invalid_header", error.to_string())
             }
+            Self::Database(sea_orm::DbErr::RecordNotFound(message)) => {
+                error_response(StatusCode::NOT_FOUND, "not_found", message)
+            }
+            Self::Database(error) => {
+                tracing::error!(error = %error, "server database operation failed");
+                error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal_error",
+                    "Internal server error",
+                )
+            }
+            Self::InternalServerError => error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "Internal server error",
+            ),
+            Self::Cache(error) => {
+                tracing::error!(error = %error, "server cache operation failed");
+                error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal_error",
+                    "Internal server error",
+                )
+            }
             Self::Core(core_err) => match core_err {
                 rustok_core::Error::NotFound(msg) => {
                     error_response(StatusCode::NOT_FOUND, "not_found", msg)
@@ -231,5 +255,40 @@ mod tests {
         assert_eq!(body.code, "internal_error");
         assert_eq!(body.message, "Internal server error");
         assert!(!body.message.contains("/etc/secret"));
+    }
+
+    #[tokio::test]
+    async fn error_into_response_maps_database_record_not_found_to_404() {
+        let db_err = sea_orm::DbErr::RecordNotFound("tenant 123 not found".into());
+        let err = Error::Database(db_err);
+        let (status, body) = parse_error_response(err.into_response()).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.code, "not_found");
+        assert_eq!(body.message, "tenant 123 not found");
+    }
+
+    #[tokio::test]
+    async fn error_into_response_sanitizes_other_database_errors() {
+        let db_err = sea_orm::DbErr::Custom("postgres://admin:secret@host/db connection failed".into());
+        let err = Error::Database(db_err);
+        let (status, body) = parse_error_response(err.into_response()).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.code, "internal_error");
+        assert_eq!(body.message, "Internal server error");
+        assert!(!body.message.contains("secret"));
+    }
+
+    #[tokio::test]
+    async fn error_into_response_sanitizes_cache_and_internal_errors() {
+        let err = Error::Cache("redis connection pool exhausted on redis://secret@cache:6379".into());
+        let (status, body) = parse_error_response(err.into_response()).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.code, "internal_error");
+        assert_eq!(body.message, "Internal server error");
+
+        let err2 = Error::InternalServerError;
+        let (status2, body2) = parse_error_response(err2.into_response()).await;
+        assert_eq!(status2, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body2.code, "internal_error");
     }
 }

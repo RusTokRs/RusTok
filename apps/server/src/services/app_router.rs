@@ -284,7 +284,7 @@ pub fn mount_application_shell(
             async move { dispatch_embedded_admin_fallback(admin_router, request).await }
         })
     } else {
-        router
+        router.fallback(crate::routes::not_found_fallback)
     };
 
     if let Some(storefront_router) = storefront_router {
@@ -300,10 +300,10 @@ async fn dispatch_embedded_admin_fallback(
 ) -> Response {
     let original_path = request.uri().path();
     let Some(stripped) = original_path.strip_prefix("/admin") else {
-        return (axum::http::StatusCode::NOT_FOUND, "Not Found").into_response();
+        return crate::error::Error::NotFound.into_response();
     };
     if !(stripped.is_empty() || stripped.starts_with('/')) {
-        return (axum::http::StatusCode::NOT_FOUND, "Not Found").into_response();
+        return crate::error::Error::NotFound.into_response();
     }
 
     let rewritten_path = if stripped.is_empty() {

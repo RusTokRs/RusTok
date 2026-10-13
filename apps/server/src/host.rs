@@ -2,15 +2,12 @@
 
 use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
-use axum::Router;
 use sea_orm::{ConnectOptions, Database};
 use sea_orm_migration::MigratorTrait;
 use serde::Deserialize;
 
 use crate::{
-    channels,
     common::settings::RustokSettings,
-    controllers,
     error::{Error, Result},
     middleware::security_headers::hsts_enabled,
     routes::ServerRouter,
@@ -262,40 +259,7 @@ fn is_production_environment() -> bool {
 }
 
 fn application_router(host_mode: crate::common::settings::RuntimeHostMode) -> ServerRouter {
-    let router = Router::new()
-        .merge(controllers::health::router())
-        .merge(controllers::metrics::router());
-
-    if host_mode == crate::common::settings::RuntimeHostMode::Worker {
-        return router;
-    }
-
-    let router = router.merge(controllers::swagger::router());
-    if host_mode == crate::common::settings::RuntimeHostMode::RegistryOnly {
-        return router.merge(controllers::marketplace_registry::read_only_router());
-    }
-
-    let router = router
-        .merge(controllers::marketplace_registry::router())
-        .merge(controllers::artifact_http::router())
-        .merge(controllers::artifact_permissions::router())
-        .merge(controllers::admin_events::router())
-        .merge(controllers::auth::router())
-        .merge(controllers::channel::router());
-
-    // Flex is an optional capability module. Its standalone REST surface
-    // must not exist in a server build where the module is not composed.
-    #[cfg(feature = "mod-flex")]
-    let router = router.merge(controllers::flex::router());
-
-    router
-        .merge(controllers::graphql::router())
-        .merge(controllers::installer::router())
-        .merge(controllers::mcp::router())
-        .merge(controllers::oauth::router())
-        .merge(controllers::oauth_metadata::router())
-        .merge(controllers::users::router())
-        .merge(channels::builds::router())
+    crate::routes::build_application_router(host_mode)
 }
 
 fn resolve_database_uri(configured_uri: &str) -> String {
