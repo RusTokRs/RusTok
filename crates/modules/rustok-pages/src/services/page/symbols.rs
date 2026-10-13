@@ -464,6 +464,84 @@ fn parse_project_value(content: &str) -> PagesResult<Value> {
     Ok(value)
 }
 
+impl super::PageService {
+    /// Page ids whose current/draft bodies depend on `symbol_id`, directly or
+    /// through a nested symbol definition. Results are tenant/locale scoped
+    /// and require an editor-capable Pages reader (not a public page request).
+    pub async fn site_symbol_usage(
+        &self,
+        tenant_id: Uuid,
+        security: rustok_core::SecurityContext,
+        locale: &str,
+        symbol_id: &str,
+    ) -> PagesResult<Vec<Uuid>> {
+        use rustok_api::{Action, Resource};
+        crate::services::rbac::enforce_scope(&security, Resource::Pages, Action::Read)?;
+        if !crate::services::rbac::can_read_non_public_pages(&security) {
+            return Err(PagesError::forbidden("Permission denied"));
+        }
+        let locale = super::helpers::normalize_locale(locale)?;
+        fly::validate_identifier(symbol_id)
+            .map_err(|reason| PagesError::validation(format!("invalid symbol id: {reason}")))?;
+        let symbols = load_site_symbols_by_locale(&self.db, tenant_id)
+            .await?
+            .remove(&locale)
+            .unwrap_or_default();
+        let definitions: BTreeMap<String, SymbolDescriptor> = symbols
+            .iter()
+            .filter_map(|value| {
+                SymbolDescriptor::from_value(value).map(|item| (item.id.clone(), item))
+            })
+            .collect();
+        if !definitions.contains_key(symbol_id) {
+            return Err(PagesError::validation(format!(
+                "site symbol `{symbol_id}` not found"
+            )));
+        }
+        let mut dependencies = std::collections::BTreeSet::from([symbol_id.to_string()]);
+        loop {
+            let prior = dependencies.len();
+            for (id, definition) in &definitions {
+                if fly::symbol_references(&definition.components)
+                    .iter()
+                    .any(|reference| dependencies.contains(reference))
+                {
+                    dependencies.insert(id.clone());
+                }
+            }
+            if dependencies.len() == prior {
+                break;
+            }
+        }
+        let mut pages = std::collections::BTreeSet::new();
+        for body in page_body::Entity::find()
+            .filter(page_body::Column::TenantId.eq(tenant_id))
+            .filter(page_body::Column::Locale.eq(&locale))
+            .all(&self.db)
+            .await?
+        {
+            if body.format == PAGE_BUILDER_DOCUMENT_FORMAT
+                && content_references_any_symbol(&body.content, &dependencies)?
+            {
+                pages.insert(body.page_id);
+            }
+        }
+        for draft in page_body_draft::Entity::find()
+            .filter(page_body_draft::Column::TenantId.eq(tenant_id))
+            .filter(page_body_draft::Column::Locale.eq(&locale))
+            .all(&self.db)
+            .await?
+        {
+            if draft.format == PAGE_BUILDER_DOCUMENT_FORMAT
+                && content_references_any_symbol(&draft.content, &dependencies)?
+            {
+                pages.insert(draft.page_id);
+            }
+        }
+        Ok(pages.into_iter().collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -577,83 +655,5 @@ mod tests {
             json!([{ "id": "slot", "type": "symbol", "symbolId": "ghost" }]),
         );
         assert!(resolve_content_symbols(&missing).is_err());
-    }
-}
-
-impl super::PageService {
-    /// Page ids whose current/draft bodies depend on `symbol_id`, directly or
-    /// through a nested symbol definition. Results are tenant/locale scoped
-    /// and require an editor-capable Pages reader (not a public page request).
-    pub async fn site_symbol_usage(
-        &self,
-        tenant_id: Uuid,
-        security: rustok_core::SecurityContext,
-        locale: &str,
-        symbol_id: &str,
-    ) -> PagesResult<Vec<Uuid>> {
-        use rustok_api::{Action, Resource};
-        crate::services::rbac::enforce_scope(&security, Resource::Pages, Action::Read)?;
-        if !crate::services::rbac::can_read_non_public_pages(&security) {
-            return Err(PagesError::forbidden("Permission denied"));
-        }
-        let locale = super::helpers::normalize_locale(locale)?;
-        fly::validate_identifier(symbol_id)
-            .map_err(|reason| PagesError::validation(format!("invalid symbol id: {reason}")))?;
-        let symbols = load_site_symbols_by_locale(&self.db, tenant_id)
-            .await?
-            .remove(&locale)
-            .unwrap_or_default();
-        let definitions: BTreeMap<String, SymbolDescriptor> = symbols
-            .iter()
-            .filter_map(|value| {
-                SymbolDescriptor::from_value(value).map(|item| (item.id.clone(), item))
-            })
-            .collect();
-        if !definitions.contains_key(symbol_id) {
-            return Err(PagesError::validation(format!(
-                "site symbol `{symbol_id}` not found"
-            )));
-        }
-        let mut dependencies = std::collections::BTreeSet::from([symbol_id.to_string()]);
-        loop {
-            let prior = dependencies.len();
-            for (id, definition) in &definitions {
-                if fly::symbol_references(&definition.components)
-                    .iter()
-                    .any(|reference| dependencies.contains(reference))
-                {
-                    dependencies.insert(id.clone());
-                }
-            }
-            if dependencies.len() == prior {
-                break;
-            }
-        }
-        let mut pages = std::collections::BTreeSet::new();
-        for body in page_body::Entity::find()
-            .filter(page_body::Column::TenantId.eq(tenant_id))
-            .filter(page_body::Column::Locale.eq(&locale))
-            .all(&self.db)
-            .await?
-        {
-            if body.format == PAGE_BUILDER_DOCUMENT_FORMAT
-                && content_references_any_symbol(&body.content, &dependencies)?
-            {
-                pages.insert(body.page_id);
-            }
-        }
-        for draft in page_body_draft::Entity::find()
-            .filter(page_body_draft::Column::TenantId.eq(tenant_id))
-            .filter(page_body_draft::Column::Locale.eq(&locale))
-            .all(&self.db)
-            .await?
-        {
-            if draft.format == PAGE_BUILDER_DOCUMENT_FORMAT
-                && content_references_any_symbol(&draft.content, &dependencies)?
-            {
-                pages.insert(draft.page_id);
-            }
-        }
-        Ok(pages.into_iter().collect())
     }
 }

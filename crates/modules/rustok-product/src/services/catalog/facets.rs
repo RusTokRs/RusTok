@@ -905,6 +905,6 @@ mod tests {
     #[test]
     fn bucket_limit_leaves_room_to_detect_truncation() {
         assert_eq!(MAX_CATALOG_FACET_VALUES, 20);
-        assert!(MAX_CATALOG_FACETS >= 4);
+        const { assert!(MAX_CATALOG_FACETS >= 4) };
     }
 }
