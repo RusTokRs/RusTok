@@ -2,6 +2,53 @@
 
 ## Unreleased
 
+* Make regional catalog fallback symmetric when CLDR confirms script equivalence: en-Latn-GB can find en-GB before generic parents. Preserve variants in equivalent candidates in both directions; retain exact-key priority and forbid dropping conflicting/unknown regional scripts.
+* Shared lookup/negotiation/lazy preparation may now select or load additional equivalent regional catalogs. Canonical-prefix exclusions remain unchanged. Add eight unexecuted core regressions, including regional date rendering.
+
+* Recheck likely-subtags integration: unknown script/region markers preserve exact catalog priority but no longer block normalized fallback, lazy loading or provenance.
+* Reject generator output collisions and overwriting either input before any reads/writes. Add five Dart and two Python regressions (not run); pinned artifact reproducibility check passes, not a runtime conformance claim.
+
+* Replace the regional script shortlist with all 7,788 CLDR 48.2 likely-subtag mappings. Add `maximizeLocale` with ordered UTS #35 lookup, unknown-marker handling, explicit-field preservation and nullable no-match behavior.
+* Generate all 37 RTL script codes from CLDR metadata; use likely subtags for regional direction and negotiation. Explicit script overrides are preserved.
+* Regional fallback chains may now include additional script catalogs; lazy loaders must handle absent candidates. Exact identities, generic language catalogs and configured default fallback remain distinct from inference.
+* Add hash-pinned offline generator, original CLDR corpus fixture and ten unexecuted tests (eight core scenarios, one full-corpus test, one widget). Tables were generated; no tests or conformance verifier were run.
+
+* Ninth audit pass: prevent sibling locale matches across conflicting region-implied scripts; reuse the canonical fallback map. Correct sr-ME to Latin using CLDR 48.2. Generic/default fallback and explicit-before-wildcard policy remain unchanged.
+* Align typegen required parameters with ignored term/trailing function arguments. Validate class names in both CLI and direct generator API; reject String as well as UiMessages to prevent type shadowing. Regenerated signatures can lose previously spurious required parameters.
+* Add nine negotiation/fallback and four CLI/typegen regressions, not executed.
+
+* Eighth audit pass: preserve quoted number-pattern literals, quoted semicolons, doubled apostrophes and literal percent/minus signs. Fraction-pattern extraction ignores quoted text; numeric skeleton syntax is no longer removed from literal affixes.
+* Apply default CLDR currency spacing at Unicode symbol boundaries, including non-ASCII labels and directional prefixes; preserve explicit spaces, omit automatic spacing beside non-finite values. `isAlphabeticSymbol` recognizes Unicode letters.
+* Add eight unexecuted core regressions; synchronize generator code without executing/regenerating its tables. Document the supported affix-pattern subset.
+
+* Seventh audit pass: use shared locale parsing for number/percent/currency symbols; preserve regional overrides with scripts, variants and extensions. Invalid tags fall back to English. Synchronize the generator template without regenerating CLDR data.
+* Replace each escaped surrogate scalar with U+FFFD instead of emitting invalid UTF-16; retain astral scalars and out-of-range parse recovery.
+* Add ten unexecuted core regressions, including term/reference scope and catalog fallback boundaries. Unicode numbering-system overrides remain unsupported.
+
+* Resolver semantics audit: typed string/numeric selectors; exact keys use original numbers rather than rendered/rounded text. Numeric strings no longer implicitly select numeric keys; invalid/unknown function selectors use the default variant.
+* Preserve and override options across nested NUMBER/DATETIME; evaluate reference arguments and numeric epoch wrappers. Honor currency integer padding and maximum-only fraction settings.
+* Correct tiny exponential CLDR operands, exact fraction modulo on web, minimum-native-integer modulo and normalized Portuguese regional lookup. Document raw-number plural categories (not NUMBER display-option-aware).
+* Add fourteen core and one wrapper regression; update Python tooling models. Tests/verifiers not run during this audit.
+
+* Date/time audit: canonical locale lookup and en-GB profile; CLDR 48.2 narrow/stand-alone names, locale-specific short-year widths, and Polish day padding. Include the Unicode data notice in LICENSE.
+* Fix standalone month case/abbreviations and numeric component padding; ignore invalid date-option strings before style expansion; preserve the sign in two-digit negative proleptic years. Valid explicit components continue to override styles. Document the supported subset rather than claiming ICU parity.
+
+* Add `parseAcceptLanguageStrict`, retaining exclusions/wildcards and reporting typed raw-input limit failures. Keep the existing parser as the accepted-only, empty-on-overflow projection. Both now reject malformed locale tags and return canonical tags.
+* Enforce UTF-8 byte limits before trimming and count all raw language ranges. Negotiation honors `q=0`, canonical defaults and script-aware sibling matching, and returns null when no valid supported locale is allowed.
+* Canonicalize extension singleton ordering (private use last) and apply the core locale limit in raw UTF-8 bytes. Document negotiation compatibility changes and correct the preferred-locale example.
+
+* Bound parser nesting (junk recovery) and shared per-call resolver depth/steps/character work. Excessive resolution returns `{???}` for the entire message/term without partial text or BiDi delimiters.
+* Guard invalid epoch arguments and non-finite numeric options; scale percentages through decimal digits, and avoid minimum-native-integer `abs()` overflow in decimal/currency formatting.
+* Snapshot `FtlResource.entries` to keep root entries consistent with cached maps. Synchronize the number-test generator model with exact decimal percent scaling and non-finite sign/affix handling.
+
+* Second audit pass: preparation returns `FutureOr<void>` so eager/fully cached catalogs do not force asynchronous loading. Callers should `await` the result instead of assuming a Future. Lazy preparation validates every locale input before loading.
+* Fix infinity signs and non-finite percent layout; bound explicit attribute queries, resolve dotted attributes before lossy aliases, and classify overlapping parent/default chains correctly.
+* JSON registrations are atomic and reject cyclic/deep maps and flattened-key collisions.
+
+* Add `MessageCatalog.loadForLocale` preparation hook and recursive composite loading. `CompositeCatalog.catalogs` is now an immutable snapshot; `implements MessageCatalog` adapters must implement the hook.
+* Reject malformed locale separators/extensions, duplicate variants, and invalid direct lazy-loader input; retain private-use subtags and intermediate variant fallbacks.
+* Remove machine-specific `.dart_tool` caches from version control.
+
 * Parser conforms to Fluent 1.0: correct indentation handling for multiline values, values starting with `.`, no trailing newline, spec-only string escapes, junk recovery per entry, first-wins handling of duplicate IDs.
 * Term arguments (`-term(case: "gen")`) and function arguments are supported; term arguments do not leak into the term's message scope.
 * Resolver: `NUMBER()` with `minimumFractionDigits` / `maximumFractionDigits`; non-finite numeric selectors (`NaN`, `Infinity`) no longer crash and use the default variant.
@@ -12,7 +59,7 @@
 * Resolver: a message reference inherits the caller's variables (terms still get their own scope).
 * Resolver: BiDi isolation matches the reference implementations — a single-placeable pattern and a string/number literal placeable are not isolated.
 * Resolver: `NUMBER()` keeps full integer precision above 2^53 and honours `minimumFractionDigits` for integers (`3` → `3.00`); values Dart would print with an exponent (`1e+21`, `1e-7`) are written out in full (and grouped) instead of falling back to exponential notation.
-* Accept-Language: ranges keep their original position for equal `q` values, and `q=0`, malformed or duplicated `q` ranges are skipped instead of affecting later ranges (`q` accepts only `0`, `1`, `0.<1-3 digits>` and `1.000`).
+* Accept-Language: ranges keep their original position for equal `q` values, and `q=0`, malformed or duplicated `q` ranges are skipped instead of affecting later ranges (`q` accepts `0`, `1`, `0.<0-3 digits>` and `1.<0-3 zeroes>`).
 * Regression tests for tab handling, value trimming, junk rules, callee rules, isolation, scope inheritance, integer precision and CLDR fractions (`test/rustok_i18n_test.dart`).
 * Parser: nested placeables (`{ { $x } }`, `{NUMBER({$n})}`, `{-term({$x})}`) are inline expressions and resolve to the value they wrap; a nested placeable as a *selector* is junk, as the reference implementations require.
 * Parser: translator comments — a single-`#` comment directly above a message or a term is attached to it (`FtlMessage.comment`, `FtlTerm.comment`) instead of staying a standalone entry; group and resource comments (`##`, `###`) never attach, and a comment followed by a blank line or by junk stays standalone.

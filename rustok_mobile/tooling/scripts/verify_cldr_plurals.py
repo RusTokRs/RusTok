@@ -196,14 +196,16 @@ def operands(value: float) -> dict:
     """The CLDR operands for `value`, as the Dart table computes them."""
     n = abs(value)
     integral = n == int(n)
-    text = repr(n)
-    if "e" in text or "E" in text or integral:
-        v = 0
-        f = 0
+    text = repr(n).lower()
+    if integral:
+        v = f = 0
     else:
-        fraction = text.split(".")[1]
-        v = len(fraction)
-        f = int(fraction)
+        mantissa, _, exponent_text = text.partition("e")
+        exponent = int(exponent_text) if exponent_text else 0
+        fraction_width = len(mantissa.split(".", 1)[1]) if "." in mantissa else 0
+        v = max(0, fraction_width - exponent)
+        digits = mantissa.replace(".", "")
+        f = int(digits[-v:]) if v else 0
     i = int(n)
     return {
         "n": n,

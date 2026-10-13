@@ -50,7 +50,7 @@ const Map<String, int> _currencyDigits = {
 };
 
 final RegExp _isoCodePattern = RegExp(r'^[A-Za-z]{3}$');
-final RegExp _alphabeticPattern = RegExp(r'^[A-Za-z]+$');
+final RegExp _alphabeticPattern = RegExp(r'^\p{L}+$', unicode: true);
 
 /// Whether [code] has the shape of an ISO 4217 currency code (three letters).
 bool isValidCurrencyCode(String code) => _isoCodePattern.hasMatch(code);
@@ -68,6 +68,6 @@ int currencyFractionDigits(String code) =>
 
 /// Whether [symbol] is letters only (for example `CHF` or `USD`).
 ///
-/// CLDR `currencySpacing` separates such a symbol from the amount with a
-/// no-break space (`CHF 3.00`), while a currency sign stays attached (`$3.00`).
+/// Recognizes Unicode letters, not just ASCII (`Kč`, `zł`). Currency layout
+/// uses the boundary-based CLDR spacing rule, not this whole-string predicate.
 bool isAlphabeticSymbol(String symbol) => _alphabeticPattern.hasMatch(symbol);

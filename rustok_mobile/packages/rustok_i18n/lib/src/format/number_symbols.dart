@@ -1,3 +1,5 @@
+import '../locale/locale_tag.dart';
+
 /// Locale-specific number data used by `NUMBER()` and [formatFluentNumber].
 ///
 /// The table is generated from CLDR (currently 48.2) and covers every locale
@@ -7,12 +9,11 @@
 /// from `cldr-numbers-full` and `cldr-core`; the package itself depends on
 /// neither `intl` nor any other data package.
 ///
-/// Keys are BCP-47 tags. [numberSymbolsFor] tries the full tag, then the
-/// language of the tag, then falls back to `en` (`1,234.5`), so a locale that
-/// CLDR does not differentiate (`de-LI` while CLDR keeps `de-LI` equal to
-/// `de`) inherits its language's data.
+/// Keys are canonical catalog tags. Lookup strips extensions, reduces variants,
+/// then tries language-script, language-region, language and English. Unicode
+/// numbering-system overrides are not implemented; locale defaults are used.
 ///
-/// Verified against `Intl.NumberFormat` for every locale CLDR ships: 10 724
+/// Historically verified against `Intl.NumberFormat` for every locale CLDR ships: 10 724
 /// comparisons across 766 tags with the only remaining differences coming from
 /// the ICU build of the runtime, which lags behind CLDR 48 in a few locales
 /// (`fr-CH`, whose grouping separator became the Swiss apostrophe in CLDR 46).
@@ -86,48 +87,32 @@ class NumberSymbols {
 
 const NumberSymbols _english = NumberSymbols(decimal: '.', group: ',');
 
-/// Number data for a BCP-47 [locale], English when nothing matches.
+/// Number data for a canonical locale, English when nothing matches.
+/// Extensions do not select a numbering system; they are ignored for lookup.
 NumberSymbols numberSymbolsFor(String locale) {
-  final tag = _normalizeTag(locale);
-  final parts = tag.split('-');
-  final language = parts.first;
-  String? script;
-  for (final part in parts.skip(1)) {
-    if (part.length == 4 && _isAsciiLetters(part)) {
-      script = part;
-      break;
-    }
+  final tag = LocaleTag.tryParse(locale);
+  if (tag == null) return _english;
+  // Keep regional overrides when extensions, variants or an explicit script
+  // are present. Never interpret private-use/extension subtags as a script.
+  for (var count = tag.variants.length; count >= 0; count--) {
+    final key = LocaleTag(
+      language: tag.language,
+      script: tag.script,
+      region: tag.region,
+      variants: tag.variants.take(count).toList(),
+    ).toCatalogTag();
+    final symbols = _numberSymbols[key];
+    if (symbols != null) return symbols;
   }
-  return _numberSymbols[tag] ??
-      (script == null ? null : _numberSymbols['$language-$script']) ??
-      _numberSymbols[language] ??
-      _english;
-}
-
-/// Lower-cases the language, title-cases a script and upper-cases a region, so
-/// that `es-mx` and `ES-MX` find the same entry.
-String _normalizeTag(String locale) {
-  final parts = locale.replaceAll('_', '-').split('-');
-  final result = <String>[parts.first.toLowerCase()];
-  for (final part in parts.skip(1)) {
-    if (part.length == 4 && _isAsciiLetters(part)) {
-      result.add(part[0].toUpperCase() + part.substring(1).toLowerCase());
-    } else if (part.length == 2 && _isAsciiLetters(part)) {
-      result.add(part.toUpperCase());
-    } else {
-      result.add(part);
-    }
+  if (tag.script != null) {
+    final symbols = _numberSymbols['${tag.language}-${tag.script}'];
+    if (symbols != null) return symbols;
   }
-  return result.join('-');
-}
-
-bool _isAsciiLetters(String value) {
-  for (final unit in value.codeUnits) {
-    final isUpper = unit >= 0x41 && unit <= 0x5A;
-    final isLower = unit >= 0x61 && unit <= 0x7A;
-    if (!isUpper && !isLower) return false;
+  if (tag.region != null) {
+    final symbols = _numberSymbols['${tag.language}-${tag.region}'];
+    if (symbols != null) return symbols;
   }
-  return true;
+  return _numberSymbols[tag.language] ?? _english;
 }
 
 /// Inserts the group separator into the ASCII [digits].
@@ -166,19 +151,34 @@ String localizeDigits(String text, NumberSymbols symbols) {
 /// Fraction digits a number pattern asks for: `#,##0.###` is `(0, 3)`,
 /// `#,##0.00` is `(2, 2)` and `#,##0%` is `(0, 0)`.
 (int, int) patternFractionDigits(String pattern) {
-  final positive = pattern.split(';').first;
-  final dot = positive.indexOf('.');
-  if (dot < 0) return (0, 0);
+  var quoted = false;
+  var started = false;
+  var fraction = false;
   var minimum = 0;
   var maximum = 0;
-  for (var i = dot + 1; i < positive.length; i++) {
-    final unit = positive.codeUnitAt(i);
-    if (unit == 0x30) {
-      minimum++;
-      maximum++;
-    } else if (unit == 0x23) {
-      maximum++;
-    } else {
+  for (var i = 0; i < pattern.length; i++) {
+    final char = pattern[i];
+    if (char == "'") {
+      if (started) break;
+      if (i + 1 < pattern.length && pattern[i + 1] == "'") {
+        i++;
+      } else {
+        quoted = !quoted;
+      }
+      continue;
+    }
+    if (quoted) continue;
+    if (char == ';') break;
+    if (!started) {
+      started = char == '0' || char == '#';
+    } else if (char == '.') {
+      fraction = true;
+    } else if (char == '0' || char == '#') {
+      if (fraction) {
+        maximum++;
+        if (char == '0') minimum++;
+      }
+    } else if (char != ',') {
       break;
     }
   }

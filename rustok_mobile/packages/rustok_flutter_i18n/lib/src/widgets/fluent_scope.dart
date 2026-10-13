@@ -61,7 +61,8 @@ class FluentScope extends InheritedWidget {
 ///   builder: (context, child) => DirectionalityHandler(child: child!),
 /// );
 /// ```
-/// Without a scope it falls back to LTR.
+/// Without a scope it preserves the enclosing direction, or uses LTR when
+/// neither a scope nor an enclosing Directionality exists.
 class DirectionalityHandler extends StatelessWidget {
   const DirectionalityHandler({
     super.key,
@@ -73,7 +74,9 @@ class DirectionalityHandler extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scope = FluentScope.maybeOf(context);
-    final direction = scope?.flutterTextDirection ?? TextDirection.ltr;
+    final direction = scope?.flutterTextDirection ??
+        Directionality.maybeOf(context) ??
+        TextDirection.ltr;
     return Directionality(
       textDirection: direction,
       child: child,

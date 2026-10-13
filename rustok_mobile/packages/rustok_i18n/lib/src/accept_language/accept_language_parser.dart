@@ -1,8 +1,26 @@
+import 'dart:convert';
+
 import '../locale/fallback_chain.dart';
 import '../locale/locale_tag.dart';
+import '../locale/likely_subtags.dart';
 
 const int maxAcceptLanguageLength = 4096;
 const int maxAcceptLanguageRanges = 64;
+
+/// Which raw-input bound rejected an Accept-Language field value.
+enum AcceptLanguageLimit { headerBytes, ranges }
+
+/// A whole-header resource-limit failure, not a malformed individual range.
+class AcceptLanguageLimitException implements Exception {
+  const AcceptLanguageLimitException(this.limit);
+
+  final AcceptLanguageLimit limit;
+
+  @override
+  String toString() => limit == AcceptLanguageLimit.headerBytes
+      ? 'Accept-Language exceeds $maxAcceptLanguageLength UTF-8 bytes'
+      : 'Accept-Language exceeds $maxAcceptLanguageRanges raw ranges';
+}
 
 /// Represents a single parsed item from the HTTP `Accept-Language` header.
 class AcceptLanguagePreference {
@@ -12,7 +30,7 @@ class AcceptLanguagePreference {
     this.order = 0,
   });
 
-  /// The raw language range (e.g. `ru-RU`, `en`, `*`).
+  /// Canonical complete locale (including extensions), or `*`.
   final String tag;
 
   /// Quality weight scaled to thousandths (1.0 = 1000, 0.8 = 800).
@@ -22,55 +40,72 @@ class AcceptLanguagePreference {
   final int order;
 
   bool get isWildcard => tag == '*';
+
+  bool get isRejected => quality == 0;
 }
 
-/// Parses an HTTP `Accept-Language` header string into prioritized [LocaleTag]s.
+/// Accepted preferences in descending quality, with source order breaking ties.
 ///
-/// Bounded to 4096 bytes and 64 ranges to guarantee safe execution. Ranges that
-/// are explicitly unacceptable (`q=0`) and ranges with a malformed quality or a
-/// duplicated `q` parameter are omitted, so one broken client preference cannot
-/// discard later valid ones.
+/// Compatibility projection: q=0 exclusions are omitted. Whole-header limit
+/// failures yield an empty list. Use [parseAcceptLanguageStrict] when exclusions
+/// or typed limit diagnostics are needed (for example during negotiation).
 List<AcceptLanguagePreference> parseAcceptLanguage(String? header) {
   if (header == null) return const [];
-  final trimmed = header.trim();
-  if (trimmed.isEmpty || trimmed.length > maxAcceptLanguageLength) {
+  try {
+    return List.unmodifiable(
+      parseAcceptLanguageStrict(header).where((preference) => !preference.isRejected),
+    );
+  } on AcceptLanguageLimitException {
     return const [];
   }
+}
 
-  final rawRanges = trimmed.split(',');
+/// Parses a bounded raw field value, retaining wildcards and q=0 exclusions.
+///
+/// Throws [AcceptLanguageLimitException] above 4096 UTF-8 bytes or 64 raw
+/// comma-separated ranges, before trimming or filtering. Malformed individual
+/// ranges/qualities are skipped. Unknown parameters are ignored, as in the Rust
+/// owner contract. Underscore separators are accepted for compatibility, but
+/// POSIX encoding/modifier suffixes are not HTTP locale identifiers.
+List<AcceptLanguagePreference> parseAcceptLanguageStrict(String header) {
+  // UTF-16 length is a cheap lower bound on UTF-8 bytes. Encode only bounded
+  // input, avoiding a huge temporary allocation for an oversized raw header.
+  if (header.length > maxAcceptLanguageLength ||
+      utf8.encode(header).length > maxAcceptLanguageLength) {
+    throw const AcceptLanguageLimitException(AcceptLanguageLimit.headerBytes);
+  }
+  final rawRanges = header.split(',');
+  if (rawRanges.length > maxAcceptLanguageRanges) {
+    throw const AcceptLanguageLimitException(AcceptLanguageLimit.ranges);
+  }
+
   final preferences = <AcceptLanguagePreference>[];
-  int order = 0;
+  for (var sourceIndex = 0; sourceIndex < rawRanges.length; sourceIndex++) {
+    final subParts = rawRanges[sourceIndex].trim().split(';');
+    final rawTag = subParts.first.trim();
+    if (rawTag.isEmpty || rawTag.contains('.') || rawTag.contains('@')) continue;
+    final String tag;
+    if (rawTag == '*') {
+      tag = '*';
+    } else {
+      final parsed = LocaleTag.tryParse(rawTag);
+      if (parsed == null) continue;
+      tag = parsed.toLanguageTag();
+    }
 
-  for (final rawRange in rawRanges) {
-    if (preferences.length >= maxAcceptLanguageRanges) break;
-    final part = rawRange.trim();
-    if (part.isEmpty) continue;
-
-    // The appearance index is captured before any validation so that it stays
-    // the true position of the range in the header.
-    final sourceIndex = order++;
-
-    final subParts = part.split(';');
-    final tag = subParts.first.trim();
-    if (tag.isEmpty) continue;
-
-    int quality = 1000;
+    var quality = 1000;
     var qualitySeen = false;
     var malformed = false;
-
-    for (int i = 1; i < subParts.length; i++) {
+    for (var i = 1; i < subParts.length; i++) {
       final param = subParts[i].trim();
       final separator = param.indexOf('=');
       final name = (separator < 0 ? param : param.substring(0, separator)).trim();
       if (name.toLowerCase() != 'q') continue;
-
       if (separator < 0 || qualitySeen) {
-        // A bare `q` or a duplicated quality parameter is malformed.
         malformed = true;
         break;
       }
       qualitySeen = true;
-
       final parsed = _parseQuality(param.substring(separator + 1).trim());
       if (parsed == null) {
         malformed = true;
@@ -78,9 +113,7 @@ List<AcceptLanguagePreference> parseAcceptLanguage(String? header) {
       }
       quality = parsed;
     }
-
-    if (malformed || quality <= 0) continue;
-
+    if (malformed) continue;
     preferences.add(AcceptLanguagePreference(
       tag: tag,
       quality: quality,
@@ -88,7 +121,6 @@ List<AcceptLanguagePreference> parseAcceptLanguage(String? header) {
     ));
   }
 
-  // Strictly stable sort: by quality descending, then by appearance order ascending
   preferences.sort((a, b) {
     final cmp = b.quality.compareTo(a.quality);
     if (cmp != 0) return cmp;
@@ -99,8 +131,8 @@ List<AcceptLanguagePreference> parseAcceptLanguage(String? header) {
 
 /// Parses an RFC 9110 quality value into thousandths, or `null` when malformed.
 ///
-/// Mirrors `rustok-ui-i18n::parse_quality`: only `0`, `1`, `0.<1..3 digits>` and
-/// `1.000` are accepted, so values such as `NaN`, `.5`, `1.001` or `0.1234` are
+/// Mirrors `rustok-ui-i18n::parse_quality`: `0`, `1`, `0.<0..3 digits>` and
+/// `1.<0..3 zeroes>` are accepted, so values such as `NaN`, `.5`, `1.001` or `0.1234` are
 /// rejected without relying on floating-point parsing.
 int? _parseQuality(String raw) {
   if (raw == '0') return 0;
@@ -134,54 +166,123 @@ int? _parseQuality(String raw) {
   return null;
 }
 
-/// Picks the best supported locale for an `Accept-Language` header.
+// A scriptless language-only catalog is generic. Regional catalogs use CLDR.
+String? _matchingScript(LocaleTag tag) {
+  if (tag.script != null && tag.script != 'Zzzz') return tag.script;
+  if (tag.region == null || tag.region == 'ZZ') return null;
+  return maximizeLocale(tag)?.script;
+}
+
+/// Picks a supported catalog locale using this library's lookup policy.
 ///
-/// Matching is done in quality order. For each requested range the exact tag
-/// is tried first, then its less specific forms (`zh-Hant-TW` -> `zh-Hant` -> `zh`),
-/// then any supported locale with the same primary language (`ru` -> `ru-RU`).
-/// A `*` range is skipped. Returns [defaultLocale] (or the first supported
-/// locale) when no explicit range matches.
+/// Explicit accepted preferences are tried in quality order: exact/parent
+/// fallback chain, then same-language siblings with no conflicting explicit
+/// or known region-implied script. Generic language catalogs remain eligible.
+/// Wildcards never outrank an explicit preference. If none match, use the
+/// canonically matching default, then the first allowed supported locale.
+///
+/// A q=0 range excludes its locale and descendants. The most-specific matching
+/// range wins (a specific positive range can override a broader exclusion).
+/// Candidates are ranked by the lower of the requesting range's quality and
+/// their most-specific matching range's quality; ties keep lookup order.
+/// Canonical duplicates use their highest quality. Exclusions also apply to
+/// fallback choices. Returns null if no valid supported locale is allowed;
+/// otherwise preserves the caller's original supported-locale spelling.
+/// Malformed/oversized headers behave as absent preferences. This is a host
+/// convenience, not automatic effective-locale policy for Flutter providers.
 String? negotiateLocale({
   required String? acceptLanguageHeader,
   required List<String> supportedLocales,
   String defaultLocale = 'en',
 }) {
-  final safeFallback = supportedLocales.contains(defaultLocale)
-      ? defaultLocale
-      : (supportedLocales.isNotEmpty ? supportedLocales.first : defaultLocale);
+  List<AcceptLanguagePreference> preferences;
+  try {
+    preferences = acceptLanguageHeader == null
+        ? const []
+        : parseAcceptLanguageStrict(acceptLanguageHeader);
+  } on AcceptLanguageLimitException {
+    preferences = const [];
+  }
 
-  final preferences = parseAcceptLanguage(acceptLanguageHeader);
-  if (preferences.isEmpty) return safeFallback;
+  // Catalog identities deliberately discard formatting extensions.
+  final qualities = <String, int>{};
+  for (final preference in preferences) {
+    final key = preference.isWildcard
+        ? '*'
+        : LocaleTag.parse(preference.tag).toCatalogTag().toLowerCase();
+    // Preferences are already ordered highest quality first.
+    qualities.putIfAbsent(key, () => preference.quality);
+  }
 
-  // Canonical lower-case tag -> original spelling supplied by the caller.
+  int effectiveQuality(String candidate) {
+    var specificity = -1;
+    var quality = 1000;
+    for (final entry in qualities.entries) {
+      final range = entry.key;
+      if (range != '*' && candidate != range && !candidate.startsWith('$range-')) {
+        continue;
+      }
+      final current = range == '*' ? 0 : range.split('-').length;
+      if (current > specificity) {
+        specificity = current;
+        quality = entry.value;
+      }
+    }
+    return quality;
+  }
+
   final canonicalToOriginal = <String, String>{};
+  final tags = <String, LocaleTag>{};
+  final scripts = <String, String?>{};
+  final candidateQualities = <String, int>{};
   for (final supported in supportedLocales) {
-    final canonical = LocaleTag.tryParse(supported)?.toCatalogTag().toLowerCase();
-    if (canonical != null) {
-      canonicalToOriginal.putIfAbsent(canonical, () => supported);
-    }
-  }
-
-  for (final pref in preferences) {
-    // `*` accepts anything, so it only means "use the default" when no explicit range matches.
-    if (pref.isWildcard) continue;
-    final tag = LocaleTag.tryParse(pref.tag);
+    final tag = LocaleTag.tryParse(supported);
     if (tag == null) continue;
+    final canonical = tag.toCatalogTag().toLowerCase();
+    final quality = effectiveQuality(canonical);
+    if (quality == 0) continue;
+    candidateQualities[canonical] = quality;
+    canonicalToOriginal.putIfAbsent(canonical, () => supported);
+    tags.putIfAbsent(canonical, () => tag);
+    scripts.putIfAbsent(canonical, () => _matchingScript(tag));
+  }
+  if (canonicalToOriginal.isEmpty) return null;
 
-    // 1. Exact tag, then progressively less specific forms.
-    for (final candidate in localeFallbackChain(pref.tag)) {
-      final match = canonicalToOriginal[candidate.toLowerCase()];
-      if (match != null) return match;
-    }
-
-    // 2. Same primary language, e.g. `ru` matches a supported `ru-RU`.
-    final language = tag.language.toLowerCase();
-    for (final entry in canonicalToOriginal.entries) {
-      if (entry.key.split('-').first == language) return entry.value;
+  String? selected;
+  var selectedQuality = -1;
+  void consider(String canonical, AcceptLanguagePreference preference) {
+    final quality = candidateQualities[canonical];
+    if (quality == null) return;
+    // A broad high-quality range must not promote a candidate that has its
+    // own more-specific, lower weight. Fallback cannot increase the request's
+    // weight either. Ties preserve preference and exact/parent/sibling order.
+    final score = quality < preference.quality ? quality : preference.quality;
+    if (score > selectedQuality) {
+      selectedQuality = score;
+      selected = canonicalToOriginal[canonical];
     }
   }
 
-  return safeFallback;
+  for (final preference in preferences) {
+    if (preference.isWildcard || preference.isRejected) continue;
+    final tag = LocaleTag.parse(preference.tag);
+    final requestedScript = _matchingScript(tag);
+    for (final candidate in localeFallbackChain(preference.tag)) {
+      consider(candidate.toLowerCase(), preference);
+    }
+    for (final entry in tags.entries) {
+      final supported = entry.value;
+      if (supported.language == tag.language &&
+          (requestedScript == null || scripts[entry.key] == null ||
+              requestedScript == scripts[entry.key])) {
+        consider(entry.key, preference);
+      }
+    }
+  }
+
+  if (selected != null) return selected;
+  final defaultKey = LocaleTag.tryParse(defaultLocale)?.toCatalogTag().toLowerCase();
+  return canonicalToOriginal[defaultKey] ?? canonicalToOriginal.values.first;
 }
 
 /// Returns accepted complete Unicode locales in quality order.

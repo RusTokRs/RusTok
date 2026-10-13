@@ -9,6 +9,13 @@ import 'cldr_plurals.dart';
 const String bidiFsi = '\u2068'; // First Strong Isolate
 const String bidiPdi = '\u2069'; // Pop Directional Isolate
 
+/// Maximum pattern/expression/variant visits in one formatting operation.
+const int maxFluentResolutionSteps = 10000;
+
+/// Cumulative UTF-16 units written to pattern buffers or processed as raw
+/// selectors/variant keys/numeric/date strings. This bounds work, not just final output.
+const int maxFluentResolutionCharacters = 100000;
+
 /// A Project Fluent bundle representing messages and terms for a single locale.
 class FluentBundle {
   FluentBundle({
@@ -81,12 +88,7 @@ class FluentBundle {
     if (pattern == null) return null;
 
     final suffix = attribute != null ? '.$attribute' : '';
-    final resolver = _FluentResolver(
-      bundle: this,
-      args: args ?? const <String, dynamic>{},
-      activeEntries: <String>{'msg:$id$suffix'},
-    );
-    return resolver.resolvePattern(pattern);
+    return _formatPattern(pattern, args, 'msg:$id$suffix');
   }
 
   /// Formats a term by its ID (without leading '-').
@@ -104,12 +106,26 @@ class FluentBundle {
     if (pattern == null) return null;
 
     final suffix = attribute != null ? '.$attribute' : '';
+    return _formatPattern(pattern, args, 'term:$id$suffix');
+  }
+
+  String _formatPattern(
+    FtlPattern pattern,
+    Map<String, dynamic>? args,
+    String entryKey,
+  ) {
     final resolver = _FluentResolver(
       bundle: this,
       args: args ?? const <String, dynamic>{},
-      activeEntries: <String>{'term:$id$suffix'},
+      activeEntries: <String>{entryKey},
+      budget: _ResolutionBudget(),
     );
-    return resolver.resolvePattern(pattern);
+    try {
+      return resolver.resolvePattern(pattern);
+    } on _ResolutionLimitException {
+      // Do not return partial text or an unmatched BiDi isolate on exhaustion.
+      return '{???}';
+    }
   }
 }
 
@@ -130,7 +146,10 @@ class FluentBundle {
 /// number and the sign layout of its optional `;`-separated negative
 /// subpattern; digits, separators and grouping sizes always come from the
 /// locale symbols. When [pattern] is omitted the number is printed without
-/// affixes.
+/// affixes. Pattern affixes support apostrophe-quoted literals and doubled
+/// apostrophes; quoted percent/minus signs are not localized. This is not a
+/// general decimal-pattern engine (scientific/significant-digit patterns and
+/// pattern-driven precision/grouping are not supported).
 String formatFluentNumber(
   num value, {
   int minimumFractionDigits = 0,
@@ -139,6 +158,27 @@ String formatFluentNumber(
   bool useGrouping = true,
   String locale = 'en',
   String? pattern,
+}) =>
+    _formatNumber(
+      value,
+      minimumFractionDigits: minimumFractionDigits,
+      maximumFractionDigits: maximumFractionDigits,
+      minimumIntegerDigits: minimumIntegerDigits,
+      useGrouping: useGrouping,
+      locale: locale,
+      pattern: pattern,
+    );
+
+String _formatNumber(
+  num value, {
+  int minimumFractionDigits = 0,
+  int maximumFractionDigits = 3,
+  int minimumIntegerDigits = 1,
+  bool useGrouping = true,
+  String locale = 'en',
+  String? pattern,
+  bool percent = false,
+  bool absolute = false,
 }) {
   final symbols = numberSymbolsFor(locale);
   final minimum = _clampDigits(minimumFractionDigits);
@@ -148,14 +188,27 @@ String formatFluentNumber(
   if (maximum < minimum) maximum = minimum;
 
   if (value is double && !value.isFinite) {
-    if (value.isNaN) return symbols.nan;
-    return '${symbols.minusSign}${symbols.infinity}';
+    return _applyNumberPattern(
+      value.isNaN ? symbols.nan : symbols.infinity,
+      symbols,
+      pattern,
+      negative: !absolute && !value.isNaN && value.isNegative,
+    );
   }
 
-  final negative = value.isNegative;
+  final negative = !absolute && value.isNegative;
   final shortest = _shortestDecimalParts(value);
   var integerPart = shortest.$1;
   var fractionPart = shortest.$2;
+
+  if (percent) {
+    // Shift the decimal representation, never multiply a num: VM integers can
+    // overflow, and double multiplication can introduce rounding noise.
+    final shifted = fractionPart.padRight(2, '0');
+    integerPart = '$integerPart${shifted.substring(0, 2)}'
+        .replaceFirst(RegExp(r'^0+(?=[0-9])'), '');
+    fractionPart = shifted.substring(2);
+  }
 
   final rounded = _roundFractionPart(fractionPart, maximum);
   fractionPart = rounded.$1;
@@ -178,13 +231,25 @@ String formatFluentNumber(
     body.write(symbols.decimal);
     body.write(fractionPart);
   }
-  final text = localizeDigits(body.toString(), symbols);
+  return _applyNumberPattern(
+    localizeDigits(body.toString(), symbols),
+    symbols,
+    pattern,
+    negative: negative,
+  );
+}
 
+String _applyNumberPattern(
+  String text,
+  NumberSymbols symbols,
+  String? pattern, {
+  required bool negative,
+}) {
   if (pattern == null) {
     return '${negative ? symbols.minusSign : ''}$text';
   }
   final affixes = _patternAffixes(
-    pattern.replaceAll('%', symbols.percentSign),
+    pattern,
     symbols,
     negative: negative,
   );
@@ -214,41 +279,59 @@ String formatFluentNumber(
   String placeholder = '',
   String replacement = '',
 }) {
-  final parts = pattern.split(';');
-  final useNegative = negative && parts.length > 1;
-  final chosen = useNegative ? parts[1] : parts[0];
-  var firstDigit = -1;
-  for (var i = 0; i < chosen.length; i++) {
-    final unit = chosen.codeUnitAt(i);
-    if (unit == 0x30 || unit == 0x23) {
-      // '0' or '#'
-      firstDigit = i;
-      break;
+  // Apostrophes quote pattern syntax; doubled apostrophes are literal. Keep
+  // that distinction until after locating the numeric skeleton and subpattern.
+  final parts = <List<(String, bool)>>[[]];
+  var quoted = false;
+  for (var i = 0; i < pattern.length; i++) {
+    final char = pattern[i];
+    if (char == "'") {
+      if (i + 1 < pattern.length && pattern[i + 1] == "'") {
+        parts.last.add(("'", true));
+        i++;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char == ';' && !quoted) {
+      parts.add([]);
+    } else {
+      parts.last.add((char, quoted));
     }
   }
-  if (firstDigit < 0) return ('', '', useNegative);
+  final useNegative = negative && parts.length > 1 && parts[1].isNotEmpty;
+  final chosen = useNegative ? parts[1] : parts[0];
+  final firstDigit = chosen.indexWhere(
+    (token) => !token.$2 && (token.$1 == '0' || token.$1 == '#'),
+  );
+  if (firstDigit < 0) return ('', '', false);
+  var end = firstDigit;
+  while (end < chosen.length && !chosen[end].$2 &&
+      '0#,.'.contains(chosen[end].$1)) {
+    end++;
+  }
 
-  final placeholderUnit = placeholder.isEmpty ? -1 : placeholder.codeUnitAt(0);
-  String literal(String text) {
+  String literal(Iterable<(String, bool)> tokens) {
     final buffer = StringBuffer();
-    for (final unit in text.codeUnits) {
-      if (unit == 0x30 || unit == 0x23 || unit == 0x2C || unit == 0x2E) {
-        continue; // 0 # , .
-      }
-      if (unit == 0x2D) {
+    for (final token in tokens) {
+      final char = token.$1;
+      if (token.$2) {
+        buffer.write(char);
+      } else if (char == '-') {
         buffer.write(symbols.minusSign);
-      } else if (unit == placeholderUnit) {
+      } else if (char == '%') {
+        buffer.write(symbols.percentSign);
+      } else if (placeholder.isNotEmpty && char == placeholder) {
         buffer.write(replacement);
       } else {
-        buffer.writeCharCode(unit);
+        buffer.write(char);
       }
     }
     return buffer.toString();
   }
 
   return (
-    literal(chosen.substring(0, firstDigit)),
-    literal(chosen.substring(firstDigit)),
+    literal(chosen.take(firstDigit)),
+    literal(chosen.skip(end)),
     useNegative,
   );
 }
@@ -256,7 +339,9 @@ String formatFluentNumber(
 /// Integer and fraction digits of the shortest decimal form of [value], without
 /// its sign, with exponential forms expanded into plain digits.
 (String, String) _shortestDecimalParts(num value) {
-  final text = value.abs().toString();
+  final signed = value.toString();
+  // abs() overflows for the minimum signed VM integer. Strip the textual sign.
+  final text = signed.startsWith('-') ? signed.substring(1) : signed;
   final exponentIndex = text.indexOf('e');
   if (exponentIndex < 0) {
     final dot = text.indexOf('.');
@@ -314,6 +399,8 @@ int _clampDigits(int digits) {
   return digits;
 }
 
+final RegExp _unicodeSymbol = RegExp(r'\p{S}', unicode: true);
+
 /// Formats [value] as money in [currency] (ISO 4217 code) for [locale].
 ///
 /// The layout comes from the locale's CLDR currency pattern — `¤#,##0.00` for
@@ -322,9 +409,10 @@ int _clampDigits(int digits) {
 /// [minimumFractionDigits] or [maximumFractionDigits] say otherwise.
 ///
 /// [display] is `symbol` (the default) or `code` for the ISO code; any other
-/// value falls back to the symbol. An alphabetic symbol is separated from the
-/// amount by a no-break space, as CLDR `currencySpacing` requires, so `CHF` is
-/// `CHF 3.00` while `$` stays `$3.00`.
+/// value falls back to the symbol. A currency label is separated from the
+/// finite amount by a no-break space when its boundary is not a Unicode symbol,
+/// following CLDR's default `currencySpacing` (including `Kč` and `zł`).
+/// Existing pattern whitespace is retained without inserting a second space.
 String formatFluentCurrency(
   num value, {
   required String currency,
@@ -332,12 +420,16 @@ String formatFluentCurrency(
   String display = 'symbol',
   int? minimumFractionDigits,
   int? maximumFractionDigits,
+  int minimumIntegerDigits = 1,
   bool useGrouping = true,
 }) {
   final code = currency.toUpperCase();
   final symbols = numberSymbolsFor(locale);
   final defaults = currencyFractionDigits(code);
-  final minimum = minimumFractionDigits ?? defaults;
+  final minimum = minimumFractionDigits ??
+      (maximumFractionDigits != null && maximumFractionDigits < defaults
+          ? maximumFractionDigits
+          : defaults);
   var maximum =
       maximumFractionDigits ?? (defaults > minimum ? defaults : minimum);
   if (maximum < minimum) maximum = minimum;
@@ -352,15 +444,26 @@ String formatFluentCurrency(
   );
   var prefix = affixes.$1;
   var suffix = affixes.$2;
-  if (isAlphabeticSymbol(currencyText)) {
-    if (prefix == currencyText) prefix = '$currencyText\u00A0';
-    if (suffix == currencyText) suffix = '\u00A0$currencyText';
+  // CLDR's default currencyMatch is [:^S:], applied at the boundary,
+  // not to the whole symbol. surroundingMatch is [:digit:] (no NaN/infinity).
+  if (value.isFinite && currencyText.isNotEmpty) {
+    final runes = currencyText.runes;
+    if (prefix.endsWith(currencyText) &&
+        !_unicodeSymbol.hasMatch(String.fromCharCode(runes.last))) {
+      prefix = '$prefix\u00A0';
+    }
+    if (suffix.startsWith(currencyText) &&
+        !_unicodeSymbol.hasMatch(String.fromCharCode(runes.first))) {
+      suffix = '\u00A0$suffix';
+    }
   }
 
   // The sign is only added when the pattern did not place one itself.
   final sign = value.isNegative && !affixes.$3 ? symbols.minusSign : '';
-  final amount = formatFluentNumber(
-    value.abs(),
+  final amount = _formatNumber(
+    value,
+    absolute: true,
+    minimumIntegerDigits: minimumIntegerDigits,
     minimumFractionDigits: minimum,
     maximumFractionDigits: maximum,
     useGrouping: useGrouping,
@@ -388,12 +491,58 @@ String _formatValue(Object value) {
   return value.toString();
 }
 
+// Keep numeric identity separate from display options until final formatting.
+class _ResolvedNumber {
+  const _ResolvedNumber(this.value, this.options);
+
+  final num value;
+  final Map<String, FtlExpression> options;
+}
+
+class _ResolvedDateTime {
+  const _ResolvedDateTime(this.value, this.options);
+
+  final DateTime value;
+  final Map<String, FtlExpression> options;
+}
+
+final _numericVariantPattern = RegExp(r'^-?[0-9]+(?:\.[0-9]+)?$');
+
+class _ResolutionLimitException implements Exception {
+  const _ResolutionLimitException();
+}
+
+class _ResolutionBudget {
+  static const int _maxDepth = 100;
+
+  int _steps = maxFluentResolutionSteps;
+  int _characters = maxFluentResolutionCharacters;
+
+  void visit([int depth = 0]) {
+    if (depth > _maxDepth || _steps-- <= 0) {
+      throw const _ResolutionLimitException();
+    }
+  }
+
+  void useCharacters(int length) {
+    if (length > _characters) throw const _ResolutionLimitException();
+    _characters -= length;
+  }
+
+  void write(StringBuffer buffer, String text) {
+    useCharacters(text.length);
+    buffer.write(text);
+  }
+}
+
 class _FluentResolver {
   _FluentResolver({
     required this.bundle,
     required this.args,
     required Set<String> activeEntries,
-  }) : _activeEntries = activeEntries;
+    required _ResolutionBudget budget,
+  })  : _activeEntries = activeEntries,
+        _budget = budget;
 
   final FluentBundle bundle;
 
@@ -402,10 +551,10 @@ class _FluentResolver {
   final Map<String, dynamic> args;
   final Set<String> _activeEntries;
 
-  static const int _maxDepth = 100;
+  final _ResolutionBudget _budget;
 
   String resolvePattern(FtlPattern pattern, {int depth = 0}) {
-    if (depth > _maxDepth) return '{???}';
+    _budget.visit(depth);
 
     // Isolation follows `fluent-bundle` (the Rust runtime this package mirrors):
     // a pattern with more than one element isolates every placeable except a
@@ -414,14 +563,17 @@ class _FluentResolver {
 
     final buffer = StringBuffer();
     for (final element in pattern.elements) {
+      _budget.visit(depth);
       if (element is FtlTextElement) {
-        buffer.write(element.value);
+        _budget.write(buffer, element.value);
       } else if (element is FtlPlaceable) {
         final resolved = resolveExpression(element.expression, depth: depth + 1);
         if (isolate && _needsIsolation(element.expression)) {
-          buffer.write('$bidiFsi$resolved$bidiPdi');
+          _budget.write(buffer, bidiFsi);
+          _budget.write(buffer, resolved);
+          _budget.write(buffer, bidiPdi);
         } else {
-          buffer.write(resolved);
+          _budget.write(buffer, resolved);
         }
       }
     }
@@ -434,7 +586,7 @@ class _FluentResolver {
       expression is! FtlStringLiteral;
 
   String resolveExpression(FtlExpression expr, {int depth = 0}) {
-    if (depth > _maxDepth) return '{???}';
+    _budget.visit(depth);
 
     if (expr is FtlPlaceableExpression) {
       // A nested placeable is transparent: it resolves to the value of the
@@ -494,6 +646,7 @@ class _FluentResolver {
     final namedArgs = expr.arguments;
     if (namedArgs != null) {
       namedArgs.forEach((name, value) {
+        _budget.visit(depth);
         termArgs[name] = _literalValue(value);
       });
     }
@@ -504,6 +657,7 @@ class _FluentResolver {
         bundle: bundle,
         args: termArgs,
         activeEntries: _activeEntries,
+        budget: _budget,
       ).resolvePattern(pattern, depth: depth + 1);
     } finally {
       _activeEntries.remove(entryKey);
@@ -531,6 +685,7 @@ class _FluentResolver {
         bundle: bundle,
         args: args,
         activeEntries: _activeEntries,
+        budget: _budget,
       ).resolvePattern(pattern, depth: depth + 1);
     } finally {
       _activeEntries.remove(entryKey);
@@ -538,34 +693,38 @@ class _FluentResolver {
   }
 
   String _resolveFunction(FtlFunctionReference expr, {required int depth}) {
-    if (expr.name == 'NUMBER' && expr.positional.isNotEmpty) {
-      final number = _numericValue(_rawValue(expr.positional.first));
-      if (number != null) return _formatNumberFunction(expr, number);
+    if (expr.name == 'NUMBER') {
+      final number = _rawValue(expr, depth: depth + 1);
+      if (number is _ResolvedNumber) return _formatNumberFunction(number);
     }
-    if (expr.name == 'DATETIME' && expr.positional.isNotEmpty) {
-      final date = _dateValue(_rawValue(expr.positional.first));
-      if (date != null) return _formatDateFunction(expr, date);
+    if (expr.name == 'DATETIME') {
+      final date = _rawValue(expr, depth: depth + 1);
+      if (date is _ResolvedDateTime) return _formatDateFunction(date);
     }
 
-    // Unknown or non-applicable calls fall back to the first positional argument.
+    // Preserve the package's display fallback for non-applicable/unknown calls.
+    // Selectors do not use this display text as a substitute typed value.
     if (expr.positional.isEmpty) return '{${expr.name}()}';
     return resolveExpression(expr.positional.first, depth: depth + 1);
   }
 
-  String _formatNumberFunction(FtlFunctionReference expr, num number) {
-    final style = _stringOption(expr.named['style']);
-    final code = _stringOption(expr.named['currency']);
+  String _formatNumberFunction(_ResolvedNumber resolved) {
+    final number = resolved.value;
+    final options = resolved.options;
+    final style = _stringOption(options['style']);
+    final code = _stringOption(options['currency']);
     if (style == 'currency' && code != null && isValidCurrencyCode(code)) {
       return formatFluentCurrency(
         number,
         currency: code,
         locale: bundle.locale,
-        display: _stringOption(expr.named['currencyDisplay']) ?? 'symbol',
+        display: _stringOption(options['currencyDisplay']) ?? 'symbol',
         minimumFractionDigits:
-            _optionalDigits(expr.named['minimumFractionDigits']),
+            _optionalDigits(options['minimumFractionDigits']),
         maximumFractionDigits:
-            _optionalDigits(expr.named['maximumFractionDigits']),
-        useGrouping: _boolOption(expr.named['useGrouping']) ?? true,
+            _optionalDigits(options['maximumFractionDigits']),
+        minimumIntegerDigits: _digitsOption(options['minimumIntegerDigits'], 1),
+        useGrouping: _boolOption(options['useGrouping']) ?? true,
       );
     }
 
@@ -578,57 +737,74 @@ class _FluentResolver {
         ? patternFractionDigits(symbols.percentPattern)
         : (symbols.minimumFractionDigits, symbols.maximumFractionDigits);
     final minimum =
-        _digitsOption(expr.named['minimumFractionDigits'], defaults.$1);
+        _digitsOption(options['minimumFractionDigits'], defaults.$1);
     final maximumRaw =
-        _digitsOption(expr.named['maximumFractionDigits'], defaults.$2);
+        _digitsOption(options['maximumFractionDigits'], defaults.$2);
     final maximum = maximumRaw < minimum ? minimum : maximumRaw;
-    return formatFluentNumber(
-      percent ? number * 100 : number,
+    return _formatNumber(
+      number,
+      percent: percent,
       minimumFractionDigits: minimum,
       maximumFractionDigits: maximum,
       minimumIntegerDigits:
-          _digitsOption(expr.named['minimumIntegerDigits'], 1),
-      useGrouping: _boolOption(expr.named['useGrouping']) ?? true,
+          _digitsOption(options['minimumIntegerDigits'], 1),
+      useGrouping: _boolOption(options['useGrouping']) ?? true,
       locale: bundle.locale,
       pattern: percent ? symbols.percentPattern : null,
     );
   }
 
-  String _formatDateFunction(FtlFunctionReference expr, DateTime date) {
-    final value = _stringOption(expr.named['timeZone']) == 'UTC'
+  String _formatDateFunction(_ResolvedDateTime resolved) {
+    final date = resolved.value;
+    final options = resolved.options;
+    final value = _stringOption(options['timeZone']) == 'UTC'
         ? date.toUtc()
         : date;
     return formatFluentDateTime(
       value,
       locale: bundle.locale,
-      dateStyle: _stringOption(expr.named['dateStyle']),
-      timeStyle: _stringOption(expr.named['timeStyle']),
-      weekday: _stringOption(expr.named['weekday']),
-      year: _stringOption(expr.named['year']),
-      month: _stringOption(expr.named['month']),
-      day: _stringOption(expr.named['day']),
-      hour: _stringOption(expr.named['hour']),
-      minute: _stringOption(expr.named['minute']),
-      second: _stringOption(expr.named['second']),
-      hour12: _boolOption(expr.named['hour12']),
+      dateStyle: _stringOption(options['dateStyle']),
+      timeStyle: _stringOption(options['timeStyle']),
+      weekday: _stringOption(options['weekday']),
+      year: _stringOption(options['year']),
+      month: _stringOption(options['month']),
+      day: _stringOption(options['day']),
+      hour: _stringOption(options['hour']),
+      minute: _stringOption(options['minute']),
+      second: _stringOption(options['second']),
+      hour12: _boolOption(options['hour12']),
     );
   }
 
   /// Numeric value of a raw argument: numbers, or strings holding a number.
   num? _numericValue(Object? raw) {
+    if (raw is _ResolvedNumber) return raw.value;
     if (raw is num) return raw;
-    if (raw is String) return num.tryParse(raw.trim());
+    if (raw is String) {
+      _budget.useCharacters(raw.length);
+      return num.tryParse(raw.trim());
+    }
     return null;
   }
 
   /// Date value of a raw argument: a [DateTime], an ISO-8601 string, or epoch
   /// milliseconds (interpreted as UTC).
   DateTime? _dateValue(Object? raw) {
+    if (raw is _ResolvedDateTime) return raw.value;
+    if (raw is _ResolvedNumber) raw = raw.value;
     if (raw is DateTime) return raw;
     if (raw is num) {
+      // Dart DateTime supports +/-100,000,000 days from the Unix epoch.
+      // Check before toInt(), which itself throws for NaN and infinity.
+      if (!raw.isFinite || raw < -8640000000000000 || raw > 8640000000000000) {
+        return null;
+      }
       return DateTime.fromMillisecondsSinceEpoch(raw.toInt(), isUtc: true);
     }
-    if (raw is String) return DateTime.tryParse(raw.trim());
+    if (raw is String) {
+      _budget.useCharacters(raw.length);
+      return DateTime.tryParse(raw.trim());
+    }
     return null;
   }
 
@@ -647,23 +823,57 @@ class _FluentResolver {
   }
 
   int? _optionalDigits(FtlExpression? option) {
-    return option is FtlNumberLiteral ? _clampDigits(option.value.toInt()) : null;
+    return option is FtlNumberLiteral && option.value.isFinite
+        ? _clampDigits(option.value.toInt())
+        : null;
   }
 
   int _digitsOption(FtlExpression? option, int fallback) {
-    if (option is FtlNumberLiteral) {
-      return _clampDigits(option.value.toInt());
-    }
-    return fallback;
+    return _optionalDigits(option) ?? fallback;
   }
 
   /// Raw (unformatted) value of an argument expression, used by built-in functions.
-  Object? _rawValue(FtlExpression expr) {
-    if (expr is FtlPlaceableExpression) return _rawValue(expr.expression);
+  Object? _rawValue(FtlExpression expr, {required int depth}) {
+    while (expr is FtlPlaceableExpression) {
+      _budget.visit(++depth);
+      expr = expr.expression;
+    }
+    _budget.visit(depth);
     if (expr is FtlNumberLiteral) return expr.value;
     if (expr is FtlStringLiteral) return expr.value;
     if (expr is FtlVariableReference) return args[expr.id] as Object?;
+    if (expr is FtlMessageReference) return _resolveMessage(expr, depth: depth);
+    if (expr is FtlTermReference) return _resolveTerm(expr, depth: depth);
+    if (expr is FtlFunctionReference && expr.positional.isNotEmpty) {
+      if (expr.name != 'NUMBER' && expr.name != 'DATETIME') return null;
+      final raw = _rawValue(expr.positional.first, depth: depth + 1);
+      if (expr.name == 'DATETIME') {
+        final date = _dateValue(raw);
+        if (date == null) return null;
+        return _ResolvedDateTime(date, _mergeOptions(
+          raw is _ResolvedDateTime ? raw.options : const {}, expr.named, depth));
+      }
+      final number = _numericValue(raw);
+      if (number == null) return null;
+      return _ResolvedNumber(number, _mergeOptions(
+        raw is _ResolvedNumber ? raw.options : const {}, expr.named, depth));
+    }
     return null;
+  }
+
+  Map<String, FtlExpression> _mergeOptions(
+    Map<String, FtlExpression> inherited,
+    Map<String, FtlExpression> overrides,
+    int depth,
+  ) {
+    final options = <String, FtlExpression>{};
+    for (final source in [inherited, overrides]) {
+      for (final entry in source.entries) {
+        _budget.visit(depth);
+        options[entry.key] = entry.value;
+      }
+    }
+    return Map.unmodifiable(options);
   }
 
   Object _literalValue(FtlExpression expr) {
@@ -672,53 +882,52 @@ class _FluentResolver {
     return '';
   }
 
-  /// Numeric value of a selector that is a variable or `NUMBER()` call, if any.
-  num? _selectorNumber(FtlExpression selector) {
-    if (selector is FtlVariableReference) {
-      return _numericValue(args[selector.id]);
+  /// Select on typed identity, never on rendered/rounded/localized text.
+  Object? _selectorValue(FtlExpression selector, {required int depth}) {
+    if (selector is FtlTermReference && selector.attribute != null) {
+      return _resolveTerm(selector, depth: depth);
     }
-    if (selector is FtlFunctionReference &&
-        selector.name == 'NUMBER' &&
-        selector.positional.isNotEmpty) {
-      return _numericValue(_rawValue(selector.positional.first));
-    }
-    return null;
+    final raw = _rawValue(selector, depth: depth);
+    if (raw is _ResolvedNumber) return raw.value;
+    return raw is num || raw is String ? raw : null;
   }
 
   String _resolveSelect(FtlSelectExpression expr, {required int depth}) {
-    final selectorValue = resolveExpression(expr.selector, depth: depth);
-    final cleanSelector =
-        selectorValue.replaceAll(bidiFsi, '').replaceAll(bidiPdi, '').trim();
-
-    // 1. Exact match on non-numeric keys (case-sensitive, as the spec requires).
-    for (final variant in expr.variants) {
-      if (variant.key == cleanSelector) {
-        return resolvePattern(variant.value, depth: depth + 1);
-      }
-    }
-
-    // Plural selection uses the raw number, not the display string: `1,234`
-    // from NUMBER() must still select by its numeric value.
-    final numericValue = _selectorNumber(expr.selector) ?? num.tryParse(cleanSelector);
-    if (numericValue != null) {
-      // 2a. Exact numeric key (e.g. [0]) takes precedence over plural categories.
+    final selector = _selectorValue(expr.selector, depth: depth);
+    if (selector is String) {
+      _budget.useCharacters(selector.length);
       for (final variant in expr.variants) {
-        final variantNum = num.tryParse(variant.key);
-        if (variantNum != null && variantNum == numericValue) {
+        _budget.visit(depth);
+        _budget.useCharacters(variant.key.length);
+        // Numeric keys are number literals, not string identifiers. Whitespace
+        // and BiDi characters in a string selector are meaningful data.
+        if (!_numericVariantPattern.hasMatch(variant.key) && variant.key == selector) {
           return resolvePattern(variant.value, depth: depth + 1);
         }
       }
-
-      // 2b. CLDR plural category (e.g. [one], [few], [many]).
-      final category = resolveCldrPluralCategory(bundle.locale, numericValue);
+    } else if (selector is num) {
+      // Package policy: exact numeric variants precede plural categories,
+      // independently of their order in the source resource.
       for (final variant in expr.variants) {
+        _budget.visit(depth);
+        _budget.useCharacters(variant.key.length);
+        if (!_numericVariantPattern.hasMatch(variant.key)) continue;
+        final variantNum = num.tryParse(variant.key);
+        if (variantNum != null && variantNum == selector) {
+          return resolvePattern(variant.value, depth: depth + 1);
+        }
+      }
+      final category = resolveCldrPluralCategory(bundle.locale, selector);
+      for (final variant in expr.variants) {
+        _budget.visit(depth);
+        _budget.useCharacters(variant.key.length);
         if (variant.key == category) {
           return resolvePattern(variant.value, depth: depth + 1);
         }
       }
     }
-
-    // 3. Default variant.
+    // Invalid/missing selectors do not borrow a fallback display string.
+    if (expr.variants.isEmpty) return '{???}';
     return resolvePattern(expr.defaultVariant.value, depth: depth + 1);
   }
 }

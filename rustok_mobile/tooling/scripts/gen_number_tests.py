@@ -26,8 +26,10 @@ Node has to be on `PATH` (only the generator needs it, never the package).
 from __future__ import annotations
 
 import argparse
+import unicodedata
 import collections
 import json
+import math
 import os
 import subprocess
 import sys
@@ -178,46 +180,81 @@ def localize_digits(text: str, symbols: dict) -> str:
 
 
 def pattern_fraction_digits(pattern: str) -> tuple[int, int]:
-    positive = pattern.split(';')[0]
-    if '.' not in positive:
-        return (0, 0)
+    quoted = started = fraction = False
     minimum = maximum = 0
-    for char in positive.split('.')[1]:
-        if char == '0':
-            minimum += 1
-            maximum += 1
-        elif char == '#':
-            maximum += 1
-        else:
-            break
-    return (minimum, maximum)
+    i = 0
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == "'":
+            if started:
+                break
+            if i + 1 < len(pattern) and pattern[i + 1] == "'":
+                i += 2
+                continue
+            quoted = not quoted
+        elif not quoted:
+            if ch == ';':
+                break
+            if not started:
+                started = ch in '0#'
+            elif ch == '.':
+                fraction = True
+            elif ch in '0#':
+                if fraction:
+                    maximum += 1
+                    minimum += ch == '0'
+            elif ch != ',':
+                break
+        i += 1
+    return minimum, maximum
 
 
 def pattern_affixes(pattern, symbols, negative, placeholder='', replacement=''):
-    positive, _, negative_part = pattern.partition(';')
-    chosen = negative_part if (negative and negative_part) else positive
-    explicit_sign = negative and bool(negative_part)
-    index = next((i for i, ch in enumerate(chosen) if ch in '0#'), None)
+    parts = [[]]
+    quoted = False
+    i = 0
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == "'":
+            if i + 1 < len(pattern) and pattern[i + 1] == "'":
+                parts[-1].append(("'", True))
+                i += 1
+            else:
+                quoted = not quoted
+        elif ch == ';' and not quoted:
+            parts.append([])
+        else:
+            parts[-1].append((ch, quoted))
+        i += 1
+    explicit_sign = negative and len(parts) > 1 and bool(parts[1])
+    chosen = parts[1] if explicit_sign else parts[0]
+    index = next((i for i, (ch, quoted) in enumerate(chosen)
+                  if not quoted and ch in '0#'), None)
     if index is None:
-        return '', '', explicit_sign
+        return '', '', False
+    end = index
+    while end < len(chosen) and not chosen[end][1] and chosen[end][0] in '0#,.':
+        end += 1
 
-    def clean(text):
+    def literal(tokens):
         out = []
-        for ch in text:
-            if ch in '0#,.':  # pattern digits and separators
-                continue
-            if ch == '-':
+        for ch, quoted in tokens:
+            if quoted:
+                out.append(ch)
+            elif ch == '-':
                 out.append(symbols['minusSign'])
+            elif ch == '%':
+                out.append(symbols['percentSign'])
             elif placeholder and ch == placeholder:
                 out.append(replacement)
             else:
                 out.append(ch)
         return ''.join(out)
 
-    return clean(chosen[:index]), clean(chosen[index:]), explicit_sign
+    return literal(chosen[:index]), literal(chosen[end:]), explicit_sign
 
 
-def shortest_decimal_parts(value: float) -> tuple[str, str]:
+def shortest_decimal_parts(value: int | float) -> tuple[str, str]:
     text = repr(abs(value))
     if 'e' in text or 'E' in text:
         mantissa, _, exponent = text.partition('e')
@@ -275,6 +312,7 @@ def format_number(
     use_grouping=True,
     symbols,
     pattern=None,
+    percent=False,
 ):
     minimum = clamp_digits(minimum_fraction_digits)
     maximum = clamp_digits(maximum_fraction_digits)
@@ -282,10 +320,15 @@ def format_number(
         maximum = minimum
 
     if isinstance(value, float) and (value != value or value in (float('inf'), float('-inf'))):
-        return symbols['nan'] if value != value else symbols['minusSign'] + symbols['infinity']
+        text = symbols['nan'] if value != value else symbols['infinity']
+        return apply_number_pattern(text, symbols, pattern, value < 0)
 
     negative = value < 0 or (isinstance(value, float) and value == 0 and str(value).startswith('-'))
-    integer_part, fraction_part = shortest_decimal_parts(float(value))
+    integer_part, fraction_part = shortest_decimal_parts(value)
+    if percent:
+        shifted = fraction_part.ljust(2, '0')
+        integer_part = (integer_part + shifted[:2]).lstrip('0') or '0'
+        fraction_part = shifted[2:]
     fraction_part, carry = round_fraction(fraction_part, maximum)
     if carry:
         integer_part = increment_digits(integer_part)
@@ -298,7 +341,10 @@ def format_number(
     body = group_digits(integer_part, symbols) if use_grouping else integer_part
     if fraction_part:
         body += symbols['decimal'] + fraction_part
-    text = localize_digits(body, symbols)
+    return apply_number_pattern(localize_digits(body, symbols), symbols, pattern, negative)
+
+
+def apply_number_pattern(text, symbols, pattern, negative):
     if pattern is None:
         return (symbols['minusSign'] if negative else '') + text
     prefix, suffix, explicit = pattern_affixes(pattern, symbols, negative)
@@ -308,11 +354,13 @@ def format_number(
 
 def format_currency(value, code, locale, table, display='symbol',
                     minimum_fraction_digits=None, maximum_fraction_digits=None,
-                    use_grouping=True):
+                    use_grouping=True, minimum_integer_digits=1):
     code = code.upper()
     symbols = symbols_for(table, locale)
     defaults = CURRENCY_DIGITS.get(code, 2)
-    minimum = defaults if minimum_fraction_digits is None else minimum_fraction_digits
+    minimum = minimum_fraction_digits
+    if minimum is None:
+        minimum = defaults if maximum_fraction_digits is None else min(defaults, maximum_fraction_digits)
     maximum = (defaults if defaults > minimum else minimum) \
         if maximum_fraction_digits is None else maximum_fraction_digits
     if maximum < minimum:
@@ -322,17 +370,16 @@ def format_currency(value, code, locale, table, display='symbol',
     negative = value < 0 or (isinstance(value, float) and value == 0 and str(value).startswith('-'))
     prefix, suffix, explicit = pattern_affixes(
         symbols['currencyPattern'], symbols, negative, placeholder='\u00a4', replacement=currency_text)
-    if currency_text.isascii() and currency_text.isalpha():
-        # CLDR currencySpacing: an alphabetic symbol or code next to the amount
-        # is separated from it by a no-break space.
-        if prefix.endswith(currency_text):
+    if math.isfinite(value) and currency_text:
+        # CLDR currencySpacing: a non-symbol boundary next to a finite amount.
+        if prefix.endswith(currency_text) and not unicodedata.category(currency_text[-1]).startswith('S'):
             prefix += '\u00a0'
-        if suffix.startswith(currency_text):
+        if suffix.startswith(currency_text) and not unicodedata.category(currency_text[0]).startswith('S'):
             suffix = '\u00a0' + suffix
     sign = '' if (explicit or not negative) else symbols['minusSign']
     body = format_number(abs(value), minimum_fraction_digits=minimum,
                          maximum_fraction_digits=maximum, use_grouping=use_grouping,
-                         symbols=symbols)
+                         symbols=symbols, minimum_integer_digits=minimum_integer_digits)
     return sign + prefix + body + suffix
 
 
@@ -342,13 +389,14 @@ def render_number(value, options, locale, table):
         symbols = symbols_for(table, locale)
         minimum, maximum = pattern_fraction_digits(symbols['percentPattern'])
         return format_number(
-            value * 100,
+            value,
+            percent=True,
             minimum_fraction_digits=options.get('minimumFractionDigits', minimum),
             maximum_fraction_digits=options.get('maximumFractionDigits', maximum),
             minimum_integer_digits=options.get('minimumIntegerDigits', 1),
             use_grouping=options.get('useGrouping', True),
             symbols=symbols,
-            pattern=symbols['percentPattern'].replace('%', symbols['percentSign']),
+            pattern=symbols['percentPattern'],
         )
     symbols = symbols_for(table, locale)
     return format_number(

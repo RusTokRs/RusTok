@@ -392,6 +392,56 @@ void main() {
     });
   });
 
+  group('Typegen resolver argument contract', () {
+    test('direct generator validates class names before emitting source', () {
+      final bundle = FluentBundle(locale: 'en')..addSource('hello = Hi');
+      for (final name in ['lowerCase', 'Bad-Name', 'String', 'UiMessages']) {
+        final errors = <String>[];
+        expect(generateTypedMessages(bundle, className: name, writeErr: errors.add),
+            isNull, reason: name);
+        expect(errors, hasLength(1), reason: name);
+      }
+    });
+
+    test('CLI rejects String without overwriting an existing output', () {
+      writeFile('en.ftl', 'hello = Hi');
+      writeFile('keep.dart', 'keep this file');
+      final result = _run([
+        'typegen', '--input', path('en.ftl'), '--output', path('keep.dart'),
+        '--className', 'String',
+      ]);
+      expect(result.code, exitFailure);
+      expect(result.stderrText, contains('already the name of a type'));
+      expect(File(path('keep.dart')).readAsStringSync(), 'keep this file');
+    });
+
+    test('ignored term positional arguments do not become required parameters', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false)..addSource(
+        '-brand = Brand\nmessage = { -brand(\$unused) }\n');
+      expect(bundle.diagnostics, isEmpty);
+      expect(bundle.format('message'), 'Brand');
+      final source = generateTypedMessages(bundle, className: 'M');
+      expect(source, isNotNull);
+      expect(source!.code, contains('String get message =>'));
+      expect(source.code, isNot(contains('required dynamic unused')));
+    });
+
+    test('only the first function argument contributes caller variables', () {
+      final bundle = FluentBundle(locale: 'en', useIsolating: false)..addSource(
+        'number = { NUMBER(\$value, \$unused) }\n'
+        'fallback = { UNKNOWN(\$text, \$ignored) }\n');
+      expect(bundle.diagnostics, isEmpty);
+      expect(bundle.format('number', args: {'value': 3}), '3');
+      expect(bundle.format('fallback', args: {'text': 'ok'}), 'ok');
+      final source = generateTypedMessages(bundle, className: 'M');
+      expect(source, isNotNull);
+      expect(source!.code, contains('number({required dynamic value})'));
+      expect(source.code, contains('fallback({required dynamic text})'));
+      expect(source.code, isNot(contains('required dynamic unused')));
+      expect(source.code, isNot(contains('required dynamic ignored')));
+    });
+  });
+
   group('argument handling', () {
     test('no arguments prints usage and returns the usage code', () {
       final result = _run([]);

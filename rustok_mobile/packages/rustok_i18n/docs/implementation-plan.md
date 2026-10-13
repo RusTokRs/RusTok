@@ -7,6 +7,8 @@
 > **Status note (audit, 0.1.0+)**: this document is the original design. Where it differs from the code, the code is authoritative:
 > - The parser is hand-written, not PetitParser; `petitparser` and `intl` are no longer dependencies.
 > - `LazyCatalog` is implemented for on-demand asynchronous loading (`loadLocale`, `loadForLocale`). Remote sources are supplied as a loader function; there is no built-in HTTP client. `AsyncRemoteCatalog` and `appLocaleProvider` are **not implemented**; the Riverpod locale provider is `currentLocaleProvider`.
+> - Runtime safety follow-up: bounded parser nesting and shared resolver work budgets are defined by the [core safety contract](../README.md#resource-and-formatting-safety); pathological evaluation returns the existing `{???}` marker. No complete Fluent/CLDR conformance claim follows from the audit.
+> - Flutter lifecycle/scoping follow-up (2026-10-13): see [wrapper audit and current contract](../../rustok_flutter_i18n/README.md#engineering-audit--2026-10-13). Catalog preparation is owned by `MessageCatalog.loadForLocale` and composes recursively. `trProvider` and readiness auto-dispose.
 > - Riverpod state is a `StateNotifier`, not an `AsyncNotifier`. Locale changes are validated. `localeReadyProvider` and `RiverpodFluentScope` load and gate a lazy catalog.
 > - `DATETIME()` is implemented for a subset of locales. `NUMBER()` supports grouping and percent style; `CURRENCY()` is implemented as `NUMBER(..., style: "currency")` for common codes.
 > - Flutter widget and Riverpod tests live in `rustok_flutter_i18n/test`; CI runs them in `.github/workflows/rustok-i18n.yml`.

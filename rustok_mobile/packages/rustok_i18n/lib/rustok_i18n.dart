@@ -9,6 +9,7 @@ export 'src/format/datetime_format.dart';
 export 'src/resolver/cldr_plurals.dart';
 export 'src/resolver/fluent_resolver.dart';
 export 'src/locale/locale_tag.dart';
+export 'src/locale/likely_subtags.dart';
 export 'src/locale/fallback_chain.dart';
 export 'src/locale/text_direction.dart';
 export 'src/accept_language/accept_language_parser.dart';

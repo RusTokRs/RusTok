@@ -169,3 +169,8 @@ modules.local.toml
 !.athanor/adapters/
 .athanor/adapters/*
 !.athanor/adapters/*.json
+
+# Dart/Flutter machine-specific package resolution and compiled tool caches
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies

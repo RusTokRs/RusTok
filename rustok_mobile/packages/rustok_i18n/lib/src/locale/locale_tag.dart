@@ -1,6 +1,9 @@
-import 'text_direction.dart';
+import 'dart:convert';
 
-/// Maximum allowable length for raw locale tag inputs (matches RusToK DoS boundary).
+import 'text_direction.dart';
+import 'likely_subtags.dart';
+
+/// Maximum raw locale tag length in UTF-8 bytes, before trimming/normalization.
 const int maxLocaleTagLength = 64;
 
 /// BCP-47 variant subtag: 5-8 alphanumerics, or a digit followed by 3 alphanumerics.
@@ -60,7 +63,9 @@ class LocaleTag {
 
   /// Returns text directionality (LTR or RTL) for this locale.
   LocaleTextDirection get direction =>
-      detectTextDirection(language: language, script: script);
+      detectTextDirection(language: language,
+          script: script == null || script == 'Zzzz'
+              ? maximizeLocale(this)?.script : script);
 
   bool get isRtl => direction.isRtl;
 
@@ -69,7 +74,9 @@ class LocaleTag {
   /// Returns `null` if the input is empty, exceeds [maxLocaleTagLength], or is
   /// malformed (invalid language, script, region or variant subtag).
   static LocaleTag? tryParse(String? raw) {
-    if (raw == null || raw.length > maxLocaleTagLength) return null;
+    if (raw == null ||
+        raw.length > maxLocaleTagLength ||
+        utf8.encode(raw).length > maxLocaleTagLength) return null;
     var trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
 
@@ -97,7 +104,10 @@ class LocaleTag {
     }
 
     final segments = trimmed.split('-');
-    if (segments.isEmpty || segments.first.isEmpty) return null;
+    if (segments.any((segment) =>
+        !RegExp(r'^[a-zA-Z0-9]{1,8}$').hasMatch(segment))) {
+      return null;
+    }
 
     var lang = segments.first.toLowerCase();
     // Normalize legacy Android/Java ISO 639-1 codes to canonical BCP-47
@@ -137,24 +147,20 @@ class LocaleTag {
     // Process remaining segments (variants and extension singletons)
     while (index < segments.length) {
       final seg = segments[index];
-      if (seg.isEmpty) {
-        index++;
-        continue;
-      }
-
-      // Extension singleton (single alphanumeric char, e.g. 'u', 't', 'x')
+      // Private use consumes the entire remainder, including one-character
+      // subtags. Other extensions require 2-8 character subtags and unique keys.
       if (seg.length == 1) {
         final singleton = seg.toLowerCase();
+        if (extensions.containsKey(singleton)) return null;
         final extSubtags = <String>[];
         index++;
-        while (index < segments.length && segments[index].length > 1) {
+        while (index < segments.length &&
+            (singleton == 'x' || segments[index].length > 1)) {
           extSubtags.add(segments[index].toLowerCase());
           index++;
         }
-        // A bare singleton without subtags is dropped: it cannot be serialized.
-        if (extSubtags.isNotEmpty) {
-          extensions[singleton] = extSubtags.join('-');
-        }
+        if (extSubtags.isEmpty) return null;
+        extensions[singleton] = extSubtags.join('-');
         continue;
       }
 
@@ -163,6 +169,7 @@ class LocaleTag {
       if (!_variantPattern.hasMatch(lower) && !_digitVariantPattern.hasMatch(lower)) {
         return null;
       }
+      if (variants.contains(lower)) return null;
       variants.add(lower);
       index++;
     }
@@ -193,8 +200,17 @@ class LocaleTag {
     for (final variant in variants) {
       buffer.write('-$variant');
     }
-    for (final entry in extensions.entries) {
-      buffer.write('-${entry.key}-${entry.value}');
+    // Extension order has no semantic significance. Serialize singleton blocks
+    // deterministically, with private use last so it cannot swallow extensions.
+    final singletons = extensions.keys.toList()
+      ..sort((a, b) {
+        if (a == b) return 0;
+        if (a == 'x') return 1;
+        if (b == 'x') return -1;
+        return a.compareTo(b);
+      });
+    for (final singleton in singletons) {
+      buffer.write('-$singleton-${extensions[singleton]}');
     }
     return buffer.toString();
   }
