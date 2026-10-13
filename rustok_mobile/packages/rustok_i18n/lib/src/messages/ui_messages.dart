@@ -58,6 +58,16 @@ class UiMessages {
     String? attribute,
     String? fallback,
   }) {
+    // Bound inputs before normalization/allocation. Explicit attributes are
+    // part of the lookup key too, not a way around its resource limits.
+    if (key.length > maxMessageKeyLength ||
+        (attribute != null &&
+            (attribute.isEmpty ||
+                key.length + 1 + attribute.length > maxMessageKeyLength ||
+                attribute.trim().isEmpty ||
+                attribute.contains(_controlCharPattern)))) {
+      return _missing(key, fallback);
+    }
     final trimmedKey = key.trim();
     if (trimmedKey.isEmpty ||
         trimmedKey.length > maxMessageKeyLength ||
@@ -70,19 +80,14 @@ class UiMessages {
 
     // Provenance compares canonical forms, so `ru_RU` and `ru-RU` are the same locale.
     final targetKey = _canonicalLower(targetLocale) ?? targetLocale.toLowerCase();
-    final defaultKey = _canonicalLower(defaultLocale) ?? defaultLocale.toLowerCase();
     final targetChain =
         localeFallbackChain(targetLocale).map((c) => c.toLowerCase()).toSet();
 
     for (final candidate in candidates) {
-      // Try exact key, then kebab-case, then dotted key.
+      // A literal flat key wins. Then honor dotted attribute syntax before
+      // lossy aliases, so `input.placeholder` cannot be shadowed by a separate
+      // `input-placeholder` message when the attribute exists.
       String? value = _lookup(candidate, trimmedKey, attribute, args);
-      if (value == null && kebabKey != trimmedKey) {
-        value = _lookup(candidate, kebabKey, attribute, args);
-      }
-      if (value == null && dottedKey != trimmedKey) {
-        value = _lookup(candidate, dottedKey, attribute, args);
-      }
 
       // Dotted attribute syntax (e.g. 'login-input.placeholder') when no attribute was given.
       if (value == null && attribute == null && trimmedKey.contains('.')) {
@@ -98,12 +103,19 @@ class UiMessages {
         }
       }
 
+      if (value == null && kebabKey != trimmedKey) {
+        value = _lookup(candidate, kebabKey, attribute, args);
+      }
+      if (value == null && dottedKey != trimmedKey) {
+        value = _lookup(candidate, dottedKey, attribute, args);
+      }
+
       if (value != null) {
         final candidateKey = _canonicalLower(candidate) ?? candidate.toLowerCase();
         final ResolutionProvenance provenance;
         if (candidateKey == targetKey) {
           provenance = ResolutionProvenance.exactMatch;
-        } else if (candidateKey == defaultKey || !targetChain.contains(candidateKey)) {
+        } else if (!targetChain.contains(candidateKey)) {
           // Came from the default or platform chain, not from the requested locale.
           provenance = ResolutionProvenance.defaultLocale;
         } else {
@@ -123,7 +135,7 @@ class UiMessages {
   }
 
   /// Looks up one key (and optional attribute) in one candidate locale.
-  /// An attribute given in kebab-case also matches an underscore or dotted spelling.
+  /// An underscore/dotted attribute query also tries its kebab-case spelling.
   String? _lookup(
     String candidate,
     String key,

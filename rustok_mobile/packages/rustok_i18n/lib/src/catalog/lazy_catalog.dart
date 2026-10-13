@@ -36,7 +36,11 @@ class LazyCatalog extends MessageCatalog {
 
   /// Loads [locale] once. Concurrent calls for the same locale share one request.
   Future<void> loadLocale(String locale) async {
-    final canonical = LocaleTag.tryParse(locale)?.toCatalogTag() ?? locale.trim();
+    final tag = LocaleTag.tryParse(locale);
+    if (tag == null) {
+      throw ArgumentError.value(locale, 'locale', 'Invalid locale tag');
+    }
+    final canonical = tag.toCatalogTag();
     final key = catalogLocaleKey(canonical);
     if (_bundles.containsKey(key)) return;
 
@@ -64,19 +68,32 @@ class LazyCatalog extends MessageCatalog {
     }
   }
 
-  /// Loads every locale that [locale] can fall back to, in priority order.
-  Future<void> loadForLocale(
+  /// Loads every fallback candidate concurrently, waiting for all to settle.
+  @override
+  FutureOr<void> loadForLocale(
     String locale, {
     String defaultLocale = 'en',
     String platformFallback = 'en',
-  }) async {
+  }) {
+    for (final entry in {
+      'locale': locale,
+      'defaultLocale': defaultLocale,
+      'platformFallback': platformFallback,
+    }.entries) {
+      if (LocaleTag.tryParse(entry.value) == null) {
+        return Future<void>.error(
+          ArgumentError.value(entry.value, entry.key, 'Invalid locale tag'),
+        );
+      }
+    }
     final candidates = localeCandidates(
       locale: locale,
       defaultLocale: defaultLocale,
       platformFallback: platformFallback,
     );
-    // Future.wait yields a List; the method itself completes with void.
-    await Future.wait(candidates.map(loadLocale));
+    final missing = candidates.where((candidate) => !isLoaded(candidate)).toList();
+    if (missing.isEmpty) return;
+    return Future.wait(missing.map(loadLocale)).then<void>((_) {});
   }
 
   /// Diagnostics for [locale]'s source, empty if none or not loaded.

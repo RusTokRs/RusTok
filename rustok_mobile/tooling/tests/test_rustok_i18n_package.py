@@ -92,6 +92,10 @@ class RustokI18nPackageTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("maxAcceptLanguageLength = 4096", accept_lang)
         self.assertIn("maxAcceptLanguageRanges = 64", accept_lang)
+        self.assertIn("parseAcceptLanguageStrict", accept_lang)
+        self.assertIn("utf8.encode(header).length", accept_lang)
+        self.assertIn("rawRanges.length > maxAcceptLanguageRanges", accept_lang)
+        self.assertIn("AcceptLanguageLimitException", accept_lang)
 
     def test_ast_covers_all_fluent_grammar_constructs(self):
         ast = (self.i18n_pkg / "lib/src/ast/ast_nodes.dart").read_text(encoding="utf-8")
@@ -137,6 +141,10 @@ class RustokI18nPackageTests(unittest.TestCase):
         self.assertIn("bidiPdi = '\\u2069'", resolver)
         self.assertIn("useIsolating", resolver)
         self.assertIn("_maxDepth = 100", resolver)
+        self.assertIn("maxFluentResolutionSteps = 10000", resolver)
+        self.assertIn("maxFluentResolutionCharacters = 100000", resolver)
+        self.assertIn("budget: _budget", resolver)
+        self.assertIn("on _ResolutionLimitException", resolver)
         self.assertIn("formatTerm", resolver)
 
     def test_catalog_architecture_supports_multiple_backends(self):
@@ -224,12 +232,12 @@ class RustokI18nPackageTests(unittest.TestCase):
         self.assertIn("Invalid escape sequence in string literal", parser_code)
         self.assertIn("_isHexDigit", parser_code)
 
-    def test_resolver_strips_bidi_and_has_cycle_guard(self):
+    def test_resolver_keeps_typed_selectors_and_has_cycle_guard(self):
         resolver_code = (
             self.i18n_pkg / "lib/src/resolver/fluent_resolver.dart"
         ).read_text(encoding="utf-8")
-        self.assertIn("cleanSelector", resolver_code)
-        self.assertIn("variantNum == numericValue", resolver_code)
+        self.assertIn("_selectorValue", resolver_code)
+        self.assertIn("variantNum == selector", resolver_code)
         self.assertIn("_activeEntries", resolver_code)
         self.assertIn("_activeEntries.contains(entryKey)", resolver_code)
 

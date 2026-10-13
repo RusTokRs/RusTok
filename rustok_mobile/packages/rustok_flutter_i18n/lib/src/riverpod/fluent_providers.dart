@@ -37,7 +37,7 @@ class LocaleNotifier extends StateNotifier<String> {
 final currentLocaleProvider =
     StateNotifierProvider<LocaleNotifier, String>((ref) {
   return LocaleNotifier(ref.read(defaultLocaleProvider));
-});
+}, dependencies: [defaultLocaleProvider]);
 
 /// Riverpod provider for the global [MessageCatalog].
 ///
@@ -48,13 +48,15 @@ final messageCatalogProvider = Provider<MessageCatalog>((ref) {
     'messageCatalogProvider must be overridden with a MessageCatalog '
     'in ProviderScope.overrides at app bootstrap.',
   );
-});
+}, dependencies: const []);
 
 /// Riverpod provider for the default fallback locale (defaults to `'en'`).
-final defaultLocaleProvider = Provider<String>((ref) => 'en');
+final defaultLocaleProvider =
+    Provider<String>((ref) => 'en', dependencies: const []);
 
 /// Riverpod provider for the platform fallback locale (defaults to `'en'`).
-final platformFallbackProvider = Provider<String>((ref) => 'en');
+final platformFallbackProvider =
+    Provider<String>((ref) => 'en', dependencies: const []);
 
 /// Riverpod provider for the root [UiMessages] engine.
 final uiMessagesProvider = Provider<UiMessages>((ref) {
@@ -63,10 +65,14 @@ final uiMessagesProvider = Provider<UiMessages>((ref) {
   final platformFallback = ref.watch(platformFallbackProvider);
   return UiMessages(
     catalog: catalog,
-    defaultLocale: defaultLocale,
-    platformFallback: platformFallback,
+    defaultLocale: _normalizeLocaleOrThrow(defaultLocale),
+    platformFallback: _normalizeLocaleOrThrow(platformFallback),
   );
-});
+}, dependencies: [
+  messageCatalogProvider,
+  defaultLocaleProvider,
+  platformFallbackProvider,
+]);
 
 /// Reactive translation function bound to the active locale.
 ///
@@ -75,11 +81,13 @@ final uiMessagesProvider = Provider<UiMessages>((ref) {
 /// final t = ref.watch(trProvider);
 /// return Text(t('auth.login_title'));
 /// ```
-final trProvider = Provider<
+final trProvider = Provider.autoDispose<
     String Function(String, {Map<String, dynamic>? args, String? fallback})>(
   (ref) {
     final messages = ref.watch(uiMessagesProvider);
     final locale = ref.watch(currentLocaleProvider);
+    // Loading must also work for consumers without a RiverpodFluentScope.
+    ref.watch(localeReadyProvider(locale));
     return (key, {args, fallback}) => messages.t(
           key,
           locale: locale,
@@ -87,28 +95,26 @@ final trProvider = Provider<
           fallback: fallback,
         );
   },
+  dependencies: [uiMessagesProvider, currentLocaleProvider, localeReadyProvider],
 );
 
 /// Reactive provider indicating whether the active locale is right-to-left.
 final isRtlLocaleProvider = Provider<bool>((ref) {
   final locale = ref.watch(currentLocaleProvider);
   return LocaleTag.tryParse(locale)?.isRtl ?? false;
-});
+}, dependencies: [currentLocaleProvider]);
 
-/// Completes when the messages for [locale] are available.
+/// Completes when the messages for [locale] and its fallback chain are available.
 ///
-/// For a [LazyCatalog] this loads the locale and its fallback chain. For other
-/// catalogs it completes immediately. Watch it with `ref.watch(localeReadyProvider(locale))`.
+/// Loads lazy catalogs, including those nested in composite catalogs. The family
+/// is auto-disposed when no longer observed; catalog data/in-flight work stays
+/// cached by the catalog. Failures can be retried by invalidating this provider.
 final localeReadyProvider =
-    FutureProvider.family<void, String>((ref, locale) async {
-  final catalog = ref.watch(messageCatalogProvider);
-  final defaultLocale = ref.watch(defaultLocaleProvider);
-  final platformFallback = ref.watch(platformFallbackProvider);
-  if (catalog is LazyCatalog) {
-    await catalog.loadForLocale(
-      locale,
-      defaultLocale: defaultLocale,
-      platformFallback: platformFallback,
-    );
-  }
-});
+    FutureProvider.autoDispose.family<void, String>((ref, locale) {
+  final messages = ref.watch(uiMessagesProvider);
+  return messages.catalog.loadForLocale(
+    _normalizeLocaleOrThrow(locale),
+    defaultLocale: messages.defaultLocale,
+    platformFallback: messages.platformFallback,
+  );
+}, dependencies: [uiMessagesProvider]);

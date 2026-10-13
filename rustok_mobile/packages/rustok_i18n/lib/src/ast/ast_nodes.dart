@@ -5,10 +5,11 @@ sealed class FtlNode {
 
 /// A parsed Fluent Translation List (.ftl) resource.
 class FtlResource extends FtlNode {
-  FtlResource({required this.entries}) {
+  FtlResource({required List<FtlEntry> entries})
+      : entries = List.unmodifiable(entries) {
     final msgs = <String, FtlMessage>{};
     final trms = <String, FtlTerm>{};
-    for (final entry in entries) {
+    for (final entry in this.entries) {
       // First definition wins, matching Fluent's duplicate-ID rule.
       if (entry is FtlMessage) {
         msgs.putIfAbsent(entry.id, () => entry);

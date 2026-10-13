@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:collection';
+
 import '../locale/locale_tag.dart';
 import '../resolver/fluent_resolver.dart';
 
@@ -34,6 +37,16 @@ String _substituteArgs(String template, Map<String, dynamic>? args) {
 /// Abstract contract for all pluggable message catalogs.
 abstract class MessageCatalog {
   const MessageCatalog();
+
+  /// Prepares [locale] and its fallback chain for synchronous lookups.
+  /// Eager catalogs need no preparation. Asynchronous adapters override this
+  /// method; composites forward it to all children and propagate load errors.
+  /// Returns synchronously when ready, avoiding a spurious UI loading state.
+  FutureOr<void> loadForLocale(
+    String locale, {
+    String defaultLocale = 'en',
+    String platformFallback = 'en',
+  }) {}
 
   /// Checks if this catalog has a message for [locale] and [id].
   bool hasMessage(String locale, String id);
@@ -162,23 +175,45 @@ class JsonCatalog extends MessageCatalog {
   final Map<String, Map<String, String>> _flattened = {};
   final Map<String, String> _localeNames = {};
 
+  /// Atomically merges a registration. Cycles, nesting deeper than 100 maps,
+  /// and ambiguous flattened keys fail without changing the previous catalog.
   void registerJson(String locale, Map<dynamic, dynamic> json) {
     final key = catalogLocaleKey(locale);
+    final flattened = <String, String>{};
+    _flatten('', json, flattened, HashSet<Map>.identity(), 0);
     _localeNames.putIfAbsent(key, () => _canonicalLocaleName(locale));
-    final target = _flattened.putIfAbsent(key, () => {});
-    _flatten('', json, target);
+    _flattened.putIfAbsent(key, () => {}).addAll(flattened);
   }
 
-  void _flatten(String prefix, Map<dynamic, dynamic> map, Map<String, String> out) {
-    for (final entry in map.entries) {
-      final key = prefix.isEmpty ? '${entry.key}' : '$prefix.${entry.key}';
-      final value = entry.value;
-      if (value == null) continue;
-      if (value is Map) {
-        _flatten(key, value, out);
-      } else {
-        out[key] = '$value';
+  void _flatten(
+    String prefix,
+    Map<dynamic, dynamic> map,
+    Map<String, String> out,
+    Set<Map> active,
+    int depth,
+  ) {
+    if (depth >= 100) {
+      throw const FormatException('JSON catalog nesting exceeds 100 maps');
+    }
+    if (!active.add(map)) {
+      throw const FormatException('JSON catalog contains a cyclic map');
+    }
+    try {
+      for (final entry in map.entries) {
+        final key = prefix.isEmpty ? '${entry.key}' : '$prefix.${entry.key}';
+        final value = entry.value;
+        if (value == null) continue;
+        if (value is Map) {
+          _flatten(key, value, out, active, depth + 1);
+        } else {
+          if (out.containsKey(key)) {
+            throw FormatException('Duplicate flattened JSON catalog key: $key');
+          }
+          out[key] = '$value';
+        }
       }
+    } finally {
+      active.remove(map);
     }
   }
 
@@ -207,9 +242,36 @@ class JsonCatalog extends MessageCatalog {
 
 /// Composite catalog that queries multiple catalogs in priority order.
 class CompositeCatalog extends MessageCatalog {
-  CompositeCatalog(this.catalogs);
+  CompositeCatalog(List<MessageCatalog> catalogs)
+      : catalogs = List.unmodifiable(catalogs);
 
+  /// Immutable priority order, so loading and lookup see the same children.
   final List<MessageCatalog> catalogs;
+
+  @override
+  FutureOr<void> loadForLocale(
+    String locale, {
+    String defaultLocale = 'en',
+    String platformFallback = 'en',
+  }) {
+    final pending = <Future<void>>[];
+    for (final catalog in catalogs) {
+      try {
+        final result = catalog.loadForLocale(
+          locale,
+          defaultLocale: defaultLocale,
+          platformFallback: platformFallback,
+        );
+        if (result is Future<void>) pending.add(result);
+      } catch (error, stack) {
+        // Still prepare subsequent children if an external adapter throws
+        // before returning a Future. Wait for all children before reporting it.
+        pending.add(Future<void>.error(error, stack));
+      }
+    }
+    if (pending.isEmpty) return;
+    return Future.wait(pending).then<void>((_) {});
+  }
 
   @override
   bool hasMessage(String locale, String id) {
