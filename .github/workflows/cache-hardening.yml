@@ -165,6 +165,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+
 jobs:
   compiled-contract:
     name: Compiled cache contract

@@ -277,33 +277,49 @@ def render_ledger_markdown(ledger: dict) -> str:
     pct = int((done_comps / total_comps * 100)) if total_comps > 0 else 0
     total_loc = sum(c.get("loc", 0) for c in comps.values())
 
-    lines = [
-        "---",
-        "id: doc://docs/standards/continuous-review-ledger.md",
-        "kind: project_overview",
-        "language: markdown",
-        "last_verified_snapshot: snap_jsonl_00000021",
-        "source_language: markdown",
-        "status: active",
-        "---",
-        "",
-        "# Continuous Code Review & Remediation Ledger (ACRE)",
-        "",
-        f"Tracking persistent progress across cyclical review rounds for all modules in RusToK.",
-        "",
-        "## Current Cycle Status",
-        f"- **Active Round:** Round {current_round}",
-        f"- **Cycle Started:** `{started_at}`",
-        f"- **Progress:** `{done_comps} / {total_comps}` components audited (**{pct}%**)",
-        f"- **Total Workspace Codebase:** `{total_loc:,}` LOC across `{total_comps}` modules/apps",
-        "",
-        "---",
-        "",
-        "## Components Review Status",
-        "",
-        "| Status | Component | Category | Files | LOC | Last Audited | Notes |",
-        "|:---:|---|---|---:|---:|---|---|",
-    ]
+    preamble = []
+    if LEDGER_DOC_PATH.exists():
+        existing_text = LEDGER_DOC_PATH.read_text(encoding="utf-8", errors="replace")
+        marker = "## Components Review Status"
+        if marker in existing_text:
+            preamble = existing_text.split(marker)[0].rstrip().splitlines()
+
+    if preamble:
+        lines = preamble + [
+            "",
+            "## Components Review Status",
+            "",
+            "| Status | Component | Category | Files | LOC | Last Audited | Notes |",
+            "|:---:|---|---|---:|---:|---|---|",
+        ]
+    else:
+        lines = [
+            "---",
+            "id: doc://docs/standards/continuous-review-ledger.md",
+            "kind: project_overview",
+            "language: markdown",
+            "last_verified_snapshot: snap_jsonl_00000021",
+            "source_language: markdown",
+            "status: active",
+            "---",
+            "",
+            "# Continuous Code Review & Remediation Ledger (ACRE)",
+            "",
+            f"Tracking persistent progress across cyclical review rounds for all modules in RusToK.",
+            "",
+            "## Current Cycle Status",
+            f"- **Active Round:** Round {current_round}",
+            f"- **Cycle Started:** `{started_at}`",
+            f"- **Progress:** `{done_comps} / {total_comps}` components audited (**{pct}%**)",
+            f"- **Total Workspace Codebase:** `{total_loc:,}` LOC across `{total_comps}` modules/apps",
+            "",
+            "---",
+            "",
+            "## Components Review Status",
+            "",
+            "| Status | Component | Category | Files | LOC | Last Audited | Notes |",
+            "|:---:|---|---|---:|---:|---|---|",
+        ]
 
     # Group components by category
     for path, c in sorted(comps.items(), key=lambda x: (x[1].get("category", ""), x[0])):

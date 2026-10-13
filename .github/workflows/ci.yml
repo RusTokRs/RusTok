@@ -27,6 +27,8 @@ env:
   NEXT_TELEMETRY_DISABLED: 1
   NEXT_PUBLIC_SENTRY_DISABLED: 1
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+  TMPDIR: /var/tmp
 
 jobs:
   fmt:
@@ -53,8 +55,6 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       - run: cargo clippy --workspace --all-targets --no-deps -- -D warnings
-        env:
-          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
 
   check:
     name: Cargo Check (${{ matrix.rust }})
@@ -73,8 +73,6 @@ jobs:
           toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       - run: cargo check --workspace --all-targets --all-features
-        env:
-          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
 
   platform-contract:
     name: Platform Contract
@@ -151,7 +149,6 @@ jobs:
       - run: cargo doc --no-deps --all-features --workspace
         env:
           RUSTDOCFLAGS: "-D warnings"
-          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
 
   udeps:
     name: Unused Dependencies
@@ -168,8 +165,6 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       - uses: taiki-e/install-action@38912a20a471c0a6a727cfdeb44492def5985f0c
       - run: cargo +nightly udeps --workspace --all-targets --all-features
-        env:
-          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
 
   coverage:
     name: Tests & Coverage (Nextest)
