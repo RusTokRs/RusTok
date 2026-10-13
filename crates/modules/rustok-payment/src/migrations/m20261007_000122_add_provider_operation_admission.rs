@@ -33,10 +33,26 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(PaymentProviderOperations::Table)
                     .add_column(
                         ColumnDef::new(PaymentProviderOperations::AdmissionRefusalCode)
                             .string_len(64),
                     )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(PaymentProviderOperations::Table)
                     .add_column(
                         ColumnDef::new(PaymentProviderOperations::AdmissionRefusedAt)
                             .timestamp_with_time_zone(),

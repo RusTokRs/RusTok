@@ -183,7 +183,7 @@ pub async fn bootstrap_app_runtime(
         use rustok_outbox::OutboxTransport;
 
         // Registry-only mode does not start the event runtime or relay, but GraphQL
-        // schema construction still requires the canonical durable write transport.
+        // schema construction still requires the canonical durable write transport and event bus.
         if runtime_ctx
             .shared_get::<std::sync::Arc<dyn rustok_core::events::EventTransport>>()
             .is_none()
@@ -192,6 +192,13 @@ pub async fn bootstrap_app_runtime(
                 runtime_ctx.db_clone(),
             ))
                 as std::sync::Arc<dyn rustok_core::events::EventTransport>);
+        }
+
+        if runtime_ctx
+            .shared_get::<rustok_outbox::TransactionalEventBus>()
+            .is_none()
+        {
+            runtime_ctx.shared_insert(transactional_event_bus_from_context(&runtime_ctx));
         }
     }
 
@@ -217,6 +224,10 @@ async fn initialize_module_work_runtime(
     registry: &ModuleRegistry,
     extensions: &ModuleRuntimeExtensions,
 ) -> Result<()> {
+    if ctx.shared_contains::<crate::services::app_lifecycle::ModuleWorkSchedulerHandle>() {
+        return Ok(());
+    }
+
     let Some(registrations) = extensions.get::<rustok_runtime::ModuleWorkRegistrations>() else {
         return Ok(());
     };
@@ -269,11 +280,12 @@ async fn initialize_module_work_runtime(
     // StopHandle::ensure uses an atomic insert-if-absent path so concurrent bootstrap
     // calls cannot create divergent shutdown channels or panic between registration and access.
     let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         scheduler
             .run_until_stopped(stop, std::time::Duration::from_secs(1))
             .await;
     });
+    ctx.shared_insert(crate::services::app_lifecycle::ModuleWorkSchedulerHandle::new(handle));
     Ok(())
 }
 
@@ -375,18 +387,35 @@ fn workflow_cron_enabled(settings: &RustokSettings) -> bool {
 
 #[cfg(feature = "mod-workflow")]
 fn init_workflow_runtime(ctx: &ServerRuntimeContext) {
+    if ctx.shared_contains::<crate::services::app_lifecycle::WorkflowCronSchedulerHandle>() {
+        return;
+    }
+
     use rustok_workflow::WorkflowCronScheduler;
     let db = ctx.db_clone();
 
     // Start the cron scheduler
     let scheduler = WorkflowCronScheduler::new(db);
-    let handle = scheduler.start();
-    tokio::spawn(async move {
-        if let Err(error) = handle.await {
-            tracing::error!("Workflow cron scheduler panicked: {:?}", error);
+    let mut cron_task = scheduler.start();
+    let mut stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
+
+    let join_handle = tokio::spawn(async move {
+        tokio::select! {
+            res = &mut cron_task => {
+                if let Err(error) = res {
+                    tracing::error!("Workflow cron scheduler panicked: {:?}", error);
+                }
+            }
+            changed = stop_rx.changed() => {
+                if changed.is_err() || *stop_rx.borrow() {
+                    tracing::info!("Workflow cron scheduler received shutdown signal, aborting task");
+                    cron_task.abort();
+                }
+            }
         }
     });
 
+    ctx.shared_insert(crate::services::app_lifecycle::WorkflowCronSchedulerHandle::new(join_handle));
     tracing::info!("Workflow runtime initialized (cron scheduler)");
 }
 
@@ -647,9 +676,12 @@ mod tests {
             db,
             settings.clone(),
         );
-        let auth_config =
-            crate::auth::auth_config_from_host_settings("test-secret".to_string(), 3_600, None)
-                .expect("test auth configuration should be valid");
+        let auth_config = crate::auth::auth_config_from_host_settings(
+            "test-secret-must-be-at-least-32-bytes-long".to_string(),
+            3_600,
+            None,
+        )
+        .expect("test auth configuration should be valid");
         let runtime = super::bootstrap_app_runtime(runtime_ctx, auth_config)
             .await
             .expect("registry-only runtime should bootstrap");

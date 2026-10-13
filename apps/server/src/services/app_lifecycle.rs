@@ -40,9 +40,11 @@ impl StopHandle {
     }
 
     pub async fn stop(&self) {
-        let _ = self.stop_tx.send(true);
-        // Yield so spawned tasks have a chance to notice the signal.
-        tokio::task::yield_now().await;
+        let was_stopping = self.stop_tx.send_replace(true);
+        if !was_stopping {
+            // Yield so spawned tasks have a chance to notice the signal.
+            tokio::task::yield_now().await;
+        }
     }
 
     pub fn is_stopping(&self) -> bool {
@@ -66,6 +68,9 @@ static OUTBOX_RETENTION_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static REMOTE_EXECUTOR_REAPER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 #[cfg(feature = "mod-seo")]
 static SEO_BULK_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
+static MODULE_WORK_SCHEDULER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
+#[cfg(feature = "mod-workflow")]
+static WORKFLOW_CRON_SCHEDULER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 const LOCAL_SQLITE_DATABASE_URI: &str = "sqlite://rustok.sqlite?mode=rwc";
 #[cfg(feature = "mod-seo")]
@@ -198,6 +203,60 @@ impl SeoBulkWorkerHandle {
     }
 }
 
+pub struct ModuleWorkSchedulerHandle {
+    instance_id: u64,
+    _handle: JoinHandle<()>,
+}
+
+impl ModuleWorkSchedulerHandle {
+    pub fn new(handle: JoinHandle<()>) -> Self {
+        Self {
+            instance_id: MODULE_WORK_SCHEDULER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
+            _handle: handle,
+        }
+    }
+
+    pub fn instance_id(&self) -> u64 {
+        self.instance_id
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self._handle.is_finished()
+    }
+
+    pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
+        self._handle.await
+    }
+}
+
+#[cfg(feature = "mod-workflow")]
+pub struct WorkflowCronSchedulerHandle {
+    instance_id: u64,
+    _handle: JoinHandle<()>,
+}
+
+#[cfg(feature = "mod-workflow")]
+impl WorkflowCronSchedulerHandle {
+    pub fn new(handle: JoinHandle<()>) -> Self {
+        Self {
+            instance_id: WORKFLOW_CRON_SCHEDULER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
+            _handle: handle,
+        }
+    }
+
+    pub fn instance_id(&self) -> u64 {
+        self.instance_id
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self._handle.is_finished()
+    }
+
+    pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
+        self._handle.await
+    }
+}
+
 /// Resolves the local development database fallback without depending on a host config type.
 pub fn resolve_boot_database_uri(
     database_url_present: bool,
@@ -229,6 +288,10 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     // Register the graceful-shutdown handle atomically so concurrent bootstrap calls cannot
     // create divergent stop channels.
     let stop_handle = StopHandle::ensure(&runtime_ctx);
+    if stop_handle.is_stopping() {
+        tracing::warn!("Shutdown already requested; skipping background worker startup");
+        return Ok(());
+    }
     let stop_rx = stop_handle.subscribe();
 
     if !runtime_ctx.shared_contains::<OutboxRelayWorkerHandle>() {
@@ -311,46 +374,91 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     let timeout_duration = Duration::from_secs(5);
 
-    if let Some(worker) = runtime_ctx.shared_take::<OutboxRelayWorkerHandle>() {
-        match tokio::time::timeout(timeout_duration, worker.join()).await {
-            Ok(Ok(())) => tracing::info!("Outbox relay worker stopped gracefully"),
-            Ok(Err(err)) => tracing::warn!(?err, "Outbox relay worker joined with error"),
-            Err(_) => tracing::warn!("Outbox relay worker shutdown timed out after 5s"),
+    let relay_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<OutboxRelayWorkerHandle>() {
+            match tokio::time::timeout(timeout_duration, worker.join()).await {
+                Ok(Ok(())) => tracing::info!("Outbox relay worker stopped gracefully"),
+                Ok(Err(err)) => tracing::warn!(?err, "Outbox relay worker joined with error"),
+                Err(_) => tracing::warn!("Outbox relay worker shutdown timed out after 5s"),
+            }
         }
-    }
+    };
 
-    if let Some(worker) = runtime_ctx.shared_take::<OutboxRetentionWorkerHandle>() {
-        match tokio::time::timeout(timeout_duration, worker.join()).await {
-            Ok(Ok(())) => tracing::info!("Outbox retention worker stopped gracefully"),
-            Ok(Err(err)) => tracing::warn!(?err, "Outbox retention worker joined with error"),
-            Err(_) => tracing::warn!("Outbox retention worker shutdown timed out after 5s"),
+    let retention_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<OutboxRetentionWorkerHandle>() {
+            match tokio::time::timeout(timeout_duration, worker.join()).await {
+                Ok(Ok(())) => tracing::info!("Outbox retention worker stopped gracefully"),
+                Ok(Err(err)) => tracing::warn!(?err, "Outbox retention worker joined with error"),
+                Err(_) => tracing::warn!("Outbox retention worker shutdown timed out after 5s"),
+            }
         }
-    }
+    };
 
-    if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
-        match tokio::time::timeout(timeout_duration, worker.join()).await {
-            Ok(Ok(())) => tracing::info!("Remote executor reaper worker stopped gracefully"),
-            Ok(Err(err)) => tracing::warn!(?err, "Remote executor reaper worker joined with error"),
-            Err(_) => tracing::warn!("Remote executor reaper worker shutdown timed out after 5s"),
+    let reaper_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
+            match tokio::time::timeout(timeout_duration, worker.join()).await {
+                Ok(Ok(())) => tracing::info!("Remote executor reaper worker stopped gracefully"),
+                Ok(Err(err)) => tracing::warn!(?err, "Remote executor reaper worker joined with error"),
+                Err(_) => tracing::warn!("Remote executor reaper worker shutdown timed out after 5s"),
+            }
         }
-    }
+    };
 
     #[cfg(feature = "mod-seo")]
-    if let Some(worker) = runtime_ctx.shared_take::<SeoBulkWorkerHandle>() {
-        match tokio::time::timeout(timeout_duration, worker.join()).await {
-            Ok(Ok(())) => tracing::info!("SEO bulk worker stopped gracefully"),
-            Ok(Err(err)) => tracing::warn!(?err, "SEO bulk worker joined with error"),
-            Err(_) => tracing::warn!("SEO bulk worker shutdown timed out after 5s"),
+    let seo_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<SeoBulkWorkerHandle>() {
+            match tokio::time::timeout(timeout_duration, worker.join()).await {
+                Ok(Ok(())) => tracing::info!("SEO bulk worker stopped gracefully"),
+                Ok(Err(err)) => tracing::warn!(?err, "SEO bulk worker joined with error"),
+                Err(_) => tracing::warn!("SEO bulk worker shutdown timed out after 5s"),
+            }
         }
-    }
+    };
+    #[cfg(not(feature = "mod-seo"))]
+    let seo_drain = std::future::ready(());
 
-    if let Some(worker) = runtime_ctx.shared_take::<crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle>() {
-        match tokio::time::timeout(timeout_duration, worker.join()).await {
-            Ok(Ok(())) => tracing::info!("Module transition watchdog worker stopped gracefully"),
-            Ok(Err(err)) => tracing::warn!(?err, "Module transition watchdog worker joined with error"),
-            Err(_) => tracing::warn!("Module transition watchdog worker shutdown timed out after 5s"),
+    let module_work_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<ModuleWorkSchedulerHandle>() {
+            match tokio::time::timeout(timeout_duration, worker.join()).await {
+                Ok(Ok(())) => tracing::info!("Module work scheduler stopped gracefully"),
+                Ok(Err(err)) => tracing::warn!(?err, "Module work scheduler joined with error"),
+                Err(_) => tracing::warn!("Module work scheduler shutdown timed out after 5s"),
+            }
         }
-    }
+    };
+
+    #[cfg(feature = "mod-workflow")]
+    let workflow_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<WorkflowCronSchedulerHandle>() {
+            match tokio::time::timeout(timeout_duration, worker.join()).await {
+                Ok(Ok(())) => tracing::info!("Workflow cron scheduler stopped gracefully"),
+                Ok(Err(err)) => tracing::warn!(?err, "Workflow cron scheduler joined with error"),
+                Err(_) => tracing::warn!("Workflow cron scheduler shutdown timed out after 5s"),
+            }
+        }
+    };
+    #[cfg(not(feature = "mod-workflow"))]
+    let workflow_drain = std::future::ready(());
+
+    let watchdog_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle>() {
+            match tokio::time::timeout(timeout_duration, worker.join()).await {
+                Ok(Ok(())) => tracing::info!("Module transition watchdog worker stopped gracefully"),
+                Ok(Err(err)) => tracing::warn!(?err, "Module transition watchdog worker joined with error"),
+                Err(_) => tracing::warn!("Module transition watchdog worker shutdown timed out after 5s"),
+            }
+        }
+    };
+
+    tokio::join!(
+        relay_drain,
+        retention_drain,
+        reaper_drain,
+        seo_drain,
+        module_work_drain,
+        workflow_drain,
+        watchdog_drain
+    );
 }
 
 fn spawn_relay_worker_handle(
@@ -465,9 +573,11 @@ async fn remote_executor_reaper_loop(
 
         tokio::select! {
             _ = tokio::time::sleep(poll_interval) => {}
-            _ = stop_rx.changed() => {
-                tracing::info!("Remote executor reaper received shutdown signal, exiting");
-                return;
+            changed = stop_rx.changed() => {
+                if changed.is_err() || *stop_rx.borrow() {
+                    tracing::info!("Remote executor reaper received shutdown signal, exiting");
+                    return;
+                }
             }
         }
     }
@@ -519,6 +629,11 @@ async fn seo_worker_loop(
             }
         }
 
+        if *stop_rx.borrow() {
+            tracing::info!("SEO bulk worker received shutdown signal, exiting");
+            return;
+        }
+
         if sitemap_enabled {
             match service
                 .bulk()
@@ -536,6 +651,11 @@ async fn seo_worker_loop(
                     "SEO sitemap worker failed to execute queued job"
                 ),
             }
+        }
+
+        if *stop_rx.borrow() {
+            tracing::info!("SEO bulk worker received shutdown signal, exiting");
+            return;
         }
 
         if index_repair_enabled {
@@ -561,9 +681,11 @@ async fn seo_worker_loop(
 
         tokio::select! {
             _ = tokio::time::sleep(poll_interval) => {}
-            _ = stop_rx.changed() => {
-                tracing::info!("SEO bulk worker received shutdown signal, exiting");
-                return;
+            changed = stop_rx.changed() => {
+                if changed.is_err() || *stop_rx.borrow() {
+                    tracing::info!("SEO bulk worker received shutdown signal, exiting");
+                    return;
+                }
             }
         }
     }
@@ -715,5 +837,126 @@ mod tests {
 
         // Gracefully shut down and drain background workers to avoid hanging tests
         super::shutdown_runtime_workers(&runtime_ctx).await;
+    }
+
+    #[test]
+    fn runtime_worker_lifecycle_state_computes_correct_transitions_and_metrics() {
+        use super::RuntimeWorkerLifecycleState;
+
+        // When stop_requested is true, state is always Stopping
+        assert_eq!(
+            RuntimeWorkerLifecycleState::from_worker_snapshot(true, None, true),
+            RuntimeWorkerLifecycleState::Stopping
+        );
+        assert_eq!(
+            RuntimeWorkerLifecycleState::from_worker_snapshot(true, Some(false), true),
+            RuntimeWorkerLifecycleState::Stopping
+        );
+        assert_eq!(
+            RuntimeWorkerLifecycleState::from_worker_snapshot(false, Some(true), true),
+            RuntimeWorkerLifecycleState::Stopping
+        );
+
+        // Required worker transitions
+        assert_eq!(
+            RuntimeWorkerLifecycleState::from_worker_snapshot(true, None, false),
+            RuntimeWorkerLifecycleState::Starting
+        );
+        assert_eq!(
+            RuntimeWorkerLifecycleState::from_worker_snapshot(true, Some(false), false),
+            RuntimeWorkerLifecycleState::Ready
+        );
+        assert_eq!(
+            RuntimeWorkerLifecycleState::from_worker_snapshot(true, Some(true), false),
+            RuntimeWorkerLifecycleState::Failed
+        );
+
+        // Non-required worker transitions
+        assert_eq!(
+            RuntimeWorkerLifecycleState::from_worker_snapshot(false, None, false),
+            RuntimeWorkerLifecycleState::Ready
+        );
+        assert_eq!(
+            RuntimeWorkerLifecycleState::from_worker_snapshot(false, Some(false), false),
+            RuntimeWorkerLifecycleState::Ready
+        );
+        assert_eq!(
+            RuntimeWorkerLifecycleState::from_worker_snapshot(false, Some(true), false),
+            RuntimeWorkerLifecycleState::Degraded
+        );
+
+        // String and metric representation
+        assert_eq!(RuntimeWorkerLifecycleState::Starting.as_str(), "starting");
+        assert_eq!(RuntimeWorkerLifecycleState::Starting.metric_value(), 1);
+
+        assert_eq!(RuntimeWorkerLifecycleState::Ready.as_str(), "ready");
+        assert_eq!(RuntimeWorkerLifecycleState::Ready.metric_value(), 2);
+
+        assert_eq!(RuntimeWorkerLifecycleState::Degraded.as_str(), "degraded");
+        assert_eq!(RuntimeWorkerLifecycleState::Degraded.metric_value(), 3);
+
+        assert_eq!(RuntimeWorkerLifecycleState::Stopping.as_str(), "stopping");
+        assert_eq!(RuntimeWorkerLifecycleState::Stopping.metric_value(), 4);
+
+        assert_eq!(RuntimeWorkerLifecycleState::Failed.as_str(), "failed");
+        assert_eq!(RuntimeWorkerLifecycleState::Failed.metric_value(), 5);
+    }
+
+    #[tokio::test]
+    async fn stop_handle_send_replace_works_without_active_receivers_and_is_idempotent() {
+        let (stop_handle, initial_rx) = super::StopHandle::new();
+        // Drop the initial receiver to simulate 0 active listeners
+        drop(initial_rx);
+
+        assert!(!stop_handle.is_stopping());
+
+        // Stop should store true even without active receivers
+        stop_handle.stop().await;
+        assert!(stop_handle.is_stopping());
+
+        // Subscribing after stop immediately sees true
+        let late_rx = stop_handle.subscribe();
+        assert!(*late_rx.borrow());
+
+        // Repeated stop is idempotent
+        stop_handle.stop().await;
+        assert!(stop_handle.is_stopping());
+    }
+
+    #[tokio::test]
+    async fn connect_runtime_workers_skips_startup_if_already_stopping() {
+        let db = setup_test_db().await;
+        let runtime_ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let stop_handle = super::StopHandle::ensure(&runtime_ctx);
+        stop_handle.stop().await;
+
+        // connect_runtime_workers should notice is_stopping() and return Ok without starting workers
+        let res = connect_runtime_workers_with_runtime(runtime_ctx.clone()).await;
+        assert!(res.is_ok());
+        assert!(!runtime_ctx.shared_contains::<OutboxRelayWorkerHandle>());
+    }
+
+    #[tokio::test]
+    async fn shutdown_runtime_workers_concurrently_drains_module_work_handle() {
+        let db = setup_test_db().await;
+        let runtime_ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        let stop = super::StopHandle::ensure(&runtime_ctx).subscribe();
+        let join_handle = tokio::spawn(async move {
+            let mut stop = stop;
+            let _ = stop.changed().await;
+        });
+
+        let worker_handle = super::ModuleWorkSchedulerHandle::new(join_handle);
+        assert!(!worker_handle.is_finished());
+        assert!(worker_handle.instance_id() > 0);
+
+        runtime_ctx.shared_insert(worker_handle);
+        assert!(runtime_ctx.shared_contains::<super::ModuleWorkSchedulerHandle>());
+
+        super::shutdown_runtime_workers(&runtime_ctx).await;
+
+        assert!(!runtime_ctx.shared_contains::<super::ModuleWorkSchedulerHandle>());
+        assert!(super::StopHandle::ensure(&runtime_ctx).is_stopping());
     }
 }
