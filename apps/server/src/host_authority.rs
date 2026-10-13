@@ -135,7 +135,7 @@ impl HostAuthorityPolicy {
 /// token is removed before any downstream request handler, GraphQL data object,
 /// tracing layer, or module transport can observe the raw credential.
 pub fn take_host_authority(headers: &mut HeaderMap) -> Result<Option<HostAuthorityContext>> {
-    let Some(value) = take_presented_token(headers) else {
+    let Some(value) = take_presented_token(headers)? else {
         return Ok(None);
     };
     let policy = HostAuthorityPolicy::from_env()?;
@@ -164,8 +164,16 @@ pub fn current_host_authority() -> Option<HostAuthorityContext> {
         .flatten()
 }
 
-fn take_presented_token(headers: &mut HeaderMap) -> Option<axum::http::HeaderValue> {
-    headers.remove(HOST_AUTHORITY_TOKEN_HEADER)
+fn take_presented_token(headers: &mut HeaderMap) -> Result<Option<axum::http::HeaderValue>> {
+    let count = headers.get_all(HOST_AUTHORITY_TOKEN_HEADER).iter().count();
+    if count > 1 {
+        // Strip all occurrences to prevent credential smuggling downstream
+        headers.remove(HOST_AUTHORITY_TOKEN_HEADER);
+        return Err(Error::BadRequest(
+            "Multiple host authority credential headers are not permitted".to_string(),
+        ));
+    }
+    Ok(headers.remove(HOST_AUTHORITY_TOKEN_HEADER))
 }
 
 #[cfg(test)]
@@ -173,7 +181,7 @@ fn take_with_policy(
     headers: &mut HeaderMap,
     policy: &HostAuthorityPolicy,
 ) -> Result<Option<HostAuthorityContext>> {
-    let Some(value) = take_presented_token(headers) else {
+    let Some(value) = take_presented_token(headers)? else {
         return Ok(None);
     };
     resolve_with_policy(value.to_str(), policy)
@@ -375,4 +383,24 @@ mod tests {
         assert_eq!(observed, Some(authority));
         assert!(current_host_authority().is_none());
     }
+
+    #[test]
+    fn rejects_multiple_presented_token_headers() {
+        let policy = HostAuthorityPolicy::parse("[]").expect("empty policy");
+        let mut headers = HeaderMap::new();
+        headers.append(
+            HOST_AUTHORITY_TOKEN_HEADER,
+            "token-one-with-at-least-32-bytes-long".parse().unwrap(),
+        );
+        headers.append(
+            HOST_AUTHORITY_TOKEN_HEADER,
+            "token-two-with-at-least-32-bytes-long".parse().unwrap(),
+        );
+
+        let err = take_with_policy(&mut headers, &policy)
+            .expect_err("multiple headers must fail");
+        assert!(err.to_string().contains("Multiple host authority credential headers"));
+        assert!(!headers.contains_key(HOST_AUTHORITY_TOKEN_HEADER));
+    }
 }
+

@@ -1058,14 +1058,15 @@ fn parse_host_port(url: &str) -> std::result::Result<(String, u16), String> {
         _ => 80,
     };
 
-    let authority = authority_source
+    let authority_trimmed = authority_source
         .split('/')
         .next()
         .unwrap_or_default()
-        .trim()
-        .rsplit_once('@')
-        .map(|(_, host)| host)
-        .unwrap_or_default();
+        .trim();
+    let authority = match authority_trimmed.rsplit_once('@') {
+        Some((_, host)) => host,
+        None => authority_trimmed,
+    };
 
     if authority.is_empty() {
         return Err("search backend URL is empty or invalid".to_string());

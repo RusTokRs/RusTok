@@ -106,13 +106,17 @@ pub async fn run() -> Result<()> {
     let address = listener.local_addr()?;
     tracing::info!(%address, "RusTok Axum host listening");
 
-    axum::serve(
+    let serve_result = axum::serve(
         listener,
         router.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .with_graceful_shutdown(shutdown_signal(runtime_ctx))
-    .await
-    .map_err(Error::Io)
+    .with_graceful_shutdown(wait_for_shutdown_signal())
+    .await;
+
+    shutdown_runtime_workers(&runtime_ctx).await;
+    tracing::info!("RusTok Axum host shut down cleanly");
+
+    serve_result.map_err(Error::Io)
 }
 
 async fn migrate_database_if_enabled(
@@ -311,6 +315,13 @@ async fn connect_database(
     config: &DatabaseConfig,
     uri: &str,
 ) -> Result<sea_orm::DatabaseConnection> {
+    if config.max_connections > 0 && config.min_connections > config.max_connections {
+        return Err(Error::BadRequest(format!(
+            "Database min_connections ({}) cannot exceed max_connections ({})",
+            config.min_connections, config.max_connections
+        )));
+    }
+
     let mut options = ConnectOptions::new(uri.to_string());
     options.sqlx_logging(config.enable_logging);
     let timeout = if config.connect_timeout > 0 {
@@ -396,7 +407,7 @@ fn resolve_server_endpoint(config: &ServerConfig) -> Result<(String, u16)> {
     Ok((binding, port))
 }
 
-async fn shutdown_signal(runtime_ctx: ServerRuntimeContext) {
+async fn wait_for_shutdown_signal() {
     #[cfg(unix)]
     {
         match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
@@ -405,6 +416,8 @@ async fn shutdown_signal(runtime_ctx: ServerRuntimeContext) {
                     result = tokio::signal::ctrl_c() => {
                         if let Err(error) = result {
                             tracing::warn!(error = %error, "failed to receive Ctrl-C shutdown signal");
+                        } else {
+                            tracing::info!("RusTok Axum host received Ctrl-C");
                         }
                     }
                     _ = terminate.recv() => {
@@ -419,6 +432,8 @@ async fn shutdown_signal(runtime_ctx: ServerRuntimeContext) {
                 );
                 if let Err(error) = tokio::signal::ctrl_c().await {
                     tracing::warn!(error = %error, "failed to receive shutdown signal");
+                } else {
+                    tracing::info!("RusTok Axum host received Ctrl-C");
                 }
             }
         }
@@ -427,10 +442,9 @@ async fn shutdown_signal(runtime_ctx: ServerRuntimeContext) {
     #[cfg(not(unix))]
     if let Err(error) = tokio::signal::ctrl_c().await {
         tracing::warn!(error = %error, "failed to receive shutdown signal");
+    } else {
+        tracing::info!("RusTok Axum host received Ctrl-C");
     }
-
-    shutdown_runtime_workers(&runtime_ctx).await;
-    tracing::info!("RusTok Axum host shut down cleanly");
 }
 
 #[cfg(test)]
@@ -588,4 +602,22 @@ mod tests {
             std::env::remove_var("PORT");
         }
     }
+
+    #[tokio::test]
+    async fn connect_database_rejects_min_connections_exceeding_max() {
+        let config = super::DatabaseConfig {
+            uri: "sqlite::memory:".to_string(),
+            auto_migrate: false,
+            enable_logging: false,
+            connect_timeout: 5000,
+            idle_timeout: 5000,
+            min_connections: 20,
+            max_connections: 5,
+        };
+        let error = super::connect_database(&config, "sqlite::memory:")
+            .await
+            .expect_err("min_connections exceeding max_connections must be rejected");
+        assert!(error.to_string().contains("cannot exceed max_connections"));
+    }
 }
+

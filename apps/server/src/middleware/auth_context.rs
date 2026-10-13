@@ -45,6 +45,13 @@ pub async fn resolve_optional(
                 pages_inline_authoring_surface,
             );
         }
+        Err(crate::error::Error::BadRequest(message)) => {
+            return pages_inline_authoring_response(
+                (StatusCode::BAD_REQUEST, message).into_response(),
+                pages_inline_authoring,
+                pages_inline_authoring_surface,
+            );
+        }
         Err(error) => {
             tracing::error!(
                 error = %error,
