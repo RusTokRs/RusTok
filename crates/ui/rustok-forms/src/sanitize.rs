@@ -186,6 +186,8 @@ pub mod sanitize {
     }
 }
 
+pub use sanitize::*;
+
 #[cfg(test)]
 mod tests {
     use super::sanitize::*;
