@@ -1,10 +1,10 @@
-use std::sync::Arc;
 use async_trait::async_trait;
-use rustok_core::events::{EventEnvelope, EventHandler, HandlerResult};
 use rustok_core::DomainEvent;
+use rustok_core::events::{EventEnvelope, EventHandler, HandlerResult};
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo_targets::SeoTargetRegistry;
 use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 
 use super::SeoService;
 
@@ -82,13 +82,13 @@ mod tests {
 
         // We can test `handles` without instantiating DB using a zero-sized or mock wrapper if needed,
         // or test `name` and event matching logic directly.
-        assert_eq!(
-            matches!(dummy_event, DomainEvent::CanonicalUrlChanged { .. }),
-            true
-        );
-        assert_eq!(
-            matches!(other_event, DomainEvent::CanonicalUrlChanged { .. }),
-            false
-        );
+        assert!(matches!(
+            dummy_event,
+            DomainEvent::CanonicalUrlChanged { .. }
+        ));
+        assert!(!matches!(
+            other_event,
+            DomainEvent::CanonicalUrlChanged { .. }
+        ));
     }
 }

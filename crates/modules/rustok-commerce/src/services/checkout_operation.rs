@@ -64,7 +64,7 @@ pub const CHECKOUT_COMPENSATION_ATTEMPTS_EXHAUSTED_CODE: &str =
 /// Status of a checkout operation journal row.
 ///
 /// The state machine below is the single source of truth for legal status
-/// transitions. It lives in typed Rust code (see [`CheckedTransition`]), not in
+/// transitions. It lives in typed Rust code (see `CheckedTransition`), not in
 /// PL/pgSQL functions or SQLite triggers, because the repository contract
 /// (`AGENTS.md`: "Multi-row domain rules, state transition validations,
 /// workflow guards ... MUST be owned and validated by typed Rust domain
@@ -105,7 +105,7 @@ impl CheckoutOperationStatus {
 
     /// Statuses this one may move to. A write that changes the status of a
     /// journal row without listing the target here is a bug and is rejected by
-    /// [`CheckedTransition::new`] before the row is touched.
+    /// `CheckedTransition::new` before the row is touched.
     pub const fn allowed_transitions(self) -> &'static [Self] {
         match self {
             Self::Pending => &[Self::Executing],
@@ -369,8 +369,8 @@ pub struct CheckoutOperationCheckpoint {
 ///
 /// The journal owns the checkout state machine in typed Rust code:
 /// [`CheckoutOperationStatus::allowed_transitions`] is enforced by
-/// [`CheckedTransition`] on every status write, the parking decision lives in
-/// [`compensation_next_status`], the lease/completion shape follows from those
+/// `CheckedTransition` on every status write, the parking decision lives in
+/// `compensation_next_status`, the lease/completion shape follows from those
 /// writers, identity columns are never part of an update, and the
 /// cross-aggregate tenant checks run in the same transaction as the write. The
 /// database keeps the column-level `CHECK` constraints and the
@@ -1111,7 +1111,7 @@ impl CheckoutOperationJournal {
     /// Records that a failed checkout step needs the compensation pipeline.
     ///
     /// When the failure code is
-    /// [`CHECKOUT_COMPENSATION_MANUAL_RECONCILIATION_CODE`] the operation is
+    /// `CHECKOUT_COMPENSATION_MANUAL_RECONCILIATION_CODE` the operation is
     /// parked in `reconciliation_required` immediately: the code means the
     /// pipeline cannot roll the money back on its own.
     pub async fn mark_compensation_required(

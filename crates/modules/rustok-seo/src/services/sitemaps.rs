@@ -992,8 +992,10 @@ fn render_robots_body_with_settings(base_url: &str, settings: &SeoModuleSettings
 
 #[cfg(test)]
 fn render_robots_body(base_url: &str, sitemap_enabled: bool) -> String {
-    let mut settings = SeoModuleSettings::default();
-    settings.sitemap_enabled = sitemap_enabled;
+    let settings = SeoModuleSettings {
+        sitemap_enabled,
+        ..Default::default()
+    };
     render_robots_body_with_settings(base_url, &settings)
 }
 

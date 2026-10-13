@@ -123,7 +123,8 @@ mod tests {
     #[test]
     fn sitemap_extensions_follow_settings() {
         let record = fixture();
-        let enabled = render_sitemap_file(&[record.clone()], "daily", "0.5", true, true);
+        let enabled =
+            render_sitemap_file(std::slice::from_ref(&record), "daily", "0.5", true, true);
         assert!(enabled.contains("xmlns:image="));
         assert!(enabled.contains("xmlns:xhtml="));
         assert!(enabled.contains("<image:loc>https://cdn.example.com/catalog.jpg</image:loc>"));

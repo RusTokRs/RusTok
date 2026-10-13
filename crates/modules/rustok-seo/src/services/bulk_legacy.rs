@@ -17,11 +17,11 @@ use rustok_seo_targets::{SeoTargetBulkListRequest, SeoTargetSlug};
 
 use crate::dto::{
     SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkArtifactRecord, SeoBulkBoolFieldPatch,
-    SeoBulkExportInput, SeoBulkFieldPatchMode, SeoBulkImportInput,
-    SeoBulkJobOperationKind, SeoBulkJobRecord, SeoBulkJobStatus, SeoBulkJsonFieldPatch,
-    SeoBulkListInput, SeoBulkMetaPatchInput, SeoBulkSelectionInput,
-    SeoBulkSelectionMode, SeoBulkSelectionPreviewRecord, SeoBulkSource, SeoBulkStringFieldPatch,
-    SeoMetaInput, SeoMetaRecord, SeoMetaTranslationInput,
+    SeoBulkExportInput, SeoBulkFieldPatchMode, SeoBulkImportInput, SeoBulkJobOperationKind,
+    SeoBulkJobRecord, SeoBulkJobStatus, SeoBulkJsonFieldPatch, SeoBulkListInput,
+    SeoBulkMetaPatchInput, SeoBulkSelectionInput, SeoBulkSelectionMode,
+    SeoBulkSelectionPreviewRecord, SeoBulkSource, SeoBulkStringFieldPatch, SeoMetaInput,
+    SeoMetaRecord, SeoMetaTranslationInput,
 };
 use crate::entities::{seo_bulk_job, seo_bulk_job_artifact, seo_bulk_job_item};
 use crate::{SeoError, SeoResult};
@@ -901,10 +901,8 @@ mod tests {
         assert_eq!(row[7], "'@special");
         assert_eq!(row[8], "'\tindented");
 
-        let csv = format!(
-            "target_kind,target_id,locale,title,description,keywords,canonical_url,og_title,og_description,og_image,structured_data,noindex,nofollow\npage,11111111-1111-1111-1111-111111111111,en-US,\"'=SUM(1,2)\",\"'+12345\",\"'-keyword\",/canon,OG,OG,https://img.test/x.jpg,,false,false\n"
-        );
-        let parsed = parse_bulk_csv(page_slug(), "en-US", csv.as_str()).expect("parse csv");
+        let csv = "target_kind,target_id,locale,title,description,keywords,canonical_url,og_title,og_description,og_image,structured_data,noindex,nofollow\npage,11111111-1111-1111-1111-111111111111,en-US,\"'=SUM(1,2)\",\"'+12345\",\"'-keyword\",/canon,OG,OG,https://img.test/x.jpg,,false,false\n";
+        let parsed = parse_bulk_csv(page_slug(), "en-US", csv).expect("parse csv");
         assert_eq!(parsed[0].title.as_deref(), Some("=SUM(1,2)"));
         assert_eq!(parsed[0].description.as_deref(), Some("+12345"));
         assert_eq!(parsed[0].keywords.as_deref(), Some("-keyword"));
@@ -1114,10 +1112,7 @@ impl SeoService {
         if let Some(status) = status {
             query = query.filter(seo_bulk_job::Column::Status.eq(status.as_str()));
         }
-        let jobs = query
-            .limit(limit.max(1) as u64)
-            .all(&self.db)
-            .await?;
+        let jobs = query.limit(limit.max(1) as u64).all(&self.db).await?;
         let jobs = jobs.into_iter().take(limit.max(1)).collect::<Vec<_>>();
         let job_ids = jobs.iter().map(|job| job.id).collect::<Vec<_>>();
         let artifacts = self.load_bulk_artifacts_map(&job_ids).await?;

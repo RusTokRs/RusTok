@@ -2,7 +2,7 @@
 //! routes.
 //!
 //! Topic slugs are locale-aware, so a redirect source is keyed by locale. The
-//! canonical route of a topic is derived from its id by [`forum_topic_route`]
+//! canonical route of a topic is derived from its id by [`forum_topic_route()`]
 //! and is never stored. Every change publishes the same `CanonicalUrlChanged` /
 //! `UrlAliasPurged` events that SEO consumes.
 
