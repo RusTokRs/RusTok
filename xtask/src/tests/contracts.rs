@@ -2175,10 +2175,7 @@ fn validate_module_host_ui_contract_rejects_missing_dependency_admin_ui_wiring()
         .join("rustok-comments")
         .join("admin");
     let demo_root = base.join("crates").join("modules").join("rustok-demo");
-    let comments_root = base
-        .join("crates")
-        .join("modules")
-        .join("rustok-comments");
+    let comments_root = base.join("crates").join("modules").join("rustok-comments");
     std::fs::create_dir_all(&admin_dir).expect("temporary admin dir should exist");
     std::fs::create_dir_all(&demo_admin_dir).expect("temporary demo admin dir should exist");
     std::fs::create_dir_all(&comments_admin_dir)

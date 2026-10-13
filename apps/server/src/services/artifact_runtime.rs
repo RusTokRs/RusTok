@@ -90,8 +90,9 @@ pub const DEFAULT_DEV_ARTIFACT_NODE_ID: uuid::Uuid =
 fn configured_artifact_node_id() -> Result<uuid::Uuid> {
     match std::env::var("RUSTOK_ARTIFACT_NODE_ID") {
         Ok(value) => {
-            let node_id = uuid::Uuid::parse_str(&value)
-                .map_err(|_| Error::Message("RUSTOK_ARTIFACT_NODE_ID must be a UUID".to_string()))?;
+            let node_id = uuid::Uuid::parse_str(&value).map_err(|_| {
+                Error::Message("RUSTOK_ARTIFACT_NODE_ID must be a UUID".to_string())
+            })?;
             if node_id.is_nil() {
                 return Err(Error::Message(
                     "RUSTOK_ARTIFACT_NODE_ID must not be nil".to_string(),
