@@ -15,25 +15,25 @@ fn source(relative: &str) -> String {
     if let Some(parent) = path.parent() {
         for line in content.clone().lines() {
             let trimmed = line.trim();
-            if let Some(rest) = trimmed.strip_prefix("include!(\"") {
-                if let Some(inc_file) = rest.strip_suffix("\");") {
-                    let inc_path = parent.join(inc_file);
-                    if inc_path.exists() {
-                        if let Ok(inc_content) = std::fs::read_to_string(&inc_path) {
-                            content.push('\n');
-                            content.push_str(&inc_content);
-                        }
-                    }
+            if let Some(rest) = trimmed.strip_prefix("include!(\"")
+                && let Some(inc_file) = rest.strip_suffix("\");")
+            {
+                let inc_path = parent.join(inc_file);
+                if inc_path.exists()
+                    && let Ok(inc_content) = std::fs::read_to_string(&inc_path)
+                {
+                    content.push('\n');
+                    content.push_str(&inc_content);
                 }
-            } else if let Some(rest) = trimmed.strip_prefix("#[path = \"") {
-                if let Some(mod_file) = rest.strip_suffix("\"]") {
-                    let mod_path = parent.join(mod_file);
-                    if mod_path.exists() {
-                        if let Ok(mod_content) = std::fs::read_to_string(&mod_path) {
-                            content.push('\n');
-                            content.push_str(&mod_content);
-                        }
-                    }
+            } else if let Some(rest) = trimmed.strip_prefix("#[path = \"")
+                && let Some(mod_file) = rest.strip_suffix("\"]")
+            {
+                let mod_path = parent.join(mod_file);
+                if mod_path.exists()
+                    && let Ok(mod_content) = std::fs::read_to_string(&mod_path)
+                {
+                    content.push('\n');
+                    content.push_str(&mod_content);
                 }
             }
         }
