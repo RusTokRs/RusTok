@@ -217,6 +217,8 @@ pub fn build_registry() -> ModuleRegistry {
     let registry = registry.register(rustok_workflow::WorkflowModule);
     #[cfg(feature = "mod-ai")]
     let registry = registry.register(rustok_ai::AiModule);
+    #[cfg(feature = "mod-docs")]
+    let registry = registry.register(rustok_docs::DocsModule);
 
     generated_promotions::register_promoted_modules(registry)
 }

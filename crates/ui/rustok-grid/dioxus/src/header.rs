@@ -61,7 +61,7 @@ pub fn GridHeader(
         ""
     };
 
-    let header_cells = visible.iter().cloned().map(|col| {
+    let header_cells = visible.iter().map(|col| {
         let id = col.id.as_str().to_string();
         let title = col.title.clone();
         let width = col.width;
@@ -151,7 +151,7 @@ pub fn GridHeader(
         }
     });
 
-    let filter_cells = visible.iter().cloned().map(|col| {
+    let filter_cells = visible.iter().map(|col| {
         let id = col.id.as_str().to_string();
         let value = filters.get(&id).cloned();
         let filter_type = col.filter_type.clone().filter(|_| col.has_filter());

@@ -8,11 +8,11 @@ use rustok_page_builder::browser_host::{
 
 /// Expected origin of the sandboxed authoring canvas iframe.
 ///
-/// [`crate::editor::isolated_canvas`] renders the canvas with `sandbox="allow-scripts"` and
+/// `crate::editor::isolated_canvas` renders the canvas with `sandbox="allow-scripts"` and
 /// `srcdoc`, which gives the document an opaque origin: browsers report every `postMessage` from
 /// it as the literal string `"null"` — [`fly_web::OPAQUE_ORIGIN`]. Fly's browser adapter fails
 /// closed when no origin is configured, so the value is passed explicitly instead of relying on a
-/// default, and the Rust-side subscription in [`crate::editor::isolated_canvas`] compares against
+/// default, and the Rust-side subscription in `crate::editor::isolated_canvas` compares against
 /// this same constant.
 ///
 /// The sandbox attribute and this value are one contract: if the attribute changes (for example

@@ -25,3 +25,6 @@ uuid.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["rustok-outbox"]

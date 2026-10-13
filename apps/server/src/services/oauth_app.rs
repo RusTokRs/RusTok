@@ -262,10 +262,7 @@ impl OAuthAppService {
         // Revoke all active tokens for this app
         use sea_orm::sea_query::Expr;
         oauth_tokens::Entity::update_many()
-            .col_expr(
-                oauth_tokens::Column::RevokedAt,
-                Expr::value(now.to_rfc3339()),
-            )
+            .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
             .filter(
                 sea_orm::Condition::all()
                     .add(oauth_tokens::Column::AppId.eq(app_id))
@@ -500,7 +497,7 @@ impl OAuthAppService {
         let _ = oauth_tokens::Entity::update_many()
             .col_expr(
                 oauth_tokens::Column::RevokedAt,
-                sea_orm::sea_query::Expr::value(now.to_rfc3339()),
+                sea_orm::sea_query::Expr::value(now),
             )
             .filter(
                 sea_orm::Condition::all()

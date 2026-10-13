@@ -416,10 +416,10 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
                     // A new page size sends the user back to page 1; a
                     // server-side consumer has to learn about that too — but
                     // only when it actually happened.
-                    if applied.page != current_pagination.page {
-                        if let Some(handler) = on_page_change {
-                            handler.call(applied.page);
-                        }
+                    if applied.page != current_pagination.page
+                        && let Some(handler) = on_page_change
+                    {
+                        handler.call(applied.page);
                     }
                 },
                 on_mode_change: move |mode: PaginationMode| {

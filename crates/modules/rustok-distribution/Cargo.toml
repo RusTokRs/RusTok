@@ -129,7 +129,7 @@ uuid.workspace = true
 sea-orm-migration.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
-normal = ["rustok-groups", "rustok-content-orchestration", "rustok-social-graph", "flex"]
+normal = ["rustok-groups", "rustok-content-orchestration", "rustok-social-graph", "flex", "rustok-docs"]
 
 [package.metadata.cargo-machete]
-ignored = ["hex", "rustok-content-orchestration", "rustok-groups", "rustok-social-graph", "flex"]
+ignored = ["hex", "rustok-content-orchestration", "rustok-groups", "rustok-social-graph", "flex", "rustok-docs"]

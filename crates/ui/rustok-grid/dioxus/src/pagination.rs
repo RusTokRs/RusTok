@@ -126,10 +126,10 @@ pub fn GridPaginationBar(
                         value: "{page_size}",
                         class: "text-xs rounded border border-border bg-background px-1.5 py-0.5 text-foreground focus:border-primary focus:outline-none",
                         onchange: move |ev| {
-                            if let Ok(size) = ev.value().parse::<usize>() {
-                                if size > 0 {
-                                    on_page_size_change.call(size);
-                                }
+                            if let Ok(size) = ev.value().parse::<usize>()
+                                && size > 0
+                            {
+                                on_page_size_change.call(size);
                             }
                         },
                         for size in size_options {

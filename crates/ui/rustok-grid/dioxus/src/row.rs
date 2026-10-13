@@ -38,7 +38,7 @@ pub fn GridRow<T: Clone + PartialEq + 'static>(
     };
     let selected_attr = if is_selected { "true" } else { "false" };
 
-    let cells = visible_columns(&columns).cloned().map(|col| {
+    let cells = visible_columns(&columns).map(|col| {
         let column_id = col.id.as_str().to_string();
         let width = col.width;
         let current_width =
@@ -81,10 +81,10 @@ pub fn GridRow<T: Clone + PartialEq + 'static>(
                 class: "px-3 py-2.5 border-r border-border/30 last:border-r-0 align-middle {align_class}{cursor_class}",
                 style: "width: {current_width}px; min-width: {width.min}px; max-width: {width.max}px;",
                 onclick: move |_| {
-                    if interactive {
-                        if let Some(ref handler) = on_row_click {
-                            handler.call(click_item.clone());
-                        }
+                    if interactive
+                        && let Some(ref handler) = on_row_click
+                    {
+                        handler.call(click_item.clone());
                     }
                 },
                 {content}
