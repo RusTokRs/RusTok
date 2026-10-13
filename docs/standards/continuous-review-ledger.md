@@ -82,7 +82,7 @@ The single canonical trigger to continue this audit sequence is:
 
 #### 2. Middleware & Context Guards
 - [x] **FS-01.07 — `apps/server/src/middleware/tenant.rs`** — multi-tenant header/host resolution, domain mapping, fail-closed tenant boundary. (Done: enforced structured JSON ErrorBody responses on fail-closed tenant resolution and loading errors; prevented RFC 9110 §7.2 duplicate Host and x-forwarded-host header smuggling; normalized base domain matching against mixed casing and trailing dots in subdomain routing; normalized trailing slashes in tenant route policy scopes; lowered high-frequency request tracing logs from info to debug; added 5 unit tests across tenant_resolution, tenant_route_policy, and tenant_tests).
-- [ ] **FS-01.08 — `apps/server/src/middleware/channel.rs`** — sales channel resolution, default fallback, header precedence.
+- [x] **FS-01.08 — `apps/server/src/middleware/channel.rs`** — sales channel resolution, default fallback, header precedence. (Done: enforced cross-tenant boundary verification in channel resolution failing closed with 403 Forbidden; guarded against conflicting duplicate X-Channel-ID, X-Channel-Slug, and ?channel= query parameters; lowered per-request tracing from info to debug; added 3 unit tests in channel_tests verifying duplicate rejection and cross-tenant protection).
 - [ ] **FS-01.09 — `apps/server/src/middleware/locale.rs`** — locale header negotiation, fallback normalization, language validation.
 - [ ] **FS-01.10 — `apps/server/src/middleware/auth_context.rs`** — JWT/session authentication context extraction, bearer token parsing, claims validation.
 - [ ] **FS-01.11 — `apps/server/src/middleware/rate_limit.rs`** — IP/tenant/user rate limiting, sliding window, memory/Redis exhaustion protection.
