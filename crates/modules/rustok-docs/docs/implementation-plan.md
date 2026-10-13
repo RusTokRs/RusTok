@@ -7,7 +7,7 @@ status: active
 
 # `rustok-docs` Implementation Plan
 
-## Sovereign Domain Boundary
+## Scope
 
 `rustok-docs` owns collaborative documents, wikis, page trees, and Notion-grade knowledge bases across RusToK.
 
@@ -18,7 +18,7 @@ status: active
 
 ---
 
-## FFA / FBA Status
+## Current state
 
 | Dimension | Current Status | Notes |
 | :--- | :--- | :--- |
@@ -28,7 +28,7 @@ status: active
 
 ---
 
-## Phased Milestones
+## Milestones
 
 | Milestone | Scope | Key Deliverables | Status |
 | :--- | :--- | :--- | :--- |
@@ -41,9 +41,17 @@ status: active
 
 ---
 
-## Verification Gates
+## Verification
 
 1. Pure Rust unit tests for `CollaborativeDoc` with concurrent synthetic writer convergence (`cargo test -p rustok-docs`).
 2. Cycle-safety test for drag-and-drop block reorganization (`move_block`).
 3. Module metadata, permissions, and migration descriptors verification (`DocsModule`).
 4. SeaORM snapshot & delta replay fidelity tests on PostgreSQL.
+
+---
+
+## Update rules
+
+- Update this implementation plan when milestone statuses change.
+- Retain synchronization between domain services and documented contracts.
+- Any architectural contract change requires an ADR before implementation.

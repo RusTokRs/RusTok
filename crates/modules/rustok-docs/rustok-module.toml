@@ -5,8 +5,7 @@ version = "0.1.0"
 description = "Block-based collaborative documents, Wiki and knowledge base powered by Loro CRDT"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "full_stack"
-recommended_admin_surfaces = ["next-admin", "leptos-admin"]
+ui_classification = "no_ui"
 
 [marketplace]
 category = "productivity"
@@ -18,11 +17,3 @@ flex = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "DocsModule"
-
-[provides.admin_ui]
-route_segment = "docs"
-nav_label = "Knowledge Base & Docs"
-
-[provides.admin_ui.i18n]
-default_locale = "en"
-supported_locales = ["en", "ru"]

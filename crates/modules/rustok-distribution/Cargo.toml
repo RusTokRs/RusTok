@@ -45,6 +45,7 @@ mod-page_builder = ["dep:rustok-page-builder"]
 mod-taxonomy = ["dep:rustok-taxonomy", "mod-content"]
 mod-alloy = ["dep:alloy"]
 mod-flex = []
+mod-docs = ["dep:rustok-docs", "mod-flex"]
 mod-media = ["dep:rustok-media"]
 mod-translation = ["dep:rustok-translation"]
 mod-seo = ["dep:rustok-seo", "mod-content"]
@@ -105,6 +106,7 @@ rustok-forum = { workspace = true, optional = true }
 rustok-notifications = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
 rustok-pages = { workspace = true, optional = true }
+rustok-docs = { workspace = true, optional = true }
 rustok-navigation = { workspace = true, optional = true }
 rustok-forms = { path = "../rustok-forms", package = "rustok-forms-module", optional = true }
 rustok-page-builder = { workspace = true, optional = true }

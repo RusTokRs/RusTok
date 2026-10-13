@@ -2,6 +2,20 @@
 
 `rustok-docs` is the sovereign collaborative knowledge base, wiki, and interactive document module of the RusToK SuperApp platform.
 
+## Purpose
+
+- Provide the sovereign collaborative knowledge base, document, and wiki engine for RusToK.
+- Support conflict-free real-time multiplayer editing powered by Loro CRDT.
+- Maintain movable block-tree structures, Notion-grade flex database collections, and embedded ERP business cards.
+- Expose dual-path transport surfaces (WebSocket binary deltas and GraphQL/REST query and mutation APIs).
+
+## Responsibility Zone
+
+- Sovereign `DocumentService`, `CollaborativeDoc`, tree block models, and Markdown projections.
+- Persistence and compaction for `docs_pages`, `docs_snapshots`, append-only `docs_updates`, and `docs_entity_links`.
+- Real-time collaboration rooms via `DocsRoomHub`, session presence, and binary CRDT delta exchange.
+- Tenant isolation, document access policies, and version milestones.
+
 ## Core Capabilities
 
 1. **Conflict-Free Multiplayer Editing (Loro CRDT):**
@@ -22,3 +36,22 @@
 5. **Two-Tier Versioning:**
    * **Real-Time Tier (Loro CRDT):** Sub-millisecond keystrokes, remote cursors, and delta sync.
    * **Business Milestone Tier (`rustok-revisions`):** Named release versions ("Release v2.0", "Approved by Legal"), audit trails, and retention cleanup policies.
+
+## Integration
+
+- Consumes `rustok-api` and `rustok-core` for platform ports, context, and error propagation.
+- Integrates with `rustok-flex` for database view field definitions and schemas.
+- Exposes UI primitives through `rustok-grid` for tabular and card view layouts.
+- Re-exports sovereign entrypoints for host applications via `DocsModule`.
+
+## Verification
+
+- Pure Rust unit tests: `cargo test -p rustok-docs`.
+- Module validation gate: `cargo xtask module validate docs`.
+- SeaORM snapshot and delta replay tests on PostgreSQL.
+
+## Related Documentation
+
+- [Crate README](../README.md)
+- [Implementation Plan](./implementation-plan.md)
+- [Module Registry](../../../../docs/modules/registry.md)

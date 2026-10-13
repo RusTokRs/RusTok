@@ -144,6 +144,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-workflow` | [docs](../../crates/modules/rustok-workflow/docs/README.md) | [plan](../../crates/modules/rustok-workflow/docs/implementation-plan.md) |
 | `rustok-translation` | [docs](../../crates/modules/rustok-translation/docs/README.md) | [plan](../../crates/modules/rustok-translation/docs/implementation-plan.md) |
 | `rustok-translation-admin` | [admin UI package](../../crates/modules/rustok-translation/admin/README.md) | [owner plan](../../crates/modules/rustok-translation/docs/implementation-plan.md) |
+| `rustok-docs` | [docs](../../crates/modules/rustok-docs/docs/README.md) | [plan](../../crates/modules/rustok-docs/docs/implementation-plan.md) |
 
 ## Module UI Packages
 
