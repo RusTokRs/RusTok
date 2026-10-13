@@ -1,5 +1,9 @@
 import '../ast/ast_nodes.dart';
 
+/// Maximum combined nesting of placeables and inline expressions.
+/// Excessive nesting becomes junk; subsequent resource entries still parse.
+const int maxFtlNestingDepth = 100;
+
 class FtlParseException implements Exception {
   const FtlParseException(this.message, {this.line, this.column});
 
@@ -34,6 +38,7 @@ class FtlParser {
   int _pos = 0;
   int _line = 1;
   int _col = 1;
+  int _nestingDepth = 0;
 
   static FtlResource parse(String source) => FtlParser(source).parseResource();
 
@@ -467,12 +472,29 @@ class FtlParser {
     return FtlPattern(elements: List.unmodifiable(elements));
   }
 
+  void _enterNesting() {
+    if (_nestingDepth >= maxFtlNestingDepth) {
+      throw FtlParseException('Expression nesting limit exceeded',
+          line: _line, column: _col);
+    }
+    _nestingDepth++;
+  }
+
   FtlPlaceable _parsePlaceable() {
     return FtlPlaceable(_parsePlaceableExpression());
   }
 
   /// Parses `"{" blank? expression blank? "}"` and returns the inner expression.
   FtlExpression _parsePlaceableExpression() {
+    _enterNesting();
+    try {
+      return _parsePlaceableExpressionBody();
+    } finally {
+      _nestingDepth--;
+    }
+  }
+
+  FtlExpression _parsePlaceableExpressionBody() {
     _advance(); // '{'
     _skipWhitespace();
     final expression = _parseExpression();
@@ -544,6 +566,15 @@ class FtlParser {
   }
 
   FtlExpression _parseInlineExpression() {
+    _enterNesting();
+    try {
+      return _parseInlineExpressionBody();
+    } finally {
+      _nestingDepth--;
+    }
+  }
+
+  FtlExpression _parseInlineExpressionBody() {
     final char = _peek();
 
     if (char == '{') {
@@ -605,7 +636,11 @@ class FtlParser {
           if (codePoint > 0x10FFFF) {
             throw FtlParseException('Unicode escape out of range', line: _line, column: _col);
           }
-          buffer.writeCharCode(codePoint);
+          // Each escape denotes a scalar, not half of a UTF-16 pair.
+          // Fluent replaces escaped surrogates individually with U+FFFD.
+          buffer.writeCharCode(
+            codePoint >= 0xD800 && codePoint <= 0xDFFF ? 0xFFFD : codePoint,
+          );
         } else {
           throw FtlParseException(
             'Invalid escape sequence in string literal; only \\\\, \\", \\uXXXX and \\UXXXXXX are allowed',

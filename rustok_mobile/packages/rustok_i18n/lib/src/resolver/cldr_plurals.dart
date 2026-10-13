@@ -1,3 +1,5 @@
+import '../locale/locale_tag.dart';
+
 // The CLDR cardinal plural table below is generated from
 // `cldr-core@48.2.0/supplemental/plurals.json` and validated against the
 // sample values shipped in that file:
@@ -27,37 +29,47 @@
 /// * Tags CLDR publishes no cardinal rule for resolve to `other`.
 ///
 /// Limitations: `NaN` and infinities resolve to `other`; a trailing zero in the
-/// caller's formatting is invisible here, so `1.0` counts as the integer `1`
-/// (Slavic rules select `other` only for a *visible* fraction — format such a
-/// value with `NUMBER()`/`minimumFractionDigits` if the distinction matters);
-/// and values printed in exponential notation count as having no visible
-/// fraction digits.
+/// caller's formatting is invisible here, so `1.0` counts as the integer `1`;
+/// display options such as NUMBER's minimumFractionDigits are not inputs to
+/// this raw-number API. Exponential notation is expanded for fraction operands.
 String resolveCldrPluralCategory(String language, num value) {
   // NaN and infinities have no plural category; never call toInt() on them.
   if (!value.isFinite) return 'other';
 
-  final normalized = language.trim().toLowerCase().replaceAll('_', '-');
-  // CLDR publishes a `pt-PT` rule that differs from `pt`; every other region or
-  // script variant shares the rule of its primary language subtag.
-  final lang = normalized == 'pt-pt' ? normalized : normalized.split('-').first;
+  final tag = LocaleTag.tryParse(language);
+  final lang = tag?.language == 'pt' && tag?.region == 'PT'
+      ? 'pt-pt'
+      : tag?.language;
 
-  final n = value.abs();
+  // abs() overflows for the minimum native signed integer. The approximate
+  // magnitude is safe for comparisons with the small constants in the rules;
+  // integer modulo operands must instead stay exact in the original int type.
+  final absolute = value.abs();
+  final n = absolute < 0 ? -value.toDouble() : absolute;
+  num modulo(int divisor) {
+    if (value is int) {
+      final remainder = value % divisor;
+      return value.isNegative && remainder != 0 ? divisor - remainder : remainder;
+    }
+    return n % divisor;
+  }
 
-  // CLDR operands. `i` is kept as a double so that very large values stay
-  // exact, and the moduli are safe for any finite input.
-  final v = _visibleFractionDigits(n);
-  final f = _fractionDigits(n);
+  final fraction = value is int ? (0, BigInt.zero) : _fractionOperands(n);
+  final v = fraction.$1;
+  // Rule bodies only compare f with 0/1. Keep its modulo operands exact on
+  // both native and JavaScript targets, even with 17 significant digits.
+  final f = fraction.$2.toDouble();
   final i = n - (n % 1);
-  final n10 = n % 10;
-  final n100 = n % 100;
-  final n1000 = n % 1000;
-  final n100000 = n % 100000;
-  final n1000000 = n % 1000000;
-  final i10 = (i % 10).toInt();
-  final i100 = (i % 100).toInt();
-  final i1000000 = (i % 1000000).toInt();
-  final f10 = f % 10;
-  final f100 = f % 100;
+  final n10 = modulo(10);
+  final n100 = modulo(100);
+  final n1000 = modulo(1000);
+  final n100000 = modulo(100000);
+  final n1000000 = modulo(1000000);
+  final i10 = (value is int ? n10 : i % 10).toInt();
+  final i100 = (value is int ? n100 : i % 100).toInt();
+  final i1000000 = (value is int ? n1000000 : i % 1000000).toInt();
+  final f10 = (fraction.$2 % BigInt.from(10)).toInt();
+  final f100 = (fraction.$2 % BigInt.from(100)).toInt();
 
   switch (lang) {
     // one: n=1
@@ -540,28 +552,20 @@ String resolveCldrPluralCategory(String language, num value) {
 bool _inRange(num value, int from, int to) =>
     value.truncateToDouble() == value && value >= from && value <= to;
 
-/// Number of visible fraction digits (`v` in CLDR) of [value].
-///
-/// Integral values have none. Other values are measured from their shortest
-/// decimal representation, which never ends in `0`; exponential notation
-/// reports `0`, since its digits are not part of the shortest form.
-int _visibleFractionDigits(num value) {
-  if (value == value.truncateToDouble()) return 0;
-  final text = value.abs().toString();
-  if (text.contains('e')) return 0;
-  final dot = text.indexOf('.');
-  return dot < 0 ? 0 : text.length - dot - 1;
-}
-
-/// The visible fraction digits (`f` in CLDR) of [value] as an integer.
-///
-/// `1.25` gives `25` and `0.5` gives `5`; integral values and exponential
-/// notation give `0`.
-int _fractionDigits(num value) {
-  if (value == value.truncateToDouble()) return 0;
-  final text = value.abs().toString();
-  if (text.contains('e')) return 0;
-  final dot = text.indexOf('.');
-  if (dot < 0) return 0;
-  return int.tryParse(text.substring(dot + 1)) ?? 0;
+/// CLDR visible fraction count/value from the shortest decimal representation.
+/// Expand the decimal point arithmetically, including tiny exponential values,
+/// rather than misclassifying every `1e-N` as an integer. BigInt retains the
+/// fraction's significant digits on web; leading zeroes only affect the count.
+(int, BigInt) _fractionOperands(num value) {
+  if (value == value.truncateToDouble()) return (0, BigInt.zero);
+  final text = value.toString();
+  final exponentIndex = text.indexOf('e');
+  final mantissa = exponentIndex < 0 ? text : text.substring(0, exponentIndex);
+  final exponent = exponentIndex < 0 ? 0 : int.parse(text.substring(exponentIndex + 1));
+  final dot = mantissa.indexOf('.');
+  final visible = (dot < 0 ? 0 : mantissa.length - dot - 1) - exponent;
+  if (visible <= 0) return (0, BigInt.zero);
+  final digits = mantissa.replaceAll('.', '');
+  final fraction = visible >= digits.length ? digits : digits.substring(digits.length - visible);
+  return (visible, BigInt.parse(fraction));
 }

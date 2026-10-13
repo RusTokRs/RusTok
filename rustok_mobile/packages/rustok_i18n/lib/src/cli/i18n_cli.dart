@@ -288,16 +288,7 @@ int _runTypegen(ArgResults options, CliOutput write, CliOutput writeErr) {
   }
   final className = options['className'] as String;
 
-  if (!RegExp(r'^[A-Z][A-Za-z0-9_]*$').hasMatch(className)) {
-    writeErr('Error: "$className" is not a valid Dart class name.');
-    return exitFailure;
-  }
-
-  if (_reservedClassNames.contains(className)) {
-    writeErr('Error: "$className" is already the name of a type the generated '
-        'file uses; choose another class name.');
-    return exitFailure;
-  }
+  if (!_validateClassName(className, writeErr)) return exitFailure;
 
   final inputFile = File(inputPath);
   if (!inputFile.existsSync()) {
@@ -367,8 +358,24 @@ class _TypedAccessor {
       attribute == null ? 'message key "$key"' : 'attribute "$key.$attribute"';
 }
 
+bool _validateClassName(String className, CliOutput report) {
+  if (!RegExp(r'^[A-Z][A-Za-z0-9_]*$').hasMatch(className)) {
+    report('Error: "$className" is not a valid Dart class name.');
+    return false;
+  }
+
+  if (_reservedClassNames.contains(className)) {
+    report('Error: "$className" is already the name of a type the generated '
+        'file uses; choose another class name.');
+    return false;
+  }
+
+  return true;
+}
+
 /// Builds the typed accessor class for [bundle]. Returns `null` (and reports
-/// through [writeErr]) when two keys or variables map to the same Dart name.
+/// through [writeErr]) for an invalid/shadowing class name or when two keys or
+/// variables map to the same Dart name.
 ///
 /// Every message value becomes a getter — or a method when the pattern uses
 /// variables — and every attribute becomes an additional accessor that calls
@@ -389,6 +396,7 @@ GeneratedSource? generateTypedMessages(
   CliOutput? writeErr,
 }) {
   final report = writeErr ?? _printLine;
+  if (!_validateClassName(className, report)) return null;
   final buffer = StringBuffer();
   final memberOwners = <String, String>{};
   var generated = 0;
@@ -539,25 +547,15 @@ void _collectExpressionVariables(
   } else if (expr is FtlPlaceableExpression) {
     _collectExpressionVariables(expr.expression, bundle, vars, visited);
   } else if (expr is FtlFunctionReference) {
-    for (final arg in expr.positional) {
-      _collectExpressionVariables(arg, bundle, vars, visited);
-    }
-    // A named argument is a string or number literal by the grammar, so it can
-    // never carry a variable; walking them anyway keeps the generated signature
-    // correct if the parser ever accepts a wider form.
-    for (final arg in expr.named.values) {
-      _collectExpressionVariables(arg, bundle, vars, visited);
+    // Both built-ins and the unknown-function display fallback resolve only
+    // the first positional argument. Named options are inspected as literals.
+    if (expr.positional.isNotEmpty) {
+      _collectExpressionVariables(expr.positional.first, bundle, vars, visited);
     }
   } else if (expr is FtlTermReference) {
-    // A term is resolved with its own scope, so the variables inside its
-    // pattern are not read from the caller; only the arguments written at the
-    // call site are.
-    for (final arg in expr.positionalArguments) {
-      _collectExpressionVariables(arg, bundle, vars, visited);
-    }
-    for (final arg in (expr.arguments ?? const <String, FtlExpression>{}).values) {
-      _collectExpressionVariables(arg, bundle, vars, visited);
-    }
+    // The resolver ignores positional term arguments and reads named arguments
+    // as literals in a fresh scope. Neither reads a caller variable.
+    return;
   } else if (expr is FtlMessageReference) {
     // A message reference is resolved in the caller's scope, so every variable
     // its pattern reads is a variable the generated method must accept.
@@ -589,9 +587,9 @@ const Set<String> _dartReservedWords = {
   'part', 'required', 'set', 'static', 'typedef',
 };
 
-/// Class names the generated file cannot use: it imports `UiMessages` and holds
-/// one as a field, so a same-named class would shadow the type it needs.
-const Set<String> _reservedClassNames = {'UiMessages'};
+/// Types used in generated fields/return values must not be shadowed by the
+/// generated class itself.
+const Set<String> _reservedClassNames = {'UiMessages', 'String'};
 
 /// Members the generated class must not declare. `locale` is the field the
 /// generated bodies pass as the bundle locale; the rest come from `Object`,
