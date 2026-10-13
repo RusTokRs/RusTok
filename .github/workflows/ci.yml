@@ -405,6 +405,7 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_dev
       RUSTOK_BASE_URL: http://127.0.0.1:5150
+      RUSTOK_ARTIFACT_NODE_ID: 019dbfb8-66a1-b38b-0559-97cc78906258
       SKIP_RUSTDOC: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

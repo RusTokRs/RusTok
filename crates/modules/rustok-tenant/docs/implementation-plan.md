@@ -213,6 +213,10 @@ is still required; source inspection is not a substitute.
 6. Update this plan and the master verification cursor with every contract or
    status change. Never claim source, compile or live evidence that did not run.
 
+## Verification
+
+- Contract tests cover every public use case.
+
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`

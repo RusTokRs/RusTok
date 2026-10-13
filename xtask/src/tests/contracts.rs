@@ -1701,8 +1701,12 @@ fn validate_host_ui_inventory_contract_rejects_orphan_module_ui_dependency() {
     let base = env::temp_dir().join(format!("xtask-host-inventory-{}", std::process::id()));
     let admin_dir = base.join("apps").join("admin");
     let storefront_dir = base.join("apps").join("storefront");
-    let demo_admin_dir = base.join("crates").join("rustok-demo").join("admin");
-    let demo_root = base.join("crates").join("rustok-demo");
+    let demo_admin_dir = base
+        .join("crates")
+        .join("modules")
+        .join("rustok-demo")
+        .join("admin");
+    let demo_root = base.join("crates").join("modules").join("rustok-demo");
     std::fs::create_dir_all(&admin_dir).expect("temporary admin dir should exist");
     std::fs::create_dir_all(&storefront_dir).expect("temporary storefront dir should exist");
     std::fs::create_dir_all(&demo_admin_dir).expect("temporary demo admin dir should exist");
@@ -1766,6 +1770,7 @@ fn validate_host_ui_inventory_contract_rejects_orphan_module_ui_dependency() {
     let _ = std::fs::remove_file(&manifest_path);
     let _ = std::fs::remove_dir(&demo_admin_dir);
     let _ = std::fs::remove_dir(&demo_root);
+    let _ = std::fs::remove_dir(base.join("crates").join("modules"));
     let _ = std::fs::remove_dir(base.join("crates"));
     let _ = std::fs::remove_dir(&admin_dir);
     let _ = std::fs::remove_dir(&storefront_dir);
@@ -1842,7 +1847,7 @@ fn validate_host_ui_inventory_contract_rejects_orphan_feature_entry_for_declared
     ));
     let admin_dir = base.join("apps").join("admin");
     let storefront_dir = base.join("apps").join("storefront");
-    let demo_root = base.join("crates").join("rustok-demo");
+    let demo_root = base.join("crates").join("modules").join("rustok-demo");
     std::fs::create_dir_all(&admin_dir).expect("temporary admin dir should exist");
     std::fs::create_dir_all(&storefront_dir).expect("temporary storefront dir should exist");
     std::fs::create_dir_all(&demo_root).expect("temporary demo root should exist");
@@ -1897,6 +1902,7 @@ fn validate_host_ui_inventory_contract_rejects_orphan_feature_entry_for_declared
     let _ = std::fs::remove_file(demo_root.join("rustok-module.toml"));
     let _ = std::fs::remove_file(&manifest_path);
     let _ = std::fs::remove_dir(&demo_root);
+    let _ = std::fs::remove_dir(base.join("crates").join("modules"));
     let _ = std::fs::remove_dir(base.join("crates"));
     let _ = std::fs::remove_dir(&admin_dir);
     let _ = std::fs::remove_dir(&storefront_dir);
@@ -2001,7 +2007,11 @@ fn validate_server_event_runtime_contract_accepts_module_owned_dispatcher_path()
 fn validate_module_host_ui_contract_rejects_missing_admin_feature_wiring() {
     let base = env::temp_dir().join(format!("xtask-host-ui-missing-{}", std::process::id()));
     let admin_dir = base.join("apps").join("admin");
-    let ui_crate_dir = base.join("crates").join("rustok-demo").join("admin");
+    let ui_crate_dir = base
+        .join("crates")
+        .join("modules")
+        .join("rustok-demo")
+        .join("admin");
     std::fs::create_dir_all(&admin_dir).expect("temporary admin dir should exist");
     std::fs::create_dir_all(&ui_crate_dir).expect("temporary ui crate dir should exist");
 
@@ -2065,7 +2075,8 @@ fn validate_module_host_ui_contract_rejects_missing_admin_feature_wiring() {
     let _ = std::fs::remove_file(ui_crate_dir.join("Cargo.toml"));
     let _ = std::fs::remove_file(&manifest_path);
     let _ = std::fs::remove_dir(&ui_crate_dir);
-    let _ = std::fs::remove_dir(base.join("crates").join("rustok-demo"));
+    let _ = std::fs::remove_dir(base.join("crates").join("modules").join("rustok-demo"));
+    let _ = std::fs::remove_dir(base.join("crates").join("modules"));
     let _ = std::fs::remove_dir(base.join("crates"));
     let _ = std::fs::remove_dir(&admin_dir);
     let _ = std::fs::remove_dir(base.join("apps"));
@@ -2076,7 +2087,11 @@ fn validate_module_host_ui_contract_rejects_missing_admin_feature_wiring() {
 fn validate_module_host_ui_contract_accepts_storefront_ssr_wiring() {
     let base = env::temp_dir().join(format!("xtask-host-ui-ok-{}", std::process::id()));
     let storefront_dir = base.join("apps").join("storefront");
-    let ui_crate_dir = base.join("crates").join("rustok-demo").join("storefront");
+    let ui_crate_dir = base
+        .join("crates")
+        .join("modules")
+        .join("rustok-demo")
+        .join("storefront");
     std::fs::create_dir_all(&storefront_dir).expect("temporary storefront dir should exist");
     std::fs::create_dir_all(&ui_crate_dir).expect("temporary ui crate dir should exist");
 
@@ -2137,7 +2152,8 @@ fn validate_module_host_ui_contract_accepts_storefront_ssr_wiring() {
     let _ = std::fs::remove_file(ui_crate_dir.join("Cargo.toml"));
     let _ = std::fs::remove_file(&manifest_path);
     let _ = std::fs::remove_dir(&ui_crate_dir);
-    let _ = std::fs::remove_dir(base.join("crates").join("rustok-demo"));
+    let _ = std::fs::remove_dir(base.join("crates").join("modules").join("rustok-demo"));
+    let _ = std::fs::remove_dir(base.join("crates").join("modules"));
     let _ = std::fs::remove_dir(base.join("crates"));
     let _ = std::fs::remove_dir(&storefront_dir);
     let _ = std::fs::remove_dir(base.join("apps"));
@@ -2148,10 +2164,21 @@ fn validate_module_host_ui_contract_accepts_storefront_ssr_wiring() {
 fn validate_module_host_ui_contract_rejects_missing_dependency_admin_ui_wiring() {
     let base = env::temp_dir().join(format!("xtask-host-ui-dependency-{}", std::process::id()));
     let admin_dir = base.join("apps").join("admin");
-    let demo_admin_dir = base.join("crates").join("rustok-demo").join("admin");
-    let comments_admin_dir = base.join("crates").join("rustok-comments").join("admin");
-    let demo_root = base.join("crates").join("rustok-demo");
-    let comments_root = base.join("crates").join("rustok-comments");
+    let demo_admin_dir = base
+        .join("crates")
+        .join("modules")
+        .join("rustok-demo")
+        .join("admin");
+    let comments_admin_dir = base
+        .join("crates")
+        .join("modules")
+        .join("rustok-comments")
+        .join("admin");
+    let demo_root = base.join("crates").join("modules").join("rustok-demo");
+    let comments_root = base
+        .join("crates")
+        .join("modules")
+        .join("rustok-comments");
     std::fs::create_dir_all(&admin_dir).expect("temporary admin dir should exist");
     std::fs::create_dir_all(&demo_admin_dir).expect("temporary demo admin dir should exist");
     std::fs::create_dir_all(&comments_admin_dir)
@@ -2271,6 +2298,7 @@ fn validate_module_host_ui_contract_rejects_missing_dependency_admin_ui_wiring()
     let _ = std::fs::remove_dir(&comments_admin_dir);
     let _ = std::fs::remove_dir(&demo_root);
     let _ = std::fs::remove_dir(&comments_root);
+    let _ = std::fs::remove_dir(base.join("crates").join("modules"));
     let _ = std::fs::remove_dir(base.join("crates"));
     let _ = std::fs::remove_dir(&admin_dir);
     let _ = std::fs::remove_dir(base.join("apps"));

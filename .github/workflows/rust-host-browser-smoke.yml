@@ -116,6 +116,7 @@ jobs:
           SUPERADMIN_PASSWORD: BrowserSmoke-2026!9Qv2Lm7Rx
           SUPERADMIN_TENANT_SLUG: default
           SUPERADMIN_TENANT_NAME: Browser Smoke
+          RUSTOK_ARTIFACT_NODE_ID: 019dbfb8-66a1-b38b-0559-97cc78906258
           RUST_LOG: rustok_server=info,tower_http=warn
         run: |
           set -euo pipefail

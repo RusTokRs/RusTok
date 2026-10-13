@@ -84,17 +84,34 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
     }
 }
 
+pub const DEFAULT_DEV_ARTIFACT_NODE_ID: uuid::Uuid =
+    uuid::Uuid::from_u128(0x019dbfb8_66a1_b38b_0559_97cc78906258);
+
 fn configured_artifact_node_id() -> Result<uuid::Uuid> {
-    let value = std::env::var("RUSTOK_ARTIFACT_NODE_ID")
-        .map_err(|_| Error::Message("RUSTOK_ARTIFACT_NODE_ID must be configured".to_string()))?;
-    let node_id = uuid::Uuid::parse_str(&value)
-        .map_err(|_| Error::Message("RUSTOK_ARTIFACT_NODE_ID must be a UUID".to_string()))?;
-    if node_id.is_nil() {
-        return Err(Error::Message(
-            "RUSTOK_ARTIFACT_NODE_ID must not be nil".to_string(),
-        ));
+    match std::env::var("RUSTOK_ARTIFACT_NODE_ID") {
+        Ok(value) => {
+            let node_id = uuid::Uuid::parse_str(&value)
+                .map_err(|_| Error::Message("RUSTOK_ARTIFACT_NODE_ID must be a UUID".to_string()))?;
+            if node_id.is_nil() {
+                return Err(Error::Message(
+                    "RUSTOK_ARTIFACT_NODE_ID must not be nil".to_string(),
+                ));
+            }
+            Ok(node_id)
+        }
+        Err(std::env::VarError::NotPresent) => {
+            if crate::common::settings::is_production_environment() {
+                Err(Error::Message(
+                    "RUSTOK_ARTIFACT_NODE_ID must be configured in production".to_string(),
+                ))
+            } else {
+                Ok(DEFAULT_DEV_ARTIFACT_NODE_ID)
+            }
+        }
+        Err(std::env::VarError::NotUnicode(_)) => Err(Error::Message(
+            "RUSTOK_ARTIFACT_NODE_ID must be valid UTF-8".to_string(),
+        )),
     }
-    Ok(node_id)
 }
 
 fn configured_artifact_node_cache_max_bytes() -> Result<usize> {
@@ -250,5 +267,11 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn artifact_node_id_defaults_in_non_production() {
+        let node_id = super::configured_artifact_node_id().expect("default node id in dev");
+        assert!(!node_id.is_nil());
     }
 }

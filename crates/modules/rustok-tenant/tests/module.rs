@@ -40,9 +40,11 @@ async fn locale_policy_migration_enforces_sqlite_row_invariants() {
     db.execute_unprepared(
         r#"
 CREATE TABLE tenants (
-    id TEXT PRIMARY KEY NOT NULL
+    id TEXT PRIMARY KEY NOT NULL,
+    default_locale TEXT NOT NULL DEFAULT 'en'
 );
 CREATE TABLE tenant_locales (
+    id TEXT PRIMARY KEY NOT NULL,
     tenant_id TEXT NOT NULL,
     locale TEXT NOT NULL,
     name TEXT NOT NULL,
@@ -51,10 +53,10 @@ CREATE TABLE tenant_locales (
     is_enabled BOOLEAN NOT NULL DEFAULT 1,
     fallback_locale TEXT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (tenant_id, locale),
+    UNIQUE (tenant_id, locale),
     FOREIGN KEY (tenant_id) REFERENCES tenants (id)
 );
-INSERT INTO tenants (id) VALUES ('00000000-0000-0000-0000-000000000001');
+INSERT INTO tenants (id, default_locale) VALUES ('00000000-0000-0000-0000-000000000001', 'en');
 "#,
     )
     .await
@@ -74,9 +76,9 @@ INSERT INTO tenants (id) VALUES ('00000000-0000-0000-0000-000000000001');
         .execute_unprepared(
             r#"
 INSERT INTO tenant_locales (
-    tenant_id, locale, name, native_name, is_default, is_enabled
+    id, tenant_id, locale, name, native_name, is_default, is_enabled
 ) VALUES (
-    '00000000-0000-0000-0000-000000000001', 'en', 'English', 'English', 1, 0
+    '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'fr', 'French', 'Français', 1, 0
 );
 "#,
         )
@@ -87,9 +89,9 @@ INSERT INTO tenant_locales (
         .execute_unprepared(
             r#"
 INSERT INTO tenant_locales (
-    tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale
+    id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale
 ) VALUES (
-    '00000000-0000-0000-0000-000000000001', 'de', 'German', 'Deutsch', 0, 1, 'de'
+    '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', 'de', 'German', 'Deutsch', 0, 1, 'de'
 );
 "#,
         )

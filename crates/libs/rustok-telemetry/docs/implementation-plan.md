@@ -135,6 +135,7 @@ duration, one delivered offset, a local cursor counter or Redis state.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `cargo test -p rustok-telemetry`
 - `cargo test -p rustok-telemetry rbac_invalidation_metrics`
 - `RUSTFLAGS="-Dwarnings" cargo check -p rustok-telemetry --all-targets`
