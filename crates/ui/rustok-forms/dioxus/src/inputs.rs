@@ -1,7 +1,7 @@
 //! Interactive form control components styled with RusToK design tokens.
 //!
 //! All controls automatically detect when rendered inside a [`FormField`](crate::FormField)
-//! via [`FieldContext`](crate::context::FieldContext), inheriting the field name,
+//! via [`FieldContext`], inheriting the field name,
 //! accessibility attributes (`aria-invalid`, `aria-describedby`, `aria-errormessage`),
 //! error state styling (`border-destructive`), and dirty tracking integration.
 

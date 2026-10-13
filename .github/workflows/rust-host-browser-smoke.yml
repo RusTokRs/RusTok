@@ -102,6 +102,11 @@ jobs:
           npm ci --prefix apps/next-admin --no-audit --no-fund
           (cd apps/next-admin && npx --no-install playwright install --with-deps chromium)
 
+      - name: Build monolith browser host
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/browser-server
+        run: cargo build --locked -p rustok-server --bin rustok-server
+
       - name: Start monolith browser host
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/browser-server
