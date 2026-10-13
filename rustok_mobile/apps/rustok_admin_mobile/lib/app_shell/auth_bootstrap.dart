@@ -24,7 +24,7 @@ final authSessionStoreProvider = Provider<AuthSessionStore>((ref) {
 final refreshClientProvider = Provider<GraphQLClient>((ref) {
   final config = GraphQlClientConfig(
     baseUri: _serverBaseUri(),
-    context: const GraphQlRequestContext(
+    context: GraphQlRequestContext(
       tenantSlug: _defaultTenantSlug,
       locale: _defaultLocale,
     ),
@@ -49,7 +49,7 @@ final authSessionProvider = FutureProvider<AuthSession?>((ref) async {
 });
 
 final graphQlConfigProvider = Provider<GraphQlClientConfig>((ref) {
-  final session = ref.watch(authSessionProvider).valueOrNull;
+  final session = ref.watch(authSessionProvider).asData?.value;
   return GraphQlClientConfig(
     baseUri: _serverBaseUri(),
     context: GraphQlRequestContext(
@@ -82,18 +82,22 @@ const _bootstrapProbeDocument = r'''
 final authBootstrapProbeProvider = FutureProvider<BootstrapProbeResult>((
   ref,
 ) async {
+  print('DEBUG: authBootstrapProbeProvider started');
   final session = await ref.watch(authSessionProvider.future);
+  print('DEBUG: got session: $session');
   if (session == null) {
     return const BootstrapProbeResult.unauthenticated();
   }
 
   final client = ref.watch(graphQlClientProvider);
+  print('DEBUG: got client, calling client.query');
   final result = await client.query(
     QueryOptions(
       document: gql(_bootstrapProbeDocument),
       fetchPolicy: FetchPolicy.networkOnly,
     ),
   );
+  print('DEBUG: got result: hasException=${result.hasException}, exception=${result.exception}');
   if (result.hasException) {
     throw result.exception!;
   }

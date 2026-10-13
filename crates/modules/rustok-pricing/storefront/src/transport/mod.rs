@@ -49,7 +49,7 @@ mod tests {
 
     fn block_on<F: Future>(future: F) -> F::Output {
         let waker = Waker::noop();
-        let mut context = Context::from_waker(&waker);
+        let mut context = Context::from_waker(waker);
         let mut future = Box::pin(future);
 
         loop {

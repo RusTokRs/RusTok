@@ -11,17 +11,15 @@ class GraphQlRefreshTokenService implements RefreshTokenService {
 
   final GraphQLClient client;
 
-  static final MutationOptions _refreshMutation = MutationOptions(
-    document: gql(r'''
-      mutation RefreshToken($refreshToken: String!) {
-        refreshToken(input: { refreshToken: $refreshToken }) {
-          accessToken
-          refreshToken
-          expiresIn
-        }
+  static final _refreshMutationDocument = gql(r'''
+    mutation RefreshToken($refreshToken: String!) {
+      refreshToken(input: { refreshToken: $refreshToken }) {
+        accessToken
+        refreshToken
+        expiresIn
       }
-    '''),
-  );
+    }
+  ''');
 
   @override
   Future<AuthSession?> refresh(AuthSession session) async {
@@ -31,7 +29,8 @@ class GraphQlRefreshTokenService implements RefreshTokenService {
     }
 
     final result = await client.mutate(
-      _refreshMutation.copyWith(
+      MutationOptions(
+        document: _refreshMutationDocument,
         variables: <String, dynamic>{'refreshToken': refreshToken},
       ),
     );

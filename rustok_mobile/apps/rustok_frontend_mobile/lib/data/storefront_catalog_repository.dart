@@ -131,7 +131,7 @@ final hostStorefrontCatalogRepositoryProvider =
   );
 });
 
-class GraphQlStorefrontCatalogRepository implements StorefrontCatalogRepository {
+class GraphQlStorefrontCatalogRepository extends StorefrontCatalogRepository {
   GraphQlStorefrontCatalogRepository({
     required GraphQLClient client,
     required this.locale,

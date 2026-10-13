@@ -41,6 +41,7 @@ mod-comments = ["dep:rustok-comments", "rustok-comments/tcp-transport", "rustok-
 mod-pages = ["dep:rustok-pages", "mod-content", "mod-page_builder"]
 mod-navigation = ["dep:rustok-navigation"]
 mod-forms = ["dep:rustok-forms"]
+mod-newsletter = ["dep:rustok-newsletter"]
 mod-page_builder = ["dep:rustok-page-builder"]
 mod-taxonomy = ["dep:rustok-taxonomy", "mod-content"]
 mod-alloy = ["dep:alloy"]
@@ -104,6 +105,7 @@ rustok-blog = { workspace = true, optional = true }
 rustok-reactions = { path = "../rustok-reactions", optional = true }
 rustok-forum = { workspace = true, optional = true }
 rustok-notifications = { workspace = true, optional = true }
+rustok-newsletter = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
 rustok-pages = { workspace = true, optional = true }
 rustok-docs = { workspace = true, optional = true }

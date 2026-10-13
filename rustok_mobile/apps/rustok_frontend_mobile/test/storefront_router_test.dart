@@ -38,12 +38,16 @@ void main() {
   testWidgets('navigates to catalog and module placeholder routes', (
     tester,
   ) async {
-    final router = buildStorefrontRouter(
-      catalogRepository: const _FakeStorefrontCatalogRepository(),
-    );
+    const catalogRepo = _FakeStorefrontCatalogRepository();
+    final router = buildStorefrontRouter(catalogRepository: catalogRepo);
 
     await tester.pumpWidget(
-      ProviderScope(child: MaterialApp.router(routerConfig: router)),
+      ProviderScope(
+        overrides: [
+          storefrontCatalogRepositoryProvider.overrideWithValue(catalogRepo),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -73,6 +77,8 @@ void main() {
 
     router.go(homePath);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('/modules/blog'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('/modules/blog'));
     await tester.pumpAndSettle();
     expect(find.text('Blog'), findsOneWidget);
@@ -98,7 +104,7 @@ void main() {
   });
 }
 
-class _FakeStorefrontCatalogRepository implements StorefrontCatalogRepository {
+class _FakeStorefrontCatalogRepository extends StorefrontCatalogRepository {
   const _FakeStorefrontCatalogRepository();
 
   @override

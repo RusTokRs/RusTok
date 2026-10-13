@@ -6,11 +6,19 @@ import 'package:rustok_admin_mobile/app_shell/auth_bootstrap.dart';
 
 void main() {
   GraphQLClient clientWithResult(QueryResult<Object?> result) {
-    final link = Link.function((request, [forward]) async* {
-      yield result;
+    final link = Link.function((request, [forward]) {
+      return Stream.value(
+        Response(
+          data: result.data,
+          errors: result.exception?.graphqlErrors,
+          response: result.data ?? const <String, dynamic>{},
+        ),
+      );
     });
     return GraphQLClient(cache: GraphQLCache(), link: link);
   }
+
+
 
   test('returns unauthenticated when there is no valid session', () async {
     final container = ProviderContainer(
@@ -46,7 +54,7 @@ void main() {
           (ref) async => const AuthSession(
             accessToken: 'token',
             refreshToken: 'refresh',
-            expiresAt: 4102444800000,
+            expiresAt: null,
           ),
         ),
         graphQlClientProvider.overrideWithValue(clientWithResult(queryResult)),
@@ -76,7 +84,7 @@ void main() {
           (ref) async => const AuthSession(
             accessToken: 'token',
             refreshToken: 'refresh',
-            expiresAt: 4102444800000,
+            expiresAt: null,
           ),
         ),
         graphQlClientProvider.overrideWithValue(clientWithResult(queryResult)),
@@ -105,7 +113,7 @@ void main() {
           (ref) async => const AuthSession(
             accessToken: 'token',
             refreshToken: 'refresh',
-            expiresAt: 4102444800000,
+            expiresAt: null,
           ),
         ),
         graphQlClientProvider.overrideWithValue(clientWithResult(queryResult)),

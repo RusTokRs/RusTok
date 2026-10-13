@@ -2,7 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'product_summary.dart';
 
-abstract interface class StorefrontCatalogRepository {
+abstract class StorefrontCatalogRepository {
+  const StorefrontCatalogRepository();
   Future<List<StorefrontProductSummary>> featuredProducts();
 
   Future<List<StorefrontCartLine>> cartLines();

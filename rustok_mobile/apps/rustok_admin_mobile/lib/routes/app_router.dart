@@ -46,8 +46,9 @@ GoRouter buildRouter(
                 builder: (context, ref, _) {
                   final canManageModules = ref
                           .watch(authBootstrapProbeProvider)
-                          .valueOrNull
-                          ?.hasPermission(_modulesManagePermission) ??
+                          .asData
+                          ?.value
+                          .hasPermission(_modulesManagePermission) ??
                       false;
 
                   return ModulesMobileScreen(

@@ -80,7 +80,7 @@ void main() {
   });
 }
 
-class _FakeCatalogRepository implements StorefrontCatalogRepository {
+class _FakeCatalogRepository extends StorefrontCatalogRepository {
   const _FakeCatalogRepository();
 
   @override
@@ -149,7 +149,7 @@ class _FakeCatalogRepository implements StorefrontCatalogRepository {
   }
 }
 
-class _EmptyCatalogRepository implements StorefrontCatalogRepository {
+class _EmptyCatalogRepository extends StorefrontCatalogRepository {
   const _EmptyCatalogRepository();
 
   @override

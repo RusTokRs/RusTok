@@ -6,7 +6,7 @@ void main() {
     const builder = GraphQlHeadersBuilder();
 
     test('builds mandatory headers', () {
-      const context = GraphQlRequestContext(tenantSlug: 'acme', locale: 'ru');
+      final context = GraphQlRequestContext(tenantSlug: 'acme', locale: 'ru');
       final headers = builder.build(context);
       expect(headers['X-Tenant-Slug'], 'acme');
       expect(headers['Accept-Language'], 'ru');
@@ -14,7 +14,7 @@ void main() {
     });
 
     test('adds auth and tenant id when provided', () {
-      const context = GraphQlRequestContext(
+      final context = GraphQlRequestContext(
         tenantSlug: 'acme',
         locale: 'en',
         tenantId: 'tenant-1',
@@ -26,7 +26,7 @@ void main() {
     });
 
     test('builds ws init payload expected by server contract', () {
-      const context = GraphQlRequestContext(
+      final context = GraphQlRequestContext(
         tenantSlug: 'acme',
         locale: 'en',
         accessToken: 'token-123',

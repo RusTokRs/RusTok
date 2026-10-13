@@ -1,0 +1,20 @@
+{
+  "configVersion": 2,
+  "packages": [
+    {
+      "name": "app_route_contracts",
+      "rootUri": "../../app_route_contracts",
+      "packageUri": "lib/",
+      "languageVersion": "3.9"
+    },
+    {
+      "name": "app_module_contracts",
+      "rootUri": "../",
+      "packageUri": "lib/",
+      "languageVersion": "3.9"
+    }
+  ],
+  "generator": "pub",
+  "generatorVersion": "3.13.4",
+  "pubCache": "file:///C:/Users/user/AppData/Local/Pub/Cache"
+}

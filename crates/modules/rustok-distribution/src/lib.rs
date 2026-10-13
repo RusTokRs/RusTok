@@ -151,6 +151,8 @@ pub fn build_registry() -> ModuleRegistry {
     let registry = registry.register(rustok_product_bundles::ProductBundlesModule);
     #[cfg(feature = "mod-profiles")]
     let registry = registry.register(rustok_profiles::ProfilesModule);
+    #[cfg(feature = "mod-groups")]
+    let registry = registry.register(rustok_groups::GroupsModule);
     #[cfg(feature = "mod-region")]
     let registry = registry.register(rustok_region::RegionModule);
     #[cfg(feature = "mod-pricing")]
@@ -179,6 +181,8 @@ pub fn build_registry() -> ModuleRegistry {
     let registry = registry.register(rustok_marketplace_payout::MarketplacePayoutModule);
     #[cfg(feature = "mod-marketplace")]
     let registry = registry.register(rustok_marketplace::MarketplaceModule);
+    #[cfg(feature = "mod-accounting")]
+    let registry = registry.register(rustok_accounting::AccountingModule);
     #[cfg(feature = "mod-moderation")]
     let registry = registry.register(rustok_moderation::ModerationModule);
     #[cfg(feature = "mod-content")]
@@ -191,6 +195,8 @@ pub fn build_registry() -> ModuleRegistry {
     let registry = registry.register(rustok_forum::ForumModule);
     #[cfg(feature = "mod-notifications")]
     let registry = registry.register(rustok_notifications::NotificationsModule);
+    #[cfg(feature = "mod-newsletter")]
+    let registry = registry.register(rustok_newsletter::NewsletterModule);
     #[cfg(feature = "mod-comments")]
     let registry = registry.register(rustok_comments::CommentsModule);
     #[cfg(feature = "mod-pages")]

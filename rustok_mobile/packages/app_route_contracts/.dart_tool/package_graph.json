@@ -1,0 +1,14 @@
+{
+  "roots": [
+    "app_route_contracts"
+  ],
+  "packages": [
+    {
+      "name": "app_route_contracts",
+      "version": "0.1.0",
+      "dependencies": [],
+      "devDependencies": []
+    }
+  ],
+  "configVersion": 1
+}

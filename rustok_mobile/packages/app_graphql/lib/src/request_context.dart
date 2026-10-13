@@ -1,5 +1,5 @@
 class GraphQlRequestContext {
-  const GraphQlRequestContext({
+  GraphQlRequestContext({
     required this.tenantSlug,
     required this.locale,
     this.tenantId,

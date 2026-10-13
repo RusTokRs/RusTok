@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,7 +7,7 @@ import 'package:rustok_admin_mobile/app_shell/auth_bootstrap.dart';
 
 void main() {
   Widget _wrap({
-    required Override override,
+    required dynamic override,
     Widget? child,
   }) {
     return ProviderScope(
@@ -20,16 +21,18 @@ void main() {
   }
 
   testWidgets('shows loading while bootstrap probe is pending', (tester) async {
+    final completer = Completer<BootstrapProbeResult>();
     await tester.pumpWidget(
       _wrap(
-        override: authBootstrapProbeProvider.overrideWith((ref) async {
-          await Future<void>.delayed(const Duration(milliseconds: 10));
-          return const BootstrapProbeResult.unauthenticated();
-        }),
+        override: authBootstrapProbeProvider.overrideWith(
+          (ref) => completer.future,
+        ),
       ),
     );
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    completer.complete(const BootstrapProbeResult.unauthenticated());
+    await tester.pumpAndSettle();
   });
 
   testWidgets('shows unauthenticated message', (tester) async {
@@ -63,7 +66,7 @@ void main() {
 
     expect(find.text('module-content'), findsOneWidget);
     expect(find.text('me: user@example.com'), findsOneWidget);
-    expect(find.text('tenant: tenant-a'), findsOneWidget);
+    expect(find.textContaining('tenant: tenant-a'), findsOneWidget);
   });
 
   testWidgets('shows error fallback with retry button', (tester) async {

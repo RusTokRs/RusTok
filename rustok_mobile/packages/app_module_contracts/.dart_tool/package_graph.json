@@ -1,0 +1,21 @@
+{
+  "roots": [
+    "app_module_contracts"
+  ],
+  "packages": [
+    {
+      "name": "app_module_contracts",
+      "version": "0.1.0",
+      "dependencies": [
+        "app_route_contracts"
+      ],
+      "devDependencies": []
+    },
+    {
+      "name": "app_route_contracts",
+      "version": "0.1.0",
+      "dependencies": []
+    }
+  ],
+  "configVersion": 1
+}

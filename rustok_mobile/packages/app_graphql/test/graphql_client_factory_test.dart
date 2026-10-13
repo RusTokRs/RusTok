@@ -5,11 +5,11 @@ import 'package:test/test.dart';
 void main() {
   group('GraphQlClientFactory', () {
     const factory = GraphQlClientFactory();
-    const context = GraphQlRequestContext(tenantSlug: 'default', locale: 'en');
+    final context = GraphQlRequestContext(tenantSlug: 'default', locale: 'en');
 
     test('create returns GraphQLClient with split transport support', () {
       final client = factory.create(
-        const GraphQlClientConfig(
+        GraphQlClientConfig(
           baseUri: Uri(scheme: 'https', host: 'example.com'),
           context: context,
         ),
@@ -20,7 +20,7 @@ void main() {
 
     test('createHttpOnly returns GraphQLClient for non-subscription flows', () {
       final client = factory.createHttpOnly(
-        const GraphQlClientConfig(
+        GraphQlClientConfig(
           baseUri: Uri(scheme: 'https', host: 'example.com'),
           context: context,
         ),
