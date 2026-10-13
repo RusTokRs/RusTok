@@ -11,7 +11,7 @@
 /// - `Strict-Transport-Security` — enforces HTTPS (only in production)
 ///
 /// Mounted globally in application router composition via `axum::middleware::from_fn`.
-use axum::http::HeaderValue;
+use axum::http::{HeaderValue, header};
 use axum::{extract::Request, middleware::Next, response::Response};
 use rustok_web::CspNonce;
 
@@ -55,6 +55,7 @@ pub async fn handle_csp_report(request: Request, next: Next) -> Response {
 
 pub async fn security_headers(mut request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
+    tracing::debug!(path = path.as_str(), "security_headers entry");
     let csp_nonce =
         (!is_api_surface(&path) && !is_richtext_frame_surface(&path)).then(CspNonce::generate);
     if let Some(nonce) = csp_nonce.as_ref() {
@@ -68,7 +69,7 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
     // rather than restoring an inline-script or inline-style-element allowance.
     let enforced_policy = select_csp(&path, csp_nonce.as_ref(), plaintext_websocket_allowed());
     headers.insert(
-        "content-security-policy",
+        header::CONTENT_SECURITY_POLICY,
         policy_header(enforced_policy.as_str()),
     );
 
@@ -87,13 +88,13 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
 
     // X-Content-Type-Options
     headers.insert(
-        "x-content-type-options",
+        header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
 
     // X-Frame-Options
     headers.insert(
-        "x-frame-options",
+        header::X_FRAME_OPTIONS,
         HeaderValue::from_static(if is_richtext_frame_surface(&path) {
             "SAMEORIGIN"
         } else {
@@ -102,11 +103,11 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
     );
 
     // X-XSS-Protection — disabled per OWASP recommendation (CSP is the modern replacement)
-    headers.insert("x-xss-protection", HeaderValue::from_static("0"));
+    headers.insert(header::X_XSS_PROTECTION, HeaderValue::from_static("0"));
 
     // Referrer-Policy
     headers.insert(
-        "referrer-policy",
+        header::REFERRER_POLICY,
         HeaderValue::from_static(if is_richtext_frame_surface(&path) {
             "no-referrer"
         } else {
@@ -123,12 +124,12 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
         ),
     );
     if let Some(cache_control) = richtext_cache_control(&path) {
-        headers.insert("cache-control", HeaderValue::from_static(cache_control));
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache_control));
     }
 
     // Strict-Transport-Security — only for an explicitly declared HTTPS deployment.
     if hsts_enabled() {
-        headers.insert("strict-transport-security", HeaderValue::from_static(HSTS));
+        headers.insert(header::STRICT_TRANSPORT_SECURITY, HeaderValue::from_static(HSTS));
     }
 
     response
@@ -164,9 +165,12 @@ fn plaintext_websocket_allowed() -> bool {
 fn is_api_surface(path: &str) -> bool {
     path.starts_with("/api/")
         || path == "/metrics"
+        || path.starts_with("/metrics/")
         || path.starts_with("/health")
         || path.starts_with("/swagger")
+        || path.starts_with("/openapi")
         || path.starts_with("/api/openapi")
+        || path.starts_with("/catalog")
 }
 
 fn is_richtext_frame_surface(path: &str) -> bool {
@@ -262,9 +266,13 @@ mod tests {
     fn api_and_operator_paths_use_strict_csp() {
         assert_eq!(select_csp("/api/graphql", None, false), API_CSP);
         assert_eq!(select_csp("/metrics", None, false), API_CSP);
+        assert_eq!(select_csp("/metrics/", None, false), API_CSP);
         assert_eq!(select_csp("/health/ready", None, false), API_CSP);
         assert_eq!(select_csp("/swagger/index.html", None, false), API_CSP);
+        assert_eq!(select_csp("/openapi/v3.json", None, false), API_CSP);
+        assert_eq!(select_csp("/catalog/modules", None, false), API_CSP);
         assert_eq!(select_report_only_csp("/api/graphql", None), None);
+        assert_eq!(select_report_only_csp("/metrics/", None), None);
     }
 
     #[test]
