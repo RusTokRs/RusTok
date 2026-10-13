@@ -628,7 +628,7 @@ mod tests {
         };
         let composition = rustok_distribution::composition_identity();
         let mut hasher = Sha256::new();
-        hasher.update(&public_key);
+        hasher.update(public_key);
         let signer_key_digest = format!("sha256:{}", hex::encode(hasher.finalize()));
 
         let payload = rustok_modules::ModuleStaticDistributionBootstrapReceiptPayload {

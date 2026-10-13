@@ -1,7 +1,7 @@
 //! Leptos adapter crate root.
 //!
 //! `Cargo.toml` declares `[lib] path = "src/root.rs"`, so this file is the crate root and
-//! [`foundation`] is an ordinary module. It used to be reached through
+//! `foundation` is an ordinary module. It used to be reached through
 //! `#[path = "lib.rs"] mod foundation;`, which made a file named `lib.rs` something other than the
 //! crate root — an IDE and onboarding trap with no compensating benefit.
 

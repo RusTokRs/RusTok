@@ -324,75 +324,6 @@ fn shipping_option_graphql_error(
     public_graphql_error(message)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{ShippingOptionFailure, shipping_option_graphql_error};
-    use rustok_api::{PortActor, PortContext, PortError};
-    use uuid::Uuid;
-
-    #[test]
-    fn owner_error_message_never_reaches_graphql_response() {
-        let cart_id = Uuid::new_v4();
-        let context = PortContext::new(
-            Uuid::new_v4().to_string(),
-            PortActor::service("rustok-commerce.graphql-test"),
-            "en",
-            format!("test:{cart_id}"),
-        )
-        .with_deadline(std::time::Duration::from_secs(2));
-        let failure = ShippingOptionFailure::owner(
-            Uuid::new_v4(),
-            PortError::validation(
-                "fulfillment.internal_validation",
-                "internal owner detail must stay diagnostic-only",
-            ),
-        );
-
-        let error = shipping_option_graphql_error(
-            failure,
-            &context,
-            cart_id,
-            1,
-            1,
-            3,
-            None,
-            Some("en"),
-            Some("en"),
-        );
-
-        assert_eq!(error.message, "Selected shipping option is invalid");
-        assert_ne!(
-            error.message,
-            "internal owner detail must stay diagnostic-only"
-        );
-    }
-    #[test]
-    fn inactive_shipping_option_uses_stable_public_message() {
-        let failure = ShippingOptionFailure::inactive(Uuid::new_v4());
-        let context = PortContext::new(
-            Uuid::new_v4().to_string(),
-            PortActor::service("rustok-commerce.graphql-test"),
-            "en",
-            "test:inactive-shipping-option",
-        )
-        .with_deadline(std::time::Duration::from_secs(2));
-
-        let error = shipping_option_graphql_error(
-            failure,
-            &context,
-            Uuid::new_v4(),
-            1,
-            1,
-            3,
-            None,
-            Some("en"),
-            Some("en"),
-        );
-
-        assert_eq!(error.message, "Shipping option is not active");
-    }
-}
-
 fn current_shipping_selections(
     cart: &crate::dto::CartResponse,
 ) -> Vec<crate::dto::CartShippingSelectionInput> {
@@ -535,4 +466,73 @@ pub(crate) async fn validate_selected_shipping_option(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ShippingOptionFailure, shipping_option_graphql_error};
+    use rustok_api::{PortActor, PortContext, PortError};
+    use uuid::Uuid;
+
+    #[test]
+    fn owner_error_message_never_reaches_graphql_response() {
+        let cart_id = Uuid::new_v4();
+        let context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::service("rustok-commerce.graphql-test"),
+            "en",
+            format!("test:{cart_id}"),
+        )
+        .with_deadline(std::time::Duration::from_secs(2));
+        let failure = ShippingOptionFailure::owner(
+            Uuid::new_v4(),
+            PortError::validation(
+                "fulfillment.internal_validation",
+                "internal owner detail must stay diagnostic-only",
+            ),
+        );
+
+        let error = shipping_option_graphql_error(
+            failure,
+            &context,
+            cart_id,
+            1,
+            1,
+            3,
+            None,
+            Some("en"),
+            Some("en"),
+        );
+
+        assert_eq!(error.message, "Selected shipping option is invalid");
+        assert_ne!(
+            error.message,
+            "internal owner detail must stay diagnostic-only"
+        );
+    }
+    #[test]
+    fn inactive_shipping_option_uses_stable_public_message() {
+        let failure = ShippingOptionFailure::inactive(Uuid::new_v4());
+        let context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::service("rustok-commerce.graphql-test"),
+            "en",
+            "test:inactive-shipping-option",
+        )
+        .with_deadline(std::time::Duration::from_secs(2));
+
+        let error = shipping_option_graphql_error(
+            failure,
+            &context,
+            Uuid::new_v4(),
+            1,
+            1,
+            3,
+            None,
+            Some("en"),
+            Some("en"),
+        );
+
+        assert_eq!(error.message, "Shipping option is not active");
+    }
 }
