@@ -13,16 +13,23 @@ fn path_is_or_descendant(path: &str, root: &str) -> bool {
 }
 
 pub(crate) fn tenant_route_scope(path: &str) -> TenantRouteScope {
-    if path == "/api/graphql/ws" {
+    let normalized = path
+        .strip_suffix('/')
+        .filter(|p| !p.is_empty())
+        .unwrap_or(path);
+
+    if normalized == "/api/graphql/ws" {
         return TenantRouteScope::SelfResolvingHandshake;
     }
 
-    if matches!(path, "/metrics" | "/api/openapi.json" | "/api/openapi.yaml")
-        || path == "/api/graphql/schema.graphql"
-        || path_is_or_descendant(path, "/api/install")
-        || path_is_or_descendant(path, "/catalog")
-        || registry_route_is_global(path)
-        || path_is_or_descendant(path, "/health")
+    if matches!(
+        normalized,
+        "/metrics" | "/api/openapi.json" | "/api/openapi.yaml"
+    ) || normalized == "/api/graphql/schema.graphql"
+        || path_is_or_descendant(normalized, "/api/install")
+        || path_is_or_descendant(normalized, "/catalog")
+        || registry_route_is_global(normalized)
+        || path_is_or_descendant(normalized, "/health")
     {
         TenantRouteScope::GlobalOperator
     } else {
@@ -75,6 +82,26 @@ mod tests {
         assert_eq!(
             tenant_route_scope("/v2/catalog/publish/request-1/platform-build-stage"),
             TenantRouteScope::TenantBound
+        );
+    }
+
+    #[test]
+    fn route_policy_normalizes_trailing_slashes() {
+        assert_eq!(
+            tenant_route_scope("/metrics/"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/api/openapi.json/"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/health/"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/api/graphql/ws/"),
+            TenantRouteScope::SelfResolvingHandshake
         );
     }
 }

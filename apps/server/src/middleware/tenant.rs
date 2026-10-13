@@ -3,7 +3,7 @@ use axum::{
     extract::State,
     http::{Request, StatusCode},
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use rustok_cache::{
     CacheBackendGenerationSnapshot, CacheEnvelope, CacheKeyBuilder as CanonicalCacheKeyBuilder,
@@ -173,6 +173,24 @@ impl TenantContextLoadError {
             Self::ClockUnavailable(_) => "clock_unavailable",
             Self::BackendUnavailable(_) => "backend_unavailable",
         }
+    }
+
+    pub(crate) const fn error_code(&self) -> &'static str {
+        match self {
+            Self::InvalidIdentifier(_) => "invalid_tenant_identifier",
+            Self::InvalidAssertion(_) => "conflicting_tenant_assertions",
+            Self::NotFound => "tenant_not_found",
+            Self::Disabled => "tenant_disabled",
+            Self::InfrastructureUnavailable => "tenant_infrastructure_unavailable",
+            Self::CacheUnavailable(_) => "tenant_cache_unavailable",
+            Self::ClockUnavailable(_) => "tenant_clock_unavailable",
+            Self::BackendUnavailable(_) => "tenant_backend_unavailable",
+        }
+    }
+
+    pub(crate) fn to_response(&self) -> Response {
+        rustok_web::HttpError::new(self.status_code(), self.error_code(), self.client_message())
+            .into_response()
     }
 }
 
@@ -844,28 +862,31 @@ pub async fn resolve(
     State(ctx): State<ServerRuntimeContext>,
     mut req: Request<Body>,
     next: Next,
-) -> Result<Response, StatusCode> {
-    tracing::info!(path = req.uri().path(), "tenant::resolve entry");
+) -> Response {
+    tracing::debug!(path = req.uri().path(), "tenant::resolve entry");
     match tenant_route_scope(req.uri().path()) {
         TenantRouteScope::TenantBound => {}
         TenantRouteScope::GlobalOperator | TenantRouteScope::SelfResolvingHandshake => {
-            tracing::info!(
+            tracing::debug!(
                 path = req.uri().path(),
                 "tenant::resolve bypassed (global/handshake)"
             );
-            return Ok(next.run(req).await);
+            return next.run(req).await;
         }
     }
 
     let settings = ctx.settings();
-    let resolution = resolve_request(&req, settings).map_err(|error| {
-        tracing::warn!(
-            path = req.uri().path(),
-            error = %error,
-            "Tenant resolution failed"
-        );
-        error.status_code()
-    })?;
+    let resolution = match resolve_request(&req, settings) {
+        Ok(res) => res,
+        Err(error) => {
+            tracing::warn!(
+                path = req.uri().path(),
+                error = %error,
+                "Tenant resolution failed"
+            );
+            return error.to_response();
+        }
+    };
 
     if resolution.source == TenantResolutionSource::DevelopmentFallback {
         tracing::warn!(
@@ -876,20 +897,25 @@ pub async fn resolve(
         );
     }
 
-    let context = load_resolved_tenant_context(&ctx, &resolution, TenantResolutionTransport::Http)
-        .await
-        .map_err(|error| {
+    let context = match load_resolved_tenant_context(&ctx, &resolution, TenantResolutionTransport::Http).await {
+        Ok(context) => context,
+        Err(error) => {
             tracing::warn!(
                 path = req.uri().path(),
                 error = %error,
                 "Tenant context loading failed"
             );
-            error.status_code()
-        })?;
+            return error.to_response();
+        }
+    };
 
-    tracing::info!(path = req.uri().path(), tenant_slug = %context.slug, "tenant::resolve successful, inserting context and calling next");
+    tracing::debug!(
+        path = req.uri().path(),
+        tenant_slug = %context.slug,
+        "tenant::resolve successful, inserting context and calling next"
+    );
     req.extensions_mut().insert(TenantContextExtension(context));
-    Ok(next.run(req).await)
+    next.run(req).await
 }
 
 #[derive(Debug, Clone, Copy)]

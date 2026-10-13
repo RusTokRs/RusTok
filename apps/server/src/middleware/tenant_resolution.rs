@@ -3,12 +3,13 @@ use std::fmt;
 use axum::{
     body::Body,
     http::{Request, StatusCode},
+    response::{IntoResponse, Response},
 };
 use rustok_core::tenant_validation::TenantIdentifierValidator;
 use uuid::Uuid;
 
 use crate::common::{
-    extract_effective_host, peer_ip_from_extensions,
+    extract_effective_host, forwarded_headers_trusted, peer_ip_from_extensions,
     settings::{RustokSettings, TenantFallbackMode, TenantResolutionMode, TenantRuntimeProfile},
 };
 
@@ -158,6 +159,35 @@ impl TenantResolutionError {
             | Self::NestedSubdomain { .. }
             | Self::ConflictingTenantAssertions { .. } => StatusCode::BAD_REQUEST,
         }
+    }
+
+    pub(crate) const fn error_code(&self) -> &'static str {
+        match self {
+            Self::InvalidPolicy(_) => "tenant_policy_invalid",
+            Self::NoBaseDomainMatch { .. } => "tenant_not_found",
+            Self::MissingHeader { .. } => "missing_tenant_header",
+            Self::InvalidHeaderValue { .. } => "invalid_tenant_header",
+            Self::ConflictingHeaderValues { .. } => "conflicting_tenant_headers",
+            Self::MissingHost => "missing_tenant_host",
+            Self::InvalidHost { .. } => "invalid_tenant_host",
+            Self::InvalidIdentifier { .. } => "invalid_tenant_identifier",
+            Self::BaseDomainRequiresTenantSlug { .. } => "base_domain_requires_slug",
+            Self::NestedSubdomain { .. } => "nested_subdomain_forbidden",
+            Self::ConflictingTenantAssertions { .. } => "conflicting_tenant_assertions",
+        }
+    }
+
+    pub(crate) fn error_message(&self) -> String {
+        if matches!(self, Self::InvalidPolicy(_)) {
+            "Internal tenant configuration error".to_string()
+        } else {
+            self.to_string()
+        }
+    }
+
+    pub(crate) fn to_response(&self) -> Response {
+        rustok_web::HttpError::new(self.status_code(), self.error_code(), self.error_message())
+            .into_response()
     }
 }
 
@@ -340,7 +370,27 @@ fn effective_host(
     req: &Request<Body>,
     settings: &RustokSettings,
 ) -> Result<String, TenantResolutionError> {
+    if req
+        .headers()
+        .get_all(axum::http::header::HOST)
+        .iter()
+        .nth(1)
+        .is_some()
+    {
+        return Err(TenantResolutionError::ConflictingHeaderValues {
+            header_name: "host".to_string(),
+        });
+    }
+
     let peer_ip = peer_ip_from_extensions(req.extensions());
+    if forwarded_headers_trusted(peer_ip, &settings.runtime.request_trust)
+        && req.headers().get_all("x-forwarded-host").iter().nth(1).is_some()
+    {
+        return Err(TenantResolutionError::ConflictingHeaderValues {
+            header_name: "x-forwarded-host".to_string(),
+        });
+    }
+
     let host = extract_effective_host(req.headers(), peer_ip, &settings.runtime.request_trust)
         .ok_or(TenantResolutionError::MissingHost)?;
     let authority = host
@@ -366,22 +416,29 @@ pub(crate) fn subdomain_identifier(
     base_domains: &[String],
 ) -> Result<String, TenantResolutionError> {
     for base_domain in base_domains {
-        if host == base_domain {
+        let normalized_base = base_domain
+            .trim()
+            .strip_suffix('.')
+            .unwrap_or(base_domain.trim());
+        if host.eq_ignore_ascii_case(normalized_base) {
             return Err(TenantResolutionError::BaseDomainRequiresTenantSlug {
                 host: host.to_string(),
                 base_domain: base_domain.clone(),
             });
         }
 
-        let suffix = format!(".{base_domain}");
-        if let Some(candidate) = host.strip_suffix(&suffix) {
+        let suffix = format!(".{normalized_base}");
+        if host.len() > suffix.len()
+            && host[host.len() - suffix.len()..].eq_ignore_ascii_case(&suffix)
+        {
+            let candidate = &host[..host.len() - suffix.len()];
             if candidate.is_empty() || candidate.contains('.') {
                 return Err(TenantResolutionError::NestedSubdomain {
                     host: host.to_string(),
                     base_domain: base_domain.clone(),
                 });
             }
-            return Ok(candidate.to_string());
+            return Ok(candidate.to_ascii_lowercase());
         }
     }
 
@@ -658,5 +715,72 @@ mod tests {
             subdomain_identifier("a.b.example.test", &domains),
             Err(TenantResolutionError::NestedSubdomain { .. })
         ));
+    }
+
+    #[test]
+    fn duplicate_host_header_values_are_rejected() {
+        let settings = RustokSettings {
+            tenant: TenantSettings {
+                profile: TenantRuntimeProfile::MultiTenant,
+                enabled: true,
+                resolution: TenantResolutionMode::Host,
+                header_name: "X-Tenant-ID".to_string(),
+                default_id: Uuid::from_u128(1),
+                fallback_mode: TenantFallbackMode::Disabled,
+                base_domains: vec![],
+            },
+            ..RustokSettings::default()
+        };
+
+        let mut req = request("/api/users");
+        req.headers_mut()
+            .append("Host", axum::http::HeaderValue::from_static("legit.com"));
+        req.headers_mut()
+            .append("Host", axum::http::HeaderValue::from_static("evil.com"));
+
+        let error = resolve_request(&req, &settings)
+            .expect_err("duplicate host headers must fail closed per RFC 9110");
+        assert!(matches!(
+            error,
+            TenantResolutionError::ConflictingHeaderValues { ref header_name } if header_name == "host"
+        ));
+    }
+
+    #[test]
+    fn subdomain_matching_is_case_insensitive_for_base_domain() {
+        let domains = vec!["Example.Test.".to_string()];
+        assert_eq!(
+            subdomain_identifier("STORE.example.test", &domains).expect("slug"),
+            "store"
+        );
+        assert_eq!(
+            subdomain_identifier("store.EXAMPLE.TEST", &domains).expect("slug"),
+            "store"
+        );
+        assert!(matches!(
+            subdomain_identifier("EXAMPLE.TEST", &domains),
+            Err(TenantResolutionError::BaseDomainRequiresTenantSlug { .. })
+        ));
+    }
+
+    #[test]
+    fn tenant_resolution_error_code_mapping() {
+        let missing = TenantResolutionError::MissingHeader {
+            header_name: "X-Tenant-ID".to_string(),
+        };
+        assert_eq!(missing.error_code(), "missing_tenant_header");
+        assert_eq!(missing.status_code(), StatusCode::BAD_REQUEST);
+
+        let conflict = TenantResolutionError::ConflictingHeaderValues {
+            header_name: "host".to_string(),
+        };
+        assert_eq!(conflict.error_code(), "conflicting_tenant_headers");
+        assert_eq!(conflict.status_code(), StatusCode::BAD_REQUEST);
+
+        let not_found = TenantResolutionError::NoBaseDomainMatch {
+            host: "unknown.com".to_string(),
+        };
+        assert_eq!(not_found.error_code(), "tenant_not_found");
+        assert_eq!(not_found.status_code(), StatusCode::NOT_FOUND);
     }
 }

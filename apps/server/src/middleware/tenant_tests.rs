@@ -101,3 +101,25 @@ fn tenant_cache_timestamp_rejects_pre_epoch_clock() {
     );
     assert!(unix_ms_at(UNIX_EPOCH - Duration::from_secs(1)).is_err());
 }
+
+#[test]
+fn tenant_context_load_error_codes_and_responses() {
+    let not_found = TenantContextLoadError::NotFound;
+    assert_eq!(not_found.error_code(), "tenant_not_found");
+    assert_eq!(not_found.status_code(), axum::http::StatusCode::NOT_FOUND);
+    assert_eq!(not_found.client_message(), "Tenant not found");
+
+    let disabled = TenantContextLoadError::Disabled;
+    assert_eq!(disabled.error_code(), "tenant_disabled");
+    assert_eq!(disabled.status_code(), axum::http::StatusCode::FORBIDDEN);
+    assert_eq!(disabled.client_message(), "Tenant is disabled");
+
+    let invalid_assertion = TenantContextLoadError::InvalidAssertion("mismatch".to_string());
+    assert_eq!(invalid_assertion.error_code(), "conflicting_tenant_assertions");
+    assert_eq!(invalid_assertion.status_code(), axum::http::StatusCode::BAD_REQUEST);
+
+    let infra = TenantContextLoadError::InfrastructureUnavailable;
+    assert_eq!(infra.error_code(), "tenant_infrastructure_unavailable");
+    assert_eq!(infra.status_code(), axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(infra.client_message(), "Failed to resolve tenant");
+}
