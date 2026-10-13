@@ -32,9 +32,24 @@ pub async fn resolve_optional(
 ) -> Response {
     let (mut parts, body) = req.into_parts();
     let request_path = parts.uri.path().to_string();
+    tracing::debug!(path = request_path.as_str(), "auth_context::resolve_optional entry");
     let pages_inline_authoring_surface = is_pages_inline_authoring_surface(request_path.as_str());
     let pages_inline_authoring = pages_inline_authoring_surface
         || is_pages_inline_authoring_server_fn(request_path.as_str());
+
+    if parts.headers.get_all(AUTHORIZATION).iter().count() > 1 {
+        tracing::warn!("Multiple Authorization headers detected; failing closed");
+        return pages_inline_authoring_response(
+            (
+                StatusCode::BAD_REQUEST,
+                "Multiple Authorization headers are not allowed",
+            )
+                .into_response(),
+            pages_inline_authoring,
+            pages_inline_authoring_surface,
+        );
+    }
+
     let presented_credentials = parts.headers.contains_key(AUTHORIZATION);
     let host_authority = match take_host_authority(&mut parts.headers) {
         Ok(authority) => authority,
@@ -200,6 +215,10 @@ pub async fn resolve_optional(
     if let Some(host_authority) = host_authority {
         parts.extensions.insert(host_authority);
     }
+    tracing::debug!(
+        path = request_path.as_str(),
+        "auth_context::resolve_optional calling next"
+    );
     let req = Request::from_parts(parts, body);
     let response = with_host_authority_scope(
         host_authority,
@@ -235,9 +254,12 @@ fn verified_tenant_id_from_access_token(
     auth_config: &crate::auth::AuthConfig,
     access_token: &str,
 ) -> Result<uuid::Uuid, (StatusCode, &'static str)> {
-    decode_access_token(auth_config, access_token)
-        .map(|claims| claims.tenant_id)
-        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))
+    let claims = decode_access_token(auth_config, access_token)
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
+    if claims.tenant_id.is_nil() {
+        return Err((StatusCode::UNAUTHORIZED, "Token tenant claim is invalid"));
+    }
+    Ok(claims.tenant_id)
 }
 
 fn pages_inline_authoring_response(
@@ -649,5 +671,33 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn nil_tenant_id_in_access_token_is_rejected() {
+        let config = crate::auth::AuthConfig::new(
+            "test-secret-key-for-auth-context-32bytes-long".to_string(),
+        );
+        let token = crate::auth::encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::nil(),
+            rustok_core::UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .expect("encode access token");
+
+        assert_eq!(
+            verified_tenant_id_from_access_token(&config, &token),
+            Err((StatusCode::UNAUTHORIZED, "Token tenant claim is invalid"))
+        );
+    }
+
+    #[test]
+    fn duplicate_authorization_headers_are_detected() {
+        let mut headers = HeaderMap::new();
+        headers.append(AUTHORIZATION, "Bearer token-1".parse().unwrap());
+        headers.append(AUTHORIZATION, "Bearer token-2".parse().unwrap());
+        assert_eq!(headers.get_all(AUTHORIZATION).iter().count(), 2);
     }
 }
