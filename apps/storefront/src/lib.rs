@@ -632,7 +632,10 @@ async fn provide_leptos_request_context(
 #[cfg(feature = "ssr")]
 async fn app_css_handler() -> impl axum::response::IntoResponse {
     const APP_CSS: &str = include_str!("../static/app.css");
-    ([(axum::http::header::CONTENT_TYPE, "text/css; charset=utf-8")], APP_CSS)
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        APP_CSS,
+    )
 }
 
 #[cfg(feature = "ssr")]
