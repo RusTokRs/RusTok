@@ -426,7 +426,7 @@ async fn reply_body_follows_tenant_limits_on_create_and_update() {
             UpdateReplyInput {
                 locale: "en".to_string(),
                 content: Some(rustok_api::RichTextDocument::single_paragraph(
-                    &repeat_char('c', 21),
+                    repeat_char('c', 21),
                 )),
             },
         )
@@ -506,7 +506,7 @@ async fn topic_update_checks_only_the_title_and_body_it_supplies() {
             update(
                 None,
                 Some(rustok_api::RichTextDocument::single_paragraph(
-                    &repeat_char('d', 21),
+                    repeat_char('d', 21),
                 )),
             ),
         )
