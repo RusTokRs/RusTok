@@ -9,9 +9,9 @@ use std::{
 
 use axum::{
     extract::{Request, State},
-    http::HeaderValue,
+    http::{HeaderValue, header::CONTENT_LANGUAGE},
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use moka::future::Cache;
 use rustok_api::{
@@ -20,6 +20,7 @@ use rustok_api::{
 };
 use rustok_core::i18n::Locale;
 use rustok_tenant::{TenantLocalePolicyPort, TenantService};
+use rustok_web::HttpError;
 use uuid::Uuid;
 
 use crate::context::TenantContextExt;
@@ -321,14 +322,17 @@ pub async fn resolve_locale(
             .map(|tenant| tenant.default_locale.as_str()),
     );
 
-    tracing::info!(path = parts.uri.path(), "locale::resolve_locale entry");
+    tracing::debug!(path = parts.uri.path(), "locale::resolve_locale entry");
     if let Some(tenant) = tenant_context.as_ref() {
-        let locales = get_tenant_locales_cached(&ctx, tenant.id)
-            .await
-            .map_err(|error| {
+        let locales = match get_tenant_locales_cached(&ctx, tenant.id).await {
+            Ok(locales) => locales,
+            Err(error) => {
                 tracing::error!(%error, tenant_id = %tenant.id, "locale::resolve_locale get_tenant_locales_cached FAILED");
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+                return Ok(
+                    HttpError::internal("Failed to resolve tenant locale policy").into_response()
+                );
+            }
+        };
         resolved.effective_locale =
             constrain_locale_to_tenant(&resolved, locales.as_ref(), &tenant.default_locale);
     }
@@ -337,11 +341,11 @@ pub async fn resolve_locale(
     parts.extensions.insert(resolved.clone());
     parts.extensions.insert(locale);
 
-    tracing::info!(path = parts.uri.path(), effective_locale = %resolved.effective_locale, "locale::resolve_locale calling next");
+    tracing::debug!(path = parts.uri.path(), effective_locale = %resolved.effective_locale, "locale::resolve_locale calling next");
     let request = Request::from_parts(parts, body);
     let mut response = next.run(request).await;
     if let Ok(value) = HeaderValue::from_str(&resolved.effective_locale) {
-        response.headers_mut().insert("content-language", value);
+        response.headers_mut().insert(CONTENT_LANGUAGE, value);
     }
     Ok(response)
 }
@@ -423,6 +427,14 @@ fn constrain_locale_to_tenant(
         {
             return fallback;
         }
+
+        if let Some(primary) = rustok_api::locale_primary_language(requested_locale)
+            && locale_map
+                .get(primary.as_str())
+                .is_some_and(|record| record.is_enabled)
+        {
+            return primary;
+        }
     }
 
     if let Some(default_locale) = locales
@@ -438,6 +450,14 @@ fn constrain_locale_to_tenant(
         .is_some_and(|record| record.is_enabled)
     {
         return tenant_default_locale.to_string();
+    }
+
+    if let Some(primary_default) = rustok_api::locale_primary_language(tenant_default_locale)
+        && locale_map
+            .get(primary_default.as_str())
+            .is_some_and(|record| record.is_enabled)
+    {
+        return primary_default;
     }
 
     locales
@@ -636,5 +656,37 @@ mod tests {
         ];
 
         assert_eq!(constrain_locale_to_tenant(&resolved, &locales, "en"), "en");
+    }
+
+    #[test]
+    fn falls_back_to_primary_language_when_regional_variant_not_explicitly_configured() {
+        let resolved = ResolvedRequestLocale {
+            requested_locale: Some("en-US".to_string()),
+            effective_locale: "en-US".to_string(),
+        };
+        let locales = vec![TenantLocaleRecord {
+            locale: "en".to_string(),
+            is_enabled: true,
+            is_default: false,
+            fallback_locale: None,
+        }];
+
+        assert_eq!(constrain_locale_to_tenant(&resolved, &locales, "ru"), "en");
+    }
+
+    #[test]
+    fn falls_back_to_primary_language_for_tenant_default_locale() {
+        let resolved = ResolvedRequestLocale {
+            requested_locale: Some("fr".to_string()),
+            effective_locale: "fr".to_string(),
+        };
+        let locales = vec![TenantLocaleRecord {
+            locale: "en".to_string(),
+            is_enabled: true,
+            is_default: false,
+            fallback_locale: None,
+        }];
+
+        assert_eq!(constrain_locale_to_tenant(&resolved, &locales, "en-US"), "en");
     }
 }
