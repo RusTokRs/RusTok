@@ -723,6 +723,64 @@ async fn resolved_context_keeps_resolution_trace_for_runtime_diagnostics() {
             .iter()
             .any(|step| step.stage == ChannelResolutionStage::Host
                 && step.outcome == ChannelResolutionOutcome::Matched),
-        "trace should preserve the final match"
+    );
+}
+
+#[test]
+fn channel_id_from_header_rejects_conflicting_duplicates() {
+    let mut headers = HeaderMap::new();
+    let id1 = Uuid::new_v4();
+    let id2 = Uuid::new_v4();
+    headers.append(
+        "X-Channel-ID",
+        id1.to_string().parse().expect("valid header"),
+    );
+    headers.append(
+        "X-Channel-ID",
+        id2.to_string().parse().expect("valid header"),
+    );
+    assert_eq!(channel_id_from_header(&headers), None);
+
+    let mut headers_matching = HeaderMap::new();
+    headers_matching.append(
+        "X-Channel-ID",
+        id1.to_string().parse().expect("valid header"),
+    );
+    headers_matching.append(
+        "X-Channel-ID",
+        id1.to_string().parse().expect("valid header"),
+    );
+    assert_eq!(channel_id_from_header(&headers_matching), Some(id1));
+}
+
+#[test]
+fn channel_slug_from_header_rejects_conflicting_duplicates() {
+    let mut headers = HeaderMap::new();
+    headers.append("X-Channel-Slug", "channel-a".parse().expect("valid header"));
+    headers.append("X-Channel-Slug", "channel-b".parse().expect("valid header"));
+    assert_eq!(channel_slug_from_header(&headers), None);
+
+    let mut headers_matching = HeaderMap::new();
+    headers_matching.append("X-Channel-Slug", "channel-a".parse().expect("valid header"));
+    headers_matching.append("X-Channel-Slug", "channel-a".parse().expect("valid header"));
+    assert_eq!(
+        channel_slug_from_header(&headers_matching),
+        Some("channel-a".to_string())
+    );
+}
+
+#[test]
+fn channel_slug_from_query_rejects_conflicting_duplicates() {
+    assert_eq!(
+        channel_slug_from_query(Some("channel=channel-a&channel=channel-b")),
+        None
+    );
+    assert_eq!(
+        channel_slug_from_query(Some("channel=channel-a&channel=channel-a")),
+        Some("channel-a".to_string())
+    );
+    assert_eq!(
+        channel_slug_from_query(Some("channel=channel-a")),
+        Some("channel-a".to_string())
     );
 }
