@@ -425,9 +425,9 @@ async fn reply_body_follows_tenant_limits_on_create_and_update() {
             author.clone(),
             UpdateReplyInput {
                 locale: "en".to_string(),
-                content: Some(rustok_api::RichTextDocument::single_paragraph(
-                    repeat_char('c', 21),
-                )),
+                content: Some(rustok_api::RichTextDocument::single_paragraph(repeat_char(
+                    'c', 21,
+                ))),
             },
         )
         .await;
@@ -505,9 +505,9 @@ async fn topic_update_checks_only_the_title_and_body_it_supplies() {
             author.clone(),
             update(
                 None,
-                Some(rustok_api::RichTextDocument::single_paragraph(
-                    repeat_char('d', 21),
-                )),
+                Some(rustok_api::RichTextDocument::single_paragraph(repeat_char(
+                    'd', 21,
+                ))),
             ),
         )
         .await;
