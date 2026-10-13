@@ -101,19 +101,31 @@ pub(crate) fn known_dev_jwt_fragment(secret: &str) -> Option<&'static str> {
         "change-in-production",
         "dev_secret",
         "rustok-dev-secret",
+        "changeme",
+        "replace_me",
     ];
+    let normalized = secret.trim().to_ascii_lowercase();
     KNOWN_DEV_SUBSTRINGS
         .iter()
         .copied()
-        .find(|fragment| secret.contains(fragment))
+        .find(|fragment| normalized.contains(fragment))
 }
 
 pub(crate) fn sample_database_credentials_pattern(uri: &str) -> Option<&'static str> {
-    const SAMPLE_PATTERNS: &[&str] = &["://postgres:postgres@", "://rustok:rustok@"];
+    const SAMPLE_PATTERNS: &[&str] = &[
+        "://postgres:postgres@",
+        "://rustok:rustok@",
+        "://admin:admin@",
+        "://root:root@",
+        "sqlite:",
+        "localhost:5432/rustok_dev",
+        "127.0.0.1:5432/rustok_dev",
+    ];
+    let normalized = uri.trim().to_ascii_lowercase();
     SAMPLE_PATTERNS
         .iter()
         .copied()
-        .find(|pattern| uri.contains(pattern))
+        .find(|pattern| normalized.contains(pattern))
 }
 
 fn configured_superadmin_password() -> Option<(&'static str, String)> {
@@ -133,12 +145,19 @@ fn configured_superadmin_password() -> Option<(&'static str, String)> {
 }
 
 pub(crate) fn known_sample_superadmin_password(password: &str) -> Option<&'static str> {
-    const SAMPLE_PASSWORDS: &[&str] =
-        &["change-me-in-production", "admin12345", "dev-password-123"];
+    const SAMPLE_PASSWORDS: &[&str] = &[
+        "change-me-in-production",
+        "admin12345",
+        "dev-password-123",
+        "changeme",
+        "password",
+        "admin",
+    ];
+    let normalized = password.trim().to_ascii_lowercase();
     SAMPLE_PASSWORDS
         .iter()
         .copied()
-        .find(|candidate| password == *candidate)
+        .find(|candidate| normalized == *candidate)
 }
 
 /// Builds the fully composed HTTP router from explicit host-owned inputs.
@@ -323,12 +342,33 @@ mod tests {
             Some("dev-secret")
         );
         assert_eq!(
+            known_dev_jwt_fragment("MY-DEV_SECRET-TOKEN"),
+            Some("dev_secret")
+        );
+        assert_eq!(
+            known_dev_jwt_fragment("something-CHANGEME-token"),
+            Some("changeme")
+        );
+        assert_eq!(
             sample_database_credentials_pattern("postgres://postgres:postgres@db/rustok"),
             Some("://postgres:postgres@")
+        );
+        assert_eq!(
+            sample_database_credentials_pattern("postgres://admin:admin@db/rustok"),
+            Some("://admin:admin@")
+        );
+        assert_eq!(
+            sample_database_credentials_pattern("sqlite://local.db"),
+            Some("sqlite:")
         );
         assert_eq!(
             known_sample_superadmin_password("dev-password-123"),
             Some("dev-password-123")
         );
+        assert_eq!(
+            known_sample_superadmin_password("ADMIN12345"),
+            Some("admin12345")
+        );
     }
 }
+
