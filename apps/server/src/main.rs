@@ -16,13 +16,17 @@ fn main() -> eyre::Result<()> {
     let _telemetry = rustok_telemetry::init(telemetry_cfg)?;
     let stack_size = std::env::var("RUSTOK_THREAD_STACK_SIZE")
         .ok()
-        .and_then(|v| v.parse().ok())
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&size| size >= 2 * 1024 * 1024)
         .unwrap_or(8 * 1024 * 1024);
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_stack_size(stack_size)
         .build()?;
     let result = runtime.block_on(rustok_server::host::run());
+    if let Err(ref error) = result {
+        tracing::error!(error = %error, "RusTok Axum host terminated with fatal error");
+    }
     if has_otel {
         runtime.block_on(rustok_telemetry::otel::shutdown());
     }
@@ -38,6 +42,10 @@ fn telemetry_config() -> TelemetryConfig {
         .map(|value| value != "0")
         .unwrap_or(true);
 
+    let service_name = std::env::var("OTEL_SERVICE_NAME")
+        .or_else(|_| std::env::var("RUSTOK_SERVICE_NAME"))
+        .unwrap_or_else(|_| "rustok-server".to_string());
+
     // Check if OpenTelemetry is enabled
     let otel = if std::env::var("OTEL_ENABLED")
         .map(|v| v == "true" || v == "1")
@@ -49,9 +57,10 @@ fn telemetry_config() -> TelemetryConfig {
     };
 
     TelemetryConfig {
-        service_name: "rustok-server".to_string(),
+        service_name,
         log_format,
         metrics,
         otel,
     }
 }
+

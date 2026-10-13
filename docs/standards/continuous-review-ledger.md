@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE  
 **Active phase:** FS-01 — `apps/server` composition root & entrypoints  
-**Current main SHA:** `fa5806bed53301c83af32b19be6532a4f60a6716`  
+**Current main SHA:** `ef7ab2a8006e102309011ffafe2fd274708435c2`  
 **Active branch:** `audit/fs-01-server-composition`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire repository starting from the host entrypoint and composition root (`apps/server`), propagating through domain modules down to shared foundation libraries.

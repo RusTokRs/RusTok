@@ -17,7 +17,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let output_dir = parse_output_dir()?;
+    let Some(output_dir) = parse_output_dir_from_args(env::args().skip(1))? else {
+        println!("Usage: export_api_contracts [--output-dir PATH]");
+        return Ok(());
+    };
     fs::create_dir_all(&output_dir)?;
 
     let settings = RustokSettings::default();
@@ -44,25 +47,30 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn parse_output_dir() -> Result<PathBuf, Box<dyn Error>> {
-    let mut args = env::args().skip(1);
+fn parse_output_dir_from_args<I, S>(args: I) -> Result<Option<PathBuf>, Box<dyn Error>>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut iter = args.into_iter();
     let mut output_dir = PathBuf::from("target/api-contracts");
 
-    while let Some(argument) = args.next() {
-        match argument.as_str() {
+    while let Some(argument) = iter.next() {
+        match argument.as_ref() {
             "--output-dir" => {
-                let value = args.next().ok_or("--output-dir requires a path argument")?;
-                output_dir = PathBuf::from(value);
+                let value = iter
+                    .next()
+                    .ok_or("--output-dir requires a path argument")?;
+                output_dir = PathBuf::from(value.as_ref());
             }
             "--help" | "-h" => {
-                println!("Usage: export_api_contracts [--output-dir PATH]");
-                std::process::exit(0);
+                return Ok(None);
             }
             unknown => return Err(format!("unknown argument: {unknown}").into()),
         }
     }
 
-    Ok(output_dir)
+    Ok(Some(output_dir))
 }
 
 fn write_contract(path: &Path, content: &str) -> Result<(), Box<dyn Error>> {
@@ -70,3 +78,47 @@ fn write_contract(path: &Path, content: &str) -> Result<(), Box<dyn Error>> {
     fs::write(path, normalized)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_to_target_api_contracts() {
+        let result = parse_output_dir_from_args(Vec::<&str>::new()).unwrap();
+        assert_eq!(result, Some(PathBuf::from("target/api-contracts")));
+    }
+
+    #[test]
+    fn parses_custom_output_dir() {
+        let args = vec!["--output-dir", "custom/contracts"];
+        let result = parse_output_dir_from_args(args).unwrap();
+        assert_eq!(result, Some(PathBuf::from("custom/contracts")));
+    }
+
+    #[test]
+    fn returns_none_on_help_flag() {
+        let args = vec!["--help"];
+        let result = parse_output_dir_from_args(args).unwrap();
+        assert_eq!(result, None);
+
+        let args = vec!["-h"];
+        let result = parse_output_dir_from_args(args).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn errors_on_missing_output_dir_argument() {
+        let args = vec!["--output-dir"];
+        let err = parse_output_dir_from_args(args).unwrap_err();
+        assert!(err.to_string().contains("--output-dir requires a path argument"));
+    }
+
+    #[test]
+    fn errors_on_unknown_argument() {
+        let args = vec!["--invalid-flag"];
+        let err = parse_output_dir_from_args(args).unwrap_err();
+        assert!(err.to_string().contains("unknown argument: --invalid-flag"));
+    }
+}
+
