@@ -52,7 +52,7 @@ The single canonical trigger to continue this audit sequence is:
 ### Active Phase: FS-01 — `apps/server` Module Tracks Queue
 
 #### 1. Bootstrap, Host & Configuration
-- [ ] **FS-01.01 — `apps/server/src/main.rs` & `apps/server/src/bin/*`** — entrypoint, CLI arguments, signal handling, process lifecycle.
+- [x] **FS-01.01 — `apps/server/src/main.rs` & `apps/server/src/bin/*`** — entrypoint, CLI arguments, signal handling, process lifecycle. (Done: structured fatal error logging before otel shutdown, service name env fallback, thread stack size minimum floor, testable argument parsing for `export_api_contracts` with 5 unit tests).
 - [ ] **FS-01.02 — `apps/server/src/host.rs` & `apps/server/src/host_authority.rs`** — host wiring, socket binding, TLS/HTTPS, shutdown signals.
 - [ ] **FS-01.03 — `apps/server/src/services/server_bootstrap.rs`** — bootstrap sequence, database pool initialization, migration execution, state validation.
 - [ ] **FS-01.04 — `apps/server/src/services/server_runtime_context.rs`** — shared server context, state injection, thread safety.
