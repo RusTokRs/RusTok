@@ -3,7 +3,7 @@
 /// Implements a fixed-window rate limiter to protect endpoints from abuse.
 /// Supports per-IP rate limiting with configurable limits.
 use axum::{
-    body::Body,
+    Json,
     extract::{Request, State},
     http::{HeaderMap, StatusCode, header},
     middleware::Next,
@@ -12,6 +12,7 @@ use axum::{
 use moka::future::Cache;
 use once_cell::sync::Lazy;
 use redis::Script;
+use rustok_web::ErrorBody;
 use rustok_telemetry::metrics::{
     record_rate_limit_backend_unavailable, record_rate_limit_exceeded, update_rate_limit_runtime,
 };
@@ -664,7 +665,11 @@ fn apply_rate_limit_headers(headers: &mut axum::http::HeaderMap, info: &RateLimi
 }
 
 fn rate_limited_response(exceeded: &RateLimitExceeded) -> Response {
-    let mut response = Response::new(Body::from("Rate limit exceeded"));
+    let mut response = Json(ErrorBody::new(
+        "rate_limit_exceeded",
+        "Rate limit exceeded",
+    ))
+    .into_response();
     *response.status_mut() = StatusCode::TOO_MANY_REQUESTS;
 
     let headers = response.headers_mut();
@@ -681,7 +686,11 @@ fn rate_limited_response(exceeded: &RateLimitExceeded) -> Response {
 }
 
 fn rate_limit_backend_unavailable_response(reason: &str) -> Response {
-    let mut response = Response::new(Body::from("Rate limit backend unavailable"));
+    let mut response = Json(ErrorBody::new(
+        "rate_limit_backend_unavailable",
+        "Rate limit backend unavailable",
+    ))
+    .into_response();
     *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
     insert_header_if_valid(response.headers_mut(), "retry-after", "1".to_string());
     tracing::error!(reason, "Rate limit backend unavailable");

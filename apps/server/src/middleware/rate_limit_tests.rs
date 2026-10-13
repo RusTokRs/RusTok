@@ -377,6 +377,16 @@ fn rate_limited_response_includes_contract_headers() {
     assert_eq!(response.headers()["x-ratelimit-limit"], "20");
     assert_eq!(response.headers()["x-ratelimit-remaining"], "0");
     assert_eq!(response.headers()["x-ratelimit-reset"], "42");
+    assert_eq!(response.headers()["content-type"], "application/json");
+}
+
+#[test]
+fn rate_limit_backend_unavailable_response_includes_contract_headers_and_status() {
+    let response = rate_limit_backend_unavailable_response("redis connection timeout");
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.headers()["retry-after"], "1");
+    assert_eq!(response.headers()["content-type"], "application/json");
 }
 
 #[test]
