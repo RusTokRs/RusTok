@@ -62,8 +62,8 @@ mod tests {
     #[test]
     fn test_balanced_transaction() {
         let lines = vec![
-            ("RUB", PostingDirection::Debit, 100_00),
-            ("RUB", PostingDirection::Credit, 100_00),
+            ("RUB", PostingDirection::Debit, 10_000),
+            ("RUB", PostingDirection::Credit, 10_000),
         ];
         assert!(validate_transaction_balance(lines).is_ok());
     }
@@ -71,8 +71,8 @@ mod tests {
     #[test]
     fn test_unbalanced_transaction_rejected() {
         let lines = vec![
-            ("RUB", PostingDirection::Debit, 100_00),
-            ("RUB", PostingDirection::Credit, 90_00),
+            ("RUB", PostingDirection::Debit, 10_000),
+            ("RUB", PostingDirection::Credit, 9_000),
         ];
         assert!(validate_transaction_balance(lines).is_err());
     }
@@ -80,10 +80,10 @@ mod tests {
     #[test]
     fn test_multi_currency_balanced() {
         let lines = vec![
-            ("RUB", PostingDirection::Debit, 100_00),
-            ("RUB", PostingDirection::Credit, 100_00),
-            ("USD", PostingDirection::Debit, 50_00),
-            ("USD", PostingDirection::Credit, 50_00),
+            ("RUB", PostingDirection::Debit, 10_000),
+            ("RUB", PostingDirection::Credit, 10_000),
+            ("USD", PostingDirection::Debit, 5_000),
+            ("USD", PostingDirection::Credit, 5_000),
         ];
         assert!(validate_transaction_balance(lines).is_ok());
     }
