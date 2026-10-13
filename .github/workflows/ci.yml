@@ -421,7 +421,7 @@ jobs:
           echo $! > server.pid
       - name: Wait for OpenAPI endpoint
         run: |
-          for i in {1..60}; do
+          for i in {1..150}; do
             if curl -fsS http://127.0.0.1:5150/api/openapi.json > /dev/null; then
               exit 0
             fi
