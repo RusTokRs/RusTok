@@ -42,6 +42,7 @@ async fn dispatch_http(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response> {
+    tracing::debug!(%installation_id, path = %wildcard_path, %method, "Handling artifact HTTP dispatch request");
     if !(body.is_empty() && (method == Method::GET || method == Method::DELETE)) {
         ensure_json_content_type(&headers)?;
     }
@@ -80,6 +81,7 @@ async fn dispatch_command(
     headers: HeaderMap,
     Json(input): Json<serde_json::Value>,
 ) -> Result<Response> {
+    tracing::debug!(%installation_id, %binding_id, "Handling artifact command dispatch request");
     ensure_json_content_type(&headers)?;
     let installation = resolve_artifact_installation(&ctx, installation_id, tenant.id).await?;
     let binding = find_artifact_command_binding(&installation.descriptor.bindings, &binding_id)
@@ -109,6 +111,7 @@ async fn dispatch_ui_action(
     headers: HeaderMap,
     Json(input): Json<serde_json::Value>,
 ) -> Result<Response> {
+    tracing::debug!(%installation_id, %contribution_id, "Handling artifact UI action dispatch request");
     ensure_json_content_type(&headers)?;
     let output = execute_artifact_ui_action(
         &ctx,
@@ -133,6 +136,7 @@ async fn list_ui_contributions(
     Extension(locale): Extension<ResolvedRequestLocale>,
     Path(installation_id): Path<Uuid>,
 ) -> Result<Response> {
+    tracing::debug!(%installation_id, locale = %locale.effective_locale, "Handling artifact UI contributions list request");
     let contributions = list_authorized_artifact_ui_contributions(
         &ctx,
         tenant.id,
@@ -153,6 +157,7 @@ async fn list_ui_action_audit(
     current: CurrentUser,
     Path((installation_id, contribution_id)): Path<(Uuid, String)>,
 ) -> Result<Response> {
+    tracing::debug!(%installation_id, %contribution_id, "Handling artifact UI action audit list request");
     let evidence = list_authorized_artifact_ui_action_audit(
         &ctx,
         tenant.id,
@@ -165,26 +170,29 @@ async fn list_ui_action_audit(
 }
 
 fn header_idempotency_key(headers: &HeaderMap) -> Result<Option<Uuid>> {
-    headers
-        .get(IDEMPOTENCY_KEY_HEADER)
-        .map(|value| {
-            value
-                .to_str()
-                .map_err(|_| Error::BadRequest("Idempotency-Key header is invalid".to_string()))?
-                .trim()
-                .parse::<Uuid>()
-                .map_err(|_| Error::BadRequest("Idempotency-Key header must be a UUID".to_string()))
-                .and_then(|key| {
-                    if key.is_nil() {
-                        Err(Error::BadRequest(
-                            "Idempotency-Key header must not be the nil UUID".to_string(),
-                        ))
-                    } else {
-                        Ok(key)
-                    }
-                })
-        })
-        .transpose()
+    let mut values = headers.get_all(IDEMPOTENCY_KEY_HEADER).iter();
+    let Some(first) = values.next() else {
+        return Ok(None);
+    };
+    if values.next().is_some() {
+        return Err(Error::BadRequest(
+            "Duplicate Idempotency-Key headers are forbidden".to_string(),
+        ));
+    }
+    let value = first
+        .to_str()
+        .map_err(|_| Error::BadRequest("Idempotency-Key header is invalid".to_string()))?;
+    let key = value
+        .trim()
+        .trim_matches('"')
+        .parse::<Uuid>()
+        .map_err(|_| Error::BadRequest("Idempotency-Key header must be a UUID".to_string()))?;
+    if key.is_nil() {
+        return Err(Error::BadRequest(
+            "Idempotency-Key header must not be the nil UUID".to_string(),
+        ));
+    }
+    Ok(Some(key))
 }
 
 fn artifact_json_response<T: serde::Serialize>(value: T) -> Response {
@@ -396,6 +404,32 @@ mod tests {
         );
         assert!(matches!(
             header_idempotency_key(&headers),
+            Err(Error::BadRequest(_))
+        ));
+
+        // Quoted UUID string
+        let mut quoted_headers = HeaderMap::new();
+        quoted_headers.insert(
+            IDEMPOTENCY_KEY_HEADER,
+            format!("\"{key}\"").parse().expect("valid quoted UUID"),
+        );
+        assert_eq!(
+            header_idempotency_key(&quoted_headers).expect("quoted UUID key"),
+            Some(key)
+        );
+
+        // Duplicate header rejection
+        let mut dup_headers = HeaderMap::new();
+        dup_headers.append(
+            IDEMPOTENCY_KEY_HEADER,
+            key.to_string().parse().expect("valid header value"),
+        );
+        dup_headers.append(
+            IDEMPOTENCY_KEY_HEADER,
+            Uuid::new_v4().to_string().parse().expect("valid header value"),
+        );
+        assert!(matches!(
+            header_idempotency_key(&dup_headers),
             Err(Error::BadRequest(_))
         ));
     }

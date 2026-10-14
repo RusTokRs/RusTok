@@ -116,6 +116,7 @@ async fn grant_artifact_permission(
     Path(role_id): Path<Uuid>,
     Json(input): Json<ArtifactRolePermissionAssignmentRequest>,
 ) -> Result<Response> {
+    tracing::debug!(%role_id, installation_id = %input.installation_id, permission_key = %input.permission_key, "Handling grant artifact permission request");
     ensure_artifact_permission_control_plane(&auth, principal_context, tenant.id)?;
     assign(&ctx, tenant.id, auth.user_id, role_id, input, true).await
 }
@@ -144,6 +145,7 @@ async fn revoke_artifact_permission(
     Path(role_id): Path<Uuid>,
     Json(input): Json<ArtifactRolePermissionAssignmentRequest>,
 ) -> Result<Response> {
+    tracing::debug!(%role_id, installation_id = %input.installation_id, permission_key = %input.permission_key, "Handling revoke artifact permission request");
     ensure_artifact_permission_control_plane(&auth, principal_context, tenant.id)?;
     assign(&ctx, tenant.id, auth.user_id, role_id, input, false).await
 }
@@ -156,6 +158,15 @@ async fn assign(
     input: ArtifactRolePermissionAssignmentRequest,
     granted: bool,
 ) -> Result<Response> {
+    let permission_key = input.permission_key.trim().to_string();
+    if permission_key.is_empty() {
+        return Err(Error::BadRequest("permission_key must not be empty".to_string()));
+    }
+    let idempotency_key = input.idempotency_key.trim().trim_matches('"').to_string();
+    if idempotency_key.is_empty() {
+        return Err(Error::BadRequest("idempotency_key must not be empty".to_string()));
+    }
+
     let event_publisher = Arc::new(TransactionalOutboxArtifactPermissionEventPublisher::new(
         transactional_event_bus_from_context(ctx),
     ));
@@ -166,10 +177,10 @@ async fn assign(
             role_id,
             scope: input.scope.into(),
             installation_id: input.installation_id,
-            permission_key: input.permission_key,
+            permission_key,
             actor_id,
             granted,
-            idempotency_key: input.idempotency_key,
+            idempotency_key,
         })
         .await
         .map_err(map_assignment_error)?;
@@ -241,10 +252,15 @@ mod tests {
         TransactionalOutboxArtifactPermissionEventPublisher,
         ensure_artifact_permission_control_plane,
     };
+    use crate::error::Error;
+    use axum::http::StatusCode;
     use rustok_api::{AuthContext, AuthPrincipalContext, AuthPrincipalKind, Permission};
     use rustok_events::RbacArtifactPermissionEvent;
     use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
-    use rustok_rbac::{ArtifactPermissionAssignmentScope, ArtifactPermissionEventPublisher};
+    use rustok_rbac::{
+        ArtifactPermissionAssignmentError, ArtifactPermissionAssignmentScope,
+        ArtifactPermissionEventPublisher,
+    };
     use sea_orm::{Database, EntityTrait, TransactionTrait};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use std::sync::Arc;
@@ -385,5 +401,23 @@ mod tests {
         assert_eq!(events[0].schema_version, 1);
         assert_eq!(events[0].payload["tenant_id"], serde_json::json!(tenant_id));
         assert_eq!(events[0].payload["actor_id"], serde_json::json!(actor_id));
+    }
+
+    #[test]
+    fn map_assignment_error_maps_correct_status_codes() {
+        let bad_cmd = super::map_assignment_error(
+            ArtifactPermissionAssignmentError::InvalidCommand("bad key"),
+        );
+        assert!(matches!(bad_cmd, Error::BadRequest(_)));
+
+        let not_found = super::map_assignment_error(
+            ArtifactPermissionAssignmentError::RoleNotFound,
+        );
+        assert!(matches!(not_found, Error::NotFound));
+
+        let conflict = super::map_assignment_error(
+            ArtifactPermissionAssignmentError::IdempotencyConflict,
+        );
+        assert!(matches!(conflict, Error::Http(ref e) if e.status == StatusCode::CONFLICT));
     }
 }
