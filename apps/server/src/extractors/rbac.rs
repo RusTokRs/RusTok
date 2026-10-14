@@ -294,6 +294,113 @@ define_permission_extractor!(
 );
 
 define_permission_extractor!(RequireLogsRead, rustok_api::Permission::LOGS_READ);
+define_permission_extractor!(RequireLogsList, rustok_api::Permission::LOGS_LIST);
+
+define_permission_extractor!(
+    RequireTaxonomyCreate,
+    rustok_api::Permission::TAXONOMY_CREATE
+);
+define_permission_extractor!(RequireTaxonomyRead, rustok_api::Permission::TAXONOMY_READ);
+define_permission_extractor!(
+    RequireTaxonomyUpdate,
+    rustok_api::Permission::TAXONOMY_UPDATE
+);
+define_permission_extractor!(
+    RequireTaxonomyDelete,
+    rustok_api::Permission::TAXONOMY_DELETE
+);
+define_permission_extractor!(RequireTaxonomyList, rustok_api::Permission::TAXONOMY_LIST);
+define_permission_extractor!(
+    RequireTaxonomyManage,
+    rustok_api::Permission::TAXONOMY_MANAGE
+);
+
+define_permission_extractor!(
+    RequireNavigationCreate,
+    rustok_api::Permission::NAVIGATION_CREATE
+);
+define_permission_extractor!(
+    RequireNavigationRead,
+    rustok_api::Permission::NAVIGATION_READ
+);
+define_permission_extractor!(
+    RequireNavigationUpdate,
+    rustok_api::Permission::NAVIGATION_UPDATE
+);
+define_permission_extractor!(
+    RequireNavigationDelete,
+    rustok_api::Permission::NAVIGATION_DELETE
+);
+define_permission_extractor!(
+    RequireNavigationList,
+    rustok_api::Permission::NAVIGATION_LIST
+);
+define_permission_extractor!(
+    RequireNavigationManage,
+    rustok_api::Permission::NAVIGATION_MANAGE
+);
+
+define_permission_extractor!(RequireFormsRead, rustok_api::Permission::FORMS_READ);
+define_permission_extractor!(RequireFormsList, rustok_api::Permission::FORMS_LIST);
+define_permission_extractor!(RequireFormsUpdate, rustok_api::Permission::FORMS_UPDATE);
+define_permission_extractor!(RequireFormsManage, rustok_api::Permission::FORMS_MANAGE);
+
+define_permission_extractor!(RequireSeoRead, rustok_api::Permission::SEO_READ);
+define_permission_extractor!(RequireSeoUpdate, rustok_api::Permission::SEO_UPDATE);
+define_permission_extractor!(RequireSeoPublish, rustok_api::Permission::SEO_PUBLISH);
+define_permission_extractor!(RequireSeoManage, rustok_api::Permission::SEO_MANAGE);
+
+define_permission_extractor!(RequireMediaCreate, rustok_api::Permission::MEDIA_CREATE);
+define_permission_extractor!(RequireMediaRead, rustok_api::Permission::MEDIA_READ);
+define_permission_extractor!(RequireMediaUpdate, rustok_api::Permission::MEDIA_UPDATE);
+define_permission_extractor!(RequireMediaDelete, rustok_api::Permission::MEDIA_DELETE);
+define_permission_extractor!(RequireMediaList, rustok_api::Permission::MEDIA_LIST);
+define_permission_extractor!(RequireMediaManage, rustok_api::Permission::MEDIA_MANAGE);
+
+define_permission_extractor!(
+    RequireWebhooksCreate,
+    rustok_api::Permission::WEBHOOKS_CREATE
+);
+define_permission_extractor!(RequireWebhooksRead, rustok_api::Permission::WEBHOOKS_READ);
+define_permission_extractor!(
+    RequireWebhooksUpdate,
+    rustok_api::Permission::WEBHOOKS_UPDATE
+);
+define_permission_extractor!(
+    RequireWebhooksDelete,
+    rustok_api::Permission::WEBHOOKS_DELETE
+);
+define_permission_extractor!(RequireWebhooksList, rustok_api::Permission::WEBHOOKS_LIST);
+define_permission_extractor!(
+    RequireWebhooksManage,
+    rustok_api::Permission::WEBHOOKS_MANAGE
+);
+
+define_permission_extractor!(
+    RequireTranslationsCreate,
+    rustok_api::Permission::TRANSLATIONS_CREATE
+);
+define_permission_extractor!(
+    RequireTranslationsRead,
+    rustok_api::Permission::TRANSLATIONS_READ
+);
+define_permission_extractor!(
+    RequireTranslationsUpdate,
+    rustok_api::Permission::TRANSLATIONS_UPDATE
+);
+define_permission_extractor!(
+    RequireTranslationsDelete,
+    rustok_api::Permission::TRANSLATIONS_DELETE
+);
+define_permission_extractor!(
+    RequireTranslationsList,
+    rustok_api::Permission::TRANSLATIONS_LIST
+);
+define_permission_extractor!(
+    RequireTranslationsManage,
+    rustok_api::Permission::TRANSLATIONS_MANAGE
+);
+
 
 /// Helper to check permission inline without extractor
 ///

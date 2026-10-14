@@ -34,6 +34,10 @@ pub fn spawn_outbox_retention_worker(
     config: OutboxRetentionRuntimeConfig,
     stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> JoinHandle<()> {
+    tracing::debug!(
+        interval_secs = config.interval.as_secs(),
+        "Spawning outbox retention worker"
+    );
     tokio::spawn(supervise_outbox_retention(config, stop_rx))
 }
 
@@ -47,9 +51,10 @@ async fn supervise_outbox_retention(
             return;
         }
 
-        let interval = config.interval;
+        let mut batch_exhausted = false;
         match config.retention.prune_once().await {
             Ok(report) => {
+                batch_exhausted = report.batch_exhausted;
                 if report.pruned > 0 || report.batch_exhausted {
                     tracing::info!(
                         pruned_events = report.pruned,
@@ -66,8 +71,14 @@ async fn supervise_outbox_retention(
             }
         }
 
+        let delay = if batch_exhausted {
+            Duration::from_millis(50).min(config.interval)
+        } else {
+            config.interval
+        };
+
         tokio::select! {
-            _ = tokio::time::sleep(interval) => {}
+            _ = tokio::time::sleep(delay) => {}
             changed = stop_rx.changed() => {
                 if changed.is_err() || *stop_rx.borrow() {
                     tracing::info!("Outbox retention worker received shutdown signal, exiting");
@@ -152,5 +163,13 @@ mod tests {
             "a failed prune run must be observable"
         );
         handle.abort();
+    }
+
+    #[test]
+    fn metrics_snapshot_defaults_and_equality() {
+        let snapshot1 = super::OutboxRetentionSupervisorMetricsSnapshot::default();
+        let snapshot2 = super::OutboxRetentionSupervisorMetricsSnapshot { failure_total: 0 };
+        assert_eq!(snapshot1, snapshot2);
+        assert_eq!(snapshot1.failure_total, 0);
     }
 }

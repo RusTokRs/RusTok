@@ -262,6 +262,19 @@ pub struct ArtifactRollback {
     pub target_revision: i64,
 }
 
+impl From<ArtifactRollback> for rustok_api::ArtifactRollbackView {
+    fn from(r: ArtifactRollback) -> Self {
+        Self {
+            operation_id: r.operation_id.to_string(),
+            source_installation_id: r.source_installation_id.to_string(),
+            target_installation_id: r.target_installation_id.to_string(),
+            source_revision: r.source_revision,
+            target_revision: r.target_revision,
+        }
+    }
+}
+
+
 /// Preview evidence for an artifact settings purge.
 #[derive(SimpleObject, Clone)]
 pub struct ArtifactSettingsPurgePreview {

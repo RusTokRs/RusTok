@@ -68,28 +68,28 @@ fn latest_active_registry_version(module: &MarketplaceModule) -> Option<&Marketp
 fn setting_field_hint(field: &ModuleSettingField, locale: Locale) -> Option<String> {
     let mut parts = Vec::new();
     if field.required {
-        parts.push(tr(locale, "Required", "РћР±СЏР·Р°С‚РµР»СЊРЅРѕ").to_string());
+        parts.push(tr(locale, "Required", "Обязательно").to_string());
     }
     if let Some(default) = &field.default_value {
         parts.push(format!(
             "{}: {}",
-            tr(locale, "Default", "РџРѕ СѓРјРѕР»С‡Р°РЅРёСЋ"),
+            tr(locale, "Default", "По умолчанию"),
             default
         ));
     }
     match (field.min, field.max) {
         (Some(min), Some(max)) => parts.push(format!(
             "{}: {}..{}",
-            tr(locale, "Range", "Р”РёР°РїР°Р·РѕРЅ"),
+            tr(locale, "Range", "Диапазон"),
             min,
             max
         )),
         (Some(min), None) => {
-            parts.push(format!("{}: {}", tr(locale, "Min", "РњРёРЅРёРјСѓРј"), min))
+            parts.push(format!("{}: {}", tr(locale, "Min", "Минимум"), min))
         }
         (None, Some(max)) => parts.push(format!(
             "{}: {}",
-            tr(locale, "Max", "РњР°РєСЃРёРјСѓРј"),
+            tr(locale, "Max", "Максимум"),
             max
         )),
         (None, None) => {}
@@ -97,7 +97,7 @@ fn setting_field_hint(field: &ModuleSettingField, locale: Locale) -> Option<Stri
     if !field.options.is_empty() {
         parts.push(format!(
             "{}: {}",
-            tr(locale, "Options", "РћРїС†РёРё"),
+            tr(locale, "Options", "Опции"),
             field
                 .options
                 .iter()
@@ -109,7 +109,7 @@ fn setting_field_hint(field: &ModuleSettingField, locale: Locale) -> Option<Stri
     if !field.object_keys.is_empty() {
         parts.push(format!(
             "{}: {}",
-            tr(locale, "Object keys", "РљР»СЋС‡Рё РѕР±СЉРµРєС‚Р°"),
+            tr(locale, "Object keys", "Ключи объекта"),
             field
                 .object_keys
                 .iter()
@@ -126,7 +126,7 @@ fn setting_field_hint(field: &ModuleSettingField, locale: Locale) -> Option<Stri
         ));
     }
 
-    (!parts.is_empty()).then(|| parts.join(" В· "))
+    (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
 fn setting_field_placeholder(field: &ModuleSettingField) -> Option<&'static str> {
@@ -267,7 +267,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
             <div class="flex items-start justify-between gap-3">
                 <div class="space-y-1">
                     <h3 class="text-base font-semibold text-card-foreground">
-                        {tr(locale, "Module detail", "Р”РµС‚Р°Р»Рё РјРѕРґСѓР»СЏ")}
+                        {tr(locale, "Module detail", "Детали модуля")}
                     </h3>
                     <p class="text-sm text-muted-foreground">
                         {match detail.as_ref() {
@@ -278,17 +278,17 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                 tr(
                                     locale,
                                     "metadata from the internal marketplace catalog.",
-                                    "вЂ” РјРµС‚Р°РґР°РЅРЅС‹Рµ РёР· РІРЅСѓС‚СЂРµРЅРЅРµРіРѕ marketplace-РєР°С‚Р°Р»РѕРіР°.",
+                                    "— метаданные из внутреннего marketplace-каталога.",
                                 )
                             ),
                             None if loading.get() => format!(
                                 "{} {}",
-                                tr(locale, "Loading", "Р—Р°РіСЂСѓР·РєР°"),
+                                tr(locale, "Loading", "Загрузка"),
                                 selected_slug
                             ),
                             None => format!(
                                 "{} {}.",
-                                tr(locale, "No catalog entry resolved for", "РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°Р№С‚Рё Р·Р°РїРёСЃСЊ РєР°С‚Р°Р»РѕРіР° РґР»СЏ"),
+                                tr(locale, "No catalog entry resolved for", "Не удалось найти запись каталога для"),
                                 selected_slug
                             ),
                         }}
@@ -299,7 +299,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                     class="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
                     on:click=move |_| on_close.run(())
                 >
-                    {tr(locale, "Close", "Р—Р°РєСЂС‹С‚СЊ")}
+                    {tr(locale, "Close", "Закрыть")}
                 </button>
             </div>
 
@@ -310,7 +310,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                         {tr(
                             locale,
                             "The selected module is not available in the current catalog snapshot.",
-                            "Р’С‹Р±СЂР°РЅРЅС‹Р№ РјРѕРґСѓР»СЊ РЅРµРґРѕСЃС‚СѓРїРµРЅ РІ С‚РµРєСѓС‰РµРј СЃРЅРёРјРєРµ РєР°С‚Р°Р»РѕРіР°.",
+                            "Выбранный модуль недоступен в текущем снимке каталога.",
                         )}
                     </p>
                 }
@@ -554,7 +554,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                 set_governance_confirmation_action.set(None);
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
-                                        tr(locale, "No publish request available.", "РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ publish-Р·Р°РїСЂРѕСЃР°.")
+                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
                                             .to_string(),
                                     ));
                                     return;
@@ -598,7 +598,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                 set_governance_confirmation_action.set(None);
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
-                                        tr(locale, "No publish request available.", "РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ publish-Р·Р°РїСЂРѕСЃР°.")
+                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
                                             .to_string(),
                                     ));
                                     return;
@@ -621,7 +621,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
+                                        tr(locale, "Reason is required.", "Нужно указать причину.")
                                             .to_string(),
                                     ));
                                     return;
@@ -634,7 +634,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -686,7 +686,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                 set_governance_confirmation_action.set(None);
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
-                                        tr(locale, "No publish request available.", "РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ publish-Р·Р°РїСЂРѕСЃР°.")
+                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
                                             .to_string(),
                                     ));
                                     return;
@@ -705,7 +705,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
+                                        tr(locale, "Reason is required.", "Нужно указать причину.")
                                             .to_string(),
                                     ));
                                     return;
@@ -718,7 +718,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -772,7 +772,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                 set_governance_confirmation_action.set(None);
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
-                                        tr(locale, "No publish request available.", "РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ publish-Р·Р°РїСЂРѕСЃР°.")
+                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
                                             .to_string(),
                                     ));
                                     return;
@@ -791,7 +791,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
+                                        tr(locale, "Reason is required.", "Нужно указать причину.")
                                             .to_string(),
                                     ));
                                     return;
@@ -804,7 +804,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -858,7 +858,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                 set_governance_confirmation_action.set(None);
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
-                                        tr(locale, "No publish request available.", "РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ publish-Р·Р°РїСЂРѕСЃР°.")
+                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
                                             .to_string(),
                                     ));
                                     return;
@@ -877,7 +877,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
+                                        tr(locale, "Reason is required.", "Нужно указать причину.")
                                             .to_string(),
                                     ));
                                     return;
@@ -890,7 +890,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -944,7 +944,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                 set_governance_intent_action.set(Some("reject".to_string()));
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
-                                        tr(locale, "No publish request available.", "РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ publish-Р·Р°РїСЂРѕСЃР°.")
+                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
                                             .to_string(),
                                     ));
                                     return;
@@ -963,7 +963,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
+                                        tr(locale, "Reason is required.", "Нужно указать причину.")
                                             .to_string(),
                                     ));
                                     return;
@@ -976,7 +976,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -1063,7 +1063,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                         tr(
                                             locale,
                                             "New owner user id is required.",
-                                            "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ user id РЅРѕРІРѕРіРѕ РІР»Р°РґРµР»СЊС†Р°."
+                                            "Нужно указать user id нового владельца."
                                         )
                                         .to_string(),
                                     ));
@@ -1077,7 +1077,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
+                                        tr(locale, "Reason is required.", "Нужно указать причину.")
                                             .to_string(),
                                     ));
                                     return;
@@ -1090,7 +1090,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -1178,7 +1178,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
+                                        tr(locale, "Reason is required.", "Нужно указать причину.")
                                             .to_string(),
                                     ));
                                     return;
@@ -1191,7 +1191,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -1296,21 +1296,21 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                         </span>
                                         <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                                             {if module.compatible {
-                                                tr(locale, "Compatible", "РЎРѕРІРјРµСЃС‚РёРј")
+                                                tr(locale, "Compatible", "Совместим")
                                             } else {
-                                                tr(locale, "Compatibility risk", "Р РёСЃРє СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё")
+                                                tr(locale, "Compatibility risk", "Риск совместимости")
                                             }}
                                         </span>
                                         {module.signature_present.then(|| view! {
                                             <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
-                                                {tr(locale, "Signed", "РџРѕРґРїРёСЃР°РЅ")}
+                                                {tr(locale, "Signed", "Подписан")}
                                             </span>
                                         })}
                                         {module.installed.then(|| view! {
                                             <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
                                                 {format!(
                                                     "{}{}",
-                                                    tr(locale, "Installed", "РЈСЃС‚Р°РЅРѕРІР»РµРЅ"),
+                                                    tr(locale, "Installed", "Установлен"),
                                                     module
                                                         .installed_version
                                                         .as_ref()
@@ -1321,7 +1321,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                         })}
                                         {module.update_available.then(|| view! {
                                             <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                                                {tr(locale, "Update available", "Р”РѕСЃС‚СѓРїРЅРѕ РѕР±РЅРѕРІР»РµРЅРёРµ")}
+                                                {tr(locale, "Update available", "Доступно обновление")}
                                             </span>
                                         })}
                                     </div>
@@ -1348,11 +1348,11 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     </span>
                                     <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
                                         {if primary_here {
-                                            tr(locale, "Primary for this admin", "Primary РґР»СЏ СЌС‚РѕР№ admin-РїРѕРІРµСЂС…РЅРѕСЃС‚Рё")
+                                            tr(locale, "Primary for this admin", "Primary для этой admin-поверхности")
                                         } else if showcase_here {
-                                            tr(locale, "Showcase for this admin", "Showcase РґР»СЏ СЌС‚РѕР№ admin-РїРѕРІРµСЂС…РЅРѕСЃС‚Рё")
+                                            tr(locale, "Showcase for this admin", "Showcase для этой admin-поверхности")
                                         } else {
-                                            tr(locale, "No dedicated UI for this admin", "Р”Р»СЏ СЌС‚РѕР№ admin-РїРѕРІРµСЂС…РЅРѕСЃС‚Рё РЅРµС‚ РІС‹РґРµР»РµРЅРЅРѕРіРѕ UI")
+                                            tr(locale, "No dedicated UI for this admin", "Для этой admin-поверхности нет выделенного UI")
                                         }}
                                     </span>
                                 </div>
@@ -1360,7 +1360,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                 <div class="grid gap-4 lg:grid-cols-2">
                                     <div class="rounded-lg border border-border bg-background/70 p-4 text-sm">
                                         <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                            {tr(locale, "Package metadata", "РњРµС‚Р°РґР°РЅРЅС‹Рµ РїР°РєРµС‚Р°")}
+                                            {tr(locale, "Package metadata", "Метаданные пакета")}
                                         </p>
                                         <dl class="mt-3 space-y-2">
                                             <div class="flex items-start justify-between gap-3">
@@ -1372,11 +1372,11 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                 <dd class="font-mono text-right">{module.crate_name.clone()}</dd>
                                             </div>
                                             <div class="flex items-start justify-between gap-3">
-                                                <dt class="text-muted-foreground">{tr(locale, "Publisher", "РР·РґР°С‚РµР»СЊ")}</dt>
-                                                <dd class="text-right">{module.publisher.clone().unwrap_or_else(|| tr(locale, "Workspace / unknown", "Workspace / РЅРµРёР·РІРµСЃС‚РЅРѕ").to_string())}</dd>
+                                                <dt class="text-muted-foreground">{tr(locale, "Publisher", "Издатель")}</dt>
+                                                <dd class="text-right">{module.publisher.clone().unwrap_or_else(|| tr(locale, "Workspace / unknown", "Workspace / неизвестно").to_string())}</dd>
                                             </div>
                                             <div class="flex items-start justify-between gap-3">
-                                                <dt class="text-muted-foreground">{tr(locale, "RusTok range", "Р”РёР°РїР°Р·РѕРЅ RusTok")}</dt>
+                                                <dt class="text-muted-foreground">{tr(locale, "RusTok range", "Диапазон RusTok")}</dt>
                                                 <dd class="text-right">
                                                     {format!(
                                                         "{}{}",
@@ -1384,21 +1384,21 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                             .rustok_min_version
                                                             .as_ref()
                                                             .map(|value| format!(">= {}", value))
-                                                            .unwrap_or_else(|| tr(locale, "no min", "Р±РµР· min").to_string()),
+                                                            .unwrap_or_else(|| tr(locale, "no min", "без min").to_string()),
                                                         module
                                                             .rustok_max_version
                                                             .as_ref()
                                                             .map(|value| format!(", <= {}", value))
-                                                            .unwrap_or_else(|| format!(", {}", tr(locale, "no max", "Р±РµР· max")))
+                                                            .unwrap_or_else(|| format!(", {}", tr(locale, "no max", "без max")))
                                                     )}
                                                 </dd>
                                             </div>
                                             <div class="flex items-start justify-between gap-3">
-                                                <dt class="text-muted-foreground">{tr(locale, "Checksum", "РљРѕРЅС‚СЂРѕР»СЊРЅР°СЏ СЃСѓРјРјР°")}</dt>
-                                                <dd class="font-mono text-right">{checksum.unwrap_or_else(|| tr(locale, "Not published", "РќРµ РѕРїСѓР±Р»РёРєРѕРІР°РЅ").to_string())}</dd>
+                                                <dt class="text-muted-foreground">{tr(locale, "Checksum", "Контрольная сумма")}</dt>
+                                                <dd class="font-mono text-right">{checksum.unwrap_or_else(|| tr(locale, "Not published", "Не опубликован").to_string())}</dd>
                                             </div>
                                             <div class="flex items-start justify-between gap-3">
-                                                <dt class="text-muted-foreground">{tr(locale, "Latest published", "РџРѕСЃР»РµРґРЅСЏСЏ РїСѓР±Р»РёРєР°С†РёСЏ")}</dt>
+                                                <dt class="text-muted-foreground">{tr(locale, "Latest published", "Последняя публикация")}</dt>
                                                 <dd class="text-right">
                                                     {latest_release
                                                         .as_ref()
@@ -1408,10 +1408,10 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                             version
                                                                 .published_at
                                                                 .as_ref()
-                                                                .map(|value| format!(" В· {}", value))
+                                                                .map(|value| format!(" · {}", value))
                                                                 .unwrap_or_default()
                                                         ))
-                                                        .unwrap_or_else(|| tr(locale, "No active release", "РќРµС‚ Р°РєС‚РёРІРЅРѕРіРѕ СЂРµР»РёР·Р°").to_string())}
+                                                        .unwrap_or_else(|| tr(locale, "No active release", "Нет активного релиза").to_string())}
                                                 </dd>
                                             </div>
                                         </dl>
@@ -1419,14 +1419,14 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
 
                                     <div class="rounded-lg border border-border bg-background/70 p-4 text-sm">
                                         <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                            {tr(locale, "Surface policy", "РџРѕР»РёС‚РёРєР° РїРѕРІРµСЂС…РЅРѕСЃС‚РµР№")}
+                                            {tr(locale, "Surface policy", "Политика поверхностей")}
                                         </p>
                                         <div class="mt-3 space-y-3">
                                             <div class="flex flex-wrap gap-2">
                                                 {if module.recommended_admin_surfaces.is_empty() {
                                                     view! {
                                                         <span class="text-xs text-muted-foreground">
-                                                            {tr(locale, "No primary admin surface declared.", "Primary admin-РїРѕРІРµСЂС…РЅРѕСЃС‚СЊ РЅРµ РѕР±СЉСЏРІР»РµРЅР°.")}
+                                                            {tr(locale, "No primary admin surface declared.", "Primary admin-поверхность не объявлена.")}
                                                         </span>
                                                     }
                                                         .into_any()
@@ -1450,7 +1450,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                 {if module.showcase_admin_surfaces.is_empty() {
                                                     view! {
                                                         <span class="text-xs text-muted-foreground">
-                                                            {tr(locale, "No showcase admin surface declared.", "Showcase admin-РїРѕРІРµСЂС…РЅРѕСЃС‚СЊ РЅРµ РѕР±СЉСЏРІР»РµРЅР°.")}
+                                                            {tr(locale, "No showcase admin surface declared.", "Showcase admin-поверхность не объявлена.")}
                                                         </span>
                                                     }
                                                         .into_any()
@@ -1472,9 +1472,9 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                             </div>
                                             <div class="text-xs text-muted-foreground">
                                                 {if module.dependencies.is_empty() {
-                                                    tr(locale, "No module dependencies declared.", "Р—Р°РІРёСЃРёРјРѕСЃС‚Рё РјРѕРґСѓР»СЏ РЅРµ РѕР±СЉСЏРІР»РµРЅС‹.").to_string()
+                                                    tr(locale, "No module dependencies declared.", "Зависимости модуля не объявлены.").to_string()
                                                 } else {
-                                                    format!("{}: {}", tr(locale, "Depends on", "Р—Р°РІРёСЃРёС‚ РѕС‚"), module.dependencies.join(", "))
+                                                    format!("{}: {}", tr(locale, "Depends on", "Зависит от"), module.dependencies.join(", "))
                                                 }}
                                             </div>
                                         </div>
@@ -1484,26 +1484,26 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                 <div class="rounded-lg border border-border bg-background/70 p-4 text-sm">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                            {tr(locale, "Publish lifecycle", "Р–РёР·РЅРµРЅРЅС‹Р№ С†РёРєР» РїСѓР±Р»РёРєР°С†РёРё")}
+                                            {tr(locale, "Publish lifecycle", "Жизненный цикл публикации")}
                                         </p>
                                         {latest_registry_request.as_ref().map(|request| {
                                             view! {
                                                 <span class=registry_request_status_badge_classes(&request.status)>
-                                                    {format!("{}: {}", tr(locale, "Request", "Р—Р°РїСЂРѕСЃ"), humanize_token(&request.status))}
+                                                    {format!("{}: {}", tr(locale, "Request", "Запрос"), humanize_token(&request.status))}
                                                 </span>
                                             }
                                         })}
                                         {latest_registry_release.as_ref().map(|release| {
                                             view! {
                                                 <span class=registry_request_status_badge_classes(&release.status)>
-                                                    {format!("{}: {}", tr(locale, "Release", "Р РµР»РёР·"), humanize_token(&release.status))}
+                                                    {format!("{}: {}", tr(locale, "Release", "Релиз"), humanize_token(&release.status))}
                                                 </span>
                                             }
                                         })}
                                         {if latest_registry_request.is_none() && latest_registry_release.is_none() {
                                             view! {
                                                 <span class=registry_request_status_badge_classes("info")>
-                                                    {tr(locale, "No V2 activity yet", "РђРєС‚РёРІРЅРѕСЃС‚Рё V2 РїРѕРєР° РЅРµС‚")}
+                                                    {tr(locale, "No V2 activity yet", "Активности V2 пока нет")}
                                                 </span>
                                             }.into_any()
                                         } else {
@@ -1512,88 +1512,88 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     </div>
                                     <dl class="mt-3 space-y-2">
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Owner binding", "РЎРІСЏР·РєР° РІР»Р°РґРµР»СЊС†Р°")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Owner binding", "Связка владельца")}</dt>
                                             <dd class="text-right">
                                                 {registry_owner_binding
                                                     .as_ref()
                                                     .map(|owner| owner.owner.clone())
-                                                    .unwrap_or_else(|| tr(locale, "No persisted owner binding", "РќРµС‚ СЃРѕС…СЂР°РЅС‘РЅРЅРѕР№ СЃРІСЏР·РєРё РІР»Р°РґРµР»СЊС†Р°").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "No persisted owner binding", "Нет сохранённой связки владельца").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Owner bound by", "РљРµРј РїСЂРёРІСЏР·Р°РЅ РІР»Р°РґРµР»РµС†")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Owner bound by", "Кем привязан владелец")}</dt>
                                             <dd class="text-right">
                                                 {registry_owner_binding
                                                     .as_ref()
                                                     .map(|owner| owner.bound_by.clone())
-                                                    .unwrap_or_else(|| tr(locale, "No owner transfer history", "РСЃС‚РѕСЂРёРё РїСЂРёРІСЏР·РєРё РІР»Р°РґРµР»СЊС†Р° РЅРµС‚").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "No owner transfer history", "Истории привязки владельца нет").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Owner updated", "Р’Р»Р°РґРµР»РµС† РѕР±РЅРѕРІР»С‘РЅ")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Owner updated", "Владелец обновлён")}</dt>
                                             <dd class="text-right">
                                                 {registry_owner_binding
                                                     .as_ref()
                                                     .map(|owner| owner.updated_at.clone())
-                                                    .unwrap_or_else(|| tr(locale, "No owner activity", "РђРєС‚РёРІРЅРѕСЃС‚Рё РїРѕ РІР»Р°РґРµР»СЊС†Сѓ РЅРµС‚").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "No owner activity", "Активности по владельцу нет").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Latest request", "РџРѕСЃР»РµРґРЅРёР№ Р·Р°РїСЂРѕСЃ")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Latest request", "Последний запрос")}</dt>
                                             <dd class="text-right">
                                                 {latest_registry_request
                                                     .as_ref()
-                                                    .map(|request| format!("{} В· {}", request.id, humanize_token(&request.status)))
-                                                    .unwrap_or_else(|| tr(locale, "No publish request recorded", "Р—Р°РїСЂРѕСЃРѕРІ РЅР° РїСѓР±Р»РёРєР°С†РёСЋ РїРѕРєР° РЅРµС‚").to_string())}
+                                                    .map(|request| format!("{} · {}", request.id, humanize_token(&request.status)))
+                                                    .unwrap_or_else(|| tr(locale, "No publish request recorded", "Запросов на публикацию пока нет").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Request principal", "РџСЂРёРЅС†РёРїР°Р» Р·Р°РїСЂРѕСЃР°")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Request principal", "Принципал запроса")}</dt>
                                             <dd class="text-right">
                                                 {latest_registry_request
                                                     .as_ref()
                                                     .map(|request| request.requested_by.clone())
-                                                    .unwrap_or_else(|| tr(locale, "Unknown", "РќРµРёР·РІРµСЃС‚РЅРѕ").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "Unknown", "Неизвестно").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Request publisher", "РР·РґР°С‚РµР»СЊ Р·Р°РїСЂРѕСЃР°")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Request publisher", "Издатель запроса")}</dt>
                                             <dd class="text-right">
                                                 {latest_registry_request
                                                     .as_ref()
                                                     .and_then(|request| request.publisher.clone())
-                                                    .unwrap_or_else(|| tr(locale, "Not persisted", "РќРµ СЃРѕС…СЂР°РЅС‘РЅ").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "Not persisted", "Не сохранён").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Request updated", "Р—Р°РїСЂРѕСЃ РѕР±РЅРѕРІР»С‘РЅ")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Request updated", "Запрос обновлён")}</dt>
                                             <dd class="text-right">
                                                 {latest_registry_request
                                                     .as_ref()
                                                     .map(|request| request.updated_at.clone())
-                                                    .unwrap_or_else(|| tr(locale, "No request activity", "РђРєС‚РёРІРЅРѕСЃС‚Рё РїРѕ Р·Р°РїСЂРѕСЃСѓ РЅРµС‚").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "No request activity", "Активности по запросу нет").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Latest release state", "РЎРѕСЃС‚РѕСЏРЅРёРµ РїРѕСЃР»РµРґРЅРµРіРѕ СЂРµР»РёР·Р°")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Latest release state", "Состояние последнего релиза")}</dt>
                                             <dd class="text-right">
                                                 {latest_registry_release
                                                     .as_ref()
                                                     .map(|release: &RegistryReleaseLifecycle| format!(
-                                                        "v{} В· {}{}",
+                                                        "v{} · {}{}",
                                                         release.version,
                                                         humanize_token(&release.status),
                                                         if status_eq(&release.status, "yanked") {
                                                             release
                                                                 .yanked_at
                                                                 .as_ref()
-                                                                .map(|value| format!(" В· {}", value))
+                                                                .map(|value| format!(" · {}", value))
                                                                 .unwrap_or_default()
                                                         } else {
-                                                            format!(" В· {}", release.published_at)
+                                                            format!(" · {}", release.published_at)
                                                         }
                                                     ))
-                                                    .unwrap_or_else(|| tr(locale, "No persisted release state", "РЎРѕС…СЂР°РЅС‘РЅРЅРѕРіРѕ СЃРѕСЃС‚РѕСЏРЅРёСЏ СЂРµР»РёР·Р° РЅРµС‚").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "No persisted release state", "Сохранённого состояния релиза нет").to_string())}
                                             </dd>
                                         </div>
                                     </dl>
@@ -1601,31 +1601,31 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     <Show when=move || show_validation_summary>
                                         <div class="mt-3 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Validation summary", "РЎРІРѕРґРєР° РІР°Р»РёРґР°С†РёРё")}
+                                                {tr(locale, "Validation summary", "Сводка валидации")}
                                             </p>
                                             <div class="flex flex-wrap gap-2 text-xs">
                                                 {validation_outcome_summary.as_ref().map(|outcome| {
                                                     view! {
                                                         <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
-                                                            {format!("{}: {}", tr(locale, "Outcome", "РС‚РѕРі"), outcome)}
+                                                            {format!("{}: {}", tr(locale, "Outcome", "Итог"), outcome)}
                                                         </span>
                                                     }
                                                 })}
                                                 <Show when=move || review_ready>
                                                     <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
-                                                        {tr(locale, "Ready for review", "Р“РѕС‚РѕРІ Рє review")}
+                                                        {tr(locale, "Ready for review", "Готов к review")}
                                                     </span>
                                                 </Show>
                                                 <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
-                                                    {format!("{}: {}", tr(locale, "Warnings", "РџСЂРµРґСѓРїСЂРµР¶РґРµРЅРёСЏ"), validation_warning_items.len())}
+                                                    {format!("{}: {}", tr(locale, "Warnings", "Предупреждения"), validation_warning_items.len())}
                                                 </span>
                                                 <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
-                                                    {format!("{}: {}", tr(locale, "Errors", "РћС€РёР±РєРё"), validation_error_items.len())}
+                                                    {format!("{}: {}", tr(locale, "Errors", "Ошибки"), validation_error_items.len())}
                                                 </span>
                                                 {latest_validation_event_summary.as_ref().map(|(title, _, created_at, _)| {
                                                     view! {
                                                         <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
-                                                            {format!("{}: {} В· {}", tr(locale, "Last event", "РџРѕСЃР»РµРґРЅРµРµ СЃРѕР±С‹С‚РёРµ"), title, created_at)}
+                                                            {format!("{}: {} · {}", tr(locale, "Last event", "Последнее событие"), title, created_at)}
                                                         </span>
                                                     }
                                                 })}
@@ -1636,7 +1636,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                         <p class="font-medium text-card-foreground">{title.clone()}</p>
                                                         <p class="mt-1">{summary.clone()}</p>
                                                         <p class="mt-1 text-[11px] text-muted-foreground">
-                                                            {format!("{}: {} В· {}", tr(locale, "Principal", "РџСЂРёРЅС†РёРїР°Р»"), actor, created_at)}
+                                                            {format!("{}: {} · {}", tr(locale, "Principal", "Принципал"), actor, created_at)}
                                                         </p>
                                                     </div>
                                                 }
@@ -1676,7 +1676,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                             </div>
                                                         </Show>
                                                         <p class="mt-2 text-[11px] text-muted-foreground">
-                                                            {format!("{}: {}", tr(locale, "Principal", "РџСЂРёРЅС†РёРїР°Р»"), actor)}
+                                                            {format!("{}: {}", tr(locale, "Principal", "Принципал"), actor)}
                                                         </p>
                                                     </div>
                                                 }
@@ -1709,7 +1709,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                             </Show>
                                             <Show when=move || has_validation_warnings>
                                                 <div class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                                                    <p class="font-medium">{tr(locale, "Warnings", "РџСЂРµРґСѓРїСЂРµР¶РґРµРЅРёСЏ")}</p>
+                                                    <p class="font-medium">{tr(locale, "Warnings", "Предупреждения")}</p>
                                                     <div class="mt-2 space-y-1">
                                                         {validation_warning_items_for_show.get_value().into_iter().map(|warning| {
                                                             view! { <p>{warning}</p> }
@@ -1719,7 +1719,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                             </Show>
                                             <Show when=move || has_validation_errors>
                                                 <div class="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
-                                                    <p class="font-medium">{tr(locale, "Errors", "РћС€РёР±РєРё")}</p>
+                                                    <p class="font-medium">{tr(locale, "Errors", "Ошибки")}</p>
                                                     <div class="mt-2 space-y-1">
                                                         {validation_error_items_for_show.get_value().into_iter().map(|error| {
                                                             view! { <p>{error}</p> }
@@ -1730,7 +1730,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                             {validation_rejection_reason.as_ref().map(|reason| {
                                                 view! {
                                                     <div class="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
-                                                        <p class="font-medium">{tr(locale, "Rejection reason", "РџСЂРёС‡РёРЅР° РѕС‚РєР»РѕРЅРµРЅРёСЏ")}</p>
+                                                        <p class="font-medium">{tr(locale, "Rejection reason", "Причина отклонения")}</p>
                                                         <p class="mt-2">{reason.clone()}</p>
                                                     </div>
                                                 }
@@ -1772,29 +1772,29 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                         </div>
                                                         <p class="mt-1">{stage.detail.clone()}</p>
                                                         <p class="mt-1 text-[11px] text-muted-foreground">
-                                                            {format!("{}: {}", tr(locale, "Attempt", "РџРѕРїС‹С‚РєР°"), stage.attempt_number)}
+                                                            {format!("{}: {}", tr(locale, "Attempt", "Попытка"), stage.attempt_number)}
                                                         </p>
                                                         {stage.started_at.as_ref().map(|started_at| {
                                                             view! {
                                                                 <p class="mt-1 text-[11px] text-muted-foreground">
-                                                                    {format!("{}: {}", tr(locale, "Started", "РќР°С‡Р°С‚Рѕ"), started_at)}
+                                                                    {format!("{}: {}", tr(locale, "Started", "Начато"), started_at)}
                                                                 </p>
                                                             }
                                                         })}
                                                         {stage.finished_at.as_ref().map(|finished_at| {
                                                             view! {
                                                                 <p class="mt-1 text-[11px] text-muted-foreground">
-                                                                    {format!("{}: {}", tr(locale, "Finished", "Р—Р°РІРµСЂС€РµРЅРѕ"), finished_at)}
+                                                                    {format!("{}: {}", tr(locale, "Finished", "Завершено"), finished_at)}
                                                                 </p>
                                                             }
                                                         })}
                                                         <p class="mt-1 text-[11px] text-muted-foreground">
-                                                            {format!("{}: {}", tr(locale, "Updated", "РћР±РЅРѕРІР»РµРЅРѕ"), stage.updated_at)}
+                                                            {format!("{}: {}", tr(locale, "Updated", "Обновлено"), stage.updated_at)}
                                                         </p>
                                                         <Show when=move || has_stage_history>
                                                             <div class="mt-2 space-y-2 border-t border-border/70 pt-2">
                                                                 <p class="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                                                    {tr(locale, "Recent stage history", "РќРµРґР°РІРЅСЏСЏ РёСЃС‚РѕСЂРёСЏ СЌС‚Р°РїР°")}
+                                                                    {tr(locale, "Recent stage history", "Недавняя история этапа")}
                                                                 </p>
                                                                 {stage_history_for_show.get_value().into_iter().map(|event| {
                                                                     let title = governance_event_title(&event.event_type, locale);
@@ -1804,7 +1804,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                                             <p class="font-medium text-card-foreground">{title}</p>
                                                                             <p class="mt-1">{summary}</p>
                                                                             <p class="mt-1 text-[10px] text-muted-foreground">
-                                                                                {format!("{} В· {}", event.actor, event.created_at)}
+                                                                                {format!("{} · {}", event.actor, event.created_at)}
                                                                             </p>
                                                                         </div>
                                                                     }
@@ -1842,7 +1842,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                         </div>
                                                         <p class="mt-1">{gate.detail}</p>
                                                         <p class="mt-1 text-[11px] text-muted-foreground">
-                                                            {format!("{}: {}", tr(locale, "Updated", "РћР±РЅРѕРІР»РµРЅРѕ"), gate.updated_at)}
+                                                            {format!("{}: {}", tr(locale, "Updated", "Обновлено"), gate.updated_at)}
                                                         </p>
                                                     </div>
                                                 }
@@ -1852,7 +1852,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     <Show when=move || !review_policy_lines_for_show.is_empty()>
                                         <div class="mt-3 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Moderation policy", "РџРѕР»РёС‚РёРєР° РјРѕРґРµСЂР°С†РёРё")}
+                                                {tr(locale, "Moderation policy", "Политика модерации")}
                                             </p>
                                             {review_policy_lines.clone().into_iter().map(|line| {
                                                 view! {
@@ -1866,7 +1866,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     <Show when=move || !next_action_lines_for_show.is_empty()>
                                         <div class="mt-3 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Next actions", "РЎР»РµРґСѓСЋС‰РёРµ РґРµР№СЃС‚РІРёСЏ")}
+                                                {tr(locale, "Next actions", "Следующие действия")}
                                             </p>
                                             {next_action_lines.clone().into_iter().map(|line| {
                                                 view! {
@@ -1880,10 +1880,10 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     <Show when=move || !operator_command_lines_for_show.is_empty()>
                                         <div class="mt-3 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Operator commands", "РљРѕРјР°РЅРґС‹ РѕРїРµСЂР°С‚РѕСЂР°")}
+                                                {tr(locale, "Operator commands", "Команды оператора")}
                                             </p>
                                             {operator_command_lines.clone().into_iter().map(|line| {
-                                                let copy_label = tr(locale, "Copy", "РљРѕРїРёСЂРѕРІР°С‚СЊ");
+                                                let copy_label = tr(locale, "Copy", "Копировать");
                                                 let line_for_copy = line.clone();
                                                 view! {
                                                     <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2 text-xs text-card-foreground">
@@ -1902,19 +1902,19 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     <Show when=move || !live_api_action_lines_for_show.is_empty()>
                                         <div class="mt-3 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Live API actions", "Live API-РґРµР№СЃС‚РІРёСЏ")}
+                                                {tr(locale, "Live API actions", "Live API-действия")}
                                             </p>
                                             {live_api_action_lines.clone().into_iter().map(|item| {
-                                                let copy_label = tr(locale, "Copy", "РљРѕРїРёСЂРѕРІР°С‚СЊ");
-                                                let copy_curl_label = tr(locale, "Copy cURL", "РљРѕРїРёСЂРѕРІР°С‚СЊ cURL");
-                                                let copy_xtask_label = tr(locale, "Copy xtask", "РљРѕРїРёСЂРѕРІР°С‚СЊ xtask");
+                                                let copy_label = tr(locale, "Copy", "Копировать");
+                                                let copy_curl_label = tr(locale, "Copy cURL", "Копировать cURL");
+                                                let copy_xtask_label = tr(locale, "Copy xtask", "Копировать xtask");
                                                 let line_for_copy = item.endpoint.clone();
                                                 let curl_snippet = curl_snippet_for_live_api_action(&item);
                                                 let curl_for_copy = curl_snippet.clone();
                                                 let xtask_for_copy = item.xtask_hint.clone();
-                                                let authority_label = tr(locale, "Allowed actor", "РљС‚Рѕ РјРѕР¶РµС‚ РІС‹Р·С‹РІР°С‚СЊ");
-                                                let body_label = tr(locale, "Request body", "РўРµР»Рѕ Р·Р°РїСЂРѕСЃР°");
-                                                let headers_label = tr(locale, "Headers", "Р—Р°РіРѕР»РѕРІРєРё");
+                                                let authority_label = tr(locale, "Allowed actor", "Кто может вызывать");
+                                                let body_label = tr(locale, "Request body", "Тело запроса");
+                                                let headers_label = tr(locale, "Headers", "Заголовки");
                                                 let curl_label = tr(locale, "cURL", "cURL");
                                                 let xtask_label = tr(locale, "xtask", "xtask");
                                                 let action_kind_label = if item.write_path {
@@ -2106,7 +2106,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                                 </div>
                                                             </Show>
                                                             <p class="mt-2 text-xs text-muted-foreground">
-                                                                {format!("{}: {}", tr(locale, "Principal", "РџСЂРёРЅС†РёРїР°Р»"), actor)}
+                                                                {format!("{}: {}", tr(locale, "Principal", "Принципал"), actor)}
                                                             </p>
                                                         </div>
                                                     }
@@ -2115,7 +2115,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                         </Show>
                                         <div class="mt-4 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Audit trail", "РђСѓРґРёС‚-СЃР»РµРґ")}
+                                                {tr(locale, "Audit trail", "Аудит-след")}
                                             </p>
                                             {recent_governance_events_for_show.get_value().into_iter().map(|event| {
                                                 let title = governance_event_title(&event.event_type, locale);
@@ -2131,10 +2131,10 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                         </div>
                                                         <p class="mt-2 text-sm text-muted-foreground">{summary}</p>
                                                         <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                                                            <span>{format!("{}: {}", tr(locale, "Principal", "РџСЂРёРЅС†РёРїР°Р»"), actor)}</span>
+                                                            <span>{format!("{}: {}", tr(locale, "Principal", "Принципал"), actor)}</span>
                                                             {publisher.map(|publisher| {
                                                                 view! {
-                                                                    <span>{format!("{}: {}", tr(locale, "Publisher", "РР·РґР°С‚РµР»СЊ"), publisher)}</span>
+                                                                    <span>{format!("{}: {}", tr(locale, "Publisher", "Издатель"), publisher)}</span>
                                                                 }
                                                             })}
                                                         </div>
@@ -2159,14 +2159,14 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     view! {
                                         <div class="rounded-lg border border-border bg-background/70 p-4">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Marketplace visuals", "Р’РёР·СѓР°Р»С‹ marketplace")}
+                                                {tr(locale, "Marketplace visuals", "Визуалы marketplace")}
                                             </p>
                                             <div class="mt-3 space-y-3">
                                                 {module_banner_url_for_body.clone().map(|banner_url| {
                                                     let module_name = module_name.clone();
                                                     view! {
                                                         <div class="space-y-2">
-                                                            <p class="text-xs text-muted-foreground">{tr(locale, "Banner", "Р‘Р°РЅРЅРµСЂ")}</p>
+                                                            <p class="text-xs text-muted-foreground">{tr(locale, "Banner", "Баннер")}</p>
                                                             <img
                                                                 class="max-h-48 w-full rounded-lg border border-border object-cover"
                                                                 src=banner_url
@@ -2178,7 +2178,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                 {if has_marketplace_screenshots {
                                                     view! {
                                                         <div class="space-y-2">
-                                                            <p class="text-xs text-muted-foreground">{tr(locale, "Screenshots", "РЎРєСЂРёРЅС€РѕС‚С‹")}</p>
+                                                            <p class="text-xs text-muted-foreground">{tr(locale, "Screenshots", "Скриншоты")}</p>
                                                             <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                                                                 {module_screenshots_for_body.clone().into_iter().map(|screenshot_url| {
                                                                     let module_name = module_name.clone();
@@ -2207,15 +2207,15 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                     <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                         <div class="space-y-1">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Tenant settings", "РќР°СЃС‚СЂРѕР№РєРё tenant")}
+                                                {tr(locale, "Tenant settings", "Настройки tenant")}
                                             </p>
                                             <p class="text-sm text-muted-foreground">
                                                 {if settings_form_supported.get() {
                                                     tr(locale, "This module exposes schema-driven tenant settings from rustok-module.toml.", "This module exposes schema-driven tenant settings from rustok-module.toml.")
                                                 } else if settings_editable.get() {
-                                                    tr(locale, "Persist raw JSON settings for the current tenant. The payload is stored in tenant_modules.settings.", "РЎРѕС…СЂР°РЅСЏР№С‚Рµ raw JSON-РЅР°СЃС‚СЂРѕР№РєРё РґР»СЏ С‚РµРєСѓС‰РµРіРѕ tenant. Payload С…СЂР°РЅРёС‚СЃСЏ РІ tenant_modules.settings.")
+                                                    tr(locale, "Persist raw JSON settings for the current tenant. The payload is stored in tenant_modules.settings.", "Сохраняйте raw JSON-настройки для текущего tenant. Payload хранится в tenant_modules.settings.")
                                                 } else {
-                                                    tr(locale, "Enable this module for the current tenant before saving settings.", "Р’РєР»СЋС‡РёС‚Рµ СЌС‚РѕС‚ РјРѕРґСѓР»СЊ РґР»СЏ С‚РµРєСѓС‰РµРіРѕ tenant РїРµСЂРµРґ СЃРѕС…СЂР°РЅРµРЅРёРµРј РЅР°СЃС‚СЂРѕРµРє.")
+                                                    tr(locale, "Enable this module for the current tenant before saving settings.", "Включите этот модуль для текущего tenant перед сохранением настроек.")
                                                 }}
                                             </p>
                                         </div>
@@ -2225,16 +2225,16 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                             disabled=move || !settings_editable.get() || settings_saving.get()
                                             on:click=move |_| on_save_settings.run(())
                                         >
-                                            {move || if settings_saving.get() { tr(locale, "Saving...", "РЎРѕС…СЂР°РЅРµРЅРёРµ...") } else { tr(locale, "Save settings", "РЎРѕС…СЂР°РЅРёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё") }}
+                                            {move || if settings_saving.get() { tr(locale, "Saving...", "Сохранение...") } else { tr(locale, "Save settings", "Сохранить настройки") }}
                                         </button>
                                     </div>
                                     <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
                                         <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
                                             {move || match tenant_module_for_body.get_value().as_ref() {
-                                                Some(module) if module.enabled => tr(locale, "Tenant-enabled", "Р’РєР»СЋС‡С‘РЅ РґР»СЏ tenant").to_string(),
-                                                Some(_) => tr(locale, "Tenant-disabled", "Р’С‹РєР»СЋС‡РµРЅ РґР»СЏ tenant").to_string(),
-                                                None if settings_editable.get() => tr(locale, "No tenant override yet", "РџРµСЂРµРѕРїСЂРµРґРµР»РµРЅРёСЏ tenant РїРѕРєР° РЅРµС‚").to_string(),
-                                                None => tr(locale, "Unavailable until enabled", "РќРµРґРѕСЃС‚СѓРїРЅРѕ РґРѕ РІРєР»СЋС‡РµРЅРёСЏ").to_string(),
+                                                Some(module) if module.enabled => tr(locale, "Tenant-enabled", "Включён для tenant").to_string(),
+                                                Some(_) => tr(locale, "Tenant-disabled", "Выключен для tenant").to_string(),
+                                                None if settings_editable.get() => tr(locale, "No tenant override yet", "Переопределения tenant пока нет").to_string(),
+                                                None => tr(locale, "Unavailable until enabled", "Недоступно до включения").to_string(),
                                             }}
                                         </span>
                                         <Show when=move || settings_form_supported.get() && !settings_schema_for_body.get_value().is_empty()>
@@ -2242,7 +2242,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                 {format!(
                                                     "{} {}",
                                                     settings_schema_for_body.get_value().len(),
-                                                    tr(locale, "fields", "РїРѕР»РµР№")
+                                                    tr(locale, "fields", "полей")
                                                 )}
                                             </span>
                                         </Show>
@@ -2350,7 +2350,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                                                                             ))
                                                                                         }
                                                                                     />
-                                                                                    <span>{tr(locale, "Enabled", "Р’РєР»СЋС‡РµРЅРѕ")}</span>
+                                                                                    <span>{tr(locale, "Enabled", "Включено")}</span>
                                                                                 </label>
                                                                             }.into_any()
                                                                         }
@@ -2478,14 +2478,14 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                             if settings_form_supported.get() && !settings_schema_for_body.get_value().is_empty() {
                                                 format!(
                                                     "{} `{}`. {}",
-                                                    tr(locale, "Editing schema-driven settings for", "Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ schema-driven РЅР°СЃС‚СЂРѕРµРє РґР»СЏ"),
+                                                    tr(locale, "Editing schema-driven settings for", "Редактирование schema-driven настроек для"),
                                                     selected_slug_for_body.get_value(),
-                                                    tr(locale, "Complex fields accept JSON per field.", "РЎР»РѕР¶РЅС‹Рµ РїРѕР»СЏ РїСЂРёРЅРёРјР°СЋС‚ JSON РїРѕ РєР°Р¶РґРѕРјСѓ РїРѕР»СЋ.")
+                                                    tr(locale, "Complex fields accept JSON per field.", "Сложные поля принимают JSON по каждому полю.")
                                                 )
                                             } else {
                                                 format!(
                                                     "{} `{}`.",
-                                                    tr(locale, "Editing raw JSON settings for", "Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ raw JSON-РЅР°СЃС‚СЂРѕРµРє РґР»СЏ"),
+                                                    tr(locale, "Editing raw JSON settings for", "Редактирование raw JSON-настроек для"),
                                                     selected_slug_for_body.get_value()
                                                 )
                                             }

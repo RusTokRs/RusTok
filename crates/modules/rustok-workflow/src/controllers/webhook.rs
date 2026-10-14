@@ -5,10 +5,10 @@ use axum::{
     http::HeaderMap,
 };
 use rustok_web::{HttpError, HttpResult};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use tracing::info;
 
 use crate::WorkflowService;
+use rustok_tenant::{TenantError, TenantService};
 
 #[derive(serde::Serialize)]
 pub struct WebhookResponse {
@@ -22,17 +22,11 @@ pub async fn receive(
     body: Bytes,
 ) -> HttpResult<Json<WebhookResponse>> {
     let db = runtime.db_clone();
-    let tenant = rustok_tenant::entities::tenant::Entity::find()
-        .filter(rustok_tenant::entities::tenant::Column::Slug.eq(&tenant_slug))
-        .one(&db)
+    let tenant_service = TenantService::new(db.clone());
+    let tenant = tenant_service
+        .get_tenant_by_slug(&tenant_slug)
         .await
-        .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?
-        .ok_or_else(|| {
-            HttpError::bad_request(
-                "workflow_operation_failed",
-                format!("Tenant not found: {tenant_slug}"),
-            )
-        })?;
+        .map_err(|err| map_tenant_lookup_error(err, &tenant_slug))?;
 
     let signature = headers
         .get("x-webhook-signature")
@@ -60,4 +54,38 @@ pub async fn receive(
     );
 
     Ok(Json(WebhookResponse { executions }))
+}
+
+fn map_tenant_lookup_error(err: TenantError, tenant_slug: &str) -> HttpError {
+    match err {
+        TenantError::NotFound => HttpError::not_found(
+            "workflow_tenant_not_found",
+            format!("Tenant not found: {tenant_slug}"),
+        ),
+        other => HttpError::bad_request("workflow_operation_failed", other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+
+    #[test]
+    fn maps_tenant_not_found_to_http_404() {
+        let err = map_tenant_lookup_error(TenantError::NotFound, "unknown-tenant");
+        assert_eq!(err.status, StatusCode::NOT_FOUND);
+        assert_eq!(err.code, "workflow_tenant_not_found");
+        assert!(err.message.contains("unknown-tenant"));
+    }
+
+    #[test]
+    fn maps_other_tenant_errors_to_http_400() {
+        let err = map_tenant_lookup_error(
+            TenantError::InvalidSettingsSchema("invalid schema".into()),
+            "tenant-1",
+        );
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert_eq!(err.code, "workflow_operation_failed");
+    }
 }

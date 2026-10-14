@@ -3,6 +3,7 @@ pub use rustok_api::StaticInstalledModuleView as InstalledModule;
 pub use rustok_api::StaticModuleRegistryView as ModuleInfo;
 pub use rustok_api::StaticTenantModuleView as TenantModule;
 pub use rustok_api::StaticTenantModuleView as ToggleModuleResult;
+pub use rustok_api::ArtifactRollbackView as ArtifactRollback;
 pub use rustok_api::{
     MarketplaceModule, MarketplaceModuleVersion,
     ModuleCompositionSnapshotView as ModuleCompositionSnapshot,

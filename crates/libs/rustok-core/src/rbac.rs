@@ -84,6 +84,9 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Groups,
         Resource::MarketplaceSellers,
         Resource::MarketplaceListings,
+        Resource::Forms,
+        Resource::Conversations,
+        Resource::Messages,
     ])
 });
 
@@ -126,6 +129,9 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Groups,
         Resource::MarketplaceSellers,
         Resource::MarketplaceListings,
+        Resource::Forms,
+        Resource::Conversations,
+        Resource::Messages,
     ]);
 
     permissions.insert(Permission::MODULES_READ);
@@ -199,9 +205,6 @@ static MANAGER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Permission::NODES_UPDATE,
         Permission::NODES_DELETE,
         Permission::NODES_LIST,
-        Permission::FORMS_READ,
-        Permission::FORMS_LIST,
-        Permission::FORMS_UPDATE,
     ]);
     insert_actions(
         &mut permissions,
@@ -257,6 +260,16 @@ static MANAGER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Permission::AI_TASKS_CODE_RUN,
         Permission::AI_TASKS_ALLOY_RUN,
         Permission::AI_TASKS_MULTIMODAL_RUN,
+        Permission::CONVERSATIONS_CREATE,
+        Permission::CONVERSATIONS_READ,
+        Permission::CONVERSATIONS_UPDATE,
+        Permission::CONVERSATIONS_DELETE,
+        Permission::CONVERSATIONS_LIST,
+        Permission::CONVERSATIONS_MANAGE,
+        Permission::MESSAGES_CREATE,
+        Permission::MESSAGES_READ,
+        Permission::MESSAGES_DELETE,
+        Permission::MESSAGES_LIST,
     ]);
 
     insert_actions(
@@ -322,6 +335,12 @@ static CUSTOMER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Permission::new(Resource::ForumReplies, Action::Delete),
         Permission::INVENTORY_READ,
         Permission::INVENTORY_LIST,
+        Permission::CONVERSATIONS_CREATE,
+        Permission::CONVERSATIONS_READ,
+        Permission::CONVERSATIONS_LIST,
+        Permission::MESSAGES_CREATE,
+        Permission::MESSAGES_READ,
+        Permission::MESSAGES_LIST,
     ]);
 
     permissions

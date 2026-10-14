@@ -251,6 +251,12 @@ pub async fn publish_user_rbac_invalidation(
     user_id: &Uuid,
     generation: u64,
 ) -> Result<()> {
+    tracing::debug!(
+        %tenant_id,
+        %user_id,
+        generation,
+        "Publishing user RBAC cache invalidation"
+    );
     publish_rbac_invalidation(
         Some(*tenant_id),
         rbac_invalidation_key(*tenant_id, *user_id),
@@ -260,6 +266,10 @@ pub async fn publish_user_rbac_invalidation(
 }
 
 pub async fn publish_all_rbac_invalidation(generation: u64) -> Result<()> {
+    tracing::debug!(
+        generation,
+        "Publishing namespace-wide RBAC cache invalidation"
+    );
     publish_rbac_invalidation(
         None,
         RBAC_PERMISSION_INVALIDATE_ALL_KEY.to_string(),
@@ -512,6 +522,7 @@ pub async fn start_rbac_cache_invalidation_listener(
     ctx: &ServerRuntimeContext,
     cache: CacheService,
 ) -> Result<()> {
+    tracing::debug!("Starting RBAC cache invalidation listener");
     let _ = ctx.shared_insert_if_absent(RbacCacheInvalidationListenerStartLock::default());
     let start_lock = ctx
         .shared_get::<RbacCacheInvalidationListenerStartLock>()
@@ -596,6 +607,7 @@ fn rbac_invalidation_key(tenant_id: Uuid, user_id: Uuid) -> String {
 }
 
 fn parse_rbac_invalidation_target(value: &str) -> Result<RbacInvalidationTarget> {
+    let value = value.trim();
     if value == RBAC_PERMISSION_INVALIDATE_ALL_KEY {
         return Ok(RbacInvalidationTarget::All);
     }
@@ -608,9 +620,9 @@ fn parse_rbac_invalidation_key(value: &str) -> Result<(Uuid, Uuid)> {
         .split_once(':')
         .ok_or_else(|| Error::Validation("malformed RBAC cache invalidation key".to_string()))?;
     Ok((
-        Uuid::parse_str(tenant_id)
+        Uuid::parse_str(tenant_id.trim())
             .map_err(|_| Error::Validation("invalid RBAC invalidation tenant id".to_string()))?,
-        Uuid::parse_str(user_id)
+        Uuid::parse_str(user_id.trim())
             .map_err(|_| Error::Validation("invalid RBAC invalidation user id".to_string()))?,
     ))
 }
@@ -655,6 +667,21 @@ mod tests {
     fn malformed_rbac_invalidation_key_is_rejected() {
         assert!(parse_rbac_invalidation_key("not-a-pair").is_err());
         assert!(parse_rbac_invalidation_key("invalid:also-invalid").is_err());
+    }
+
+    #[test]
+    fn rbac_invalidation_key_with_whitespace_is_trimmed() {
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let padded = format!("  {tenant_id}  :  {user_id}  ");
+        assert_eq!(
+            parse_rbac_invalidation_target(&padded).unwrap(),
+            RbacInvalidationTarget::User { tenant_id, user_id }
+        );
+        assert_eq!(
+            parse_rbac_invalidation_target("  *  ").unwrap(),
+            RbacInvalidationTarget::All
+        );
     }
 
     #[test]

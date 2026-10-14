@@ -29,10 +29,20 @@ pub struct RbacService;
 
 impl RbacService {
     pub async fn invalidate_user_permissions_cache(tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
+        debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            "Invalidating user permissions cache"
+        );
         invalidate_permission_runtime_cache(tenant_id, user_id).await;
     }
 
     pub async fn invalidate_user_rbac_caches(tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
+        debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            "Invalidating user RBAC caches"
+        );
         invalidate_rbac_runtime_caches(tenant_id, user_id).await;
     }
 
@@ -245,34 +255,17 @@ impl RbacService {
     ) -> Result<UserRole> {
         Self::record_authz_entrypoint_call("get_user_role", "library");
 
+        debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            "Looking up user role"
+        );
+
         if let Some(role) = scoped_role_for(tenant_id, user_id) {
             return Ok(role);
         }
 
-        let role_query = match db.get_database_backend() {
-            sea_orm::DbBackend::Postgres => sea_orm::Statement::from_sql_and_values(
-                sea_orm::DbBackend::Postgres,
-                "SELECT r.slug FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = $1 AND (r.tenant_id = $2 OR r.tenant_id = '00000000-0000-0000-0000-000000000001'::uuid) ORDER BY CASE WHEN r.slug = 'super_admin' THEN 1 WHEN r.slug = 'admin' THEN 2 WHEN r.slug = 'manager' THEN 3 ELSE 4 END LIMIT 1",
-                [(*user_id).into(), (*tenant_id).into()],
-            ),
-            _ => sea_orm::Statement::from_sql_and_values(
-                db.get_database_backend(),
-                "SELECT r.slug FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = ? AND (r.tenant_id = ? OR r.tenant_id = '00000000-0000-0000-0000-000000000001') ORDER BY CASE WHEN r.slug = 'super_admin' THEN 1 WHEN r.slug = 'admin' THEN 2 WHEN r.slug = 'manager' THEN 3 ELSE 4 END LIMIT 1",
-                [user_id.to_string().into(), tenant_id.to_string().into()],
-            ),
-        };
-
-        if let Ok(Some(row)) = db.query_one_raw(role_query).await
-            && let Ok(slug) = row.try_get::<String>("", "slug")
-            && let Ok(role) = std::str::FromStr::from_str(&slug)
-        {
-            return Ok(role);
-        }
-
-        let permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        Ok(crate::context::infer_user_role_from_permissions(
-            &permissions,
-        ))
+        Self::get_user_role_authoritative(db, tenant_id, user_id).await
     }
 
     pub async fn get_user_ids_for_role(
@@ -281,6 +274,11 @@ impl RbacService {
         role: UserRole,
     ) -> Result<Vec<uuid::Uuid>> {
         Self::record_authz_entrypoint_call("get_user_ids_for_role", "library");
+        debug!(
+            tenant_id = %tenant_id,
+            ?role,
+            "Looking up user IDs for role"
+        );
         rustok_rbac::load_role_user_ids_on(db, *tenant_id, role)
             .await
             .map_err(Into::into)
@@ -313,6 +311,12 @@ impl RbacService {
         role: UserRole,
     ) -> Result<()> {
         Self::record_authz_entrypoint_call("initialize_user_role", "internal");
+        debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            ?role,
+            "Replacing user role in database"
+        );
         replace_user_role_via_store(db, user_id, tenant_id, role).await
     }
 }

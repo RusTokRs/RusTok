@@ -22,6 +22,10 @@ impl ModuleTransitionWatchdogHandle {
         self.join_handle.is_finished()
     }
 
+    pub fn abort(&self) {
+        self.join_handle.abort();
+    }
+
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self.join_handle.await
     }
@@ -33,7 +37,8 @@ pub fn spawn_module_transition_watchdog_handle(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> ModuleTransitionWatchdogHandle {
     let instance_id = MODULE_TRANSITION_WATCHDOG_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
-    let interval = Duration::from_millis(poll_interval_ms.max(1_000));
+    let min_interval_ms = if cfg!(test) { 5 } else { 1_000 };
+    let interval = Duration::from_millis(poll_interval_ms.max(min_interval_ms));
     let security_registry = SecurityEpochRegistry::new();
 
     info!(
@@ -56,6 +61,12 @@ pub fn spawn_module_transition_watchdog_handle(
                         );
                         break;
                     }
+
+                    tracing::debug!(
+                        worker = "module_transition_watchdog",
+                        instance_id,
+                        "Evaluating transition watchdog checkpoints"
+                    );
 
                     match evaluate_transition_watchdog(&db, &security_registry).await {
                         Ok(updated) if !updated.is_empty() => {
@@ -98,5 +109,62 @@ pub fn spawn_module_transition_watchdog_handle(
     ModuleTransitionWatchdogHandle {
         instance_id,
         join_handle,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::spawn_module_transition_watchdog_handle;
+    use sea_orm::Database;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn watchdog_handle_instance_id_monotonic() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite");
+        let (_stop_tx1, stop_rx1) = tokio::sync::watch::channel(false);
+        let (_stop_tx2, stop_rx2) = tokio::sync::watch::channel(false);
+
+        let handle1 = spawn_module_transition_watchdog_handle(db.clone(), 5, stop_rx1);
+        let handle2 = spawn_module_transition_watchdog_handle(db, 5, stop_rx2);
+
+        assert!(handle2.instance_id() > handle1.instance_id());
+
+        handle1.abort();
+        handle2.abort();
+    }
+
+    #[tokio::test]
+    async fn watchdog_handle_abort_terminates_task() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite");
+        let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+
+        let handle = spawn_module_transition_watchdog_handle(db, 5, stop_rx);
+        assert!(!handle.is_finished());
+
+        handle.abort();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(handle.is_finished());
+    }
+
+    #[tokio::test]
+    async fn watchdog_stops_on_shutdown_signal() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite");
+        let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+
+        let handle = spawn_module_transition_watchdog_handle(db, 5, stop_rx);
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(!handle.is_finished());
+
+        stop_tx.send(true).expect("shutdown signal sent");
+        tokio::time::timeout(Duration::from_secs(5), handle.join())
+            .await
+            .expect("watchdog exits cleanly within timeout")
+            .expect("watchdog task completed");
     }
 }

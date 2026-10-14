@@ -66,9 +66,50 @@ pub struct ModuleRetentionHoldView {
     pub created_at: String,
 }
 
+/// Browser-safe direct predecessor rollback receipt projection.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ArtifactRollbackView {
+    #[serde(rename = "operationId")]
+    pub operation_id: String,
+    #[serde(rename = "sourceInstallationId")]
+    pub source_installation_id: String,
+    #[serde(rename = "targetInstallationId")]
+    pub target_installation_id: String,
+    #[serde(rename = "sourceRevision")]
+    pub source_revision: i64,
+    #[serde(rename = "targetRevision")]
+    pub target_revision: i64,
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ModuleTransitionCheckpointView, ModuleTransitionStateView};
+    use super::{
+        ArtifactRollbackView, ModuleTransitionCheckpointView, ModuleTransitionStateView,
+    };
+
+    #[test]
+    fn rollback_view_uses_the_graphql_field_contract() {
+        let rollback = ArtifactRollbackView {
+            operation_id: "11111111-1111-1111-1111-111111111111".to_string(),
+            source_installation_id: "22222222-2222-2222-2222-222222222222".to_string(),
+            target_installation_id: "33333333-3333-3333-3333-333333333333".to_string(),
+            source_revision: 2,
+            target_revision: 3,
+        };
+
+        let encoded = serde_json::to_value(rollback).expect("rollback view serializes");
+        assert_eq!(encoded["operationId"], "11111111-1111-1111-1111-111111111111");
+        assert_eq!(
+            encoded["sourceInstallationId"],
+            "22222222-2222-2222-2222-222222222222"
+        );
+        assert_eq!(
+            encoded["targetInstallationId"],
+            "33333333-3333-3333-3333-333333333333"
+        );
+        assert_eq!(encoded["sourceRevision"], 2);
+        assert_eq!(encoded["targetRevision"], 3);
+    }
 
     #[test]
     fn transition_view_uses_the_graphql_field_and_state_contract() {
@@ -96,3 +137,4 @@ mod tests {
         assert_eq!(encoded["securityEpoch"], 7);
     }
 }
+

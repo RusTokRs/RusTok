@@ -51,6 +51,7 @@ impl ModuleRollbackMutation {
             &reason,
             idempotency_key,
         )?;
+        let reason = reason.trim().to_string();
 
         let target_capability_grant_revision =
             validate_target_capability_grant_revision(target_capability_grant_revision)?;
@@ -69,6 +70,14 @@ impl ModuleRollbackMutation {
             .await
             .map_err(map_artifact_installation_lifecycle_error)?;
 
+        if let Ok(runtime_ctx) =
+            ctx.data::<crate::services::server_runtime_context::ServerRuntimeContext>()
+        {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
+        }
+
         Ok(ArtifactRollback {
             operation_id: result.operation_id,
             source_installation_id: installation_id,
@@ -82,6 +91,8 @@ impl ModuleRollbackMutation {
 #[cfg(test)]
 mod tests {
     use super::validate_target_capability_grant_revision;
+    use crate::graphql::mutations::artifact_lifecycle_expected_revision;
+    use uuid::Uuid;
 
     #[test]
     fn rollback_target_revision_validation_rejects_non_positive_values() {
@@ -96,4 +107,70 @@ mod tests {
             42
         );
     }
+
+    #[test]
+    fn rollback_lifecycle_validation_rejects_nil_installation_id() {
+        let err = artifact_lifecycle_expected_revision(
+            Uuid::nil(),
+            1,
+            "incident mitigation",
+            Uuid::new_v4(),
+        );
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn rollback_lifecycle_validation_rejects_nil_idempotency_key() {
+        let err = artifact_lifecycle_expected_revision(
+            Uuid::new_v4(),
+            1,
+            "incident mitigation",
+            Uuid::nil(),
+        );
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn rollback_lifecycle_validation_rejects_non_positive_expected_revision() {
+        assert!(artifact_lifecycle_expected_revision(
+            Uuid::new_v4(),
+            0,
+            "incident mitigation",
+            Uuid::new_v4(),
+        ).is_err());
+        assert!(artifact_lifecycle_expected_revision(
+            Uuid::new_v4(),
+            -5,
+            "incident mitigation",
+            Uuid::new_v4(),
+        ).is_err());
+    }
+
+    #[test]
+    fn rollback_lifecycle_validation_rejects_empty_or_whitespace_reason() {
+        assert!(artifact_lifecycle_expected_revision(
+            Uuid::new_v4(),
+            1,
+            "",
+            Uuid::new_v4(),
+        ).is_err());
+        assert!(artifact_lifecycle_expected_revision(
+            Uuid::new_v4(),
+            1,
+            "   \t\n  ",
+            Uuid::new_v4(),
+        ).is_err());
+    }
+
+    #[test]
+    fn rollback_lifecycle_validation_accepts_valid_inputs() {
+        let rev = artifact_lifecycle_expected_revision(
+            Uuid::new_v4(),
+            5,
+            "  incident rollback  ",
+            Uuid::new_v4(),
+        ).expect("valid lifecycle command");
+        assert_eq!(rev, 5);
+    }
 }
+

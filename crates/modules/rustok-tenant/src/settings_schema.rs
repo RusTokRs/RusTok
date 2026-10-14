@@ -4,6 +4,7 @@ use crate::error::TenantError;
 
 const MAX_SETTINGS_DEPTH: usize = 8;
 const MAX_OBJECT_KEYS: usize = 256;
+const MAX_ARRAY_ITEMS: usize = 256;
 const MAX_KEY_LENGTH: usize = 128;
 const MAX_SETTINGS_SIZE_BYTES: usize = 16 * 1024;
 
@@ -56,6 +57,12 @@ fn validate_value(value: &Value, depth: usize) -> Result<(), TenantError> {
                     ));
                 }
 
+                if key.contains('\0') {
+                    return Err(TenantError::InvalidSettingsSchema(
+                        "tenant settings key contains null byte".to_string(),
+                    ));
+                }
+
                 if key.len() > MAX_KEY_LENGTH {
                     return Err(TenantError::InvalidSettingsSchema(format!(
                         "tenant settings key exceeds maximum length ({MAX_KEY_LENGTH})",
@@ -66,9 +73,26 @@ fn validate_value(value: &Value, depth: usize) -> Result<(), TenantError> {
             }
         }
         Value::Array(items) => {
+            if items.len() > MAX_ARRAY_ITEMS {
+                return Err(TenantError::InvalidSettingsSchema(format!(
+                    "tenant settings array exceeds maximum element count ({MAX_ARRAY_ITEMS})",
+                )));
+            }
             for nested in items {
                 validate_value(nested, depth + 1)?;
             }
+        }
+        Value::String(s) => {
+            if s.contains('\0') {
+                return Err(TenantError::InvalidSettingsSchema(
+                    "tenant settings string value contains null byte".to_string(),
+                ));
+            }
+        }
+        Value::Number(num) if num.as_f64().is_some_and(|f| !f.is_finite()) => {
+            return Err(TenantError::InvalidSettingsSchema(
+                "tenant settings contains non-finite numeric value".to_string(),
+            ));
         }
         _ => {}
     }
@@ -130,4 +154,33 @@ mod tests {
             validate_tenant_settings(&settings).expect_err("schema must reject oversized payload");
         assert!(err.to_string().contains("payload size"));
     }
+
+    #[test]
+    fn rejects_key_with_null_byte() {
+        let settings = json!({"bad\0key": "val"});
+
+        let err = validate_tenant_settings(&settings)
+            .expect_err("schema must reject key with null byte");
+        assert!(err.to_string().contains("null byte"));
+    }
+
+    #[test]
+    fn rejects_string_value_with_null_byte() {
+        let settings = json!({"key": "bad\0value"});
+
+        let err = validate_tenant_settings(&settings)
+            .expect_err("schema must reject string value with null byte");
+        assert!(err.to_string().contains("null byte"));
+    }
+
+    #[test]
+    fn rejects_oversized_array() {
+        let items = vec![1; 300];
+        let settings = json!({"list": items});
+
+        let err =
+            validate_tenant_settings(&settings).expect_err("schema must reject oversized array");
+        assert!(err.to_string().contains("maximum element count"));
+    }
 }
+

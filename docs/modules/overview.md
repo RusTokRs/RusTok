@@ -116,6 +116,7 @@ It is important to distinguish:
 | `alloy` | `alloy` | — |
 | `flex` | `flex` | — |
 | `docs` | `rustok-docs` | `outbox`, `flex` |
+| `messenger` | `rustok-messenger` | `outbox` |
 
 ### Capability Extensions
 

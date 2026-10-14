@@ -20,11 +20,16 @@ status: active
 
 ## Current state
 
+- Status: `in_progress`
+- FFA status: `not_started`
+- FBA status: `boundary_ready`
+- Structural shape: `no_ui_boundary`
+
 | Dimension | Current Status | Notes |
 | :--- | :--- | :--- |
-| **FFA Status** | `in_progress` | Framework-agnostic pure domain core (`domain/`), block models, Markdown projection, zero UI imports in domain. |
+| **FFA Status** | `not_started` | No module-owned Leptos UI; client editors planned as standalone packages. |
 | **FBA Status** | `boundary_ready` | Sovereign `DocumentService`, DTO contracts (`dto/`), SeaORM migrations, monotonic delta log, periodic snapshot compaction, UER backlinks ledger. |
-| **Structural Shape** | `core_transport_ui` | Manifest and layout aligned with target native module architecture. |
+| **Structural Shape** | `no_ui_boundary` | Sovereign backend module without module-owned UI package. |
 
 ---
 

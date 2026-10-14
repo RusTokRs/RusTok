@@ -9,6 +9,7 @@
 - Status: `in_progress`
 - FFA status: `not_started`
 - FBA status: `boundary_ready`
+- Structural shape: `no_ui_boundary`
 - Runtime kind: Core
 
 ## Release and Data Rollback Readiness

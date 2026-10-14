@@ -315,10 +315,7 @@ pub fn merge_metadata(base: serde_json::Value, extension: serde_json::Value) -> 
 }
 
 pub fn has_effective_permission(operator: &AiOperatorContext, permission: Permission) -> bool {
-    operator.permissions.contains(&permission)
-        || operator
-            .permissions
-            .contains(&Permission::new(permission.resource, Action::Manage))
+    rustok_api::has_effective_permission(&operator.permissions, &permission)
 }
 
 pub fn ensure_permission(operator: &AiOperatorContext, permission: Permission) -> AiResult<()> {

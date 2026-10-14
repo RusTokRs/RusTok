@@ -25,6 +25,15 @@ pub trait RbacGraphqlRoleWriter: Send + Sync {
         user_id: &Uuid,
         role: UserRole,
     ) -> Result<(), RbacGraphqlRoleWriteError>;
+
+    async fn invalidate_role_users(
+        &self,
+        tenant_id: &Uuid,
+        role_id: &Uuid,
+    ) -> Result<(), RbacGraphqlRoleWriteError> {
+        let _ = (tenant_id, role_id);
+        Ok(())
+    }
 }
 
 #[derive(Clone)]

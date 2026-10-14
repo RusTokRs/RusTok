@@ -1,0 +1,33 @@
+[package]
+name = "rustok-messenger"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Highload distributed team messaging, channels, threads, and E2EE engine for RusToK"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+uuid = { workspace = true, features = ["v4", "v7", "serde"] }
+chrono = { workspace = true, features = ["serde"] }
+tracing.workspace = true
+async-trait.workspace = true
+sea-orm = { workspace = true, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
+sea-orm-migration.workspace = true
+rustok-core.workspace = true
+rustok-api = { workspace = true, features = ["server", "runtime"] }
+rustok-web.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+futures-util.workspace = true
+tokio = { workspace = true, features = ["full", "sync"] }
+rustok-events = { workspace = true, optional = true }
+rustok-iggy = { workspace = true, optional = true }
+
+[features]
+default = []
+iggy = ["dep:rustok-iggy", "dep:rustok-events"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

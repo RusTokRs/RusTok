@@ -39,6 +39,10 @@ impl Entity {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<bool, DbErr> {
+        let module_slug = module_slug.trim();
+        if module_slug.is_empty() {
+            return Ok(false);
+        }
         let result = Self::find()
             .filter(Column::TenantId.eq(tenant_id))
             .filter(Column::ModuleSlug.eq(module_slug))

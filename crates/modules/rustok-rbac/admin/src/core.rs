@@ -33,34 +33,25 @@ pub struct RbacAdminOverviewViewModel {
 }
 
 pub fn rbac_role_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
-    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
     vec![
-        GridColumnDef::new("name", if is_ru { "Роль" } else { "Role" })
+        GridColumnDef::new("name", t(locale, "rbac.roles.name", "Role"))
             .width(200)
             .align(ColumnAlign::Left),
-        GridColumnDef::new("slug", if is_ru { "Слаг" } else { "Slug" })
+        GridColumnDef::new("slug", t(locale, "rbac.roles.slug", "Slug"))
             .width(160)
             .align(ColumnAlign::Left),
-        GridColumnDef::new("type", if is_ru { "Тип" } else { "Type" })
+        GridColumnDef::new("type", t(locale, "rbac.roles.type", "Type"))
             .width(130)
             .align(ColumnAlign::Center),
         GridColumnDef::new(
             "permissions_count",
-            if is_ru {
-                "Разрешения"
-            } else {
-                "Permissions"
-            },
+            t(locale, "rbac.roles.permissions", "Permissions"),
         )
         .width(130)
         .align(ColumnAlign::Center),
         GridColumnDef::new(
             "preview",
-            if is_ru {
-                "Список прав"
-            } else {
-                "Permission List"
-            },
+            t(locale, "rbac.roles.preview", "Permission List"),
         )
         .width(400)
         .align(ColumnAlign::Left)
@@ -69,28 +60,19 @@ pub fn rbac_role_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
 }
 
 pub fn rbac_permission_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
-    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
     vec![
-        GridColumnDef::new("module", if is_ru { "Модуль" } else { "Module" })
+        GridColumnDef::new("module", t(locale, "rbac.permissions.module", "Module"))
             .width(150)
             .align(ColumnAlign::Left),
         GridColumnDef::new(
             "permission",
-            if is_ru {
-                "Ключ права"
-            } else {
-                "Permission Key"
-            },
+            t(locale, "rbac.permissions.key", "Permission Key"),
         )
         .width(260)
         .align(ColumnAlign::Left),
         GridColumnDef::new(
             "roles",
-            if is_ru {
-                "Назначено ролям"
-            } else {
-                "Granted to Roles"
-            },
+            t(locale, "rbac.permissions.roles", "Granted to Roles"),
         )
         .width(350)
         .align(ColumnAlign::Left)

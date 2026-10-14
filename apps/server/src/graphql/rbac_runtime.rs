@@ -14,6 +14,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 
 struct ServerRbacGraphqlRoleWriter {
     runtime: UserAdminMutationRuntime,
+    db: sea_orm::DatabaseConnection,
 }
 
 #[async_trait]
@@ -48,6 +49,27 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
             .map(|_| ())
             .map_err(map_auth_admin_error)
     }
+
+    async fn invalidate_role_users(
+        &self,
+        tenant_id: &Uuid,
+        role_id: &Uuid,
+    ) -> Result<(), RbacGraphqlRoleWriteError> {
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+        use crate::models::_entities::user_roles;
+        use crate::services::rbac_service::RbacService;
+
+        if let Ok(memberships) = user_roles::Entity::find()
+            .filter(user_roles::Column::RoleId.eq(*role_id))
+            .all(&self.db)
+            .await
+        {
+            for membership in memberships {
+                RbacService::invalidate_user_rbac_caches(tenant_id, &membership.user_id).await;
+            }
+        }
+        Ok(())
+    }
 }
 
 fn map_auth_admin_error(error: AuthAdminMutationError) -> RbacGraphqlRoleWriteError {
@@ -78,5 +100,8 @@ pub fn rbac_graphql_role_writer_from_context(
         .cloned()
         .expect("UserAdminMutationRuntime must be registered before GraphQL schema construction");
 
-    RbacGraphqlRoleWriterHandle(Arc::new(ServerRbacGraphqlRoleWriter { runtime }))
+    RbacGraphqlRoleWriterHandle(Arc::new(ServerRbacGraphqlRoleWriter {
+        runtime,
+        db: ctx.db().clone(),
+    }))
 }

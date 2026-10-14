@@ -89,6 +89,7 @@ translation = { crate = "rustok-translation", source = "path", path = "crates/mo
 alloy = { crate = "alloy", source = "path", path = "crates/modules/alloy" }
 flex = { crate = "flex", source = "path", path = "crates/modules/flex" }
 docs = { crate = "rustok-docs", source = "path", path = "crates/modules/rustok-docs", depends_on = ["outbox", "flex"] }
+messenger = { crate = "rustok-messenger", source = "path", path = "crates/modules/rustok-messenger", depends_on = ["outbox"] }
 # Capability extensions are deployment-scoped `RusToKModule` entries. They are
 # globally active when compiled and never tenant-toggled; the generic
 # runtime-extension host seam composes their handles and workers.

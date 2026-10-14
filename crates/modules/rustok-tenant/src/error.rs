@@ -10,6 +10,8 @@ pub enum TenantError {
     InvalidSettingsSchema(String),
     #[error("invalid tenant locale policy: {0}")]
     InvalidLocalePolicy(String),
+    #[error("invalid tenant input: {0}")]
+    Validation(String),
     #[error("tenant locale policy revision conflict: expected {expected}, actual {actual}")]
     LocalePolicyConflict { expected: i64, actual: i64 },
     #[error("tenant locale policy idempotency key conflicts with a previous request")]

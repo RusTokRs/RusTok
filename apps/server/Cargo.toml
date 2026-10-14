@@ -110,6 +110,7 @@ mod-taxonomy  = ["dep:rustok-taxonomy", "dep:rustok-translation-targets", "mod-c
 mod-alloy     = ["dep:alloy", "dep:rustok-translation-targets", "rustok-distribution/mod-alloy"]
 mod-flex      = ["dep:rustok-translation-targets", "rustok-distribution/mod-flex"]
 mod-docs      = ["dep:rustok-docs", "mod-flex", "rustok-distribution/mod-docs"]
+mod-messenger = ["dep:rustok-messenger", "rustok-distribution/mod-messenger"]
 mod-media     = ["dep:rustok-media", "dep:rustok-translation-targets", "rustok-distribution/mod-media"]
 mod-translation = [
   "dep:rustok-translation",
@@ -180,6 +181,7 @@ rustok-reactions = { path = "../../crates/modules/rustok-reactions", optional = 
 rustok-notifications = { workspace = true, optional = true }
 rustok-pages     = { workspace = true, optional = true }
 rustok-docs      = { workspace = true, optional = true }
+rustok-messenger = { workspace = true, optional = true }
 rustok-forms-module = { workspace = true, optional = true }
 rustok-newsletter = { workspace = true, optional = true }
 rustok-navigation = { workspace = true, optional = true }

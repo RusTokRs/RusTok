@@ -896,6 +896,28 @@ impl RootMutation {
         idempotency_key: Uuid,
     ) -> Result<BuildJob> {
         let auth = ensure_platform_composition_operator(ctx).await?;
+        if idempotency_key.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module lifecycle idempotency key must not be nil",
+            ));
+        }
+        if expected_revision < 0 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Static module lifecycle revision must not be negative",
+            ));
+        }
+        let slug = slug.trim().to_string();
+        if slug.is_empty() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module slug must not be empty",
+            ));
+        }
+        let version = version.trim().to_string();
+        if version.is_empty() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module version must not be empty",
+            ));
+        }
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
@@ -922,6 +944,22 @@ impl RootMutation {
         idempotency_key: Uuid,
     ) -> Result<BuildJob> {
         let auth = ensure_platform_composition_operator(ctx).await?;
+        if idempotency_key.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module lifecycle idempotency key must not be nil",
+            ));
+        }
+        if expected_revision < 0 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Static module lifecycle revision must not be negative",
+            ));
+        }
+        let slug = slug.trim().to_string();
+        if slug.is_empty() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module slug must not be empty",
+            ));
+        }
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
@@ -946,6 +984,28 @@ impl RootMutation {
         idempotency_key: Uuid,
     ) -> Result<BuildJob> {
         let auth = ensure_platform_composition_operator(ctx).await?;
+        if idempotency_key.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module lifecycle idempotency key must not be nil",
+            ));
+        }
+        if expected_revision < 0 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Static module lifecycle revision must not be negative",
+            ));
+        }
+        let slug = slug.trim().to_string();
+        if slug.is_empty() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module slug must not be empty",
+            ));
+        }
+        let version = version.trim().to_string();
+        if version.is_empty() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module version must not be empty",
+            ));
+        }
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
@@ -973,6 +1033,12 @@ impl RootMutation {
         idempotency_key: Uuid,
     ) -> Result<TenantModule> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let module_slug = module_slug.trim().to_string();
+        if module_slug.is_empty() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module slug must not be empty",
+            ));
+        }
         if idempotency_key.is_nil() {
             return Err(<FieldError as GraphQLError>::bad_user_input(
                 "Module lifecycle idempotency key must not be nil",
@@ -1507,6 +1573,16 @@ impl RootMutation {
         expected_revision: i64,
     ) -> Result<ModuleOperationRecoveryPlan> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        if operation_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module operation id must not be nil",
+            ));
+        }
+        if idempotency_key.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module lifecycle idempotency key must not be nil",
+            ));
+        }
         if expected_revision < 0 {
             return Err(<FieldError as GraphQLError>::bad_user_input(
                 "Static module lifecycle revision must not be negative",
@@ -1544,6 +1620,16 @@ impl RootMutation {
         expected_revision: i64,
     ) -> Result<TenantModule> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        if operation_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module operation id must not be nil",
+            ));
+        }
+        if idempotency_key.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module lifecycle idempotency key must not be nil",
+            ));
+        }
         if expected_revision < 0 {
             return Err(<FieldError as GraphQLError>::bad_user_input(
                 "Static module lifecycle revision must not be negative",
@@ -1590,6 +1676,12 @@ impl RootMutation {
         idempotency_key: Uuid,
     ) -> Result<TenantModule> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let module_slug = module_slug.trim().to_string();
+        if module_slug.is_empty() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module slug must not be empty",
+            ));
+        }
         if idempotency_key.is_nil() {
             return Err(<FieldError as GraphQLError>::bad_user_input(
                 "Module settings idempotency key must not be nil",

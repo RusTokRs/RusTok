@@ -105,6 +105,7 @@ export type ModuleTransitionState =
   | 'PRESTAGING'
   | 'ACTIVATING'
   | 'OBSERVING'
+  | 'POINT_OF_NO_RETURN'
   | 'RECOVERED_TO_PREDECESSOR'
   | 'CONVERGED'
   | 'FAILED_CLOSED';
@@ -130,6 +131,14 @@ export interface RetentionHold {
   targetIdentity: string;
   kind: string;
   createdAt: string;
+}
+
+export interface ArtifactRollback {
+  operationId: string;
+  sourceInstallationId: string;
+  targetInstallationId: string;
+  sourceRevision: number;
+  targetRevision: number;
 }
 
 export interface ModuleOperationRecoveryPlan {
@@ -527,6 +536,30 @@ mutation FinalizeTransition($opId: UUID!, $expectedRevision: Int!, $idempotencyK
 }
 `;
 
+const ROLLBACK_TENANT_ARTIFACT_MUTATION = `
+mutation RollbackTenantArtifact(
+  $installationId: UUID!
+  $expectedRevision: Int!
+  $reason: String!
+  $idempotencyKey: UUID!
+  $targetCapabilityGrantRevision: Int!
+) {
+  rollbackTenantArtifact(
+    installationId: $installationId
+    expectedRevision: $expectedRevision
+    reason: $reason
+    idempotencyKey: $idempotencyKey
+    targetCapabilityGrantRevision: $targetCapabilityGrantRevision
+  ) {
+    operationId
+    sourceInstallationId
+    targetInstallationId
+    sourceRevision
+    targetRevision
+  }
+}
+`;
+
 const MODULE_OPERATION_RECOVERY_PLAN_QUERY = `
 query ModuleOperationRecoveryPlan($operationId: UUID!) {
   moduleOperationRecoveryPlan(operationId: $operationId) {
@@ -676,6 +709,10 @@ interface ModuleRetentionHoldsResponse {
 
 interface FinalizeModuleTransitionResponse {
   finalizeModuleTransition: ModuleTransitionCheckpoint;
+}
+
+interface RollbackTenantArtifactResponse {
+  rollbackTenantArtifact: ArtifactRollback;
 }
 
 interface ModuleOperationRecoveryPlanResponse {
@@ -1052,6 +1089,39 @@ export async function finalizeModuleTransition(
     opts.tenantSlug
   );
   return data.finalizeModuleTransition;
+}
+
+export async function rollbackTenantArtifact(
+  installationId: string,
+  expectedRevision: number,
+  reason: string,
+  targetCapabilityGrantRevision: number,
+  idempotencyKey?: string,
+  opts: GqlOpts = {}
+): Promise<ArtifactRollback> {
+  const key = idempotencyKey ?? crypto.randomUUID();
+  const data = await graphqlRequest<
+    {
+      installationId: string;
+      expectedRevision: number;
+      reason: string;
+      idempotencyKey: string;
+      targetCapabilityGrantRevision: number;
+    },
+    RollbackTenantArtifactResponse
+  >(
+    ROLLBACK_TENANT_ARTIFACT_MUTATION,
+    {
+      installationId,
+      expectedRevision,
+      reason,
+      idempotencyKey: key,
+      targetCapabilityGrantRevision
+    },
+    opts.token,
+    opts.tenantSlug
+  );
+  return data.rollbackTenantArtifact;
 }
 
 export async function getModuleOperationRecoveryPlan(

@@ -39,22 +39,34 @@ impl TenantService {
 
     #[instrument(skip(self, input), fields(slug = %input.slug))]
     pub async fn create_tenant(&self, input: CreateTenantInput) -> TenantResult<TenantResponse> {
+        let slug = input.slug.trim().to_string();
+        if slug.is_empty() {
+            return Err(TenantError::Validation("tenant slug cannot be empty".to_string()));
+        }
+        let name = input.name.trim().to_string();
+        if name.is_empty() {
+            return Err(TenantError::Validation("tenant name cannot be empty".to_string()));
+        }
+        let domain = input.domain.map(|d| d.trim().to_string()).filter(|d| !d.is_empty());
+
+        tracing::debug!(slug = %slug, name = %name, ?domain, "creating tenant");
+
         let txn = self.db.begin().await?;
         if let Some(_existing) = tenant::Entity::find()
-            .filter(tenant::Column::Slug.eq(&input.slug))
+            .filter(tenant::Column::Slug.eq(&slug))
             .one(&txn)
             .await?
         {
-            return Err(TenantError::SlugAlreadyExists(input.slug));
+            return Err(TenantError::SlugAlreadyExists(slug));
         }
 
         let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
         let id = generate_id();
         let model = TenantActiveModel {
             id: Set(id),
-            name: Set(input.name),
-            slug: Set(input.slug),
-            domain: Set(input.domain),
+            name: Set(name),
+            slug: Set(slug),
+            domain: Set(domain),
             settings: Set(serde_json::json!({})),
             default_locale: Set("en".to_string()),
             is_active: Set(true),
@@ -99,7 +111,12 @@ impl TenantService {
         &self,
         input: CreateTenantInput,
     ) -> TenantResult<(TenantResponse, bool)> {
-        let slug = input.slug.clone();
+        let slug = input.slug.trim().to_string();
+        if slug.is_empty() {
+            return Err(TenantError::Validation("tenant slug cannot be empty".to_string()));
+        }
+        tracing::debug!(slug = %slug, "ensuring tenant");
+
         if let Some(existing) = tenant::Entity::find()
             .filter(tenant::Column::Slug.eq(&slug))
             .one(&self.db)
@@ -108,7 +125,17 @@ impl TenantService {
             return Ok((to_tenant_response(existing), false));
         }
 
-        match self.create_tenant(input).await {
+        let name = input.name.trim().to_string();
+        let domain = input.domain.map(|d| d.trim().to_string()).filter(|d| !d.is_empty());
+
+        match self
+            .create_tenant(CreateTenantInput {
+                name,
+                slug: slug.clone(),
+                domain,
+            })
+            .await
+        {
             Ok(tenant) => Ok((tenant, true)),
             Err(error) => match self.get_tenant_by_slug(&slug).await {
                 Ok(existing) => Ok((existing, false)),
@@ -119,6 +146,7 @@ impl TenantService {
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id))]
     pub async fn get_tenant(&self, tenant_id: Uuid) -> TenantResult<TenantResponse> {
+        tracing::debug!(tenant_id = %tenant_id, "getting tenant by id");
         let model = tenant::Entity::find_by_id(tenant_id)
             .one(&self.db)
             .await?
@@ -128,6 +156,11 @@ impl TenantService {
 
     #[instrument(skip(self), fields(slug = %slug))]
     pub async fn get_tenant_by_slug(&self, slug: &str) -> TenantResult<TenantResponse> {
+        let slug = slug.trim();
+        if slug.is_empty() {
+            return Err(TenantError::NotFound);
+        }
+        tracing::debug!(slug = %slug, "getting tenant by slug");
         let model = tenant::Entity::find()
             .filter(tenant::Column::Slug.eq(slug))
             .one(&self.db)
@@ -138,6 +171,11 @@ impl TenantService {
 
     #[instrument(skip(self), fields(domain = %domain))]
     pub async fn get_tenant_by_domain(&self, domain: &str) -> TenantResult<TenantResponse> {
+        let domain = domain.trim();
+        if domain.is_empty() {
+            return Err(TenantError::NotFound);
+        }
+        tracing::debug!(domain = %domain, "getting tenant by domain");
         let model = tenant::Entity::find()
             .filter(tenant::Column::Domain.eq(domain))
             .one(&self.db)
@@ -148,6 +186,7 @@ impl TenantService {
 
     #[instrument(skip(self))]
     pub async fn first_active_tenant(&self) -> TenantResult<TenantResponse> {
+        tracing::debug!("fetching first active tenant");
         tenant::Entity::find()
             .filter(tenant::Column::IsActive.eq(true))
             .order_by_asc(tenant::Column::CreatedAt)
@@ -163,6 +202,7 @@ impl TenantService {
         tenant_id: Uuid,
         input: UpdateTenantInput,
     ) -> TenantResult<TenantResponse> {
+        tracing::debug!(tenant_id = %tenant_id, "updating tenant");
         let txn = self.db.begin().await?;
 
         let existing = tenant::Entity::find_by_id(tenant_id)
@@ -173,10 +213,15 @@ impl TenantService {
         let now = chrono::Utc::now().into();
         let mut active: tenant::ActiveModel = existing.into();
         if let Some(name) = input.name {
+            let name = name.trim().to_string();
+            if name.is_empty() {
+                return Err(TenantError::Validation("tenant name cannot be empty".to_string()));
+            }
             active.name = Set(name);
         }
         if let Some(domain) = input.domain {
-            active.domain = Set(Some(domain));
+            let domain = domain.trim().to_string();
+            active.domain = Set(if domain.is_empty() { None } else { Some(domain) });
         }
         if let Some(is_active) = input.is_active {
             active.is_active = Set(is_active);
@@ -197,11 +242,15 @@ impl TenantService {
         Ok(to_tenant_response(model))
     }
 
+    #[instrument(skip(self))]
     pub async fn list_tenants(
         &self,
         page: u64,
         per_page: u64,
     ) -> TenantResult<(Vec<TenantResponse>, u64)> {
+        let per_page = per_page.clamp(1, 100);
+        let page = page.max(1);
+        tracing::debug!(page, per_page, "listing tenants");
         let paginator = tenant::Entity::find().paginate(&self.db, per_page);
         let total = paginator.num_items().await?;
         let models = paginator.fetch_page(page.saturating_sub(1)).await?;
@@ -209,10 +258,12 @@ impl TenantService {
         Ok((items, total))
     }
 
+    #[instrument(skip(self), fields(tenant_id = %tenant_id))]
     pub async fn list_tenant_modules(
         &self,
         tenant_id: Uuid,
     ) -> TenantResult<Vec<TenantModuleResponse>> {
+        tracing::debug!(tenant_id = %tenant_id, "listing tenant modules");
         tenant::Entity::find_by_id(tenant_id)
             .one(&self.db)
             .await?
@@ -231,11 +282,17 @@ impl TenantService {
     /// This read deliberately does not require an existing tenant row because
     /// callers may use the absence of both records as the default feature
     /// configuration during bootstrap and isolated module tests.
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, module_slug = %module_slug))]
     pub async fn find_tenant_module(
         &self,
         tenant_id: Uuid,
         module_slug: &str,
     ) -> TenantResult<Option<TenantModuleResponse>> {
+        let module_slug = module_slug.trim();
+        if module_slug.is_empty() {
+            return Ok(None);
+        }
+        tracing::debug!(tenant_id = %tenant_id, module_slug = %module_slug, "finding tenant module");
         tenant_module::Entity::find()
             .filter(tenant_module::Column::TenantId.eq(tenant_id))
             .filter(tenant_module::Column::ModuleSlug.eq(module_slug))
@@ -250,11 +307,21 @@ impl TenantService {
     ///
     /// Owner modules use this boundary when a tenant-module capability must
     /// remain stable for the duration of a cross-module write transaction.
+    #[instrument(skip(txn), fields(tenant_id = %tenant_id, module_slug = %module_slug))]
     pub async fn find_tenant_module_locked_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         module_slug: &str,
     ) -> TenantResult<Option<TenantModuleResponse>> {
+        let module_slug = module_slug.trim();
+        if module_slug.is_empty() {
+            return Ok(None);
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            module_slug = %module_slug,
+            "finding tenant module locked in tx"
+        );
         let query = || {
             tenant_module::Entity::find()
                 .filter(tenant_module::Column::TenantId.eq(tenant_id))
@@ -273,10 +340,12 @@ impl TenantService {
         Ok(module.map(to_module_response))
     }
 
+    #[instrument(skip(self), fields(tenant_id = %tenant_id))]
     pub(crate) async fn read_locale_policy_owned(
         &self,
         tenant_id: Uuid,
     ) -> TenantResult<TenantLocalePolicyProjection> {
+        tracing::debug!(tenant_id = %tenant_id, "reading tenant locale policy");
         let tenant = tenant::Entity::find_by_id(tenant_id)
             .one(&self.db)
             .await?
@@ -291,6 +360,7 @@ impl TenantService {
         locale_policy_projection(&tenant, locales)
     }
 
+    #[instrument(skip(self, request), fields(tenant_id = %tenant_id, idempotency_key = %idempotency_key))]
     pub(crate) async fn replace_locale_policy_owned(
         &self,
         tenant_id: Uuid,
@@ -303,6 +373,12 @@ impl TenantService {
                 "idempotency key must contain between 1 and 191 bytes".to_string(),
             ));
         }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            idempotency_key = %idempotency_key,
+            expected_revision = request.expected_revision,
+            "replacing tenant locale policy"
+        );
 
         let request = canonicalize_locale_policy_request(request)?;
         let request_hash = locale_policy_request_hash(&request)?;

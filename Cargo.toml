@@ -58,6 +58,7 @@ members = [
     "crates/modules/rustok-events-module",
     "crates/modules/rustok-events-module/admin",
     "crates/modules/rustok-iggy-connector/admin",
+    "crates/modules/rustok-messenger/admin",
     "crates/modules/rustok-notifications/admin",
     "crates/modules/rustok-notifications/storefront",
     "crates/modules/rustok-forum/admin",
@@ -339,6 +340,7 @@ rustok-content-portability = { path = "crates/libs/rustok-content-portability" }
 rustok-content-orchestration = { path = "crates/modules/rustok-content-orchestration" }
 rustok-pages = { path = "crates/modules/rustok-pages" }
 rustok-docs = { path = "crates/modules/rustok-docs" }
+rustok-messenger = { path = "crates/modules/rustok-messenger" }
 rustok-navigation = { path = "crates/modules/rustok-navigation" }
 rustok-page-builder = { path = "crates/modules/rustok-page-builder" }
 rustok-taxonomy = { path = "crates/modules/rustok-taxonomy" }

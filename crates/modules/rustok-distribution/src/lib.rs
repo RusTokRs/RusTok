@@ -225,6 +225,8 @@ pub fn build_registry() -> ModuleRegistry {
     let registry = registry.register(rustok_ai::AiModule);
     #[cfg(feature = "mod-docs")]
     let registry = registry.register(rustok_docs::DocsModule);
+    #[cfg(feature = "mod-messenger")]
+    let registry = registry.register(rustok_messenger::MessengerModule);
 
     generated_promotions::register_promoted_modules(registry)
 }

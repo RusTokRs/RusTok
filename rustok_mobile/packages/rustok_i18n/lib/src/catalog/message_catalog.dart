@@ -269,7 +269,7 @@ class CompositeCatalog extends MessageCatalog {
         pending.add(Future<void>.error(error, stack));
       }
     }
-    if (pending.isEmpty) return;
+    if (pending.isEmpty) return null;
     return Future.wait(pending).then<void>((_) {});
   }
 

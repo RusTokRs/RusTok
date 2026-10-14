@@ -127,6 +127,7 @@ from complete operation safety and retention through serving cutover.
 - [`rustok-page-builder` Runtime Contract](../crates/modules/rustok-page-builder/docs/README.md)
 - [`rustok-translation-targets` Provider Contract](../crates/modules/rustok-translation-targets/docs/README.md)
 - [`rustok-ai-translation` Machine-Translation Bridge Contract](../crates/modules/rustok-ai-translation/docs/README.md)
+- [Messenger Module Documentation](../crates/modules/rustok-messenger/docs/README.md)
 
 ### Implementation Plans and Machine-Readable Contracts
 
@@ -242,7 +243,8 @@ from complete operation safety and retention through serving cutover.
 - [Security](./standards/security.md)
 - [Coding Standards](./standards/coding.md)
 - [Continuous Code Review & Slop Remediation (ACRE)](./CONTINUOUS_CODE_REVIEW.md)
-- [Continuous Review Progress Ledger](./standards/continuous-review-ledger.md)
+- [Continuous Review Progress Ledger (Full-Stack / By-Module)](./standards/continuous-review-ledger.md)
+- [Cross-Cutting Architectural Review Ledger (Horizontal / CodeGraph)](./standards/cross-cutting-review-ledger.md)
 
 ## Platform Verification
 
