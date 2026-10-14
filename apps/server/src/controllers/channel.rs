@@ -33,6 +33,13 @@ async fn bootstrap(
     current: CurrentUser,
     OptionalChannel(current_channel): OptionalChannel,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        current_channel_id = ?current_channel.as_ref().map(|c| c.id),
+        "Handling channel bootstrap request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
 
     let service = ChannelService::new(ctx.db_clone());
@@ -89,9 +96,24 @@ async fn create_channel(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
-    Json(input): Json<CreateChannelRequest>,
+    Json(mut input): Json<CreateChannelRequest>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        slug = %input.slug,
+        "Handling create channel request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+
+    input.slug = input.slug.trim().to_string();
+    input.name = input.name.trim().to_string();
+    if input.slug.is_empty() || input.name.is_empty() {
+        return Err(Error::BadRequest(
+            "Channel slug and name must not be empty".to_string(),
+        ));
+    }
 
     let service = ChannelService::new(ctx.db_clone());
     let channel = service
@@ -108,10 +130,26 @@ async fn create_target(
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path(channel_id): Path<Uuid>,
-    Json(input): Json<CreateChannelTargetInput>,
+    Json(mut input): Json<CreateChannelTargetInput>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        channel_id = %channel_id,
+        target_type = %input.target_type,
+        "Handling create channel target request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
+
+    input.target_type = input.target_type.trim().to_string();
+    input.value = input.value.trim().to_string();
+    if input.target_type.is_empty() || input.value.is_empty() {
+        return Err(Error::BadRequest(
+            "Target target_type and value must not be empty".to_string(),
+        ));
+    }
 
     let service = ChannelService::new(ctx.db_clone());
     let target: ChannelTargetResponse = service
@@ -129,6 +167,13 @@ async fn set_default_channel(
     current: CurrentUser,
     Path(channel_id): Path<Uuid>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        channel_id = %channel_id,
+        "Handling set default channel request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
@@ -147,10 +192,26 @@ async fn update_target(
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path((channel_id, target_id)): Path<(Uuid, Uuid)>,
-    Json(input): Json<UpdateChannelTargetInput>,
+    Json(mut input): Json<UpdateChannelTargetInput>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        channel_id = %channel_id,
+        target_id = %target_id,
+        "Handling update channel target request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
+
+    input.target_type = input.target_type.trim().to_string();
+    input.value = input.value.trim().to_string();
+    if input.target_type.is_empty() || input.value.is_empty() {
+        return Err(Error::BadRequest(
+            "Target target_type and value must not be empty".to_string(),
+        ));
+    }
 
     let service = ChannelService::new(ctx.db_clone());
     let target: ChannelTargetResponse = service
@@ -168,6 +229,14 @@ async fn delete_target(
     current: CurrentUser,
     Path((channel_id, target_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        channel_id = %channel_id,
+        target_id = %target_id,
+        "Handling delete channel target request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
@@ -186,10 +255,25 @@ async fn bind_module(
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path(channel_id): Path<Uuid>,
-    Json(input): Json<BindChannelModuleInput>,
+    Json(mut input): Json<BindChannelModuleInput>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        channel_id = %channel_id,
+        module_slug = %input.module_slug,
+        "Handling bind module to channel request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
+
+    input.module_slug = input.module_slug.trim().to_string();
+    if input.module_slug.is_empty() {
+        return Err(Error::BadRequest(
+            "module_slug must not be empty".to_string(),
+        ));
+    }
 
     let service = ChannelService::new(ctx.db_clone());
     let binding = service
@@ -208,17 +292,17 @@ async fn bind_oauth_app(
     Path(channel_id): Path<Uuid>,
     Json(input): Json<BindChannelOauthAppInput>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        channel_id = %channel_id,
+        oauth_app_id = %input.oauth_app_id,
+        "Handling bind oauth app to channel request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
-
-    let oauth_apps = oauth_apps::Entity::find_active_by_tenant(ctx.db(), tenant.id)
-        .await
-        .map_err(Error::from)?;
-    if !oauth_apps.iter().any(|app| app.id == input.oauth_app_id) {
-        return Err(Error::BadRequest(
-            "OAuth app does not belong to the current tenant".to_string(),
-        ));
-    }
+    ensure_oauth_app_belongs_to_tenant(&ctx, tenant.id, input.oauth_app_id).await?;
 
     let service = ChannelService::new(ctx.db_clone());
     let binding = service
@@ -236,6 +320,14 @@ async fn delete_module_binding(
     current: CurrentUser,
     Path((channel_id, binding_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        channel_id = %channel_id,
+        binding_id = %binding_id,
+        "Handling delete module binding request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
@@ -255,6 +347,14 @@ async fn delete_oauth_app_binding(
     current: CurrentUser,
     Path((channel_id, binding_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        channel_id = %channel_id,
+        binding_id = %binding_id,
+        "Handling delete oauth app binding request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
@@ -272,9 +372,24 @@ async fn create_resolution_policy_set(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
-    Json(input): Json<rustok_channel::CreateResolutionPolicySetRequest>,
+    Json(mut input): Json<rustok_channel::CreateResolutionPolicySetRequest>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        slug = %input.slug,
+        "Handling create resolution policy set request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+
+    input.slug = input.slug.trim().to_string();
+    input.name = input.name.trim().to_string();
+    if input.slug.is_empty() || input.name.is_empty() {
+        return Err(Error::BadRequest(
+            "Policy set slug and name must not be empty".to_string(),
+        ));
+    }
 
     let service = ChannelService::new(ctx.db_clone());
     let policy_set = service
@@ -293,9 +408,21 @@ async fn create_resolution_rule(
     Path(policy_set_id): Path<Uuid>,
     Json(input): Json<rustok_channel::CreateResolutionRuleRequest>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        policy_set_id = %policy_set_id,
+        action_channel_id = %input.action_channel_id,
+        "Handling create resolution rule request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, input.action_channel_id).await?;
+
+    if let Some(oauth_app_id) = input.oauth_app_id {
+        ensure_oauth_app_belongs_to_tenant(&ctx, tenant.id, oauth_app_id).await?;
+    }
 
     let service = ChannelService::new(ctx.db_clone());
     let rule = service
@@ -317,11 +444,28 @@ async fn update_resolution_rule(
     Path((policy_set_id, rule_id)): Path<(Uuid, Uuid)>,
     Json(input): Json<rustok_channel::UpdateResolutionRuleRequest>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        policy_set_id = %policy_set_id,
+        rule_id = %rule_id,
+        "Handling update resolution rule request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
 
     if let Some(action_channel_id) = input.action_channel_id {
         ensure_channel_belongs_to_tenant(&ctx, tenant.id, action_channel_id).await?;
+    }
+
+    if let Some(ref oauth_app_id_str) = input.oauth_app_id {
+        let trimmed = oauth_app_id_str.trim();
+        if !trimmed.is_empty() {
+            let app_uuid = Uuid::parse_str(trimmed)
+                .map_err(|_| Error::BadRequest("Invalid oauth_app_id UUID".to_string()))?;
+            ensure_oauth_app_belongs_to_tenant(&ctx, tenant.id, app_uuid).await?;
+        }
     }
 
     let service = ChannelService::new(ctx.db_clone());
@@ -341,6 +485,14 @@ async fn reorder_resolution_rules(
     Path(policy_set_id): Path<Uuid>,
     Json(input): Json<ReorderResolutionRulesRequest>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        policy_set_id = %policy_set_id,
+        rule_count = input.rule_ids.len(),
+        "Handling reorder resolution rules request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
 
@@ -365,6 +517,13 @@ async fn activate_resolution_policy_set(
     current: CurrentUser,
     Path(policy_set_id): Path<Uuid>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        policy_set_id = %policy_set_id,
+        "Handling activate resolution policy set request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
 
@@ -384,6 +543,14 @@ async fn delete_resolution_rule(
     current: CurrentUser,
     Path((policy_set_id, rule_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        policy_set_id = %policy_set_id,
+        rule_id = %rule_id,
+        "Handling delete resolution rule request"
+    );
+
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
 
@@ -456,6 +623,22 @@ async fn ensure_policy_set_belongs_to_tenant(
         .map_err(map_channel_error)?;
     if policy_set.tenant_id != tenant_id {
         return Err(Error::NotFound);
+    }
+    Ok(())
+}
+
+async fn ensure_oauth_app_belongs_to_tenant(
+    ctx: &ServerRuntimeContext,
+    tenant_id: Uuid,
+    oauth_app_id: Uuid,
+) -> Result<()> {
+    let oauth_apps = oauth_apps::Entity::find_active_by_tenant(ctx.db(), tenant_id)
+        .await
+        .map_err(Error::from)?;
+    if !oauth_apps.iter().any(|app| app.id == oauth_app_id) {
+        return Err(Error::BadRequest(
+            "OAuth app does not belong to the current tenant".to_string(),
+        ));
     }
     Ok(())
 }
@@ -620,5 +803,34 @@ mod tests {
         assert_eq!(input.tenant_id, tenant_id);
         assert_eq!(input.slug, "online-store");
         assert_eq!(input.name, "Online Store");
+    }
+
+    #[test]
+    fn maps_invalid_policy_definition_to_bad_request() {
+        let response = map_channel_error(ChannelError::InvalidPolicyDefinition(
+            "syntax error".to_string(),
+        ))
+        .into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn maps_channel_serialization_error_to_internal_server_error() {
+        let response = map_channel_error(ChannelError::Serialization(
+            serde_json::from_str::<serde_json::Value>("{invalid}").unwrap_err(),
+        ))
+        .into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn input_trimming_rejects_empty_or_whitespace() {
+        let raw_slug = "   ";
+        let raw_name = "\t\n ";
+        assert!(raw_slug.trim().is_empty());
+        assert!(raw_name.trim().is_empty());
+
+        let valid_slug = "  web-store  ";
+        assert_eq!(valid_slug.trim(), "web-store");
     }
 }
