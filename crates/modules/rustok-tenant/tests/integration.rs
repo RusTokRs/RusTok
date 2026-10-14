@@ -261,6 +261,42 @@ async fn tenant_read_port_requires_deadline_and_valid_slug() {
     assert_eq!(empty_slug.kind, PortErrorKind::Validation);
     assert_eq!(empty_slug.code, "tenant.slug_empty");
     assert!(!empty_slug.retryable);
+
+    let nil_id = service
+        .read_tenant(
+            PortContext::new(
+                "tenant-read-port".to_string(),
+                PortActor::service("tenant-test"),
+                "en",
+                "corr-nil-id".to_string(),
+            )
+            .with_deadline(std::time::Duration::from_millis(250)),
+            TenantReadRequest {
+                selector: TenantReadSelector::Id(uuid::Uuid::nil()),
+                include_inactive: false,
+            },
+        )
+        .await
+        .expect_err("nil id selectors must map to typed validation errors");
+
+    assert_eq!(nil_id.kind, PortErrorKind::Validation);
+    assert_eq!(nil_id.code, "tenant.id_nil");
+
+    let empty_context_id = service
+        .read_locale_policy(
+            PortContext::new(
+                "   ".to_string(),
+                PortActor::service("tenant-test"),
+                "en",
+                "corr-empty-tenant".to_string(),
+            )
+            .with_deadline(std::time::Duration::from_millis(250)),
+        )
+        .await
+        .expect_err("empty context tenant_id must fail validation");
+
+    assert_eq!(empty_context_id.kind, PortErrorKind::Validation);
+    assert_eq!(empty_context_id.code, "tenant.context_tenant_id_empty");
 }
 
 #[tokio::test]

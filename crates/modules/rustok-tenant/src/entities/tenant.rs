@@ -51,6 +51,8 @@ impl ActiveModelBehavior for ActiveModel {}
 impl ActiveModel {
     pub fn new(name: &str, slug: &str) -> Self {
         let now = chrono::Utc::now().fixed_offset();
+        let name = name.trim();
+        let slug = slug.trim();
 
         Self {
             id: sea_orm::ActiveValue::Set(rustok_core::generate_id()),

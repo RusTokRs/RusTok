@@ -111,6 +111,7 @@ impl TenantReadPort for crate::TenantService {
     ) -> Result<TenantReadProjection, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         validate_tenant_read_request(&request)?;
+        tracing::debug!(?request.selector, request.include_inactive, "TenantReadPort::read_tenant");
 
         let tenant = match request.selector {
             TenantReadSelector::Id(id) => self.get_tenant(id).await,
@@ -144,6 +145,7 @@ impl TenantReadPort for crate::TenantService {
         context: PortContext,
     ) -> Result<TenantReadProjection, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        tracing::debug!("TenantReadPort::read_default_active_tenant");
         let tenant = self.first_active_tenant().await.map_err(map_tenant_error)?;
 
         Ok(TenantReadProjection {
@@ -166,6 +168,7 @@ impl TenantLocalePolicyPort for crate::TenantService {
     ) -> Result<TenantLocalePolicyProjection, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_context_tenant_id(&context)?;
+        tracing::debug!(tenant_id = %tenant_id, "TenantLocalePolicyPort::read_locale_policy");
         self.read_locale_policy_owned(tenant_id)
             .await
             .map_err(map_tenant_error)
@@ -189,6 +192,12 @@ impl TenantLocalePolicyPort for crate::TenantService {
             })?
             .to_string();
 
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            idempotency_key = %idempotency_key,
+            "TenantLocalePolicyPort::replace_locale_policy"
+        );
+
         let first_result = self
             .replace_locale_policy_owned(tenant_id, request.clone(), &idempotency_key)
             .await;
@@ -209,16 +218,31 @@ impl TenantLocalePolicyPort for crate::TenantService {
 }
 
 fn parse_context_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+    let trimmed = context.tenant_id.trim();
+    if trimmed.is_empty() {
+        return Err(PortError::validation(
+            "tenant.context_tenant_id_empty",
+            "tenant port context requires a non-empty tenant_id",
+        ));
+    }
+    Uuid::parse_str(trimmed).map_err(|_| {
         PortError::validation(
             "tenant.context_tenant_id_invalid",
-            "tenant port context requires a UUID tenant_id",
+            "tenant port context requires a valid UUID tenant_id",
         )
     })
 }
 
 fn validate_tenant_read_request(request: &TenantReadRequest) -> Result<(), PortError> {
     match &request.selector {
+        TenantReadSelector::Id(id) if id.is_nil() => {
+            return Err(PortError::new(
+                PortErrorKind::Validation,
+                "tenant.id_nil",
+                "tenant read port requires a non-nil tenant id selector",
+                false,
+            ));
+        }
         TenantReadSelector::Slug(slug) if slug.trim().is_empty() => {
             return Err(PortError::new(
                 PortErrorKind::Validation,
