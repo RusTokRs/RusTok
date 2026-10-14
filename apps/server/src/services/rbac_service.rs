@@ -29,10 +29,20 @@ pub struct RbacService;
 
 impl RbacService {
     pub async fn invalidate_user_permissions_cache(tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
+        debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            "Invalidating user permissions cache"
+        );
         invalidate_permission_runtime_cache(tenant_id, user_id).await;
     }
 
     pub async fn invalidate_user_rbac_caches(tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
+        debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            "Invalidating user RBAC caches"
+        );
         invalidate_rbac_runtime_caches(tenant_id, user_id).await;
     }
 
@@ -245,6 +255,12 @@ impl RbacService {
     ) -> Result<UserRole> {
         Self::record_authz_entrypoint_call("get_user_role", "library");
 
+        debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            "Looking up user role"
+        );
+
         if let Some(role) = scoped_role_for(tenant_id, user_id) {
             return Ok(role);
         }
@@ -281,6 +297,11 @@ impl RbacService {
         role: UserRole,
     ) -> Result<Vec<uuid::Uuid>> {
         Self::record_authz_entrypoint_call("get_user_ids_for_role", "library");
+        debug!(
+            tenant_id = %tenant_id,
+            ?role,
+            "Looking up user IDs for role"
+        );
         rustok_rbac::load_role_user_ids_on(db, *tenant_id, role)
             .await
             .map_err(Into::into)
@@ -313,6 +334,12 @@ impl RbacService {
         role: UserRole,
     ) -> Result<()> {
         Self::record_authz_entrypoint_call("initialize_user_role", "internal");
+        debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            ?role,
+            "Replacing user role in database"
+        );
         replace_user_role_via_store(db, user_id, tenant_id, role).await
     }
 }
