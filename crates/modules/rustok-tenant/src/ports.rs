@@ -262,6 +262,9 @@ fn map_tenant_error(error: crate::TenantError) -> PortError {
         crate::TenantError::LocalePolicyInvariant(message) => {
             PortError::invariant_violation("tenant.locale_policy_invariant", message)
         }
+        crate::TenantError::Validation(message) => {
+            PortError::validation("tenant.validation_failed", message)
+        }
         other => PortError::new(
             PortErrorKind::Unavailable,
             "tenant.read_failed",
