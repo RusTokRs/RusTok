@@ -1,5 +1,5 @@
 use crate::services::permission_normalization::normalize_permissions;
-use rustok_api::{Action, Permission};
+use rustok_api::Permission;
 use std::fmt::Write;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,11 +35,7 @@ pub fn has_effective_permission_in_set(
     user_permissions: &[Permission],
     required_permission: &Permission,
 ) -> bool {
-    user_permissions.contains(required_permission)
-        || user_permissions.contains(&Permission::new(
-            required_permission.resource,
-            Action::Manage,
-        ))
+    rustok_api::has_effective_permission(user_permissions, required_permission)
 }
 
 pub fn missing_permissions(

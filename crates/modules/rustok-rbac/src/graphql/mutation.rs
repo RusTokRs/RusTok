@@ -174,7 +174,21 @@ impl RbacMutation {
                     ))
                     .await
                     .map_err(|e| FieldError::new(e.to_string()))?;
-                    new_perm_id
+
+                    let persisted_row = tx
+                        .query_one_raw(prepare_statement(
+                            backend,
+                            find_perm_sql,
+                            vec![tenant.id.into(), resource.into(), action.into()],
+                        ))
+                        .await
+                        .map_err(|e| FieldError::new(e.to_string()))?
+                        .ok_or_else(|| {
+                            FieldError::new("Permission could not be retrieved after insert")
+                        })?;
+                    persisted_row
+                        .try_get::<Uuid>("", "id")
+                        .map_err(|e| FieldError::new(e.to_string()))?
                 }
             };
 
@@ -295,6 +309,7 @@ impl RbacMutation {
         .await
         .map_err(|e| FieldError::new(e.to_string()))?;
 
+        let permissions_updated = input.permissions.is_some();
         let mut final_permissions = Vec::new();
         if let Some(new_permissions) = input.permissions {
             let del_links_sql = "DELETE FROM role_permissions WHERE role_id = ?";
@@ -345,7 +360,21 @@ impl RbacMutation {
                         ))
                         .await
                         .map_err(|e| FieldError::new(e.to_string()))?;
-                        new_perm_id
+
+                        let persisted_row = tx
+                            .query_one_raw(prepare_statement(
+                                backend,
+                                find_perm_sql,
+                                vec![tenant.id.into(), resource.into(), action.into()],
+                            ))
+                            .await
+                            .map_err(|e| FieldError::new(e.to_string()))?
+                            .ok_or_else(|| {
+                                FieldError::new("Permission could not be retrieved after insert")
+                            })?;
+                        persisted_row
+                            .try_get::<Uuid>("", "id")
+                            .map_err(|e| FieldError::new(e.to_string()))?
                     }
                 };
 
@@ -384,6 +413,12 @@ impl RbacMutation {
         tx.commit()
             .await
             .map_err(|e| FieldError::new(e.to_string()))?;
+
+        if permissions_updated
+            && let Ok(writer) = ctx.data::<RbacGraphqlRoleWriterHandle>()
+        {
+            let _ = writer.0.invalidate_role_users(&tenant.id, &role_id).await;
+        }
 
         final_permissions.sort();
         final_permissions.dedup();
@@ -482,6 +517,25 @@ impl RbacMutation {
         ))
         .await
         .map_err(|e| FieldError::new(e.to_string()))?;
+
+        let del_artifact_links_sql = "DELETE FROM rbac_artifact_role_permissions WHERE role_id = ?";
+        let _ = tx
+            .execute_raw(prepare_statement(
+                backend,
+                del_artifact_links_sql,
+                vec![role_id.into()],
+            ))
+            .await;
+
+        let del_artifact_ops_sql =
+            "DELETE FROM rbac_artifact_role_permission_operations WHERE role_id = ?";
+        let _ = tx
+            .execute_raw(prepare_statement(
+                backend,
+                del_artifact_ops_sql,
+                vec![role_id.into()],
+            ))
+            .await;
 
         let del_role_sql = "DELETE FROM roles WHERE id = ?";
         tx.execute_raw(prepare_statement(

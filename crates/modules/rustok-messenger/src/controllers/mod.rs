@@ -6,23 +6,33 @@ use axum::{
 use rustok_api::HostRuntimeContext;
 use rustok_web::{HttpError, HttpResult};
 use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::services::MessengerService;
 
+pub mod realtime;
 pub mod rest;
+
+pub use realtime::{MessengerClientMessage, MessengerRoomHub, MessengerServerMessage};
 
 /// Shared HTTP runtime state for the messenger module.
 #[derive(Clone)]
 pub struct MessengerHttpRuntime {
     pub db: DatabaseConnection,
     pub service: MessengerService,
+    pub room_hub: Arc<MessengerRoomHub>,
 }
 
 impl MessengerHttpRuntime {
     pub fn new(db: DatabaseConnection, worker_id: i64) -> Self {
         let service = MessengerService::new(db.clone(), worker_id);
-        Self { db, service }
+        let room_hub = Arc::new(MessengerRoomHub::new());
+        Self {
+            db,
+            service,
+            room_hub,
+        }
     }
 
     pub fn from_host(runtime: &HostRuntimeContext) -> Self {
@@ -71,6 +81,10 @@ pub fn router(runtime: MessengerHttpRuntime) -> Router {
         .route(
             "/conversations/{conversation_id}/cursor",
             post(rest::update_cursor),
+        )
+        .route(
+            "/conversations/{conversation_id}/ws",
+            get(realtime::ws_handler),
         )
         .with_state(runtime)
 }

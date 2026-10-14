@@ -122,3 +122,68 @@ fn module_manifest_and_metadata_contract() {
     assert_eq!(module.dependencies(), &["outbox"]);
     assert!(!module.permissions().is_empty());
 }
+
+#[tokio::test]
+async fn realtime_room_hub_broadcast_and_subscription() {
+    use rustok_messenger::controllers::{MessengerRoomHub, MessengerServerMessage};
+    use rustok_messenger::dto::CursorOutput;
+
+    let hub = MessengerRoomHub::new();
+    let tenant_id = Uuid::now_v7();
+    let conv_id = Uuid::now_v7();
+
+    let room = hub.get_or_create_room(tenant_id, conv_id);
+    let mut sub1 = room.subscribe();
+    let mut sub2 = room.subscribe();
+
+    let cursor_payload = CursorOutput {
+        conversation_id: conv_id,
+        user_id: Uuid::now_v7(),
+        last_read_message_id: 2024,
+    };
+
+    hub.broadcast(
+        tenant_id,
+        conv_id,
+        MessengerServerMessage::CursorAdvanced(cursor_payload.clone()),
+    );
+
+    let msg1 = sub1.recv().await.expect("peer 1 receives message");
+    let msg2 = sub2.recv().await.expect("peer 2 receives message");
+
+    match (msg1, msg2) {
+        (
+            MessengerServerMessage::CursorAdvanced(c1),
+            MessengerServerMessage::CursorAdvanced(c2),
+        ) => {
+            assert_eq!(c1.last_read_message_id, 2024);
+            assert_eq!(c2.last_read_message_id, 2024);
+        }
+        _ => panic!("Expected CursorAdvanced message"),
+    }
+}
+
+#[test]
+fn realtime_client_server_wire_messages_serialization() {
+    use rustok_messenger::controllers::{MessengerClientMessage, MessengerServerMessage};
+
+    let client_ping = MessengerClientMessage::Ping;
+    let json = serde_json::to_string(&client_ping).unwrap();
+    assert_eq!(json, r#"{"type":"ping"}"#);
+
+    let client_sync: MessengerClientMessage =
+        serde_json::from_str(r#"{"type":"fast_sync","since_seq":42}"#).unwrap();
+    match client_sync {
+        MessengerClientMessage::FastSync { since_seq } => assert_eq!(since_seq, 42),
+        _ => panic!("Expected FastSync"),
+    }
+
+    let server_ack = MessengerServerMessage::Ack {
+        client_msg_id: Some("req_123".into()),
+        message_id: 100500,
+    };
+    let json = serde_json::to_string(&server_ack).unwrap();
+    assert!(json.contains("req_123"));
+    assert!(json.contains("100500"));
+}
+

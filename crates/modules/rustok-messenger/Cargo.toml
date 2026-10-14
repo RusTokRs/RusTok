@@ -22,6 +22,12 @@ anyhow.workspace = true
 axum.workspace = true
 futures-util.workspace = true
 tokio = { workspace = true, features = ["full", "sync"] }
+rustok-events = { workspace = true, optional = true }
+rustok-iggy = { workspace = true, optional = true }
+
+[features]
+default = []
+iggy = ["dep:rustok-iggy", "dep:rustok-events"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

@@ -544,7 +544,7 @@ impl MessengerService {
         })
     }
 
-    async fn ensure_membership(&self, conversation_id: Uuid, user_id: Uuid) -> MessengerResult<()> {
+    pub async fn ensure_membership(&self, conversation_id: Uuid, user_id: Uuid) -> MessengerResult<()> {
         let is_member = Member::find()
             .filter(member::Column::ConversationId.eq(conversation_id))
             .filter(member::Column::UserId.eq(user_id))

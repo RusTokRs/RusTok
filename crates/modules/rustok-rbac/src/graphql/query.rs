@@ -317,6 +317,10 @@ fn platform_permission_catalog() -> Vec<(Resource, Vec<Action>)> {
             ],
         ),
         (
+            Resource::Forms,
+            vec![Action::Read, Action::List, Action::Update, Action::Manage],
+        ),
+        (
             Resource::Navigation,
             vec![
                 Action::Create,
@@ -538,6 +542,11 @@ fn platform_permission_catalog() -> Vec<(Resource, Vec<Action>)> {
                 Action::Update,
                 Action::Delete,
                 Action::List,
+                Action::Resolve,
+                Action::Publish,
+                Action::Import,
+                Action::Export,
+                Action::Run,
                 Action::Manage,
             ],
         ),
@@ -549,6 +558,8 @@ fn platform_permission_catalog() -> Vec<(Resource, Vec<Action>)> {
                 Action::Update,
                 Action::Delete,
                 Action::List,
+                Action::Import,
+                Action::Export,
                 Action::Manage,
             ],
         ),
@@ -560,7 +571,29 @@ fn platform_permission_catalog() -> Vec<(Resource, Vec<Action>)> {
                 Action::Update,
                 Action::Delete,
                 Action::List,
+                Action::Import,
+                Action::Export,
                 Action::Manage,
+            ],
+        ),
+        (
+            Resource::Conversations,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Messages,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Delete,
+                Action::List,
             ],
         ),
     ]

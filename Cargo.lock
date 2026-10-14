@@ -15808,6 +15808,8 @@ dependencies = [
  "futures-util",
  "rustok-api",
  "rustok-core",
+ "rustok-events",
+ "rustok-iggy",
  "rustok-web",
  "sea-orm",
  "sea-orm-migration",

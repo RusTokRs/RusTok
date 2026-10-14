@@ -44,7 +44,7 @@ Consolidated from platform concepts (`docs/architecture/workplace-collaboration-
 | **MSG-02** | **Persistence & Multilingual Migrations** | SeaORM migrations, `messenger_conversations`, `messenger_channels_translations`, `messenger_members`, `messenger_messages`, `messenger_cursors` | **Completed** |
 | **MSG-03** | **Application Service & FastSync** | `MessengerService` transactional operations: conversation lifecycle, message dispatch, delta fetch, cursor progression, multilingual channel updates | **Completed** |
 | **MSG-04** | **Cross-Boundary Port & Outbox** | `MessengerPort` public interface, `MessageSent` / `MessageRead` domain events for Outbox bus | **Completed** |
-| **MSG-05** | **Transport Adapters (REST & WebSockets)** | Axum REST controllers (`/conversations`, `/messages`, `/sync`), WebSocket real-time session hub | In Progress |
+| **MSG-05** | **Transport Adapters (REST & WebSockets)** | Axum REST controllers (`/conversations`, `/messages`, `/sync`), WebSocket real-time session hub | **Completed** |
 | **MSG-06** | **Iggy Streaming Fabric Integration** | Streaming partitions via `rustok-iggy`, sub-millisecond dispatch and batched worker ingestion | Planned |
 | **MSG-07** | **Zero-Knowledge E2EE Core** | `vodozemac` Olm Double Ratchet (1-on-1) and Megolm group key ratchets | Planned |
 | **MSG-08** | **Full-Text Search Engine** | Pure-Rust `Tantivy` indexing pipeline for searchable conversation transcripts | Planned |

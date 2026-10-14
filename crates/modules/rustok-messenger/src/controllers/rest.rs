@@ -127,10 +127,17 @@ pub async fn send_message(
 
     let actor_id = auth.user_id;
 
+    let conversation_id = input.conversation_id;
     let output = runtime
         .service
         .send_message(tenant_id, actor_id, input)
         .await?;
+
+    runtime.room_hub.broadcast(
+        tenant_id,
+        conversation_id,
+        super::MessengerServerMessage::NewMessage(output.clone()),
+    );
 
     Ok((StatusCode::CREATED, Json(output)))
 }
@@ -209,6 +216,12 @@ pub async fn update_cursor(
             },
         )
         .await?;
+
+    runtime.room_hub.broadcast(
+        tenant_id,
+        conversation_id,
+        super::MessengerServerMessage::CursorAdvanced(output.clone()),
+    );
 
     Ok(Json(output))
 }
