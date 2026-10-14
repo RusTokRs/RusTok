@@ -3,9 +3,15 @@ use crate::editor::{
     SsrLocalePolicyRequest, SsrLocalizedPageMetadataRequest,
 };
 use crate::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
-use fly::{GrapesJsCodec, ProjectHash};
+use fly::{
+    blank_page, normalize_slug, DesignToken, EditorCommand, GrapesJsCodec, PageCommand,
+    PageLocator, PageMetadata, PagePatch, ProjectHash, StyleRuleCommand, StyleRuleScope,
+    ThemeCommand,
+};
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentError};
-use fly_ui::{EditorShortcut, KeyStroke, UiIntent, resolve_editor_shortcut};
+use fly_ui::{
+    resolve_editor_shortcut, style_patch, EditorShortcut, KeyStroke, StyleEntry, UiIntent,
+};
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -155,6 +161,26 @@ fn dispatch_named_intent(
             effects
         }
         "cancel_drag" | "cancel_drag_requested" => controller.dispatch(UiIntent::CancelDrag)?,
+        "set_theme_token" => {
+            let name = required_string(payload, "name")?;
+            let value = required_string(payload, "value")?;
+            controller.dispatch(UiIntent::execute(EditorCommand::Theme {
+                command: ThemeCommand::Upsert {
+                    token: DesignToken {
+                        name: name.to_string(),
+                        value: value.to_string(),
+                    },
+                },
+            }))?
+        }
+        "remove_theme_token" => {
+            let name = required_string(payload, "name")?;
+            controller.dispatch(UiIntent::execute(EditorCommand::Theme {
+                command: ThemeCommand::Remove {
+                    name: name.to_string(),
+                },
+            }))?
+        }
         "save" => controller.dispatch(UiIntent::RequestSave)?,
         "activate_page" => {
             let page_index = integer_field(payload, "page_index")? as usize;
@@ -166,6 +192,182 @@ fn dispatch_named_intent(
                 page_id,
                 page_index,
             })?
+        }
+        "create_page" => {
+            let name = payload
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .unwrap_or("Untitled page")
+                .to_string();
+            let existing = controller
+                .page_summaries()
+                .into_iter()
+                .filter_map(|page| page.id)
+                .collect::<std::collections::BTreeSet<_>>();
+            let id = unique_page_id_for(&existing, &name);
+            let index = controller.page_summaries().len();
+            controller.dispatch(UiIntent::execute(EditorCommand::Page {
+                command: PageCommand::Add {
+                    index,
+                    page: Box::new(blank_page(id.clone(), name)),
+                },
+            }))?;
+            controller.dispatch(UiIntent::ActivatePage {
+                page_id: Some(id),
+                page_index: index,
+            })?;
+        }
+        "remove_page" => {
+            let page_index = integer_field(payload, "page_index")? as usize;
+            let page_id = payload
+                .get("page_id")
+                .and_then(Value::as_str)
+                .map(ToString::to_string);
+            let locator = match page_id {
+                Some(page_id) => PageLocator::by_id(page_id),
+                None => PageLocator::by_index(page_index),
+            };
+            controller.dispatch(UiIntent::execute(EditorCommand::Page {
+                command: PageCommand::Remove { locator },
+            }))?;
+        }
+        "rename_page" => {
+            let locator = page_locator_from_payload(payload)?;
+            let name = payload
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .ok_or_else(|| {
+                    BrowserIntentDispatchError::Payload("rename_page requires a name".to_string())
+                })?;
+            let mut fields = serde_json::Map::new();
+            fields.insert("name".to_string(), Value::String(name.to_string()));
+            if let Some(new_page_id) = payload
+                .get("new_page_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|new_page_id| !new_page_id.is_empty())
+            {
+                fields.insert("id".to_string(), Value::String(new_page_id.to_string()));
+            }
+            if let Some(metadata_value) = payload.get("metadata") {
+                let metadata: PageMetadata = serde_json::from_value(metadata_value.clone())
+                    .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
+                for (field, value) in metadata.normalized().into_page_patch().fields {
+                    fields.insert(field, value);
+                }
+            }
+            controller.dispatch(UiIntent::execute(EditorCommand::Page {
+                command: PageCommand::Patch {
+                    locator,
+                    patch: PagePatch {
+                        fields,
+                        ..PagePatch::default()
+                    },
+                },
+            }))?;
+        }
+        "patch_page_metadata" => {
+            let locator = page_locator_from_payload(payload)?;
+            let metadata_value = payload.get("metadata").cloned().ok_or_else(|| {
+                BrowserIntentDispatchError::Payload(
+                    "patch_page_metadata requires metadata".to_string(),
+                )
+            })?;
+            let metadata: PageMetadata = serde_json::from_value(metadata_value)
+                .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
+            controller.dispatch(UiIntent::execute(EditorCommand::Page {
+                command: PageCommand::Patch {
+                    locator,
+                    patch: metadata.normalized().into_page_patch(),
+                },
+            }))?;
+        }
+        "move_page" => {
+            let locator = page_locator_from_payload(payload)?;
+            let target_index = integer_field(payload, "target_index")? as usize;
+            let source_index = locator
+                .resolve(controller.editor().document())
+                .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
+            controller.dispatch(UiIntent::execute(EditorCommand::Page {
+                command: PageCommand::Move {
+                    locator: locator.clone(),
+                    index: target_index,
+                },
+            }))?;
+            let landed_index = if source_index < target_index {
+                target_index.saturating_sub(1)
+            } else {
+                target_index
+            };
+            let page_id = controller
+                .page_summaries()
+                .into_iter()
+                .find(|page| page.index == landed_index)
+                .and_then(|page| page.id);
+            controller.dispatch(UiIntent::ActivatePage {
+                page_id,
+                page_index: landed_index,
+            })?;
+        }
+        "upsert_style_rule" => {
+            let component_id = required_string(payload, "component_id")?;
+            let scope_kind = required_string(payload, "scope_kind")?;
+            let scope_value = required_string(payload, "scope_value")?;
+            let property = required_string(payload, "property")?;
+            let value = payload
+                .get("value")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let remove = payload
+                .get("remove")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let scope = match scope_kind.as_str() {
+                "media" => StyleRuleScope::Media {
+                    query: scope_value.to_string(),
+                },
+                "state" => StyleRuleScope::State {
+                    pseudo: scope_value.to_string(),
+                },
+                other => {
+                    return Err(BrowserIntentDispatchError::Payload(format!(
+                        "unknown style rule scope kind `{other}`"
+                    )));
+                }
+            };
+            let entry = StyleEntry {
+                property: property.to_string(),
+                value: if remove { String::new() } else { value },
+            };
+            let patch = style_patch([entry]).map_err(|errors| {
+                BrowserIntentDispatchError::Payload(
+                    errors
+                        .into_iter()
+                        .map(|error| format!("{}: {}", error.property, error.message))
+                        .collect::<Vec<_>>()
+                        .join("; "),
+                )
+            })?;
+            let mut declarations = patch
+                .style
+                .and_then(|style| style.as_object().cloned())
+                .unwrap_or_default();
+            if remove {
+                declarations.remove(property);
+            }
+            controller.dispatch(UiIntent::execute(EditorCommand::StyleRule {
+                command: StyleRuleCommand::UpsertComponentRule {
+                    component_id,
+                    scope,
+                    declarations,
+                    remove_properties: patch.remove_style_properties,
+                },
+            }))?;
         }
         "key_stroke" => {
             let stroke_value = payload
@@ -275,6 +477,8 @@ fn is_mutating_intent(envelope: &BrowserIntentEnvelope) -> bool {
                 | "create_page"
                 | "rename_page"
                 | "remove_page"
+                | "move_page"
+                | "upsert_style_rule"
         )
 }
 
@@ -447,6 +651,35 @@ mod tests {
     }
 
     #[test]
+    fn server_dispatch_applies_theme_token_intents() {
+        let mut controller = controller();
+        let updated = dispatch_browser_intent(
+            &mut controller,
+            intent(
+                "set_theme_token",
+                json!({ "name": "brand", "value": "#0b5fff" }),
+            ),
+        )
+        .expect("set theme token");
+        assert!(updated.dirty);
+        let tokens =
+            fly::decode_theme_tokens(controller.editor().document()).expect("tokens decode");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].name, "brand");
+        assert_eq!(tokens[0].value, "#0b5fff");
+
+        let removed = dispatch_browser_intent(
+            &mut controller,
+            intent("remove_theme_token", json!({ "name": "brand" })),
+        )
+        .expect("remove theme token");
+        assert!(removed.dirty);
+        assert!(fly::decode_theme_tokens(controller.editor().document())
+            .expect("tokens decode")
+            .is_empty());
+    }
+
+    #[test]
     fn stateless_drop_dispatches_without_prior_drag_state() {
         let mut controller = controller();
         let result = dispatch_browser_intent(
@@ -582,15 +815,13 @@ mod tests {
         assert_eq!(link["page_id"], "about");
         assert_eq!(link["base_path"], "/site");
         controller.dispatch(UiIntent::Undo).expect("undo link");
-        assert!(
-            !controller
-                .editor()
-                .document()
-                .component("link")
-                .unwrap()
-                .extensions
-                .contains_key("flyPageLink")
-        );
+        assert!(!controller
+            .editor()
+            .document()
+            .component("link")
+            .unwrap()
+            .extensions
+            .contains_key("flyPageLink"));
     }
 
     #[test]
@@ -607,4 +838,35 @@ mod tests {
             BrowserIntentDispatchError::RevisionConflict { .. }
         ));
     }
+}
+
+fn unique_page_id_for(existing: &std::collections::BTreeSet<String>, name: &str) -> String {
+    let normalized = normalize_slug(name.to_string());
+    let base = if normalized.is_empty() {
+        "page".to_string()
+    } else {
+        normalized
+    };
+    if !existing.contains(&base) {
+        return base;
+    }
+    for suffix in 2..=10_000 {
+        let candidate = format!("{base}-{suffix}");
+        if !existing.contains(&candidate) {
+            return candidate;
+        }
+    }
+    format!("{base}-{}", existing.len().saturating_add(1))
+}
+
+fn page_locator_from_payload(payload: &Value) -> Result<PageLocator, BrowserIntentDispatchError> {
+    let page_index = integer_field(payload, "page_index")? as usize;
+    let page_id = payload
+        .get("page_id")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    Ok(match page_id {
+        Some(page_id) => PageLocator::by_id(page_id),
+        None => PageLocator::by_index(page_index),
+    })
 }

@@ -51,6 +51,26 @@ pub enum ComponentAction {
         #[serde(default)]
         payload: Value,
     },
+    /// Show, hide, or toggle another component on the published page. Executed by the
+    /// Fly action runtime (`fly-actions.js`); the target is a component id.
+    ToggleVisibility {
+        target_id: String,
+        #[serde(default)]
+        mode: VisibilityMode,
+    },
+    /// Smooth-scroll another component into view on the published page.
+    ScrollTo {
+        target_id: String,
+    },
+    /// Play an allow-listed entrance/emphasis animation on another component. Executed
+    /// by the Fly action runtime through the Web Animations API; no author CSS is ever
+    /// generated from this, so the animation set is a closed enum.
+    Animate {
+        target_id: String,
+        animation: AnimationKind,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        duration_ms: Option<u32>,
+    },
     ProviderAction {
         provider: String,
         action: String,
@@ -66,7 +86,55 @@ impl ComponentAction {
             Self::NavigateUrl { .. } => "navigate_url",
             Self::SubmitForm { .. } => "submit_form",
             Self::EmitEvent { .. } => "emit_event",
+            Self::ToggleVisibility { .. } => "toggle_visibility",
+            Self::ScrollTo { .. } => "scroll_to",
+            Self::Animate { .. } => "animate",
             Self::ProviderAction { .. } => "provider_action",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VisibilityMode {
+    #[default]
+    Toggle,
+    Show,
+    Hide,
+}
+
+/// The closed set of animations the action runtime can play. Names are the wire format;
+/// keyframes live in `fly-actions.js`, keyed by these exact strings.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AnimationKind {
+    #[default]
+    FadeIn,
+    FadeOut,
+    SlideUp,
+    SlideDown,
+    ZoomIn,
+    Pulse,
+}
+
+impl AnimationKind {
+    pub const ALL: [AnimationKind; 6] = [
+        AnimationKind::FadeIn,
+        AnimationKind::FadeOut,
+        AnimationKind::SlideUp,
+        AnimationKind::SlideDown,
+        AnimationKind::ZoomIn,
+        AnimationKind::Pulse,
+    ];
+
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            AnimationKind::FadeIn => "fade_in",
+            AnimationKind::FadeOut => "fade_out",
+            AnimationKind::SlideUp => "slide_up",
+            AnimationKind::SlideDown => "slide_down",
+            AnimationKind::ZoomIn => "zoom_in",
+            AnimationKind::Pulse => "pulse",
         }
     }
 }

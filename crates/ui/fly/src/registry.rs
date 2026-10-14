@@ -80,6 +80,8 @@ fn validate_registry_id(id: &str) -> FlyResult<()> {
         "checkbox",
         "submit",
         "raw_html",
+        "rich_text",
+        "embed",
         "symbol",
     ];
     if id.is_empty() || (!id.contains('.') && !BUILT_INS.contains(&id)) {
@@ -383,6 +385,8 @@ fn builtin_component_ids() -> Vec<&'static str> {
         "checkbox",
         "submit",
         "raw_html",
+        "rich_text",
+        "embed",
         "symbol",
     ]
 }
@@ -521,6 +525,28 @@ fn builtin_component_template(id: &str) -> ComponentNode {
         "raw_html" => json!({
             "type": "raw_html",
             "content": "Raw HTML is escaped and shown as text."
+        }),
+        "rich_text" => json!({
+            "type": "rich_text",
+            "flyRichText": {
+                "capability": "richtext",
+                "payload": {
+                    "type": "doc",
+                    "content": [{
+                        "type": "paragraph",
+                        "content": [{ "type": "text", "text": "Write rich text here." }]
+                    }]
+                }
+            }
+        }),
+        "embed" => json!({
+            "type": "fly_embed",
+            "flyEmbed": {
+                "provider": "youtube",
+                "url": "https://www.youtube-nocookie.com/embed/VIDEO_ID",
+                "title": "Embedded video",
+                "aspect_ratio": "16 / 9"
+            }
         }),
         _ => json!({ "type": id }),
     };
@@ -691,6 +717,8 @@ fn humanize_id(id: &str) -> String {
 fn builtin_block_label(id: &str) -> String {
     match id {
         "raw_html" => "Raw HTML (escaped as text)".to_string(),
+        "rich_text" => "Rich text".to_string(),
+        "embed" => "Embed (video / map)".to_string(),
         _ => humanize_id(id),
     }
 }
@@ -698,7 +726,7 @@ fn builtin_block_label(id: &str) -> String {
 fn builtin_category(id: &str) -> &'static str {
     match id {
         "section" | "container" | "row" | "column" | "grid" | "divider" | "spacer" => "layout",
-        "image" | "video" | "media" => "media",
+        "image" | "video" | "media" | "embed" => "media",
         "form" | "input" | "textarea" | "select" | "checkbox" | "submit" => "forms",
         "raw_html" => "advanced",
         _ => "content",

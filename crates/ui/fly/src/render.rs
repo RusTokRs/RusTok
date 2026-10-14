@@ -50,7 +50,16 @@ impl Default for RenderPolicy {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+/// One `hreflang` alternate for a page: locale tag plus the absolute or root-relative URL of
+/// the same page in that locale. Supplied by the consumer, which owns localized routing; Fly
+/// only validates and renders it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AlternateLocaleLink {
+    pub locale: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct PageHead {
     pub title: Option<String>,
     pub description: Option<String>,
@@ -59,6 +68,15 @@ pub struct PageHead {
     pub open_graph_title: Option<String>,
     pub open_graph_description: Option<String>,
     pub open_graph_image: Option<String>,
+    pub open_graph_type: Option<String>,
+    pub twitter_card: Option<String>,
+    pub twitter_title: Option<String>,
+    pub twitter_description: Option<String>,
+    pub twitter_image: Option<String>,
+    /// JSON-LD documents, rendered as `application/ld+json` blocks with script-breakout
+    /// escaping.
+    pub structured_data: Vec<Value>,
+    pub alternate_locale_links: Vec<AlternateLocaleLink>,
 }
 
 impl PageHead {
@@ -81,7 +99,40 @@ impl PageHead {
                 .open_graph_image
                 .as_deref()
                 .and_then(|url| safe_head_url(url, true)),
+            open_graph_type: metadata.open_graph_type.clone(),
+            twitter_card: metadata.twitter_card.clone().or_else(|| {
+                metadata
+                    .effective_twitter_image()
+                    .map(|_| "summary_large_image".to_string())
+            }),
+            twitter_title: metadata.effective_twitter_title().map(ToString::to_string),
+            twitter_description: metadata
+                .effective_twitter_description()
+                .map(ToString::to_string),
+            twitter_image: metadata
+                .effective_twitter_image()
+                .and_then(|url| safe_head_url(url, true)),
+            structured_data: metadata.structured_data.clone(),
+            alternate_locale_links: Vec::new(),
         }
+    }
+
+    /// Attach validated `hreflang` alternates. Entries with an unsafe URL or a malformed locale
+    /// tag are dropped, matching the fail-closed URL posture of the rest of the head.
+    pub fn with_alternate_locale_links(mut self, links: Vec<AlternateLocaleLink>) -> Self {
+        self.alternate_locale_links = links
+            .into_iter()
+            .filter(|link| {
+                safe_head_url(&link.url, false).is_some()
+                    && !link.locale.is_empty()
+                    && link.locale.len() <= 35
+                    && link
+                        .locale
+                        .chars()
+                        .all(|character| character.is_ascii_alphanumeric() || character == '-')
+            })
+            .collect();
+        self
     }
 
     pub fn render_html(&self) -> String {
@@ -116,10 +167,66 @@ impl PageHead {
             "og:image",
             self.open_graph_image.as_deref(),
         );
+        push_meta(
+            &mut html,
+            "property",
+            "og:type",
+            self.open_graph_type.as_deref(),
+        );
+        push_meta(
+            &mut html,
+            "name",
+            "twitter:card",
+            self.twitter_card.as_deref(),
+        );
+        push_meta(
+            &mut html,
+            "name",
+            "twitter:title",
+            self.twitter_title.as_deref(),
+        );
+        push_meta(
+            &mut html,
+            "name",
+            "twitter:description",
+            self.twitter_description.as_deref(),
+        );
+        push_meta(
+            &mut html,
+            "name",
+            "twitter:image",
+            self.twitter_image.as_deref(),
+        );
         if let Some(canonical_url) = &self.canonical_url {
             html.push_str("<link rel=\"canonical\" href=\"");
             html.push_str(&escape_attribute(canonical_url));
             html.push_str("\">");
+        }
+        for link in &self.alternate_locale_links {
+            html.push_str("<link rel=\"alternate\" hreflang=\"");
+            html.push_str(&escape_attribute(&link.locale));
+            html.push_str("\" href=\"");
+            html.push_str(&escape_attribute(&link.url));
+            html.push_str("\">");
+        }
+        for document in &self.structured_data {
+            if !document.is_object() && !document.is_array() {
+                continue;
+            }
+            let Ok(serialized) = serde_json::to_string(document) else {
+                continue;
+            };
+            html.push_str("<script type=\"application/ld+json\">");
+            // A JSON string inside the payload can contain `</script>`; unicode-escaping the
+            // markup-significant characters keeps the JSON semantically identical while making
+            // script-element breakout impossible.
+            html.push_str(
+                &serialized
+                    .replace('<', "\\u003c")
+                    .replace('>', "\\u003e")
+                    .replace('&', "\\u0026"),
+            );
+            html.push_str("</script>");
         }
         html
     }
@@ -173,6 +280,18 @@ pub fn render_page(
     selection: &PageSelection,
     policy: &RenderPolicy,
 ) -> FlyResult<RenderedPage> {
+    render_page_with_rich_text(document, selection, policy, None)
+}
+
+/// Render a page with a host rich-text renderer bound (see
+/// [`crate::RichTextHtmlRenderer`]). Components carrying a `flyRichText` payload render
+/// through that port; without one they use Fly's escaped fallback projection.
+pub fn render_page_with_rich_text(
+    document: &ProjectDocument,
+    selection: &PageSelection,
+    policy: &RenderPolicy,
+    rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
+) -> FlyResult<RenderedPage> {
     // Resolve references before rendering, including for non-runtime previews.
     // Published materialization has already resolved them; the fast path keeps
     // its document and hash identity untouched.
@@ -187,8 +306,12 @@ pub fn render_page(
         .component
         .as_ref()
         .ok_or_else(|| FlyError::MissingPageRoot(page_index.to_string()))?;
+    // Components targeted by toggle/scroll/animate actions must be addressable in the
+    // published DOM. Instrumentation attributes are off in storefront renders, so targeted
+    // components additionally get a plain `id` attribute (see `render_component`).
+    let action_targets = action_target_ids(document);
     let mut html = String::new();
-    render_node(root, None, 0, policy, &mut html);
+    render_node(root, None, 0, policy, rich_text, &action_targets, &mut html);
     let metadata = PageMetadata::from_page(page);
     let head = PageHead::from_metadata(&metadata);
     let css = if policy.emit_style_hooks {
@@ -234,17 +357,66 @@ pub fn resolve_page<'a>(
         .ok_or_else(|| FlyError::PageNotFound(index.to_string()))
 }
 
+/// Component ids that toggle/scroll/animate actions point at, collected from both the
+/// authored `flyAction` extension and the materialized `data-fly-action` attribute, so
+/// addressability works before and after publish materialization.
+fn action_target_ids(document: &ProjectDocument) -> std::collections::BTreeSet<String> {
+    let mut targets = std::collections::BTreeSet::new();
+    for page in &document.project.pages {
+        if let Some(root) = page.component.as_ref() {
+            collect_action_targets(root, &mut targets);
+        }
+    }
+    targets
+}
+
+fn collect_action_targets(node: &ComponentNode, targets: &mut std::collections::BTreeSet<String>) {
+    let ComponentNode::Object(component) = node else {
+        return;
+    };
+    let authored = component
+        .extensions
+        .get(crate::FLY_ACTION_FIELD)
+        .and_then(|raw| serde_json::from_value::<crate::ComponentAction>(raw.clone()).ok());
+    let materialized = component
+        .attributes
+        .get(crate::FLY_ACTION_DATA_ATTRIBUTE)
+        .and_then(Value::as_str)
+        .and_then(|raw| serde_json::from_str::<crate::ComponentAction>(raw).ok());
+    for action in authored.into_iter().chain(materialized) {
+        match action {
+            crate::ComponentAction::ToggleVisibility { target_id, .. }
+            | crate::ComponentAction::ScrollTo { target_id }
+            | crate::ComponentAction::Animate { target_id, .. } => {
+                targets.insert(target_id);
+            }
+            _ => {}
+        }
+    }
+    for child in component.children() {
+        collect_action_targets(child, targets);
+    }
+}
+
 fn render_node(
     node: &ComponentNode,
     parent_id: Option<&str>,
     index: usize,
     policy: &RenderPolicy,
+    rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
+    action_targets: &std::collections::BTreeSet<String>,
     output: &mut String,
 ) {
     match node {
-        ComponentNode::Object(component) => {
-            render_component(component, parent_id, index, policy, output)
-        }
+        ComponentNode::Object(component) => render_component(
+            component,
+            parent_id,
+            index,
+            policy,
+            rich_text,
+            action_targets,
+            output,
+        ),
         ComponentNode::Opaque(value) if policy.include_opaque_text_nodes => {
             render_opaque(value, output)
         }
@@ -257,9 +429,23 @@ fn render_component(
     parent_id: Option<&str>,
     index: usize,
     policy: &RenderPolicy,
+    rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
+    action_targets: &std::collections::BTreeSet<String>,
     output: &mut String,
 ) {
     let component_id = component.id.as_deref();
+    if let Some(raw_embed) = component.extensions.get(crate::FLY_EMBED_FIELD) {
+        render_embed(
+            component,
+            raw_embed,
+            parent_id,
+            index,
+            policy,
+            action_targets,
+            output,
+        );
+        return;
+    }
     let tag = safe_tag(component);
     let void_tag = matches!(tag, "img" | "input" | "hr" | "br" | "source");
 
@@ -278,6 +464,18 @@ fn render_component(
         if let Some(parent_id) = parent_id {
             write_attribute(output, "data-fly-parent-id", parent_id);
         }
+    }
+    // Action targets get a real `id` so the published-page runtime can find them without
+    // editor instrumentation (which storefront renders disable). An author-supplied `id`
+    // attribute always wins; this only fills the gap.
+    if let Some(component_id) = component_id
+        && action_targets.contains(component_id)
+        && !component
+            .attributes
+            .keys()
+            .any(|name| name.eq_ignore_ascii_case("id"))
+    {
+        write_attribute(output, "id", component_id);
     }
 
     for (name, value) in &component.attributes {
@@ -327,15 +525,120 @@ fn render_component(
         return;
     }
 
-    if let Some(content) = component.extensions.get("content").and_then(Value::as_str) {
-        push_escaped_html(output, content);
-    }
-    for (child_index, child) in component.children().iter().enumerate() {
-        render_node(child, component_id, child_index, policy, output);
+    if let Some(raw_payload) = component.extensions.get(crate::FLY_RICH_TEXT_FIELD) {
+        // A rich-text component is a leaf: the payload replaces both the plain `content`
+        // string and any children, which are preserved in the document but not rendered.
+        match crate::decode_rich_text_payload(raw_payload) {
+            Ok(payload) => {
+                let rendered = rich_text
+                    .and_then(|renderer| renderer.render_rich_text(&payload))
+                    .unwrap_or_else(|| crate::rich_text_fallback_html(&payload));
+                output.push_str(&rendered);
+            }
+            Err(_) => {
+                // Invalid payloads are a validation error at the project gate; rendering
+                // degrades to nothing rather than echoing unvalidated structure.
+            }
+        }
+    } else {
+        if let Some(content) = component.extensions.get("content").and_then(Value::as_str) {
+            push_escaped_html(output, content);
+        }
+        for (child_index, child) in component.children().iter().enumerate() {
+            render_node(
+                child,
+                component_id,
+                child_index,
+                policy,
+                rich_text,
+                action_targets,
+                output,
+            );
+        }
     }
     output.push_str("</");
     output.push_str(tag);
     output.push('>');
+}
+
+/// Render an embed component: sandboxed iframe for a validated spec, a plain link or escaped
+/// title otherwise. Embeds never contribute arbitrary attributes to the iframe; the provider
+/// gate in `embed.rs` is the only way a URL reaches `src`.
+fn render_embed(
+    component: &ComponentObject,
+    raw_spec: &Value,
+    parent_id: Option<&str>,
+    index: usize,
+    policy: &RenderPolicy,
+    action_targets: &std::collections::BTreeSet<String>,
+    output: &mut String,
+) {
+    output.push_str("<div");
+    if policy.emit_style_hooks
+        && let Some(component_id) = component.id.as_deref()
+    {
+        write_attribute(output, "data-fly-style-id", component_id);
+    }
+    if policy.instrument_components {
+        if let Some(component_id) = component.id.as_deref() {
+            write_attribute(output, "data-fly-component-id", component_id);
+        }
+        write_attribute(output, "data-fly-index", &index.to_string());
+        if let Some(parent_id) = parent_id {
+            write_attribute(output, "data-fly-parent-id", parent_id);
+        }
+    }
+    if let Some(component_id) = component.id.as_deref()
+        && action_targets.contains(component_id)
+    {
+        write_attribute(output, "id", component_id);
+    }
+    write_attribute(output, "class", "fly-embed");
+    match crate::decode_embed_spec(raw_spec) {
+        Ok(spec) => {
+            if let Some(ratio) = spec.aspect_ratio.as_deref() {
+                let ratio = ratio.replace('/', " / ");
+                write_attribute(output, "style", &format!("aspect-ratio:{ratio}"));
+            }
+            output.push_str("><iframe");
+            write_attribute(output, "src", &spec.url);
+            write_attribute(output, "title", &spec.title);
+            write_attribute(output, "loading", "lazy");
+            write_attribute(output, "sandbox", crate::EMBED_IFRAME_SANDBOX);
+            write_attribute(output, "referrerpolicy", "strict-origin-when-cross-origin");
+            output.push_str(" allowfullscreen></iframe></div>");
+        }
+        Err(_) => {
+            output.push('>');
+            let raw_title = raw_spec
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or("Embedded content");
+            let raw_url = raw_spec
+                .get("url")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if crate::safe_url::url_allowed(
+                raw_url,
+                crate::safe_url::UrlAttributeKind::Resource,
+                &crate::safe_url::UrlPolicy::permissive(),
+            ) && raw_url
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("https://")
+            {
+                output.push_str("<a");
+                write_attribute(output, "href", raw_url);
+                write_attribute(output, "rel", "noopener noreferrer");
+                output.push('>');
+                push_escaped_html(output, raw_title);
+                output.push_str("</a>");
+            } else {
+                push_escaped_html(output, raw_title);
+            }
+            output.push_str("</div>");
+        }
+    }
 }
 
 fn render_project_styles(
@@ -350,13 +653,14 @@ fn render_project_styles(
     let component_ids = component_ids.into_iter().collect::<BTreeSet<_>>();
     let catalog = StyleRuleCatalog::from_document(document);
     let mut css = String::new();
+    // Design tokens render first so every later rule can reference them. A malformed theme
+    // renders nothing (fail-closed); validation reports it as `theme_token_invalid`.
+    if let Ok(tokens) = crate::theme::decode_theme_tokens(document)
+        && let Some(root_rule) = crate::theme::theme_root_rule(&tokens)
+    {
+        css.push_str(&root_rule);
+    }
     for rule in catalog.rules {
-        let Some(component_id) = rule.component_id else {
-            continue;
-        };
-        if !component_ids.contains(&component_id) {
-            continue;
-        }
         let declarations = rule
             .declarations
             .iter()
@@ -366,20 +670,51 @@ fn render_project_styles(
         if declarations.is_empty() {
             continue;
         }
-        let selector = format!(
-            "[data-fly-style-id=\"{}\"]",
-            escape_css_attribute(&component_id)
-        );
-        match rule.scope {
-            StyleRuleScope::Base => push_rule(&mut css, &selector, &declarations),
-            StyleRuleScope::Media { query } if safe_media_query(&query) => {
+        // A rule bound to a component renders against that component's style hook; an unbound
+        // rule renders only when every selector is a plain class name, so reusable class rules
+        // authored in GrapesJS reach the page instead of being silently dropped.
+        let selector_base = match rule.component_id.as_deref() {
+            Some(component_id) => {
+                if !component_ids.contains(component_id) {
+                    continue;
+                }
+                format!(
+                    "[data-fly-style-id=\"{}\"]",
+                    escape_css_attribute(component_id)
+                )
+            }
+            None => match class_rule_selector(&rule.selector_names) {
+                Some(selector) => selector,
+                None => continue,
+            },
+        };
+        // Unsupported pseudo-classes are preserved in the document for round-tripping but must
+        // never reach a selector: `pseudo_class()` is the allow-list gate.
+        let Some(pseudo_suffix) = rule
+            .scope
+            .pseudo_class()
+            .map(|pseudo| format!(":{pseudo}"))
+            .or_else(|| {
+                matches!(
+                    rule.scope,
+                    StyleRuleScope::Base | StyleRuleScope::Media { .. }
+                )
+                .then(String::new)
+            })
+        else {
+            continue;
+        };
+        let selector = format!("{selector_base}{pseudo_suffix}");
+        match rule.scope.media_query() {
+            None => push_rule(&mut css, &selector, &declarations),
+            Some(query) if safe_media_query(query) => {
                 css.push_str("@media ");
                 css.push_str(query.trim());
                 css.push('{');
                 push_rule(&mut css, &selector, &declarations);
                 css.push('}');
             }
-            StyleRuleScope::Media { .. } => {}
+            Some(_) => {}
         }
     }
     if let Some(root) = page.component.as_ref() {
@@ -412,6 +747,37 @@ fn append_component_style_rules(node: &ComponentNode, policy: &RenderPolicy, css
     for child in component.children() {
         append_component_style_rules(child, policy, css);
     }
+}
+
+/// Build a CSS selector from GrapesJS selector names, accepting plain class names only.
+///
+/// Selector names arrive as author input (`"card"`, `".card"`, or selector objects flattened to
+/// their `name`). Anything that is not a single class name — combinators, element selectors,
+/// attribute selectors, `#id` — makes the whole rule unrenderable here: a class rule must never
+/// become a selector-injection path. Component-bound rules do not go through this function.
+fn class_rule_selector(selector_names: &[String]) -> Option<String> {
+    if selector_names.is_empty() {
+        return None;
+    }
+    let mut selector = String::new();
+    for name in selector_names {
+        let class = name.trim().trim_start_matches('.');
+        if class.is_empty()
+            || class.len() > 128
+            || !class.chars().all(|character| {
+                character.is_ascii_alphanumeric() || character == '-' || character == '_'
+            })
+            || class
+                .chars()
+                .next()
+                .is_some_and(|first| first.is_ascii_digit())
+        {
+            return None;
+        }
+        selector.push('.');
+        selector.push_str(class);
+    }
+    Some(selector)
 }
 
 fn push_rule(css: &mut String, selector: &str, declarations: &str) {
@@ -742,7 +1108,7 @@ fn render_opaque(value: &Value, output: &mut String) {
 /// `strip_tags` pass first, which was both redundant (the escape already neutralises markup) and
 /// lossy: authored text such as `5 < 10 and 3 > 2` silently lost everything between the angle
 /// brackets.
-fn push_escaped_html(output: &mut String, value: &str) {
+pub(crate) fn push_escaped_html(output: &mut String, value: &str) {
     output.reserve(value.len());
     for character in value.chars() {
         match character {
@@ -755,7 +1121,7 @@ fn push_escaped_html(output: &mut String, value: &str) {
 }
 
 /// Append `value` to `output` as a double-quoted attribute value.
-fn push_escaped_attribute(output: &mut String, value: &str) {
+pub(crate) fn push_escaped_attribute(output: &mut String, value: &str) {
     output.reserve(value.len());
     for character in value.chars() {
         match character {
@@ -886,6 +1252,80 @@ mod tests {
     }
 
     #[test]
+    fn action_targets_get_a_plain_id_without_instrumentation() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        {
+                            "id": "trigger",
+                            "type": "button",
+                            "content": "Toggle",
+                            "flyAction": { "kind": "toggle_visibility", "target_id": "panel" }
+                        },
+                        { "id": "panel", "type": "section", "content": "Details" },
+                        { "id": "plain", "type": "section", "content": "Untargeted" }
+                    ]
+                }
+            }]
+        }))
+        .expect("document");
+        let page = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("rendered");
+        assert!(page.html.contains("id=\"panel\""), "html: {}", page.html);
+        assert!(!page.html.contains("id=\"plain\""), "html: {}", page.html);
+        assert!(
+            !page.html.contains("data-fly-component-id"),
+            "test must run without instrumentation: {}",
+            page.html
+        );
+    }
+
+    #[test]
+    fn design_tokens_render_as_root_variables_and_survive_var_references() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flyTheme": { "tokens": { "brand": "#0b5fff", "space-md": "1rem" } },
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "style": { "color": "var(--brand)", "padding": "var(--space-md)" },
+                    "components": []
+                }
+            }]
+        }))
+        .expect("document");
+        let page = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("rendered");
+        assert!(
+            page.css.contains(":root{--brand:#0b5fff;--space-md:1rem;}"),
+            "css: {}",
+            page.css
+        );
+        assert!(page.css.contains("color:var(--brand)"), "css: {}", page.css);
+    }
+
+    #[test]
+    fn malformed_theme_renders_no_root_rule() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flyTheme": { "tokens": { "Brand": "red; } body { display: none" } },
+            "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper", "components": [] }
+            }]
+        }))
+        .expect("document");
+        let page = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("rendered");
+        assert!(!page.css.contains(":root"), "css: {}", page.css);
+        assert!(!page.css.contains("display: none"), "css: {}", page.css);
+    }
+
+    #[test]
     fn storefront_renderer_uses_style_hooks_without_editor_instrumentation() {
         let rendered = render_page(&document(), &PageSelection::First, &RenderPolicy::default())
             .expect("render page");
@@ -894,6 +1334,198 @@ mod tests {
         assert!(rendered.css.contains("data-fly-style-id"));
         assert!(rendered.css.contains("margin-top:12px"));
         assert!(!rendered.html.contains(" style=\""));
+    }
+
+    #[test]
+    fn renderer_emits_pseudo_state_and_class_rules() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "styles": [
+                {
+                    "selectors": [{ "name": "hero", "type": 2 }],
+                    "state": "hover",
+                    "style": { "background": "#1d4ed8" }
+                },
+                {
+                    "selectors": [{ "name": "card", "type": 1 }],
+                    "style": { "border-radius": "12px" }
+                },
+                {
+                    "selectors": [{ "name": "hero", "type": 2 }],
+                    "atRuleType": "media",
+                    "mediaText": "(max-width: 767px)",
+                    "state": "focus-visible",
+                    "style": { "outline": "2px solid" }
+                },
+                {
+                    "selectors": [{ "name": "hero", "type": 2 }],
+                    "state": "nth-child(2)",
+                    "style": { "color": "red" }
+                },
+                {
+                    "selectors": ["div > .injected"],
+                    "style": { "color": "red" }
+                }
+            ],
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("document");
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("render page");
+        assert!(
+            rendered
+                .css
+                .contains("[data-fly-style-id=\"hero\"]:hover{background:#1d4ed8}"),
+            "{}",
+            rendered.css
+        );
+        assert!(
+            rendered.css.contains(".card{border-radius:12px}"),
+            "{}",
+            rendered.css
+        );
+        assert!(
+            rendered.css.contains(
+                "@media (max-width: 767px){[data-fly-style-id=\"hero\"]:focus-visible{outline:2px solid}}"
+            ),
+            "{}",
+            rendered.css
+        );
+        assert!(
+            !rendered.css.contains("nth-child"),
+            "unsupported pseudo-classes must not reach the stylesheet: {}",
+            rendered.css
+        );
+        assert!(
+            !rendered.css.contains("injected"),
+            "non-class selectors must not reach the stylesheet: {}",
+            rendered.css
+        );
+    }
+
+    #[test]
+    fn renderer_emits_twitter_og_type_and_json_ld_head() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": {
+                    "title": "Home",
+                    "description": "Welcome",
+                    "open_graph_type": "article",
+                    "twitter_card": "summary",
+                    "structured_data": [{
+                        "@context": "https://schema.org",
+                        "@type": "WebPage",
+                        "name": "Home </script><script>alert(1)</script>"
+                    }]
+                },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("document");
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("render page");
+        let html = rendered.document_html();
+        assert!(
+            html.contains("property=\"og:type\" content=\"article\""),
+            "{html}"
+        );
+        assert!(
+            html.contains("name=\"twitter:card\" content=\"summary\""),
+            "{html}"
+        );
+        assert!(
+            html.contains("name=\"twitter:title\" content=\"Home\""),
+            "twitter title falls back to the page title: {html}"
+        );
+        assert!(html.contains("application/ld+json"), "{html}");
+        assert!(
+            html.contains("\\u003c/script\\u003e"),
+            "JSON-LD payload must not terminate the script element: {html}"
+        );
+        assert!(!html.contains("<script>alert(1)</script>"), "{html}");
+    }
+
+    #[test]
+    fn arbitrary_state_strings_only_render_allow_listed_pseudo_classes() {
+        for state in [
+            "hover",
+            ":FOCUS",
+            " focus-visible ",
+            "nth-child(2)",
+            "hover}body{display:none",
+            "hover, .injected",
+            "",
+        ] {
+            let document = GrapesJsCodec::decode_value(json!({
+                "styles": [{
+                    "selectors": [{ "name": "hero", "type": 2 }],
+                    "state": state,
+                    "style": { "color": "red" }
+                }],
+                "pages": [{
+                    "id": "home",
+                    "component": {
+                        "id": "root",
+                        "type": "wrapper",
+                        "components": [{ "id": "hero", "type": "section" }]
+                    }
+                }]
+            }))
+            .expect("document");
+            let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+                .expect("render page");
+            if crate::is_supported_pseudo_class(state) {
+                let pseudo = crate::normalize_pseudo_class(state).expect("normalized");
+                assert!(
+                    rendered
+                        .css
+                        .contains(&format!("[data-fly-style-id=\"hero\"]:{pseudo}")),
+                    "state `{state}` must render as :{pseudo}: {}",
+                    rendered.css
+                );
+            } else {
+                assert!(
+                    !rendered.css.contains("color:red"),
+                    "state `{state}` must not render: {}",
+                    rendered.css
+                );
+            }
+            assert!(!rendered.css.contains("injected"), "{}", rendered.css);
+            assert!(!rendered.css.contains("display:none"), "{}", rendered.css);
+        }
+    }
+
+    #[test]
+    fn head_alternate_locale_links_are_validated() {
+        let head = PageHead::default().with_alternate_locale_links(vec![
+            AlternateLocaleLink {
+                locale: "en".to_string(),
+                url: "https://example.com/en/home".to_string(),
+            },
+            AlternateLocaleLink {
+                locale: "ru".to_string(),
+                url: "javascript:alert(1)".to_string(),
+            },
+            AlternateLocaleLink {
+                locale: "bad locale!".to_string(),
+                url: "https://example.com/home".to_string(),
+            },
+        ]);
+        let html = head.render_html();
+        assert!(html.contains("hreflang=\"en\""), "{html}");
+        assert!(!html.contains("javascript:"), "{html}");
+        assert!(!html.contains("bad locale"), "{html}");
     }
 
     #[test]

@@ -38,6 +38,12 @@ pub enum UiIntent {
         project_hash: ProjectHash,
     },
     SaveFailed,
+    /// The server rejected the save because the document changed elsewhere. Carries the
+    /// expected and actual revision/hash labels for the user-facing explanation.
+    SaveConflict {
+        expected: String,
+        actual: String,
+    },
     ReplaceDiagnostics(Vec<ValidationDiagnostic>),
 }
 
@@ -295,6 +301,7 @@ impl FlyUiStateMachine {
                 self.state.dirty.dirty = false;
                 self.state.dirty.save_in_progress = false;
                 self.state.dirty.save_failed = false;
+                self.state.dirty.save_conflict = false;
                 self.state.dirty.last_acknowledged_revision = Some(revision);
                 self.state.dirty.project_hash = Some(project_hash);
                 vec![UiEffect::Announce("Project saved".to_string())]
@@ -302,7 +309,19 @@ impl FlyUiStateMachine {
             UiIntent::SaveFailed => {
                 self.state.dirty.save_in_progress = false;
                 self.state.dirty.save_failed = true;
+                self.state.dirty.save_conflict = false;
                 vec![UiEffect::Announce("Project save failed".to_string())]
+            }
+            UiIntent::SaveConflict { expected, actual } => {
+                // A lost update is not a generic failure: the local changes are still
+                // unsaved (`dirty` stays set) and retrying against the same revision
+                // will conflict again, so the announcement tells the user to reload.
+                self.state.dirty.save_in_progress = false;
+                self.state.dirty.save_failed = true;
+                self.state.dirty.save_conflict = true;
+                vec![UiEffect::Announce(format!(
+                    "Save conflict: this page changed in another session (expected {expected}, found {actual}). Your changes are not saved; reload the latest version before continuing."
+                ))]
             }
             UiIntent::ReplaceDiagnostics(diagnostics) => {
                 self.state.set_diagnostics(diagnostics);

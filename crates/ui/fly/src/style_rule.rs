@@ -5,18 +5,85 @@ use serde_json::{Map, Value, json};
 pub const FLY_COMPONENT_RULE_FIELD: &str = "flyComponentId";
 pub const FLY_RULE_ID_FIELD: &str = "flyRuleId";
 
+/// Pseudo-classes a style rule may target.
+///
+/// The list is deliberately closed and argument-free: a pseudo-class is interpolated into a CSS
+/// selector during rendering, so arbitrary author text here would be a selector-injection sink.
+/// Functional pseudo-classes (`:nth-child(2)`, `:not(...)`) are not representable on purpose;
+/// authors that need them keep the raw GrapesJS rule, which the renderer still emits only after
+/// the same allow-list check drops the unsupported state.
+pub const SUPPORTED_PSEUDO_CLASSES: &[&str] = &[
+    "hover",
+    "focus",
+    "focus-visible",
+    "focus-within",
+    "active",
+    "visited",
+    "target",
+    "disabled",
+    "enabled",
+    "checked",
+    "required",
+    "valid",
+    "invalid",
+    "first-child",
+    "last-child",
+    "first-of-type",
+    "last-of-type",
+    "empty",
+    "root",
+];
+
+/// Normalize an author-supplied pseudo-class name (`":Hover"`, `"hover"`) to its canonical form.
+///
+/// Returns `None` for anything outside [`SUPPORTED_PSEUDO_CLASSES`], including functional
+/// pseudo-classes and pseudo-elements. This is the single gate every layer (codec identity,
+/// renderer, static publish policy) must use so the layers cannot drift apart.
+pub fn normalize_pseudo_class(value: &str) -> Option<String> {
+    let normalized = value.trim().trim_start_matches(':').to_ascii_lowercase();
+    SUPPORTED_PSEUDO_CLASSES
+        .contains(&normalized.as_str())
+        .then_some(normalized)
+}
+
+/// Whether `value` names a pseudo-class the style engine will emit.
+pub fn is_supported_pseudo_class(value: &str) -> bool {
+    normalize_pseudo_class(value).is_some()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum StyleRuleScope {
     Base,
-    Media { query: String },
+    Media {
+        query: String,
+    },
+    /// A pseudo-class state on the base (non-media) rendering, e.g. `:hover`.
+    State {
+        pseudo: String,
+    },
+    /// A pseudo-class state inside a media query, e.g. `@media ... { :focus-visible }`.
+    MediaState {
+        query: String,
+        pseudo: String,
+    },
 }
 
 impl StyleRuleScope {
     pub fn media_query(&self) -> Option<&str> {
         match self {
-            Self::Base => None,
-            Self::Media { query } => Some(query),
+            Self::Base | Self::State { .. } => None,
+            Self::Media { query } | Self::MediaState { query, .. } => Some(query),
+        }
+    }
+
+    /// The normalized pseudo-class this scope targets, when it targets one.
+    pub fn pseudo_class(&self) -> Option<String> {
+        match self {
+            Self::Base | Self::Media { .. } => None,
+            Self::State { pseudo } | Self::MediaState { pseudo, .. } => {
+                normalize_pseudo_class(pseudo)
+            }
         }
     }
 
@@ -24,6 +91,17 @@ impl StyleRuleScope {
         match self {
             Self::Base => "base".to_string(),
             Self::Media { query } => format!("media:{}", normalize_query(query)),
+            Self::State { pseudo } => format!(
+                "state:{}",
+                normalize_pseudo_class(pseudo)
+                    .unwrap_or_else(|| pseudo.trim().to_ascii_lowercase())
+            ),
+            Self::MediaState { query, pseudo } => format!(
+                "media:{}|state:{}",
+                normalize_query(query),
+                normalize_pseudo_class(pseudo)
+                    .unwrap_or_else(|| pseudo.trim().to_ascii_lowercase())
+            ),
         }
     }
 }
@@ -123,21 +201,7 @@ impl StyleRuleIdentity {
             .and_then(Value::as_str)
             .map(ToString::to_string)
             .or_else(|| component_id_from_selectors(object.get("selectors")));
-        let scope = match object
-            .get("atRuleType")
-            .and_then(Value::as_str)
-            .map(|value| value.to_ascii_lowercase())
-        {
-            Some(kind) if kind == "media" => StyleRuleScope::Media {
-                query: normalize_query(
-                    object
-                        .get("mediaText")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default(),
-                ),
-            },
-            _ => StyleRuleScope::Base,
-        };
+        let scope = scope_from_rule_object(object);
         let id = object
             .get(FLY_RULE_ID_FIELD)
             .or_else(|| object.get("id"))
@@ -310,12 +374,39 @@ fn synchronize_rule_identity(
         StyleRuleScope::Base => {
             object.remove("atRuleType");
             object.remove("mediaText");
+            object.remove("state");
         }
         StyleRuleScope::Media { query } => {
             object.insert("atRuleType".to_string(), Value::String("media".to_string()));
             object.insert(
                 "mediaText".to_string(),
                 Value::String(normalize_query(query)),
+            );
+            object.remove("state");
+        }
+        StyleRuleScope::State { pseudo } => {
+            object.remove("atRuleType");
+            object.remove("mediaText");
+            object.insert(
+                "state".to_string(),
+                Value::String(
+                    normalize_pseudo_class(pseudo)
+                        .unwrap_or_else(|| pseudo.trim().to_ascii_lowercase()),
+                ),
+            );
+        }
+        StyleRuleScope::MediaState { query, pseudo } => {
+            object.insert("atRuleType".to_string(), Value::String("media".to_string()));
+            object.insert(
+                "mediaText".to_string(),
+                Value::String(normalize_query(query)),
+            );
+            object.insert(
+                "state".to_string(),
+                Value::String(
+                    normalize_pseudo_class(pseudo)
+                        .unwrap_or_else(|| pseudo.trim().to_ascii_lowercase()),
+                ),
             );
         }
     }
@@ -375,6 +466,39 @@ fn component_id_from_selectors(value: Option<&Value>) -> Option<String> {
             Some(selector.trim_start_matches('#').to_string())
         }
         _ => None,
+    }
+}
+
+/// Derive the scope from the GrapesJS rule shape (`atRuleType`/`mediaText` plus the `state`
+/// field the GrapesJS style manager writes for pseudo-class rules).
+///
+/// An unsupported `state` value is preserved verbatim in the scope so identity stays stable and
+/// the rule round-trips; the renderer and the publish policy are responsible for refusing to
+/// emit it (see [`normalize_pseudo_class`]).
+fn scope_from_rule_object(object: &Map<String, Value>) -> StyleRuleScope {
+    let media_query = match object
+        .get("atRuleType")
+        .and_then(Value::as_str)
+        .map(|value| value.to_ascii_lowercase())
+    {
+        Some(kind) if kind == "media" => Some(normalize_query(
+            object
+                .get("mediaText")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        )),
+        _ => None,
+    };
+    let pseudo = object
+        .get("state")
+        .and_then(Value::as_str)
+        .map(|value| value.trim().trim_start_matches(':').to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+    match (media_query, pseudo) {
+        (Some(query), Some(pseudo)) => StyleRuleScope::MediaState { query, pseudo },
+        (Some(query), None) => StyleRuleScope::Media { query },
+        (None, Some(pseudo)) => StyleRuleScope::State { pseudo },
+        (None, None) => StyleRuleScope::Base,
     }
 }
 
@@ -559,6 +683,83 @@ mod tests {
                 "selector drift for {raw}"
             );
         }
+    }
+
+    #[test]
+    fn component_state_rule_round_trips_through_grapesjs_shape() {
+        let mut document = document();
+        apply_style_rule_command(
+            &mut document,
+            &StyleRuleCommand::UpsertComponentRule {
+                component_id: "hero".to_string(),
+                scope: StyleRuleScope::State {
+                    pseudo: "hover".to_string(),
+                },
+                declarations: Map::from_iter([(
+                    "background".to_string(),
+                    Value::String("#1d4ed8".to_string()),
+                )]),
+                remove_properties: Vec::new(),
+            },
+        )
+        .expect("rule");
+        assert_eq!(document.project.styles[0]["state"], "hover");
+        assert!(document.project.styles[0].get("atRuleType").is_none());
+        let rule = StyleRuleCatalog::from_document(&document)
+            .component_rule(
+                "hero",
+                &StyleRuleScope::State {
+                    pseudo: ":Hover".to_string(),
+                },
+            )
+            .expect("state rule matches regardless of author casing")
+            .clone();
+        assert_eq!(rule.declarations["background"], "#1d4ed8");
+    }
+
+    #[test]
+    fn media_state_rule_keeps_both_dimensions() {
+        let mut document = document();
+        document.project.styles.push(json!({
+            "selectors": [{ "name": "hero", "type": 2 }],
+            "atRuleType": "media",
+            "mediaText": "(max-width: 767px)",
+            "state": "focus-visible",
+            "style": { "outline": "2px solid" }
+        }));
+        let catalog = StyleRuleCatalog::from_document(&document);
+        let rule = catalog
+            .component_rule(
+                "hero",
+                &StyleRuleScope::MediaState {
+                    query: "(max-width: 767px)".to_string(),
+                    pseudo: "focus-visible".to_string(),
+                },
+            )
+            .expect("media state rule");
+        assert_eq!(rule.scope.media_query(), Some("(max-width: 767px)"));
+        assert_eq!(rule.scope.pseudo_class().as_deref(), Some("focus-visible"));
+    }
+
+    #[test]
+    fn unsupported_pseudo_class_is_preserved_but_never_normalized() {
+        assert_eq!(
+            normalize_pseudo_class("nth-child(2)"),
+            None,
+            "functional pseudo-classes stay out of the allow-list"
+        );
+        assert_eq!(normalize_pseudo_class("::before"), None);
+        let scope = StyleRuleScope::State {
+            pseudo: "nth-child(2)".to_string(),
+        };
+        assert_eq!(scope.pseudo_class(), None);
+        let identity = StyleRuleIdentity::from_value(&json!({
+            "selectors": [{ "name": "hero", "type": 2 }],
+            "state": "nth-child(2)",
+            "style": {}
+        }))
+        .expect("identity");
+        assert_eq!(identity.scope, scope, "raw state survives for round-trip");
     }
 
     #[test]

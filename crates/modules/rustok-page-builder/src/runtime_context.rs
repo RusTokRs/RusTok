@@ -1,11 +1,11 @@
 use crate::interaction_providers::{
     evaluate_host_runtime_publish_gate, evaluate_host_runtime_publish_gate_with_policy,
 };
+use crate::{RuntimeContextScenario, RuntimePublishGateEvaluation, RuntimePublishGatePolicy};
 use fly::{
     FlyResult, GrapesJsCodec, InteractionCapabilityPolicy, RuntimeContextContract,
     RuntimeContextExample, RuntimeContextExamplePolicy, RuntimeContextJsonSchema,
-    RuntimeContextPreflight, RuntimeContextPreflightPolicy, RuntimeContextScenario,
-    RuntimePublishGateEvaluation, RuntimePublishGatePolicy, export_runtime_context_json_schema,
+    RuntimeContextPreflight, RuntimeContextPreflightPolicy, export_runtime_context_json_schema,
     extract_runtime_context_contract, generate_runtime_context_example, preflight_runtime_context,
 };
 use serde::{Deserialize, Serialize};
@@ -177,7 +177,7 @@ pub fn evaluate_page_builder_runtime_publish_gate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::{CurrentContextGateMode, LandingReadinessPolicy, ScenarioGateMode};
+use crate::{CurrentContextGateMode, LandingReadinessPolicy, ScenarioGateMode};
     use serde_json::json;
 
     fn project_data() -> Value {

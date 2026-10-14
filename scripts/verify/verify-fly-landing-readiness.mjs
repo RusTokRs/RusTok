@@ -39,8 +39,9 @@ function requireOrder(relativePath, fragments) {
   }
 }
 
-requireText("crates/ui/fly/src/lib.rs", "mod landing_readiness;");
-requireText("crates/ui/fly/src/lib.rs", "pub use landing_readiness::*;");
+requireText("crates/modules/rustok-page-builder/src/domain.rs", "mod landing_readiness;");
+requireText("crates/modules/rustok-page-builder/src/domain.rs", "pub use landing_readiness::{");
+requireText("crates/modules/rustok-page-builder/src/lib.rs", "evaluate_landing_readiness_with_context");
 requireText("crates/ui/fly/src/lib.rs", "mod action;");
 requireText("crates/ui/fly/src/lib.rs", "mod audit;");
 requireText(
@@ -72,30 +73,30 @@ requireText(
   "pub native_actions: usize",
 );
 requireText(
-  "crates/ui/fly/src/runtime_scenario_render.rs",
+  "crates/modules/rustok-page-builder/src/domain/runtime_scenario_render.rs",
   "pub materialized_forms: usize",
 );
 requireText(
-  "crates/ui/fly/src/runtime_scenario_render.rs",
+  "crates/modules/rustok-page-builder/src/domain/runtime_scenario_render.rs",
   "pub unresolved_actions: usize",
 );
 requireText(
-  "crates/ui/fly/src/landing_readiness/evaluate.rs",
+  "crates/modules/rustok-page-builder/src/domain/landing_readiness/evaluate.rs",
   "evaluate_landing_readiness_with_context",
 );
 requireText(
-  "crates/ui/fly/src/landing_readiness/evaluate.rs",
+  "crates/modules/rustok-page-builder/src/domain/landing_readiness/evaluate.rs",
   "landing_translation_locale_missing",
 );
 requireText(
-  "crates/ui/fly/src/landing_readiness/evaluate.rs",
+  "crates/modules/rustok-page-builder/src/domain/landing_readiness/evaluate.rs",
   "materialize_landing_structural_document",
 );
 requireText(
-  "crates/ui/fly/src/landing_readiness/evaluate.rs",
+  "crates/modules/rustok-page-builder/src/domain/landing_readiness/evaluate.rs",
   "materialize_context(&metadata_materialization.document, &structural_context)",
 );
-requireOrder("crates/ui/fly/src/landing_readiness/evaluate.rs", [
+requireOrder("crates/modules/rustok-page-builder/src/domain/landing_readiness/evaluate.rs", [
   "materialize_bindings(&metadata_materialization.document, &effective_context)",
   "validate_internal_page_links(&binding_materialization.document)",
   "validate_component_actions(&binding_materialization.document)",
@@ -103,39 +104,39 @@ requireOrder("crates/ui/fly/src/landing_readiness/evaluate.rs", [
   "materialize_component_actions(&link_materialization.document, &effective_context)",
 ]);
 requireText(
-  "crates/ui/fly/src/landing_readiness/evaluate.rs",
+  "crates/modules/rustok-page-builder/src/domain/landing_readiness/evaluate.rs",
   '"runtime_context_required_missing"',
 );
 requireText(
-  "crates/ui/fly/src/landing_readiness/evaluate.rs",
+  "crates/modules/rustok-page-builder/src/domain/landing_readiness/evaluate.rs",
   "publish_materialization_failure",
 );
 requireText(
-  "crates/ui/fly/src/landing_readiness/evaluate.rs",
+  "crates/modules/rustok-page-builder/src/domain/landing_readiness/evaluate.rs",
   '"runtime_action_unresolved"',
 );
 requireText(
-  "crates/ui/fly/src/landing_readiness/evaluate.rs",
+  "crates/modules/rustok-page-builder/src/domain/landing_readiness/evaluate.rs",
   'code.starts_with("component_form_")',
 );
 requireText(
-  "crates/ui/fly/src/landing_readiness/evaluate.rs",
+  "crates/modules/rustok-page-builder/src/domain/landing_readiness/evaluate.rs",
   "component_form_conflicts_are_runtime_contracts",
 );
 requireText(
-  "crates/ui/fly/src/landing_readiness/tests.rs",
+  "crates/modules/rustok-page-builder/src/domain/landing_readiness/tests.rs",
   "structural_readiness_applies_schema_defaults_before_audit",
 );
 requireText(
-  "crates/ui/fly/src/runtime_gate.rs",
+  "crates/modules/rustok-page-builder/src/domain/runtime_gate.rs",
   "pub readiness: Option<LandingReadinessPolicy>",
 );
 requireText(
-  "crates/ui/fly/src/runtime_gate.rs",
+  "crates/modules/rustok-page-builder/src/domain/runtime_gate.rs",
   "evaluate_landing_readiness_with_context",
 );
 requireText(
-  "crates/ui/fly/src/runtime_gate.rs",
+  "crates/modules/rustok-page-builder/src/domain/runtime_gate.rs",
   "runtime_publish_readiness_rejected",
 );
 requireText(

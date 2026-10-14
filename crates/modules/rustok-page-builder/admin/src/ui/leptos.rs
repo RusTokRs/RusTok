@@ -4,9 +4,9 @@ use crate::{
     AdminCanvasController, AssetProviderPort, PageBuilderAdminFacade,
     PageBuilderContributionHostContext,
 };
-use fly::{
+use fly::TraitSchemaRegistry;
+use rustok_page_builder::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
-    TraitSchemaRegistry,
 };
 use fly_ui::{
     CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation, EditorCapabilityPolicy,

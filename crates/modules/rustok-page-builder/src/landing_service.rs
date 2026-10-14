@@ -8,7 +8,8 @@ use crate::service::{
     PageBuilderCapabilityService, PageBuilderServiceError, PageBuilderServiceResult,
 };
 use async_trait::async_trait;
-use fly::{LandingReadinessPolicy, RegistrySet, RenderPolicy, ValidationLimits};
+use crate::LandingReadinessPolicy;
+use fly::{RegistrySet, RenderPolicy, ValidationLimits};
 use rustok_api::PortContext;
 use serde_json::Value;
 

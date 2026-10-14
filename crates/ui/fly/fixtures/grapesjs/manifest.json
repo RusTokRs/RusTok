@@ -35,6 +35,78 @@
         "grapesjs-preset-webpage@1.0.3"
       ],
       "captured_at": "2026-07-20T07:45:32.930Z"
+    },
+    {
+      "file": "01-hero-cta.json",
+      "source": "repository-structural-baseline",
+      "real_browser_capture": false,
+      "browser_roundtrip": false,
+      "browser_skip_reason": "Covered by the Rust codec/render fixture harness in fly tests; not run through the browser harness.",
+      "purpose": "Hero section with class rules, hover state, media scope and a scroll action"
+    },
+    {
+      "file": "02-pricing-table.json",
+      "source": "repository-structural-baseline",
+      "real_browser_capture": false,
+      "browser_roundtrip": false,
+      "browser_skip_reason": "Covered by the Rust codec/render fixture harness in fly tests; not run through the browser harness.",
+      "purpose": "Table-like section/row/text structure with a class-bound style rule"
+    },
+    {
+      "file": "03-contact-form.json",
+      "source": "repository-structural-baseline",
+      "real_browser_capture": false,
+      "browser_roundtrip": false,
+      "browser_skip_reason": "Covered by the Rust codec/render fixture harness in fly tests; not run through the browser harness.",
+      "purpose": "Form block with flyForm provider payload, inputs, select, textarea and submit action"
+    },
+    {
+      "file": "04-rich-text-article.json",
+      "source": "repository-structural-baseline",
+      "real_browser_capture": false,
+      "browser_roundtrip": false,
+      "browser_skip_reason": "Covered by the Rust codec/render fixture harness in fly tests; not run through the browser harness.",
+      "purpose": "Rich-text component carrying a ProseMirror-shaped payload"
+    },
+    {
+      "file": "05-embeds.json",
+      "source": "repository-structural-baseline",
+      "real_browser_capture": false,
+      "browser_roundtrip": false,
+      "browser_skip_reason": "Covered by the Rust codec/render fixture harness in fly tests; not run through the browser harness.",
+      "purpose": "Allow-listed embeds plus an off-registry provider that must degrade safely"
+    },
+    {
+      "file": "06-faq-interactions.json",
+      "source": "repository-structural-baseline",
+      "real_browser_capture": false,
+      "browser_roundtrip": false,
+      "browser_skip_reason": "Covered by the Rust codec/render fixture harness in fly tests; not run through the browser harness.",
+      "purpose": "Toggle/animate actions with design tokens and var() style references"
+    },
+    {
+      "file": "07-frames-page.json",
+      "source": "repository-structural-baseline",
+      "real_browser_capture": false,
+      "browser_roundtrip": false,
+      "browser_skip_reason": "Covered by the Rust codec/render fixture harness in fly tests; not run through the browser harness.",
+      "purpose": "Page-level frames payload preserved opaquely by the codec"
+    },
+    {
+      "file": "08-nav-footer.json",
+      "source": "repository-structural-baseline",
+      "real_browser_capture": false,
+      "browser_roundtrip": false,
+      "browser_skip_reason": "Covered by the Rust codec/render fixture harness in fly tests; not run through the browser harness.",
+      "purpose": "Navigation and footer with internal and external links"
+    },
+    {
+      "file": "09-large-catalog.json",
+      "source": "repository-structural-baseline",
+      "real_browser_capture": false,
+      "browser_roundtrip": false,
+      "browser_skip_reason": "Covered by the Rust codec/render fixture harness in fly tests; not run through the browser harness.",
+      "purpose": "Large document (660+ components) for render/validation scale behaviour"
     }
   ],
   "required_real_capture_metadata": [

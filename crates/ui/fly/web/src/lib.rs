@@ -10,10 +10,21 @@
 #![deny(unsafe_code)]
 
 mod foundation;
-pub use foundation::*;
+pub use foundation::{
+    AutoScrollDelta, AutoScrollPolicy, BrowserDropTarget, BrowserHitTarget, BrowserPoint,
+    BrowserRect, CleanupRegistry, CoordinateTransform, DropAxis, DropZonePolicy,
+    FLY_IFRAME_PROTOCOL, IframeBridgeEnvelope, IframeBridgeMessage, PointerKind, PointerSample,
+    auto_scroll_delta, hit_test_drop_targets, normalize_hit_targets, resolve_drop_position,
+};
 
 mod real_dom_inline;
-pub use real_dom_inline::*;
+pub use real_dom_inline::{
+    AuthenticatedInlineEditGrant, AuthenticatedInlineEditRequest, FLY_REAL_DOM_COMPONENT_ATTRIBUTE,
+    FLY_REAL_DOM_INLINE_ATTRIBUTE, InlineEditContractError, InlineEditableField,
+    MAX_INLINE_TEXT_BYTES,
+};
+#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+pub use real_dom_inline::{RealDomInlineEditSubscription, attach_real_dom_inline_editing};
 
 mod origin;
 pub use origin::{OPAQUE_ORIGIN, normalize_expected_origin, outbound_target_origin};
@@ -21,9 +32,15 @@ pub use origin::{OPAQUE_ORIGIN, normalize_expected_origin, outbound_target_origi
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 mod browser_interaction;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-pub use browser_interaction::*;
+pub use browser_interaction::{
+    BrowserResizeSession, key_stroke_from_event, prevent_editor_shortcut_default,
+    shortcut_from_event,
+};
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 mod browser_runtime;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-pub use browser_runtime::*;
+pub use browser_runtime::{
+    BrowserRuntimeError, EventListenerHandle, IframeJsonSubscription, IframeMessagePort,
+    ResizeObserverHandle, WindowMessageSubscription, release_pointer_capture, set_pointer_capture,
+};

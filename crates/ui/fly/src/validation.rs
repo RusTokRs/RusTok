@@ -100,6 +100,7 @@ pub fn validate_project(
     // the whole document per query.
     let index = ComponentIndex::build(document);
     validate_pages(document, &mut report);
+    validate_theme_tokens(document, &mut report);
     // Typed checks, opaque checks and URL-attribute checks all happen in this one traversal.
     validate_components(document, registries, limits, &mut report);
     validate_assets(document, &mut report);
@@ -123,6 +124,19 @@ pub fn validate_project(
         .extend(validate_runtime_extensions(document));
     deduplicate_diagnostics(&mut report.diagnostics);
     report
+}
+
+/// Design tokens are project-level data: one malformed token fails the whole theme
+/// (fail-closed at render), so validation reports it once, at the project path.
+fn validate_theme_tokens(document: &ProjectDocument, report: &mut ValidationReport) {
+    if let Err(message) = crate::theme::decode_theme_tokens(document) {
+        report.diagnostics.push(ValidationDiagnostic {
+            severity: ValidationSeverity::Error,
+            code: "theme_token_invalid".to_string(),
+            path: "project.flyTheme".to_string(),
+            message,
+        });
+    }
 }
 
 fn validate_pages(document: &ProjectDocument, report: &mut ValidationReport) {
@@ -464,6 +478,26 @@ fn walk_component(
 
     check_component_public_urls(component, path, &mut report.diagnostics);
     check_raw_html_content(component, path, &mut report.diagnostics);
+    if let Some(raw) = component.extensions.get(crate::FLY_RICH_TEXT_FIELD) {
+        if let Err(reason) = crate::decode_rich_text_payload(raw) {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "rich_text_payload_invalid",
+                format!("{path}.{}", crate::FLY_RICH_TEXT_FIELD),
+                reason,
+            ));
+        }
+    }
+    if let Some(raw) = component.extensions.get(crate::FLY_EMBED_FIELD) {
+        if let Err(reason) = crate::decode_embed_spec(raw) {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "embed_invalid",
+                format!("{path}.{}", crate::FLY_EMBED_FIELD),
+                reason,
+            ));
+        }
+    }
 
     // A *child list* can be opaque too (`ComponentChildren::Opaque`), and `children()` reports it
     // as empty — a second blind spot of the same kind as an opaque node.
@@ -676,13 +710,28 @@ fn validate_style_rules(
                 ));
             }
         }
-        if matches!(&rule.scope, StyleRuleScope::Media { query } if query.trim().is_empty()) {
+        if matches!(rule.scope.media_query(), Some(query) if query.trim().is_empty()) {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "empty_media_query",
                 &path,
                 "responsive style rule has an empty media query",
             ));
+        }
+        match &rule.scope {
+            StyleRuleScope::State { pseudo } | StyleRuleScope::MediaState { pseudo, .. }
+                if crate::normalize_pseudo_class(pseudo).is_none() =>
+            {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Warning,
+                    "unsupported_pseudo_class",
+                    &path,
+                    format!(
+                        "style rule targets unsupported pseudo-class `{pseudo}`; it is preserved for round-tripping but will not be rendered"
+                    ),
+                ));
+            }
+            _ => {}
         }
         if rule.declarations.is_empty() {
             report.diagnostics.push(diagnostic(

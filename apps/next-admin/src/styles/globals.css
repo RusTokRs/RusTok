@@ -1,5 +1,4 @@
 @import 'tailwindcss';
-@import 'grapesjs/dist/css/grapes.min.css';
 
 @import '../../../../UI/tokens/base.css';
 
@@ -53,20 +52,3 @@
   animation: reveal 0.4s ease-in-out forwards;
 }
 
-.rustok-grapesjs .gjs-editor {
-  font-family: inherit;
-}
-
-.rustok-grapesjs .gjs-one-bg {
-  background-color: oklch(0.985 0 0);
-}
-
-.rustok-grapesjs .gjs-two-color,
-.rustok-grapesjs .gjs-three-bg,
-.rustok-grapesjs .gjs-four-color {
-  color: oklch(0.32 0.06 255);
-}
-
-.rustok-grapesjs .gjs-pn-btn.gjs-pn-active {
-  color: oklch(0.48 0.1 180);
-}

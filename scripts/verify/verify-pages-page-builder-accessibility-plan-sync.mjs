@@ -146,7 +146,8 @@ for (const marker of [
 ]) requireText(accessibilityActualization, marker, paths.accessibilityActualization);
 
 for (const marker of [
-  "aria-pressed=active.to_string()",
+  'aria-current=is_active.then_some("page")',
+  'aria-current=is_selected.then_some("true")',
   "Page Builder admin accessibility source verified.",
 ]) requireText(accessibilityGuard, marker, paths.accessibilityGuard);
 

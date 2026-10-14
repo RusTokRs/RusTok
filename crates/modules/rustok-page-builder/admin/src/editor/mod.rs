@@ -1,6 +1,5 @@
+mod adapter_workspace;
 mod admin_shell;
-#[cfg(target_arch = "wasm32")]
-mod asset_section;
 mod audit_panel;
 mod authoring;
 mod binding_panel;
@@ -18,16 +17,8 @@ mod diagnostics_section;
 mod dynamic_runtime;
 mod isolated_canvas;
 mod modular_canvas;
-mod page_manager;
-mod palette_layers;
-mod properties_assets;
-#[cfg(target_arch = "wasm32")]
-mod properties_section;
-#[cfg(target_arch = "wasm32")]
-mod property_helpers;
 mod publish_scenario_selector;
 mod resize_handles;
-mod responsive_styles;
 mod runtime;
 mod runtime_publish_gate;
 mod runtime_scenario_matrix;
@@ -47,16 +38,11 @@ mod ssr_locale_coverage;
 mod ssr_locale_policy;
 mod ssr_localized_metadata;
 mod ssr_translations;
-#[cfg(target_arch = "wasm32")]
-mod style_section;
-#[cfg(target_arch = "wasm32")]
-mod symbol_section;
 mod toolbar;
 mod trait_panel;
 
+pub use adapter_workspace::{adapter_editor_messages, AdapterWorkspacePanel};
 pub use admin_shell::AdminShell;
-#[cfg(target_arch = "wasm32")]
-pub(crate) use asset_section::AssetSection;
 pub(crate) use audit_panel::AuditPanel;
 pub use authoring::{
     CanvasComponentGeometry, LayerItemView, PaletteBlockView, SelectedComponentView,
@@ -64,9 +50,9 @@ pub use authoring::{
 pub(crate) use binding_panel::BindingPanel;
 pub(crate) use canvas_document::render_canvas_srcdoc_with_context;
 #[cfg(target_arch = "wasm32")]
-pub(crate) use canvas_protocol::CanvasBridgeMessage;
-#[cfg(target_arch = "wasm32")]
 pub(crate) use canvas_protocol::decode_canvas_message;
+#[cfg(target_arch = "wasm32")]
+pub(crate) use canvas_protocol::CanvasBridgeMessage;
 pub(crate) use capability_controls::{CapabilityFieldset, CapabilityPolicyPanel};
 pub use consumer_properties::ConsumerPropertiesPanel;
 pub(crate) use context_contract_tools::ContextContractToolsPanel;
@@ -78,14 +64,8 @@ pub(crate) use diagnostics_section::DiagnosticsSection;
 pub(crate) use dynamic_runtime::DynamicRuntimePanel;
 pub(crate) use isolated_canvas::IsolatedAuthoringCanvas;
 pub use modular_canvas::AdminCanvas;
-pub(crate) use page_manager::PageManagerPanel;
-pub(crate) use palette_layers::PaletteLayersPanel;
-pub(crate) use properties_assets::PropertiesAssetsPanel;
-#[cfg(target_arch = "wasm32")]
-pub(crate) use properties_section::PropertiesSection;
 pub(crate) use publish_scenario_selector::PublishScenarioSelectorPanel;
 pub(crate) use resize_handles::ResizeHandles;
-pub(crate) use responsive_styles::ResponsiveStylePanel;
 pub(crate) use runtime::AdminEditorRuntime;
 pub(crate) use runtime_publish_gate::RuntimePublishGatePanel;
 pub(crate) use runtime_scenario_matrix::RuntimeScenarioMatrixPanel;
@@ -112,7 +92,5 @@ pub(crate) use ssr_localized_metadata::{
     SsrLocalizedMetadataPanel, SsrLocalizedPageMetadataRequest,
 };
 pub(crate) use ssr_translations::SsrTranslationsPanel;
-#[cfg(target_arch = "wasm32")]
-pub(crate) use style_section::StyleSection;
 pub(crate) use toolbar::AuthoringToolbar;
 pub(crate) use trait_panel::TraitPanel;

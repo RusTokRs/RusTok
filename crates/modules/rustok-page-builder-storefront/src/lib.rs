@@ -7,7 +7,9 @@ mod inline_edit;
 #[cfg(feature = "inline-edit")]
 pub use inline_edit::*;
 
-use fly::{PageHead, RenderPolicy, RenderedPage, RuntimeRenderResult};
+use fly::{
+    GrapesJsCodec, PageHead, RenderPolicy, RenderedPage, RichTextHtmlRenderer, RuntimeRenderResult,
+};
 use leptos::prelude::*;
 use rustok_page_builder::render::{
     PageBuilderRenderRequest, PageBuilderRenderResponse, PageBuilderRuntimeRenderRequest,
@@ -68,6 +70,24 @@ pub fn render_storefront_page(
     Ok(StorefrontPageOutput { page })
 }
 
+/// Render a storefront page with the host rich-text renderer bound, so `flyRichText`
+/// components render through the platform rich-text capability instead of Fly's fallback
+/// projection. Without a renderer this behaves exactly like [`render_storefront_page`].
+/// Shared handle to a host rich-text renderer, suitable for Leptos props and SSR tasks.
+pub type SharedRichTextRenderer = std::sync::Arc<dyn RichTextHtmlRenderer + Send + Sync>;
+
+pub fn render_storefront_page_with_rich_text(
+    project_data: Value,
+    selection: PageSelection,
+    mut policy: RenderPolicy,
+    rich_text: Option<&dyn RichTextHtmlRenderer>,
+) -> fly::FlyResult<StorefrontPageOutput> {
+    policy.instrument_components = false;
+    let document = GrapesJsCodec::decode_value(project_data)?;
+    let page = fly::render_page_with_rich_text(&document, &selection, &policy, rich_text)?;
+    Ok(StorefrontPageOutput { page })
+}
+
 pub fn render_storefront_page_with_context(
     project_data: Value,
     selection: PageSelection,
@@ -96,6 +116,7 @@ pub fn PageBuilderStorefront(
     #[prop(optional)] policy: Option<RenderPolicy>,
     #[prop(optional)] context: Option<Value>,
     #[prop(optional)] class: Option<String>,
+    #[prop(optional)] rich_text_renderer: Option<SharedRichTextRenderer>,
 ) -> impl IntoView {
     let selection = selection.unwrap_or(PageSelection::First);
     let policy = policy.unwrap_or_default();
@@ -111,8 +132,13 @@ pub fn PageBuilderStorefront(
                 },
             )
         }
-        None => render_storefront_page(project_data, selection, policy)
-            .map(|output| (output.page, 0, 0)),
+        None => render_storefront_page_with_rich_text(
+            project_data,
+            selection,
+            policy,
+            rich_text_renderer.as_deref(),
+        )
+        .map(|output| (output.page, 0, 0)),
     };
 
     match rendered {

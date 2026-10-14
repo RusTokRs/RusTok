@@ -54,7 +54,20 @@ const ALLOWED_TAGS: &[&str] = &[
 
 // Fly's built-in `link` component is intentionally not listed: it renders as a safe `<a>`.
 const DANGEROUS_COMPONENT_TYPES: &[&str] = &[
-    "applet", "base", "embed", "iframe", "meta", "object", "script", "style", "template",
+    "applet",
+    "base",
+    "embed",
+    "iframe",
+    "meta",
+    "object",
+    "script",
+    "style",
+    "template",
+    // Fly embed blocks render a sandboxed provider iframe, which the static renderer
+    // cannot express within its tag allow-list. They are refused explicitly here and
+    // must be published through a dynamic (storefront/SSR) route instead of being
+    // silently degraded or leaking an unsandboxed iframe into static HTML.
+    "fly_embed",
 ];
 
 const FORBIDDEN_ATTRIBUTES: &[&str] = &["background", "ping", "srcdoc", "style", "xlink:href"];
@@ -633,7 +646,7 @@ fn validate_style_rules(
                 diagnostics,
                 "landing_style_rule_unbound",
                 format!("{path}.selectors"),
-                "style rule is not bound to a component and would be omitted by the renderer",
+                "static landing artifacts require component-bound style rules; class-only rules are supported by the runtime renderer but not by this artifact contract",
             ),
         }
         if rule.declarations.is_empty() {
@@ -684,6 +697,42 @@ fn validate_style_rules(
                         "landing_media_query_rejected",
                         format!("{path}.mediaText"),
                         "media query is rejected by static publish policy",
+                    );
+                }
+            }
+            StyleRuleScope::State { pseudo } => {
+                if object.contains_key("mediaText") || object.contains_key("atRuleType") {
+                    reject(
+                        diagnostics,
+                        "landing_media_query_orphaned",
+                        format!("{path}.mediaText"),
+                        "mediaText requires atRuleType=media",
+                    );
+                }
+                if fly::normalize_pseudo_class(pseudo).is_none() {
+                    reject(
+                        diagnostics,
+                        "landing_pseudo_class_rejected",
+                        format!("{path}.state"),
+                        "pseudo-class is not in the Fly allow-list and would not be rendered",
+                    );
+                }
+            }
+            StyleRuleScope::MediaState { query, pseudo } => {
+                if !safe_media_query(query, policy) {
+                    reject(
+                        diagnostics,
+                        "landing_media_query_rejected",
+                        format!("{path}.mediaText"),
+                        "media query is rejected by static publish policy",
+                    );
+                }
+                if fly::normalize_pseudo_class(pseudo).is_none() {
+                    reject(
+                        diagnostics,
+                        "landing_pseudo_class_rejected",
+                        format!("{path}.state"),
+                        "pseudo-class is not in the Fly allow-list and would not be rendered",
                     );
                 }
             }

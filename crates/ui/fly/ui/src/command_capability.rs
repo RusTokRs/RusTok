@@ -56,6 +56,7 @@ impl CommandCapabilityRequirement {
             EditorCommand::Patch { patch, .. } => self.extend_component_patch(patch),
             EditorCommand::Asset { .. } => self.insert(EditorCapability::Assets),
             EditorCommand::StyleRule { .. } => self.insert(EditorCapability::Styles),
+            EditorCommand::Theme { .. } => self.insert(EditorCapability::Styles),
             EditorCommand::Page { command } => match command {
                 PageCommand::Patch { .. } => self.insert(EditorCapability::Properties),
                 PageCommand::Add { .. } | PageCommand::Remove { .. } | PageCommand::Move { .. } => {

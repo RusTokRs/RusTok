@@ -15,7 +15,8 @@ const paths = {
   pageBuilderLib: 'crates/modules/rustok-page-builder/admin/src/lib.rs',
   pageBuilderHost: 'crates/modules/rustok-page-builder/admin/src/ui/leptos.rs',
   pageBuilderCanvas: 'crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs',
-  pageBuilderPalette: 'crates/modules/rustok-page-builder/admin/src/editor/palette_layers.rs',
+  pageBuilderPalette: 'crates/ui/fly/leptos/src/editor.rs',
+  flyUiLayers: 'crates/ui/fly/ui/src/layers.rs',
   pageBuilderPaletteAccess: 'crates/modules/rustok-page-builder/admin/src/palette_access.rs',
   pageBuilderContextContract: 'crates/modules/rustok-page-builder/admin/src/context_contract.rs',
   rustokBuildLib: 'crates/utils/rustok-build/src/lib.rs',
@@ -47,10 +48,68 @@ const requireMarkers = (key, markers, label) => {
 
 requireMarkers('flyUiLib', [
   'mod contribution;', 'mod contribution_adapter;', 'mod contribution_factory;',
-  'mod contribution_manifest;', 'mod palette_access;', 'pub use contribution::*;',
-  'pub use contribution_adapter::*;', 'pub use contribution_factory::*;',
-  'pub use contribution_manifest::*;', 'pub use palette_access::*;',
+  'mod contribution_manifest;', 'mod palette_access;',
 ], 'fly-ui contribution module wiring');
+
+// Assert the re-exported symbols rather than literal `pub use` lines: the fly-ui root uses
+// curated explicit re-exports, so pin the exported contribution surface, not its spelling.
+{
+  const exportedFrom = (module) => {
+    const braced = source.flyUiLib.match(new RegExp(`pub use ${module}::\\{([^}]*)\\}`));
+    if (braced) return braced[1].split(',').map((entry) => entry.trim()).filter(Boolean);
+    const single = source.flyUiLib.match(new RegExp(`pub use ${module}::([A-Za-z0-9_]+);`));
+    return single ? [single[1]] : null;
+  };
+  const expected = {
+    contribution: [
+      'AccessibilityMetadata',
+      'ContributionDescriptor',
+      'ContributionRegistry',
+      'PropertyEditorDescriptor',
+      'RendererDescriptor',
+      'ResolvedPropertyEditor',
+      'ResolvedRenderer',
+    ],
+    contribution_adapter: [
+      'ContributionAdapter',
+      'PropertyEditorRequest',
+      'RendererRequest',
+      'edit_contribution_properties',
+      'render_contribution',
+    ],
+    contribution_factory: [
+      'ContributionAssemblyDiagnostic',
+      'ContributionAssemblyPolicy',
+      'ContributionAssemblyResult',
+      'ContributionAssemblySeverity',
+      'ContributionProviderHealth',
+      'ContributionSurface',
+      'ModuleContributionMetadata',
+      'assemble_contribution_registry',
+      'build_admin_contribution_registry',
+      'build_storefront_contribution_registry',
+    ],
+    contribution_manifest: [
+      'ModuleContributionManifest',
+      'assemble_contribution_manifests',
+      'build_admin_contribution_registry_from_manifests',
+      'build_storefront_contribution_registry_from_manifests',
+    ],
+    palette_access: ['PaletteBlockAccess'],
+  };
+  for (const [module, symbols] of Object.entries(expected)) {
+    const exported = exportedFrom(module);
+    if (!exported) {
+      failures.push(`Fly-ui lib does not re-export anything from ${module}`);
+      continue;
+    }
+    for (const symbol of symbols) {
+      if (!exported.includes(symbol)) {
+        failures.push(`Fly-ui lib does not re-export ${module}::${symbol}`);
+      }
+    }
+  }
+}
 requireMarkers('error', [
   'InvalidContribution', 'DuplicateRenderer(String)', 'DuplicatePropertyEditor(String)',
   'RendererUnavailable(String)', 'PropertyEditorUnavailable(String)',
@@ -132,15 +191,16 @@ requireMarkers('pageBuilderHost', [
   'contribution_assembly: Option<Arc<ContributionAssemblyResult>>',
 ], 'Page Builder host contribution boundary');
 requireMarkers('pageBuilderCanvas', [
-  'contribution_assembly: Option<Arc<ContributionAssemblyResult>>', '<PaletteLayersPanel',
+  'contribution_assembly: Option<Arc<ContributionAssemblyResult>>', '<AdapterWorkspacePanel',
   'contribution_assembly',
 ], 'Page Builder canvas contribution routing');
 requireMarkers('pageBuilderPalette', [
-  'PaletteBlockAccess::from_optional_assembly(', 'data-fly-contribution-registry="true"',
-  'data-fly-contribution-ids=contribution_attr', 'controller.palette_blocks_with_access(&access)',
-  'begin_palette_drag_intent_with_access(', 'insert_palette_block_intent_with_access(',
-  'contribution_access_filters_templates_without_copying_block_definitions',
+  'PaletteBlockAccess::from_optional_assembly(', 'palette_block_items_with_access(',
+  'data-fly-contribution-registry="true"', 'data-fly-contribution-ids=contribution_ids',
 ], 'Page Builder palette contribution enforcement');
+requireMarkers('flyUiLayers', [
+  'palette_items_with_access_filter_namespaced_blocks_and_report_provenance',
+], 'shared palette access coverage');
 requireMarkers('pageBuilderPaletteAccess', [
   'pub fn palette_blocks_with_access(', 'pub fn palette_block_with_access(',
   'pub fn begin_palette_drag_intent_with_access(', 'pub fn insert_palette_block_intent_with_access(',

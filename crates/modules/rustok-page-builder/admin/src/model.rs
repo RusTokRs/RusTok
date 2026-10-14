@@ -143,6 +143,20 @@ impl AdminCanvasController {
         Ok(())
     }
 
+    /// Record a lost update explicitly (distinct from a generic save failure): the
+    /// local changes are not on the server and the user must reload before saving.
+    pub fn mark_save_conflict(
+        &mut self,
+        expected: String,
+        actual: String,
+    ) -> Result<(), AdminCanvasError> {
+        self.editor.revision_mut().mark_save_conflict();
+        self.ui
+            .dispatch(UiIntent::SaveConflict { expected, actual })?;
+        self.synchronize_revision();
+        Ok(())
+    }
+
     pub fn acknowledge_save(
         &mut self,
         revision_id: impl Into<String>,
@@ -157,9 +171,23 @@ impl AdminCanvasController {
         revision_id: impl Into<String>,
     ) -> Result<(), AdminCanvasError> {
         let revision_id = revision_id.into();
-        self.editor
+        match self
+            .editor
             .revision_mut()
-            .acknowledge(expected_hash, revision_id.clone())?;
+            .acknowledge(expected_hash, revision_id.clone())
+        {
+            Ok(()) => {}
+            Err(fly::FlyError::RevisionConflict { expected, actual }) => {
+                // A hash mismatch at acknowledge time means another session saved
+                // first: surface the lost update as a conflict, not a generic failure.
+                let _ = self.mark_save_conflict(expected.clone(), actual.clone());
+                return Err(AdminCanvasError::Fly(fly::FlyError::RevisionConflict {
+                    expected,
+                    actual,
+                }));
+            }
+            Err(error) => return Err(AdminCanvasError::Fly(error)),
+        }
         self.revision_id = revision_id.clone();
         self.ui.dispatch(UiIntent::SaveSucceeded {
             revision: revision_id,
