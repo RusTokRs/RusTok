@@ -38,6 +38,7 @@ async fn list_schemas(
     CurrentTenant(tenant): CurrentTenant,
     RequireFlexSchemasList(_user): RequireFlexSchemasList,
 ) -> Result<Json<Vec<FlexSchemaResponse>>> {
+    tracing::debug!(tenant_id = %tenant.id, "Handling list Flex schemas request");
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let rows = flex::list_schemas(&service, tenant.id)
         .await
@@ -66,6 +67,11 @@ async fn get_schema(
     RequireFlexSchemasRead(_user): RequireFlexSchemasRead,
     Path(schema_id): Path<Uuid>,
 ) -> Result<Json<FlexSchemaResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        schema_id = %schema_id,
+        "Handling get Flex schema request"
+    );
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::find_schema(&service, tenant.id, schema_id)
         .await
@@ -92,6 +98,11 @@ async fn create_schema(
     RequireFlexSchemasCreate(user): RequireFlexSchemasCreate,
     Json(input): Json<CreateFlexSchemaRequest>,
 ) -> Result<Json<FlexSchemaResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        slug = %input.slug,
+        "Handling create Flex schema request"
+    );
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::create_schema(
         &service,
@@ -126,6 +137,11 @@ async fn update_schema(
     Path(schema_id): Path<Uuid>,
     Json(input): Json<UpdateFlexSchemaRequest>,
 ) -> Result<Json<FlexSchemaResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        schema_id = %schema_id,
+        "Handling update Flex schema request"
+    );
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::update_schema(
         &service,
@@ -159,6 +175,11 @@ async fn delete_schema(
     RequireFlexSchemasDelete(user): RequireFlexSchemasDelete,
     Path(schema_id): Path<Uuid>,
 ) -> Result<Json<DeleteFlexResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        schema_id = %schema_id,
+        "Handling delete Flex schema request"
+    );
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     flex::delete_schema(&service, tenant.id, Some(user.user.id), schema_id)
         .await
@@ -185,6 +206,11 @@ async fn list_entries(
     RequireFlexEntriesList(_user): RequireFlexEntriesList,
     Path(schema_id): Path<Uuid>,
 ) -> Result<Json<Vec<FlexEntryResponse>>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        schema_id = %schema_id,
+        "Handling list Flex entries request"
+    );
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let rows = flex::list_entries(&service, tenant.id, schema_id)
         .await
@@ -216,6 +242,12 @@ async fn get_entry(
     RequireFlexEntriesRead(_user): RequireFlexEntriesRead,
     Path((schema_id, entry_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<FlexEntryResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        schema_id = %schema_id,
+        entry_id = %entry_id,
+        "Handling get Flex entry request"
+    );
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::find_entry(&service, tenant.id, schema_id, entry_id)
         .await
@@ -244,6 +276,11 @@ async fn create_entry(
     Path(schema_id): Path<Uuid>,
     Json(input): Json<CreateFlexEntryRequest>,
 ) -> Result<Json<FlexEntryResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        schema_id = %schema_id,
+        "Handling create Flex entry request"
+    );
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::create_entry(
         &service,
@@ -281,6 +318,12 @@ async fn update_entry(
     Path((schema_id, entry_id)): Path<(Uuid, Uuid)>,
     Json(input): Json<UpdateFlexEntryRequest>,
 ) -> Result<Json<FlexEntryResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        schema_id = %schema_id,
+        entry_id = %entry_id,
+        "Handling update Flex entry request"
+    );
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::update_entry(
         &service,
@@ -318,6 +361,12 @@ async fn delete_entry(
     RequireFlexEntriesDelete(user): RequireFlexEntriesDelete,
     Path((schema_id, entry_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<DeleteFlexResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        schema_id = %schema_id,
+        entry_id = %entry_id,
+        "Handling delete Flex entry request"
+    );
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     flex::delete_entry(&service, tenant.id, Some(user.user.id), schema_id, entry_id)
         .await
@@ -650,5 +699,25 @@ mod tests {
             }
             other => panic!("expected bad request, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn maps_flex_rest_errors_to_stable_http_error_kinds() {
+        use axum::http::StatusCode;
+        use axum::response::IntoResponse;
+        use rustok_core::field_schema::FlexError;
+
+        let not_found = map_flex_rest_error(FlexError::NotFound(Uuid::new_v4()));
+        assert_eq!(not_found.into_response().status(), StatusCode::NOT_FOUND);
+
+        let validation =
+            map_flex_rest_error(FlexError::InvalidFieldKey("invalid field".to_string()));
+        assert_eq!(validation.into_response().status(), StatusCode::BAD_REQUEST);
+
+        let internal = map_flex_rest_error(FlexError::Database("db connection lost".to_string()));
+        assert_eq!(
+            internal.into_response().status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
     }
 }
