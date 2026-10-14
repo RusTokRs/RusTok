@@ -34,6 +34,7 @@ pub async fn enforce(
 ) -> Response {
     let method = request.method().clone();
     let path = request.uri().path();
+    tracing::debug!(path, %method, "registry_artifact_access::enforce entry");
 
     if method == Method::POST && path == "/v2/catalog/owner-transfer" {
         return validate_owner_transfer(&ctx, request, next).await;
@@ -114,6 +115,7 @@ async fn validate_owner_transfer(
     request: Request<Body>,
     next: Next,
 ) -> Response {
+    tracing::debug!("registry_artifact_access::validate_owner_transfer entry");
     let (parts, body) = request.into_parts();
     let auth = match parts.extensions.get::<AuthContextExtension>() {
         Some(extension) => &extension.0,
@@ -285,16 +287,28 @@ fn runner_token_is_valid(ctx: &ServerRuntimeContext, request: &Request<Body>) ->
     let Some(expected) = settings.shared_token.as_deref() else {
         return false;
     };
-    let Some(provided) = request
-        .headers()
-        .get("x-rustok-runner-token")
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
+    validate_runner_token(request.headers(), expected)
+}
+
+fn validate_runner_token(headers: &axum::http::HeaderMap, expected: &str) -> bool {
+    let expected_trimmed = expected.trim().trim_matches('"').trim();
+    if expected_trimmed.is_empty() {
+        return false;
+    }
+    let mut values = headers.get_all("x-rustok-runner-token").iter();
+    let Some(first) = values.next() else {
         return false;
     };
-    bool::from(provided.as_bytes().ct_eq(expected.as_bytes()))
+    for duplicate in values {
+        if duplicate != first {
+            tracing::warn!("Conflicting duplicate x-rustok-runner-token headers rejected");
+            return false;
+        }
+    }
+    let Some(provided) = first.to_str().ok().map(str::trim).filter(|value| !value.is_empty()) else {
+        return false;
+    };
+    bool::from(provided.as_bytes().ct_eq(expected_trimmed.as_bytes()))
 }
 
 fn response(status: StatusCode, code: &str, message: &str) -> Response {
@@ -377,5 +391,27 @@ mod tests {
         assert!(is_remote_runner_path("/v2/catalog/runner/claim_1/fail"));
         assert!(!is_remote_runner_path("/v2/catalog/runner/claim_1"));
         assert!(!is_remote_runner_path("/v2/catalog/publish/rpr_1"));
+    }
+
+    #[test]
+    fn validate_runner_token_handles_duplicate_headers_and_quotes() {
+        use axum::http::HeaderMap;
+
+        let mut headers = HeaderMap::new();
+        headers.append("x-rustok-runner-token", "runner-secret".parse().unwrap());
+        headers.append("x-rustok-runner-token", "runner-secret".parse().unwrap());
+        assert!(super::validate_runner_token(&headers, "\"runner-secret\""));
+
+        let mut conflicting = HeaderMap::new();
+        conflicting.append("x-rustok-runner-token", "tok1".parse().unwrap());
+        conflicting.append("x-rustok-runner-token", "tok2".parse().unwrap());
+        assert!(!super::validate_runner_token(&conflicting, "tok1"));
+
+        let empty = HeaderMap::new();
+        assert!(!super::validate_runner_token(&empty, "tok1"));
+
+        let mut blank = HeaderMap::new();
+        blank.append("x-rustok-runner-token", "   ".parse().unwrap());
+        assert!(!super::validate_runner_token(&blank, "tok1"));
     }
 }

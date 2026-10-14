@@ -12,6 +12,10 @@ use crate::services::marketplace_catalog::RegistryPublishRequest;
 const PUBLISH_PATH: &str = "/v2/catalog/publish";
 const MAX_PUBLISH_BODY_BYTES: usize = 256 * 1024;
 
+fn is_publish_path(path: &str) -> bool {
+    path.trim_end_matches('/') == PUBLISH_PATH
+}
+
 /// Validate and authorize registry classification metadata before persistence.
 ///
 /// `ownership` and `trust_level` are copied into the release/catalog model, so
@@ -19,9 +23,11 @@ const MAX_PUBLISH_BODY_BYTES: usize = 256 * 1024;
 /// first-party publication requires a user session and request-effective
 /// `modules:manage`; a scoped OAuth token cannot recover broader DB authority.
 pub async fn enforce(mut request: Request<Body>, next: Next) -> Response {
-    if request.method() != Method::POST || request.uri().path() != PUBLISH_PATH {
+    let path = request.uri().path();
+    if request.method() != Method::POST || !is_publish_path(path) {
         return next.run(request).await;
     }
+    tracing::debug!(path, method = %request.method(), "registry_publish_policy::enforce entry");
 
     let (mut parts, body) = request.into_parts();
     let bytes = match to_bytes(body, MAX_PUBLISH_BODY_BYTES).await {
@@ -49,6 +55,12 @@ pub async fn enforce(mut request: Request<Body>, next: Next) -> Response {
     };
     publish.module.ownership = ownership.to_string();
     publish.module.trust_level = trust_level.to_string();
+    tracing::debug!(
+        ownership,
+        trust_level,
+        dry_run = publish.dry_run,
+        "registry_publish_policy canonicalized metadata"
+    );
 
     if !publish.dry_run {
         if ownership != "first_party" {
@@ -81,8 +93,8 @@ pub async fn enforce(mut request: Request<Body>, next: Next) -> Response {
 
 fn normalize_ownership(value: &str) -> Option<&'static str> {
     match value.trim().to_ascii_lowercase().as_str() {
-        "first_party" => Some("first_party"),
-        "third_party" => Some("third_party"),
+        "first_party" | "first-party" => Some("first_party"),
+        "third_party" | "third-party" => Some("third_party"),
         _ => None,
     }
 }
@@ -126,12 +138,22 @@ fn internal_error(message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_ownership, normalize_trust_level};
+    use super::{is_publish_path, normalize_ownership, normalize_trust_level};
+
+    #[test]
+    fn is_publish_path_handles_trailing_slashes() {
+        assert!(is_publish_path("/v2/catalog/publish"));
+        assert!(is_publish_path("/v2/catalog/publish/"));
+        assert!(!is_publish_path("/v2/catalog/publish/other"));
+        assert!(!is_publish_path("/v2/catalog"));
+    }
 
     #[test]
     fn registry_classifications_are_canonicalized() {
         assert_eq!(normalize_ownership(" FIRST_PARTY "), Some("first_party"));
+        assert_eq!(normalize_ownership("first-party"), Some("first_party"));
         assert_eq!(normalize_ownership("third_party"), Some("third_party"));
+        assert_eq!(normalize_ownership("third-party"), Some("third_party"));
         assert_eq!(normalize_ownership("official"), None);
 
         assert_eq!(normalize_trust_level("CORE"), Some("core"));
