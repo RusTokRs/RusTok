@@ -75,7 +75,7 @@ impl SettingsValidator for RateLimitSettingsValidator {
 
         if let Some(rps) = settings.get("requests_per_second") {
             if let Some(n) = rps.as_f64() {
-                if n <= 0.0 {
+                if n <= 0.0 || !n.is_finite() {
                     errors.push("requests_per_second must be positive".to_string());
                 }
             } else {
@@ -112,18 +112,27 @@ impl SettingsValidator for EmailSettingsValidator {
     fn validate(&self, settings: &Value) -> Result<(), Vec<String>> {
         let mut errors = Vec::new();
 
-        if let Some(from) = settings.get("from").and_then(|v| v.as_str())
-            && !from.contains('@')
-        {
-            errors.push("email.from must be a valid email address".to_string());
+        if let Some(from_val) = settings.get("from") {
+            if let Some(from) = from_val.as_str() {
+                let from = from.trim();
+                if from.is_empty() || !from.contains('@') {
+                    errors.push("email.from must be a valid email address".to_string());
+                }
+            } else {
+                errors.push("email.from must be a string".to_string());
+            }
         }
 
-        if let Some(provider) = settings.get("provider").and_then(|v| v.as_str())
-            && !matches!(provider, "smtp" | "sendgrid" | "mailgun" | "ses" | "none")
-        {
-            errors.push(format!(
-                "email.provider must be one of: smtp, sendgrid, mailgun, ses, none; got '{provider}'"
-            ));
+        if let Some(provider_val) = settings.get("provider") {
+            if let Some(provider) = provider_val.as_str() {
+                if !matches!(provider, "smtp" | "sendgrid" | "mailgun" | "ses" | "none") {
+                    errors.push(format!(
+                        "email.provider must be one of: smtp, sendgrid, mailgun, ses, none; got '{provider}'"
+                    ));
+                }
+            } else {
+                errors.push("email.provider must be a string".to_string());
+            }
         }
 
         if errors.is_empty() {
@@ -143,6 +152,32 @@ impl SettingsValidator for CacheSettingsValidator {
     }
 
     fn validate(&self, settings: &Value) -> Result<(), Vec<String>> {
+        let mut errors = Vec::new();
+
+        if let Some(port) = settings.get("redis_port") {
+            if let Some(n) = port.as_i64() {
+                if !(1..=65535).contains(&n) {
+                    errors.push("redis_port must be between 1 and 65535".to_string());
+                }
+            } else {
+                errors.push("redis_port must be an integer".to_string());
+            }
+        }
+
+        if let Some(db) = settings.get("redis_db") {
+            if let Some(n) = db.as_i64() {
+                if !(0..=255).contains(&n) {
+                    errors.push("redis_db must be between 0 and 255".to_string());
+                }
+            } else {
+                errors.push("redis_db must be an integer".to_string());
+            }
+        }
+
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+
         let parsed: rustok_cache::CacheSettings = serde_json::from_value(settings.clone())
             .map_err(|e| vec![format!("Invalid cache settings schema: {e}")])?;
         parsed.validate()
@@ -197,7 +232,14 @@ impl SettingsService {
         tenant_id: Uuid,
         cat: &str,
     ) -> Result<Value, SettingsError> {
-        ensure_supported_category(cat)?;
+        let cat = ensure_supported_category(cat)?;
+
+        tracing::debug!(
+            service = "settings",
+            tenant_id = %tenant_id,
+            category = cat,
+            "Retrieving platform settings"
+        );
 
         // 1. DB row
         if let Some(row) = Entity::find_by_category(ctx.db(), tenant_id, cat).await? {
@@ -207,7 +249,7 @@ impl SettingsService {
         // 2. YAML
         let yaml_value = Self::yaml_defaults_for(ctx, cat);
         if !yaml_value.is_null() {
-            return Ok(yaml_value);
+            return Ok(redact_secrets(cat, yaml_value));
         }
 
         // 3. Empty object default
@@ -221,6 +263,12 @@ impl SettingsService {
         ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
     ) -> Result<Vec<(String, Value)>, SettingsError> {
+        tracing::debug!(
+            service = "settings",
+            tenant_id = %tenant_id,
+            "Listing all platform settings"
+        );
+
         let db_rows = Entity::find_all_for_tenant(ctx.db(), tenant_id).await?;
         let mut result: Vec<(String, Value)> = db_rows
             .into_iter()
@@ -239,14 +287,12 @@ impl SettingsService {
         for &cat in category::ALL {
             if !existing.contains(cat) {
                 let v = Self::yaml_defaults_for(ctx, cat);
-                result.push((
-                    cat.to_string(),
-                    if v.is_null() {
-                        serde_json::json!({})
-                    } else {
-                        v
-                    },
-                ));
+                let settings = if v.is_null() {
+                    serde_json::json!({})
+                } else {
+                    redact_secrets(cat, v)
+                };
+                result.push((cat.to_string(), settings));
             }
         }
 
@@ -267,7 +313,21 @@ impl SettingsService {
         actor_id: Option<Uuid>,
         validators: &ValidatorRegistry,
     ) -> Result<Value, SettingsError> {
-        ensure_supported_category(cat)?;
+        let cat = ensure_supported_category(cat)?;
+
+        if !settings.is_object() {
+            return Err(SettingsError::ValidationFailed(vec![
+                "Settings payload must be a JSON object".to_string(),
+            ]));
+        }
+
+        tracing::debug!(
+            service = "settings",
+            tenant_id = %tenant_id,
+            category = cat,
+            ?actor_id,
+            "Updating platform settings"
+        );
 
         let settings = preserve_secrets(ctx, tenant_id, cat, settings).await?;
 
@@ -365,6 +425,13 @@ fn redact_secrets(cat: &str, mut settings: Value) -> Value {
                 }
                 if object.contains_key("redisPassword") {
                     object.insert("redisPassword".to_string(), Value::String(String::new()));
+                }
+                if let Some(redis_url) = object.get("redis_url").and_then(Value::as_str)
+                    && let Ok(mut parsed) = url::Url::parse(redis_url)
+                    && parsed.password().is_some()
+                {
+                    let _ = parsed.set_password(Some(""));
+                    object.insert("redis_url".to_string(), Value::String(parsed.to_string()));
                 }
             }
         }
@@ -479,9 +546,10 @@ fn preserve_email_secret_fields(existing: Value, mut incoming: Value) -> Value {
     incoming
 }
 
-fn ensure_supported_category(cat: &str) -> Result<(), SettingsError> {
-    if category::ALL.contains(&cat) {
-        Ok(())
+fn ensure_supported_category(cat: &str) -> Result<&str, SettingsError> {
+    let trimmed = cat.trim();
+    if category::ALL.contains(&trimmed) {
+        Ok(trimmed)
     } else {
         Err(SettingsError::InvalidCategory(cat.to_string()))
     }
@@ -680,5 +748,51 @@ mod tests {
     fn settings_error_display_validation() {
         let err = SettingsError::ValidationFailed(vec!["field required".into()]);
         assert!(err.to_string().contains("field required"));
+    }
+
+    #[test]
+    fn ensure_supported_category_trims_whitespace() {
+        assert_eq!(ensure_supported_category("  email  ").unwrap(), "email");
+        assert_eq!(ensure_supported_category("\trate_limit\n").unwrap(), "rate_limit");
+        assert!(ensure_supported_category("   ").is_err());
+    }
+
+    #[test]
+    fn cache_validator_rejects_zero_or_negative_port() {
+        let v = CacheSettingsValidator;
+        let errs_zero = v.validate(&json!({ "redis_port": 0 })).unwrap_err();
+        assert!(errs_zero.iter().any(|e| e.contains("redis_port")));
+
+        let errs_neg = v.validate(&json!({ "redis_port": -10 })).unwrap_err();
+        assert!(errs_neg.iter().any(|e| e.contains("redis_port")));
+    }
+
+    #[test]
+    fn cache_validator_rejects_out_of_bounds_db() {
+        let v = CacheSettingsValidator;
+        let errs = v.validate(&json!({ "redis_db": 300 })).unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("redis_db")));
+    }
+
+    #[test]
+    fn email_validator_rejects_non_string_types() {
+        let v = EmailSettingsValidator;
+        let errs_from = v.validate(&json!({ "from": 12345 })).unwrap_err();
+        assert!(errs_from.iter().any(|e| e.contains("email.from must be a string")));
+
+        let errs_prov = v.validate(&json!({ "provider": true })).unwrap_err();
+        assert!(errs_prov.iter().any(|e| e.contains("email.provider must be a string")));
+    }
+
+    #[test]
+    fn cache_secrets_redacts_redis_url_password() {
+        let value = redact_secrets(
+            category::CACHE,
+            json!({
+                "mode": "redis",
+                "redis_url": "redis://:super-secret@127.0.0.1:6379/0"
+            }),
+        );
+        assert_eq!(value["redis_url"], "redis://127.0.0.1:6379/0");
     }
 }
