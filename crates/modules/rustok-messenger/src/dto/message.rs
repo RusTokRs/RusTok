@@ -38,3 +38,11 @@ pub struct ListMessagesQuery {
     pub before_id: Option<i64>,
     pub after_id: Option<i64>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchMessagesQuery {
+    pub query: String,
+    pub conversation_id: Option<Uuid>,
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
+}

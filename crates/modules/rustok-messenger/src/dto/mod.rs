@@ -7,4 +7,4 @@ pub use conversation::{
     UpdateChannelTranslationInput,
 };
 pub use cursor::{CursorOutput, FastSyncRequest, FastSyncResponse, UpdateCursorInput};
-pub use message::{ListMessagesQuery, MessageOutput, SendMessageInput};
+pub use message::{ListMessagesQuery, MessageOutput, SearchMessagesQuery, SendMessageInput};

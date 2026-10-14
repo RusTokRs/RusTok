@@ -6,13 +6,24 @@
 pub mod controllers;
 pub mod domain;
 pub mod dto;
+pub mod e2ee;
 pub mod entities;
 pub mod error;
+pub mod federation;
 pub mod migrations;
 pub mod module;
 pub mod ports;
 pub mod services;
 pub mod streaming;
+
+pub use federation::{
+    InboundMatrixMessagePayload, MatrixEventBridge, MatrixGatewayAdapter, MatrixRoomBridge,
+};
+
+pub use e2ee::{
+    DeviceKey, DeviceKeyRegistry, E2eeEncryptionAlgo, EncryptedPayload, OneTimePrekey,
+    PrekeyBundle, UploadDeviceKeysInput,
+};
 
 pub use streaming::{
     DEFAULT_MESSENGER_PARTITIONS, MESSENGER_CONSUMER_GROUP, MESSENGER_STREAM_TOPIC,
@@ -25,8 +36,8 @@ pub use domain::{
 };
 pub use dto::{
     ChannelTranslationOutput, ConversationOutput, CreateConversationInput, CursorOutput,
-    FastSyncRequest, FastSyncResponse, ListMessagesQuery, MessageOutput, SendMessageInput,
-    UpdateChannelTranslationInput, UpdateCursorInput,
+    FastSyncRequest, FastSyncResponse, ListMessagesQuery, MessageOutput, SearchMessagesQuery,
+    SendMessageInput, UpdateChannelTranslationInput, UpdateCursorInput,
 };
 pub use controllers::{
     MessengerClientMessage, MessengerHttpRuntime, MessengerRoomHub, MessengerServerMessage, router,

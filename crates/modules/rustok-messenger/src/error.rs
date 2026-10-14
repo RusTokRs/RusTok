@@ -58,6 +58,12 @@ pub enum MessengerError {
     #[error("Unauthorized: valid authenticated context required")]
     Unauthorized,
 
+    #[error("Validation error: {0}")]
+    Validation(String),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
+
     #[error("Internal error: {0}")]
     Internal(String),
 }
@@ -134,6 +140,12 @@ impl From<MessengerError> for rustok_web::HttpError {
             }
             MessengerError::Serialization(msg) => {
                 rustok_web::HttpError::bad_request("serialization_error", msg)
+            }
+            MessengerError::Validation(msg) => {
+                rustok_web::HttpError::bad_request("validation_error", msg)
+            }
+            MessengerError::NotFound(msg) => {
+                rustok_web::HttpError::not_found("not_found", msg)
             }
             MessengerError::Internal(msg) => {
                 tracing::error!("Internal error in messenger module: {msg}");

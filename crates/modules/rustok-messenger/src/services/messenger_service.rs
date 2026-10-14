@@ -418,26 +418,25 @@ impl MessengerService {
             .all(&self.db)
             .await?;
 
-        let mut outputs = Vec::with_capacity(msgs.len());
-        for m in msgs {
-            let m_type = MessageType::try_from(m.message_type).unwrap_or(MessageType::Text);
-            outputs.push(MessageOutput {
-                id: m.id,
-                tenant_id: m.tenant_id,
-                conversation_id: m.conversation_id,
-                sender_id: m.sender_id,
-                message_type: m_type,
-                content: m.content,
-                blocks_json: m.blocks_json,
-                is_encrypted: m.is_encrypted,
-                encryption_algo: m.encryption_algo,
-                reply_to_id: m.reply_to_id,
-                created_at: m.created_at,
-                is_deleted: m.deleted_at.is_some(),
-            });
-        }
+        Ok(msgs.into_iter().map(Self::to_message_output).collect())
+    }
 
-        Ok(outputs)
+    fn to_message_output(m: message::Model) -> MessageOutput {
+        let m_type = MessageType::try_from(m.message_type).unwrap_or(MessageType::Text);
+        MessageOutput {
+            id: m.id,
+            tenant_id: m.tenant_id,
+            conversation_id: m.conversation_id,
+            sender_id: m.sender_id,
+            message_type: m_type,
+            content: m.content,
+            blocks_json: m.blocks_json,
+            is_encrypted: m.is_encrypted,
+            encryption_algo: m.encryption_algo,
+            reply_to_id: m.reply_to_id,
+            created_at: m.created_at,
+            is_deleted: m.deleted_at.is_some(),
+        }
     }
 
     /// FastSync delta replay for offline or reconnecting clients.
@@ -574,5 +573,53 @@ impl MessengerService {
             .await?;
 
         Ok(count as i64)
+    }
+
+    /// Searches unencrypted conversation transcripts accessible to the actor.
+    /// In accordance with Zero-Knowledge E2EE, encrypted conversations are strictly excluded
+    /// from server-side plaintext indexing and search.
+    pub async fn search_messages(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        query: crate::dto::SearchMessagesQuery,
+    ) -> MessengerResult<Vec<MessageOutput>> {
+        let trimmed = query.query.trim();
+        if trimmed.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut select = Message::find()
+            .filter(message::Column::TenantId.eq(tenant_id))
+            .filter(message::Column::DeletedAt.is_null())
+            .filter(message::Column::IsEncrypted.eq(false))
+            .filter(message::Column::Content.contains(trimmed));
+
+        if let Some(conv_id) = query.conversation_id {
+            self.ensure_membership(conv_id, actor_id).await?;
+            select = select.filter(message::Column::ConversationId.eq(conv_id));
+        } else {
+            let memberships = Member::find()
+                .filter(member::Column::UserId.eq(actor_id))
+                .all(&self.db)
+                .await?;
+            let conv_ids: Vec<Uuid> = memberships.into_iter().map(|m| m.conversation_id).collect();
+            if conv_ids.is_empty() {
+                return Ok(Vec::new());
+            }
+            select = select.filter(message::Column::ConversationId.is_in(conv_ids));
+        }
+
+        let limit = query.limit.unwrap_or(20).min(100);
+        let offset = query.offset.unwrap_or(0);
+
+        let messages = select
+            .order_by_desc(message::Column::Id)
+            .limit(limit)
+            .offset(offset)
+            .all(&self.db)
+            .await?;
+
+        Ok(messages.into_iter().map(Self::to_message_output).collect())
     }
 }

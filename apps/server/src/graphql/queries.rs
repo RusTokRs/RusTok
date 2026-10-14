@@ -660,12 +660,16 @@ impl RootQuery {
     ) -> Result<Option<MarketplaceModule>> {
         ensure_modules_read_permission(ctx).await?;
 
+        let trimmed_slug = slug.trim();
+        if trimmed_slug.is_empty() {
+            return Ok(None);
+        }
         let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
         ctx.data::<rustok_modules::SharedModuleMarketplaceCatalog>()?
             .0
             .get(
-                &slug,
+                trimmed_slug,
                 Some(request_context.locale.clone()),
                 Some(tenant.default_locale.clone()),
             )
@@ -694,6 +698,11 @@ impl RootQuery {
         operation_id: Uuid,
     ) -> Result<Option<ModuleOperationRecoveryPlan>> {
         ensure_modules_read_permission(ctx).await?;
+        if operation_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module operation recovery plan operation id must not be nil",
+            ));
+        }
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -729,6 +738,9 @@ impl RootQuery {
         let registry = ctx.data::<ModuleRegistry>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
+        let module_slug = module_slug
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         let plans = ModuleLifecycleService::failed_module_operation_recovery_plans(
             db,
             registry,
@@ -1128,6 +1140,11 @@ impl RootQuery {
         operation_id: Uuid,
     ) -> Result<Option<crate::graphql::transition_lifecycle::ModuleTransitionCheckpointGql>> {
         ensure_modules_read_permission(ctx).await?;
+        if operation_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module transition checkpoint operation id must not be nil",
+            ));
+        }
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let checkpoint = ModuleControlPlane::new(db.clone())

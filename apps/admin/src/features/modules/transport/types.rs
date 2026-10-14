@@ -68,6 +68,8 @@ pub const UNINSTALL_MODULE_MUTATION: &str = "mutation UninstallModule($slug: Str
 
 pub const UPGRADE_MODULE_MUTATION: &str = "mutation UpgradeModule($slug: String!, $version: String!, $expectedRevision: Int!, $idempotencyKey: UUID!) { upgradeModule(slug: $slug, version: $version, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 
+pub const ROLLBACK_TENANT_ARTIFACT_MUTATION: &str = "mutation RollbackTenantArtifact($installationId: UUID!, $expectedRevision: Int!, $reason: String!, $idempotencyKey: UUID!, $targetCapabilityGrantRevision: Int!) { rollbackTenantArtifact(installationId: $installationId, expectedRevision: $expectedRevision, reason: $reason, idempotencyKey: $idempotencyKey, targetCapabilityGrantRevision: $targetCapabilityGrantRevision) { operationId sourceInstallationId targetInstallationId sourceRevision targetRevision } }";
+
 #[cfg(feature = "ssr")]
 pub const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
 
@@ -317,3 +319,23 @@ pub struct ActiveModuleTransitionsResponse {
     #[serde(rename = "activeModuleTransitions")]
     pub active_transitions: Vec<rustok_api::ModuleTransitionCheckpointView>,
 }
+
+#[derive(Clone, Debug, Serialize)]
+pub struct RollbackTenantArtifactVariables {
+    #[serde(rename = "installationId")]
+    pub installation_id: String,
+    #[serde(rename = "expectedRevision")]
+    pub expected_revision: i64,
+    pub reason: String,
+    #[serde(rename = "idempotencyKey")]
+    pub idempotency_key: String,
+    #[serde(rename = "targetCapabilityGrantRevision")]
+    pub target_capability_grant_revision: i64,
+}
+
+#[derive(Deserialize)]
+pub struct RollbackTenantArtifactResponse {
+    #[serde(rename = "rollbackTenantArtifact")]
+    pub rollback: rustok_api::ArtifactRollbackView,
+}
+

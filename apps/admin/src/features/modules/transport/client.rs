@@ -1,8 +1,9 @@
 use rustok_ui_transport::UiTransportPath;
 
 use crate::entities::module::{
-    BuildJob, InstalledModule, MarketplaceModule, ModuleCompositionSnapshot, ModuleEffectivePolicy,
-    ModuleInfo, ModuleOperationRecoveryPlan, TenantModule, ToggleModuleResult,
+    ArtifactRollback, BuildJob, InstalledModule, MarketplaceModule, ModuleCompositionSnapshot,
+    ModuleEffectivePolicy, ModuleInfo, ModuleOperationRecoveryPlan, TenantModule,
+    ToggleModuleResult,
 };
 use crate::shared::api::{ApiError, map_server_fn_error, request};
 
@@ -784,3 +785,42 @@ pub async fn fetch_active_transitions(
         }
     }
 }
+
+pub async fn rollback_tenant_artifact(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    installation_id: String,
+    expected_revision: i64,
+    reason: String,
+    target_capability_grant_revision: i64,
+    idempotency_key: String,
+) -> Result<ArtifactRollback, ApiError> {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => rollback_tenant_artifact_native(
+            installation_id,
+            expected_revision,
+            reason,
+            target_capability_grant_revision,
+            idempotency_key,
+        )
+        .await
+        .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
+            let response: RollbackTenantArtifactResponse = request(
+                ROLLBACK_TENANT_ARTIFACT_MUTATION,
+                serde_json::json!({
+                    "installationId": installation_id,
+                    "expectedRevision": expected_revision,
+                    "reason": reason,
+                    "idempotencyKey": idempotency_key,
+                    "targetCapabilityGrantRevision": target_capability_grant_revision,
+                }),
+                token,
+                tenant_slug,
+            )
+            .await?;
+            Ok(response.rollback)
+        }
+    }
+}
+

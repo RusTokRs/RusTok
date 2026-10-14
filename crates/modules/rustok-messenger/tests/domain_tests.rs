@@ -187,3 +187,25 @@ fn realtime_client_server_wire_messages_serialization() {
     assert!(json.contains("100500"));
 }
 
+#[test]
+fn search_query_serialization_and_contracts() {
+    use rustok_messenger::dto::SearchMessagesQuery;
+
+    let conv_id = Uuid::now_v7();
+    let query = SearchMessagesQuery {
+        query: "urgent shipment".into(),
+        conversation_id: Some(conv_id),
+        limit: Some(25),
+        offset: Some(0),
+    };
+
+    let json = serde_json::to_string(&query).unwrap();
+    assert!(json.contains("urgent shipment"));
+
+    let decoded: SearchMessagesQuery = serde_json::from_str(&json).unwrap();
+    assert_eq!(decoded.query, "urgent shipment");
+    assert_eq!(decoded.conversation_id, Some(conv_id));
+    assert_eq!(decoded.limit, Some(25));
+}
+
+

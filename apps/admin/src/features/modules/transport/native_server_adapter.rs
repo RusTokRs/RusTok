@@ -467,6 +467,89 @@ pub async fn finalize_module_transition_native(
     }
 }
 
+#[server(prefix = "/api/fn", endpoint = "admin/rollback-tenant-artifact")]
+pub async fn rollback_tenant_artifact_native(
+    installation_id: String,
+    expected_revision: i64,
+    reason: String,
+    target_capability_grant_revision: i64,
+    idempotency_key: String,
+) -> Result<rustok_api::ArtifactRollbackView, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::{Permission, has_effective_permission};
+
+        let installation_id_uuid = uuid::Uuid::parse_str(&installation_id)
+            .map_err(|_| server_error("BAD_USER_INPUT: installation_id must be a UUID"))?;
+        let idempotency_key_uuid = uuid::Uuid::parse_str(&idempotency_key)
+            .map_err(|_| server_error("BAD_USER_INPUT: idempotency_key must be a UUID"))?;
+        let trimmed_reason = reason.trim().to_string();
+        if installation_id_uuid.is_nil()
+            || idempotency_key_uuid.is_nil()
+            || expected_revision <= 0
+            || target_capability_grant_revision <= 0
+            || trimmed_reason.is_empty()
+        {
+            return Err(server_error(
+                "BAD_USER_INPUT: Rollback requires non-nil installation and idempotency identities, positive revisions, and a non-empty reason",
+            ));
+        }
+
+        let (app_ctx, auth, tenant) = modules_server_context().await?;
+        if !has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE) {
+            return Err(server_error(
+                "PERMISSION_DENIED: modules:manage required for tenant artifact rollback",
+            ));
+        }
+
+        let expected_revision_u64 = u64::try_from(expected_revision)
+            .map_err(|_| server_error("BAD_USER_INPUT: expected_revision is outside the supported range"))?;
+        let target_grant_rev_u64 = u64::try_from(target_capability_grant_revision)
+            .map_err(|_| server_error("BAD_USER_INPUT: target_capability_grant_revision is outside the supported range"))?;
+
+        let result = rustok_modules::ModuleControlPlane::new(app_ctx.db)
+            .installation()
+            .rollback_artifact(rustok_modules::ArtifactRollbackRequest {
+                installation_id: installation_id_uuid,
+                scope: rustok_modules::ModuleInstallationScope::Tenant { tenant_id: tenant.id },
+                expected_revision: expected_revision_u64,
+                context: rustok_modules::ModuleCommandContext {
+                    actor_id: auth.user_id,
+                    tenant_id: Some(tenant.id),
+                    trace_id: format!("leptos:{idempotency_key}"),
+                    correlation_id: idempotency_key_uuid,
+                    idempotency_key: idempotency_key_uuid,
+                },
+                reason: trimmed_reason,
+                target_capability_grant_revision: target_grant_rev_u64,
+            })
+            .await
+            .map_err(|e| server_error(format!("ROLLBACK_ERROR: {e}")))?;
+
+        Ok(rustok_api::ArtifactRollbackView {
+            operation_id: result.operation_id.to_string(),
+            source_installation_id: installation_id,
+            target_installation_id: result.target_installation_id.to_string(),
+            source_revision: i64::try_from(result.source_revision).unwrap_or(0),
+            target_revision: i64::try_from(result.target_revision).unwrap_or(0),
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (
+            installation_id,
+            expected_revision,
+            reason,
+            target_capability_grant_revision,
+            idempotency_key,
+        );
+        Err(ServerFnError::new(
+            "admin/rollback-tenant-artifact requires the `ssr` feature",
+        ))
+    }
+}
+
+
 #[server(prefix = "/api/fn", endpoint = "admin/module-effective-policy")]
 pub async fn module_effective_policy_native()
 -> Result<rustok_api::ModuleEffectivePolicyView, ServerFnError> {

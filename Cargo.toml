@@ -58,6 +58,7 @@ members = [
     "crates/modules/rustok-events-module",
     "crates/modules/rustok-events-module/admin",
     "crates/modules/rustok-iggy-connector/admin",
+    "crates/modules/rustok-messenger/admin",
     "crates/modules/rustok-notifications/admin",
     "crates/modules/rustok-notifications/storefront",
     "crates/modules/rustok-forum/admin",

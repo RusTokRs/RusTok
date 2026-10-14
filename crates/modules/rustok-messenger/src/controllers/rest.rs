@@ -11,8 +11,8 @@ use uuid::Uuid;
 use super::{MessengerHttpRuntime, ensure_messenger_module_enabled};
 use crate::dto::{
     ChannelTranslationOutput, ConversationOutput, CreateConversationInput, CursorOutput,
-    FastSyncRequest, FastSyncResponse, ListMessagesQuery, MessageOutput, SendMessageInput,
-    UpdateChannelTranslationInput, UpdateCursorInput,
+    FastSyncRequest, FastSyncResponse, ListMessagesQuery, MessageOutput, SearchMessagesQuery,
+    SendMessageInput, UpdateChannelTranslationInput, UpdateCursorInput,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -222,6 +222,25 @@ pub async fn update_cursor(
         conversation_id,
         super::MessengerServerMessage::CursorAdvanced(output.clone()),
     );
+
+    Ok(Json(output))
+}
+
+pub async fn search_messages(
+    State(runtime): State<MessengerHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Query(query): Query<SearchMessagesQuery>,
+) -> HttpResult<Json<Vec<MessageOutput>>> {
+    let tenant_id = tenant.id;
+    ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+
+    let actor_id = auth.user_id;
+
+    let output = runtime
+        .service
+        .search_messages(tenant_id, actor_id, query)
+        .await?;
 
     Ok(Json(output))
 }

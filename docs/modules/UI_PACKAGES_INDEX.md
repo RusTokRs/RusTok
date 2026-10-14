@@ -126,6 +126,7 @@ integration. The canonical source of truth here is only manifest wiring.
 - `rustok-media` admin UI: [README](../../crates/modules/rustok-media/admin/README.md)
 - `rustok-comments` admin UI: [README](../../crates/modules/rustok-comments/admin/README.md)
 - `rustok-forms` admin UI: [README](../../crates/modules/rustok-forms/admin/README.md)
+- `rustok-messenger` admin UI: [README](../../crates/modules/rustok-messenger/admin/README.md)
 - `rustok-workflow` admin UI: [README](../../crates/modules/rustok-workflow/admin/README.md)
 - `rustok-translation` admin UI:
   [README](../../crates/modules/rustok-translation/admin/README.md). The

@@ -70,6 +70,7 @@ pub fn router(runtime: MessengerHttpRuntime) -> Router {
             put(rest::update_channel_translation),
         )
         .route("/messages", post(rest::send_message))
+        .route("/messages/search", get(rest::search_messages))
         .route(
             "/conversations/{conversation_id}/messages",
             get(rest::list_messages),

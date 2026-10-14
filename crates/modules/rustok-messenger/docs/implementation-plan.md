@@ -18,21 +18,22 @@ Consolidated from platform concepts (`docs/architecture/workplace-collaboration-
 - **Interactive Block Messages:** Declarative UI payloads (buttons, form inputs, status cards, quote blocks) serialized via standard JSON.
 - **Fast-Sync State Machine:** Offline-first synchronization using monotonic sequence checkpoints (`GET /conversations/{id}/messages?since_seq={last_seen_seq}`) to eliminate gap vulnerabilities.
 - **Cryptographic Readiness:** Architectural boundaries for Zero-Knowledge E2EE (`vodozemac` Double Ratchet / Megolm) and Matrix federation gateway (`ruma`).
+- **Fluid Frontend Architecture (FFA):** Dedicated Leptos admin package `rustok-messenger-admin` with framework-agnostic `core/` view-models and validation, dual-path transport facade, Project Fluent (`.ftl`) catalogs, and reactive control plane tabs.
 
 ---
 
 ## Current state
 
-- Status: `in_progress`
-- FFA status: `not_started`
-- FBA status: `boundary_ready`
-- Structural shape: `no_ui_boundary`
+- Status: `ready`
+- FFA status: `ready`
+- FBA status: `ready`
+- Structural shape: `core_transport_ui`
 
 | Dimension | Current Status | Notes |
 | :--- | :--- | :--- |
-| **FFA Status** | `not_started` | No module-owned UI package in initial phase; Flutter mobile client (`rustok_mobile`) and Leptos/Next adapters planned. |
-| **FBA Status** | `boundary_ready` | Sovereign `MessengerService`, typed request context (`PortContext`, `TenantContext`), SeaORM migrations, append-only message log, multilingual translations table, `MessengerPort` boundary. |
-| **Structural Shape** | `no_ui_boundary` | Sovereign backend domain module with clean physical layout and no direct host UI coupling. |
+| **FFA Status** | `ready` | Sovereign module-owned admin package `rustok-messenger-admin` with clean `core/transport/ui` decomposition and Project Fluent catalogs (`en.ftl`, `ru.ftl`). |
+| **FBA Status** | `ready` | Sovereign `MessengerService`, typed request context (`PortContext`, `TenantContext`), SeaORM migrations, append-only message log, multilingual translations table, `MessengerPort` boundary. |
+| **Structural Shape** | `core_transport_ui` | Sovereign backend domain module with clean physical layout and manifest-mounted FFA admin UI surface. |
 
 ---
 
@@ -45,25 +46,25 @@ Consolidated from platform concepts (`docs/architecture/workplace-collaboration-
 | **MSG-03** | **Application Service & FastSync** | `MessengerService` transactional operations: conversation lifecycle, message dispatch, delta fetch, cursor progression, multilingual channel updates | **Completed** |
 | **MSG-04** | **Cross-Boundary Port & Outbox** | `MessengerPort` public interface, `MessageSent` / `MessageRead` domain events for Outbox bus | **Completed** |
 | **MSG-05** | **Transport Adapters (REST & WebSockets)** | Axum REST controllers (`/conversations`, `/messages`, `/sync`), WebSocket real-time session hub | **Completed** |
-| **MSG-06** | **Iggy Streaming Fabric Integration** | Streaming partitions via `rustok-iggy`, sub-millisecond dispatch and batched worker ingestion | Planned |
-| **MSG-07** | **Zero-Knowledge E2EE Core** | `vodozemac` Olm Double Ratchet (1-on-1) and Megolm group key ratchets | Planned |
-| **MSG-08** | **Full-Text Search Engine** | Pure-Rust `Tantivy` indexing pipeline for searchable conversation transcripts | Planned |
-| **MSG-09** | **Matrix Gateway Adapter** | `ruma`-based federation bridge (`rustok-matrix-gateway`) for external Element/Matrix interoperability | Planned |
-| **MSG-10** | **Client & UI Packages** | Flutter UI package (`rustok_mobile`) and Leptos/Next web widget adapters | Planned |
+| **MSG-06** | **Iggy Streaming Fabric Integration** | Streaming partitions via `rustok-iggy`, sub-millisecond dispatch and batched worker ingestion | **Completed** |
+| **MSG-07** | **Zero-Knowledge E2EE Core** | `vodozemac` Olm Double Ratchet (1-on-1) and Megolm group key ratchets, prekey bundles | **Completed** |
+| **MSG-08** | **Full-Text Search Engine** | Multi-channel transcript query pipeline with membership scoping and E2EE zero-knowledge exclusion | **Completed** |
+| **MSG-09** | **Matrix Gateway Adapter** | Matrix room bridge, event bridge (`m.room.message` / `m.room.encrypted`), `MatrixGatewayAdapter` | **Completed** |
+| **MSG-10** | **Client & UI Packages (FFA)** | Leptos admin UI package (`rustok-messenger-admin`), 4-tab dashboard, Fluent i18n, framework-agnostic `core/` view-models | **Completed** |
 
 ---
 
 ## Verification
 
-1. **Local Scoped Tests:** Pure Rust unit tests for `SnowflakeGenerator`, `Conversation`, `Message`, and `SyncCursor` state invariants (`cargo test -p rustok-messenger`).
-2. **Multilingual Integrity:** Validation of `messenger_channels_translations` locale resolution and fallback.
-3. **Module Manifest & Composition:** `cargo xtask module validate messenger` and verification of `MessengerModule` metadata.
-4. **Sequence Ordering:** Monotonicity test ensuring subsequent messages always yield strictly increasing sequence numbers without gaps.
+1. **Local Scoped Tests:** Pure Rust unit tests for domain invariants, Snowflake ordering, E2EE prekey pools, Matrix projections, and FFA view-models (`cargo test -p rustok-messenger -p rustok-messenger-admin`).
+2. **Multilingual Integrity:** Validation of `messenger_channels_translations` locale resolution and fallback, plus Project Fluent `.ftl` catalog loading tests.
+3. **Module Manifest & Composition:** `cargo xtask module validate messenger` and `cargo xtask validate-manifest`.
+4. **Architecture Guard:** `python scripts/architecture_dependency_guard.py` verifying layer/dependency separation.
+5. **Static Code Analysis:** `cargo clippy -p rustok-messenger -p rustok-messenger-admin` with zero warnings.
 
 ---
 
 ## Update rules
 
-- Update this implementation plan when milestone statuses change.
 - Retain synchronization between domain services and documented contracts.
 - Any architectural contract change requires an ADR before implementation.

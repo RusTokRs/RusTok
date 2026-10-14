@@ -90,7 +90,8 @@ pub use module_policy::{
 };
 pub use module_registry_contract::{StaticModuleRegistryView, is_valid_module_slug};
 pub use module_transition::{
-    ModuleRetentionHoldView, ModuleTransitionCheckpointView, ModuleTransitionStateView,
+    ArtifactRollbackView, ModuleRetentionHoldView, ModuleTransitionCheckpointView,
+    ModuleTransitionStateView,
 };
 pub use module_work::{
     ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,

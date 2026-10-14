@@ -13601,6 +13601,7 @@ dependencies = [
  "rustok-mcp-admin",
  "rustok-media",
  "rustok-media-admin",
+ "rustok-messenger-admin",
  "rustok-modules",
  "rustok-notifications-admin",
  "rustok-order-admin",
@@ -15817,6 +15818,31 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-messenger-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-messenger",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
  "tracing",
  "uuid",
 ]
