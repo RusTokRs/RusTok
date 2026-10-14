@@ -90,6 +90,7 @@ pub struct InstallStatusResponse {
 }
 
 async fn status(State(ctx): State<ServerRuntimeContext>) -> Result<Json<InstallStatusResponse>> {
+    tracing::debug!("Handling installer status request");
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
     let completed = match persistence.has_completed_session().await {
         Ok(completed) => completed,
@@ -144,6 +145,7 @@ async fn plan(
     State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPlanResponse>> {
+    tracing::debug!(environment = ?plan.environment, "Handling installer plan request");
     require_setup_token(&headers)?;
     ensure_setup_not_completed(&ctx).await?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
@@ -157,6 +159,7 @@ async fn preflight(
     State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPreflightResponse>> {
+    tracing::debug!(environment = ?plan.environment, "Handling installer preflight request");
     require_setup_token(&headers)?;
     ensure_setup_not_completed(&ctx).await?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
@@ -186,6 +189,7 @@ async fn apply(
     State(ctx): State<ServerRuntimeContext>,
     Json(request): Json<InstallApplyRequest>,
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
+    tracing::debug!(environment = ?request.plan.environment, "Handling installer apply request");
     require_setup_token(&headers)?;
     ensure_setup_not_completed(&ctx).await?;
 
@@ -426,6 +430,7 @@ async fn job_status(
     State(ctx): State<ServerRuntimeContext>,
     Path(job_id): Path<Uuid>,
 ) -> Result<Json<InstallJobStatusResponse>> {
+    tracing::debug!(%job_id, "Handling installer job status request");
     require_setup_token(&headers)?;
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
     let Some(job) = persistence.get_http_job(job_id).await.map_err(|error| {
@@ -481,6 +486,7 @@ async fn receipts(
     State(ctx): State<ServerRuntimeContext>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<InstallReceiptsResponse>> {
+    tracing::debug!(%session_id, "Handling installer receipts request");
     require_setup_token(&headers)?;
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
     let receipts = persistence
@@ -492,6 +498,56 @@ async fn receipts(
         session_id,
         receipts,
     }))
+}
+
+fn extract_setup_token(headers: &HeaderMap) -> Result<Option<String>> {
+    let custom_count = headers.get_all("x-rustok-setup-token").iter().count();
+    if custom_count > 1 {
+        return Err(forbidden_error("duplicate x-rustok-setup-token header"));
+    }
+
+    let auth_count = headers.get_all(axum::http::header::AUTHORIZATION).iter().count();
+    if auth_count > 1 {
+        return Err(forbidden_error("duplicate authorization header"));
+    }
+
+    if let Some(custom) = headers.get("x-rustok-setup-token") {
+        let token_str = custom
+            .to_str()
+            .map_err(|_| forbidden_error("invalid setup token header encoding"))?;
+        let token = token_str.trim().trim_matches('"');
+        if !token.is_empty() {
+            return Ok(Some(token.to_string()));
+        }
+    }
+
+    if let Some(auth) = headers.get(axum::http::header::AUTHORIZATION) {
+        let auth_str = auth
+            .to_str()
+            .map_err(|_| forbidden_error("invalid authorization header encoding"))?;
+        let trimmed = auth_str.trim();
+        if let Some(token) = trimmed
+            .strip_prefix("Bearer ")
+            .or_else(|| trimmed.strip_prefix("bearer "))
+        {
+            let token = token.trim().trim_matches('"');
+            if !token.is_empty() {
+                return Ok(Some(token.to_string()));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+fn validate_setup_token_value(provided: Option<&str>, expected: &str) -> bool {
+    let expected_trimmed = expected.trim();
+    if expected_trimmed.is_empty() {
+        return false;
+    }
+    provided.is_some_and(|value| {
+        bool::from(value.as_bytes().ct_eq(expected_trimmed.as_bytes()))
+    })
 }
 
 fn require_setup_token(headers: &HeaderMap) -> Result<()> {
@@ -508,20 +564,8 @@ fn require_setup_token(headers: &HeaderMap) -> Result<()> {
         return Ok(());
     };
 
-    let provided = headers
-        .get("x-rustok-setup-token")
-        .and_then(|value| value.to_str().ok())
-        .or_else(|| {
-            headers
-                .get(axum::http::header::AUTHORIZATION)
-                .and_then(|value| value.to_str().ok())
-                .and_then(|value| value.strip_prefix("Bearer "))
-        });
-
-    let is_valid =
-        provided.is_some_and(|value| bool::from(value.as_bytes().ct_eq(expected.as_bytes())));
-
-    if is_valid {
+    let provided = extract_setup_token(headers)?;
+    if validate_setup_token_value(provided.as_deref(), &expected) {
         Ok(())
     } else {
         Err(forbidden_error("invalid installer setup token"))
@@ -669,5 +713,71 @@ mod tests {
         );
         let result = install_job_status_response(model);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn extract_setup_token_from_custom_header_handles_quotes() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::HeaderName::from_static("x-rustok-setup-token"),
+            axum::http::HeaderValue::from_static("\"my-secret-token\""),
+        );
+        let token = extract_setup_token(&headers).expect("should succeed");
+        assert_eq!(token.as_deref(), Some("my-secret-token"));
+    }
+
+    #[test]
+    fn extract_setup_token_from_bearer_handles_case_and_quotes() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_static("Bearer \"bearer-secret-token\""),
+        );
+        let token = extract_setup_token(&headers).expect("should succeed");
+        assert_eq!(token.as_deref(), Some("bearer-secret-token"));
+
+        let mut headers2 = HeaderMap::new();
+        headers2.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_static("bearer token-without-quotes"),
+        );
+        let token2 = extract_setup_token(&headers2).expect("should succeed");
+        assert_eq!(token2.as_deref(), Some("token-without-quotes"));
+    }
+
+    #[test]
+    fn extract_setup_token_rejects_duplicate_headers() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            axum::http::HeaderName::from_static("x-rustok-setup-token"),
+            axum::http::HeaderValue::from_static("token-1"),
+        );
+        headers.append(
+            axum::http::HeaderName::from_static("x-rustok-setup-token"),
+            axum::http::HeaderValue::from_static("token-2"),
+        );
+        let err = extract_setup_token(&headers).unwrap_err();
+        assert!(matches!(err, Error::Http(ref e) if e.status == StatusCode::FORBIDDEN));
+
+        let mut auth_headers = HeaderMap::new();
+        auth_headers.append(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_static("Bearer token-1"),
+        );
+        auth_headers.append(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_static("Bearer token-2"),
+        );
+        let auth_err = extract_setup_token(&auth_headers).unwrap_err();
+        assert!(matches!(auth_err, Error::Http(ref e) if e.status == StatusCode::FORBIDDEN));
+    }
+
+    #[test]
+    fn validate_setup_token_value_compares_constant_time() {
+        assert!(validate_setup_token_value(Some("secret123"), "secret123"));
+        assert!(validate_setup_token_value(Some("secret123"), "  secret123  "));
+        assert!(!validate_setup_token_value(Some("wrong"), "secret123"));
+        assert!(!validate_setup_token_value(None, "secret123"));
+        assert!(!validate_setup_token_value(Some("secret123"), "   "));
     }
 }
