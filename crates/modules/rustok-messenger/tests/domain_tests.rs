@@ -208,4 +208,74 @@ fn search_query_serialization_and_contracts() {
     assert_eq!(decoded.limit, Some(25));
 }
 
+#[test]
+fn e2ee_device_audit_and_total_count() {
+    use rustok_messenger::e2ee::{DeviceKeyRegistry, OneTimePrekeyInput, UploadDeviceKeysInput};
+
+    let registry = DeviceKeyRegistry::new();
+    assert_eq!(registry.total_devices_count(), 0);
+
+    let user_id = Uuid::now_v7();
+    registry
+        .register_device_keys(
+            user_id,
+            UploadDeviceKeysInput {
+                device_id: "phone_1".into(),
+                identity_key: "ed_pub_key_1".into(),
+                curve25519_key: "curve_pub_key_1".into(),
+                signature: "sig_1".into(),
+                one_time_prekeys: vec![
+                    OneTimePrekeyInput {
+                        key_id: "otk_1".into(),
+                        key_material: "mat_1".into(),
+                        signature: None,
+                    },
+                    OneTimePrekeyInput {
+                        key_id: "otk_2".into(),
+                        key_material: "mat_2".into(),
+                        signature: None,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+
+    assert_eq!(registry.total_devices_count(), 1);
+
+    let audits = registry.list_all_devices_audit();
+    assert_eq!(audits.len(), 1);
+    assert_eq!(audits[0].0.device_id, "phone_1");
+    assert_eq!(audits[0].1, 2); // 2 unconsumed OTKs
+
+    // Claim 1 OTK
+    let bundle = registry.claim_prekey_bundle(user_id, "phone_1").unwrap();
+    assert!(bundle.one_time_prekey.is_some());
+
+    let audits_after = registry.list_all_devices_audit();
+    assert_eq!(audits_after[0].1, 1); // 1 unconsumed OTK remains
+}
+
+#[cfg(feature = "graphql")]
+#[tokio::test]
+async fn messenger_graphql_schema_build_and_execute() {
+    use async_graphql::{EmptySubscription, Schema};
+    use rustok_messenger::graphql::{MessengerMutation, MessengerQuery};
+
+    let schema = Schema::build(
+        MessengerQuery::default(),
+        MessengerMutation::default(),
+        EmptySubscription,
+    )
+    .finish();
+
+    let sdl = schema.sdl();
+    assert!(sdl.contains("messengerOverview: MessengerOverviewGql!"));
+    assert!(sdl.contains("messengerChannels: [MessengerChannelListItemGql!]!"));
+    assert!(sdl.contains("messengerE2eeDevices: [MessengerE2eeDeviceAuditGql!]!"));
+    assert!(sdl.contains("createMessengerChannel"));
+    assert!(sdl.contains("uploadDeviceKeys"));
+    assert!(sdl.contains("claimPrekeyBundle"));
+}
+
+
 

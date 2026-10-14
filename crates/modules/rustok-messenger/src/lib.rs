@@ -40,9 +40,21 @@ pub use dto::{
     SendMessageInput, UpdateChannelTranslationInput, UpdateCursorInput,
 };
 pub use controllers::{
-    MessengerClientMessage, MessengerHttpRuntime, MessengerRoomHub, MessengerServerMessage, router,
+    axum_router, MessengerClientMessage, MessengerHttpRuntime, MessengerRoomHub,
+    MessengerServerMessage, router,
 };
 pub use error::{MessengerError, MessengerResult};
 pub use module::MessengerModule;
 pub use ports::{MessengerPort, MessengerPortAdapter};
 pub use services::MessengerService;
+
+#[cfg(feature = "graphql")]
+pub mod graphql;
+
+#[cfg(feature = "graphql")]
+pub use graphql::{
+    attach_schema_data, CreateMessengerChannelGqlInput, DeviceKeyGql,
+    MessengerChannelListItemGql, MessengerE2eeDeviceAuditGql, MessengerGraphqlRuntimeData,
+    MessengerMutation, MessengerOverviewGql, MessengerQuery, OneTimePrekeyGql, PrekeyBundleGql,
+    UploadDeviceKeysGqlInput,
+};

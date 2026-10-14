@@ -83,6 +83,30 @@ impl DeviceKeyRegistry {
             .collect()
     }
 
+    /// Returns the total number of registered devices.
+    pub fn total_devices_count(&self) -> usize {
+        let read_guard = self.devices.read().unwrap();
+        read_guard.len()
+    }
+
+    /// Lists all registered devices with their unconsumed OTK count for security audit.
+    pub fn list_all_devices_audit(&self) -> Vec<(DeviceKey, usize)> {
+        let read_devices = self.devices.read().unwrap();
+        let read_prekeys = self.prekeys.read().unwrap();
+
+        read_devices
+            .values()
+            .map(|dev| {
+                let lookup_key = (dev.user_id, dev.device_id.clone());
+                let otk_count = read_prekeys
+                    .get(&lookup_key)
+                    .map(|pool| pool.iter().filter(|k| !k.consumed).count())
+                    .unwrap_or(0);
+                (dev.clone(), otk_count)
+            })
+            .collect()
+    }
+
     /// Atomically claims a prekey bundle for a target user device.
     /// If an unconsumed one-time prekey is available, it is marked as consumed.
     pub fn claim_prekey_bundle(

@@ -29,6 +29,7 @@ pub const DEFAULT_MESSAGE_PAGE_LIMIT: u64 = 50;
 pub struct MessengerService {
     db: DatabaseConnection,
     snowflake: Arc<SnowflakeGenerator>,
+    device_keys: Arc<crate::e2ee::DeviceKeyRegistry>,
 }
 
 impl MessengerService {
@@ -36,7 +37,66 @@ impl MessengerService {
         Self {
             db,
             snowflake: Arc::new(SnowflakeGenerator::new(worker_id)),
+            device_keys: Arc::new(crate::e2ee::DeviceKeyRegistry::new()),
         }
+    }
+
+    pub fn with_device_keys(mut self, device_keys: Arc<crate::e2ee::DeviceKeyRegistry>) -> Self {
+        self.device_keys = device_keys;
+        self
+    }
+
+    pub fn device_keys(&self) -> &Arc<crate::e2ee::DeviceKeyRegistry> {
+        &self.device_keys
+    }
+
+    /// Retrieve active conversation count and registered E2EE device count for a tenant.
+    pub async fn get_overview_counts(&self, tenant_id: Uuid) -> MessengerResult<(usize, usize)> {
+        let conv_count = Conversation::find()
+            .filter(conversation::Column::TenantId.eq(tenant_id))
+            .count(&self.db)
+            .await? as usize;
+        let device_count = self.device_keys.total_devices_count();
+        Ok((conv_count, device_count))
+    }
+
+    /// Lists channels for administrative inspection including title fallback and member counts.
+    pub async fn list_channels_summary(
+        &self,
+        tenant_id: Uuid,
+        limit: u64,
+        offset: u64,
+    ) -> MessengerResult<Vec<(conversation::Model, Option<String>, Option<String>, usize)>> {
+        let convs = Conversation::find()
+            .filter(conversation::Column::TenantId.eq(tenant_id))
+            .order_by_desc(conversation::Column::CreatedAt)
+            .limit(limit)
+            .offset(offset)
+            .all(&self.db)
+            .await?;
+
+        let mut results = Vec::with_capacity(convs.len());
+        for c in convs {
+            let translation = ChannelTranslation::find()
+                .filter(channel_translation::Column::ChannelId.eq(c.id))
+                .one(&self.db)
+                .await?;
+
+            let title = translation
+                .as_ref()
+                .map(|t| t.title.clone())
+                .or_else(|| c.title.clone());
+            let topic = translation.and_then(|t| t.description);
+
+            let member_count = Member::find()
+                .filter(member::Column::ConversationId.eq(c.id))
+                .count(&self.db)
+                .await? as usize;
+
+            results.push((c, title, topic, member_count));
+        }
+
+        Ok(results)
     }
 
     /// Create a new conversation, channel, or direct message dialogue.

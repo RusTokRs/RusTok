@@ -244,3 +244,53 @@ pub async fn search_messages(
 
     Ok(Json(output))
 }
+
+pub async fn upload_device_keys(
+    State(runtime): State<MessengerHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Json(input): Json<crate::e2ee::UploadDeviceKeysInput>,
+) -> HttpResult<(StatusCode, Json<crate::e2ee::DeviceKey>)> {
+    let tenant_id = tenant.id;
+    ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+
+    let actor_id = auth.user_id;
+    let device_key = runtime
+        .service
+        .device_keys()
+        .register_device_keys(actor_id, input)
+        .map_err(|e| HttpError::bad_request("REGISTRATION_FAILED", e.to_string()))?;
+
+    Ok((StatusCode::CREATED, Json(device_key)))
+}
+
+pub async fn list_user_devices(
+    State(runtime): State<MessengerHttpRuntime>,
+    tenant: TenantContext,
+    _auth: AuthContext,
+    Path(user_id): Path<Uuid>,
+) -> HttpResult<Json<Vec<crate::e2ee::DeviceKey>>> {
+    let tenant_id = tenant.id;
+    ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+
+    let devices = runtime.service.device_keys().list_user_devices(user_id);
+    Ok(Json(devices))
+}
+
+pub async fn claim_prekey_bundle(
+    State(runtime): State<MessengerHttpRuntime>,
+    tenant: TenantContext,
+    _auth: AuthContext,
+    Path((target_user_id, device_id)): Path<(Uuid, String)>,
+) -> HttpResult<Json<crate::e2ee::PrekeyBundle>> {
+    let tenant_id = tenant.id;
+    ensure_messenger_module_enabled(&runtime.db, tenant_id).await?;
+
+    let bundle = runtime
+        .service
+        .device_keys()
+        .claim_prekey_bundle(target_user_id, &device_id)
+        .map_err(|e| HttpError::not_found("DEVICE_NOT_FOUND", e.to_string()))?;
+
+    Ok(Json(bundle))
+}

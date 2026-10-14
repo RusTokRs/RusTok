@@ -62,6 +62,51 @@ pub async fn ensure_messenger_module_enabled(
 /// Build Axum Router for messenger endpoints.
 pub fn router(runtime: MessengerHttpRuntime) -> Router {
     Router::new()
+        // Canonical API routes
+        .route(
+            "/api/messenger/conversations",
+            post(rest::create_conversation).get(rest::list_conversations),
+        )
+        .route(
+            "/api/messenger/conversations/{id}",
+            get(rest::get_conversation),
+        )
+        .route(
+            "/api/messenger/channels/{id}/translations",
+            put(rest::update_channel_translation),
+        )
+        .route("/api/messenger/messages", post(rest::send_message))
+        .route(
+            "/api/messenger/messages/search",
+            get(rest::search_messages),
+        )
+        .route(
+            "/api/messenger/conversations/{conversation_id}/messages",
+            get(rest::list_messages),
+        )
+        .route(
+            "/api/messenger/conversations/{conversation_id}/sync",
+            get(rest::fast_sync),
+        )
+        .route(
+            "/api/messenger/conversations/{conversation_id}/cursor",
+            post(rest::update_cursor),
+        )
+        .route(
+            "/api/messenger/conversations/{conversation_id}/ws",
+            get(realtime::ws_handler),
+        )
+        // E2EE cryptographic identity and prekey exchange routes
+        .route("/api/messenger/e2ee/keys", post(rest::upload_device_keys))
+        .route(
+            "/api/messenger/e2ee/devices/{user_id}",
+            get(rest::list_user_devices),
+        )
+        .route(
+            "/api/messenger/e2ee/prekeys/{target_user_id}/{device_id}/claim",
+            post(rest::claim_prekey_bundle),
+        )
+        // Legacy path aliases preserved for backwards-compatibility
         .route("/conversations", post(rest::create_conversation))
         .route("/conversations", get(rest::list_conversations))
         .route("/conversations/{id}", get(rest::get_conversation))
@@ -88,4 +133,10 @@ pub fn router(runtime: MessengerHttpRuntime) -> Router {
             get(realtime::ws_handler),
         )
         .with_state(runtime)
+}
+
+/// Construct the Axum router directly from the platform host runtime.
+pub fn axum_router(host_runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
+    let runtime = MessengerHttpRuntime::from_host(host_runtime);
+    Ok(router(runtime))
 }

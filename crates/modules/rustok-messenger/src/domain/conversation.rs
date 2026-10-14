@@ -30,6 +30,17 @@ impl TryFrom<i16> for ConversationType {
     }
 }
 
+impl ConversationType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::Group => "group",
+            Self::Channel => "channel",
+            Self::EntityThread => "thread",
+        }
+    }
+}
+
 /// Sovereign conversation domain aggregate.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Conversation {

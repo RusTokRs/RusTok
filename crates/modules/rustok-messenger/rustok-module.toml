@@ -19,7 +19,12 @@ outbox = { version_req = ">=0.1.0" }
 entry_type = "MessengerModule"
 
 [provides.http]
-axum_router = "controllers::router"
+axum_router = "controllers::axum_router"
+
+[provides.graphql]
+query = "graphql::MessengerQuery"
+mutation = "graphql::MessengerMutation"
+runtime_data_factory = "graphql::attach_schema_data"
 
 [provides.admin_ui]
 leptos_crate = "rustok-messenger-admin"
