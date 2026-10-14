@@ -62,6 +62,7 @@ static RBAC_CONSISTENCY_QUERY_LATENCY_SAMPLES: AtomicU64 = AtomicU64::new(0);
     )
 )]
 pub async fn metrics(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
+    tracing::debug!("metrics::metrics entry");
     match rustok_telemetry::metrics_handle() {
         Some(handle) => {
             sync_rate_limit_metrics(&ctx).await;
@@ -88,7 +89,12 @@ pub async fn metrics(State(ctx): State<ServerRuntimeContext>) -> Result<Response
             )
                 .into_response())
         }
-        None => Ok((StatusCode::SERVICE_UNAVAILABLE, "metrics disabled").into_response()),
+        None => Ok((
+            StatusCode::SERVICE_UNAVAILABLE,
+            [(CONTENT_TYPE, "text/plain; charset=utf-8")],
+            "metrics disabled",
+        )
+            .into_response()),
     }
 }
 
@@ -856,6 +862,10 @@ mod tests {
     };
     use rustok_cache::CacheService;
     use rustok_outbox::RelayMetricsSnapshot;
+    use axum::{
+        http::{StatusCode, header::CONTENT_TYPE},
+        response::IntoResponse,
+    };
 
     fn assert_metric_line(payload: &str, metric_name: &str) {
         let has_exact_line = payload.lines().any(|line| {
@@ -1256,5 +1266,20 @@ mod tests {
         assert!(payload.contains("rustok_runtime_guardrail_host_mode{mode=\"full\"} 1"));
         assert!(payload.contains("rustok_runtime_guardrail_remote_executor_enabled 1"));
         assert!(payload.contains("rustok_runtime_guardrail_remote_executor_expired_claims 1"));
+    }
+
+    #[test]
+    fn disabled_metrics_response_has_status_and_content_type() {
+        let response = (
+            StatusCode::SERVICE_UNAVAILABLE,
+            [(CONTENT_TYPE, "text/plain; charset=utf-8")],
+            "metrics disabled",
+        )
+            .into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            response.headers().get(CONTENT_TYPE).unwrap(),
+            "text/plain; charset=utf-8"
+        );
     }
 }
