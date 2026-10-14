@@ -432,6 +432,10 @@ pub mod module_event_dispatcher {
             let registry = ModuleRegistry::new()
                 .register(IndexModule)
                 .register(rustok_social_graph::SocialGraphModule);
+            #[cfg(feature = "mod-reactions")]
+            let registry = registry.register(rustok_reactions::ReactionsModule);
+            #[cfg(feature = "mod-moderation")]
+            let registry = registry.register(rustok_moderation::ModerationModule);
             let settings = RustokSettings::default();
             let db = Database::connect("sqlite::memory:")
                 .await

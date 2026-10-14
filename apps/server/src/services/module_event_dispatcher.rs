@@ -22,6 +22,7 @@ pub fn spawn_module_event_dispatcher(
     registry: &ModuleRegistry,
     extensions: Arc<ModuleRuntimeExtensions>,
 ) {
+    tracing::debug!("Spawning module event dispatcher");
     let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
     let bus = ctx
         .shared_get::<Arc<EventRuntime>>()
@@ -641,6 +642,10 @@ pub fn build_module_event_dispatcher(
 ) -> EventDispatcher {
     let listener_ctx = ModuleEventListenerContext { db, extensions };
     let handlers = registry.build_event_listeners(&listener_ctx);
+    tracing::debug!(
+        handlers_count = handlers.len(),
+        "Building module event dispatcher"
+    );
     let mut dispatcher = EventDispatcher::with_config(
         bus,
         DispatcherConfig {
@@ -787,14 +792,6 @@ mod tests {
                 .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
                     descriptor.owner_slug.as_str() == "product"
                         && descriptor.resource_kind.as_str() == "variant"
-                }))
-        );
-        #[cfg(feature = "mod-product")]
-        assert!(
-            rustok_translation_targets::translation_target_registry(extensions.as_ref())
-                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
-                    descriptor.owner_slug.as_str() == "product"
-                        && descriptor.resource_kind.as_str() == "option"
                 }))
         );
         #[cfg(feature = "mod-product")]

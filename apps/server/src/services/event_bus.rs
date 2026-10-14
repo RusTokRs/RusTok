@@ -64,6 +64,7 @@ impl EventForwarderHandle {
 }
 
 pub fn event_bus_from_context(ctx: &ServerRuntimeContext) -> EventBus {
+    tracing::debug!("Resolving EventBus from ServerRuntimeContext");
     let _ = ctx.shared_insert_if_absent(EventBusStartLock::default());
     let start_lock = ctx.shared_get::<EventBusStartLock>().unwrap_or_default();
     let _start_guard = start_lock
@@ -159,6 +160,7 @@ async fn run_event_forwarder(
 }
 
 pub fn transactional_event_bus_from_context(ctx: &ServerRuntimeContext) -> TransactionalEventBus {
+    tracing::debug!("Resolving TransactionalEventBus from ServerRuntimeContext");
     let transport = if let Some(transport) = ctx.shared_get::<Arc<dyn EventTransport>>() {
         transport
     } else {
@@ -184,6 +186,12 @@ fn build_event_bus(ctx: &ServerRuntimeContext, settings: Option<&RustokSettings>
         return EventBus::with_capacity(runtime.channel_capacity);
     };
 
+    tracing::debug!(
+        capacity = runtime.channel_capacity,
+        backpressure = settings.events.backpressure.enabled,
+        "Building EventBus from runtime context"
+    );
+
     if settings.events.backpressure.enabled {
         let config = &settings.events.backpressure;
         return EventBus::with_backpressure(
@@ -201,7 +209,15 @@ fn build_event_bus(ctx: &ServerRuntimeContext, settings: Option<&RustokSettings>
 
 #[cfg(test)]
 mod tests {
-    use super::EventForwarderHandle;
+    use super::{
+        EventForwarderHandle, SharedEventBus, event_bus_from_context,
+        transactional_event_bus_from_context,
+    };
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+    use rustok_core::EventBus;
+    use sea_orm::Database;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn event_forwarder_handle_reports_terminal_task() {
@@ -212,5 +228,39 @@ mod tests {
         tokio::task::yield_now().await;
 
         assert!(!handle.is_running());
+    }
+
+    #[test]
+    fn shared_event_bus_clone_preserves_reference() {
+        let bus = Arc::new(EventBus::default());
+        let shared = SharedEventBus(Arc::clone(&bus));
+        let cloned = shared.clone();
+        assert!(Arc::ptr_eq(&shared.0, &cloned.0));
+    }
+
+    #[tokio::test]
+    async fn event_bus_from_context_is_idempotent() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        let bus1 = event_bus_from_context(&ctx);
+        let bus2 = event_bus_from_context(&ctx);
+
+        assert!(Arc::ptr_eq(&bus1.stats(), &bus2.stats()));
+        assert!(ctx.shared_get::<SharedEventBus>().is_some());
+        assert!(ctx.shared_get::<EventForwarderHandle>().is_some());
+    }
+
+    #[tokio::test]
+    async fn transactional_event_bus_from_context_initializes() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        let _tx_bus = transactional_event_bus_from_context(&ctx);
+        assert!(ctx.shared_get::<Arc<dyn rustok_core::events::EventTransport>>().is_some());
     }
 }
