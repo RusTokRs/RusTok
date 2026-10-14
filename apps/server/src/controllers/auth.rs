@@ -77,6 +77,8 @@ async fn register(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RegisterParams>,
 ) -> Result<Response> {
+    let email = params.email.trim();
+    tracing::debug!(email, "auth::register entry");
     ensure_registration_enabled(ctx.runtime_ctx().settings())?;
 
     let runtime_ctx = ctx.runtime_ctx();
@@ -88,7 +90,7 @@ async fn register(
         runtime_ctx,
         &config,
         tenant.id,
-        &params.email,
+        email,
         &params.password,
         params.name,
     )
@@ -114,6 +116,8 @@ async fn login(
     headers: axum::http::HeaderMap,
     Json(params): Json<LoginParams>,
 ) -> Result<Response> {
+    let email = params.email.trim();
+    tracing::debug!(email, "auth::login entry");
     let user_agent = headers
         .get(USER_AGENT)
         .and_then(|value| value.to_str().ok())
@@ -128,7 +132,7 @@ async fn login(
         runtime_ctx,
         &config,
         tenant.id,
-        &params.email,
+        email,
         &params.password,
         Some(addr.ip().to_string()),
         user_agent,
@@ -153,6 +157,7 @@ async fn refresh(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RefreshRequest>,
 ) -> Result<Response> {
+    tracing::debug!("auth::refresh entry");
     let runtime_ctx = ctx.runtime_ctx();
     let config = ctx
         .auth_config()
@@ -184,6 +189,7 @@ async fn logout(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RefreshRequest>,
 ) -> Result<Response> {
+    tracing::debug!("auth::logout entry");
     AuthLifecycleService::logout_by_refresh_token_runtime(
         ctx.runtime_ctx(),
         tenant.id,
@@ -203,6 +209,7 @@ async fn me(
         ..
     }: CurrentUser,
 ) -> Result<Response> {
+    tracing::debug!(user_id = %user.id, "auth::me entry");
     Ok(json_response(user_response_from_model(user, inferred_role)))
 }
 
@@ -213,6 +220,7 @@ async fn accept_invite(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<AcceptInviteParams>,
 ) -> Result<Response> {
+    tracing::debug!("auth::accept_invite entry");
     let config = ctx
         .auth_config()
         .cloned()
@@ -248,12 +256,14 @@ async fn request_reset(
     request_context: RequestContext,
     Json(params): Json<RequestResetParams>,
 ) -> Result<Response> {
+    let email = params.email.trim();
+    tracing::debug!(email, "auth::request_reset entry");
     let config = ctx
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
 
-    let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, &params.email).await?;
+    let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
 
     let expose_token = demo_mode_token_exposure_enabled();
 
@@ -330,6 +340,7 @@ async fn confirm_reset(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<ConfirmResetParams>,
 ) -> Result<Response> {
+    tracing::debug!("auth::confirm_reset entry");
     let runtime_ctx = ctx.runtime_ctx();
     let config = ctx
         .auth_config()
@@ -356,13 +367,15 @@ async fn request_verification(
     request_context: RequestContext,
     Json(params): Json<RequestVerificationParams>,
 ) -> Result<Response> {
+    let email = params.email.trim();
+    tracing::debug!(email, "auth::request_verification entry");
     let config = ctx
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
     let settings = ctx.runtime_ctx().settings();
 
-    let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, &params.email).await?;
+    let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
 
     let expose_token = !is_production_environment()
         && std::env::var("RUSTOK_DEMO_MODE")
@@ -439,6 +452,7 @@ async fn confirm_verification(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<ConfirmVerificationParams>,
 ) -> Result<Response> {
+    tracing::debug!("auth::confirm_verification entry");
     let config = ctx
         .auth_config()
         .cloned()
@@ -476,6 +490,7 @@ async fn list_sessions(
     current: CurrentUser,
     Query(params): Query<SessionListParams>,
 ) -> Result<Response> {
+    tracing::debug!(user_id = %current.user.id, "auth::list_sessions entry");
     let requested_limit = params.limit;
     let limit = clamp_session_limit(params.limit);
 
@@ -518,6 +533,7 @@ async fn revoke_all_sessions(
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
 ) -> Result<Response> {
+    tracing::debug!(user_id = %current.user.id, "auth::revoke_all_sessions entry");
     AuthLifecycleService::revoke_all_other_sessions_runtime(
         ctx.runtime_ctx(),
         tenant.id,
@@ -537,6 +553,7 @@ async fn change_password(
     current: CurrentUser,
     Json(params): Json<ChangePasswordParams>,
 ) -> Result<Response> {
+    tracing::debug!(user_id = %current.user.id, "auth::change_password entry");
     let runtime_ctx = ctx.runtime_ctx();
     AuthLifecycleService::change_password_runtime(
         runtime_ctx,
@@ -560,6 +577,7 @@ async fn update_profile(
     current: CurrentUser,
     Json(params): Json<UpdateProfileParams>,
 ) -> Result<Response> {
+    tracing::debug!(user_id = %current.user.id, "auth::update_profile entry");
     let runtime_ctx = ctx.runtime_ctx();
     let user = AuthLifecycleService::update_profile_runtime(
         runtime_ctx,
@@ -587,6 +605,7 @@ async fn login_history(
     current: CurrentUser,
     Query(params): Query<SessionListParams>,
 ) -> Result<Response> {
+    tracing::debug!(user_id = %current.user.id, "auth::login_history entry");
     let requested_limit = params.limit;
     let limit = clamp_session_limit(params.limit);
 
@@ -634,6 +653,7 @@ async fn revoke_session(
     current: CurrentUser,
     Path(session_id): Path<uuid::Uuid>,
 ) -> Result<Response> {
+    tracing::debug!(user_id = %current.user.id, %session_id, "auth::revoke_session entry");
     let runtime_ctx = ctx.runtime_ctx();
     let revoked = AuthLifecycleService::revoke_session_runtime(
         runtime_ctx,
@@ -690,5 +710,14 @@ mod tests {
             ensure_registration_enabled(&disabled),
             Err(crate::error::Error::Forbidden(message)) if message == "Registration is disabled"
         ));
+    }
+
+    #[test]
+    fn clamp_session_limit_bounds() {
+        assert_eq!(super::clamp_session_limit(None), 50);
+        assert_eq!(super::clamp_session_limit(Some(0)), 1);
+        assert_eq!(super::clamp_session_limit(Some(25)), 25);
+        assert_eq!(super::clamp_session_limit(Some(100)), 100);
+        assert_eq!(super::clamp_session_limit(Some(1000)), 100);
     }
 }
