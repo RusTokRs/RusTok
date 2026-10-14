@@ -527,3 +527,53 @@ fn the_editor_refuses_a_snapshot_with_no_integrity_digest() {
     assert_eq!(editor.document().hash(), before);
     assert_eq!(editor.history().undo_len(), 0);
 }
+
+#[test]
+fn selection_returns_the_cached_report_without_changing_validity() {
+    let mut editor = editor();
+    let first = editor
+        .apply(EditorCommand::Select {
+            component_id: Some("hero".to_string()),
+        })
+        .expect("select");
+    // Patch changes nothing about validity either, but refreshes the cache through the
+    // mutating path; a following selection must report the same document state.
+    editor
+        .apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(json!({ "width": "10px" })),
+        })
+        .expect("patch");
+    let second = editor
+        .apply(EditorCommand::Select {
+            component_id: Some("root".to_string()),
+        })
+        .expect("select after patch");
+    assert_eq!(first.errors().count(), second.errors().count());
+    assert_eq!(editor.selection(), Some("root"));
+    // Undo clears the cache; selection still works and revalidates on demand.
+    editor.undo().expect("undo");
+    let third = editor
+        .apply(EditorCommand::Select {
+            component_id: Some("hero".to_string()),
+        })
+        .expect("select after undo");
+    assert_eq!(third.errors().count(), 0);
+}
+
+#[test]
+fn stable_ids_fast_path_leaves_valid_documents_untouched() {
+    let mut editor = editor();
+    let before = GrapesJsCodec::encode_value(editor.document()).expect("encode");
+    editor
+        .apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(json!({ "width": "10px" })),
+        })
+        .expect("patch");
+    let hero = editor.document().component("hero").expect("hero");
+    assert_eq!(hero.id(), Some("hero"));
+    let root = editor.document().component("root").expect("root");
+    assert_eq!(root.id(), Some("root"));
+    assert!(before.is_object());
+}

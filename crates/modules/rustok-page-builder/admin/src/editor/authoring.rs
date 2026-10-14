@@ -1,5 +1,5 @@
 use crate::AdminCanvasController;
-use fly::{ComponentNode, ComponentObject, EditorCommand};
+use fly::{ComponentNode, EditorCommand};
 use fly_leptos::{
     BrowserDropTarget, BrowserPoint, CoordinateTransform, DropAxis, DropZonePolicy,
     hit_test_drop_targets,
@@ -50,46 +50,42 @@ pub struct SelectedComponentView {
 
 impl AdminCanvasController {
     pub fn palette_blocks(&self) -> Vec<PaletteBlockView> {
-        self.editor()
-            .registries()
-            .blocks
-            .iter()
-            .map(|(_, block)| PaletteBlockView {
-                id: block.id.clone(),
-                label: block.label.clone(),
-                category: block.category.clone(),
-                component: block.component.clone(),
+        // The palette derivation is owned by `fly-ui` (shared with the framework
+        // adapters); this controller only adapts it to the admin view type.
+        fly_ui::palette_blocks(self.editor().registries())
+            .into_iter()
+            .map(|block| PaletteBlockView {
+                id: block.id,
+                label: block.label,
+                category: block.category,
+                component: block.component,
             })
             .collect()
     }
 
     pub fn palette_block(&self, block_id: &str) -> Option<PaletteBlockView> {
-        self.editor()
-            .registries()
-            .blocks
-            .get(block_id)
-            .map(|block| PaletteBlockView {
-                id: block.id.clone(),
-                label: block.label.clone(),
-                category: block.category.clone(),
-                component: block.component.clone(),
-            })
+        fly_ui::palette_block(self.editor().registries(), block_id).map(|block| PaletteBlockView {
+            id: block.id,
+            label: block.label,
+            category: block.category,
+            component: block.component,
+        })
     }
 
     pub fn layer_items(&self) -> Vec<LayerItemView> {
-        let mut items = Vec::new();
-        let Some(root) = self
-            .editor()
-            .document()
-            .project
-            .pages
-            .get(self.active_page_index())
-            .and_then(|page| page.component.as_ref())
-        else {
-            return items;
-        };
-        collect_layers(root, None, 0, 0, &mut items);
-        items
+        // Layer flattening is owned by `fly-ui` as well; the admin keeps only its
+        // active-page selection and view shape.
+        fly_ui::editor_layer_items_for_page(self.editor().document(), self.active_page_index())
+            .into_iter()
+            .map(|item| LayerItemView {
+                id: item.id,
+                component_type: item.component_type,
+                depth: item.depth,
+                parent_component_id: item.parent_id,
+                index: item.index,
+                child_count: item.child_count,
+            })
+            .collect()
     }
 
     pub fn selected_component_view(&self) -> Option<SelectedComponentView> {
@@ -311,48 +307,6 @@ fn drag_source_identity(
             .as_object()
             .map(|component| (None, component.component_type().to_string())),
         DragSource::ClipboardFragment => None,
-    }
-}
-
-fn collect_layers(
-    node: &ComponentNode,
-    parent_component_id: Option<String>,
-    index: usize,
-    depth: usize,
-    items: &mut Vec<LayerItemView>,
-) {
-    let Some(component) = node.as_object() else {
-        return;
-    };
-    let Some(id) = component.id.clone() else {
-        return;
-    };
-    items.push(layer_item(
-        &id,
-        component,
-        parent_component_id.clone(),
-        index,
-        depth,
-    ));
-    for (child_index, child) in component.children().iter().enumerate() {
-        collect_layers(child, Some(id.clone()), child_index, depth + 1, items);
-    }
-}
-
-fn layer_item(
-    id: &str,
-    component: &ComponentObject,
-    parent_component_id: Option<String>,
-    index: usize,
-    depth: usize,
-) -> LayerItemView {
-    LayerItemView {
-        id: id.to_string(),
-        component_type: component.component_type().to_string(),
-        depth,
-        parent_component_id,
-        index,
-        child_count: component.children().len(),
     }
 }
 

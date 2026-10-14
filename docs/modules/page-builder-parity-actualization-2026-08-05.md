@@ -1,3 +1,7 @@
+
+> **Remaining work is tracked in one place:** `docs/modules/page-builder-backlog.md`.
+> This document is a historical record; do not add new open items here.
+
 # Page Builder / Pages Parity Actualization
 
 Date: 2026-08-07

@@ -1,0 +1,94 @@
+{
+ "assets": [],
+ "styles": [],
+ "pages": [
+  {
+   "id": "post",
+   "component": {
+    "id": "root",
+    "type": "wrapper",
+    "components": [
+     {
+      "id": "article",
+      "type": "rich_text",
+      "flyRichText": {
+       "capability": "richtext",
+       "payload": {
+        "type": "doc",
+        "content": [
+         {
+          "type": "heading",
+          "attrs": {
+           "level": 2
+          },
+          "content": [
+           {
+            "type": "text",
+            "text": "Release notes"
+           }
+          ]
+         },
+         {
+          "type": "paragraph",
+          "content": [
+           {
+            "type": "text",
+            "text": "We shipped "
+           },
+           {
+            "type": "text",
+            "text": "fast exports",
+            "marks": [
+             {
+              "type": "bold"
+             }
+            ]
+           },
+           {
+            "type": "text",
+            "text": " today."
+           }
+          ]
+         },
+         {
+          "type": "bulletList",
+          "content": [
+           {
+            "type": "listItem",
+            "content": [
+             {
+              "type": "paragraph",
+              "content": [
+               {
+                "type": "text",
+                "text": "CSV"
+               }
+              ]
+             }
+            ]
+           },
+           {
+            "type": "listItem",
+            "content": [
+             {
+              "type": "paragraph",
+              "content": [
+               {
+                "type": "text",
+                "text": "JSON"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

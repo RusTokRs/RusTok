@@ -128,6 +128,11 @@ source. A future Dioxus renderer can use the same source without copying browser
 - `src/transport.rs` — canonical GraphQL and server-function envelopes;
 - `src/runtime_telemetry.rs` — runtime operation evidence;
 - `src/runtime_scenario_release.rs` — optional scenario release gate;
+- `src/domain/` — landing-page and runtime-scenario domain owned by this module
+  (contracts, properties, readiness, context scenarios, scenario render/snapshot/release,
+  publish gates), extracted from the `fly` core per
+  `DECISIONS/2026-10-14-landing-scenario-domain-leaves-fly-core.md`; re-exported at the
+  crate root;
 - `src/runtime_context.rs`, `src/runtime_context_dependency.rs`,
   `src/runtime_context_compatibility.rs` and `src/runtime_context_migration.rs` — consumer
   runtime context contract, dependency, compatibility and migration inspectors;

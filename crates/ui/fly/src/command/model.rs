@@ -59,6 +59,9 @@ pub enum EditorCommand {
     StyleRule {
         command: StyleRuleCommand,
     },
+    Theme {
+        command: crate::ThemeCommand,
+    },
     Page {
         command: PageCommand,
     },
@@ -318,6 +321,9 @@ impl ProjectHash {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RevisionState {
     pub dirty: bool,
+    /// A save was rejected because the document changed elsewhere (lost update). The
+    /// local changes are still unsaved; only a successful acknowledge clears this.
+    pub save_conflict: bool,
     pub command_sequence: u64,
     pub last_acknowledged_revision: Option<String>,
     pub project_hash: ProjectHash,
@@ -329,6 +335,7 @@ impl RevisionState {
     pub fn new(document: &ProjectDocument) -> Self {
         Self {
             dirty: false,
+            save_conflict: false,
             command_sequence: 0,
             last_acknowledged_revision: None,
             project_hash: document.hash(),
@@ -352,6 +359,15 @@ impl RevisionState {
     pub fn fail_save(&mut self) {
         self.save_in_progress = false;
         self.save_failed = true;
+        self.save_conflict = false;
+    }
+
+    /// Record a lost update: the save was rejected because another session saved first.
+    /// `dirty` stays set — the local changes exist and are not on the server.
+    pub fn mark_save_conflict(&mut self) {
+        self.save_in_progress = false;
+        self.save_failed = true;
+        self.save_conflict = true;
     }
 
     pub fn acknowledge(
@@ -369,6 +385,7 @@ impl RevisionState {
         self.dirty = false;
         self.save_in_progress = false;
         self.save_failed = false;
+        self.save_conflict = false;
         Ok(())
     }
 }

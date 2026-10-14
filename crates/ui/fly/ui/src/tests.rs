@@ -317,3 +317,32 @@ fn selection_remains_possible_without_edit_capability() {
         }))
         .expect("selection must stay available in a read-only session");
 }
+
+#[test]
+fn save_conflict_is_a_distinct_lost_update_state() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine.dispatch(UiIntent::SaveStarted).expect("started");
+    let effects = machine
+        .dispatch(UiIntent::SaveConflict {
+            expected: "rev-1".to_string(),
+            actual: "rev-2".to_string(),
+        })
+        .expect("conflict");
+    let state = &machine.state;
+    assert!(state.dirty.save_conflict);
+    assert!(state.dirty.save_failed);
+    assert!(!state.dirty.save_in_progress);
+    assert!(effects.iter().any(|effect| matches!(
+        effect,
+        UiEffect::Announce(message) if message.contains("another session")
+    )));
+    // A later successful save is the only thing that clears the conflict.
+    let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");
+    machine
+        .dispatch(UiIntent::SaveSucceeded {
+            revision: "rev-3".to_string(),
+            project_hash: fly::ProjectHash::from_document(&document),
+        })
+        .expect("saved");
+    assert!(!machine.state.dirty.save_conflict);
+}

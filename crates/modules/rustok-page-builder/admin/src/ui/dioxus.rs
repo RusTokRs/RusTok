@@ -3,9 +3,14 @@ use crate::i18n::t;
 use crate::model::AdminCanvasController;
 use crate::transport::PageBuilderAdminFacade;
 use dioxus::prelude::*;
-use fly::{RuntimeContextScenario, RuntimePublishGatePolicy, TraitSchemaRegistry};
-use fly_dioxus::FlyFullEditor;
-use fly_ui::{CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation, UiIntent};
+use fly::TraitSchemaRegistry;
+use rustok_page_builder::{RuntimeContextScenario, RuntimePublishGatePolicy};
+use fly_browser::BrowserIntentEnvelope;
+use fly_dioxus::{FlyEditorWorkspace, FlyFullEditor};
+use fly_ui::{
+    CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation, EditorMessages,
+    UiIntent,
+};
 use rustok_ui_core::UiRouteContext;
 use serde_json::Value;
 use std::sync::Arc;
@@ -22,6 +27,7 @@ pub struct DioxusPageBuilderAdminHostContext {
     pub runtime_context: Option<Value>,
     pub runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
+    pub adapter_workspace: bool,
 }
 
 impl DioxusPageBuilderAdminHostContext {
@@ -36,7 +42,16 @@ impl DioxusPageBuilderAdminHostContext {
             runtime_context: None,
             runtime_scenarios: None,
             runtime_publish_gate_policy: None,
+            adapter_workspace: false,
         }
+    }
+
+    /// Mounts the shared adapter workspace (`fly-dioxus`) instead of the canvas
+    /// placeholder. Off by default; hosts opt in while the admin migration
+    /// (P0-1) proceeds surface by surface.
+    pub fn with_adapter_workspace(mut self, enabled: bool) -> Self {
+        self.adapter_workspace = enabled;
+        self
     }
 }
 
@@ -68,6 +83,7 @@ pub fn PageBuilderAdmin() -> Element {
                 runtime_context: context.runtime_context,
                 runtime_scenarios: context.runtime_scenarios,
                 runtime_publish_gate_policy: context.runtime_publish_gate_policy,
+                adapter_workspace: context.adapter_workspace,
             }
         },
         None => {
@@ -113,6 +129,8 @@ pub struct PageBuilderAdminWithControllerProps {
     pub runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     #[props(default)]
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
+    #[props(default)]
+    pub adapter_workspace: bool,
 }
 
 impl PartialEq for PageBuilderAdminWithControllerProps {
@@ -127,6 +145,8 @@ impl PartialEq for PageBuilderAdminWithControllerProps {
 /// Dioxus PageBuilderAdminWithController component.
 #[component]
 pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps) -> Element {
+    let route_context = use_context::<Option<UiRouteContext>>().unwrap_or_default();
+    let locale = route_context.locale;
     let mut session = use_signal(|| {
         let mut s = EditorSessionState::new(
             props.controller.clone(),
@@ -153,10 +173,29 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
 
     let current = session.read();
     let page_id = current.controller.page_id().to_string();
+    let workspace_document = current.controller.editor().document().clone();
+    let workspace_page_id = page_id.clone();
     let last_error = current.last_error.clone();
     let last_announcement = current.last_announcement.clone();
     let can_undo = current.controller.can_undo();
     let can_redo = current.controller.can_redo();
+
+    let route_locale = locale.clone();
+    let workspace_messages: Option<EditorMessages> = props
+        .adapter_workspace
+        .then(|| crate::editor::adapter_editor_messages(route_locale.as_deref()));
+    let workspace_assembly = props
+        .contribution_assembly
+        .as_ref()
+        .map(|assembly| assembly.as_ref().clone());
+    let show_adapter_workspace = props.adapter_workspace;
+    let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
+        let mut state = session.write();
+        match crate::dispatch_browser_intent(&mut state.controller, envelope) {
+            Ok(_) => state.last_error = None,
+            Err(error) => state.last_error = Some(error.to_string()),
+        }
+    });
 
     rsx! {
         FlyFullEditor {
@@ -207,9 +246,23 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
 
             main {
                 class: "rustok-page-builder-admin__canvas flex-1 p-4",
-                div {
-                    class: "canvas-viewport",
-                    "Page Builder Canvas ({page_id})"
+                match show_adapter_workspace {
+                    true => rsx! {
+                        FlyEditorWorkspace {
+                            document: workspace_document.clone(),
+                            contribution_assembly: workspace_assembly.clone(),
+                            instance_id: Some(workspace_page_id.clone()),
+                            on_intent: Some(on_workspace_intent),
+                            on_change: None,
+                            messages: workspace_messages.clone(),
+                        }
+                    },
+                    false => rsx! {
+                        div {
+                            class: "canvas-viewport",
+                            "Page Builder Canvas ({page_id})"
+                        }
+                    },
                 }
             }
         }

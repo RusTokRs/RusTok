@@ -1,0 +1,78 @@
+{
+ "assets": [],
+ "styles": [
+  {
+   "selectors": [
+    "row-0"
+   ],
+   "style": {
+    "font-weight": "700"
+   }
+  }
+ ],
+ "pages": [
+  {
+   "id": "home",
+   "component": {
+    "id": "root",
+    "type": "wrapper",
+    "components": [
+     {
+      "id": "pricing",
+      "type": "section",
+      "components": [
+       {
+        "id": "row-0",
+        "type": "section",
+        "components": [
+         {
+          "id": "c-0-0",
+          "type": "text",
+          "content": "Plan"
+         },
+         {
+          "id": "c-0-1",
+          "type": "text",
+          "content": "Price"
+         }
+        ]
+       },
+       {
+        "id": "row-1",
+        "type": "section",
+        "components": [
+         {
+          "id": "c-1-0",
+          "type": "text",
+          "content": "Starter"
+         },
+         {
+          "id": "c-1-1",
+          "type": "text",
+          "content": "$9"
+         }
+        ]
+       },
+       {
+        "id": "row-2",
+        "type": "section",
+        "components": [
+         {
+          "id": "c-2-0",
+          "type": "text",
+          "content": "Pro"
+         },
+         {
+          "id": "c-2-1",
+          "type": "text",
+          "content": "$29"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

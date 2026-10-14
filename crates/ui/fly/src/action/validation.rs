@@ -262,6 +262,22 @@ pub(super) fn validate_action_contract(
                     .ok_or_else(|| format!("form `{form_id}` does not exist"))
             }),
         ComponentAction::EmitEvent { event, .. } => validate_identifier(event, "event name"),
+        ComponentAction::ToggleVisibility { target_id, .. }
+        | ComponentAction::ScrollTo { target_id } => {
+            validate_identifier(target_id, "target component id")
+        }
+        ComponentAction::Animate {
+            target_id,
+            duration_ms,
+            ..
+        } => {
+            validate_identifier(target_id, "target component id").and_then(|_| match duration_ms {
+                Some(duration) if !(50..=10_000).contains(duration) => Err(format!(
+                    "animation duration {duration}ms is outside the allowed 50..=10000 range"
+                )),
+                _ => Ok(()),
+            })
+        }
         ComponentAction::ProviderAction {
             provider, action, ..
         } => validate_identifier(provider, "provider")

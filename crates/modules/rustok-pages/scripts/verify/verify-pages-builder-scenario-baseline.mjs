@@ -46,7 +46,7 @@ const [
   read('crates/modules/rustok-pages/admin/src/transport/scenario_release_adapter.rs'),
   read('crates/modules/rustok-pages/admin/src/transport/mod.rs'),
   read('crates/modules/rustok-pages/admin/src/composition.rs'),
-  read('crates/ui/fly/src/runtime_scenario_release.rs'),
+  read('crates/modules/rustok-page-builder/src/domain/runtime_scenario_release.rs'),
   read('crates/modules/rustok-page-builder/src/runtime_scenario_release.rs'),
 ]);
 

@@ -12,9 +12,10 @@ const paths = {
   canvas: 'crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs',
   controls: 'crates/modules/rustok-page-builder/admin/src/editor/capability_controls.rs',
   providerStatus: 'crates/modules/rustok-page-builder/admin/src/provider_status.rs',
-  pageManager: 'crates/modules/rustok-page-builder/admin/src/editor/page_manager.rs',
-  propertyFacade: 'crates/modules/rustok-page-builder/admin/src/editor/properties_assets.rs',
-  assetSection: 'crates/modules/rustok-page-builder/admin/src/editor/asset_section.rs',
+  pageLifecycle: 'crates/modules/rustok-page-builder/admin/src/browser_intent.rs',
+  workspaceCapabilities: 'crates/ui/fly/leptos/src/editor.rs',
+  propertyFacade: 'crates/ui/fly/leptos/src/editor.rs',
+  assetSection: 'crates/ui/fly/leptos/src/editor.rs',
   browserAccess: 'crates/modules/rustok-page-builder/admin/src/capability_access.rs',
   pageBuilderLib: 'crates/modules/rustok-page-builder/admin/src/lib.rs',
   pagesAccess: 'crates/modules/rustok-pages/admin/src/access.rs',
@@ -69,7 +70,7 @@ const flattenKeys = (value, prefix = '') => Object.entries(value).flatMap(([key,
 
 requireMarkers('vocabulary', [
   'pub enum BrowserIntentKind',
-  'pub const ALL: [Self; 48]',
+  'pub const ALL: [Self; 52]',
   'pub fn parse(value: &str)',
   'pub const fn as_str(self)',
   'pub const fn is_mutating(self)',
@@ -79,9 +80,39 @@ requireMarkers('vocabulary', [
 requireMarkers('flyUiLib', [
   'mod capability_policy;',
   'mod command_capability;',
-  'pub use capability_policy::*;',
-  'pub use command_capability::*;',
 ], 'fly-ui capability wiring');
+
+// Assert the re-exported symbols rather than literal `pub use` lines: the fly-ui root uses
+// curated explicit re-exports, so pin the exported capability surface, not its spelling.
+{
+  const exportedFrom = (module) => {
+    const braced = source.flyUiLib.match(new RegExp(`pub use ${module}::\\{([^}]*)\\}`));
+    if (braced) return braced[1].split(',').map((entry) => entry.trim()).filter(Boolean);
+    const single = source.flyUiLib.match(new RegExp(`pub use ${module}::([A-Za-z0-9_]+);`));
+    return single ? [single[1]] : null;
+  };
+  const expected = {
+    capability_policy: [
+      'EditorCapability',
+      'EditorCapabilityEvaluation',
+      'EditorCapabilityPolicy',
+      'EditorProviderState',
+    ],
+    command_capability: ['CommandCapabilityRequirement'],
+  };
+  for (const [module, symbols] of Object.entries(expected)) {
+    const exported = exportedFrom(module);
+    if (!exported) {
+      failures.push(`Fly-ui lib does not re-export anything from ${module}`);
+      continue;
+    }
+    for (const symbol of symbols) {
+      if (!exported.includes(symbol)) {
+        failures.push(`Fly-ui lib does not re-export ${module}::${symbol}`);
+      }
+    }
+  }
+}
 requireMarkers('policy', [
   'pub enum EditorCapability',
   'pub const ALL: [Self; 8]',
@@ -162,18 +193,28 @@ requireMarkers('controls', [
   'PageBuilderAdminProviderState::Unobserved',
   'EditorCapability::ALL.into_iter()',
 ], 'reusable capability controls');
-requireMarkers('pageManager', [
-  'capability=EditorCapability::Edit',
-  'capability=EditorCapability::Properties',
+requireMarkers('pageLifecycle', [
   'UiIntent::ActivatePage',
-], 'page lifecycle and metadata gates');
+  'PageCommand::Add',
+  'PageCommand::Remove',
+  'PageCommand::Move',
+  'PageCommand::Patch',
+], 'page lifecycle dispatch');
+requireMarkers('workspaceCapabilities', [
+  'state.edit',
+  'state.properties',
+  'state.styles',
+  'state.assets',
+], 'workspace capability gates');
 requireMarkers('propertyFacade', [
-  'capability=EditorCapability::Properties',
-  'capability=EditorCapability::Styles',
-  'capability=EditorCapability::Assets',
+  'capabilities=capabilities',
+  'state.properties',
+  'state.styles',
+  'state.assets',
 ], 'property style asset gates');
 requireMarkers('assetSection', [
-  'disabled=move || !use_runtime.capability_enabled(EditorCapability::Properties)',
+  'state.assets',
+  'disabled=!can_apply || !has_selection',
 ], 'cross-capability asset apply gate');
 
 requireMarkers('browserAccess', [

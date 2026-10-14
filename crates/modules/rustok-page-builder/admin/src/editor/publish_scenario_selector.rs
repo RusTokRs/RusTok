@@ -2,7 +2,7 @@ use crate::editor::AdminEditorRuntime;
 #[cfg(target_arch = "wasm32")]
 use crate::load_publish_scenario_selection;
 use crate::{resolve_publish_scenario, save_publish_scenario_selection};
-use fly::RuntimeScenarioReleaseBaseline;
+use rustok_page_builder::RuntimeScenarioReleaseBaseline;
 use leptos::ev::Event;
 use leptos::prelude::*;
 

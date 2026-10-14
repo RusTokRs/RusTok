@@ -135,7 +135,9 @@ from complete operation safety and retention through serving cutover.
 - [Implementation Plans Registry](./modules/implementation-plans-registry.md)
 - [Module Release and Rollback Plan](./modules/module-release-rollback-plan.md) — end-to-end portable instance-root, source, artifact, installation, update, recovery, retention, and database-safety contract for platform, native, WASM, and Rhai releases; tracks the in-progress owner/namespace storage cutover, actual snapshot/restore copy verification and source holds, shared [opaque namespace object keys](../crates/utils/rustok-storage/docs/README.md), production purge fences, and protected recovery requirements separately from bounded ledger tests.
 - [Richtext Implementation Plan](./modules/rich-text-implementation-plan.md)
-- [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
+- [Page Builder Backlog (the one owned plan)](./modules/page-builder-backlog.md)
+- [Admin Parity: Rust FFA vs Next](./modules/admin-parity.md)
+- [Page Builder Implementation Plan (historical)](./modules/page-builder-implementation-plan.md)
 - [Translation Module Implementation Plan](./modules/translation-implementation-plan.md) — owner-safe control plane, 49-operation admin contract, guarded human workflow controls, private workflow collaboration, checksum-verified expiring interchange artifacts, fixed-cardinality content-free observability, and AI machine-translation workflow
 - [Machine-readable Translation Surface Registry](./modules/translation-surfaces.json)
 - [Page Builder FBA Registry](../crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json)
@@ -158,7 +160,7 @@ from complete operation safety and retention through serving cutover.
 - [Richtext Track](./modules/rich-text-implementation-plan.md) — shared editor
   runtime, completed Blog article source cutover, and Next/Leptos integration
 - [Shared browser richtext runtime](../packages/richtext/README.md)
-- [Page Builder Track](./modules/page-builder-implementation-plan.md)
+- [Page Builder Track](./modules/page-builder-backlog.md)
 - [i18n Architecture](./architecture/i18n.md)
 - **Module UI Package Guides** (read the relevant one when working on `crates/modules/rustok-*/admin` or `crates/modules/rustok-*/storefront`):
   - [Architecture Guide](./UI/module-package-architecture.md) — FFA, `core/transport/ui` split, dual-path model, Dioxus-readiness

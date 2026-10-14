@@ -1,4 +1,4 @@
-use fly::{RuntimeContextScenario, RuntimeScenarioReleaseBaseline};
+use rustok_page_builder::{RuntimeContextScenario, RuntimeScenarioReleaseBaseline};
 use thiserror::Error;
 
 pub const PAGE_BUILDER_PUBLISH_SCENARIO_SELECTION_FORMAT: &str =
@@ -140,7 +140,8 @@ fn browser_storage_error(value: wasm_bindgen::JsValue) -> PublishScenarioSelecti
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::{PageSelection, ProjectDocument, RenderPolicy, RuntimeContextScenario};
+use fly::{PageSelection, ProjectDocument, RenderPolicy};
+    use rustok_page_builder::RuntimeContextScenario;
     use serde_json::json;
 
     fn baseline(scenarios: Vec<RuntimeContextScenario>) -> RuntimeScenarioReleaseBaseline {

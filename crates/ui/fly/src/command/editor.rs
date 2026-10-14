@@ -1,7 +1,7 @@
 use super::{AssetCommand, EditorCommand, History, HistoryEntry, RevisionState};
 use crate::{
     AssetDescriptor, FlyError, FlyResult, ProjectDocument, ProjectSnapshot, RegistrySet,
-    SequentialIdGenerator, ValidationLimits, ValidationReport, apply_binding_command,
+    UniqueIdGenerator, ValidationLimits, ValidationReport, apply_binding_command,
     apply_context_command, apply_dynamic_command, apply_page_command, apply_style_rule_command,
     apply_symbol_command, apply_translation_command, extend_with_runtime_validation,
     validate_project,
@@ -24,12 +24,17 @@ pub struct FlyEditor {
     history: History,
     revision: RevisionState,
     validation_limits: ValidationLimits,
-    pub(crate) id_generator: SequentialIdGenerator,
+    pub(crate) id_generator: UniqueIdGenerator,
+    /// Last full validation report, so selection-only commands can return it instead of
+    /// re-validating the whole document per click. Selection cannot change validity;
+    /// anything that changes the document or the registries clears or refreshes this.
+    #[serde(skip)]
+    last_report: Option<ValidationReport>,
 }
 
 impl FlyEditor {
     pub fn new(mut document: ProjectDocument, registries: RegistrySet) -> Self {
-        let mut id_generator = SequentialIdGenerator::default();
+        let mut id_generator = UniqueIdGenerator::default();
         document.ensure_stable_ids(&mut id_generator);
         let revision = RevisionState::new(&document);
         Self {
@@ -40,6 +45,7 @@ impl FlyEditor {
             revision,
             validation_limits: ValidationLimits::default(),
             id_generator,
+            last_report: None,
         }
     }
 
@@ -60,6 +66,7 @@ impl FlyEditor {
 
     pub fn with_validation_limits(mut self, limits: ValidationLimits) -> Self {
         self.validation_limits = limits;
+        self.last_report = None;
         self
     }
 
@@ -72,6 +79,7 @@ impl FlyEditor {
     }
 
     pub fn registries_mut(&mut self) -> &mut RegistrySet {
+        self.last_report = None;
         &mut self.registries
     }
 
@@ -110,7 +118,12 @@ impl FlyEditor {
                 return Err(FlyError::ComponentNotFound(id.to_string()));
             }
             self.selection = component_id.clone();
-            return Ok(self.validate());
+            if let Some(report) = &self.last_report {
+                return Ok(report.clone());
+            }
+            let report = self.validate();
+            self.last_report = Some(report.clone());
+            return Ok(report);
         }
 
         // One speculative copy to mutate. A command must not leave a partially applied document
@@ -144,6 +157,7 @@ impl FlyEditor {
             after: history_after,
         });
         self.revision.mark_changed(&self.document);
+        self.last_report = Some(report.clone());
         Ok(report)
     }
 
@@ -156,6 +170,7 @@ impl FlyEditor {
             .take()
             .filter(|id| self.document.contains_component(id));
         self.revision.mark_changed(&self.document);
+        self.last_report = None;
         Ok(&self.document)
     }
 
@@ -168,6 +183,7 @@ impl FlyEditor {
             .take()
             .filter(|id| self.document.contains_component(id));
         self.revision.mark_changed(&self.document);
+        self.last_report = None;
         Ok(&self.document)
     }
 
@@ -234,6 +250,7 @@ impl FlyEditor {
             EditorCommand::Asset { command } => apply_asset_command(document, command),
             EditorCommand::Symbol { command } => apply_symbol_command(document, command),
             EditorCommand::StyleRule { command } => apply_style_rule_command(document, command),
+            EditorCommand::Theme { command } => crate::apply_theme_command(document, command),
             EditorCommand::Page { command } => apply_page_command(document, command),
             EditorCommand::Dynamic { command } => apply_dynamic_command(document, command),
             EditorCommand::Binding { command } => apply_binding_command(document, command),

@@ -1,13 +1,13 @@
 use crate::editor::{
-    AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, CapabilityPolicyPanel,
-    ConsumerPropertiesPanel, ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel,
-    ContributionPreviewPanel, ContributionPropertiesPanel, DynamicRuntimePanel,
-    IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
-    PublishScenarioSelectorPanel, ResponsiveStylePanel, RuntimePublishGatePanel,
-    RuntimeScenarioMatrixPanel, RuntimeScenarioPanel, RuntimeScenarioRegressionPanel,
-    ServerPreviewPanel, SsrActionsFormsPanel, SsrAssetPanel, SsrInspectorPanel,
-    SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel, SsrLocalePolicyPanel,
-    SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
+    AdapterWorkspacePanel, AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel,
+    CapabilityPolicyPanel, ConsumerPropertiesPanel, ContextContractToolsPanel,
+    ContextDependencyPanel, ContextSchemaPanel, ContributionPreviewPanel,
+    ContributionPropertiesPanel, DiagnosticsSection, DynamicRuntimePanel, IsolatedAuthoringCanvas,
+    PublishScenarioSelectorPanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
+    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, ServerPreviewPanel, SsrActionsFormsPanel,
+    SsrAssetPanel, SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel,
+    SsrLocalePanel, SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel,
+    TraitPanel,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
@@ -15,9 +15,9 @@ use crate::{
     AdminCanvasController, ConsumerPropertyEditorRuntime, PageBuilderAdminFacade,
     PageBuilderAdminProviderStatus,
 };
-use fly::{
+use fly::TraitSchemaRegistry;
+use rustok_page_builder::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
-    TraitSchemaRegistry,
 };
 use fly_ui::{CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation, UiIntent};
 use leptos::prelude::*;
@@ -133,12 +133,12 @@ pub fn AdminCanvas(
         .with(|controller| controller.editor().revision().project_hash.hex());
     let root_intent_endpoint = browser_intent_endpoint.clone();
     let root_csrf_token = browser_csrf_token.clone();
+    let adapter_runtime = runtime.clone();
+    let adapter_assembly = contribution_assembly.clone();
+    let canvas_runtime = runtime.clone();
     let toolbar_runtime = runtime.clone();
     let server_preview_runtime = runtime.clone();
     let server_preview_provider_status = provider_status.clone();
-    let page_runtime = runtime.clone();
-    let palette_runtime = runtime.clone();
-    let canvas_runtime = runtime.clone();
     let capability_runtime = runtime.clone();
     let capability_provider_status = provider_status;
     let contribution_property_runtime = runtime.clone();
@@ -157,7 +157,6 @@ pub fn AdminCanvas(
     let binding_runtime = runtime.clone();
     let trait_runtime = runtime.clone();
     let properties_runtime = runtime.clone();
-    let responsive_runtime = runtime.clone();
     let ssr_locale_runtime = runtime.clone();
     let ssr_locale_policy_runtime = runtime.clone();
     let ssr_locale_coverage_runtime = runtime.clone();
@@ -186,19 +185,16 @@ pub fn AdminCanvas(
                 csrf_token=browser_csrf_token
             />
             <AuthoringToolbar runtime=toolbar_runtime />
+            <AdapterWorkspacePanel
+                runtime=adapter_runtime.clone()
+                contribution_assembly=adapter_assembly.clone()
+            />
             <ServerPreviewPanel
                 runtime=server_preview_runtime
                 provider_status=server_preview_provider_status
             />
-            <div class="grid min-h-[680px] grid-cols-[minmax(240px,300px)_minmax(420px,1fr)_minmax(280px,360px)] gap-3">
-                <div class="space-y-3 overflow-auto">
-                    <PageManagerPanel runtime=page_runtime />
-                    <PaletteLayersPanel
-                        runtime=palette_runtime
-                        contribution_assembly
-                    />
-                </div>
-                <IsolatedAuthoringCanvas runtime=canvas_runtime />
+            <div class="grid min-h-[680px] grid-cols-[minmax(420px,1fr)_minmax(280px,360px)] gap-3">
+                <IsolatedAuthoringCanvas runtime=canvas_runtime.clone() />
                 <div class="space-y-3 overflow-auto">
                     <CapabilityPolicyPanel
                         runtime=capability_runtime
@@ -244,8 +240,7 @@ pub fn AdminCanvas(
                     <ContextDependencyPanel runtime=dependency_runtime />
                     <BindingPanel runtime=binding_runtime />
                     <TraitPanel runtime=trait_runtime />
-                    <PropertiesAssetsPanel runtime=properties_runtime />
-                    <ResponsiveStylePanel runtime=responsive_runtime />
+                    <DiagnosticsSection runtime=properties_runtime />
                 </div>
             </div>
             <div class="space-y-2" aria-live="polite">

@@ -180,11 +180,11 @@ pub fn RuntimePublishGatePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                 .iter()
                                 .map(|summary| {
                                     let category = match summary.category {
-                                        fly::LandingReadinessCategory::Seo => seo_label.as_str(),
-                                        fly::LandingReadinessCategory::Content => content_label.as_str(),
-                                        fly::LandingReadinessCategory::Routes => routes_label.as_str(),
-                                        fly::LandingReadinessCategory::Locales => locales_label.as_str(),
-                                        fly::LandingReadinessCategory::RuntimeContracts => {
+                                        rustok_page_builder::LandingReadinessCategory::Seo => seo_label.as_str(),
+                                        rustok_page_builder::LandingReadinessCategory::Content => content_label.as_str(),
+                                        rustok_page_builder::LandingReadinessCategory::Routes => routes_label.as_str(),
+                                        rustok_page_builder::LandingReadinessCategory::Locales => locales_label.as_str(),
+                                        rustok_page_builder::LandingReadinessCategory::RuntimeContracts => {
                                             runtime_contracts_label.as_str()
                                         }
                                     };

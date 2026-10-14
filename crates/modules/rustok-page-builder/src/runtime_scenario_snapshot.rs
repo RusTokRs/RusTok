@@ -1,9 +1,9 @@
 use crate::interaction_providers::HostFormProviderEndpoints;
-use fly::{
-    FlyResult, GrapesJsCodec, PageSelection, RenderPolicy, RuntimeContextScenario,
-    RuntimeScenarioRenderDiff, RuntimeScenarioRenderSnapshot,
+use crate::{
+    RuntimeContextScenario, RuntimeScenarioRenderDiff, RuntimeScenarioRenderSnapshot,
     diff_runtime_scenario_render_snapshots,
 };
+use fly::{FlyResult, GrapesJsCodec, PageSelection, RenderPolicy};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -112,7 +112,7 @@ pub fn diff_page_builder_runtime_scenario_project(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::RuntimeScenarioRegressionStatus;
+use crate::RuntimeScenarioRegressionStatus;
     use serde_json::json;
 
     fn project_data() -> Value {

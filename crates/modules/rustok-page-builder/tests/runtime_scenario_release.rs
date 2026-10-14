@@ -1,9 +1,9 @@
 #![cfg(feature = "server")]
 
 use async_trait::async_trait;
-use fly::{
-    GrapesJsCodec, PageSelection, RenderPolicy, RuntimeContextScenario,
-    RuntimeScenarioReleaseBaseline, RuntimeScenarioReleasePolicy,
+use fly::{GrapesJsCodec, PageSelection, RenderPolicy};
+use rustok_page_builder::{
+    RuntimeContextScenario, RuntimeScenarioReleaseBaseline, RuntimeScenarioReleasePolicy,
 };
 use rustok_api::{PortActor, PortContext};
 use rustok_page_builder::adapters::FlyAdapterBackedPageBuilderService;

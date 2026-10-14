@@ -5,7 +5,7 @@ const root = process.cwd();
 const read = (path) => readFile(`${root}/${path}`, 'utf8');
 
 const [
-  flyLib,
+  domainFacade,
   releaseCore,
   pageBuilderLib,
   releaseApi,
@@ -15,8 +15,8 @@ const [
   regressionPanel,
   serviceTests,
 ] = await Promise.all([
-  read('crates/ui/fly/src/lib.rs'),
-  read('crates/ui/fly/src/runtime_scenario_release.rs'),
+  read('crates/modules/rustok-page-builder/src/domain.rs'),
+  read('crates/modules/rustok-page-builder/src/domain/runtime_scenario_release.rs'),
   read('crates/modules/rustok-page-builder/src/lib.rs'),
   read('crates/modules/rustok-page-builder/src/runtime_scenario_release.rs'),
   read('crates/modules/rustok-page-builder/src/adapters/fly_service.rs'),
@@ -27,8 +27,8 @@ const [
 ]);
 
 const required = [
-  [flyLib, 'mod runtime_scenario_release;', 'Fly release module is not registered'],
-  [flyLib, 'pub use runtime_scenario_release::*;', 'Fly release API is not exported'],
+  [domainFacade, 'mod runtime_scenario_release;', 'release module is not registered in the Page Builder domain'],
+  [domainFacade, 'pub use runtime_scenario_release::{', 'domain release API is not exported'],
   [releaseCore, 'FLY_RUNTIME_SCENARIO_RELEASE_BASELINE', 'release baseline format marker is missing'],
   [releaseCore, 'pub fn evaluate_runtime_scenario_release', 'release evaluator is missing'],
   [releaseCore, 'snapshot_has_valid_hash', 'snapshot integrity validation is missing'],

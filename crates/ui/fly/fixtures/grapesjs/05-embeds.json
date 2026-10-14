@@ -1,0 +1,43 @@
+{
+ "assets": [],
+ "styles": [],
+ "pages": [
+  {
+   "id": "home",
+   "component": {
+    "id": "root",
+    "type": "wrapper",
+    "components": [
+     {
+      "id": "video",
+      "type": "fly_embed",
+      "flyEmbed": {
+       "provider": "youtube",
+       "url": "https://www.youtube-nocookie.com/embed/abc123",
+       "title": "Product video",
+       "aspect_ratio": "16 / 9"
+      }
+     },
+     {
+      "id": "map",
+      "type": "fly_embed",
+      "flyEmbed": {
+       "provider": "google_maps",
+       "url": "https://www.google.com/maps/embed?pb=xyz",
+       "title": "Office map"
+      }
+     },
+     {
+      "id": "bad",
+      "type": "fly_embed",
+      "flyEmbed": {
+       "provider": "youtube",
+       "url": "https://evil.example.com/embed/x",
+       "title": "Not allowed"
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

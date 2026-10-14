@@ -387,6 +387,26 @@ fn apply_action(
                 .insert("form".to_string(), Value::String(form_id.clone()));
             AppliedAction::Native
         }
+        ComponentAction::ToggleVisibility { target_id, .. }
+        | ComponentAction::ScrollTo { target_id }
+        | ComponentAction::Animate { target_id, .. } => {
+            mark_action_kind(component, action);
+            component.tag_name = Some("button".to_string());
+            component
+                .attributes
+                .insert("type".to_string(), Value::String("button".to_string()));
+            component.attributes.insert(
+                "data-fly-action-target".to_string(),
+                Value::String(target_id.clone()),
+            );
+            if let Ok(payload) = serde_json::to_string(action) {
+                component.attributes.insert(
+                    FLY_ACTION_DATA_ATTRIBUTE.to_string(),
+                    Value::String(payload),
+                );
+            }
+            AppliedAction::Custom
+        }
         ComponentAction::EmitEvent { .. } | ComponentAction::ProviderAction { .. } => {
             mark_action_kind(component, action);
             component.tag_name = Some("button".to_string());

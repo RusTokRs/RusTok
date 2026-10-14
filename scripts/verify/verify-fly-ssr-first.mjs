@@ -102,7 +102,7 @@ for (const forbidden of ['wasm-bindgen', 'wasm_bindgen', 'web-sys', 'web_sys']) 
 requireMarkers('flyBrowserLib', [
   'FLY_BROWSER_ADAPTER_JS',
   'pub enum BrowserIntentKind',
-  'pub const ALL: [Self; 48]',
+  'pub const ALL: [Self; 52]',
   'pub struct BrowserIntentEnvelope',
   'pub fn kind(&self) -> Option<BrowserIntentKind>',
   'pub fn is_mutating(&self)',

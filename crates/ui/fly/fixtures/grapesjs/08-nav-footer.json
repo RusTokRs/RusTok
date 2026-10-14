@@ -1,0 +1,49 @@
+{
+ "assets": [],
+ "styles": [],
+ "pages": [
+  {
+   "id": "home",
+   "component": {
+    "id": "root",
+    "type": "wrapper",
+    "components": [
+     {
+      "id": "nav",
+      "type": "section",
+      "components": [
+       {
+        "id": "link-home",
+        "type": "link",
+        "content": "Home",
+        "attributes": {
+         "href": "/"
+        }
+       },
+       {
+        "id": "link-docs",
+        "type": "link",
+        "content": "Docs",
+        "attributes": {
+         "href": "https://example.com/docs",
+         "target": "_blank"
+        }
+       }
+      ]
+     },
+     {
+      "id": "footer",
+      "type": "section",
+      "components": [
+       {
+        "id": "copy",
+        "type": "text",
+        "content": "(c) 2026 RusTok"
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

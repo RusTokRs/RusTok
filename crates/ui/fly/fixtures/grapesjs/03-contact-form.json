@@ -1,0 +1,78 @@
+{
+ "assets": [],
+ "styles": [],
+ "pages": [
+  {
+   "id": "home",
+   "component": {
+    "id": "root",
+    "type": "wrapper",
+    "components": [
+     {
+      "id": "form",
+      "type": "form",
+      "flyForm": {
+       "provider": "forms",
+       "form_id": "contact",
+       "method": "post"
+      },
+      "components": [
+       {
+        "id": "name",
+        "type": "input",
+        "attributes": {
+         "type": "text",
+         "name": "name",
+         "placeholder": "Your name",
+         "required": true
+        }
+       },
+       {
+        "id": "topic",
+        "type": "select",
+        "attributes": {
+         "name": "topic"
+        },
+        "components": [
+         {
+          "id": "opt-1",
+          "type": "option",
+          "content": "Sales",
+          "attributes": {
+           "value": "sales"
+          }
+         },
+         {
+          "id": "opt-2",
+          "type": "option",
+          "content": "Support",
+          "attributes": {
+           "value": "support"
+          }
+         }
+        ]
+       },
+       {
+        "id": "msg",
+        "type": "textarea",
+        "attributes": {
+         "name": "message",
+         "rows": "4"
+        }
+       },
+       {
+        "id": "send",
+        "type": "button",
+        "content": "Send",
+        "flyAction": {
+         "kind": "submit_form",
+         "form_id": "contact"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 description = "Framework-neutral visual editor state, intents, policies, and contribution contracts"
 
+
 [dependencies]
 fly = { path = ".." }
 serde.workspace = true
