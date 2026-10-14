@@ -22,7 +22,7 @@
 ## Deep Full-Stack Audit Cycle — 2026-10-13 (Fresh Start)
 
 **Status:** ACTIVE  
-**Active phase:** FS-01 — `apps/server` composition root & entrypoints  
+**Active phase:** FS-02 — Core Identity, Auth & Tenancy Modules (`rustok-auth`, `rustok-rbac`, `rustok-tenant`, `rustok-cache`)  
 **Current main SHA:** `845e6ea62`
 **Active branch:** `main`
 
@@ -58,7 +58,7 @@ The single canonical trigger to continue this audit sequence is:
 
 ### Phase Backlog — Top-Down Sequence
 
-- [ ] **Phase FS-01 — Entrypoint & Composition Root (`apps/server`)**
+- [x] **Phase FS-01 — Entrypoint & Composition Root (`apps/server`)**
 - [ ] **Phase FS-02 — Core Identity, Auth & Tenancy Modules (`rustok-auth`, `rustok-rbac`, `rustok-tenant`, `rustok-cache`)**
 - [ ] **Phase FS-03 — Commerce & Business Domain Modules (`rustok-commerce`, `rustok-cart`, `rustok-order`, `rustok-payment`, `rustok-pricing`, `rustok-inventory`, `rustok-fulfillment`)**
 - [ ] **Phase FS-04 — Content, Interaction & Social Modules (`rustok-blog`, `rustok-forum`, `rustok-content`, `rustok-notifications`, `rustok-feedback`)**
@@ -111,7 +111,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-01.30 — `apps/server/src/services/outbox_retention_worker.rs`** — outbox cleanup worker, batch retention pruning. (Done: added structured entry debug tracing to spawn_outbox_retention_worker; added fast catch-up yielding min(50ms, interval) when batch is exhausted to drain backlogged expired events without waiting full interval; added unit test for OutboxRetentionSupervisorMetricsSnapshot default and equality invariants; verified all 3 unit tests pass).
 - [x] **FS-01.31 — `apps/server/src/services/module_transition_watchdog.rs`** — module state machine watchdog, timeout recovery. (Done: exposed abort handle on ModuleTransitionWatchdogHandle; configured rapid minimum polling interval during testing; added structured debug tracing for transition watchdog evaluation checkpoints; added 3 unit tests verifying instance ID monotonicity, abort cancellation, and graceful shutdown signal termination; verified gatekeeper approval).
 - [x] **FS-01.32 — `apps/server/src/services/settings_service.rs`** — static & dynamic tenant settings loading and caching. (Done: fixed failing cache port validation test with explicit port and db integer bounds in CacheSettingsValidator; hardened EmailSettingsValidator and RateLimitSettingsValidator with strict type and finiteness checks; trimmed input categories; added structured debug tracing across get, get_all, and update; enforced JSON object payload invariant on settings mutations; redacted secrets from YAML configuration fallbacks in get and get_all; sanitized redis_url passwords in cache settings; added 5 unit tests covering category trimming, bounds checks, type checks, and redis_url password redaction; verified gatekeeper approval).
-- [ ] **FS-01.33 — `apps/server/src/services/rbac_*.rs`** — server-level RBAC caching, runtime invalidation.
+- [x] **FS-01.33 — `apps/server/src/services/rbac_*.rs`** — server-level RBAC caching, runtime invalidation. (Done: added structured entry debug tracing across publish_user_rbac_invalidation, publish_all_rbac_invalidation, start_rbac_cache_invalidation_listener, invalidate_user_permissions_cache, invalidate_user_rbac_caches, get_user_role, get_user_ids_for_role, and replace_user_role; added whitespace trimming for invalidation keys and target resolution; added unit test verifying padded invalidation keys; verified all 43 RBAC tests pass and gatekeeper approval).
 
 ---
 
@@ -122,7 +122,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-10-13T20:15:00Z`
-- **Progress:** `0 / 254` components audited (**0%**)
+- **Progress:** `1 / 254` components audited (**0.4%**)
 - **Total Workspace Codebase:** ~350,000 LOC across 254 modules/apps
 
 ---
@@ -160,7 +160,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-profiles](../../apps/next-frontend/packages/rustok-profiles) | `apps` | 7 | 780 | None |  |
 | [ ] | [rustok-seo](../../apps/next-frontend/packages/rustok-seo) | `apps` | 5 | 1,459 | None |  |
 | [ ] | [search](../../apps/next-frontend/packages/search) | `apps` | 1 | 681 | None |  |
-| [ ] | [server](../../apps/server) | `apps` | 484 | 187,425 | None |  |
+| [x] | [server](../../apps/server) | `apps` | 484 | 187,425 | 2026-10-14 | Completed all 33 audit tracks in Phase FS-01 |
 | [ ] | [storefront](../../apps/storefront) | `apps` | 34 | 5,987 | None |  |
 | [ ] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 6 | 903 | None |  |
 | [ ] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,230 | None |  |
