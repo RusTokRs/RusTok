@@ -40,6 +40,7 @@ pub struct OAuthAuthorizationServerMetadata {
 async fn get_metadata(
     State(ctx): State<ServerAuthRuntime>,
 ) -> Result<Json<OAuthAuthorizationServerMetadata>, Error> {
+    tracing::debug!("oauth_metadata::get_metadata entry");
     let auth_config = ctx
         .auth_config()
         .ok_or_else(|| Error::Message("Auth config error".into()))?;

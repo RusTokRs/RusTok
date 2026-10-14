@@ -40,7 +40,15 @@ fn oauth_error_response(error: TokenErrorResponse) -> axum::response::Response {
         "insufficient_scope" => StatusCode::FORBIDDEN,
         _ => StatusCode::BAD_REQUEST,
     };
-    (status, Json(error)).into_response()
+    let mut response = (status, Json(error)).into_response();
+    response.headers_mut().insert(
+        CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response
+        .headers_mut()
+        .insert(PRAGMA, axum::http::HeaderValue::from_static("no-cache"));
+    response
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +97,7 @@ pub(crate) async fn token_handler(
     tenant_ctx: TenantContext,
     request: Request,
 ) -> axum::response::Response {
+    tracing::debug!("oauth::token_handler entry");
     let req = match parse_token_request(request, &ctx).await {
         Ok(request) => request,
         Err(error) => return oauth_token_http_response(StatusCode::BAD_REQUEST, error),
@@ -165,6 +174,7 @@ pub(crate) async fn authorize_handler(
     current_user: CurrentUser,
     Json(req): Json<AuthorizeRequest>,
 ) -> axum::response::Response {
+    tracing::debug!("oauth::authorize_handler entry");
     match authorize_handler_inner(ctx, tenant_ctx, current_user, req).await {
         Ok(response) => response.into_response(),
         Err(error) => oauth_error_response(error),
@@ -255,6 +265,7 @@ pub(crate) async fn authorize_browser_handler(
     headers: HeaderMap,
     Query(req): Query<BrowserAuthorizeRequest>,
 ) -> axum::response::Response {
+    tracing::debug!("oauth::authorize_browser_handler entry");
     let runtime_ctx = ctx.runtime_ctx();
     let validated = match validate_authorize_request(
         runtime_ctx,
@@ -374,6 +385,7 @@ pub(crate) async fn consent_handler(
     headers: HeaderMap,
     Form(req): Form<ConsentRequest>,
 ) -> axum::response::Response {
+    tracing::debug!("oauth::consent_handler entry");
     let runtime_ctx = ctx.runtime_ctx();
     let validated = match validate_authorize_request(
         runtime_ctx,
@@ -884,6 +896,7 @@ pub(crate) async fn revoke_handler(
     tenant_ctx: TenantContext,
     request: Request,
 ) -> axum::response::Response {
+    tracing::debug!("oauth::revoke_handler entry");
     let req = match parse_revoke_request(request, &ctx).await {
         Ok(request) => request,
         Err(error) => return oauth_error_response(error),
@@ -1018,6 +1031,7 @@ async fn revoke_handler_inner(
 pub(crate) async fn userinfo_handler(
     current_user: CurrentUser, // Automatically extracts and validates Bearer token
 ) -> axum::response::Response {
+    tracing::debug!("oauth::userinfo_handler entry");
     match userinfo_handler_inner(current_user).await {
         Ok(response) => response.into_response(),
         Err(error) => oauth_error_response(error),
@@ -1340,5 +1354,23 @@ mod tests {
     fn consent_requirement_depends_on_app_type() {
         assert!(validated_request("third_party").app.requires_user_consent());
         assert!(!validated_request("first_party").app.requires_user_consent());
+    }
+
+    #[test]
+    fn oauth_error_response_sets_no_store_headers() {
+        let err = TokenErrorResponse {
+            error: "invalid_client".to_string(),
+            error_description: "Invalid client credentials".to_string(),
+        };
+        let response = oauth_error_response(err);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            response.headers().get(CACHE_CONTROL).unwrap(),
+            "no-store"
+        );
+        assert_eq!(
+            response.headers().get(PRAGMA).unwrap(),
+            "no-cache"
+        );
     }
 }
