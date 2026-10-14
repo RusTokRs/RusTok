@@ -22,6 +22,7 @@ const MAX_READINESS_BODY_BYTES: usize = 256 * 1024;
 /// no host token is configured.
 pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
     let path = request.uri().path();
+    tracing::debug!(path, "metrics_auth::require_bearer entry");
     let is_production = is_production_environment();
 
     if path == "/health/ready" {
@@ -38,6 +39,18 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
         if allow_unauthenticated_without_token(is_production) {
             return next.run(request).await;
         }
+        if path.starts_with("/health") || path.starts_with("/api/") {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+                serde_json::json!({
+                    "error": "service_unavailable",
+                    "message": "observability authentication is not configured"
+                })
+                .to_string(),
+            )
+                .into_response();
+        }
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             "observability authentication is not configured",
@@ -49,12 +62,28 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
         return next.run(request).await;
     }
 
-    (
-        StatusCode::UNAUTHORIZED,
-        [(header::WWW_AUTHENTICATE, "Bearer realm=\"observability\"")],
-        "observability bearer token required",
-    )
-        .into_response()
+    if path.starts_with("/health") || path.starts_with("/api/") {
+        (
+            StatusCode::UNAUTHORIZED,
+            [
+                (header::WWW_AUTHENTICATE, "Bearer realm=\"observability\""),
+                (header::CONTENT_TYPE, "application/json; charset=utf-8"),
+            ],
+            serde_json::json!({
+                "error": "unauthorized",
+                "message": "observability bearer token required"
+            })
+            .to_string(),
+        )
+            .into_response()
+    } else {
+        (
+            StatusCode::UNAUTHORIZED,
+            [(header::WWW_AUTHENTICATE, "Bearer realm=\"observability\"")],
+            "observability bearer token required",
+        )
+            .into_response()
+    }
 }
 
 fn request_is_authorized(request: &Request<Body>, is_production: bool) -> bool {
@@ -71,11 +100,15 @@ fn allow_unauthenticated_without_token(is_production: bool) -> bool {
 }
 
 fn supplied_token(request: &Request<Body>) -> Option<&str> {
-    request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(parse_bearer_token)
+    let mut values = request.headers().get_all(header::AUTHORIZATION).iter();
+    let first = values.next()?;
+    for duplicate in values {
+        if duplicate != first {
+            tracing::warn!("Conflicting duplicate Authorization headers on observability request");
+            return None;
+        }
+    }
+    first.to_str().ok().and_then(parse_bearer_token)
 }
 
 async fn normalize_readiness_response(response: Response, reveal_details: bool) -> Response {
@@ -126,14 +159,18 @@ fn readiness_http_status(status: &str) -> StatusCode {
     }
 }
 
+fn sanitize_token(value: &str) -> Option<String> {
+    let trimmed = value.trim().trim_matches('"').trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
 fn configured_token() -> Option<String> {
     [OBSERVABILITY_TOKEN_ENV, LEGACY_METRICS_TOKEN_ENV]
         .into_iter()
         .find_map(|name| {
             std::env::var(name)
                 .ok()
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty())
+                .and_then(|value| sanitize_token(&value))
         })
 }
 
@@ -161,9 +198,12 @@ fn constant_time_eq(left: &str, right: &str) -> bool {
 mod tests {
     use super::{
         allow_unauthenticated_without_token, constant_time_eq, is_protected_observability_path,
-        parse_bearer_token, readiness_http_status,
+        parse_bearer_token, readiness_http_status, sanitize_token, supplied_token,
     };
-    use axum::http::StatusCode;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode, header},
+    };
 
     #[test]
     fn protects_metrics_and_detailed_health_only() {
@@ -214,5 +254,32 @@ mod tests {
     fn token_comparison_is_exact() {
         assert!(constant_time_eq("metrics-secret", "metrics-secret"));
         assert!(!constant_time_eq("metrics-secret", "metrics-secret-2"));
+    }
+
+    #[test]
+    fn sanitize_token_strips_quotes_and_whitespace() {
+        assert_eq!(
+            sanitize_token("  \"metrics-secret\"  "),
+            Some("metrics-secret".to_string())
+        );
+        assert_eq!(
+            sanitize_token("metrics-secret"),
+            Some("metrics-secret".to_string())
+        );
+        assert_eq!(sanitize_token("   "), None);
+        assert_eq!(sanitize_token("\"\""), None);
+    }
+
+    #[test]
+    fn supplied_token_handles_duplicate_and_conflicting_headers() {
+        let mut req = Request::builder().uri("/metrics").body(Body::empty()).unwrap();
+        req.headers_mut().append(header::AUTHORIZATION, "Bearer tok1".parse().unwrap());
+        req.headers_mut().append(header::AUTHORIZATION, "Bearer tok1".parse().unwrap());
+        assert_eq!(supplied_token(&req), Some("tok1"));
+
+        let mut req2 = Request::builder().uri("/metrics").body(Body::empty()).unwrap();
+        req2.headers_mut().append(header::AUTHORIZATION, "Bearer tok1".parse().unwrap());
+        req2.headers_mut().append(header::AUTHORIZATION, "Bearer tok2".parse().unwrap());
+        assert_eq!(supplied_token(&req2), None);
     }
 }
