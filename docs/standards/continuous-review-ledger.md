@@ -23,7 +23,7 @@
 
 **Status:** ACTIVE  
 **Active phase:** FS-02 — Core Identity, Auth & Tenancy Modules (`rustok-auth`, `rustok-rbac`, `rustok-tenant`, `rustok-cache`)  
-**Current main SHA:** `845e6ea62`
+**Current main SHA:** `d0c74eac2`
 **Active branch:** `main`
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire repository starting from the host entrypoint and composition root (`apps/server`), propagating through domain modules down to shared foundation libraries.
@@ -112,6 +112,28 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-01.31 — `apps/server/src/services/module_transition_watchdog.rs`** — module state machine watchdog, timeout recovery. (Done: exposed abort handle on ModuleTransitionWatchdogHandle; configured rapid minimum polling interval during testing; added structured debug tracing for transition watchdog evaluation checkpoints; added 3 unit tests verifying instance ID monotonicity, abort cancellation, and graceful shutdown signal termination; verified gatekeeper approval).
 - [x] **FS-01.32 — `apps/server/src/services/settings_service.rs`** — static & dynamic tenant settings loading and caching. (Done: fixed failing cache port validation test with explicit port and db integer bounds in CacheSettingsValidator; hardened EmailSettingsValidator and RateLimitSettingsValidator with strict type and finiteness checks; trimmed input categories; added structured debug tracing across get, get_all, and update; enforced JSON object payload invariant on settings mutations; redacted secrets from YAML configuration fallbacks in get and get_all; sanitized redis_url passwords in cache settings; added 5 unit tests covering category trimming, bounds checks, type checks, and redis_url password redaction; verified gatekeeper approval).
 - [x] **FS-01.33 — `apps/server/src/services/rbac_*.rs`** — server-level RBAC caching, runtime invalidation. (Done: added structured entry debug tracing across publish_user_rbac_invalidation, publish_all_rbac_invalidation, start_rbac_cache_invalidation_listener, invalidate_user_permissions_cache, invalidate_user_rbac_caches, get_user_role, get_user_ids_for_role, and replace_user_role; added whitespace trimming for invalidation keys and target resolution; added unit test verifying padded invalidation keys; verified all 43 RBAC tests pass and gatekeeper approval).
+
+---
+
+### Active Phase: FS-02 — Core Identity, Auth & Tenancy Modules Queue
+
+#### 1. rustok-tenant
+- [x] **FS-02.01 — `crates/modules/rustok-tenant/src/services/tenant_service.rs` & `error.rs`** — tenant lifecycle, provisioning, slug/domain resolution, locale policy aggregate, input sanitization. (Done: added Validation variant to TenantError and mapped to PortError::validation; trimmed and validated slug and name inputs rejecting empty/whitespace in create_tenant, ensure_tenant, and update_tenant; fast-pathed empty slug and domain lookups to NotFound; fast-pathed empty module_slug to Ok(None); clamped pagination parameters in list_tenants; added structured entry debug tracing across all tenant service methods; added integration test tenant_service_input_trimming_and_validation; all 21 tests passed; verified gatekeeper approval).
+- [ ] **FS-02.02 — `crates/modules/rustok-tenant/src/entities/*` & `ports.rs`** — tenant entities, locale policies, receipts, port adapters.
+- [ ] **FS-02.03 — `crates/modules/rustok-tenant/src/settings_schema.rs` & `contract_tests.rs`** — tenant settings schema, validation rules, contract tests.
+
+#### 2. rustok-auth
+- [ ] **FS-02.04 — `crates/modules/rustok-auth/src/services/auth_service.rs` & `error.rs`** — authentication service, password hashing, credential validation.
+- [ ] **FS-02.05 — `crates/modules/rustok-auth/src/services/session_service.rs` & `token_service.rs`** — session lifecycle, JWT issuance, revocation.
+- [ ] **FS-02.06 — `crates/modules/rustok-auth/src/entities/*` & `ports.rs`** — auth entities, ports, adapters.
+
+#### 3. rustok-rbac
+- [ ] **FS-02.07 — `crates/modules/rustok-rbac/src/services/rbac_service.rs` & `error.rs`** — RBAC domain service, role assignment, policy enforcement.
+- [ ] **FS-02.08 — `crates/modules/rustok-rbac/src/entities/*` & `ports.rs`** — RBAC entities, permissions matrix, ports.
+
+#### 4. rustok-cache
+- [ ] **FS-02.09 — `crates/modules/rustok-cache/src/services/cache_service.rs` & `error.rs`** — distributed caching, Redis/memory backends, key hashing.
+- [ ] **FS-02.10 — `crates/modules/rustok-cache/src/ports.rs` & `invalidation.rs`** — cache ports, invalidation listener, stampede protection.
 
 ---
 
