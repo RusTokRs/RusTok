@@ -22,6 +22,11 @@ pub const DEFAULT_PENDING_INTENT_LIMIT_MESSAGE: &str = "Editor action limit reac
 pub const DEFAULT_INTENT_REQUEST_TIMEOUT_MESSAGE: &str = "Editor action timed out";
 pub const FLY_BROWSER_ADAPTER_JS: &str = include_str!("../assets/fly-browser.js");
 
+/// Standalone action runtime for published pages (see `assets/fly-actions.js`). Hosts serve
+/// or inline this asset on public pages that materialize `data-fly-action` attributes; the
+/// editor bridge above never loads it.
+pub const FLY_ACTIONS_JS: &str = include_str!("../assets/fly-actions.js");
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum BrowserIntentKind {
@@ -48,6 +53,8 @@ pub enum BrowserIntentKind {
     CreatePage,
     RenamePage,
     RemovePage,
+    MovePage,
+    UpsertStyleRule,
     UpsertTranslation,
     RemoveTranslation,
     SetLocalePolicy,
@@ -65,6 +72,8 @@ pub enum BrowserIntentKind {
     SelectAsset,
     SetRuntimeContext,
     SetRuntimeLocale,
+    SetThemeToken,
+    RemoveThemeToken,
     Undo,
     Redo,
     Copy,
@@ -76,7 +85,7 @@ pub enum BrowserIntentKind {
 }
 
 impl BrowserIntentKind {
-    pub const ALL: [Self; 48] = [
+    pub const ALL: [Self; 52] = [
         Self::Select,
         Self::FocusRequested,
         Self::Hover,
@@ -100,6 +109,8 @@ impl BrowserIntentKind {
         Self::CreatePage,
         Self::RenamePage,
         Self::RemovePage,
+        Self::MovePage,
+        Self::UpsertStyleRule,
         Self::UpsertTranslation,
         Self::RemoveTranslation,
         Self::SetLocalePolicy,
@@ -117,6 +128,8 @@ impl BrowserIntentKind {
         Self::SelectAsset,
         Self::SetRuntimeContext,
         Self::SetRuntimeLocale,
+        Self::SetThemeToken,
+        Self::RemoveThemeToken,
         Self::Undo,
         Self::Redo,
         Self::Copy,
@@ -158,6 +171,8 @@ impl BrowserIntentKind {
             Self::CreatePage => "create_page",
             Self::RenamePage => "rename_page",
             Self::RemovePage => "remove_page",
+            Self::MovePage => "move_page",
+            Self::UpsertStyleRule => "upsert_style_rule",
             Self::UpsertTranslation => "upsert_translation",
             Self::RemoveTranslation => "remove_translation",
             Self::SetLocalePolicy => "set_locale_policy",
@@ -175,6 +190,8 @@ impl BrowserIntentKind {
             Self::SelectAsset => "select_asset",
             Self::SetRuntimeContext => "set_runtime_context",
             Self::SetRuntimeLocale => "set_runtime_locale",
+            Self::SetThemeToken => "set_theme_token",
+            Self::RemoveThemeToken => "remove_theme_token",
             Self::Undo => "undo",
             Self::Redo => "redo",
             Self::Copy => "copy",
@@ -202,6 +219,8 @@ impl BrowserIntentKind {
                 | Self::CreatePage
                 | Self::RenamePage
                 | Self::RemovePage
+                | Self::MovePage
+                | Self::UpsertStyleRule
                 | Self::UpsertTranslation
                 | Self::RemoveTranslation
                 | Self::SetLocalePolicy
@@ -219,6 +238,8 @@ impl BrowserIntentKind {
                 | Self::SelectAsset
                 | Self::SetRuntimeContext
                 | Self::SetRuntimeLocale
+                | Self::SetThemeToken
+                | Self::RemoveThemeToken
                 | Self::Undo
                 | Self::Redo
                 | Self::Cut
@@ -383,6 +404,292 @@ impl BrowserIntentEnvelope {
 
     pub fn is_mutating(&self) -> bool {
         self.kind().is_some_and(BrowserIntentKind::is_mutating)
+    }
+
+    /// Builds an envelope for one intent. Adapter workspaces use the typed
+    /// constructors below so the intent names and payload shapes they emit match the
+    /// server dispatch contract by construction instead of by string convention.
+    pub fn new(instance_id: impl Into<String>, kind: BrowserIntentKind, payload: Value) -> Self {
+        Self {
+            protocol: FLY_BROWSER_PROTOCOL.to_string(),
+            instance_id: instance_id.into(),
+            intent: kind.as_str().to_string(),
+            payload,
+            sequence: None,
+            page_id: None,
+            revision: None,
+            project_hash: None,
+            draft_token: None,
+            draft_generation: None,
+        }
+    }
+
+    /// Page activation by index (and id when the page carries one), matching the
+    /// server dispatch payload (`page_index`, optional `page_id`).
+    pub fn activate_page(
+        instance_id: impl Into<String>,
+        page_index: usize,
+        page_id: Option<&str>,
+    ) -> Self {
+        let mut payload = serde_json::json!({ "page_index": page_index });
+        if let Some(page_id) = page_id {
+            payload["page_id"] = serde_json::Value::String(page_id.to_string());
+        }
+        Self::new(instance_id, BrowserIntentKind::ActivatePage, payload)
+    }
+
+    /// One property edit on a component, in the `patch_component_property`
+    /// contract the SSR inspector forms use: `kind` is `field`, `attribute`,
+    /// or `style`; `remove` clears instead of setting.
+    pub fn patch_component_property(
+        instance_id: impl Into<String>,
+        component_id: &str,
+        kind: &str,
+        name: &str,
+        value: &str,
+        remove: bool,
+    ) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::PatchComponentProperty,
+            serde_json::json!({
+                "component_id": component_id,
+                "kind": kind,
+                "name": name,
+                "value": value,
+                "remove": remove,
+            }),
+        )
+    }
+
+    /// Document asset upsert in the `upsert_asset` SSR-form contract: source is
+    /// required, id and name optional.
+    pub fn upsert_asset(
+        instance_id: impl Into<String>,
+        asset_id: Option<&str>,
+        source: &str,
+        name: Option<&str>,
+    ) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::UpsertAsset,
+            serde_json::json!({
+                "asset_id": asset_id.unwrap_or_default(),
+                "source": source,
+                "name": name.unwrap_or_default(),
+            }),
+        )
+    }
+
+    /// Document asset removal by id.
+    pub fn remove_asset(instance_id: impl Into<String>, asset_id: &str) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::RemoveAsset,
+            serde_json::json!({ "asset_id": asset_id }),
+        )
+    }
+
+    /// Apply a document asset to a component attribute (`src` unless the host
+    /// integration chose another attribute), in the `select_asset` contract.
+    pub fn select_asset(
+        instance_id: impl Into<String>,
+        component_id: &str,
+        asset_id: &str,
+        source_attribute: &str,
+    ) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::SelectAsset,
+            serde_json::json!({
+                "component_id": component_id,
+                "asset_id": asset_id,
+                "source_attribute": source_attribute,
+            }),
+        )
+    }
+
+    /// Page creation with a display name; the server assigns the unique id,
+    /// appends the page, and activates it.
+    pub fn create_page(instance_id: impl Into<String>, name: &str) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::CreatePage,
+            serde_json::json!({ "name": name }),
+        )
+    }
+
+    /// Page removal by index (and id when the page carries one).
+    pub fn remove_page(
+        instance_id: impl Into<String>,
+        page_index: usize,
+        page_id: Option<&str>,
+    ) -> Self {
+        let mut payload = serde_json::json!({ "page_index": page_index });
+        if let Some(page_id) = page_id {
+            payload["page_id"] = serde_json::Value::String(page_id.to_string());
+        }
+        Self::new(instance_id, BrowserIntentKind::RemovePage, payload)
+    }
+
+    /// Page identity patch: display name and, when non-empty, the page id.
+    pub fn rename_page(
+        instance_id: impl Into<String>,
+        page_index: usize,
+        page_id: Option<&str>,
+        name: &str,
+        new_page_id: Option<&str>,
+    ) -> Self {
+        let mut payload = serde_json::json!({ "page_index": page_index, "name": name });
+        if let Some(page_id) = page_id {
+            payload["page_id"] = serde_json::Value::String(page_id.to_string());
+        }
+        if let Some(new_page_id) = new_page_id {
+            payload["new_page_id"] = serde_json::Value::String(new_page_id.to_string());
+        }
+        Self::new(instance_id, BrowserIntentKind::RenamePage, payload)
+    }
+
+    /// Full page-properties submit as one atomic rename intent: identity
+    /// (name and, when non-empty, the new id) plus the serialized
+    /// `fly::PageMetadata` projection, applied by the server as a single page
+    /// patch — one command, one revision bump, one error slot.
+    pub fn page_properties(
+        instance_id: impl Into<String>,
+        page_index: usize,
+        page_id: Option<&str>,
+        name: &str,
+        new_page_id: Option<&str>,
+        metadata: serde_json::Value,
+    ) -> Self {
+        let mut payload = serde_json::json!({
+            "page_index": page_index,
+            "name": name,
+            "metadata": metadata,
+        });
+        if let Some(page_id) = page_id {
+            payload["page_id"] = serde_json::Value::String(page_id.to_string());
+        }
+        if let Some(new_page_id) = new_page_id {
+            payload["new_page_id"] = serde_json::Value::String(new_page_id.to_string());
+        }
+        Self::new(instance_id, BrowserIntentKind::RenamePage, payload)
+    }
+
+    /// SEO / Open Graph metadata patch for one page; `metadata` is the serialized
+    /// `fly::PageMetadata` projection.
+    pub fn patch_page_metadata(
+        instance_id: impl Into<String>,
+        page_index: usize,
+        page_id: Option<&str>,
+        metadata: serde_json::Value,
+    ) -> Self {
+        let mut payload = serde_json::json!({ "page_index": page_index, "metadata": metadata });
+        if let Some(page_id) = page_id {
+            payload["page_id"] = serde_json::Value::String(page_id.to_string());
+        }
+        Self::new(instance_id, BrowserIntentKind::PatchPageMetadata, payload)
+    }
+
+    /// Page reorder: move the page at `page_index` so it lands at `target_index`.
+    pub fn move_page(
+        instance_id: impl Into<String>,
+        page_index: usize,
+        page_id: Option<&str>,
+        target_index: usize,
+    ) -> Self {
+        let mut payload = serde_json::json!({
+            "page_index": page_index,
+            "target_index": target_index,
+        });
+        if let Some(page_id) = page_id {
+            payload["page_id"] = serde_json::Value::String(page_id.to_string());
+        }
+        Self::new(instance_id, BrowserIntentKind::MovePage, payload)
+    }
+
+    /// One scoped style declaration on a component: `scope_kind` is `media`
+    /// (with the media query) or `state` (with the pseudo-class), matching the
+    /// responsive / interaction-state style contract.
+    pub fn upsert_style_rule(
+        instance_id: impl Into<String>,
+        component_id: &str,
+        scope_kind: &str,
+        scope_value: &str,
+        property: &str,
+        value: &str,
+        remove: bool,
+    ) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::UpsertStyleRule,
+            serde_json::json!({
+                "component_id": component_id,
+                "scope_kind": scope_kind,
+                "scope_value": scope_value,
+                "property": property,
+                "value": value,
+                "remove": remove,
+            }),
+        )
+    }
+
+    /// Selection change; `None` clears the selection.
+    pub fn select(instance_id: impl Into<String>, component_id: Option<&str>) -> Self {
+        let payload = match component_id {
+            Some(component_id) => serde_json::json!({ "component_id": component_id }),
+            None => serde_json::json!({}),
+        };
+        Self::new(instance_id, BrowserIntentKind::Select, payload)
+    }
+
+    /// Palette insert of one registry block.
+    pub fn insert_block(instance_id: impl Into<String>, block_id: &str) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::InsertBlock,
+            serde_json::json!({ "block_id": block_id }),
+        )
+    }
+
+    /// Inserts or updates one design token by name.
+    pub fn set_theme_token(instance_id: impl Into<String>, name: &str, value: &str) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::SetThemeToken,
+            serde_json::json!({ "name": name, "value": value }),
+        )
+    }
+
+    /// Removes one design token by name.
+    pub fn remove_theme_token(instance_id: impl Into<String>, name: &str) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::RemoveThemeToken,
+            serde_json::json!({ "name": name }),
+        )
+    }
+
+    pub fn undo(instance_id: impl Into<String>) -> Self {
+        Self::new(instance_id, BrowserIntentKind::Undo, serde_json::json!({}))
+    }
+
+    pub fn redo(instance_id: impl Into<String>) -> Self {
+        Self::new(instance_id, BrowserIntentKind::Redo, serde_json::json!({}))
+    }
+
+    /// Attaches the page/revision context the server uses for revision checks
+    /// (lost-update protection) on mutating intents.
+    pub fn with_page_context(
+        mut self,
+        page_id: Option<String>,
+        revision: Option<String>,
+        project_hash: Option<String>,
+    ) -> Self {
+        self.page_id = page_id;
+        self.revision = revision;
+        self.project_hash = project_hash;
+        self
     }
 }
 
@@ -573,12 +880,10 @@ mod tests {
         assert_eq!(value["intentRequestTimeoutMs"], 1_500);
         assert_eq!(value["pendingIntentLimitMessage"], "Pending limit");
         assert_eq!(value["intentRequestTimeoutMessage"], "Request timeout");
-        assert!(
-            serde_json::from_value::<BrowserAdapterConfig>(json!({
-                "root_selector": "#unsupported"
-            }))
-            .is_err()
-        );
+        assert!(serde_json::from_value::<BrowserAdapterConfig>(json!({
+            "root_selector": "#unsupported"
+        }))
+        .is_err());
     }
 
     #[test]
@@ -630,6 +935,197 @@ mod tests {
         .expect("normalized");
         assert_eq!(request.draft_token.as_deref(), Some("token"));
         assert_eq!(request.draft_generation, Some(4));
+    }
+
+    #[test]
+    fn typed_constructors_match_the_server_dispatch_contract() {
+        let insert = BrowserIntentEnvelope::insert_block("workspace-1", "shop.product_card")
+            .normalized()
+            .expect("insert envelope");
+        assert_eq!(insert.kind(), Some(BrowserIntentKind::InsertBlock));
+        assert_eq!(insert.payload["block_id"], "shop.product_card");
+        assert!(insert.is_mutating());
+
+        let select = BrowserIntentEnvelope::select("workspace-1", Some("hero"))
+            .normalized()
+            .expect("select envelope");
+        assert_eq!(select.kind(), Some(BrowserIntentKind::Select));
+        assert_eq!(select.payload["component_id"], "hero");
+
+        let clear = BrowserIntentEnvelope::select("workspace-1", None)
+            .normalized()
+            .expect("clear envelope");
+        assert!(clear.payload.get("component_id").is_none());
+
+        let set_token = BrowserIntentEnvelope::set_theme_token("workspace-1", "brand", "#0b5fff")
+            .normalized()
+            .expect("set token envelope");
+        assert_eq!(set_token.kind(), Some(BrowserIntentKind::SetThemeToken));
+        assert_eq!(set_token.payload["name"], "brand");
+        assert_eq!(set_token.payload["value"], "#0b5fff");
+        assert!(set_token.is_mutating());
+
+        let remove_token = BrowserIntentEnvelope::remove_theme_token("workspace-1", "brand")
+            .normalized()
+            .expect("remove token envelope");
+        assert_eq!(
+            remove_token.kind(),
+            Some(BrowserIntentKind::RemoveThemeToken)
+        );
+        assert_eq!(remove_token.payload["name"], "brand");
+        assert!(remove_token.is_mutating());
+
+        for envelope in [
+            BrowserIntentEnvelope::undo("workspace-1"),
+            BrowserIntentEnvelope::redo("workspace-1"),
+        ] {
+            let envelope = envelope.normalized().expect("history envelope");
+            assert!(envelope.payload.is_object());
+        }
+
+        let activate = BrowserIntentEnvelope::activate_page("workspace-1", 2, Some("about"))
+            .normalized()
+            .expect("activate envelope");
+        assert_eq!(activate.kind(), Some(BrowserIntentKind::ActivatePage));
+        assert_eq!(activate.payload["page_index"], 2);
+        assert_eq!(activate.payload["page_id"], "about");
+
+        let create = BrowserIntentEnvelope::create_page("workspace-1", "About us")
+            .normalized()
+            .expect("create envelope");
+        assert_eq!(create.kind(), Some(BrowserIntentKind::CreatePage));
+        assert_eq!(create.payload["name"], "About us");
+
+        let remove = BrowserIntentEnvelope::remove_page("workspace-1", 3, Some("legacy"))
+            .normalized()
+            .expect("remove envelope");
+        assert_eq!(remove.kind(), Some(BrowserIntentKind::RemovePage));
+        assert_eq!(remove.payload["page_index"], 3);
+        assert_eq!(remove.payload["page_id"], "legacy");
+
+        let rename = BrowserIntentEnvelope::rename_page(
+            "workspace-1",
+            1,
+            Some("old-id"),
+            "Renamed",
+            Some("new-id"),
+        )
+        .normalized()
+        .expect("rename envelope");
+        assert_eq!(rename.kind(), Some(BrowserIntentKind::RenamePage));
+        assert_eq!(rename.payload["name"], "Renamed");
+        assert_eq!(rename.payload["new_page_id"], "new-id");
+        assert!(rename.is_mutating());
+
+        let upsert = BrowserIntentEnvelope::upsert_asset(
+            "workspace-1",
+            Some("hero-img"),
+            "https://cdn.example/hero.png",
+            None,
+        )
+        .normalized()
+        .expect("upsert asset envelope");
+        assert_eq!(upsert.kind(), Some(BrowserIntentKind::UpsertAsset));
+        assert_eq!(upsert.payload["asset_id"], "hero-img");
+        assert!(upsert.is_mutating());
+
+        let removed_asset = BrowserIntentEnvelope::remove_asset("workspace-1", "hero-img")
+            .normalized()
+            .expect("remove asset envelope");
+        assert_eq!(removed_asset.kind(), Some(BrowserIntentKind::RemoveAsset));
+
+        let applied = BrowserIntentEnvelope::select_asset("workspace-1", "hero", "hero-img", "src")
+            .normalized()
+            .expect("select asset envelope");
+        assert_eq!(applied.kind(), Some(BrowserIntentKind::SelectAsset));
+        assert_eq!(applied.payload["source_attribute"], "src");
+
+        let styled = BrowserIntentEnvelope::upsert_style_rule(
+            "workspace-1",
+            "hero",
+            "media",
+            "(max-width: 767px)",
+            "padding",
+            "8px",
+            false,
+        )
+        .normalized()
+        .expect("style rule envelope");
+        assert_eq!(styled.kind(), Some(BrowserIntentKind::UpsertStyleRule));
+        assert_eq!(styled.payload["scope_kind"], "media");
+        assert_eq!(styled.payload["property"], "padding");
+        assert!(styled.is_mutating());
+
+        let property = BrowserIntentEnvelope::patch_component_property(
+            "workspace-1",
+            "hero",
+            "attribute",
+            "aria-label",
+            "Hero section",
+            false,
+        )
+        .normalized()
+        .expect("property envelope");
+        assert_eq!(
+            property.kind(),
+            Some(BrowserIntentKind::PatchComponentProperty)
+        );
+        assert_eq!(property.payload["component_id"], "hero");
+        assert_eq!(property.payload["kind"], "attribute");
+        assert_eq!(property.payload["remove"], false);
+        assert!(property.is_mutating());
+
+        let properties = BrowserIntentEnvelope::page_properties(
+            "workspace-1",
+            1,
+            Some("old-id"),
+            "Renamed",
+            Some("new-id"),
+            serde_json::json!({ "slug": "renamed" }),
+        )
+        .normalized()
+        .expect("properties envelope");
+        assert_eq!(properties.kind(), Some(BrowserIntentKind::RenamePage));
+        assert_eq!(properties.payload["metadata"]["slug"], "renamed");
+        assert_eq!(properties.payload["new_page_id"], "new-id");
+
+        let metadata_patch = BrowserIntentEnvelope::patch_page_metadata(
+            "workspace-1",
+            1,
+            Some("about"),
+            serde_json::json!({ "slug": "about" }),
+        )
+        .normalized()
+        .expect("metadata envelope");
+        assert_eq!(
+            metadata_patch.kind(),
+            Some(BrowserIntentKind::PatchPageMetadata)
+        );
+        assert_eq!(metadata_patch.payload["metadata"]["slug"], "about");
+
+        let moved = BrowserIntentEnvelope::move_page("workspace-1", 1, None, 3)
+            .normalized()
+            .expect("move envelope");
+        assert_eq!(moved.kind(), Some(BrowserIntentKind::MovePage));
+        assert_eq!(moved.payload["target_index"], 3);
+        assert!(moved.payload.get("page_id").is_none());
+
+        let activate_anonymous = BrowserIntentEnvelope::activate_page("workspace-1", 0, None)
+            .normalized()
+            .expect("activate anonymous envelope");
+        assert!(activate_anonymous.payload.get("page_id").is_none());
+
+        let contextual = BrowserIntentEnvelope::undo("workspace-1")
+            .with_page_context(
+                Some("home".to_string()),
+                Some("rev-2".to_string()),
+                Some("abc".to_string()),
+            )
+            .normalized()
+            .expect("contextual envelope");
+        assert_eq!(contextual.page_id.as_deref(), Some("home"));
+        assert_eq!(contextual.revision.as_deref(), Some("rev-2"));
+        assert_eq!(contextual.project_hash.as_deref(), Some("abc"));
     }
 
     #[test]

@@ -6,9 +6,12 @@ import '@rustok/commerce-admin';
 import '@rustok/email-admin';
 import '@rustok/events-admin/register';
 import '@rustok/forum-admin';
+import '@rustok/forms-admin';
 import '@rustok/iggy-connector-admin';
 import '@rustok/rbac-admin';
 import '@rustok/product-admin';
+import '@rustok/media-admin';
+import '@rustok/pages-admin';
 import '@rustok/translation-admin';
 import '@rustok/workflow-admin';
 

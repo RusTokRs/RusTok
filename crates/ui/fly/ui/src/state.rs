@@ -201,6 +201,10 @@ pub struct DirtyState {
     pub project_hash: Option<ProjectHash>,
     pub save_in_progress: bool,
     pub save_failed: bool,
+    /// The last save was rejected as a lost update (another session saved first).
+    /// Distinct from a generic failure: the user must reload before saving again.
+    #[serde(default)]
+    pub save_conflict: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -1,0 +1,87 @@
+{
+ "assets": [],
+ "styles": [
+  {
+   "selectors": [
+    {
+     "name": "hero",
+     "type": 2
+    }
+   ],
+   "style": {
+    "padding": "64px 24px",
+    "text-align": "center"
+   }
+  },
+  {
+   "selectors": [
+    {
+     "name": "hero",
+     "type": 2
+    }
+   ],
+   "style": {
+    "background-color": "#eef4ff"
+   },
+   "state": "hover"
+  },
+  {
+   "selectors": [
+    {
+     "name": "hero",
+     "type": 2
+    }
+   ],
+   "style": {
+    "padding": "32px 12px"
+   },
+   "atRuleType": "media",
+   "mediaText": "(max-width: 767px)"
+  }
+ ],
+ "pages": [
+  {
+   "id": "home",
+   "component": {
+    "id": "root",
+    "type": "wrapper",
+    "components": [
+     {
+      "id": "hero",
+      "type": "section",
+      "attributes": {
+       "class": "hero"
+      },
+      "components": [
+       {
+        "id": "hero-title",
+        "type": "heading",
+        "tagName": "h1",
+        "content": "Build your storefront"
+       },
+       {
+        "id": "hero-text",
+        "type": "text",
+        "content": "The fastest way to launch."
+       },
+       {
+        "id": "hero-cta",
+        "type": "button",
+        "content": "Start now",
+        "flyAction": {
+         "kind": "scroll_to",
+         "target_id": "pricing"
+        }
+       }
+      ]
+     },
+     {
+      "id": "pricing",
+      "type": "section",
+      "content": "Pricing"
+     }
+    ]
+   }
+  }
+ ]
+}

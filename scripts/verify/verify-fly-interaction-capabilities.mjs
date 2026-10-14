@@ -4,7 +4,7 @@ const paths = {
   flyLib: 'crates/ui/fly/src/lib.rs',
   flyError: 'crates/ui/fly/src/error.rs',
   capability: 'crates/ui/fly/src/interaction_capability.rs',
-  capabilityGate: 'crates/ui/fly/src/interaction_capability_gate.rs',
+  capabilityGate: 'crates/modules/rustok-page-builder/src/domain/interaction_capability_gate.rs',
   actionModel: 'crates/ui/fly/src/action/model.rs',
   actionMaterialize: 'crates/ui/fly/src/action/materialize.rs',
   runtimeRender: 'crates/ui/fly/src/runtime_render.rs',
@@ -36,10 +36,48 @@ const requireMarkers = (key, markers, label) => {
 
 requireMarkers('flyLib', [
   'mod interaction_capability;',
-  'mod interaction_capability_gate;',
-  'pub use interaction_capability::*;',
-  'pub use interaction_capability_gate::*;',
 ], 'interaction capability module wiring');
+
+// Assert the re-exported symbols rather than literal `pub use` lines: the fly root uses
+// curated explicit re-exports, so pin the exported capability surface, not its spelling.
+// The capability-aware publish gate itself is Page Builder domain since the extraction
+// (DECISIONS/2026-10-14-landing-scenario-domain-leaves-fly-core.md), so its symbol is
+// pinned on the `rustok_page_builder` root instead.
+{
+  const exportedFrom = (text, module) => {
+    const braced = text.match(new RegExp(`pub use ${module}::\\{([^}]*)\\}`));
+    if (braced) return braced[1].split(',').map((entry) => entry.trim()).filter(Boolean);
+    const single = text.match(new RegExp(`pub use ${module}::([A-Za-z0-9_]+);`));
+    return single ? [single[1]] : null;
+  };
+  const expected = [
+    [source.flyLib, 'Fly lib', 'interaction_capability', [
+      'InteractionCapabilityDefinition',
+      'InteractionCapabilityKind',
+      'InteractionCapabilityPolicy',
+      'InteractionCapabilityRegistry',
+      'InteractionRuntimeTarget',
+      'MissingInteractionCapabilityPolicy',
+      'validate_component_actions_with_capabilities',
+      'validate_interaction_capabilities',
+    ]],
+    [source.hostLib, 'Page-builder lib', 'domain', [
+      'evaluate_runtime_publish_gate_with_capabilities',
+    ]],
+  ];
+  for (const [text, label, module, symbols] of expected) {
+    const exported = exportedFrom(text, module);
+    if (!exported) {
+      failures.push(`${label} does not re-export anything from ${module}`);
+      continue;
+    }
+    for (const symbol of symbols) {
+      if (!exported.includes(symbol)) {
+        failures.push(`${label} does not re-export ${module}::${symbol}`);
+      }
+    }
+  }
+}
 requireMarker(
   'flyError',
   'InvalidInteractionCapability(String)',

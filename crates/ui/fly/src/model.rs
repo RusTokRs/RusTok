@@ -38,6 +38,13 @@ impl ProjectDocument {
     /// validation rejects it and every command runs validation. Self-healing here mirrors how
     /// duplicate ids have always been handled.
     pub fn ensure_stable_ids(&mut self, generator: &mut impl IdGenerator) {
+        // Fast path: a document whose ids are all present, valid, and unique needs no
+        // repair. This runs on every editor command, so it borrows ids instead of
+        // cloning them into sets, and skips the mutating walk entirely — the common
+        // case for patch/style commands on an already-stable document.
+        if self.all_component_ids_stable() {
+            return;
+        }
         let mut reserved = BTreeSet::new();
         self.project.visit_components(|component, _, _| {
             if let Some(id) = component.id()
@@ -49,6 +56,25 @@ impl ProjectDocument {
         let mut seen = BTreeSet::new();
         self.project
             .ensure_stable_ids(generator, &mut reserved, &mut seen);
+    }
+}
+
+impl ProjectDocument {
+    fn all_component_ids_stable(&self) -> bool {
+        let mut seen = std::collections::HashSet::new();
+        let mut stable = true;
+        self.project.visit_components(|component, _, _| {
+            if !stable {
+                return;
+            }
+            match component.id() {
+                Some(id) if validate_identifier(id).is_ok() => {
+                    stable = seen.insert(id);
+                }
+                _ => stable = false,
+            }
+        });
+        stable
     }
 }
 

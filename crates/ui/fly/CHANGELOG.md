@@ -9,6 +9,154 @@ versioned with the host workspace, so until it is extracted (see the `rustok-ui-
 
 ## [Unreleased]
 
+### Added
+
+- **Workspace hardening: error channel, history-aware toolbar, scoped styles.**
+  The Leptos workspace gained an `on_error` callback that receives every
+  failed local command (insert/pages/properties/styles/assets/tokens) instead
+  of the previous silent `let _ =` swallowing, reactive undo/redo disabled
+  states from the editor history, and `FlyStyleRules` — responsive
+  (media-query) and interaction-state (pseudo-class) style editing for the
+  selected component with values seeded from the document's style-rule
+  catalog and a breakpoint preview that constrains the canvas preview width.
+  The browser intent protocol grew to 52 kinds with `upsert_style_rule`
+  (mutating), which hosts apply as `StyleRuleCommand::UpsertComponentRule`
+  after `style_patch` validation. On that parity the Page Builder admin
+  deleted `ResponsiveStylePanel`/`StateStylePanel`, its last duplicated
+  style panels. A capability-consistency pass then aligned every workspace
+  panel on `Option<CapabilityState>`: page tabs gate page creation/removal
+  on Edit, page properties gate apply/move on Properties, the design-token
+  editor gates on Styles, and `FlyStyleRules` was fixed from a bare
+  `CapabilityState` prop (a latent type mismatch with the workspace) to the
+  shared optional form. Selection failures now ride the `on_error` channel,
+  and the unused `viewport_label` message field was removed.
+- **Workspace panel parity and the admin duplicate deletion** (audit P0-1/P0-2).
+  The `fly-leptos` workspace now covers everything the admin's duplicated
+  panels did: page tabs with create/remove and an atomic page-properties
+  submit (`page_properties` envelope → one server-side page patch), rename/SEO
+  metadata/move, a category-grouped palette with a contribution assembly
+  summary and `CapabilityState` gating, component properties and styles
+  (`FlyComponentProperties` over a neutral `component_property_view`, editing
+  through the `patch_component_property` contract), and document assets
+  (`FlyAssets` over `upsert_asset`/`remove_asset`/`select_asset`). On that
+  parity the Page Builder admin deleted `PageManagerPanel`,
+  `PaletteLayersPanel`, `PropertiesAssetsPanel`, the wasm-only
+  `asset_section`/`properties_section`/`style_section`/`symbol_section`/
+  `property_helpers`, and the `adapter_workspace` opt-in flag — the Leptos
+  admin mounts the workspace unconditionally. The interactive iframe canvas
+  stays mounted (the workspace does not replace it yet); Dioxus remains parked
+  at its previous parity snapshot.
+
+- **Design-token authoring.** `EditorCommand::Theme` (replace/upsert/remove) mutates the
+  `flyTheme` token set through the editor's transaction/validation/history path; the Page
+  Builder admin gains a Design tokens panel, and `docs/modules/page-builder-backlog.md`
+  becomes the single owned Fly/Page Builder backlog (audit P3-19).
+- **First admin mount of the adapter workspace** (audit P0-1). The Page Builder
+  admin gains `AdapterWorkspacePanel`: it renders the `fly-leptos`
+  `FlyEditorWorkspace` over the admin runtime in SSR intent mode (typed intents
+  dispatch into the admin controller, which stays the source of truth) with an
+  `EditorMessages` set built from the module's message catalog. Hosts opt in via
+  `PageBuilderAdminHostContext::with_adapter_workspace(true)`; the classic SSR
+  panels remain mounted alongside for now. The admin's `dioxus-ui` profile mounts
+  the `fly-dioxus` workspace twin over its session signal with the same intent
+  dispatch and message builder.
+- **Theme intents** (audit P0-1). The browser intent protocol grows to 50 kinds:
+  `set_theme_token` / `remove_theme_token` (mutating, gated by the `Styles`
+  capability through the admin capability preflight). `fly-browser` gains typed
+  constructors; the page-builder admin dispatcher applies both as
+  `EditorCommand::Theme`; both adapter workspaces now edit design tokens in SSR
+  intent mode instead of rendering them read-only.
+- **Localized workspace panels** (audit P0-1). `fly-ui` gains `EditorMessages`:
+  the neutral, host-resolved string set for every workspace surface (toolbar,
+  palette, layers, token editor, canvas), English by default. Both adapter
+  workspaces and their sub-panels accept it; hosts resolve it from their own
+  message catalogs, because the dependency-boundary gate forbids `rustok-*`
+  dependencies in the adapters.
+- **SSR intent dispatch in the adapter workspaces** (audit P0-1). `fly-browser`
+  gains typed `BrowserIntentEnvelope` constructors (`select`, `insert_block`,
+  `undo`, `redo`, `with_page_context`) whose intent names and payload shapes match
+  the server dispatch contract by construction. Both `FlyEditorWorkspace`
+  implementations accept `instance_id` + `on_intent`: in intent mode palette
+  inserts, selection changes, and undo/redo are emitted as envelopes (contribution
+  access still enforced first) and nothing mutates locally — the host re-renders
+  with the server-returned document. Design tokens render read-only in intent
+  mode until the intent protocol grows theme kinds.
+- **Contribution access in the adapter workspaces** (audit P0-1). `fly-ui` gains
+  `palette_block_items_with_access`: the palette listing is filtered by
+  `PaletteBlockAccess` and each `PaletteBlockItem` carries its contribution
+  provenance (`contribution_ids`, serde-defaulted). Both `FlyEditorWorkspace`
+  implementations (Leptos and Dioxus) accept an optional contribution assembly,
+  render `data-fly-contribution-ids`, and enforce access again at insert time —
+  the same policy the page-builder admin applies.
+- **Token editor in the adapter workspaces.** `fly-leptos` gains `FlyThemeTokenEditor`
+  (list, remove, upsert with inline `fly` validation) wired into `FlyEditorWorkspace`;
+  the `fly-dioxus` workspace gains the same editing surface. Adapter token display is
+  no longer read-only (audit P0-3 remainder).
+
+- **Evidence corpus and diverse property coverage** (ADR
+  `DECISIONS/2026-10-14-fly-evidence-corpus-and-property-coverage.md`). The
+  GrapesJS-shaped fixture corpus grows to twelve honestly-labelled structural
+  baselines (forms, rich text, embeds, interactions with tokens, frames, a
+  661-component catalog) with a decode/render/validate/idempotent-encode harness,
+  and the arbitrary-document property generator now covers typed blocks, actions,
+  embeds, rich text, and hostile URLs with round-trip and render-safety invariants.
+  Real browser captures and Playwright/a11y evidence remain open (need a browser).
+
+- **Command-path performance and explicit save conflicts** (ADR
+  `DECISIONS/2026-10-14-fly-performance-selection-cache-and-save-conflicts.md`).
+  `ensure_stable_ids` skips its repair walk (and per-id clones) for already-stable
+  documents; selection commands return the cached validation report instead of
+  re-validating the whole document per click. Saves rejected as lost updates now
+  surface as a dedicated conflict state (`RevisionState`/`DirtyState.save_conflict`,
+  `UiIntent::SaveConflict`, localized toolbar status in the admin) instead of a
+  generic failure. Also fixed: action targets (toggle/scroll/animate) now receive a
+  plain `id` in published renders so the action runtime can find them without editor
+  instrumentation.
+
+- **Design tokens and animation actions** (ADR
+  `DECISIONS/2026-10-14-fly-design-tokens-animations-and-admin-convergence.md`). Projects can
+  carry a `flyTheme` token set (`fly::theme`): validated tokens render as `:root` custom
+  properties for `var(--name)` references, with `theme_token_invalid` at validation time.
+  Actions gain the closed `animate` kind (allow-listed Web Animations keyframes in
+  `fly-actions.js`, reduced-motion aware); the admin action form covers it. `fly-ui` now owns
+  the layer/palette derivations with parent/index metadata, and the page-builder admin
+  controller consumes them instead of its local copies.
+
+- **Rich text, embeds, and an action runtime** (ADR
+  `DECISIONS/2026-10-14-fly-rich-text-embed-action-runtime-and-adapters.md`). Components can
+  carry a `flyRichText` payload: `fly` validates its shape, projects plain text and an escaped
+  fallback, and hosts render production HTML through the `RichTextHtmlRenderer` port
+  (`render_page_with_rich_text`); RusTok binds `rustok-content::richtext` in
+  `rustok-pages-storefront`. The `embed` block renders sandboxed iframes only for
+  allow-listed providers (`fly::embed`: YouTube, Vimeo, Google Maps) and degrades to a safe
+  link otherwise; static publishing refuses `fly_embed`. Actions gain `ToggleVisibility` and
+  `ScrollTo`, and `fly-browser` ships `fly-actions.js` (`FLY_ACTIONS_JS`), which dispatches
+  `fly:action` events for `emit_event`/`provider_action` and implements the new behaviours
+  on published pages.
+- **Real adapter workspaces.** `fly-ui` gains the shared layer-tree/palette view-models;
+  `fly-leptos` and `fly-dioxus` each ship a `FlyEditorWorkspace` (palette, layers, canvas
+  preview, undo/redo) on the shared editor contracts, next to the original shell components.
+
+- **Pseudo-class style states, end to end** (ADR
+  `DECISIONS/2026-10-14-fly-style-states-class-rules-and-head-metadata.md`). `StyleRuleScope`
+  gains `State` and `MediaState`, mapped to the GrapesJS `state` field; `SUPPORTED_PSEUDO_CLASSES`
+  and `normalize_pseudo_class` are the single allow-list gate shared by codec identity, renderer,
+  validation (`unsupported_pseudo_class` warning), and the static publish policy. The Page Builder
+  admin gains an "Interaction states" panel, and `fly-ui` exposes `builtin_style_states()`.
+- **Class rules now render.** Unbound GrapesJS class rules were parsed and silently dropped; the
+  renderer now emits them when every selector is a plain class name, and skips anything else
+  instead of letting it become a selector. The static landing policy still requires
+  component-bound rules and now says so accurately.
+- **Completed page head metadata.** Twitter cards (with Open Graph/title fallback), `og:type`,
+  JSON-LD `structured_data` with script-breakout escaping, and validated `hreflang` alternates
+  (`PageHead::with_alternate_locale_links`).
+- **`UniqueIdGenerator` is the editor default.** Session-sequential ids collided across
+  concurrent editing sessions; minted ids now mix timestamp, process id, instance salt, and a
+  counter while staying inside the identifier charset. `SequentialIdGenerator` remains for
+  explicit deterministic use.
+- **Core benchmarks.** `benches/fly_core_bench.rs` (dependency-free, `harness = false`) covers
+  codec round-trip, validation, rendering, and `FlyEditor::apply` at 100 / 1 000 / 10 000 nodes.
+
 Engineering audit remediation — see
 `docs/audits/fly-builder-engineering-audit-2026-10-02.md` for the full findings register.
 
@@ -255,6 +403,28 @@ Engineering audit remediation — see
 - `maximum_nodes` / `maximum_depth` defaults named and justified (`DEFAULT_MAXIMUM_NODES`,
   `DEFAULT_MAXIMUM_DEPTH`).
 - Command history uses `VecDeque`.
+- Curated public API for the framework-neutral crates (audit P2-13, API half).
+  The crate roots of `fly`, `fly-ui`, and `fly-web` no longer glob-re-export
+  their modules (`pub use module::*`): every root re-export is now an explicit,
+  rustfmt-ordered list, including the wasm-gated `fly-web` surfaces. The public
+  surface is unchanged symbol for symbol (376 + 101 + 43 root names, verified
+  by lexical surface comparison; the five verify gates that pinned the glob
+  spelling now assert the exported symbols instead). Intra-crate module
+  facades (`action`, `command`, `snapshot`, ...) keep their submodule globs —
+  the curation covers crate roots, which are the public API.
+- Landing/scenario domain extracted from the `fly` core (audit P2-13, domain
+  half; DECISIONS/2026-10-14-landing-scenario-domain-leaves-fly-core.md). Nine
+  modules — `landing_contract`, `landing_property`, `landing_readiness`,
+  `context_scenario`, `runtime_scenario_release`, `runtime_scenario_render`,
+  `runtime_scenario_snapshot`, plus `runtime_gate` and
+  `interaction_capability_gate`, which consume readiness/scenario items and
+  would otherwise force a dependency cycle — moved to
+  `rustok-page-builder::domain`. The core root surface shrank from 376 to the
+  306 non-domain names (verified identical by lexical comparison);
+  `rustok-page-builder` re-exports the 70 moved names at its root, and its
+  `runtime_scenario_*` DTO shims keep their public paths over the now-local
+  implementation. Pure relocation: no behavior or type-shape changes; cargo
+  verification rides the maintainer run (page-builder backlog item 1).
 
 ### Known gaps
 

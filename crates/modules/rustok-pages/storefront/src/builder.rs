@@ -1,7 +1,9 @@
 use crate::model::PageBody;
 use leptos::prelude::*;
 pub use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
-use rustok_page_builder_storefront::{PageBuilderStorefront, PageSelection};
+use rustok_page_builder_storefront::{
+    PageBuilderStorefront, PageSelection, SharedRichTextRenderer,
+};
 use serde_json::Value;
 
 pub const STATIC_LANDING_URL_BODY_FORMAT: &str = "fly_artifact_url";
@@ -45,12 +47,14 @@ pub fn PageBuilderPageBody(
         .into_any();
     }
 
+    let rich_text_renderer = pages_rich_text_renderer();
     match decode_page_builder_body(&body) {
         Ok(project_data) => view! {
             <PageBuilderStorefront
                 project_data
                 selection=PageSelection::First
                 class=class
+                rich_text_renderer=rich_text_renderer
             />
         }
         .into_any(),
@@ -64,6 +68,34 @@ pub fn PageBuilderPageBody(
             </div>
         }
         .into_any(),
+    }
+}
+
+/// Host binding for Fly rich-text payloads: the platform rich-text capability
+/// (`rustok-content`, Article profile) is the single production renderer, per the
+/// richtext capability ADR. Without the `ssr` feature no renderer is bound and Fly's
+/// escaped fallback projection is used.
+#[cfg(feature = "ssr")]
+pub struct PagesRichTextRenderer;
+
+#[cfg(feature = "ssr")]
+impl fly::RichTextHtmlRenderer for PagesRichTextRenderer {
+    fn render_rich_text(&self, payload: &fly::RichTextPayload) -> Option<String> {
+        let document: rustok_api::RichTextDocument =
+            serde_json::from_value(payload.payload.clone()).ok()?;
+        rustok_content::richtext::render_html(&document, rustok_content::RichTextProfile::Article)
+            .ok()
+    }
+}
+
+fn pages_rich_text_renderer() -> Option<SharedRichTextRenderer> {
+    #[cfg(feature = "ssr")]
+    {
+        Some(std::sync::Arc::new(PagesRichTextRenderer))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        None
     }
 }
 

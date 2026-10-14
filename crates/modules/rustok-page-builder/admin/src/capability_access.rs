@@ -1,9 +1,9 @@
 use crate::BrowserIntentDispatchError;
-use fly::{AssetCommand, ComponentPatch, EditorCommand};
+use fly::{AssetCommand, ComponentPatch, DesignToken, EditorCommand, ThemeCommand};
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};
 use fly_ui::{
-    CapabilityState, CommandCapabilityRequirement, EditorCapability, EditorShortcut, KeyStroke,
-    resolve_editor_shortcut,
+    resolve_editor_shortcut, CapabilityState, CommandCapabilityRequirement, EditorCapability,
+    EditorShortcut, KeyStroke,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -160,6 +160,9 @@ fn capability_requirements(
         | BrowserIntentKind::SetNativeFormField
         | BrowserIntentKind::SetRuntimeContext
         | BrowserIntentKind::SetRuntimeLocale => command_requirements(property_command()),
+        BrowserIntentKind::SetThemeToken | BrowserIntentKind::RemoveThemeToken => {
+            command_requirements(theme_command())
+        }
         BrowserIntentKind::UpsertAsset | BrowserIntentKind::RemoveAsset => {
             command_requirements(asset_command())
         }
@@ -245,6 +248,17 @@ fn component_patch_command(payload: &Value) -> EditorCommand {
     }
 }
 
+fn theme_command() -> EditorCommand {
+    EditorCommand::Theme {
+        command: ThemeCommand::Upsert {
+            token: DesignToken {
+                name: "__capability_probe__".to_string(),
+                value: "#000000".to_string(),
+            },
+        },
+    }
+}
+
 fn asset_command() -> EditorCommand {
     EditorCommand::Asset {
         command: AssetCommand::Remove {
@@ -304,13 +318,11 @@ mod tests {
                 })
             );
         }
-        assert!(
-            validate_browser_capability_access(
-                &envelope("select", json!({ "component_id": "hero" })),
-                capabilities,
-            )
-            .is_ok()
-        );
+        assert!(validate_browser_capability_access(
+            &envelope("select", json!({ "component_id": "hero" })),
+            capabilities,
+        )
+        .is_ok());
     }
 
     #[test]
@@ -320,13 +332,11 @@ mod tests {
             styles: false,
             ..CapabilityState::full()
         };
-        assert!(
-            validate_browser_capability_access(
-                &envelope("patch_component_property", json!({ "kind": "field" }),),
-                capabilities,
-            )
-            .is_ok()
-        );
+        assert!(validate_browser_capability_access(
+            &envelope("patch_component_property", json!({ "kind": "field" }),),
+            capabilities,
+        )
+        .is_ok());
         let error = validate_browser_capability_access(
             &envelope("patch_component_property", json!({ "kind": "style" })),
             capabilities,
@@ -448,13 +458,11 @@ mod tests {
             BrowserIntentKind::BeginSelectedMove,
             BrowserIntentKind::Drop,
         ] {
-            assert!(
-                validate_browser_capability_access(
-                    &envelope(kind.as_str(), json!({})),
-                    capabilities,
-                )
-                .is_err()
-            );
+            assert!(validate_browser_capability_access(
+                &envelope(kind.as_str(), json!({})),
+                capabilities,
+            )
+            .is_err());
         }
     }
 

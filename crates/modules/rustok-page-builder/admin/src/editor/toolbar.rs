@@ -54,6 +54,11 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
         "Unsaved changes",
     );
     let saved = t(locale.as_deref(), "page_builder.status.saved", "Saved");
+    let conflict = t(
+        locale.as_deref(),
+        "page_builder.status.saveConflict",
+        "Save conflict: changed in another session. Reload before saving.",
+    );
     let device = t(locale.as_deref(), "page_builder.field.device", "Device");
 
     install_keyboard_bindings(runtime.clone());
@@ -210,6 +215,8 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
                 {move || status_runtime.controller.with(|controller| {
                     if controller.ui().state.dirty.save_in_progress {
                         saving.clone()
+                    } else if controller.ui().state.dirty.save_conflict {
+                        conflict.clone()
                     } else if controller.ui().state.dirty.save_failed {
                         failed.clone()
                     } else if controller.ui().state.dirty.dirty {

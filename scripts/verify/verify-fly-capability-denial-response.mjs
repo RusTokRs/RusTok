@@ -25,7 +25,7 @@ const rejectMarker = (key, marker, message) => {
 
 for (const marker of [
   'pub enum BrowserIntentKind',
-  'pub const ALL: [Self; 48]',
+  'pub const ALL: [Self; 52]',
   'pub fn parse(value: &str)',
   'pub const fn as_str(self)',
   'pub const fn is_mutating(self)',

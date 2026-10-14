@@ -455,9 +455,56 @@ fn scalar_to_string(value: &Value) -> Option<String> {
     }
 }
 
+/// Presentation descriptor for one author-selectable interaction state.
+///
+/// The canonical allow-list lives in `fly` (`SUPPORTED_PSEUDO_CLASSES`); this layer only attaches
+/// editor labels to entries of that list, so a state the core would refuse to render can never be
+/// offered in a panel.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StyleStateDescriptor {
+    pub pseudo: String,
+    pub label: String,
+}
+
+pub fn builtin_style_states() -> Vec<StyleStateDescriptor> {
+    [
+        ("hover", "Hover"),
+        ("focus", "Focus"),
+        ("focus-visible", "Focus visible"),
+        ("focus-within", "Focus within"),
+        ("active", "Active (pressed)"),
+        ("visited", "Visited link"),
+        ("disabled", "Disabled"),
+        ("checked", "Checked"),
+        ("first-child", "First child"),
+        ("last-child", "Last child"),
+    ]
+    .into_iter()
+    .filter(|(pseudo, _)| fly::is_supported_pseudo_class(pseudo))
+    .map(|(pseudo, label)| StyleStateDescriptor {
+        pseudo: pseudo.to_string(),
+        label: label.to_string(),
+    })
+    .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn builtin_style_states_stay_inside_the_core_allow_list() {
+        let states = builtin_style_states();
+        assert!(!states.is_empty());
+        for state in &states {
+            assert!(
+                fly::is_supported_pseudo_class(&state.pseudo),
+                "panel offers a state the renderer would drop: {}",
+                state.pseudo
+            );
+        }
+        assert!(states.iter().any(|state| state.pseudo == "hover"));
+    }
 
     #[test]
     fn typed_style_patch_merges_valid_entries_and_removes_empty_values() {

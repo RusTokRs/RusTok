@@ -1,0 +1,37 @@
+{
+ "assets": [],
+ "styles": [],
+ "pages": [
+  {
+   "id": "home",
+   "component": {
+    "id": "root",
+    "type": "wrapper",
+    "components": [
+     {
+      "id": "t",
+      "type": "text",
+      "content": "Hi"
+     }
+    ]
+   },
+   "frames": [
+    {
+     "id": "frame-home",
+     "component": {
+      "id": "root",
+      "type": "wrapper",
+      "components": [
+       {
+        "id": "t",
+        "type": "text",
+        "content": "Hi"
+       }
+      ]
+     },
+     "styles": ""
+    }
+   ]
+  }
+ ]
+}

@@ -205,22 +205,55 @@ the owner of the missing half.
   renders through `HostFormProviderEndpoints`. Release-baseline captures stay marker-only (baseline
   and candidate are compared inside the same renderer). Draft editing and GrapesJS round-tripping
   stay permissive by design.
-- **Custom actions have no runtime in this repository either.** `emit_event` and `provider_action`
-  materialize to a `<button>` carrying `data-fly-action-kind` and a JSON payload in
-  `data-fly-action`, and no crate here listens for them: on a published page such a button is
-  inert, and in the authoring canvas it is ignored by the editor's own click protocol. Those two
-  attributes are the contract a host implements (the `data-fly-*` prefix is reserved for it); Fly
-  ships the materialization, not a handler.
-- **`RICH_TEXT_PAYLOAD_FORMAT` and `RichTextPayload` are declared and unused.** They are the
-  intended shape for a host rich-text editor to carry an opaque payload through a Fly field; the
-  platform's rich-text path (`rustok_api::RichTextDocument`) does not go through them, and no
-  crate in this repository consumes them.
-- **The framework adapters are layout shells.** `fly-leptos` and `fly-dioxus` render the four
-  `<section>` wrappers and re-export `fly-web`; they contain no canvas, drag & drop, panels, or
-  state wiring. Authoring surfaces drive `fly` and `fly-ui` directly (see *Status* above).
+- **The action runtime covers events, behaviours, and allow-listed animations.**
+  `fly-browser` ships `fly-actions.js` (`FLY_ACTIONS_JS`): it turns `emit_event` and
+  `provider_action` clicks into `fly:action` CustomEvents on the document, and implements the
+  `toggle_visibility`, `scroll_to`, and `animate` actions (aria-synchronized visibility,
+  smooth scroll, closed Web Animations keyframe sets) against the server-materialized
+  `data-fly-action` contract. Hosts include the asset on published pages and listen for
+  `fly:action`; without the asset the buttons stay inert by design. Interactive primitives
+  such as tabs, accordion, and slider components do not exist yet.
+- **Rich text renders through the host's capability, not Fly's fallback.** A component carrying
+  `flyRichText` stores a `RichTextPayload`; `fly` validates its shape, projects plain text, and
+  can render a conservative escaped fallback. Production HTML must come from the host binding
+  the `RichTextHtmlRenderer` port (in RusTok: `rustok-content::richtext` via
+  `rustok-pages-storefront` under `ssr`, per `DECISIONS/2026-07-22`). A consumer that binds no
+  renderer gets the fallback projection — safe, but deliberately not the rich-text capability.
+  Browser editing of the payload (Tiptap/ProseMirror) remains host-side preview tooling; the
+  save path re-enters through the same payload contract and validation.
+- **The framework adapters have workspaces; the page-builder admin has not migrated yet.**
+  `fly-leptos` and `fly-dioxus` ship a real `FlyEditorWorkspace` (palette, layer tree, canvas
+  preview, undo/redo) on the shared `fly`/`fly-ui` contracts, alongside the original section
+  shells. The RusTok page-builder admin still runs its own SSR/WASM editor panels (audit P0-2);
+  converging it onto the adapter workspaces is planned follow-up work, not done. Pointer
+  geometry and drag & drop remain `fly-web` (wasm) concerns layered on top of these
+  workspaces.
 - **Session and CSRF posture of the standalone admin.** The intent route authenticates with the
   same-origin session cookie; issuing that session server-side and adding an explicit server-side
   CSRF check are the admin shell's change, tracked as `CLEAN-060` — see `SECURITY.md`.
+- **Embeds exist for allow-listed providers; there is no custom-code block.** The `embed`
+  palette block renders a sandboxed iframe only for the registered providers in `fly::embed`
+  (YouTube, Vimeo, Google Maps; HTTPS, exact hosts, fixed path prefixes) and degrades to a
+  safe link otherwise. Static publishing refuses `fly_embed` explicitly — embeds go through
+  dynamic routes. Arbitrary third-party embeds and custom code stay out by design, while
+  `raw_html` stays escaped (above). Owner: `fly` embed registry.
+- **Design tokens exist, with one authoring surface; rename-with-usage-checks is still open.**
+  A project carries a `flyTheme` extension (`fly::theme`): validated tokens render as `:root`
+  custom properties and style declarations reference them with `var(--name)`. Token mutations
+  are editor commands (`EditorCommand::Theme`), and the Page Builder admin has a Design tokens
+  panel, and both adapter workspaces (`fly-leptos`, `fly-dioxus`) ship an editable token
+panel on the same command. Renaming a token does not
+  rewrite `var(--name)` references in style declarations — hosts must check usages first —
+  and there is no site-wide style *inheritance* beyond the cascade itself. Owner: `fly` theme
+  model.
+- **Collaboration is out of scope for the engine.** No presence, locking, OT/CRDT, or merge:
+  concurrent editors coordinate through the consumer's revision checks. Editor-minted ids are
+  collision-resistant across sessions (`UniqueIdGenerator`), which removes accidental id
+  clashes, but conflict resolution remains the consumer's contract.
+- **`fly` does not migrate project documents.** The codec decodes straight into the current
+  model; additive fields are the only in-major evolution. A future field rename must ship a
+  consumer-side document migration (context contracts already have one in
+  `context_migration.rs`; the project model does not).
 
 ## Standalone Usage
 

@@ -12,6 +12,7 @@ hydrate = [
   "rustok-page-builder-storefront/hydrate",
 ]
 ssr = [
+  "dep:fly",
   "leptos/ssr",
   "rustok-page-builder-storefront/ssr",
   "dep:leptos_axum",

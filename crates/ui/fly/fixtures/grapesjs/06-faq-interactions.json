@@ -1,0 +1,73 @@
+{
+ "assets": [],
+ "styles": [
+  {
+   "selectors": [
+    "banner"
+   ],
+   "style": {
+    "background-color": "var(--brand)",
+    "padding": "var(--space-md)"
+   }
+  }
+ ],
+ "pages": [
+  {
+   "id": "home",
+   "component": {
+    "id": "root",
+    "type": "wrapper",
+    "components": [
+     {
+      "id": "faq-1-btn",
+      "type": "button",
+      "content": "What is Fly?",
+      "flyAction": {
+       "kind": "toggle_visibility",
+       "target_id": "faq-1",
+       "mode": "toggle"
+      }
+     },
+     {
+      "id": "faq-1",
+      "type": "section",
+      "content": "A page builder engine."
+     },
+     {
+      "id": "faq-2-btn",
+      "type": "button",
+      "content": "Pricing?",
+      "flyAction": {
+       "kind": "toggle_visibility",
+       "target_id": "faq-2",
+       "mode": "show"
+      }
+     },
+     {
+      "id": "faq-2",
+      "type": "section",
+      "content": "See plans."
+     },
+     {
+      "id": "banner",
+      "type": "section",
+      "content": "Welcome",
+      "flyAction": {
+       "kind": "animate",
+       "target_id": "banner",
+       "animation": "slide_up",
+       "duration_ms": 450
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "flyTheme": {
+  "tokens": {
+   "brand": "#0b5fff",
+   "surface": "#ffffff",
+   "space-md": "1rem"
+  }
+ }
+}

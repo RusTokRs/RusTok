@@ -63,6 +63,14 @@ pub struct SsrComponentActionRequest {
     pub action: String,
     #[serde(default)]
     pub payload_json: String,
+    #[serde(default)]
+    pub target_id: String,
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub animation: String,
+    #[serde(default)]
+    pub duration_ms: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -367,6 +375,9 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             {option("submit_form", "Submit form", &action_values.kind)}
                             {option("emit_event", "Emit event", &action_values.kind)}
                             {option("provider_action", "Provider action", &action_values.kind)}
+                            {option("toggle_visibility", "Toggle visibility", &action_values.kind)}
+                            {option("scroll_to", "Scroll to component", &action_values.kind)}
+                            {option("animate", "Animate component", &action_values.kind)}
                         </select>
                         <select name="page_id" class="rounded border border-input bg-background px-2 py-1 text-xs">
                             <option value="">"Target page"</option>
@@ -389,6 +400,23 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             <input name="action" value=action_values.action placeholder="Provider action" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         </div>
                         <textarea name="payload_json" class="min-h-20 rounded border border-input bg-background px-2 py-1 font-mono text-xs" placeholder="Payload/input JSON">{action_values.payload_json}</textarea>
+                        <div class="grid grid-cols-2 gap-2">
+                            <input name="target_id" value=action_values.target_id placeholder="Target component id (toggle/scroll/animate)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
+                            <select name="animation" class="rounded border border-input bg-background px-2 py-1 text-xs">
+                                {option("fade_in", "Fade in", &action_values.animation)}
+                                {option("fade_out", "Fade out", &action_values.animation)}
+                                {option("slide_up", "Slide up", &action_values.animation)}
+                                {option("slide_down", "Slide down", &action_values.animation)}
+                                {option("zoom_in", "Zoom in", &action_values.animation)}
+                                {option("pulse", "Pulse", &action_values.animation)}
+                            </select>
+                            <input name="duration_ms" value=action_values.duration_ms placeholder="Duration ms (50-10000, animate)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
+                            <select name="mode" class="rounded border border-input bg-background px-2 py-1 text-xs">
+                                {option("toggle", "Toggle visibility", &action_values.mode)}
+                                {option("show", "Show target", &action_values.mode)}
+                                {option("hide", "Hide target", &action_values.mode)}
+                            </select>
+                        </div>
                         <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">{save_action}</button>
                     </form>
                     {has_action.then(|| view! {
@@ -491,6 +519,10 @@ struct ActionValues {
     provider: String,
     action: String,
     payload_json: String,
+    target_id: String,
+    mode: String,
+    animation: String,
+    duration_ms: String,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -538,6 +570,31 @@ impl ActionValues {
                 values.provider = provider.clone();
                 values.action = action.clone();
                 values.payload_json = pretty_json(input);
+            }
+            Some(ComponentAction::ToggleVisibility { target_id, mode }) => {
+                values.kind = "toggle_visibility".to_string();
+                values.target_id = target_id.clone();
+                values.mode = match mode {
+                    fly::VisibilityMode::Show => "show".to_string(),
+                    fly::VisibilityMode::Hide => "hide".to_string(),
+                    fly::VisibilityMode::Toggle => "toggle".to_string(),
+                };
+            }
+            Some(ComponentAction::ScrollTo { target_id }) => {
+                values.kind = "scroll_to".to_string();
+                values.target_id = target_id.clone();
+            }
+            Some(ComponentAction::Animate {
+                target_id,
+                animation,
+                duration_ms,
+            }) => {
+                values.kind = "animate".to_string();
+                values.target_id = target_id.clone();
+                values.animation = animation.as_str().to_string();
+                values.duration_ms = duration_ms
+                    .map(|value| value.to_string())
+                    .unwrap_or_default();
             }
             None => {}
         }
@@ -619,6 +676,36 @@ fn action_from_request(request: SsrComponentActionRequest) -> Result<ComponentAc
                 "provider input",
                 MAX_ACTION_PAYLOAD_BYTES,
             )?,
+        }),
+        "toggle_visibility" => Ok(ComponentAction::ToggleVisibility {
+            target_id: validate_token(&request.target_id, "target component id")?,
+            mode: match request.mode.trim().to_ascii_lowercase().as_str() {
+                "" | "toggle" => fly::VisibilityMode::Toggle,
+                "show" => fly::VisibilityMode::Show,
+                "hide" => fly::VisibilityMode::Hide,
+                other => return Err(format!("visibility mode `{other}` is unsupported")),
+            },
+        }),
+        "scroll_to" => Ok(ComponentAction::ScrollTo {
+            target_id: validate_token(&request.target_id, "target component id")?,
+        }),
+        "animate" => Ok(ComponentAction::Animate {
+            target_id: validate_token(&request.target_id, "target component id")?,
+            animation: match request.animation.trim().to_ascii_lowercase().as_str() {
+                "" | "fade_in" => fly::AnimationKind::FadeIn,
+                "fade_out" => fly::AnimationKind::FadeOut,
+                "slide_up" => fly::AnimationKind::SlideUp,
+                "slide_down" => fly::AnimationKind::SlideDown,
+                "zoom_in" => fly::AnimationKind::ZoomIn,
+                "pulse" => fly::AnimationKind::Pulse,
+                other => return Err(format!("animation `{other}` is unsupported")),
+            },
+            duration_ms: match request.duration_ms.trim() {
+                "" => None,
+                raw => Some(raw.parse::<u32>().map_err(|_| {
+                    "animation duration must be a number of milliseconds".to_string()
+                })?),
+            },
         }),
         other => Err(format!("component action kind `{other}` is unsupported")),
     }

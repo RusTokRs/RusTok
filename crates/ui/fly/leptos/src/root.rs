@@ -14,8 +14,10 @@
 // modules below were outside the lint the comment claimed.
 #![deny(unsafe_code)]
 
+mod editor;
 mod foundation;
 
+pub use editor::*;
 pub use foundation::*;
 
 // The browser surface is re-exported through explicit, feature-gated modules rather than left to

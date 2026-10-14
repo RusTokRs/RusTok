@@ -1,8 +1,8 @@
 use crate::core::gate_error_message;
 use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade};
-use fly::{
-    GrapesJsCodec, ProjectHash, RuntimeContextScenario, RuntimePublishGateEvaluation,
-    RuntimePublishGatePolicy, TraitSchemaRegistry,
+use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry};
+use rustok_page_builder::{
+    RuntimeContextScenario, RuntimePublishGateEvaluation, RuntimePublishGatePolicy,
 };
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use leptos::prelude::*;

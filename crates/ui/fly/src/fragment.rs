@@ -258,13 +258,19 @@ mod tests {
             .insert(&mut editor, Some("target-root".to_string()), 0)
             .expect("insert fragment");
 
-        assert_eq!(inserted, vec!["fly-paste-1".to_string()]);
+        assert_eq!(inserted.len(), 1);
+        let inserted_id = inserted[0].clone();
+        assert!(
+            inserted_id.starts_with("fly-paste-"),
+            "editor-minted ids come from the unique generator: {inserted_id}"
+        );
+        assert!(editor.document().component(&inserted_id).is_some());
         assert!(editor.document().project.assets.iter().any(|asset| {
             AssetDescriptor::from_value(asset.clone()).is_some_and(|asset| asset.id == "hero-asset")
         }));
         assert!(
             StyleRuleCatalog::from_document(editor.document())
-                .component_rule("fly-paste-1", &StyleRuleScope::Base)
+                .component_rule(&inserted_id, &StyleRuleScope::Base)
                 .is_some()
         );
     }

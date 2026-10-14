@@ -9,7 +9,10 @@
 // own `#[allow(unsafe_code)]`, which `forbid` would reject.
 #![deny(unsafe_code)]
 
+mod editor;
+
 use dioxus::prelude::*;
+pub use editor::FlyEditorWorkspace;
 pub use fly_web::*;
 
 #[component]

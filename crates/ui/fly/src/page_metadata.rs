@@ -22,6 +22,21 @@ pub struct PageMetadata {
     pub open_graph_description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub open_graph_image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_graph_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub twitter_card: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub twitter_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub twitter_description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub twitter_image: Option<String>,
+    /// JSON-LD structured data documents, emitted verbatim (after script-breakout escaping) as
+    /// `application/ld+json` blocks. Kept as opaque values: Fly does not validate schema.org
+    /// semantics, the owning module does.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub structured_data: Vec<Value>,
     #[serde(flatten)]
     pub extensions: Map<String, Value>,
 }
@@ -49,6 +64,20 @@ impl PageMetadata {
             .remove("no_index")
             .and_then(|value| value.as_bool())
             .unwrap_or(false);
+        let open_graph_type = take_plain_or_localized_preview(&mut fields, "open_graph_type");
+        let twitter_card = take_plain_or_localized_preview(&mut fields, "twitter_card");
+        let twitter_title = take_plain_or_localized_preview(&mut fields, "twitter_title");
+        let twitter_description =
+            take_plain_or_localized_preview(&mut fields, "twitter_description");
+        let twitter_image = take_plain_or_localized_preview(&mut fields, "twitter_image");
+        let structured_data = fields
+            .remove("structured_data")
+            .and_then(|value| match value {
+                Value::Array(documents) => Some(documents),
+                document @ Value::Object(_) => Some(vec![document]),
+                _ => None,
+            })
+            .unwrap_or_default();
 
         Self {
             title,
@@ -59,6 +88,12 @@ impl PageMetadata {
             open_graph_title,
             open_graph_description,
             open_graph_image,
+            open_graph_type,
+            twitter_card,
+            twitter_title,
+            twitter_description,
+            twitter_image,
+            structured_data,
             extensions: fields,
         }
     }
@@ -73,6 +108,12 @@ impl PageMetadata {
             open_graph_title,
             open_graph_description,
             open_graph_image,
+            open_graph_type,
+            twitter_card,
+            twitter_title,
+            twitter_description,
+            twitter_image,
+            structured_data,
             mut extensions,
         } = self;
 
@@ -105,6 +146,41 @@ impl PageMetadata {
             open_graph_image,
             normalize_text,
         );
+        merge_text_field(
+            &mut extensions,
+            "open_graph_type",
+            open_graph_type,
+            normalize_text,
+        );
+        merge_text_field(
+            &mut extensions,
+            "twitter_card",
+            twitter_card,
+            normalize_text,
+        );
+        merge_text_field(
+            &mut extensions,
+            "twitter_title",
+            twitter_title,
+            normalize_text,
+        );
+        merge_text_field(
+            &mut extensions,
+            "twitter_description",
+            twitter_description,
+            normalize_text,
+        );
+        merge_text_field(
+            &mut extensions,
+            "twitter_image",
+            twitter_image,
+            normalize_text,
+        );
+        if structured_data.is_empty() {
+            extensions.remove("structured_data");
+        } else {
+            extensions.insert("structured_data".to_string(), Value::Array(structured_data));
+        }
         if no_index {
             extensions.insert("no_index".to_string(), Value::Bool(true));
         } else {
@@ -139,6 +215,24 @@ impl PageMetadata {
         self.open_graph_description
             .as_deref()
             .or(self.description.as_deref())
+    }
+
+    pub fn effective_twitter_title(&self) -> Option<&str> {
+        self.twitter_title
+            .as_deref()
+            .or_else(|| self.effective_open_graph_title())
+    }
+
+    pub fn effective_twitter_description(&self) -> Option<&str> {
+        self.twitter_description
+            .as_deref()
+            .or_else(|| self.effective_open_graph_description())
+    }
+
+    pub fn effective_twitter_image(&self) -> Option<&str> {
+        self.twitter_image
+            .as_deref()
+            .or(self.open_graph_image.as_deref())
     }
 }
 

@@ -21,6 +21,7 @@ wasm-client = [
 
 [dependencies]
 fly = { path = ".." }
+fly-browser = { path = "../browser" }
 fly-ui = { path = "../ui" }
 fly-web = { path = "../web" }
 leptos.workspace = true

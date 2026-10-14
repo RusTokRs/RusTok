@@ -18,6 +18,7 @@ desktop = []
 
 [dependencies]
 fly = { path = ".." }
+fly-browser = { path = "../browser" }
 fly-ui = { path = "../ui" }
 fly-web = { path = "../web" }
 dioxus = { workspace = true }

@@ -3,6 +3,7 @@ pub mod browser_host;
 #[cfg(feature = "server")]
 pub mod composition;
 pub mod document;
+pub mod domain;
 pub mod dto;
 pub mod health;
 pub mod interaction_providers;
@@ -33,11 +34,33 @@ pub mod static_publish_policy;
 pub mod transport;
 
 pub use document::{PAGE_BUILDER_DOCUMENT_FORMAT, validate_page_builder_document};
-pub use fly::{
-    ComponentRegistryManifest, LandingRenderer, LandingRendererManifest, LandingSectionSnapshot,
-    PageHead, RuntimeContextExamplePolicy, RuntimeContextScenario, StaticLandingArtifact,
-    StaticLandingBuildIdentity, StaticLandingPage,
+pub use domain::{
+    ComponentRegistryContract, ComponentRegistryManifest, CurrentContextGateMode,
+    FLY_HTML_RENDERER_ID, FLY_LANDING_PROPERTY_FIELD, FLY_LANDING_SECTION_FIELD,
+    FLY_RUNTIME_SCENARIO_RELEASE_BASELINE, FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT,
+    FlyHtmlLandingRenderer, LandingPropertyEditError, LandingPropertyIssue,
+    LandingPropertyIssueKind, LandingPropertySchema, LandingPropertySnapshot,
+    LandingPropertyTargetSnapshot, LandingPropertyValidationReport, LandingReadinessCategory,
+    LandingReadinessCategorySummary, LandingReadinessIssue, LandingReadinessPolicy,
+    LandingReadinessReport, LandingRenderedPage, LandingRenderer, LandingRendererManifest,
+    LandingSectionIssue, LandingSectionIssueKind, LandingSectionKind, LandingSectionPageManifest,
+    LandingSectionPropertySnapshot, LandingSectionSnapshot, LandingSectionValidationReport,
+    RegistryCompatibilityIssue, RegistryCompatibilityIssueKind, RegistryCompatibilityReport,
+    RuntimeContextScenario, RuntimeContextScenarioResult, RuntimeContextScenarioSuiteResult,
+    RuntimePublishGateEvaluation, RuntimePublishGatePolicy, RuntimeScenarioRegressionStatus,
+    RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleaseMode,
+    RuntimeScenarioReleasePolicy, RuntimeScenarioReleaseStatus, RuntimeScenarioRenderCase,
+    RuntimeScenarioRenderChange, RuntimeScenarioRenderChangeImpact, RuntimeScenarioRenderDiff,
+    RuntimeScenarioRenderMatrix, RuntimeScenarioRenderSnapshot, RuntimeScenarioRenderSnapshotCase,
+    ScenarioGateMode, StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingBuildResult,
+    StaticLandingPage, build_static_landing_artifact, build_static_landing_artifact_with_renderer,
+    diff_runtime_scenario_render_snapshots, evaluate_landing_readiness,
+    evaluate_landing_readiness_with_context, evaluate_runtime_publish_gate,
+    evaluate_runtime_publish_gate_with_capabilities, evaluate_runtime_scenario_release,
+    landing_property_schemas, preflight_runtime_context_scenarios, render_runtime_scenario_matrix,
+    render_runtime_scenario_matrix_with_providers, validate_runtime_context_scenarios,
 };
+pub use fly::{PageHead, RuntimeContextExamplePolicy};
 pub use interaction_providers::{
     FORMS_PROVIDER_ID, FORMS_SUBMIT_ENDPOINT_TEMPLATE, FORMS_SUBMIT_OPERATION,
     HostFormProviderEndpoints, evaluate_host_runtime_publish_gate,

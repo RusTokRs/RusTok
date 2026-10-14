@@ -451,3 +451,198 @@ fn count_components(value: &Value) -> usize {
     }
     total
 }
+
+// ---------------------------------------------------------------------------------------------
+// Diverse arbitrary documents (audit P1-8/P1-9 evidence)
+//
+// The original generator only produced text/section trees with two style properties. Real
+// GrapesJS projects carry typed blocks, actions, embeds, rich text, and hostile URLs, so the
+// round-trip and render-safety invariants are now stated over those shapes as well.
+// ---------------------------------------------------------------------------------------------
+
+fn diverse_leaf() -> impl Strategy<Value = Value> {
+    let id = "[a-z][a-z0-9-]{0,10}";
+    prop_oneof![
+        (id, hostile_text()).prop_map(|(id, content)| json!({
+            "id": id, "type": "text", "content": content, "components": []
+        })),
+        (id, hostile_text()).prop_map(|(id, content)| json!({
+            "id": id, "type": "heading", "tagName": "h2", "content": content, "components": []
+        })),
+        (id, prop_oneof![
+            Just("toggle_visibility"), Just("scroll_to"), Just("animate"), Just("emit_event")
+        ])
+        .prop_map(|(id, kind)| {
+            let action = match kind {
+                "toggle_visibility" => json!({ "kind": kind, "target_id": "panel", "mode": "toggle" }),
+                "scroll_to" => json!({ "kind": kind, "target_id": "panel" }),
+                "animate" => json!({ "kind": kind, "target_id": "panel", "animation": "fade_in", "duration_ms": 300 }),
+                _ => json!({ "kind": kind, "event": "cta_clicked", "payload": {} }),
+            };
+            json!({
+                "id": id, "type": "button", "content": "Act", "components": [],
+                "flyAction": action
+            })
+        }),
+        (id, prop_oneof![
+            Just("https://cdn.example.com/image.png"),
+            Just("javascript:alert(1)"),
+            Just("//evil.example.com/x.png"),
+            Just("/local/image.png"),
+        ])
+        .prop_map(|(id, src)| json!({
+            "id": id, "type": "image", "components": [],
+            "attributes": { "src": src, "alt": "picture" }
+        })),
+        id.prop_map(|id| json!({
+            "id": id, "type": "rich_text", "components": [],
+            "flyRichText": {
+                "capability": "richtext",
+                "payload": {
+                    "type": "doc",
+                    "content": [{
+                        "type": "paragraph",
+                        "content": [
+                            { "type": "text", "text": "5 < 10 & \"quoted\"" },
+                            { "type": "text", "text": "bad link", "marks": [{ "type": "link", "attrs": { "href": "javascript:alert(1)" } }] },
+                            { "type": "text", "text": "good link", "marks": [{ "type": "link", "attrs": { "href": "https://example.com/docs" } }] }
+                        ]
+                    }]
+                }
+            }
+        })),
+        (id, prop_oneof![
+            Just(("youtube", "https://www.youtube-nocookie.com/embed/abc123")),
+            Just(("vimeo", "https://player.vimeo.com/video/42")),
+            Just(("youtube", "https://evil.example.com/embed/x")),
+            Just(("google_maps", "http://www.google.com/maps/embed?pb=x")),
+        ])
+        .prop_map(|(id, (provider, url))| json!({
+            "id": id, "type": "fly_embed", "components": [],
+            "flyEmbed": { "provider": provider, "url": url, "title": "Embedded content", "aspect_ratio": "16 / 9" }
+        })),
+    ]
+}
+
+fn diverse_component_tree() -> impl Strategy<Value = Value> {
+    diverse_leaf().prop_recursive(3, 36, 3, |inner| {
+        ("[a-z][a-z0-9-]{0,10}", prop::collection::vec(inner, 0..3)).prop_map(|(id, children)| {
+            json!({
+                "id": id,
+                "type": "section",
+                "components": children,
+                "style": { "margin-top": "4px", "color": "var(--brand)" }
+            })
+        })
+    })
+}
+
+fn diverse_project(component: Value) -> Value {
+    json!({
+        "assets": [],
+        "styles": [
+            { "selectors": [{ "name": "hero", "type": 2 }], "style": { "padding": "24px" } },
+            { "selectors": [{ "name": "hero", "type": 2 }], "style": { "color": "red" }, "state": "hover" },
+            { "selectors": ["panel"], "style": { "display": "block" }, "atRuleType": "media", "mediaText": "(max-width: 767px)", "flyComponentId": "panel" }
+        ],
+        "flyTheme": { "tokens": { "brand": "#0b5fff", "space-md": "1rem" } },
+        "pages": [{
+            "id": "home",
+            "component": {
+                "id": "root", "type": "wrapper",
+                "components": [
+                    component,
+                    { "id": "panel", "type": "section", "content": "Target panel", "components": [] }
+                ]
+            }
+        }]
+    })
+}
+
+proptest! {
+    #[test]
+    fn codec_round_trips_diverse_documents(tree in diverse_component_tree()) {
+        let input = diverse_project(tree);
+        let document = match GrapesJsCodec::decode_value(input.clone()) {
+            Ok(document) => document,
+            Err(_) => return Ok(()),
+        };
+        let output = GrapesJsCodec::encode_value(&document).expect("encode");
+        prop_assert_eq!(output, input);
+    }
+
+    #[test]
+    fn rendering_stays_safe_for_diverse_documents(tree in diverse_component_tree()) {
+        let document = match GrapesJsCodec::decode_value(diverse_project(tree)) {
+            Ok(document) => document,
+            Err(_) => return Ok(()),
+        };
+        let rendered = match render_page(&document, &PageSelection::First, &RenderPolicy::default()) {
+            Ok(rendered) => rendered,
+            Err(_) => return Ok(()),
+        };
+        let html = rendered.document_html();
+        let lowered = html.to_ascii_lowercase();
+        prop_assert!(!lowered.contains("<script"), "script in output: {html}");
+        prop_assert!(!lowered.contains("javascript:"), "javascript: URL in output: {html}");
+        // Every iframe in the output must be a sandboxed embed on an allow-listed host.
+        for frame in lowered.split("<iframe").skip(1) {
+            prop_assert!(frame.contains(" sandbox=\""), "unsandboxed iframe: {html}");
+            let host_ok = ["youtube-nocookie.com", "youtube.com", "player.vimeo.com", "google.com"]
+                .iter()
+                .any(|host| frame.contains(&format!("src=\"https://www.{host}"))
+                    || frame.contains(&format!("src=\"https://{host}")));
+            prop_assert!(host_ok, "iframe on a non-allow-listed host: {html}");
+        }
+        // Tokens still resolve to a :root rule regardless of the generated tree.
+        prop_assert!(rendered.css.contains("--brand:#0b5fff"), "css: {}", rendered.css);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// GrapesJS-shaped fixture corpus (audit P1-8)
+//
+// Every file registered in fixtures/grapesjs/manifest.json must decode, render, validate
+// without panicking, and encode idempotently. The manifest records honestly that these
+// are structural baselines, not live browser captures (`real_browser_capture: false`):
+// they pin the *shape* contract until a real GrapesJS capture harness exists.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn grapesjs_fixture_corpus_decodes_renders_and_encodes_idempotently() {
+    let fixtures_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/grapesjs");
+    let manifest: Value = serde_json::from_str(
+        &std::fs::read_to_string(fixtures_dir.join("manifest.json")).expect("manifest"),
+    )
+    .expect("manifest json");
+    let entries = manifest["fixtures"].as_array().expect("fixture entries");
+    assert!(
+        entries.len() >= 10,
+        "the corpus must stay broad (audit P1-8), found {}",
+        entries.len()
+    );
+    for entry in entries {
+        let file = entry["file"].as_str().expect("fixture file name");
+        let raw = std::fs::read_to_string(fixtures_dir.join(file))
+            .unwrap_or_else(|error| panic!("fixture {file} unreadable: {error}"));
+        let document = GrapesJsCodec::decode_str(&raw)
+            .unwrap_or_else(|error| panic!("fixture {file} must decode: {error}"));
+        let _report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+        if !document.project.pages.is_empty() {
+            render_page(&document, &PageSelection::First, &RenderPolicy::default())
+                .unwrap_or_else(|error| panic!("fixture {file} must render: {error}"));
+        }
+        let encoded_once = GrapesJsCodec::encode_value(&document).expect("encode");
+        let decoded_again =
+            GrapesJsCodec::decode_value(encoded_once.clone()).expect("decode again");
+        let encoded_twice = GrapesJsCodec::encode_value(&decoded_again).expect("encode again");
+        assert_eq!(
+            encoded_once, encoded_twice,
+            "fixture {file} encode not idempotent"
+        );
+    }
+}

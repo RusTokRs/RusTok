@@ -29,8 +29,29 @@ const requireMarkers = (key, markers, label) => {
 
 requireMarkers('flyLib', [
   'mod snapshot;',
-  'pub use snapshot::*;',
 ], 'Fly snapshot module wiring');
+
+// Assert the re-exported symbols rather than a literal `pub use` line (same rationale as the
+// component_visit block below): the fly root uses curated explicit re-exports, so pin the
+// exported snapshot surface, not one syntactic spelling of it.
+{
+  const braced = source.flyLib.match(/pub use snapshot::\{([^}]*)\}/);
+  const single = source.flyLib.match(/pub use snapshot::([A-Za-z0-9_]+);/);
+  const exported = braced
+    ? braced[1].split(',').map((entry) => entry.trim()).filter(Boolean)
+    : single
+      ? [single[1]]
+      : null;
+  if (!exported) {
+    failures.push('Fly lib does not re-export anything from snapshot');
+  } else {
+    for (const symbol of ['ProjectDiffSummary', 'ProjectSnapshot', 'SnapshotCatalog', 'compare_projects']) {
+      if (!exported.includes(symbol)) {
+        failures.push(`Fly lib does not re-export snapshot::${symbol}`);
+      }
+    }
+  }
+}
 
 // Assert the re-exported symbols rather than a literal `pub use` line: the previous marker pinned
 // one particular name ordering inside the braces and broke the moment rustfmt reordered it, even
