@@ -61,6 +61,12 @@ async fn bootstrap_remote_session(
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "http".to_string());
 
+    tracing::debug!(
+        transport = %transport,
+        has_token = true,
+        "Handling MCP bootstrap remote session request"
+    );
+
     let bridge = ctx
         .shared_get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
         .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.db_clone()));
@@ -89,6 +95,11 @@ async fn call_remote_tool(
     headers: HeaderMap,
     Json(input): Json<McpRemoteToolCallRequest>,
 ) -> Result<Json<McpRemoteToolCallResponse>> {
+    tracing::debug!(
+        tool_name = %input.tool_name,
+        correlation_id = ?input.correlation_id,
+        "Handling MCP remote tool call request"
+    );
     let response = execute_remote_tool_call(&ctx, registry, headers, input, "http-json").await?;
     Ok(Json(response))
 }
@@ -101,6 +112,11 @@ async fn stream_remote_tool(
 ) -> Result<
     Sse<impl futures_util::Stream<Item = std::result::Result<Event, std::convert::Infallible>>>,
 > {
+    tracing::debug!(
+        tool_name = %input.tool_name,
+        correlation_id = ?input.correlation_id,
+        "Handling MCP stream remote tool request"
+    );
     let response = execute_remote_tool_call(&ctx, registry, headers, input, "sse").await?;
     let event = Event::default()
         .event("mcp.tool.result")
@@ -655,6 +671,10 @@ async fn list_clients(
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpRead(_user): RequireMcpRead,
 ) -> Result<Json<Vec<McpClientSummaryResponse>>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        "Handling list MCP clients request"
+    );
     let clients = McpManagementService::list_clients(ctx.db(), tenant.id, Some(100)).await?;
     Ok(Json(clients.into_iter().map(map_client_summary).collect()))
 }
@@ -665,6 +685,11 @@ async fn get_client(
     RequireMcpRead(_user): RequireMcpRead,
     Path(client_id): Path<Uuid>,
 ) -> Result<Json<McpClientDetailsResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        client_id = %client_id,
+        "Handling get MCP client details request"
+    );
     let details = McpManagementService::get_client_details(ctx.db(), tenant.id, client_id)
         .await?
         .ok_or(crate::error::Error::NotFound)?;
@@ -677,6 +702,12 @@ async fn create_client(
     RequireMcpManage(user): RequireMcpManage,
     Json(input): Json<CreateMcpClientRequest>,
 ) -> Result<Json<CreateMcpClientResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        slug = %input.slug,
+        actor_type = %input.actor_type,
+        "Handling create MCP client request"
+    );
     McpManagementAuthorityService::validate_create_client(
         ctx.db(),
         tenant.id,
@@ -724,6 +755,11 @@ async fn rotate_token(
     Path(client_id): Path<Uuid>,
     Json(input): Json<RotateMcpTokenRequest>,
 ) -> Result<Json<RotateMcpTokenResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        client_id = %client_id,
+        "Handling rotate MCP token request"
+    );
     McpManagementAuthorityService::validate_token_rotation(
         ctx.db(),
         tenant.id,
@@ -761,6 +797,11 @@ async fn update_policy(
     Path(client_id): Path<Uuid>,
     Json(input): Json<UpdateMcpPolicyRequest>,
 ) -> Result<Json<McpPolicyResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        client_id = %client_id,
+        "Handling update MCP policy request"
+    );
     McpManagementAuthorityService::validate_policy_update(
         ctx.db(),
         tenant.id,
@@ -795,6 +836,11 @@ async fn revoke_token_by_id(
     RequireMcpManage(user): RequireMcpManage,
     Path(token_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        token_id = %token_id,
+        "Handling revoke MCP token request"
+    );
     McpManagementService::revoke_token(ctx.db(), tenant.id, token_id, Some(user.user.id), None)
         .await?;
     Ok(Json(serde_json::json!({ "success": true })))
@@ -806,6 +852,11 @@ async fn deactivate_client(
     RequireMcpManage(user): RequireMcpManage,
     Path(client_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        client_id = %client_id,
+        "Handling deactivate MCP client request"
+    );
     McpManagementService::deactivate_client(
         ctx.db(),
         tenant.id,
@@ -823,6 +874,13 @@ async fn list_audit_events(
     RequireMcpRead(_user): RequireMcpRead,
     Query(query): Query<McpAuditQuery>,
 ) -> Result<Json<Vec<McpAuditEventResponse>>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        client_id = ?query.client_id,
+        outcome = ?query.outcome,
+        limit = ?query.limit,
+        "Handling list MCP audit events request"
+    );
     let events = McpManagementService::list_audit_events(
         ctx.db(),
         tenant.id,
@@ -844,6 +902,10 @@ async fn list_scaffold_drafts(
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(_user): RequireMcpManage,
 ) -> Result<Json<Vec<McpModuleScaffoldDraftResponse>>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        "Handling list MCP scaffold drafts request"
+    );
     let drafts = McpManagementService::list_scaffold_drafts(ctx.db(), tenant.id, Some(100)).await?;
     Ok(Json(drafts.into_iter().map(map_scaffold_draft).collect()))
 }
@@ -854,6 +916,11 @@ async fn get_scaffold_draft(
     RequireMcpManage(_user): RequireMcpManage,
     Path(draft_id): Path<Uuid>,
 ) -> Result<Json<McpModuleScaffoldDraftResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        draft_id = %draft_id,
+        "Handling get MCP scaffold draft request"
+    );
     let draft = McpManagementService::get_scaffold_draft(ctx.db(), tenant.id, draft_id)
         .await?
         .ok_or(crate::error::Error::NotFound)?;
@@ -866,6 +933,12 @@ async fn stage_scaffold_draft(
     RequireMcpManage(user): RequireMcpManage,
     Json(input): Json<StageMcpModuleScaffoldDraftRequest>,
 ) -> Result<Json<McpModuleScaffoldDraftResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        slug = %input.slug,
+        name = %input.name,
+        "Handling stage MCP scaffold draft request"
+    );
     let draft = McpManagementService::stage_scaffold_draft(
         ctx.db(),
         tenant.id,
@@ -895,6 +968,12 @@ async fn apply_scaffold_draft(
     Path(draft_id): Path<Uuid>,
     Json(input): Json<ApplyMcpModuleScaffoldDraftRequest>,
 ) -> Result<Json<McpModuleScaffoldDraftResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        draft_id = %draft_id,
+        confirm = input.confirm,
+        "Handling apply MCP scaffold draft request"
+    );
     let (draft, _) = McpManagementService::apply_scaffold_draft(
         ctx.db(),
         tenant.id,
@@ -940,11 +1019,15 @@ pub fn router() -> crate::routes::ServerRouter {
 }
 
 fn bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(parse_bearer_token)
-        .map(ToOwned::to_owned)
+    let mut auth_iter = headers.get_all(axum::http::header::AUTHORIZATION).into_iter();
+    let first = auth_iter.next()?;
+    for next in auth_iter {
+        if next != first {
+            tracing::warn!("Conflicting duplicate Authorization headers received in MCP request");
+            return None;
+        }
+    }
+    first.to_str().ok().and_then(parse_bearer_token).map(ToOwned::to_owned)
 }
 
 fn parse_bearer_token(value: &str) -> Option<&str> {
@@ -952,7 +1035,7 @@ fn parse_bearer_token(value: &str) -> Option<&str> {
     if !scheme.eq_ignore_ascii_case("bearer") {
         return None;
     }
-    let token = token.trim();
+    let token = token.trim().trim_matches('"');
     (!token.is_empty()).then_some(token)
 }
 
@@ -1147,9 +1230,41 @@ mod tests {
             parse_bearer_token("  Bearer   token-abc  "),
             Some("token-abc")
         );
+        assert_eq!(
+            parse_bearer_token("Bearer \"quoted-token\""),
+            Some("quoted-token")
+        );
         assert_eq!(parse_bearer_token("Basic token-123"), None);
         assert_eq!(parse_bearer_token("Bearer"), None);
         assert_eq!(parse_bearer_token("Bearer   "), None);
         assert_eq!(parse_bearer_token(""), None);
+    }
+
+    #[test]
+    fn bearer_token_from_headers_rejects_conflicting_duplicates() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            axum::http::header::AUTHORIZATION,
+            "Bearer token-1".parse().unwrap(),
+        );
+        headers.append(
+            axum::http::header::AUTHORIZATION,
+            "Bearer token-2".parse().unwrap(),
+        );
+        assert!(bearer_token_from_headers(&headers).is_none());
+
+        let mut headers_matching = HeaderMap::new();
+        headers_matching.append(
+            axum::http::header::AUTHORIZATION,
+            "Bearer token-1".parse().unwrap(),
+        );
+        headers_matching.append(
+            axum::http::header::AUTHORIZATION,
+            "Bearer token-1".parse().unwrap(),
+        );
+        assert_eq!(
+            bearer_token_from_headers(&headers_matching),
+            Some("token-1".to_string())
+        );
     }
 }
