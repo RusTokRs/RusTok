@@ -3,7 +3,8 @@
 use crate::error::Result;
 use axum::Extension;
 use axum::extract::State;
-use axum::response::Response;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use chrono::Utc;
 use once_cell::sync::Lazy;
@@ -136,6 +137,7 @@ struct CircuitState {
     )
 )]
 pub async fn health() -> Result<Response> {
+    tracing::debug!("health::health entry");
     Ok(json_response(HealthResponse {
         status: "ok",
         app: "rustok",
@@ -154,6 +156,7 @@ pub async fn health() -> Result<Response> {
     )
 )]
 pub async fn live() -> Result<Response> {
+    tracing::debug!("health::live entry");
     Ok(json_response(serde_json::json!({ "status": "ok" })))
 }
 
@@ -335,13 +338,20 @@ pub async fn ready(
 
     let status = aggregate_status(&checks, &module_checks);
     let degraded_reasons = collect_reasons(&checks, &module_checks);
+    tracing::debug!(?status, "health::ready executed");
 
-    Ok(json_response(ReadinessResponse {
-        status,
-        checks,
-        modules: module_checks,
-        degraded_reasons,
-    }))
+    let http_status = readiness_http_status(status);
+
+    Ok((
+        http_status,
+        axum::Json(ReadinessResponse {
+            status,
+            checks,
+            modules: module_checks,
+            degraded_reasons,
+        }),
+    )
+        .into_response())
 }
 
 fn marketplace_provider_check(ctx: &ServerRuntimeContext) -> ReadinessCheck {
@@ -405,6 +415,7 @@ fn marketplace_provider_check(ctx: &ServerRuntimeContext) -> ReadinessCheck {
     )
 )]
 pub async fn runtime(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
+    tracing::debug!("health::runtime entry");
     let snapshot = collect_runtime_guardrail_snapshot(&ctx).await;
     Ok(json_response(snapshot))
 }
@@ -421,19 +432,21 @@ pub async fn runtime(State(ctx): State<ServerRuntimeContext>) -> Result<Response
     )
 )]
 pub async fn modules(Extension(registry): Extension<ModuleRegistry>) -> Result<Response> {
+    tracing::debug!("health::modules entry");
     let mut modules_health = Vec::new();
-    let mut overall_healthy = true;
+    let mut any_unhealthy = false;
+    let mut any_degraded = false;
 
     for module in registry.modules() {
         let health = module.health().await;
         let status_str = match health {
             HealthStatus::Healthy => "healthy",
             HealthStatus::Degraded => {
-                overall_healthy = false;
+                any_degraded = true;
                 "degraded"
             }
             HealthStatus::Unhealthy => {
-                overall_healthy = false;
+                any_unhealthy = true;
                 "unhealthy"
             }
         };
@@ -445,10 +458,22 @@ pub async fn modules(Extension(registry): Extension<ModuleRegistry>) -> Result<R
         });
     }
 
+    let status = resolve_modules_health_status(any_unhealthy, any_degraded);
+
     Ok(json_response(ModulesHealthResponse {
-        status: if overall_healthy { "ok" } else { "degraded" },
+        status,
         modules: modules_health,
     }))
+}
+
+fn resolve_modules_health_status(any_unhealthy: bool, any_degraded: bool) -> &'static str {
+    if any_unhealthy {
+        "unhealthy"
+    } else if any_degraded {
+        "degraded"
+    } else {
+        "ok"
+    }
 }
 
 #[cfg(feature = "mod-media")]
@@ -1015,6 +1040,18 @@ fn on_check_failure(name: &str) {
 
     if circuit.consecutive_failures >= CIRCUIT_BREAKER_FAILURE_THRESHOLD {
         circuit.open_until = Some(Instant::now() + CIRCUIT_BREAKER_COOLDOWN);
+        tracing::warn!(
+            name,
+            threshold = CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+            "Health check circuit breaker tripped open"
+        );
+    }
+}
+
+fn readiness_http_status(status: ReadinessStatus) -> StatusCode {
+    match status {
+        ReadinessStatus::Ok | ReadinessStatus::Degraded => StatusCode::OK,
+        ReadinessStatus::Unhealthy => StatusCode::SERVICE_UNAVAILABLE,
     }
 }
 
@@ -1392,5 +1429,29 @@ mod tests {
                 .as_deref()
                 .is_some_and(|reason| reason.contains("disabled"))
         );
+    }
+
+    #[test]
+    fn readiness_http_status_maps_unhealthy_to_service_unavailable() {
+        assert_eq!(
+            super::readiness_http_status(ReadinessStatus::Ok),
+            StatusCode::OK
+        );
+        assert_eq!(
+            super::readiness_http_status(ReadinessStatus::Degraded),
+            StatusCode::OK
+        );
+        assert_eq!(
+            super::readiness_http_status(ReadinessStatus::Unhealthy),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    #[test]
+    fn resolve_modules_health_status_distinguishes_tri_state() {
+        assert_eq!(super::resolve_modules_health_status(false, false), "ok");
+        assert_eq!(super::resolve_modules_health_status(false, true), "degraded");
+        assert_eq!(super::resolve_modules_health_status(true, false), "unhealthy");
+        assert_eq!(super::resolve_modules_health_status(true, true), "unhealthy");
     }
 }
