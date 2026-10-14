@@ -126,6 +126,7 @@ async fn catalog(
     headers: HeaderMap,
     Query(params): Query<RegistryCatalogListParams>,
 ) -> Result<Response<Body>, Error> {
+    tracing::debug!(locale = %resolved_locale.effective_locale, "Handling marketplace catalog list request");
     let first_party_modules = sort_catalog_modules(filter_catalog_modules(
         first_party_catalog_modules(&ctx, resolved_locale.effective_locale.as_str()).await?,
         &params,
@@ -175,6 +176,7 @@ async fn catalog_module(
     headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Result<Response<Body>, Error> {
+    tracing::debug!(%slug, locale = %resolved_locale.effective_locale, "Handling marketplace catalog module detail request");
     let module = first_party_catalog_modules(&ctx, resolved_locale.effective_locale.as_str())
         .await?
         .into_iter()
@@ -226,6 +228,7 @@ async fn publish(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(slug = %request.module.slug, version = %request.module.version, dry_run = request.dry_run, "Handling marketplace registry publish request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
 
@@ -331,6 +334,7 @@ async fn publish_status(
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
 ) -> Result<Json<RegistryPublishStatusResponse>, Error> {
+    tracing::debug!(%request_id, "Handling marketplace registry publish status request");
     let governance = RegistryGovernanceService::new(ctx.db_clone());
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = optional_authority_from_auth(&headers, auth)?;
@@ -427,6 +431,7 @@ async fn upload_publish_artifact(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     body: Bytes,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(%request_id, byte_len = body.len(), "Handling marketplace registry artifact upload request");
     if body.is_empty() {
         return Err(Error::BadRequest(
             "Registry publish artifact upload requires a non-empty request body".to_string(),
@@ -528,6 +533,7 @@ async fn stage_external_prebuilt(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryExternalPrebuiltStageRequest>,
 ) -> Result<Json<RegistryExternalPrebuiltStageResponse>, Error> {
+    tracing::debug!(%request_id, "Handling marketplace registry external prebuilt stage request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let source_evidence = external_prebuilt_source_evidence(&request)?;
@@ -645,6 +651,7 @@ async fn stage_platform_build(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPlatformBuildStageRequest>,
 ) -> Result<Json<RegistryPlatformBuildStageResponse>, Error> {
+    tracing::debug!(%request_id, "Handling marketplace registry platform build stage request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
@@ -755,6 +762,7 @@ async fn record_author_signature_evidence(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryAuthorSignatureEvidenceRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(%request_id, "Handling marketplace registry author signature evidence request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     if request.idempotency_key.is_nil() {
@@ -897,6 +905,7 @@ async fn download_publish_artifact(
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
 ) -> Result<Response<Body>, Error> {
+    tracing::debug!(%request_id, "Handling marketplace registry artifact download request");
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let governance = RegistryGovernanceService::new(ctx.db_clone());
     if let Some(authority) = optional_authority_from_auth(&headers, auth)? {
@@ -1020,6 +1029,7 @@ async fn validate_publish_request_step(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishValidationRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(%request_id, dry_run = request.dry_run, "Handling marketplace registry validate step request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
@@ -1129,6 +1139,7 @@ async fn report_validation_stage(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryValidationStageReportRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(%request_id, stage = %request.stage, "Handling marketplace registry stage report request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     validate_validation_stage_report_request(&request)?;
@@ -1263,6 +1274,7 @@ async fn approve_publish_request(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishDecisionRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(%request_id, "Handling marketplace registry publish approval request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     validate_publish_approve_request(&request)?;
@@ -1389,6 +1401,7 @@ async fn reject_publish_request(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishDecisionRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(%request_id, "Handling marketplace registry publish rejection request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_publish_reject_request(&request)?;
@@ -1528,6 +1541,7 @@ async fn request_changes_publish_request(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishDecisionRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(%request_id, "Handling marketplace registry request changes request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_publish_request_changes_request(&request)?;
@@ -1668,6 +1682,7 @@ async fn hold_publish_request(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishDecisionRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(%request_id, "Handling marketplace registry hold request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_publish_hold_request(&request)?;
@@ -1806,6 +1821,7 @@ async fn resume_publish_request(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishDecisionRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(%request_id, "Handling marketplace registry resume request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_publish_resume_request(&request)?;
@@ -1928,6 +1944,7 @@ async fn claim_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerClaimRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(runner_id = %request.runner_id, "Handling remote runner stage claim request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
@@ -1990,6 +2007,7 @@ async fn heartbeat_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerHeartbeatRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(%claim_id, "Handling remote runner lease heartbeat request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
@@ -2053,6 +2071,7 @@ async fn complete_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerCompletionRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(%claim_id, "Handling remote runner stage completion request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
@@ -2119,6 +2138,7 @@ async fn fail_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerCompletionRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(%claim_id, "Handling remote runner stage failure request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
@@ -2187,6 +2207,7 @@ async fn yank(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryYankRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(slug = %request.slug, version = %request.version, "Handling marketplace registry yank request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_yank_request(&request)?;
@@ -2312,6 +2333,7 @@ async fn transfer_owner(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryOwnerTransferRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    tracing::debug!(slug = %request.slug, "Handling marketplace registry owner transfer request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_owner_transfer_request(&request)?;
@@ -3057,13 +3079,32 @@ fn require_remote_executor_access(
     let expected_token = executor.shared_token.clone().ok_or_else(|| {
         Error::Unauthorized("Remote executor is enabled but shared_token is missing".to_string())
     })?;
-    let provided_token = headers
-        .get("x-rustok-runner-token")
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| Error::Unauthorized("Missing x-rustok-runner-token header".to_string()))?;
-    if !bool::from(provided_token.as_bytes().ct_eq(expected_token.as_bytes())) {
+    let expected_trimmed = expected_token.trim().trim_matches('"');
+    if expected_trimmed.is_empty() {
+        return Err(Error::Unauthorized(
+            "Remote executor shared_token is empty".to_string(),
+        ));
+    }
+    let mut values = headers.get_all("x-rustok-runner-token").iter();
+    let first = values.next().ok_or_else(|| {
+        Error::Unauthorized("Missing x-rustok-runner-token header".to_string())
+    })?;
+    for duplicate in values {
+        if duplicate != first {
+            tracing::warn!("Conflicting duplicate x-rustok-runner-token headers rejected");
+            return Err(Error::Unauthorized(
+                "Conflicting duplicate x-rustok-runner-token headers".to_string(),
+            ));
+        }
+    }
+    let provided_token = first
+        .to_str()
+        .map_err(|_| {
+            Error::Unauthorized("Invalid x-rustok-runner-token header encoding".to_string())
+        })?
+        .trim()
+        .trim_matches('"');
+    if !bool::from(provided_token.as_bytes().ct_eq(expected_trimmed.as_bytes())) {
         return Err(Error::Unauthorized(
             "Invalid x-rustok-runner-token header".to_string(),
         ));
@@ -3296,13 +3337,21 @@ fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) 
 }
 
 fn required_non_nil_idempotency_key(headers: &HeaderMap) -> Result<Uuid, Error> {
-    let value = headers
-        .get("idempotency-key")
-        .ok_or_else(|| Error::BadRequest("Idempotency-Key header is required".to_string()))?
+    let mut values = headers.get_all("idempotency-key").iter();
+    let first = values.next().ok_or_else(|| {
+        Error::BadRequest("Idempotency-Key header is required".to_string())
+    })?;
+    if values.next().is_some() {
+        return Err(Error::BadRequest(
+            "Duplicate Idempotency-Key headers are forbidden".to_string(),
+        ));
+    }
+    let value = first
         .to_str()
         .map_err(|_| Error::BadRequest("Idempotency-Key header is invalid".to_string()))?;
     let key = value
         .trim()
+        .trim_matches('"')
         .parse::<Uuid>()
         .map_err(|_| Error::BadRequest("Idempotency-Key header must be a UUID".to_string()))?;
     if key.is_nil() {
@@ -3348,7 +3397,7 @@ mod marketplace_registry_tests {
     };
     use crate::modules::CatalogManifestModule;
     use axum::body::to_bytes;
-    use axum::http::{HeaderMap, HeaderValue, StatusCode, header::IF_NONE_MATCH};
+    use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header::IF_NONE_MATCH};
     use rustok_modules::{ModuleGovernanceError, ModuleGovernanceErrorCategory};
 
     fn module(slug: &str) -> CatalogManifestModule {
@@ -3429,7 +3478,7 @@ mod marketplace_registry_tests {
                 .headers()
                 .get("vary")
                 .and_then(|value| value.to_str().ok()),
-            Some("Accept-Language, Cookie, X-Medusa-Locale, X-Tenant-ID")
+            Some("Accept-Language, Cookie, X-Medusa-Locale, X-Tenant-ID, X-Tenant-Slug")
         );
 
         let body = to_bytes(response.into_body(), usize::MAX)
@@ -3455,5 +3504,44 @@ mod marketplace_registry_tests {
             }
             other => panic!("expected HTTP error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn required_non_nil_idempotency_key_validates_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static("idempotency-key"),
+            HeaderValue::from_static("\"00000000-0000-0000-0000-000000000001\""),
+        );
+        let key = super::required_non_nil_idempotency_key(&headers).expect("should succeed");
+        assert_eq!(key, uuid::uuid!("00000000-0000-0000-0000-000000000001"));
+
+        // Reject nil UUID
+        let mut nil_headers = HeaderMap::new();
+        nil_headers.insert(
+            HeaderName::from_static("idempotency-key"),
+            HeaderValue::from_static("00000000-0000-0000-0000-000000000000"),
+        );
+        assert!(super::required_non_nil_idempotency_key(&nil_headers).is_err());
+
+        // Reject duplicates
+        let mut dup_headers = HeaderMap::new();
+        dup_headers.append(
+            HeaderName::from_static("idempotency-key"),
+            HeaderValue::from_static("00000000-0000-0000-0000-000000000001"),
+        );
+        dup_headers.append(
+            HeaderName::from_static("idempotency-key"),
+            HeaderValue::from_static("00000000-0000-0000-0000-000000000002"),
+        );
+        assert!(super::required_non_nil_idempotency_key(&dup_headers).is_err());
+    }
+
+    #[test]
+    fn validate_registry_slug_validates_format() {
+        assert!(super::validate_registry_slug("valid-module-1").is_ok());
+        assert!(super::validate_registry_slug("Valid-Module").is_err());
+        assert!(super::validate_registry_slug("").is_err());
+        assert!(super::validate_registry_slug("invalid_underscore").is_err());
     }
 }
