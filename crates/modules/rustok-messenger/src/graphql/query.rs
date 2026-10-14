@@ -1,5 +1,5 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_api::TenantContext;
+use rustok_api::{AuthContext, TenantContext};
 use sea_orm::DatabaseConnection;
 
 use super::runtime_data::MessengerGraphqlRuntimeData;
@@ -19,6 +19,10 @@ impl MessengerQuery {
     /// Retrieve aggregated metrics and status for the Messenger overview tab.
     async fn messenger_overview(&self, ctx: &Context<'_>) -> Result<MessengerOverviewGql> {
         let tenant = ctx.data::<TenantContext>()?;
+        let auth = ctx.data::<AuthContext>()?;
+        if auth.tenant_id != tenant.id {
+            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        }
         let db = ctx.data::<DatabaseConnection>()?;
         ensure_messenger_module_enabled(db, tenant.id)
             .await
@@ -53,6 +57,10 @@ impl MessengerQuery {
     /// List active channels with membership count and localized title for current tenant.
     async fn messenger_channels(&self, ctx: &Context<'_>) -> Result<Vec<MessengerChannelListItemGql>> {
         let tenant = ctx.data::<TenantContext>()?;
+        let auth = ctx.data::<AuthContext>()?;
+        if auth.tenant_id != tenant.id {
+            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        }
         let db = ctx.data::<DatabaseConnection>()?;
         ensure_messenger_module_enabled(db, tenant.id)
             .await
@@ -92,6 +100,10 @@ impl MessengerQuery {
         ctx: &Context<'_>,
     ) -> Result<Vec<MessengerE2eeDeviceAuditGql>> {
         let tenant = ctx.data::<TenantContext>()?;
+        let auth = ctx.data::<AuthContext>()?;
+        if auth.tenant_id != tenant.id {
+            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        }
         let db = ctx.data::<DatabaseConnection>()?;
         ensure_messenger_module_enabled(db, tenant.id)
             .await

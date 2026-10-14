@@ -1,6 +1,6 @@
 use async_graphql::{Context, Result};
 use rustok_api::graphql::GraphQLError;
-use rustok_modules::{ArtifactRollbackRequest, ModuleControlPlane};
+use rustok_modules::{ArtifactRollbackRequest, ModuleControlPlane, TransitionRollbackRequest};
 
 use crate::graphql::artifact_lifecycle::map_artifact_installation_lifecycle_error;
 use crate::graphql::mutations::{
@@ -80,7 +80,55 @@ impl ModuleRollbackMutation {
 
         Ok(ArtifactRollback {
             operation_id: result.operation_id,
-            source_installation_id: installation_id,
+            source_installation_id: result.source_installation_id,
+            target_installation_id: result.target_installation_id,
+            source_revision: artifact_lifecycle_revision(result.source_revision)?,
+            target_revision: artifact_lifecycle_revision(result.target_revision)?,
+        })
+    }
+
+    /// Dedicated GraphQL mutation boundary for transition-scoped artifact rollback.
+    ///
+    /// Resolves the candidate installation and its direct retained predecessor
+    /// from the active transition checkpoint and durable activation record.
+    async fn rollback_module_transition(
+        &self,
+        ctx: &Context<'_>,
+        operation_id: Uuid,
+        reason: String,
+        idempotency_key: Uuid,
+    ) -> Result<ArtifactRollback> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let trimmed_reason = reason.trim().to_string();
+        if operation_id.is_nil() || idempotency_key.is_nil() || trimmed_reason.is_empty() {
+            return Err(<async_graphql::FieldError as GraphQLError>::bad_user_input(
+                "Transition rollback requires non-nil operation and idempotency identities plus a non-empty reason",
+            ));
+        }
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let result = ModuleControlPlane::new(db.clone())
+            .installation()
+            .rollback_transition_operation(TransitionRollbackRequest {
+                operation_id,
+                scope: tenant_artifact_scope(tenant.id),
+                context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
+                reason: trimmed_reason,
+            })
+            .await
+            .map_err(map_artifact_installation_lifecycle_error)?;
+
+        if let Ok(runtime_ctx) =
+            ctx.data::<crate::services::server_runtime_context::ServerRuntimeContext>()
+        {
+            runtime_ctx
+                .effective_policy_cache()
+                .invalidate_tenant(tenant.id);
+        }
+
+        Ok(ArtifactRollback {
+            operation_id: result.operation_id,
+            source_installation_id: result.source_installation_id,
             target_installation_id: result.target_installation_id,
             source_revision: artifact_lifecycle_revision(result.source_revision)?,
             target_revision: artifact_lifecycle_revision(result.target_revision)?,

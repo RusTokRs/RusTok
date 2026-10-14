@@ -70,6 +70,8 @@ pub const UPGRADE_MODULE_MUTATION: &str = "mutation UpgradeModule($slug: String!
 
 pub const ROLLBACK_TENANT_ARTIFACT_MUTATION: &str = "mutation RollbackTenantArtifact($installationId: UUID!, $expectedRevision: Int!, $reason: String!, $idempotencyKey: UUID!, $targetCapabilityGrantRevision: Int!) { rollbackTenantArtifact(installationId: $installationId, expectedRevision: $expectedRevision, reason: $reason, idempotencyKey: $idempotencyKey, targetCapabilityGrantRevision: $targetCapabilityGrantRevision) { operationId sourceInstallationId targetInstallationId sourceRevision targetRevision } }";
 
+pub const ROLLBACK_MODULE_TRANSITION_MUTATION: &str = "mutation RollbackModuleTransition($operationId: UUID!, $reason: String!, $idempotencyKey: UUID!) { rollbackModuleTransition(operationId: $operationId, reason: $reason, idempotencyKey: $idempotencyKey) { operationId sourceInstallationId targetInstallationId sourceRevision targetRevision } }";
+
 #[cfg(feature = "ssr")]
 pub const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
 
@@ -336,6 +338,12 @@ pub struct RollbackTenantArtifactVariables {
 #[derive(Deserialize)]
 pub struct RollbackTenantArtifactResponse {
     #[serde(rename = "rollbackTenantArtifact")]
+    pub rollback: rustok_api::ArtifactRollbackView,
+}
+
+#[derive(Deserialize)]
+pub struct RollbackModuleTransitionResponse {
+    #[serde(rename = "rollbackModuleTransition")]
     pub rollback: rustok_api::ArtifactRollbackView,
 }
 

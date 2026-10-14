@@ -277,5 +277,127 @@ async fn messenger_graphql_schema_build_and_execute() {
     assert!(sdl.contains("claimPrekeyBundle"));
 }
 
+#[tokio::test]
+async fn axum_router_construction_no_path_conflict() {
+    let db = sea_orm::Database::connect("sqlite::memory:")
+        .await
+        .expect("in-memory db connects");
+    let runtime = rustok_messenger::controllers::MessengerHttpRuntime::new(db, 1);
+    let app = rustok_messenger::controllers::router(runtime);
+    assert!(format!("{app:?}").contains("Router"));
+}
+
+#[test]
+fn device_key_registry_input_validation_and_deduplication() {
+    use rustok_messenger::e2ee::{DeviceKeyRegistry, OneTimePrekeyInput, UploadDeviceKeysInput};
+
+    let registry = DeviceKeyRegistry::new();
+    let user_id = Uuid::now_v7();
+
+    // 1. Empty device_id rejection
+    let res = registry.register_device_keys(
+        user_id,
+        UploadDeviceKeysInput {
+            device_id: "  ".into(),
+            identity_key: "ed_key".into(),
+            curve25519_key: "curve_key".into(),
+            signature: "sig".into(),
+            one_time_prekeys: vec![],
+        },
+    );
+    assert!(res.is_err());
+
+    // 2. Empty signature rejection
+    let res = registry.register_device_keys(
+        user_id,
+        UploadDeviceKeysInput {
+            device_id: "dev_1".into(),
+            identity_key: "ed_key".into(),
+            curve25519_key: "curve_key".into(),
+            signature: "   ".into(),
+            one_time_prekeys: vec![],
+        },
+    );
+    assert!(res.is_err());
+
+    // 3. Duplicate key_id in same upload batch rejection
+    let res = registry.register_device_keys(
+        user_id,
+        UploadDeviceKeysInput {
+            device_id: "dev_1".into(),
+            identity_key: "ed_key".into(),
+            curve25519_key: "curve_key".into(),
+            signature: "sig".into(),
+            one_time_prekeys: vec![
+                OneTimePrekeyInput {
+                    key_id: "duplicate_id".into(),
+                    key_material: "mat1".into(),
+                    signature: None,
+                },
+                OneTimePrekeyInput {
+                    key_id: "duplicate_id".into(),
+                    key_material: "mat2".into(),
+                    signature: None,
+                },
+            ],
+        },
+    );
+    assert!(res.is_err());
+
+    // 4. Successful upload and subsequent deduplication
+    let res = registry.register_device_keys(
+        user_id,
+        UploadDeviceKeysInput {
+            device_id: "dev_1".into(),
+            identity_key: "ed_key".into(),
+            curve25519_key: "curve_key".into(),
+            signature: "sig".into(),
+            one_time_prekeys: vec![
+                OneTimePrekeyInput {
+                    key_id: "key_A".into(),
+                    key_material: "mat_A".into(),
+                    signature: None,
+                },
+                OneTimePrekeyInput {
+                    key_id: "key_B".into(),
+                    key_material: "mat_B".into(),
+                    signature: None,
+                },
+            ],
+        },
+    );
+    assert!(res.is_ok());
+
+    let audits = registry.list_all_devices_audit();
+    assert_eq!(audits[0].1, 2);
+
+    // Re-uploading key_A again does not duplicate in pool
+    let res2 = registry.register_device_keys(
+        user_id,
+        UploadDeviceKeysInput {
+            device_id: "dev_1".into(),
+            identity_key: "ed_key".into(),
+            curve25519_key: "curve_key".into(),
+            signature: "sig".into(),
+            one_time_prekeys: vec![
+                OneTimePrekeyInput {
+                    key_id: "key_A".into(),
+                    key_material: "mat_A".into(),
+                    signature: None,
+                },
+                OneTimePrekeyInput {
+                    key_id: "key_C".into(),
+                    key_material: "mat_C".into(),
+                    signature: None,
+                },
+            ],
+        },
+    );
+    assert!(res2.is_ok());
+
+    let audits_after = registry.list_all_devices_audit();
+    assert_eq!(audits_after[0].1, 3); // 2 existing + 1 new (key_C), key_A was not duplicated
+}
+
 
 

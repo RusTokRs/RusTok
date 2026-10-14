@@ -333,6 +333,21 @@ fn map_transition_service_error_native(
     }
 }
 
+#[cfg(feature = "ssr")]
+fn map_artifact_installation_error_native(
+    error: rustok_modules::ModuleInstallationError,
+) -> ServerFnError {
+    match error {
+        rustok_modules::ModuleInstallationError::AdmissionRevisionConflict(msg) => {
+            server_error(format!("REVISION_CONFLICT: {msg}"))
+        }
+        rustok_modules::ModuleInstallationError::Store(_) => {
+            server_error("SERVICE_UNAVAILABLE: Module installation store is unavailable")
+        }
+        other => server_error(format!("BAD_USER_INPUT: {other}")),
+    }
+}
+
 #[server(prefix = "/api/fn", endpoint = "admin/module-transition-checkpoint")]
 pub async fn module_transition_checkpoint_native(
     operation_id: String,
@@ -524,11 +539,11 @@ pub async fn rollback_tenant_artifact_native(
                 target_capability_grant_revision: target_grant_rev_u64,
             })
             .await
-            .map_err(|e| server_error(format!("ROLLBACK_ERROR: {e}")))?;
+            .map_err(map_artifact_installation_error_native)?;
 
         Ok(rustok_api::ArtifactRollbackView {
             operation_id: result.operation_id.to_string(),
-            source_installation_id: installation_id,
+            source_installation_id: result.source_installation_id.to_string(),
             target_installation_id: result.target_installation_id.to_string(),
             source_revision: i64::try_from(result.source_revision).unwrap_or(0),
             target_revision: i64::try_from(result.target_revision).unwrap_or(0),
@@ -545,6 +560,68 @@ pub async fn rollback_tenant_artifact_native(
         );
         Err(ServerFnError::new(
             "admin/rollback-tenant-artifact requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/rollback-module-transition")]
+pub async fn rollback_module_transition_native(
+    operation_id: String,
+    reason: String,
+    idempotency_key: String,
+) -> Result<rustok_api::ArtifactRollbackView, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::{Permission, has_effective_permission};
+
+        let operation_id_uuid = uuid::Uuid::parse_str(&operation_id)
+            .map_err(|_| server_error("BAD_USER_INPUT: operation_id must be a UUID"))?;
+        let idempotency_key_uuid = uuid::Uuid::parse_str(&idempotency_key)
+            .map_err(|_| server_error("BAD_USER_INPUT: idempotency_key must be a UUID"))?;
+        let trimmed_reason = reason.trim().to_string();
+        if operation_id_uuid.is_nil() || idempotency_key_uuid.is_nil() || trimmed_reason.is_empty() {
+            return Err(server_error(
+                "BAD_USER_INPUT: Transition rollback requires non-nil operation and idempotency identities plus a non-empty reason",
+            ));
+        }
+
+        let (app_ctx, auth, tenant) = modules_server_context().await?;
+        if !has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE) {
+            return Err(server_error(
+                "PERMISSION_DENIED: modules:manage required for transition rollback",
+            ));
+        }
+
+        let result = rustok_modules::ModuleControlPlane::new(app_ctx.db)
+            .installation()
+            .rollback_transition_operation(rustok_modules::TransitionRollbackRequest {
+                operation_id: operation_id_uuid,
+                scope: rustok_modules::ModuleInstallationScope::Tenant { tenant_id: tenant.id },
+                context: rustok_modules::ModuleCommandContext {
+                    actor_id: auth.user_id,
+                    tenant_id: Some(tenant.id),
+                    trace_id: format!("leptos:{idempotency_key}"),
+                    correlation_id: idempotency_key_uuid,
+                    idempotency_key: idempotency_key_uuid,
+                },
+                reason: trimmed_reason,
+            })
+            .await
+            .map_err(map_artifact_installation_error_native)?;
+
+        Ok(rustok_api::ArtifactRollbackView {
+            operation_id: result.operation_id.to_string(),
+            source_installation_id: result.source_installation_id.to_string(),
+            target_installation_id: result.target_installation_id.to_string(),
+            source_revision: i64::try_from(result.source_revision).unwrap_or(0),
+            target_revision: i64::try_from(result.target_revision).unwrap_or(0),
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (operation_id, reason, idempotency_key);
+        Err(ServerFnError::new(
+            "admin/rollback-module-transition requires the `ssr` feature",
         ))
     }
 }

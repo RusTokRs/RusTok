@@ -28,6 +28,9 @@ impl MessengerMutation {
     ) -> Result<MessengerChannelListItemGql> {
         let tenant = ctx.data::<TenantContext>()?;
         let auth = ctx.data::<AuthContext>()?;
+        if auth.tenant_id != tenant.id {
+            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        }
         let db = ctx.data::<DatabaseConnection>()?;
         ensure_messenger_module_enabled(db, tenant.id)
             .await
@@ -82,6 +85,9 @@ impl MessengerMutation {
     ) -> Result<DeviceKeyGql> {
         let tenant = ctx.data::<TenantContext>()?;
         let auth = ctx.data::<AuthContext>()?;
+        if auth.tenant_id != tenant.id {
+            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        }
         let db = ctx.data::<DatabaseConnection>()?;
         ensure_messenger_module_enabled(db, tenant.id)
             .await
@@ -131,6 +137,10 @@ impl MessengerMutation {
         device_id: String,
     ) -> Result<PrekeyBundleGql> {
         let tenant = ctx.data::<TenantContext>()?;
+        let auth = ctx.data::<AuthContext>()?;
+        if auth.tenant_id != tenant.id {
+            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        }
         let db = ctx.data::<DatabaseConnection>()?;
         ensure_messenger_module_enabled(db, tenant.id)
             .await

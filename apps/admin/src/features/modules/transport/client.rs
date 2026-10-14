@@ -824,3 +824,35 @@ pub async fn rollback_tenant_artifact(
     }
 }
 
+pub async fn rollback_module_transition(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    operation_id: String,
+    reason: String,
+    idempotency_key: String,
+) -> Result<ArtifactRollback, ApiError> {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => rollback_module_transition_native(
+            operation_id,
+            reason,
+            idempotency_key,
+        )
+        .await
+        .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
+            let response: RollbackModuleTransitionResponse = request(
+                ROLLBACK_MODULE_TRANSITION_MUTATION,
+                serde_json::json!({
+                    "operationId": operation_id,
+                    "reason": reason,
+                    "idempotencyKey": idempotency_key,
+                }),
+                token,
+                tenant_slug,
+            )
+            .await?;
+            Ok(response.rollback)
+        }
+    }
+}
+

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -61,6 +61,7 @@ impl MessengerService {
     }
 
     /// Lists channels for administrative inspection including title fallback and member counts.
+    /// Excludes private 1-on-1 direct dialogues to protect user privacy.
     pub async fn list_channels_summary(
         &self,
         tenant_id: Uuid,
@@ -69,29 +70,54 @@ impl MessengerService {
     ) -> MessengerResult<Vec<(conversation::Model, Option<String>, Option<String>, usize)>> {
         let convs = Conversation::find()
             .filter(conversation::Column::TenantId.eq(tenant_id))
+            .filter(conversation::Column::ConversationType.ne(ConversationType::Direct as i16))
             .order_by_desc(conversation::Column::CreatedAt)
             .limit(limit)
             .offset(offset)
             .all(&self.db)
             .await?;
 
+        if convs.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let conv_ids: Vec<Uuid> = convs.iter().map(|c| c.id).collect();
+
+        // Batch load translations and member counts in 2 targeted queries (no N+1)
+        let all_translations: Vec<channel_translation::Model> = ChannelTranslation::find()
+            .filter(channel_translation::Column::ChannelId.is_in(conv_ids.clone()))
+            .all(&self.db)
+            .await?;
+
+        let mut translations_by_conv: std::collections::HashMap<Uuid, Vec<channel_translation::Model>> =
+            std::collections::HashMap::new();
+        for t in all_translations {
+            translations_by_conv.entry(t.channel_id).or_default().push(t);
+        }
+
+        let all_members: Vec<member::Model> = Member::find()
+            .filter(member::Column::ConversationId.is_in(conv_ids))
+            .all(&self.db)
+            .await?;
+
+        let mut member_counts: std::collections::HashMap<Uuid, usize> =
+            std::collections::HashMap::new();
+        for m in all_members {
+            *member_counts.entry(m.conversation_id).or_default() += 1;
+        }
+
         let mut results = Vec::with_capacity(convs.len());
         for c in convs {
-            let translation = ChannelTranslation::find()
-                .filter(channel_translation::Column::ChannelId.eq(c.id))
-                .one(&self.db)
-                .await?;
+            let translation = translations_by_conv
+                .get(&c.id)
+                .and_then(|list| list.first());
 
             let title = translation
                 .as_ref()
                 .map(|t| t.title.clone())
                 .or_else(|| c.title.clone());
-            let topic = translation.and_then(|t| t.description);
-
-            let member_count = Member::find()
-                .filter(member::Column::ConversationId.eq(c.id))
-                .count(&self.db)
-                .await? as usize;
+            let topic = translation.and_then(|t| t.description.clone());
+            let member_count = member_counts.get(&c.id).copied().unwrap_or(0);
 
             results.push((c, title, topic, member_count));
         }
@@ -99,7 +125,7 @@ impl MessengerService {
         Ok(results)
     }
 
-    /// Create a new conversation, channel, or direct message dialogue.
+    /// Create a new conversation, channel, or direct message dialogue atomically.
     pub async fn create_conversation(
         &self,
         tenant_id: Uuid,
@@ -111,6 +137,14 @@ impl MessengerService {
 
         let conv_type = input.conversation_type as i16;
         let is_encrypted = input.is_encrypted.unwrap_or(false);
+
+        if let Some(locale) = input.initial_locale.as_deref().filter(|l| l.len() > 32) {
+            return Err(MessengerError::InvalidLocale {
+                locale: locale.to_string(),
+            });
+        }
+
+        let txn = self.db.begin().await?;
 
         let conv_model = conversation::ActiveModel {
             id: Set(conv_id),
@@ -127,13 +161,10 @@ impl MessengerService {
             updated_at: Set(now),
         };
 
-        conv_model.insert(&self.db).await?;
+        conv_model.insert(&txn).await?;
 
         // 1. If localized channel translation provided, persist it
         if let Some(locale) = input.initial_locale {
-            if locale.len() > 32 {
-                return Err(MessengerError::InvalidLocale { locale });
-            }
             let title = input.title.clone().unwrap_or_else(|| "Channel".to_string());
             let trans_model = channel_translation::ActiveModel {
                 id: Set(Uuid::now_v7()),
@@ -144,7 +175,7 @@ impl MessengerService {
                 created_at: Set(now),
                 updated_at: Set(now),
             };
-            trans_model.insert(&self.db).await?;
+            trans_model.insert(&txn).await?;
         }
 
         // 2. Add creator as Owner
@@ -156,7 +187,7 @@ impl MessengerService {
             joined_at: Set(now),
             muted_until: Set(None),
         };
-        creator_member.insert(&self.db).await?;
+        creator_member.insert(&txn).await?;
 
         // 3. Add other invited participants
         for participant_id in input.participant_ids {
@@ -169,7 +200,7 @@ impl MessengerService {
                     joined_at: Set(now),
                     muted_until: Set(None),
                 };
-                let _ = p_member.insert(&self.db).await;
+                let _ = p_member.insert(&txn).await;
             }
         }
 
@@ -181,7 +212,9 @@ impl MessengerService {
             last_read_message_id: Set(0),
             last_read_at: Set(now),
         };
-        initial_cursor.insert(&self.db).await?;
+        initial_cursor.insert(&txn).await?;
+
+        txn.commit().await?;
 
         Ok(ConversationOutput {
             id: conv_id,
@@ -389,12 +422,39 @@ impl MessengerService {
 
         self.ensure_membership(conv.id, actor_id).await?;
 
+        // Enforce E2EE invariants: encrypted conversation requires encrypted messages
+        let is_encrypted = input.is_encrypted.unwrap_or(conv.is_encrypted);
+        if conv.is_encrypted && !is_encrypted {
+            return Err(MessengerError::Validation(
+                "Encrypted conversation requires encrypted messages".to_string(),
+            ));
+        }
+
+        let encryption_algo = if is_encrypted {
+            let algo = input.encryption_algo.unwrap_or_else(|| {
+                if conv.conversation_type == ConversationType::Direct as i16 {
+                    "m.olm.v1.curve25519-aes-sha2".to_string()
+                } else {
+                    "m.megolm.v1.aes-sha2".to_string()
+                }
+            });
+            if algo != "m.olm.v1.curve25519-aes-sha2" && algo != "m.megolm.v1.aes-sha2" {
+                return Err(MessengerError::Validation(format!(
+                    "Unsupported encryption algorithm: {algo}"
+                )));
+            }
+            Some(algo)
+        } else {
+            None
+        };
+
         // Generate 64-bit strictly monotonic Snowflake sequence ID
         let message_id = self.snowflake.next_id();
         let now = Utc::now();
 
         let msg_type = input.message_type.unwrap_or(MessageType::Text) as i16;
-        let is_encrypted = input.is_encrypted.unwrap_or(conv.is_encrypted);
+
+        let txn = self.db.begin().await?;
 
         let msg_model = message::ActiveModel {
             id: Set(message_id),
@@ -405,20 +465,22 @@ impl MessengerService {
             content: Set(input.content.clone()),
             blocks_json: Set(input.blocks_json.clone()),
             is_encrypted: Set(is_encrypted),
-            encryption_algo: Set(input.encryption_algo.clone()),
+            encryption_algo: Set(encryption_algo.clone()),
             reply_to_id: Set(input.reply_to_id),
             created_at: Set(now),
             deleted_at: Set(None),
         };
 
-        msg_model.insert(&self.db).await?;
+        msg_model.insert(&txn).await?;
 
         // Update conversation's latest message pointer
         let mut conv_active: conversation::ActiveModel = conv.into();
         conv_active.last_message_id = Set(Some(message_id));
         conv_active.last_message_at = Set(Some(now));
         conv_active.updated_at = Set(now);
-        conv_active.update(&self.db).await?;
+        conv_active.update(&txn).await?;
+
+        txn.commit().await?;
 
         // Monotonically advance sender's cursor automatically
         let _ = self
@@ -443,7 +505,7 @@ impl MessengerService {
             content: input.content,
             blocks_json: input.blocks_json,
             is_encrypted,
-            encryption_algo: input.encryption_algo,
+            encryption_algo,
             reply_to_id: input.reply_to_id,
             created_at: now,
             is_deleted: false,

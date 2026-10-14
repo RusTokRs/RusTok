@@ -37,6 +37,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [API and Surface Contracts](./architecture/api.md)
 - [Routing](./architecture/routing.md)
 - [Module Architecture](./architecture/modules.md)
+- [Distribution Profiles and Builds](./architecture/distribution-profiles.md)
 - [Settings and Configuration Architecture](./architecture/settings.md)
 - [Platform Glossary](./glossary.md)
 - [Module and Owner Map](./modules/registry.md)

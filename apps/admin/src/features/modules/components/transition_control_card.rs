@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 
-use crate::features::modules::transport::finalize_module_transition;
+use crate::features::modules::transport::{finalize_module_transition, rollback_module_transition};
 use rustok_api::{
     ModuleRetentionHoldView, ModuleTransitionCheckpointView, ModuleTransitionStateView,
 };
@@ -26,6 +26,9 @@ pub fn TransitionControlCard(
     let (is_busy, set_is_busy) = signal(false);
     let (action_error, set_action_error) = signal(Option::<String>::None);
     let (show_holds, set_show_holds) = signal(false);
+    let (show_rollback_prompt, set_show_rollback_prompt) = signal(false);
+    let (rollback_reason, set_rollback_reason) =
+        signal("Rollback to retained predecessor after observation".to_string());
 
     let op_id = checkpoint.operation_id.clone();
     let is_observing = checkpoint.state == ModuleTransitionStateView::Observing;
@@ -33,6 +36,12 @@ pub fn TransitionControlCard(
     let is_failed = checkpoint.state == ModuleTransitionStateView::FailedClosed;
     let is_converged = checkpoint.state == ModuleTransitionStateView::Converged;
     let recovery_limit_reached = checkpoint.recovery_attempt_count >= 1;
+    let can_rollback = is_observing
+        && checkpoint.predecessor_digest.is_some()
+        && !recovery_limit_reached
+        && !is_past_point_of_no_return
+        && !is_converged
+        && !is_failed;
 
     let state_badge_class = match checkpoint.state {
         ModuleTransitionStateView::Observing => {
@@ -96,6 +105,44 @@ pub fn TransitionControlCard(
                     Err(err) => {
                         set_is_busy.set(false);
                         set_action_error.set(Some(format!("Finalization failed: {err:?}")));
+                    }
+                }
+            });
+        }
+    });
+
+    let rollback_transition_action = Callback::new({
+        let op_id = op_id.clone();
+        move |()| {
+            set_is_busy.set(true);
+            set_action_error.set(None);
+
+            let op_id = op_id.clone();
+            let token_val = token.get();
+            let tenant_val = tenant.get();
+            let idempotency_key = uuid::Uuid::new_v4().to_string();
+            let reason = rollback_reason.get();
+
+            leptos::task::spawn_local(async move {
+                match rollback_module_transition(
+                    token_val,
+                    tenant_val,
+                    op_id,
+                    reason,
+                    idempotency_key,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        set_is_busy.set(false);
+                        set_show_rollback_prompt.set(false);
+                        if let Some(cb) = on_refresh {
+                            cb.run(());
+                        }
+                    }
+                    Err(err) => {
+                        set_is_busy.set(false);
+                        set_action_error.set(Some(format!("Rollback failed: {err:?}")));
                     }
                 }
             });
@@ -239,28 +286,96 @@ pub fn TransitionControlCard(
             </div>
 
             // Transition action
-            <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-                <div class="flex items-center gap-2">
-                    // Finalize Transition Button
-                    {if is_observing || is_past_point_of_no_return {
-                        Some(view! {
-                            <button
-                                type="button"
-                                class="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
-                                disabled=move || is_busy.get()
-                                on:click=move |_| finalize_transition_action.run(())
-                            >
-                                {if is_busy.get() { "Finalizing..." } else { "Finalize Convergence" }}
-                            </button>
-                        })
-                    } else {
-                        None
-                    }}
+            <div class="mt-4 flex flex-col gap-3 border-t border-border pt-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex flex-wrap items-center gap-2">
+                        // Finalize Transition Button
+                        {if is_observing || is_past_point_of_no_return {
+                            Some(view! {
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
+                                    disabled=move || is_busy.get()
+                                    on:click=move |_| finalize_transition_action.run(())
+                                >
+                                    {if is_busy.get() { "Finalizing..." } else { "Finalize Convergence" }}
+                                </button>
+                            })
+                        } else {
+                            None
+                        }}
+
+                        // Rollback Button
+                        {if can_rollback {
+                            Some(view! {
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center justify-center rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-rose-500 disabled:opacity-50"
+                                    disabled=move || is_busy.get()
+                                    on:click=move |_| set_show_rollback_prompt.update(|v| *v = !*v)
+                                >
+                                    {if show_rollback_prompt.get() { "Cancel Rollback" } else { "Rollback to Predecessor" }}
+                                </button>
+                            })
+                        } else {
+                            None
+                        }}
+                    </div>
+
+                    <p class="text-[11px] text-muted-foreground">
+                        {if can_rollback {
+                            "Direct rollback will safely reactivate the retained predecessor, invalidate candidate bindings, and record recovery in the audit ledger."
+                        } else if checkpoint.predecessor_digest.is_none() {
+                            "Rollback is unavailable for initial installs (no retained predecessor)."
+                        } else if recovery_limit_reached {
+                            "Rollback limit reached (1 attempt maximum) to prevent flapping."
+                        } else if is_past_point_of_no_return {
+                            "Point of no return reached: rollback window closed."
+                        } else {
+                            "Transition reached terminal state."
+                        }}
+                    </p>
                 </div>
 
-                <p class="text-[11px] text-muted-foreground">
-                    "Rollback is executed from the selected active installation so the owner can verify its retained direct predecessor and capability grant."
-                </p>
+                // Rollback Confirmation & Reason Form
+                {move || if show_rollback_prompt.get() && can_rollback {
+                    Some(view! {
+                        <div class="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 space-y-2">
+                            <div class="text-xs font-semibold text-rose-500">
+                                "Confirm Rollback to Retained Predecessor"
+                            </div>
+                            <p class="text-[11px] text-muted-foreground">
+                                "Please supply an operational reason for the audit ledger:"
+                            </p>
+                            <input
+                                type="text"
+                                class="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                                placeholder="Reason for rollback..."
+                                prop:value=move || rollback_reason.get()
+                                on:input=move |ev| set_rollback_reason.set(event_target_value(&ev))
+                            />
+                            <div class="flex items-center gap-2 pt-1">
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center justify-center rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-rose-500 disabled:opacity-50"
+                                    disabled=move || is_busy.get() || rollback_reason.get().trim().is_empty()
+                                    on:click=move |_| rollback_transition_action.run(())
+                                >
+                                    {if is_busy.get() { "Rolling back..." } else { "Confirm & Execute Rollback" }}
+                                </button>
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                                    on:click=move |_| set_show_rollback_prompt.set(false)
+                                >
+                                    "Cancel"
+                                </button>
+                            </div>
+                        </div>
+                    })
+                } else {
+                    None
+                }}
             </div>
         </div>
     }

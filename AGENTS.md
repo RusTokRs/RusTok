@@ -145,12 +145,15 @@ MUST:
 - preserve clear ownership and dependency direction;
 - keep code, schema, callers, transports, tests, configuration, generated artifacts, and documentation consistent;
 - implement required runtime wiring, not only source markers;
-- verify observable behavior at the appropriate boundary.
+- verify observable behavior at the appropriate boundary;
+- run strictly crate-scoped verification: use `cargo check -p <crate>` or `cargo test -p <crate> --lib` targeted to the specific affected crate rather than workspace-wide builds.
 
 MUST NOT:
 - introduce hidden coupling, special-case branches, fragile workarounds, or knowingly duplicated sources of truth;
 - leave a known inconsistency for a hypothetical later cleanup when it is part of the current cutover;
-- create speculative infrastructure, registries, providers, feature flags, abstractions, or config keys without a current canonical consumer or requirement.
+- create speculative infrastructure, registries, providers, feature flags, abstractions, or config keys without a current canonical consumer or requirement;
+- run workspace-wide compilation (bare `cargo check`, `cargo build`, `cargo test`, `cargo clippy`, or `--workspace`/`--all`) without explicit user instruction;
+- compile `apps/server` (`-p rustok-server`) when working on an isolated domain module, as server default features pull all 40+ modules.
 
 Prefer designs in which invalid states are unrepresentable through Rust types, database constraints, or both.
 

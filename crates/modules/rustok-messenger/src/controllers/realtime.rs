@@ -91,12 +91,12 @@ impl MessengerRoomHub {
     ) -> broadcast::Sender<MessengerServerMessage> {
         let key = (tenant_id, conversation_id);
         {
-            let read_guard = self.rooms.read().unwrap();
+            let read_guard = self.rooms.read().unwrap_or_else(|e| e.into_inner());
             if let Some(sender) = read_guard.get(&key) {
                 return sender.clone();
             }
         }
-        let mut write_guard = self.rooms.write().unwrap();
+        let mut write_guard = self.rooms.write().unwrap_or_else(|e| e.into_inner());
         write_guard
             .entry(key)
             .or_insert_with(|| {
@@ -114,7 +114,7 @@ impl MessengerRoomHub {
         msg: MessengerServerMessage,
     ) {
         let key = (tenant_id, conversation_id);
-        let read_guard = self.rooms.read().unwrap();
+        let read_guard = self.rooms.read().unwrap_or_else(|e| e.into_inner());
         if let Some(sender) = read_guard.get(&key) {
             let _ = sender.send(msg);
         }
@@ -170,6 +170,7 @@ async fn handle_socket(
     let (mut sender, mut receiver) = socket.split();
     let room_sender = hub.get_or_create_room(tenant_id, conversation_id);
     let mut room_receiver = room_sender.subscribe();
+    let (client_tx, mut client_rx) = tokio::sync::mpsc::channel::<MessengerServerMessage>(128);
     let actor_id = auth.user_id;
 
     info!(
@@ -179,9 +180,25 @@ async fn handle_socket(
         "Peer joined messenger room"
     );
 
-    // Forward broadcast messages from room to client WebSocket
+    // Forward room broadcast and client unicast messages to the client's WebSocket
     let mut send_task = tokio::spawn(async move {
-        while let Ok(msg) = room_receiver.recv().await {
+        loop {
+            let msg = tokio::select! {
+                res = room_receiver.recv() => {
+                    match res {
+                        Ok(msg) => msg,
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+                unicast = client_rx.recv() => {
+                    match unicast {
+                        Some(msg) => msg,
+                        None => break,
+                    }
+                }
+            };
+
             let Ok(json) = serde_json::to_string(&msg) else {
                 continue;
             };
@@ -203,7 +220,7 @@ async fn handle_socket(
                     let client_msg: Result<MessengerClientMessage, _> = serde_json::from_str(&text);
                     match client_msg {
                         Ok(MessengerClientMessage::Ping) => {
-                            let _ = room_sender_for_recv.send(MessengerServerMessage::Pong);
+                            let _ = client_tx.send(MessengerServerMessage::Pong).await;
                         }
                         Ok(MessengerClientMessage::FastSync { since_seq }) => {
                             match service_for_recv
@@ -219,14 +236,17 @@ async fn handle_socket(
                                 .await
                             {
                                 Ok(sync_res) => {
-                                    let _ = room_sender_for_recv
-                                        .send(MessengerServerMessage::SyncResponse(sync_res));
+                                    let _ = client_tx
+                                        .send(MessengerServerMessage::SyncResponse(sync_res))
+                                        .await;
                                 }
                                 Err(err) => {
-                                    let _ = room_sender_for_recv.send(MessengerServerMessage::Error {
-                                        code: "SYNC_FAILED".to_string(),
-                                        message: err.to_string(),
-                                    });
+                                    let _ = client_tx
+                                        .send(MessengerServerMessage::Error {
+                                            code: "SYNC_FAILED".to_string(),
+                                            message: err.to_string(),
+                                        })
+                                        .await;
                                 }
                             }
                         }
@@ -237,10 +257,12 @@ async fn handle_socket(
                             client_msg_id,
                         }) => {
                             if !has_any_effective_permission(&permissions, &[Permission::MESSAGES_CREATE]) {
-                                let _ = room_sender_for_recv.send(MessengerServerMessage::Error {
-                                    code: "FORBIDDEN".to_string(),
-                                    message: "Permission denied: messages:create required".to_string(),
-                                });
+                                let _ = client_tx
+                                    .send(MessengerServerMessage::Error {
+                                        code: "FORBIDDEN".to_string(),
+                                        message: "Permission denied: messages:create required".to_string(),
+                                    })
+                                    .await;
                                 continue;
                             }
 
@@ -261,20 +283,24 @@ async fn handle_socket(
                                 .await
                             {
                                 Ok(output) => {
-                                    // Acknowledge back to sender
-                                    let _ = room_sender_for_recv.send(MessengerServerMessage::Ack {
-                                        client_msg_id,
-                                        message_id: output.id,
-                                    });
-                                    // Broadcast new message to all peers in room
+                                    // Acknowledge back directly to the sender (unicast)
+                                    let _ = client_tx
+                                        .send(MessengerServerMessage::Ack {
+                                            client_msg_id,
+                                            message_id: output.id,
+                                        })
+                                        .await;
+                                    // Broadcast new message to all peers in the room
                                     let _ = room_sender_for_recv
                                         .send(MessengerServerMessage::NewMessage(output));
                                 }
                                 Err(err) => {
-                                    let _ = room_sender_for_recv.send(MessengerServerMessage::Error {
-                                        code: "SEND_FAILED".to_string(),
-                                        message: err.to_string(),
-                                    });
+                                    let _ = client_tx
+                                        .send(MessengerServerMessage::Error {
+                                            code: "SEND_FAILED".to_string(),
+                                            message: err.to_string(),
+                                        })
+                                        .await;
                                 }
                             }
                         }
@@ -293,15 +319,18 @@ async fn handle_socket(
                                 .await
                             {
                                 Ok(cursor_output) => {
+                                    // Broadcast cursor progress to room peers
                                     let _ = room_sender_for_recv.send(
                                         MessengerServerMessage::CursorAdvanced(cursor_output),
                                     );
                                 }
                                 Err(err) => {
-                                    let _ = room_sender_for_recv.send(MessengerServerMessage::Error {
-                                        code: "CURSOR_UPDATE_FAILED".to_string(),
-                                        message: err.to_string(),
-                                    });
+                                    let _ = client_tx
+                                        .send(MessengerServerMessage::Error {
+                                            code: "CURSOR_UPDATE_FAILED".to_string(),
+                                            message: err.to_string(),
+                                        })
+                                        .await;
                                 }
                             }
                         }
@@ -315,15 +344,17 @@ async fn handle_socket(
                         }
                         Err(parse_err) => {
                             warn!("Invalid messenger client message payload: {parse_err}");
-                            let _ = room_sender_for_recv.send(MessengerServerMessage::Error {
-                                code: "INVALID_PAYLOAD".to_string(),
-                                message: parse_err.to_string(),
-                            });
+                            let _ = client_tx
+                                .send(MessengerServerMessage::Error {
+                                    code: "INVALID_PAYLOAD".to_string(),
+                                    message: parse_err.to_string(),
+                                })
+                                .await;
                         }
                     }
                 }
                 Message::Ping(_) => {
-                    let _ = room_sender_for_recv.send(MessengerServerMessage::Pong);
+                    let _ = client_tx.send(MessengerServerMessage::Pong).await;
                 }
                 Message::Close(_) => break,
                 _ => {}

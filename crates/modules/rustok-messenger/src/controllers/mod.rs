@@ -36,7 +36,18 @@ impl MessengerHttpRuntime {
     }
 
     pub fn from_host(runtime: &HostRuntimeContext) -> Self {
-        Self::new(runtime.db_clone(), 1)
+        let device_keys = runtime
+            .shared_get::<Arc<crate::e2ee::DeviceKeyRegistry>>()
+            .unwrap_or_else(|| Arc::new(crate::e2ee::DeviceKeyRegistry::new()));
+        let room_hub = runtime
+            .shared_get::<Arc<MessengerRoomHub>>()
+            .unwrap_or_else(|| Arc::new(MessengerRoomHub::new()));
+        let service = MessengerService::new(runtime.db_clone(), 1).with_device_keys(device_keys);
+        Self {
+            db: runtime.db_clone(),
+            service,
+            room_hub,
+        }
     }
 }
 
@@ -107,8 +118,10 @@ pub fn router(runtime: MessengerHttpRuntime) -> Router {
             post(rest::claim_prekey_bundle),
         )
         // Legacy path aliases preserved for backwards-compatibility
-        .route("/conversations", post(rest::create_conversation))
-        .route("/conversations", get(rest::list_conversations))
+        .route(
+            "/conversations",
+            post(rest::create_conversation).get(rest::list_conversations),
+        )
         .route("/conversations/{id}", get(rest::get_conversation))
         .route(
             "/channels/{id}/translations",

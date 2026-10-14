@@ -487,7 +487,7 @@ pub use installation::{
     InstalledModuleArtifact, ModuleArtifactPackage, ModuleInstallationError,
     ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
     SeaOrmArtifactInstallationStore, SeaOrmArtifactSandboxPolicyResolver,
-    SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob,
+    SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob, TransitionRollbackRequest,
 };
 pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
 pub use lifecycle_writer::{

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::RwLock,
 };
 use chrono::Utc;
@@ -7,6 +7,12 @@ use uuid::Uuid;
 
 use super::keys::{DeviceKey, OneTimePrekey, PrekeyBundle, UploadDeviceKeysInput};
 use crate::error::{MessengerError, MessengerResult};
+
+/// Maximum number of one-time prekeys allowed in a single upload batch.
+pub const MAX_PREKEYS_PER_UPLOAD: usize = 100;
+
+/// Maximum number of unconsumed one-time prekeys retained in a device pool.
+pub const MAX_PREKEY_POOL_SIZE: usize = 500;
 
 /// Thread-safe server-side repository for public device keys and one-time prekeys.
 ///
@@ -29,7 +35,8 @@ impl DeviceKeyRegistry {
         user_id: Uuid,
         input: UploadDeviceKeysInput,
     ) -> MessengerResult<DeviceKey> {
-        if input.device_id.trim().is_empty() {
+        let device_id = input.device_id.trim().to_string();
+        if device_id.is_empty() {
             return Err(MessengerError::Validation(
                 "device_id must not be empty".to_string(),
             ));
@@ -39,9 +46,46 @@ impl DeviceKeyRegistry {
                 "identity_key must not be empty".to_string(),
             ));
         }
+        if input.curve25519_key.trim().is_empty() {
+            return Err(MessengerError::Validation(
+                "curve25519_key must not be empty".to_string(),
+            ));
+        }
+        if input.signature.trim().is_empty() {
+            return Err(MessengerError::Validation(
+                "signature must not be empty".to_string(),
+            ));
+        }
+
+        if input.one_time_prekeys.len() > MAX_PREKEYS_PER_UPLOAD {
+            return Err(MessengerError::Validation(format!(
+                "Cannot upload more than {MAX_PREKEYS_PER_UPLOAD} one-time prekeys in a single batch"
+            )));
+        }
+
+        // Validate OTKs and check for intra-batch duplicate key_ids
+        let mut batch_key_ids = HashSet::with_capacity(input.one_time_prekeys.len());
+        for ot_input in &input.one_time_prekeys {
+            let kid = ot_input.key_id.trim();
+            if kid.is_empty() {
+                return Err(MessengerError::Validation(
+                    "One-time prekey key_id must not be empty".to_string(),
+                ));
+            }
+            if ot_input.key_material.trim().is_empty() {
+                return Err(MessengerError::Validation(
+                    "One-time prekey key_material must not be empty".to_string(),
+                ));
+            }
+            if !batch_key_ids.insert(kid.to_string()) {
+                return Err(MessengerError::Validation(format!(
+                    "Duplicate key_id in upload batch: '{kid}'"
+                )));
+            }
+        }
 
         let device_key = DeviceKey {
-            device_id: input.device_id.clone(),
+            device_id: device_id.clone(),
             user_id,
             identity_key: input.identity_key,
             curve25519_key: input.curve25519_key,
@@ -49,24 +93,48 @@ impl DeviceKeyRegistry {
             created_at: Utc::now(),
         };
 
-        let device_lookup_key = (user_id, input.device_id.clone());
+        let device_lookup_key = (user_id, device_id.clone());
 
         {
-            let mut write_guard = self.devices.write().unwrap();
+            let mut write_guard = self.devices.write().unwrap_or_else(|e| e.into_inner());
             write_guard.insert(device_lookup_key.clone(), device_key.clone());
         }
 
         if !input.one_time_prekeys.is_empty() {
-            let mut prekey_guard = self.prekeys.write().unwrap();
+            let mut prekey_guard = self.prekeys.write().unwrap_or_else(|e| e.into_inner());
             let pool = prekey_guard.entry(device_lookup_key).or_default();
+
+            // Collect existing key_ids in pool to prevent duplicates
+            let existing_ids: HashSet<String> = pool.iter().map(|k| k.key_id.clone()).collect();
+
+            // Count current unconsumed keys
+            let current_unconsumed = pool.iter().filter(|k| !k.consumed).count();
+            let mut available_slots = MAX_PREKEY_POOL_SIZE.saturating_sub(current_unconsumed);
+
             for ot_input in input.one_time_prekeys {
-                pool.push(OneTimePrekey {
-                    key_id: ot_input.key_id,
-                    device_id: input.device_id.clone(),
-                    key_material: ot_input.key_material,
-                    signature: ot_input.signature,
-                    consumed: false,
-                });
+                if available_slots == 0 {
+                    break;
+                }
+                let kid = ot_input.key_id.trim().to_string();
+                if !existing_ids.contains(&kid) {
+                    pool.push(OneTimePrekey {
+                        key_id: kid,
+                        device_id: device_id.clone(),
+                        key_material: ot_input.key_material,
+                        signature: ot_input.signature,
+                        consumed: false,
+                    });
+                    available_slots = available_slots.saturating_sub(1);
+                }
+            }
+
+            // Prune old consumed keys if pool exceeds double capacity to avoid unbounded memory growth
+            if pool.len() > MAX_PREKEY_POOL_SIZE * 2 {
+                let mut unconsumed: Vec<OneTimePrekey> = pool.iter().filter(|k| !k.consumed).cloned().collect();
+                // Retain up to 50 most recent consumed keys for audit
+                let recent_consumed: Vec<OneTimePrekey> = pool.iter().filter(|k| k.consumed).rev().take(50).cloned().collect();
+                unconsumed.extend(recent_consumed);
+                *pool = unconsumed;
             }
         }
 
@@ -75,7 +143,7 @@ impl DeviceKeyRegistry {
 
     /// Lists all registered public device identities for a user.
     pub fn list_user_devices(&self, user_id: Uuid) -> Vec<DeviceKey> {
-        let read_guard = self.devices.read().unwrap();
+        let read_guard = self.devices.read().unwrap_or_else(|e| e.into_inner());
         read_guard
             .iter()
             .filter(|((u, _), _)| *u == user_id)
@@ -85,14 +153,14 @@ impl DeviceKeyRegistry {
 
     /// Returns the total number of registered devices.
     pub fn total_devices_count(&self) -> usize {
-        let read_guard = self.devices.read().unwrap();
+        let read_guard = self.devices.read().unwrap_or_else(|e| e.into_inner());
         read_guard.len()
     }
 
     /// Lists all registered devices with their unconsumed OTK count for security audit.
     pub fn list_all_devices_audit(&self) -> Vec<(DeviceKey, usize)> {
-        let read_devices = self.devices.read().unwrap();
-        let read_prekeys = self.prekeys.read().unwrap();
+        let read_devices = self.devices.read().unwrap_or_else(|e| e.into_inner());
+        let read_prekeys = self.prekeys.read().unwrap_or_else(|e| e.into_inner());
 
         read_devices
             .values()
@@ -114,9 +182,16 @@ impl DeviceKeyRegistry {
         target_user_id: Uuid,
         device_id: &str,
     ) -> MessengerResult<PrekeyBundle> {
+        let device_id = device_id.trim();
+        if device_id.is_empty() {
+            return Err(MessengerError::Validation(
+                "device_id must not be empty".to_string(),
+            ));
+        }
+
         let lookup_key = (target_user_id, device_id.to_string());
         let device = {
-            let read_guard = self.devices.read().unwrap();
+            let read_guard = self.devices.read().unwrap_or_else(|e| e.into_inner());
             read_guard
                 .get(&lookup_key)
                 .cloned()
@@ -124,7 +199,7 @@ impl DeviceKeyRegistry {
         };
 
         let one_time_prekey = {
-            let mut prekey_guard = self.prekeys.write().unwrap();
+            let mut prekey_guard = self.prekeys.write().unwrap_or_else(|e| e.into_inner());
             if let Some(pool) = prekey_guard.get_mut(&lookup_key) {
                 // Find first unconsumed OTK and atomically consume it
                 if let Some(otk) = pool.iter_mut().find(|k| !k.consumed) {
