@@ -36,6 +36,8 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>>
         return Ok(shared.0.clone());
     }
 
+    tracing::debug!("Initializing GraphQL schema composition from ServerRuntimeContext");
+
     let registry = ctx.shared_get::<rustok_core::ModuleRegistry>().ok_or_else(|| {
         Error::Message(
             "ModuleRegistry is unavailable; GraphQL schema composition requires boot-owned registry state"
@@ -136,6 +138,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>>
         storage: storage_from_ctx(ctx),
     }));
 
+    tracing::debug!("GraphQL schema composition initialized successfully");
     ctx.shared_insert(SharedGraphqlSchema(schema.clone()));
 
     Ok(schema)

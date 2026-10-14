@@ -95,9 +95,18 @@ async fn graphql_handler(
         Err(rejection) => return graphql_json_rejection_response(rejection),
     };
 
+    let p_hash = persisted_query_hash(&req);
+    tracing::debug!(
+        tenant_id = %tenant_ctx.id,
+        locale = %request_context.locale,
+        user_id = ?current_user.as_ref().map(|u| u.user.id),
+        persisted_query_hash = ?p_hash,
+        "Handling GraphQL HTTP request"
+    );
+
     let db = runtime_ctx.db_clone();
     let locale = Locale::parse(&request_context.locale).unwrap_or_default();
-    if let Some(hash) = persisted_query_hash(&req) {
+    if let Some(hash) = p_hash {
         tracing::debug!(
             persisted_query_hash = hash,
             cataloged_admin_hash = is_cataloged_admin_hash(hash),
@@ -193,12 +202,14 @@ fn persisted_query_hash(req: &async_graphql::Request) -> Option<&str> {
 }
 
 async fn graphql_playground() -> impl axum::response::IntoResponse {
+    tracing::debug!("Handling GraphQL playground HTML request");
     axum::response::Html(async_graphql::http::playground_source(
         GraphQLPlaygroundConfig::new("/api/graphql").subscription_endpoint("/api/graphql/ws"),
     ))
 }
 
 async fn graphql_schema_sdl(Extension(schema): Extension<Arc<AppSchema>>) -> impl IntoResponse {
+    tracing::debug!("Handling GraphQL schema SDL request");
     (
         [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
         schema.sdl(),
@@ -225,11 +236,15 @@ async fn graphql_ws_handler(
         .protocols(async_graphql::http::ALL_WEBSOCKET_PROTOCOLS)
         .max_message_size(WS_MAX_MESSAGE_SIZE)
         .max_frame_size(WS_MAX_FRAME_SIZE);
-    let Some(protocol) = ws
+    let selected_proto = ws
         .selected_protocol()
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<WebSocketProtocols>().ok())
-    else {
+        .and_then(|value| value.parse::<WebSocketProtocols>().ok());
+    tracing::debug!(
+        selected_protocol = ?selected_proto,
+        "Handling GraphQL WebSocket upgrade request"
+    );
+    let Some(protocol) = selected_proto else {
         return (
             axum::http::StatusCode::BAD_REQUEST,
             "GraphQL WebSocket subprotocol negotiation is required",
@@ -672,10 +687,15 @@ mod tests {
     #[test]
     fn websocket_tenant_resolution_does_not_log_raw_slug_payload() {
         let source = include_str!("graphql.rs");
-        assert!(!source.contains("tracing::warn!(tenant_slug"));
-        assert!(!source.contains("tracing::error!(tenant_slug"));
-        assert!(!source.contains("tracing::info!(tenant_slug"));
-        assert!(!source.contains("tracing::debug!(tenant_slug"));
+        let production_source = source.split("#[cfg(test)]").next().unwrap_or(source);
+        let warn_pattern = format!("{}(tenant_slug", "tracing::warn!");
+        let error_pattern = format!("{}(tenant_slug", "tracing::error!");
+        let info_pattern = format!("{}(tenant_slug", "tracing::info!");
+        let debug_pattern = format!("{}(tenant_slug", "tracing::debug!");
+        assert!(!production_source.contains(&warn_pattern));
+        assert!(!production_source.contains(&error_pattern));
+        assert!(!production_source.contains(&info_pattern));
+        assert!(!production_source.contains(&debug_pattern));
     }
 
     #[test]
