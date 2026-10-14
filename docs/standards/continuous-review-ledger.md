@@ -123,9 +123,9 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-02.03 — `crates/modules/rustok-tenant/src/settings_schema.rs` & `contract_tests.rs`** — tenant settings schema, validation rules, contract tests. (Done: bounded array elements to maximum 256; rejected null bytes in object keys and string values to prevent PostgreSQL UTF-8 null byte corruption; enforced float finiteness on numbers with match guard; added unit tests for null byte key, null byte string value, and oversized array; all 24 tests passed; verified gatekeeper approval).
 
 #### 2. rustok-auth
-- [ ] **FS-02.04 — `crates/modules/rustok-auth/src/services/auth_service.rs` & `error.rs`** — authentication service, password hashing, credential validation.
-- [ ] **FS-02.05 — `crates/modules/rustok-auth/src/services/session_service.rs` & `token_service.rs`** — session lifecycle, JWT issuance, revocation.
-- [ ] **FS-02.06 — `crates/modules/rustok-auth/src/entities/*` & `ports.rs`** — auth entities, ports, adapters.
+- [ ] **FS-02.04 — `crates/modules/rustok-auth/src/credentials.rs`, `jwt.rs`, & `error.rs`** — credential hashing, argon2/sha256 entropy, JWT encode/decode, purpose validation, error taxonomy.
+- [ ] **FS-02.05 — `crates/modules/rustok-auth/src/config.rs` & `bootstrap.rs`** — auth configuration, key pair validation, secret redaction, bootstrap writer.
+- [ ] **FS-02.06 — `crates/modules/rustok-auth/src/admin_mutations.rs`, `lifecycle.rs`, & `rest.rs`** — admin user/OAuth mutations, user lifecycle ports, REST DTOs, and backfill.
 
 #### 3. rustok-rbac
 - [ ] **FS-02.07 — `crates/modules/rustok-rbac/src/services/rbac_service.rs` & `error.rs`** — RBAC domain service, role assignment, policy enforcement.
