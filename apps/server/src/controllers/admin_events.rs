@@ -72,6 +72,13 @@ pub async fn list_dlq(
     _user: RequireLogsRead,
     Query(query): Query<DlqQuery>,
 ) -> Result<Json<DlqListResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        event_type = ?query.event_type,
+        limit = query.limit,
+        "Handling list DLQ events request"
+    );
+
     let requested_limit = Some(query.limit);
     let limit = query.limit.clamp(1, 200);
 
@@ -84,8 +91,8 @@ pub async fn list_dlq(
         .order_by_desc(entity::Column::CreatedAt)
         .limit(limit);
 
-    if let Some(event_type) = query.event_type.as_ref() {
-        db_query = db_query.filter(entity::Column::EventType.eq(event_type.as_str()));
+    if let Some(event_type) = query.event_type.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        db_query = db_query.filter(entity::Column::EventType.eq(event_type));
     }
 
     if let Some(created_after) = query.created_after {
@@ -150,6 +157,12 @@ pub async fn replay_dlq_event(
     user: CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<DlqReplayResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        event_id = %id,
+        "Handling replay DLQ event request"
+    );
+
     let required_permission = Permission::new(Resource::Logs, Action::Manage);
     if !has_effective_permission(&user.permissions, &required_permission) {
         return Err(forbidden_error("Permission denied: logs:manage required"));
@@ -317,5 +330,43 @@ mod tests {
             assert!(sql.contains("tenant_id"));
             assert!(sql.contains("event"));
         }
+    }
+
+    #[test]
+    fn dlq_query_deserializes_with_defaults() {
+        let query: super::DlqQuery = serde_json::from_str("{}").expect("deserialize empty query");
+        assert_eq!(query.limit, 100);
+        assert!(query.event_type.is_none());
+        assert!(query.created_after.is_none());
+    }
+
+    #[test]
+    fn dlq_query_event_type_trimming() {
+        let raw = "   custom.event.type   ";
+        let trimmed = raw.trim();
+        assert_eq!(trimmed, "custom.event.type");
+
+        let empty = "    ";
+        let filtered = Some(empty.to_string())
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(String::from);
+        assert!(filtered.is_none());
+    }
+
+    #[tokio::test]
+    async fn requeue_nonexistent_event_fails() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        SysEventsMigration
+            .up(&SchemaManager::new(&db))
+            .await
+            .expect("create sys_events");
+
+        let non_existent_id = Uuid::new_v4();
+        let result = requeue_failed_event(&db, non_existent_id).await;
+        assert!(result.is_err());
     }
 }
