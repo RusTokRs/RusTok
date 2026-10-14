@@ -92,7 +92,7 @@ The single canonical trigger to continue this audit sequence is:
 
 #### 3. Controllers & Transports
 - [x] **FS-01.15 — `apps/server/src/controllers/health.rs`** — liveness, readiness, DB/Redis ping probes, status reporting. (Done: aligned /health/ready response to return HTTP 503 Service Unavailable directly when aggregate status is Unhealthy; resolved module health status into distinct tri-state ok/degraded/unhealthy; added warning log when circuit breaker trips open; added entry debug tracing for health endpoints; added 2 unit tests covering readiness HTTP status mapping and module health tri-state resolution).
-- [ ] **FS-01.16 — `apps/server/src/controllers/metrics.rs`** — Prometheus metric exposition, scrape latency, sanitization.
+- [x] **FS-01.16 — `apps/server/src/controllers/metrics.rs`** — Prometheus metric exposition, scrape latency, sanitization. (Done: added entry debug tracing to metrics endpoint; guaranteed canonical Content-Type header on 503 metrics-disabled responses; added unit test verifying disabled metrics status code and text/plain content-type).
 - [ ] **FS-01.17 — `apps/server/src/controllers/auth.rs`** — login, register, refresh token, password reset, session invalidation.
 - [ ] **FS-01.18 — `apps/server/src/controllers/oauth.rs` & `apps/server/src/controllers/oauth_metadata.rs`** — OAuth2/OIDC provider & client endpoints, PKCE, token grants.
 - [ ] **FS-01.19 — `apps/server/src/controllers/users.rs`** — user profile management, admin user CRUD, tenant isolation.
