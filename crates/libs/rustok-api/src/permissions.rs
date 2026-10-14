@@ -62,6 +62,8 @@ pub enum Resource {
     Translations,
     TranslationMemory,
     TranslationGlossaries,
+    Conversations,
+    Messages,
 }
 
 impl fmt::Display for Resource {
@@ -123,6 +125,8 @@ impl fmt::Display for Resource {
             Self::Translations => "translations",
             Self::TranslationMemory => "translation_memory",
             Self::TranslationGlossaries => "translation_glossaries",
+            Self::Conversations => "conversations",
+            Self::Messages => "messages",
         };
         write!(f, "{value}")
     }
@@ -189,6 +193,8 @@ impl FromStr for Resource {
             "translations" => Ok(Self::Translations),
             "translation_memory" => Ok(Self::TranslationMemory),
             "translation_glossaries" => Ok(Self::TranslationGlossaries),
+            "conversations" => Ok(Self::Conversations),
+            "messages" => Ok(Self::Messages),
             _ => Err(format!("Unknown resource: {value}")),
         }
     }
@@ -273,6 +279,17 @@ impl Permission {
     pub const fn new(resource: Resource, action: Action) -> Self {
         Self { resource, action }
     }
+}
+
+pub fn has_effective_permission(permissions: &[Permission], required: &Permission) -> bool {
+    permissions.contains(required)
+        || permissions.contains(&Permission::new(required.resource, Action::Manage))
+}
+
+pub fn has_any_effective_permission(permissions: &[Permission], required: &[Permission]) -> bool {
+    required
+        .iter()
+        .any(|permission| has_effective_permission(permissions, permission))
 }
 
 impl FromStr for Permission {
@@ -584,6 +601,16 @@ impl Permission {
         TRANSLATION_GLOSSARIES_IMPORT => (TranslationGlossaries, Import),
         TRANSLATION_GLOSSARIES_EXPORT => (TranslationGlossaries, Export),
         TRANSLATION_GLOSSARIES_MANAGE => (TranslationGlossaries, Manage),
+        CONVERSATIONS_CREATE => (Conversations, Create),
+        CONVERSATIONS_READ => (Conversations, Read),
+        CONVERSATIONS_UPDATE => (Conversations, Update),
+        CONVERSATIONS_DELETE => (Conversations, Delete),
+        CONVERSATIONS_LIST => (Conversations, List),
+        CONVERSATIONS_MANAGE => (Conversations, Manage),
+        MESSAGES_CREATE => (Messages, Create),
+        MESSAGES_READ => (Messages, Read),
+        MESSAGES_DELETE => (Messages, Delete),
+        MESSAGES_LIST => (Messages, List),
     }
 }
 

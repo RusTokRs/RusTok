@@ -92,7 +92,7 @@ class LazyCatalog extends MessageCatalog {
       platformFallback: platformFallback,
     );
     final missing = candidates.where((candidate) => !isLoaded(candidate)).toList();
-    if (missing.isEmpty) return;
+    if (missing.isEmpty) return null;
     return Future.wait(missing.map(loadLocale)).then<void>((_) {});
   }
 

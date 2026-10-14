@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "module": "messenger",
+  "role": "provider",
+  "status": "boundary_ready",
+  "services": [
+    {
+      "name": "MessengerService",
+      "operations": [
+        "create_conversation",
+        "get_conversation",
+        "list_conversations",
+        "update_channel_translation",
+        "add_member",
+        "remove_member",
+        "send_message",
+        "get_message",
+        "list_messages",
+        "fast_sync",
+        "update_cursor"
+      ]
+    }
+  ],
+  "ports": [
+    {
+      "name": "MessengerPort",
+      "operations": [
+        "send_system_message",
+        "send_direct_message",
+        "create_entity_thread",
+        "get_unread_count"
+      ]
+    }
+  ],
+  "streaming_fabric": {
+    "target": "rustok-iggy",
+    "partition_strategy": "by_conversation_id",
+    "delivery_guarantee": "at_least_once_with_dedup"
+  },
+  "cryptographic_profile": {
+    "e2ee_engine": "vodozemac",
+    "matrix_gateway": "ruma"
+  },
+  "evidence": {
+    "local_plan": "crates/modules/rustok-messenger/docs/implementation-plan.md",
+    "crate_api": "crates/modules/rustok-messenger/CRATE_API.md",
+    "central_board": "docs/modules/registry.md"
+  }
+}

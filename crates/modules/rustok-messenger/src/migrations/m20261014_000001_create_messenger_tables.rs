@@ -1,0 +1,460 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // 1. messenger_conversations
+        manager
+            .create_table(
+                Table::create()
+                    .table(MessengerConversations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MessengerConversations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerConversations::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerConversations::ConversationType)
+                            .small_integer()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(MessengerConversations::Title).string_len(255))
+                    .col(ColumnDef::new(MessengerConversations::EntityType).small_integer())
+                    .col(ColumnDef::new(MessengerConversations::EntityId).uuid())
+                    .col(
+                        ColumnDef::new(MessengerConversations::IsEncrypted)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerConversations::CreatedBy)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(MessengerConversations::LastMessageId).big_integer())
+                    .col(ColumnDef::new(MessengerConversations::LastMessageAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(MessengerConversations::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerConversations::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_messenger_conv_tenant")
+                    .table(MessengerConversations::Table)
+                    .col(MessengerConversations::TenantId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_messenger_conv_entity")
+                    .table(MessengerConversations::Table)
+                    .col(MessengerConversations::EntityType)
+                    .col(MessengerConversations::EntityId)
+                    .to_owned(),
+            )
+            .await?;
+
+        // 2. messenger_channels_translations (Multilingual platform pattern)
+        manager
+            .create_table(
+                Table::create()
+                    .table(MessengerChannelsTranslations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MessengerChannelsTranslations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerChannelsTranslations::ChannelId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerChannelsTranslations::Locale)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerChannelsTranslations::Title)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(MessengerChannelsTranslations::Description).text())
+                    .col(
+                        ColumnDef::new(MessengerChannelsTranslations::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerChannelsTranslations::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_messenger_channels_translations_channel_id")
+                            .from(
+                                MessengerChannelsTranslations::Table,
+                                MessengerChannelsTranslations::ChannelId,
+                            )
+                            .to(
+                                MessengerConversations::Table,
+                                MessengerConversations::Id,
+                            )
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_messenger_channels_trans_unique")
+                    .table(MessengerChannelsTranslations::Table)
+                    .col(MessengerChannelsTranslations::ChannelId)
+                    .col(MessengerChannelsTranslations::Locale)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        // 3. messenger_members
+        manager
+            .create_table(
+                Table::create()
+                    .table(MessengerMembers::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MessengerMembers::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerMembers::ConversationId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerMembers::UserId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerMembers::Role)
+                            .small_integer()
+                            .not_null()
+                            .default(3),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerMembers::JoinedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(ColumnDef::new(MessengerMembers::MutedUntil).timestamp_with_time_zone())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_messenger_members_conv_id")
+                            .from(MessengerMembers::Table, MessengerMembers::ConversationId)
+                            .to(MessengerConversations::Table, MessengerConversations::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_messenger_members_unique")
+                    .table(MessengerMembers::Table)
+                    .col(MessengerMembers::ConversationId)
+                    .col(MessengerMembers::UserId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_messenger_members_user")
+                    .table(MessengerMembers::Table)
+                    .col(MessengerMembers::UserId)
+                    .to_owned(),
+            )
+            .await?;
+
+        // 4. messenger_messages (Append-only message log)
+        manager
+            .create_table(
+                Table::create()
+                    .table(MessengerMessages::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MessengerMessages::Id)
+                            .big_integer()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerMessages::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerMessages::ConversationId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerMessages::SenderId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerMessages::MessageType)
+                            .small_integer()
+                            .not_null()
+                            .default(1),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerMessages::Content)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(MessengerMessages::BlocksJson).json())
+                    .col(
+                        ColumnDef::new(MessengerMessages::IsEncrypted)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(ColumnDef::new(MessengerMessages::EncryptionAlgo).string_len(64))
+                    .col(ColumnDef::new(MessengerMessages::ReplyToId).big_integer())
+                    .col(
+                        ColumnDef::new(MessengerMessages::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(ColumnDef::new(MessengerMessages::DeletedAt).timestamp_with_time_zone())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_messenger_messages_conv_id")
+                            .from(MessengerMessages::Table, MessengerMessages::ConversationId)
+                            .to(MessengerConversations::Table, MessengerConversations::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_messenger_messages_conv_seq")
+                    .table(MessengerMessages::Table)
+                    .col(MessengerMessages::ConversationId)
+                    .col(MessengerMessages::Id)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_messenger_messages_sender")
+                    .table(MessengerMessages::Table)
+                    .col(MessengerMessages::SenderId)
+                    .to_owned(),
+            )
+            .await?;
+
+        // 5. messenger_cursors (Monotonic sync checkpoints)
+        manager
+            .create_table(
+                Table::create()
+                    .table(MessengerCursors::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MessengerCursors::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerCursors::ConversationId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerCursors::UserId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerCursors::LastReadMessageId)
+                            .big_integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(MessengerCursors::LastReadAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_messenger_cursors_conv_id")
+                            .from(MessengerCursors::Table, MessengerCursors::ConversationId)
+                            .to(MessengerConversations::Table, MessengerConversations::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_messenger_cursors_unique")
+                    .table(MessengerCursors::Table)
+                    .col(MessengerCursors::ConversationId)
+                    .col(MessengerCursors::UserId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(MessengerCursors::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(MessengerMessages::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(MessengerMembers::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(MessengerChannelsTranslations::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(MessengerConversations::Table)
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(DeriveIden)]
+enum MessengerConversations {
+    Table,
+    Id,
+    TenantId,
+    ConversationType,
+    Title,
+    EntityType,
+    EntityId,
+    IsEncrypted,
+    CreatedBy,
+    LastMessageId,
+    LastMessageAt,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum MessengerChannelsTranslations {
+    Table,
+    Id,
+    ChannelId,
+    Locale,
+    Title,
+    Description,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum MessengerMembers {
+    Table,
+    Id,
+    ConversationId,
+    UserId,
+    Role,
+    JoinedAt,
+    MutedUntil,
+}
+
+#[derive(DeriveIden)]
+enum MessengerMessages {
+    Table,
+    Id,
+    TenantId,
+    ConversationId,
+    SenderId,
+    MessageType,
+    Content,
+    BlocksJson,
+    IsEncrypted,
+    EncryptionAlgo,
+    ReplyToId,
+    CreatedAt,
+    DeletedAt,
+}
+
+#[derive(DeriveIden)]
+enum MessengerCursors {
+    Table,
+    Id,
+    ConversationId,
+    UserId,
+    LastReadMessageId,
+    LastReadAt,
+}

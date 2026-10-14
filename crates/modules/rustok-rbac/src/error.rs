@@ -4,7 +4,4 @@ use thiserror::Error;
 pub enum RbacError {
     #[error("permission denied")]
     PermissionDenied,
-
-    #[error("invalid RBAC authz mode: {value}")]
-    InvalidAuthzMode { value: String },
 }

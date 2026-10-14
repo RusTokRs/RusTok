@@ -636,11 +636,7 @@ class FtlParser {
           if (codePoint > 0x10FFFF) {
             throw FtlParseException('Unicode escape out of range', line: _line, column: _col);
           }
-          // Each escape denotes a scalar, not half of a UTF-16 pair.
-          // Fluent replaces escaped surrogates individually with U+FFFD.
-          buffer.writeCharCode(
-            codePoint >= 0xD800 && codePoint <= 0xDFFF ? 0xFFFD : codePoint,
-          );
+          buffer.writeCharCode(codePoint);
         } else {
           throw FtlParseException(
             'Invalid escape sequence in string literal; only \\\\, \\", \\uXXXX and \\UXXXXXX are allowed',

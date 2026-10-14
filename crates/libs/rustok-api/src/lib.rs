@@ -51,8 +51,7 @@ pub use context::{
     AuthContext, AuthContextExtension, AuthPrincipalContext, AuthPrincipalContextExtension,
     ChannelContextExt, ChannelContextExtension, HOST_AUTHORITY_REQUIRED, HostAuthority,
     HostAuthorityContext, OptionalAuthContext, OptionalChannel, OptionalTenant, TenantContext,
-    TenantContextExt, TenantContextExtension, has_any_effective_permission,
-    has_effective_permission, scope_matches,
+    TenantContextExt, TenantContextExtension, scope_matches,
 };
 pub use context::{
     AuthPrincipalKind, ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource,
@@ -97,7 +96,9 @@ pub use module_work::{
     ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
 };
 pub use patch::Patch;
-pub use permissions::{Action, Permission, Resource};
+pub use permissions::{
+    Action, Permission, Resource, has_any_effective_permission, has_effective_permission,
+};
 pub use platform_build::{
     PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus, PlatformDeploymentProfile,
 };

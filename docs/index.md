@@ -127,6 +127,7 @@ from complete operation safety and retention through serving cutover.
 - [`rustok-page-builder` Runtime Contract](../crates/modules/rustok-page-builder/docs/README.md)
 - [`rustok-translation-targets` Provider Contract](../crates/modules/rustok-translation-targets/docs/README.md)
 - [`rustok-ai-translation` Machine-Translation Bridge Contract](../crates/modules/rustok-ai-translation/docs/README.md)
+- [Messenger Module Documentation](../crates/modules/rustok-messenger/docs/README.md)
 
 ### Implementation Plans and Machine-Readable Contracts
 

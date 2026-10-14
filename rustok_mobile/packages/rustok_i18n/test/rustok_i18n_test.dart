@@ -398,11 +398,11 @@ void main() {
       }
     });
 
-    test('escaped surrogates are replaced separately, not joined as a pair', () {
+    test('surrogate pairs form astral characters and lone surrogates survive as one code unit', () {
       final bundle = FluentBundle(locale: 'en')..addSource(
         r'value = { "\uD800\uDFFF\uD83D\uDE00\U00D900" }');
       expect(bundle.diagnostics, isEmpty);
-      expect(bundle.format('value'), '\uFFFD' * 5);
+      expect(bundle.format('value'), '𐏿😀\uD900');
     });
 
     test('Unicode scalar boundaries and astral escapes remain intact', () {

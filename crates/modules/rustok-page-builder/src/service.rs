@@ -7,7 +7,7 @@ use crate::dto::{
 };
 use crate::rollout::{BuilderCapabilityFlags, BuilderRolloutError, ensure_capability};
 use async_trait::async_trait;
-use rustok_api::{Action, Permission, Resource};
+use rustok_api::{Action, Permission, Resource, has_effective_permission};
 use rustok_api::{PortCallPolicy, PortContext, PortErrorKind};
 use serde::Serialize;
 
@@ -241,7 +241,7 @@ impl PageBuilderCapabilityAuthorizer {
     ) -> PageBuilderServiceResult<()> {
         let required = self.required_permission(capability);
 
-        if has_effective_permission(&auth.permissions, required) {
+        if has_effective_permission(&auth.permissions, &required) {
             Ok(())
         } else {
             Err(PageBuilderServiceError::Forbidden(format!(
@@ -256,11 +256,6 @@ impl Default for PageBuilderCapabilityAuthorizer {
     fn default() -> Self {
         Self::new(PageBuilderCapabilityPermissions::default())
     }
-}
-
-fn has_effective_permission(permissions: &[Permission], required: Permission) -> bool {
-    permissions.contains(&required)
-        || permissions.contains(&Permission::new(required.resource, Action::Manage))
 }
 
 impl From<BuilderRolloutError> for PageBuilderServiceError {

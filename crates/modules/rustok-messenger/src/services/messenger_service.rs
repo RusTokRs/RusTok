@@ -1,0 +1,578 @@
+use std::sync::Arc;
+use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set,
+};
+use uuid::Uuid;
+
+use crate::domain::{ConversationType, MemberRole, MessageType, SnowflakeGenerator};
+use crate::dto::{
+    ChannelTranslationOutput, ConversationOutput, CreateConversationInput, FastSyncRequest,
+    FastSyncResponse, ListMessagesQuery, MessageOutput, SendMessageInput,
+    UpdateChannelTranslationInput, UpdateCursorInput,
+};
+use crate::entities::{
+    channel_translation, conversation, cursor, member, message,
+    ChannelTranslation, Conversation, Cursor, Member, Message,
+};
+use crate::error::{MessengerError, MessengerResult};
+
+/// Maximum message payload size (64 KiB).
+pub const MAX_MESSAGE_CONTENT_SIZE: usize = 65_536;
+
+/// Default page limit for message queries.
+pub const DEFAULT_MESSAGE_PAGE_LIMIT: u64 = 50;
+
+/// Application service owning messaging business transactions.
+#[derive(Clone)]
+pub struct MessengerService {
+    db: DatabaseConnection,
+    snowflake: Arc<SnowflakeGenerator>,
+}
+
+impl MessengerService {
+    pub fn new(db: DatabaseConnection, worker_id: i64) -> Self {
+        Self {
+            db,
+            snowflake: Arc::new(SnowflakeGenerator::new(worker_id)),
+        }
+    }
+
+    /// Create a new conversation, channel, or direct message dialogue.
+    pub async fn create_conversation(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        input: CreateConversationInput,
+    ) -> MessengerResult<ConversationOutput> {
+        let conv_id = Uuid::now_v7();
+        let now = Utc::now();
+
+        let conv_type = input.conversation_type as i16;
+        let is_encrypted = input.is_encrypted.unwrap_or(false);
+
+        let conv_model = conversation::ActiveModel {
+            id: Set(conv_id),
+            tenant_id: Set(tenant_id),
+            conversation_type: Set(conv_type),
+            title: Set(input.title.clone()),
+            entity_type: Set(input.entity_type),
+            entity_id: Set(input.entity_id),
+            is_encrypted: Set(is_encrypted),
+            created_by: Set(actor_id),
+            last_message_id: Set(None),
+            last_message_at: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+        };
+
+        conv_model.insert(&self.db).await?;
+
+        // 1. If localized channel translation provided, persist it
+        if let Some(locale) = input.initial_locale {
+            if locale.len() > 32 {
+                return Err(MessengerError::InvalidLocale { locale });
+            }
+            let title = input.title.clone().unwrap_or_else(|| "Channel".to_string());
+            let trans_model = channel_translation::ActiveModel {
+                id: Set(Uuid::now_v7()),
+                channel_id: Set(conv_id),
+                locale: Set(locale),
+                title: Set(title),
+                description: Set(input.initial_channel_description),
+                created_at: Set(now),
+                updated_at: Set(now),
+            };
+            trans_model.insert(&self.db).await?;
+        }
+
+        // 2. Add creator as Owner
+        let creator_member = member::ActiveModel {
+            id: Set(Uuid::now_v7()),
+            conversation_id: Set(conv_id),
+            user_id: Set(actor_id),
+            role: Set(MemberRole::Owner as i16),
+            joined_at: Set(now),
+            muted_until: Set(None),
+        };
+        creator_member.insert(&self.db).await?;
+
+        // 3. Add other invited participants
+        for participant_id in input.participant_ids {
+            if participant_id != actor_id {
+                let p_member = member::ActiveModel {
+                    id: Set(Uuid::now_v7()),
+                    conversation_id: Set(conv_id),
+                    user_id: Set(participant_id),
+                    role: Set(MemberRole::Member as i16),
+                    joined_at: Set(now),
+                    muted_until: Set(None),
+                };
+                let _ = p_member.insert(&self.db).await;
+            }
+        }
+
+        // 4. Initialize read cursor for creator
+        let initial_cursor = cursor::ActiveModel {
+            id: Set(Uuid::now_v7()),
+            conversation_id: Set(conv_id),
+            user_id: Set(actor_id),
+            last_read_message_id: Set(0),
+            last_read_at: Set(now),
+        };
+        initial_cursor.insert(&self.db).await?;
+
+        Ok(ConversationOutput {
+            id: conv_id,
+            tenant_id,
+            conversation_type: input.conversation_type,
+            title: input.title,
+            entity_type: input.entity_type,
+            entity_id: input.entity_id,
+            is_encrypted,
+            created_by: actor_id,
+            last_message_id: None,
+            last_message_at: None,
+            created_at: now,
+            unread_count: 0,
+        })
+    }
+
+    /// Retrieve conversation metadata by ID with effective localized title.
+    pub async fn get_conversation(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        conversation_id: Uuid,
+        locale: Option<&str>,
+    ) -> MessengerResult<ConversationOutput> {
+        let conv = Conversation::find_by_id(conversation_id)
+            .filter(conversation::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MessengerError::ConversationNotFound(conversation_id))?;
+
+        self.ensure_membership(conversation_id, actor_id).await?;
+
+        // Resolve title with localization fallback
+        let mut title = conv.title.clone();
+        if let Some(req_locale) = locale {
+            let trans = ChannelTranslation::find()
+                .filter(channel_translation::Column::ChannelId.eq(conversation_id))
+                .filter(channel_translation::Column::Locale.eq(req_locale))
+                .one(&self.db)
+                .await?;
+            if let Some(trans) = trans {
+                title = Some(trans.title);
+            }
+        }
+
+        let unread_count = self.calculate_unread_count(conversation_id, actor_id).await?;
+
+        let conv_type = ConversationType::try_from(conv.conversation_type)
+            .map_err(|_| MessengerError::Internal("Corrupted conversation_type in DB".into()))?;
+
+        Ok(ConversationOutput {
+            id: conv.id,
+            tenant_id: conv.tenant_id,
+            conversation_type: conv_type,
+            title,
+            entity_type: conv.entity_type,
+            entity_id: conv.entity_id,
+            is_encrypted: conv.is_encrypted,
+            created_by: conv.created_by,
+            last_message_id: conv.last_message_id,
+            last_message_at: conv.last_message_at,
+            created_at: conv.created_at,
+            unread_count,
+        })
+    }
+
+    /// List conversations where actor is an active participant.
+    pub async fn list_conversations(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        limit: u64,
+        offset: u64,
+    ) -> MessengerResult<Vec<ConversationOutput>> {
+        let member_conv_ids: Vec<Uuid> = Member::find()
+            .filter(member::Column::UserId.eq(actor_id))
+            .select_only()
+            .column(member::Column::ConversationId)
+            .into_tuple()
+            .all(&self.db)
+            .await?;
+
+        if member_conv_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let convs = Conversation::find()
+            .filter(conversation::Column::TenantId.eq(tenant_id))
+            .filter(conversation::Column::Id.is_in(member_conv_ids))
+            .order_by_desc(conversation::Column::UpdatedAt)
+            .limit(limit)
+            .offset(offset)
+            .all(&self.db)
+            .await?;
+
+        let mut outputs = Vec::with_capacity(convs.len());
+        for c in convs {
+            let conv_type = ConversationType::try_from(c.conversation_type).unwrap_or(ConversationType::Group);
+            let unread_count = self.calculate_unread_count(c.id, actor_id).await.unwrap_or(0);
+            outputs.push(ConversationOutput {
+                id: c.id,
+                tenant_id: c.tenant_id,
+                conversation_type: conv_type,
+                title: c.title,
+                entity_type: c.entity_type,
+                entity_id: c.entity_id,
+                is_encrypted: c.is_encrypted,
+                created_by: c.created_by,
+                last_message_id: c.last_message_id,
+                last_message_at: c.last_message_at,
+                created_at: c.created_at,
+                unread_count,
+            });
+        }
+
+        Ok(outputs)
+    }
+
+    /// Update or create localized channel translation (title, description).
+    pub async fn update_channel_translation(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        input: UpdateChannelTranslationInput,
+    ) -> MessengerResult<ChannelTranslationOutput> {
+        let conv = Conversation::find_by_id(input.channel_id)
+            .filter(conversation::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MessengerError::ConversationNotFound(input.channel_id))?;
+
+        let member_record = Member::find()
+            .filter(member::Column::ConversationId.eq(input.channel_id))
+            .filter(member::Column::UserId.eq(actor_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MessengerError::ConversationAccessDenied(input.channel_id))?;
+
+        if member_record.role != MemberRole::Owner as i16 && member_record.role != MemberRole::Admin as i16 {
+            return Err(MessengerError::ConversationAccessDenied(input.channel_id));
+        }
+
+        if input.locale.len() > 32 {
+            return Err(MessengerError::InvalidLocale {
+                locale: input.locale,
+            });
+        }
+
+        let now = Utc::now();
+        let existing = ChannelTranslation::find()
+            .filter(channel_translation::Column::ChannelId.eq(input.channel_id))
+            .filter(channel_translation::Column::Locale.eq(&input.locale))
+            .one(&self.db)
+            .await?;
+
+        if let Some(model) = existing {
+            let mut active: channel_translation::ActiveModel = model.into();
+            active.title = Set(input.title.clone());
+            active.description = Set(input.description.clone());
+            active.updated_at = Set(now);
+            active.update(&self.db).await?;
+        } else {
+            let new_model = channel_translation::ActiveModel {
+                id: Set(Uuid::now_v7()),
+                channel_id: Set(conv.id),
+                locale: Set(input.locale.clone()),
+                title: Set(input.title.clone()),
+                description: Set(input.description.clone()),
+                created_at: Set(now),
+                updated_at: Set(now),
+            };
+            new_model.insert(&self.db).await?;
+        }
+
+        Ok(ChannelTranslationOutput {
+            channel_id: input.channel_id,
+            locale: input.locale,
+            title: input.title,
+            description: input.description,
+            updated_at: now,
+        })
+    }
+
+    /// Send a message with append-only monotonicity.
+    pub async fn send_message(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        input: SendMessageInput,
+    ) -> MessengerResult<MessageOutput> {
+        let content_len = input.content.len();
+        if content_len > MAX_MESSAGE_CONTENT_SIZE {
+            return Err(MessengerError::PayloadTooLarge {
+                actual: content_len,
+                max: MAX_MESSAGE_CONTENT_SIZE,
+            });
+        }
+
+        let conv = Conversation::find_by_id(input.conversation_id)
+            .filter(conversation::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MessengerError::ConversationNotFound(input.conversation_id))?;
+
+        self.ensure_membership(conv.id, actor_id).await?;
+
+        // Generate 64-bit strictly monotonic Snowflake sequence ID
+        let message_id = self.snowflake.next_id();
+        let now = Utc::now();
+
+        let msg_type = input.message_type.unwrap_or(MessageType::Text) as i16;
+        let is_encrypted = input.is_encrypted.unwrap_or(conv.is_encrypted);
+
+        let msg_model = message::ActiveModel {
+            id: Set(message_id),
+            tenant_id: Set(tenant_id),
+            conversation_id: Set(conv.id),
+            sender_id: Set(actor_id),
+            message_type: Set(msg_type),
+            content: Set(input.content.clone()),
+            blocks_json: Set(input.blocks_json.clone()),
+            is_encrypted: Set(is_encrypted),
+            encryption_algo: Set(input.encryption_algo.clone()),
+            reply_to_id: Set(input.reply_to_id),
+            created_at: Set(now),
+            deleted_at: Set(None),
+        };
+
+        msg_model.insert(&self.db).await?;
+
+        // Update conversation's latest message pointer
+        let mut conv_active: conversation::ActiveModel = conv.into();
+        conv_active.last_message_id = Set(Some(message_id));
+        conv_active.last_message_at = Set(Some(now));
+        conv_active.updated_at = Set(now);
+        conv_active.update(&self.db).await?;
+
+        // Monotonically advance sender's cursor automatically
+        let _ = self
+            .update_cursor(
+                tenant_id,
+                actor_id,
+                UpdateCursorInput {
+                    conversation_id: input.conversation_id,
+                    last_read_message_id: message_id,
+                },
+            )
+            .await;
+
+        let res_type = MessageType::try_from(msg_type).unwrap_or(MessageType::Text);
+
+        Ok(MessageOutput {
+            id: message_id,
+            tenant_id,
+            conversation_id: input.conversation_id,
+            sender_id: actor_id,
+            message_type: res_type,
+            content: input.content,
+            blocks_json: input.blocks_json,
+            is_encrypted,
+            encryption_algo: input.encryption_algo,
+            reply_to_id: input.reply_to_id,
+            created_at: now,
+            is_deleted: false,
+        })
+    }
+
+    /// List messages in a conversation with sequence-based cursor pagination.
+    pub async fn list_messages(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        query: ListMessagesQuery,
+    ) -> MessengerResult<Vec<MessageOutput>> {
+        self.ensure_membership(query.conversation_id, actor_id).await?;
+
+        let limit = query.limit.unwrap_or(DEFAULT_MESSAGE_PAGE_LIMIT).min(100);
+
+        let mut select = Message::find()
+            .filter(message::Column::TenantId.eq(tenant_id))
+            .filter(message::Column::ConversationId.eq(query.conversation_id));
+
+        if let Some(before) = query.before_id {
+            select = select.filter(message::Column::Id.lt(before));
+        }
+        if let Some(after) = query.after_id {
+            select = select.filter(message::Column::Id.gt(after));
+        }
+
+        let msgs = select
+            .order_by_desc(message::Column::Id)
+            .limit(limit)
+            .all(&self.db)
+            .await?;
+
+        let mut outputs = Vec::with_capacity(msgs.len());
+        for m in msgs {
+            let m_type = MessageType::try_from(m.message_type).unwrap_or(MessageType::Text);
+            outputs.push(MessageOutput {
+                id: m.id,
+                tenant_id: m.tenant_id,
+                conversation_id: m.conversation_id,
+                sender_id: m.sender_id,
+                message_type: m_type,
+                content: m.content,
+                blocks_json: m.blocks_json,
+                is_encrypted: m.is_encrypted,
+                encryption_algo: m.encryption_algo,
+                reply_to_id: m.reply_to_id,
+                created_at: m.created_at,
+                is_deleted: m.deleted_at.is_some(),
+            });
+        }
+
+        Ok(outputs)
+    }
+
+    /// FastSync delta replay for offline or reconnecting clients.
+    pub async fn fast_sync(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        request: FastSyncRequest,
+    ) -> MessengerResult<FastSyncResponse> {
+        self.ensure_membership(request.conversation_id, actor_id).await?;
+
+        let limit = request.limit.unwrap_or(100).min(500);
+
+        // Fetch messages strictly greater than client's checkpoint cursor in ascending sequence order
+        let msgs = Message::find()
+            .filter(message::Column::TenantId.eq(tenant_id))
+            .filter(message::Column::ConversationId.eq(request.conversation_id))
+            .filter(message::Column::Id.gt(request.since_seq))
+            .order_by_asc(message::Column::Id)
+            .limit(limit + 1)
+            .all(&self.db)
+            .await?;
+
+        let has_more = msgs.len() > limit as usize;
+        let result_msgs: Vec<_> = msgs.into_iter().take(limit as usize).collect();
+
+        let latest_seq = result_msgs
+            .last()
+            .map(|m| m.id)
+            .unwrap_or(request.since_seq);
+
+        let outputs: Vec<MessageOutput> = result_msgs
+            .into_iter()
+            .map(|m| {
+                let m_type = MessageType::try_from(m.message_type).unwrap_or(MessageType::Text);
+                MessageOutput {
+                    id: m.id,
+                    tenant_id: m.tenant_id,
+                    conversation_id: m.conversation_id,
+                    sender_id: m.sender_id,
+                    message_type: m_type,
+                    content: m.content,
+                    blocks_json: m.blocks_json,
+                    is_encrypted: m.is_encrypted,
+                    encryption_algo: m.encryption_algo,
+                    reply_to_id: m.reply_to_id,
+                    created_at: m.created_at,
+                    is_deleted: m.deleted_at.is_some(),
+                }
+            })
+            .collect();
+
+        Ok(FastSyncResponse {
+            conversation_id: request.conversation_id,
+            messages: outputs,
+            has_more,
+            latest_seq,
+        })
+    }
+
+    /// Monotonically advance user read cursor.
+    pub async fn update_cursor(
+        &self,
+        _tenant_id: Uuid,
+        actor_id: Uuid,
+        input: UpdateCursorInput,
+    ) -> MessengerResult<crate::dto::CursorOutput> {
+        self.ensure_membership(input.conversation_id, actor_id).await?;
+
+        let existing = Cursor::find()
+            .filter(cursor::Column::ConversationId.eq(input.conversation_id))
+            .filter(cursor::Column::UserId.eq(actor_id))
+            .one(&self.db)
+            .await?;
+
+        let now = Utc::now();
+
+        if let Some(c) = existing {
+            if input.last_read_message_id < c.last_read_message_id {
+                return Err(MessengerError::CursorRegression {
+                    target_seq: input.last_read_message_id,
+                    current_seq: c.last_read_message_id,
+                });
+            }
+            let mut active: cursor::ActiveModel = c.into();
+            active.last_read_message_id = Set(input.last_read_message_id);
+            active.last_read_at = Set(now);
+            active.update(&self.db).await?;
+        } else {
+            let new_cursor = cursor::ActiveModel {
+                id: Set(Uuid::now_v7()),
+                conversation_id: Set(input.conversation_id),
+                user_id: Set(actor_id),
+                last_read_message_id: Set(input.last_read_message_id),
+                last_read_at: Set(now),
+            };
+            new_cursor.insert(&self.db).await?;
+        }
+
+        Ok(crate::dto::CursorOutput {
+            conversation_id: input.conversation_id,
+            user_id: actor_id,
+            last_read_message_id: input.last_read_message_id,
+        })
+    }
+
+    async fn ensure_membership(&self, conversation_id: Uuid, user_id: Uuid) -> MessengerResult<()> {
+        let is_member = Member::find()
+            .filter(member::Column::ConversationId.eq(conversation_id))
+            .filter(member::Column::UserId.eq(user_id))
+            .one(&self.db)
+            .await?
+            .is_some();
+
+        if !is_member {
+            return Err(MessengerError::ConversationAccessDenied(conversation_id));
+        }
+        Ok(())
+    }
+
+    async fn calculate_unread_count(&self, conversation_id: Uuid, user_id: Uuid) -> MessengerResult<i64> {
+        let user_cursor = Cursor::find()
+            .filter(cursor::Column::ConversationId.eq(conversation_id))
+            .filter(cursor::Column::UserId.eq(user_id))
+            .one(&self.db)
+            .await?;
+
+        let last_read = user_cursor.map(|c| c.last_read_message_id).unwrap_or(0);
+
+        let count = Message::find()
+            .filter(message::Column::ConversationId.eq(conversation_id))
+            .filter(message::Column::Id.gt(last_read))
+            .count(&self.db)
+            .await?;
+
+        Ok(count as i64)
+    }
+}

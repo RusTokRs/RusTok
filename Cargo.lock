@@ -14774,6 +14774,7 @@ dependencies = [
  "rustok-marketplace-payout",
  "rustok-marketplace-seller",
  "rustok-media",
+ "rustok-messenger",
  "rustok-moderation",
  "rustok-modules",
  "rustok-navigation",
@@ -15793,6 +15794,28 @@ dependencies = [
  "tonic-prost",
  "tonic-prost-build",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-messenger"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "futures-util",
+ "rustok-api",
+ "rustok-core",
+ "rustok-web",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -17434,6 +17457,7 @@ dependencies = [
  "rustok-mcp",
  "rustok-media",
  "rustok-media-transport",
+ "rustok-messenger",
  "rustok-migrations",
  "rustok-moderation",
  "rustok-modules",

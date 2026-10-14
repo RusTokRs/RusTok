@@ -197,16 +197,7 @@ fn is_storefront_resource(resource: Resource) -> bool {
     )
 }
 
-pub fn has_effective_permission(permissions: &[Permission], required: &Permission) -> bool {
-    permissions.contains(required)
-        || permissions.contains(&Permission::new(required.resource, Action::Manage))
-}
-
-pub fn has_any_effective_permission(permissions: &[Permission], required: &[Permission]) -> bool {
-    required
-        .iter()
-        .any(|permission| has_effective_permission(permissions, permission))
-}
+pub use crate::permissions::{has_any_effective_permission, has_effective_permission};
 
 #[derive(Clone)]
 pub struct AuthContext {

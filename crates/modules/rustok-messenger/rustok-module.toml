@@ -1,0 +1,18 @@
+[module]
+slug = "messenger"
+name = "Messenger & Team Chat"
+version = "0.1.0"
+description = "Highload distributed team messaging, channels, direct messages, monotonic sequence cursors and E2EE"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "no_ui"
+
+[marketplace]
+category = "communication"
+tags = ["messenger", "chat", "channels", "realtime", "e2ee", "iggy", "webrtc"]
+
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "MessengerModule"

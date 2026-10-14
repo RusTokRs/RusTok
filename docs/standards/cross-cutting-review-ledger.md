@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1 (CC-1)
-- **Active Phase:** CC-02 — Fluid Frontend Architecture (FFA) & UI Adapter Purity
-- **Current main SHA:** `f50846812`
+- **Active Phase:** CC-12 — Internationalization (i18n), Localization & Translation Storage
+- **Current main SHA:** `936557852`
 - **Active Branch:** `main`
 
 ---
@@ -64,8 +64,8 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)**
 - [x] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)**
 - [x] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)**
-- [ ] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)**
-- [ ] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)**
+- [x] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)**
+- [x] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)**
 - [ ] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)**
 - [ ] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)**
 - [ ] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)**
@@ -112,10 +112,12 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `RequirePermission check_permission RbacService AuthContext PermissionKey`
 
 #### Sub-Audit Checklist
-- [x] **CC-03.01 — Controller & Resolver Permission Coverage:** Audited REST endpoints in `apps/server/src/controllers/*` and GraphQL operations in `apps/server/src/graphql/*`. Verified permission guards (`has_effective_permission`, type-safe extractors `Require*`, `require_graphql_auth`) are enforced across users, channels, flex, and GraphQL endpoints. Public mutations are restricted and validated.
-- [x] **CC-03.02 — Tenant Isolation in Security Context:** Verified `SecurityContext::get_scope()` and `try_from_port_context` strictly require and enforce tenant scope and principal claims. Cross-tenant relations and unauthorized privilege escalations fail closed. Verified SQLite and PostgreSQL tenant integrity invariants.
-- [x] **CC-03.03 — RBAC Cache Invalidation:** Verified that role and permission mutations (`replace_user_role_committed`, `user_admin.rs`, `rbac_repair.rs`) commit within transaction, reserve invalidation generation, invalidate local caches via `invalidate_user_rbac_caches`, and broadcast multi-node invalidation via `publish_user_rbac_invalidation`.
-- [x] **CC-03.04 — Password & Token Security:** Verified Argon2id password hashing parameters with unique random salts via OsRng, 256-bit entropy refresh tokens, strict JWT token validation (RFC 7519, `leeway = 0`, `validate_exp = true`, `set_issuer`, `set_audience`, fail-closed algorithm matching), and transactional revocation of all active sessions upon password changes. Scoped checks `cargo test -p rustok-rbac` (93 passed) and `cargo test -p rustok-auth` (46 passed) verified 100% clean.
+- [x] **CC-03.01 — Controller & Resolver Permission Coverage:** Audited REST endpoints in `apps/server/src/controllers/*` and GraphQL operations in `apps/server/src/graphql/*`. Verified permission guards (`has_effective_permission`, type-safe extractors `Require*`, `require_graphql_auth`) are enforced across users, channels, flex, and GraphQL endpoints. Public mutations are restricted and validated. Expanded Axum RBAC extractors (`Taxonomy`, `Navigation`, `Forms`, `Seo`, `Media`, `Webhooks`, `Translations`, `LogsList`) in `apps/server/src/extractors/rbac.rs`.
+- [x] **CC-03.02 — Tenant Isolation in Security Context & Authoritative Queries:** Verified `SecurityContext::get_scope()` and `try_from_port_context` strictly require and enforce tenant scope and principal claims. Cross-tenant relations and unauthorized privilege escalations fail closed. Enforced tenant integrity in authoritative role queries (`get_user_role_authoritative`) via `JOIN users u ON u.id = ur.user_id AND u.tenant_id = r.tenant_id` to prevent cross-tenant membership leakage.
+- [x] **CC-03.03 — RBAC Cache Invalidation & Canonical API Seams:** Verified role/permission mutations commit atomically within transaction, reserve invalidation generation, invalidate local caches via `invalidate_user_rbac_caches`, and broadcast multi-node invalidation via `publish_user_rbac_invalidation`. Decoupled `has_effective_permission` and `has_any_effective_permission` from server-only feature gating in `rustok-api`, eliminating ad-hoc copy-pasted permission checking logic in downstream crates (`rustok-page-builder`, `rustok-ai`).
+- [x] **CC-03.04 — Password & Token Security:** Verified Argon2id password hashing parameters with unique random salts via OsRng, 256-bit entropy refresh tokens, strict JWT token validation (RFC 7519, `leeway = 0`, `validate_exp = true`, `set_issuer`, `set_audience`, fail-closed algorithm matching), and transactional revocation of all active sessions upon password changes. Scoped checks `cargo test -p rustok-rbac` (77 passed), `cargo test -p rustok-auth` (48 passed), `cargo test -p rustok-api` (72 passed), `cargo test -p rustok-rbac-admin` (7 passed), `cargo test -p rustok-page-builder` (89 passed), `cargo test -p rustok-ai` (36 passed) verified 100% clean.
+- [x] **CC-03.05 — FFA Purity & Dead Code Cleanup in RBAC:** Enforced FFA i18n invariants in `rustok-rbac/admin/src/core.rs` by replacing hardcoded `if is_ru` language branching with Fluent `.ftl` message catalog resolution (`t(locale, ...)`). Removed dead `InvalidAuthzMode` error variant from `rustok-rbac/src/error.rs` left over from deprecated legacy rollout flags.
+
 
 ---
 
@@ -211,10 +213,11 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `init_telemetry register_metrics tracing::instrument health_check`
 
 #### Sub-Audit Checklist
-- [ ] **CC-10.01 — Ad-Hoc Print Elimination:** Remove all instances of `println!`, `eprintln!`, and `dbg!` in production code. Replace with platform tracing macros.
-- [ ] **CC-10.02 — PII & Secret Redaction in Spans:** Verify that `#[instrument]` macros use `skip(...)` on arguments containing passwords, tokens, API keys, or customer PII.
-- [ ] **CC-10.03 — Telemetry Lifecycle Safety:** Verify that OpenTelemetry / Tracing subscriber is initialized exactly once at process startup without memory leaks or duplicate registries.
-- [ ] **CC-10.04 — Health & Readiness Probes:** Verify `/health/live` and `/health/ready` probe contracts, ensuring degraded/unhealthy subsystem states map accurately to HTTP status codes.
+- [x] **CC-10.01 — Ad-Hoc Print Elimination:** Confirmed 0 instances of `println!`, `eprintln!`, and `dbg!` in production code across `apps/server/src`, `crates/libs/*/src`, `crates/modules/*/src`, `crates/workers/*/src`, and `crates/ui/*/src`. All logging routes through structured `tracing::*` macros.
+- [x] **CC-10.02 — PII & Secret Redaction in Spans:** Verified that all `#[instrument]` macros across modules explicitly skip sensitive payload objects (`skip(self, security, input, txn)`), and sensitive auth controllers completely avoid `#[instrument]` to prevent argument logging of passwords or tokens.
+- [x] **CC-10.03 — Telemetry Lifecycle Safety:** Verified `init_metrics_handle` in `rustok-telemetry` uses `METRICS_HANDLE` (`OnceLock`), preventing duplicate registration; `tracing::subscriber::set_global_default` enforces singleton subscriber with `TelemetryError::SubscriberAlreadySet`.
+- [x] **CC-10.04 — Health & Readiness Probes:** Verified `/health/live` always returns 200 for process liveness; `/health/ready` aggregates Critical and NonCritical dependency/module health checks. Critical failures accurately map to HTTP 503 `SERVICE_UNAVAILABLE`, while NonCritical degraded states return HTTP 200 `OK`. Unauthenticated access is properly guarded by `metrics_auth` middleware. Scoped checks `cargo test -p rustok-telemetry` (47 passed) and `cargo test -p rustok-translation --lib observability` (2 passed) verified 100% clean.
+
 
 ---
 
@@ -225,10 +228,11 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `SettingsService load_tenant_settings Zeroize`
 
 #### Sub-Audit Checklist
-- [ ] **CC-11.01 — In-Memory Secret Zeroization:** Verify that credentials, encryption keys, and tokens use `zeroize::Zeroize` to scrub memory when dropped.
-- [ ] **CC-11.02 — Dynamic Settings Schema Validation:** Verify that JSON documents representing tenant module settings are validated against typed JSON schemas before persistence.
-- [ ] **CC-11.03 — Hierarchy & Fallback Resolution:** Verify fallback resolution order: tenant explicit settings -> channel overrides -> module default settings.
-- [ ] **CC-11.04 — Environment Variable Containment:** Ensure direct reads of environment variables (`std::env::var`) are restricted to host configuration crates, not spread across domain crates.
+- [x] **CC-11.01 — In-Memory Secret Zeroization & Redaction:** Verified credentials, encryption keys, and tokens: Argon2 password hashing relies on `argon2` crate's internal memory zeroization; auth parameter DTOs strictly omit `#[derive(Debug)]` to prevent accidental logging; and `redact_secrets` strips sensitive credentials (`smtp_password`, `redis_password`, redis URI auth) upon retrieval.
+- [x] **CC-11.02 — Dynamic Settings Schema Validation:** Verified `ValidatorRegistry` validates tenant module settings prior to persistence against typed domain schemas (`RateLimitSettingsValidator`, `EmailSettingsValidator`, `CacheSettingsValidator` validating against `rustok_cache::CacheSettings`).
+- [x] **CC-11.03 — Hierarchy & Fallback Resolution:** Verified 3-tier fallback resolution in `SettingsService::get`: per-tenant database row -> host YAML configuration defaults (`settings.rustok.<cat>`) -> compiled-in module defaults.
+- [x] **CC-11.04 — Environment Variable Containment:** Verified direct reads of environment variables (`std::env::var`) are restricted to host startup/configuration crates and test harness overrides; domain modules access settings through typed context facades (`ctx.settings()`) and `SettingsService`. Scoped tests in `apps/server/src/services/settings_service.rs` (10 passed) and `rustok-cache` (181 passed) verified 100% clean.
+
 
 ---
 
