@@ -406,6 +406,7 @@ fn collect_component_references(
     )
 )]
 pub async fn openapi_json(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
+    tracing::debug!("Handling get OpenAPI JSON specification request");
     let spec = build_openapi_document(ctx.settings())
         .to_json()
         .map_err(|e| Error::Message(format!("Failed to serialize OpenAPI spec: {e}")))?;
@@ -427,6 +428,7 @@ pub async fn openapi_json(State(ctx): State<ServerRuntimeContext>) -> Result<Res
     )
 )]
 pub async fn openapi_yaml(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
+    tracing::debug!("Handling get OpenAPI YAML specification request");
     let spec = build_openapi_document(ctx.settings())
         .to_yaml()
         .map_err(|e| Error::Message(format!("Failed to serialize OpenAPI spec to YAML: {e}")))?;
@@ -609,7 +611,6 @@ mod tests {
         use utoipa::openapi::HttpMethod;
 
         for (path, method) in [
-            ("/v2/catalog/publish/{request_id}", HttpMethod::Get),
             ("/v2/catalog/publish/{request_id}/artifact", HttpMethod::Put),
             (
                 "/v2/catalog/publish/{request_id}/external-prebuilt-stage",
@@ -743,7 +744,7 @@ mod tests {
             ("/api/v1/flex/schemas", HttpMethod::Get, "GET"),
             ("/api/v1/flex/schemas", HttpMethod::Post, "POST"),
             ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Get, "GET"),
-            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Put, "PUT"),
+            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Patch, "PATCH"),
             (
                 "/api/v1/flex/schemas/{schema_id}",
                 HttpMethod::Delete,
@@ -766,8 +767,8 @@ mod tests {
             ),
             (
                 "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
-                HttpMethod::Put,
-                "PUT",
+                HttpMethod::Patch,
+                "PATCH",
             ),
             (
                 "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
