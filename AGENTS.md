@@ -40,7 +40,7 @@ The canonical trigger for the repository-wide deep audit is the single instructi
 
 When that instruction is given, the contributor or AI agent MUST:
 
-1. Read this `AGENTS.md`, `docs/index.md`, `docs/CONTINUOUS_CODE_REVIEW.md`, and the active section of `docs/standards/continuous-review-ledger.md`. The ledger is the single living audit-progress record; do not create parallel audit plans.
+1. Read this `AGENTS.md`, `docs/index.md`, `docs/CONTINUOUS_CODE_REVIEW.md`, and the active section of `docs/standards/continuous-review-ledger.md`. The ledger is the single living audit-progress record for sequential full-stack passes; do not create parallel audit plans.
 2. Record the current `main` commit SHA before starting the next phase and refresh `main` again immediately before integration.
 3. Execute audit phases strictly in ledger order unless an explicit dependency or an active ADR requires a different order. Do not skip a phase because a component was previously marked complete in an older review round.
 4. Review the whole affected change surface, including business/domain logic, persistence and migrations, writers/readers, events/outbox/workers, transports, tenancy/context/auth/policy, UI/operator surfaces, scripts, generated/reference artifacts, dependencies, and documentation.
@@ -49,6 +49,20 @@ When that instruction is given, the contributor or AI agent MUST:
 7. Scoped verification vs full test suites: The AI agent MUST run local, scoped checks for the affected crate/package (e.g. `cargo check -p <crate>`, `cargo test -p <crate>`, linters, and type checks) to verify correctness and ensure changes compile and pass local invariants. The AI agent MUST NOT run full workspace test suites or long-running E2E integration suites unless explicitly requested; those remain with the maintainer and CI. The agent must never claim runtime/test evidence it did not obtain.
 8. Mark the phase complete in the canonical ledger only after the implementation/assessment commit has been integrated into `main`; record outstanding maintainer verification explicitly.
 9. When an issue changes an architectural contract rather than merely implementing an existing one, stop implementation at the boundary and add/update the owning ADR before continuing.
+
+### 2.1.1 Cross-Cutting Architectural Audit Contract (CCAR)
+
+The canonical trigger for the horizontal, cross-cutting architectural audit across system-wide capabilities (Fluid Backend Architecture [FBA], Fluid Frontend Architecture [FFA], RBAC, caching, transactional outbox, API transports, multi-tenancy, database integrity, workers, observability, settings, and i18n) using CodeGraph is:
+
+`реализуй план кроссфункционала`
+*(or `реализуй план сквозного аудита` / `execute cross-cutting audit plan`)*
+
+When that instruction is given, the contributor or AI agent MUST:
+1. Verify that CodeGraph is available (`codegraph_explore` MCP tool or CLI). This horizontal cross-cutting audit is strictly reserved for CodeGraph-enabled environments; in environments without CodeGraph, the agent MUST NOT attempt CCAR and must instead fall back to the sequential full-stack audit (§2.1).
+2. Read `docs/standards/cross-cutting-review-ledger.md`, the canonical living ledger for cross-cutting audits.
+3. Identify the active cross-cutting phase (`CC-XX`) and its CodeGraph query targets.
+4. Use `codegraph_explore` (or CodeGraph CLI) to trace blast radius and call flow across all modules and boundaries.
+5. Follow the same atomic remediation, scoped verification, and ledger recording protocols as §2.1.
 
 
 Before changing repository content, contributors and agents MUST:

@@ -7,8 +7,14 @@ use sha2::{Digest, Sha256};
 
 use crate::error::{AuthError, Result};
 
+/// Maximum allowed password length in bytes to prevent CPU exhaustion DoS on Argon2.
+pub const MAX_PASSWORD_LENGTH_BYTES: usize = 1024;
+
 /// Hash a password with Argon2id and a random salt.
 pub fn hash_password(password: &str) -> Result<String> {
+    if password.is_empty() || password.len() > MAX_PASSWORD_LENGTH_BYTES {
+        return Err(AuthError::PasswordHashFailed);
+    }
     Argon2::default()
         .hash_password(password.as_bytes())
         .map(|hash| hash.to_string())
@@ -17,6 +23,9 @@ pub fn hash_password(password: &str) -> Result<String> {
 
 /// Verify a password against an Argon2 hash.
 pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
+    if password.is_empty() || password.len() > MAX_PASSWORD_LENGTH_BYTES {
+        return Ok(false);
+    }
     let parsed = PasswordHash::new(password_hash).map_err(|_| AuthError::InvalidCredentials)?;
     Ok(Argon2::default()
         .verify_password(password.as_bytes(), &parsed)
@@ -34,6 +43,7 @@ pub fn generate_refresh_token() -> Result<String> {
 
 /// SHA-256 hash of a refresh token for secure storage.
 pub fn hash_refresh_token(token: &str) -> String {
+    let token = token.trim();
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     hex::encode(hasher.finalize())
@@ -70,6 +80,12 @@ mod tests {
     }
 
     #[test]
+    fn refresh_token_hash_trims_whitespace() {
+        let token = "  abcdef0123456789  ";
+        assert_eq!(hash_refresh_token(token), hash_refresh_token("abcdef0123456789"));
+    }
+
+    #[test]
     fn password_hash_argon2() {
         let hash = hash_password("test_password_123!").unwrap();
         assert!(hash.starts_with("$argon2"));
@@ -98,5 +114,14 @@ mod tests {
         let secret = format!("sk_live_{}", "0123456789abcdef".repeat(8));
         let hash = hash_password(&secret).unwrap();
         assert!(verify_password(&secret, &hash).unwrap());
+    }
+
+    #[test]
+    fn password_hash_rejects_empty_and_oversized() {
+        assert!(hash_password("").is_err());
+        let oversized = "a".repeat(MAX_PASSWORD_LENGTH_BYTES + 1);
+        assert!(hash_password(&oversized).is_err());
+        assert!(!verify_password("", "$argon2id$v=19$m=19456,t=2,p=1$fake$fake").unwrap_or(true));
+        assert!(!verify_password(&oversized, "$argon2id$v=19$m=19456,t=2,p=1$fake$fake").unwrap_or(true));
     }
 }

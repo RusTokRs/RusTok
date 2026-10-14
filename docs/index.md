@@ -240,7 +240,8 @@ from complete operation safety and retention through serving cutover.
 - [Security](./standards/security.md)
 - [Coding Standards](./standards/coding.md)
 - [Continuous Code Review & Slop Remediation (ACRE)](./CONTINUOUS_CODE_REVIEW.md)
-- [Continuous Review Progress Ledger](./standards/continuous-review-ledger.md)
+- [Continuous Review Progress Ledger (Full-Stack / By-Module)](./standards/continuous-review-ledger.md)
+- [Cross-Cutting Architectural Review Ledger (Horizontal / CodeGraph)](./standards/cross-cutting-review-ledger.md)
 
 ## Platform Verification
 

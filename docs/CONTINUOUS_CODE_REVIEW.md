@@ -18,15 +18,19 @@ status: active
 > 4. **Pure Typing & Domain Models:** Enforce Newtypes, strict state machines, and typed `thiserror` error propagation while preserving working domain contracts.
 
 > [!TIP]
-> **Single Trigger Instruction for Any AI Agent:**
-> To start any AI model (Codex, Claude, Cursor, Antigravity, local LLM) on this continuous deep review loop:
-> ```
-> реализуй план аудита
-> ```
-> *(or in English: `Execute deep code review per docs/CONTINUOUS_CODE_REVIEW.md`)*
+> **Canonical Trigger Instructions for Any AI Agent:**
+> 1. **Sequential Module-by-Module Audit (Full-Stack / FS):**
+>    ```
+>    реализуй план аудита
+>    ```
+>    Operates on **[`docs/standards/continuous-review-ledger.md`](./standards/continuous-review-ledger.md)**: sequentially audits modules from `apps/server` down to domain crates.
 >
-> The agent reads this guide, takes the next pending module from the ledger, conducts a deep audit across all 7 engineering pillars, verifies changes via gatekeeper, and records progress in the ledger.
-For repository-wide work, the trigger above is the complete task instruction: it means execute the next pending phase in the **Deep Full-Stack Audit Cycle** in the ledger, starting from the refreshed `main`, fixing in-scope findings, and integrating the phase through the branch → commit → PR → merge workflow defined by `AGENTS.md`.
+> 2. **Horizontal Cross-Cutting Capability Audit (CodeGraph / CCAR):**
+>    ```
+>    реализуй план кроссфункционала
+>    ```
+>    *(or `реализуй план сквозного аудита`)*
+>    Operates on **[`docs/standards/cross-cutting-review-ledger.md`](./standards/cross-cutting-review-ledger.md)**: traverses system-wide slices (FBA, FFA, RBAC, Cache, Outbox, API, Tenancy, DB, Workers, Telemetry, Settings, i18n) using `codegraph_explore` to trace end-to-end blast radius.
 
 ---
 
