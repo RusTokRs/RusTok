@@ -88,6 +88,17 @@ impl CheckoutCompensationSweepService {
         worker_id: impl AsRef<str>,
         limit: Option<u64>,
     ) -> Result<CheckoutCompensationSweepReport, sea_orm::DbErr> {
+        if tenant_id.is_nil() {
+            return Ok(CheckoutCompensationSweepReport::default());
+        }
+        let worker_id = worker_id.as_ref().trim();
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            worker_id = %worker_id,
+            limit = ?limit,
+            "CheckoutCompensationSweepService::run entry"
+        );
         let limit = limit
             .unwrap_or(DEFAULT_SWEEP_LIMIT)
             .clamp(1, MAX_SWEEP_LIMIT);
@@ -125,7 +136,7 @@ impl CheckoutCompensationSweepService {
                 // an expired lease is covered by the same decision.
                 let reason = format!(
                     "checkout compensation sweep worker `{}` found attempt_count {} at or above the cap",
-                    worker_id.as_ref(),
+                    worker_id,
                     operation.attempt_count
                 );
                 match self
@@ -153,7 +164,7 @@ impl CheckoutCompensationSweepService {
             }
             let lease_owner = format!(
                 "checkout-compensation:{}:{}",
-                worker_id.as_ref(),
+                worker_id,
                 operation.id
             );
             match self
@@ -219,3 +230,51 @@ fn safe_error_code(error: &CheckoutCompensationError) -> &'static str {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sweep_report_defaults() {
+        let report = CheckoutCompensationSweepReport::default();
+        assert_eq!(report.scanned, 0);
+        assert_eq!(report.compensated, 0);
+        assert_eq!(report.retryable, 0);
+        assert_eq!(report.manual_reconciliation, 0);
+        assert_eq!(report.exhausted, 0);
+        assert!(report.failures.is_empty());
+    }
+
+    #[test]
+    fn safe_error_code_mapping() {
+        let boundary = CheckoutCompensationError::Boundary {
+            stage: "compensate_payment",
+            code: "ERR".to_string(),
+            message: "msg".to_string(),
+            retryable: false,
+        };
+        assert_eq!(
+            safe_error_code(&boundary),
+            "checkout.compensation_payment_failed"
+        );
+
+        let order_boundary = CheckoutCompensationError::Boundary {
+            stage: "compensate_order",
+            code: "ERR".to_string(),
+            message: "msg".to_string(),
+            retryable: false,
+        };
+        assert_eq!(
+            safe_error_code(&order_boundary),
+            "checkout.compensation_order_failed"
+        );
+
+        let manual = CheckoutCompensationError::ManualReconciliation("needs review".to_string());
+        assert_eq!(
+            safe_error_code(&manual),
+            "checkout.compensation_manual_reconciliation"
+        );
+    }
+}
+

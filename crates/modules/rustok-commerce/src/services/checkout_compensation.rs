@@ -137,7 +137,19 @@ impl CheckoutCompensationService {
         operation_id: Uuid,
         lease_owner: impl Into<String>,
     ) -> CheckoutCompensationResult<checkout_operation::Model> {
+        if tenant_id.is_nil() || operation_id.is_nil() {
+            return Err(CheckoutCompensationError::Conflict(
+                "tenant_id and operation_id must not be nil UUID".to_string(),
+            ));
+        }
         let lease_owner = lease_owner.into();
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            operation_id = %operation_id,
+            lease_owner = %lease_owner,
+            "CheckoutCompensationService::compensate entry"
+        );
         let Some(operation) = self
             .operation_journal
             .claim_compensation(

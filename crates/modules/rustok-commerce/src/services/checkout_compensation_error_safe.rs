@@ -732,6 +732,13 @@ mod tracing_shim {
         }};
     }
 
+    macro_rules! debug {
+        ($($tokens:tt)*) => {{
+            ::tracing::debug!($($tokens)*);
+        }};
+    }
+
+    pub(crate) use debug;
     pub(crate) use error;
     pub(crate) use warn_event;
 }
@@ -819,6 +826,14 @@ impl CheckoutCompensationService {
         operation_id: Uuid,
         lease_owner: impl Into<String>,
     ) -> CheckoutCompensationResult<checkout_operation::Model> {
+        let lease_owner = lease_owner.into();
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            operation_id = %operation_id,
+            lease_owner = %lease_owner,
+            "ErrorSafeCheckoutCompensationService::compensate entry"
+        );
         self.inner
             .compensate(tenant_id, actor_id, operation_id, lease_owner)
             .await
