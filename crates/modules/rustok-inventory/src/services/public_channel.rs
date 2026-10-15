@@ -88,6 +88,12 @@ pub async fn check_variant_availability_for_public_channel(
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
 ) -> CommerceResult<bool> {
+    if tenant_id.is_nil() {
+        return Err(CommerceError::Validation("tenant_id cannot be nil".to_string()));
+    }
+    if variant.variant_id.is_nil() {
+        return Err(CommerceError::Validation("variant_id cannot be nil".to_string()));
+    }
     if check_public_channel_inventory_request(variant.inventory_policy, requested_quantity)? {
         return Ok(true);
     }
@@ -175,6 +181,12 @@ pub async fn load_available_inventory_by_variant_for_public_channel(
     variant_ids: &[Uuid],
     public_channel_slug: Option<&str>,
 ) -> Result<HashMap<Uuid, i32>, sea_orm::DbErr> {
+    if tenant_id.is_nil() {
+        return Err(sea_orm::DbErr::Custom("tenant_id cannot be nil".to_string()));
+    }
+    if variant_ids.iter().any(|id| id.is_nil()) {
+        return Err(sea_orm::DbErr::Custom("variant_id cannot be nil".to_string()));
+    }
     if variant_ids.is_empty() {
         return Ok(HashMap::new());
     }
@@ -236,6 +248,12 @@ pub async fn load_available_inventory_for_variant_in_public_channel(
     variant_id: Uuid,
     public_channel_slug: Option<&str>,
 ) -> Result<i32, sea_orm::DbErr> {
+    if tenant_id.is_nil() {
+        return Err(sea_orm::DbErr::Custom("tenant_id cannot be nil".to_string()));
+    }
+    if variant_id.is_nil() {
+        return Err(sea_orm::DbErr::Custom("variant_id cannot be nil".to_string()));
+    }
     Ok(load_available_inventory_by_variant_for_public_channel(
         db,
         tenant_id,
@@ -378,5 +396,20 @@ mod tests {
             !check_public_channel_inventory_request("deny", 0)
                 .expect("deny-policy zero request should still be valid")
         );
+    }
+
+    #[test]
+    fn public_channel_inventory_projection_preserves_invariants() {
+        let proj = super::public_channel_inventory_projection(5, "deny");
+        assert_eq!(proj.available_quantity, 5);
+        assert!(proj.in_stock);
+
+        let out_of_stock = super::public_channel_inventory_projection(0, "deny");
+        assert_eq!(out_of_stock.available_quantity, 0);
+        assert!(!out_of_stock.in_stock);
+
+        let backorder = super::public_channel_inventory_projection(0, "continue");
+        assert_eq!(backorder.available_quantity, 0);
+        assert!(backorder.in_stock);
     }
 }

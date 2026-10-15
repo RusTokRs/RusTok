@@ -105,6 +105,15 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         context: PortContext,
         request: InventoryIdentityReservationRequest,
     ) -> Result<InventoryIdentityReservationSnapshot, PortError> {
+        tracing::debug!(
+            target: "rustok_inventory::reservation_owner_context",
+            operation = RESERVE_OPERATION,
+            reservation_id = %request.reservation_id,
+            external_id = %request.external_id,
+            variant_id = %request.variant_id,
+            quantity = request.quantity,
+            "in-process reserve inventory by identity received"
+        );
         require_inventory_reservation_write_admission(&context, RESERVE_OPERATION)?;
         parse_inventory_reservation_tenant_id(&context, RESERVE_OPERATION)?;
         let diagnostic_context = context.clone();
@@ -128,6 +137,13 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         context: PortContext,
         request: InventoryIdentityReservationReleaseRequest,
     ) -> Result<InventoryIdentityReservationReleaseSnapshot, PortError> {
+        tracing::debug!(
+            target: "rustok_inventory::reservation_owner_context",
+            operation = RELEASE_OPERATION,
+            reservation_id = %request.reservation_id,
+            external_id = %request.external_id,
+            "in-process release inventory by identity received"
+        );
         require_inventory_reservation_write_admission(&context, RELEASE_OPERATION)?;
         parse_inventory_reservation_tenant_id(&context, RELEASE_OPERATION)?;
         let diagnostic_context = context.clone();
@@ -445,14 +461,23 @@ fn parse_inventory_reservation_tenant_id(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+    let tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
         let error = PortError::validation(
             "inventory.context_invalid",
             "inventory request context is invalid",
         );
         log_inventory_reservation_tenant_rejection(context, operation, &error);
         error
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let error = PortError::validation(
+            "inventory.tenant_id_nil",
+            "inventory tenant id cannot be nil",
+        );
+        log_inventory_reservation_tenant_rejection(context, operation, &error);
+        return Err(error);
+    }
+    Ok(tenant_id)
 }
 
 fn log_inventory_reservation_tenant_rejection(
@@ -490,4 +515,39 @@ fn log_inventory_reservation_tenant_rejection(
         boundary = INVENTORY_RESERVATION_BOUNDARY,
         "inventory reservation owner context validation was rejected with bounded diagnostics"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_reservation_owner_tenant_id_rejects_empty_and_nil() {
+        let empty_context = PortContext::new("", rustok_api::PortActor::system(), "en", "test");
+        let err = parse_inventory_reservation_tenant_id(&empty_context, RESERVE_OPERATION)
+            .unwrap_err();
+        assert_eq!(err.code, "inventory.context_invalid");
+
+        let nil_context = PortContext::new(
+            Uuid::nil().to_string(),
+            rustok_api::PortActor::system(),
+            "en",
+            "test",
+        );
+        let err = parse_inventory_reservation_tenant_id(&nil_context, RESERVE_OPERATION)
+            .unwrap_err();
+        assert_eq!(err.code, "inventory.tenant_id_nil");
+
+        let valid_id = Uuid::new_v4();
+        let valid_context = PortContext::new(
+            valid_id.to_string(),
+            rustok_api::PortActor::system(),
+            "en",
+            "test",
+        );
+        assert_eq!(
+            parse_inventory_reservation_tenant_id(&valid_context, RESERVE_OPERATION).unwrap(),
+            valid_id
+        );
+    }
 }

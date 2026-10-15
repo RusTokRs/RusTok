@@ -486,22 +486,28 @@ mod tests {
 
     #[test]
     fn parse_reservation_port_tenant_id_rejects_empty_and_nil() {
-        let empty_context = PortContext::builder().tenant_id("").build();
+        let empty_context = PortContext::new("", rustok_api::PortActor::system(), "en", "test");
         let err = parse_inventory_reservation_tenant_id(&empty_context, AVAILABILITY_OPERATION)
             .unwrap_err();
         assert_eq!(err.code, "inventory.context_invalid");
 
-        let nil_context = PortContext::builder()
-            .tenant_id(Uuid::nil().to_string())
-            .build();
+        let nil_context = PortContext::new(
+            Uuid::nil().to_string(),
+            rustok_api::PortActor::system(),
+            "en",
+            "test",
+        );
         let err = parse_inventory_reservation_tenant_id(&nil_context, AVAILABILITY_OPERATION)
             .unwrap_err();
         assert_eq!(err.code, "inventory.tenant_id_nil");
 
         let valid_id = Uuid::new_v4();
-        let valid_context = PortContext::builder()
-            .tenant_id(valid_id.to_string())
-            .build();
+        let valid_context = PortContext::new(
+            valid_id.to_string(),
+            rustok_api::PortActor::system(),
+            "en",
+            "test",
+        );
         assert_eq!(
             parse_inventory_reservation_tenant_id(&valid_context, AVAILABILITY_OPERATION).unwrap(),
             valid_id

@@ -164,7 +164,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-03.12 — `crates/modules/rustok-pricing` & `rustok-pricing-persistence`** — price resolution rules, currency arithmetic, discount evaluation. (Done: enforced non-nil UUID validation across PricingReadPort, PricingWritePort, PriceListOwnerPort, and PricingService; added structured entry debug tracing; verified currency rounding discipline via money::round_to_currency; added unit tests for port context parsing, non-nil UUID guards, and pricing math; verified 10 lib tests, 7 integration tests in rustok-pricing, and 5 lib tests in rustok-pricing-persistence pass, clippy and fmt clean).
 
 #### 7. rustok-inventory
-- [ ] **FS-03.13 — `crates/modules/rustok-inventory`** — stock allocation, reservation leases, concurrency guards, backorder policies.
+- [x] **FS-03.13 — `crates/modules/rustok-inventory`** — stock allocation, reservation leases, concurrency guards, backorder policies. (Done: enforced non-nil UUID validation across InventoryReservationPort, InventoryReservationIdentityPort, reservation contexts, InventoryService, public channel inventory projection, and stock location translations; bounded string inputs; added structured entry debug tracing across reservation operations and availability checks; added unit tests for non-nil UUID guards and port context validation; verified all 37 tests pass, clippy clean and gatekeeper approved).
 
 #### 8. rustok-fulfillment
 - [ ] **FS-03.14 — `crates/modules/rustok-fulfillment` & `rustok-distribution`** — shipping carriers, tracking, package manifests, split fulfillment.

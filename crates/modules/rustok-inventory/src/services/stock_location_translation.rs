@@ -223,6 +223,7 @@ impl StockLocationTranslationService {
     ) -> StockLocationTranslationExactLocaleResult<StockLocationTranslationExactLocaleSnapshot>
     {
         validate_tenant(tenant_id)?;
+        validate_stock_location_id(stock_location_id)?;
         let source_locale = canonical_locale(source_locale)?;
         let target_locale = canonical_locale(target_locale)?;
         validate_locale_pair(&source_locale, &target_locale)?;
@@ -264,6 +265,7 @@ impl StockLocationTranslationService {
     ) -> StockLocationTranslationExactLocaleResult<StockLocationTranslationExactLocaleApplyReceipt>
     {
         validate_tenant(tenant_id)?;
+        validate_stock_location_id(stock_location_id)?;
         let source_locale = canonical_locale(&request.source_locale)?;
         let target_locale = canonical_locale(&request.target_locale)?;
         validate_locale_pair(&source_locale, &target_locale)?;
@@ -474,6 +476,17 @@ fn validate_tenant(tenant_id: Uuid) -> StockLocationTranslationExactLocaleResult
     Ok(())
 }
 
+fn validate_stock_location_id(
+    stock_location_id: Uuid,
+) -> StockLocationTranslationExactLocaleResult<()> {
+    if stock_location_id.is_nil() {
+        return Err(StockLocationTranslationExactLocaleError::Validation(
+            "Stock location ID must not be nil".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn canonical_locale(locale: &str) -> StockLocationTranslationExactLocaleResult<String> {
     TenantLocale::new(locale)
         .map(TenantLocale::into_inner)
@@ -564,4 +577,25 @@ fn digest_revision(payload: &[u8]) -> String {
         write!(&mut revision, "{byte:02x}").expect("writing to String cannot fail");
     }
     revision
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_tenant_and_location_reject_nil_uuids() {
+        assert!(validate_tenant(Uuid::nil()).is_err());
+        assert!(validate_tenant(Uuid::new_v4()).is_ok());
+
+        assert!(validate_stock_location_id(Uuid::nil()).is_err());
+        assert!(validate_stock_location_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn normalize_name_validates_bounds() {
+        assert!(normalize_name("  ").is_err());
+        assert_eq!(normalize_name(" Warehouse ").unwrap(), "Warehouse");
+        assert!(normalize_name(&"a".repeat(101)).is_err());
+    }
 }

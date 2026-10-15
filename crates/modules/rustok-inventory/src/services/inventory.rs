@@ -121,6 +121,17 @@ impl InventoryService {
         variant_id: Uuid,
         adjustment: i32,
     ) -> CommerceResult<i32> {
+        validate_non_nil_uuid(tenant_id, "tenant_id")?;
+        validate_non_nil_uuid(actor_id, "actor_id")?;
+        validate_non_nil_uuid(variant_id, "variant_id")?;
+        tracing::debug!(
+            target: "rustok_inventory::services",
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            variant_id = %variant_id,
+            adjustment,
+            "adjusting variant inventory"
+        );
         Ok(self
             .adjust_variant_quantity(
                 tenant_id,
@@ -142,6 +153,18 @@ impl InventoryService {
         adjustment: i32,
         reason: Option<String>,
     ) -> CommerceResult<InventoryQuantityWriteResult> {
+        validate_non_nil_uuid(tenant_id, "tenant_id")?;
+        validate_non_nil_uuid(actor_id, "actor_id")?;
+        validate_non_nil_uuid(variant_id, "variant_id")?;
+        tracing::debug!(
+            target: "rustok_inventory::services",
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            variant_id = %variant_id,
+            adjustment,
+            reason = ?reason,
+            "adjusting variant quantity"
+        );
         let update = self
             .adjust_inventory_update(
                 tenant_id,
@@ -167,6 +190,17 @@ impl InventoryService {
         actor_id: Uuid,
         input: AdjustInventoryInput,
     ) -> CommerceResult<i32> {
+        validate_non_nil_uuid(tenant_id, "tenant_id")?;
+        validate_non_nil_uuid(actor_id, "actor_id")?;
+        validate_non_nil_uuid(input.variant_id, "variant_id")?;
+        tracing::debug!(
+            target: "rustok_inventory::services",
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            variant_id = %input.variant_id,
+            adjustment = input.adjustment,
+            "adjusting inventory from input"
+        );
         Ok(self
             .adjust_inventory_update(tenant_id, actor_id, input)
             .await?
@@ -272,6 +306,17 @@ impl InventoryService {
         variant_id: Uuid,
         quantity: i32,
     ) -> CommerceResult<InventoryQuantityWriteResult> {
+        validate_non_nil_uuid(tenant_id, "tenant_id")?;
+        validate_non_nil_uuid(actor_id, "actor_id")?;
+        validate_non_nil_uuid(variant_id, "variant_id")?;
+        tracing::debug!(
+            target: "rustok_inventory::services",
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            variant_id = %variant_id,
+            quantity,
+            "setting variant quantity"
+        );
         let update = self
             .set_inventory_update(tenant_id, actor_id, variant_id, quantity)
             .await?;
@@ -290,6 +335,17 @@ impl InventoryService {
         variant_id: Uuid,
         quantity: i32,
     ) -> CommerceResult<i32> {
+        validate_non_nil_uuid(tenant_id, "tenant_id")?;
+        validate_non_nil_uuid(actor_id, "actor_id")?;
+        validate_non_nil_uuid(variant_id, "variant_id")?;
+        tracing::debug!(
+            target: "rustok_inventory::services",
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            variant_id = %variant_id,
+            quantity,
+            "setting inventory"
+        );
         Ok(self
             .set_inventory_update(tenant_id, actor_id, variant_id, quantity)
             .await?
@@ -380,6 +436,15 @@ impl InventoryService {
         variant_id: Uuid,
         requested_quantity: i32,
     ) -> CommerceResult<InventoryAvailabilityCheckResult> {
+        validate_non_nil_uuid(tenant_id, "tenant_id")?;
+        validate_non_nil_uuid(variant_id, "variant_id")?;
+        tracing::debug!(
+            target: "rustok_inventory::services",
+            tenant_id = %tenant_id,
+            variant_id = %variant_id,
+            requested_quantity,
+            "checking variant availability"
+        );
         let available = self
             .check_availability(tenant_id, variant_id, requested_quantity)
             .await?;
@@ -395,6 +460,16 @@ impl InventoryService {
         requested_quantity: i32,
         public_channel_slug: Option<&str>,
     ) -> CommerceResult<InventoryAvailabilityCheckResult> {
+        validate_non_nil_uuid(tenant_id, "tenant_id")?;
+        validate_non_nil_uuid(variant_id, "variant_id")?;
+        tracing::debug!(
+            target: "rustok_inventory::services",
+            tenant_id = %tenant_id,
+            variant_id = %variant_id,
+            requested_quantity,
+            channel_slug = ?public_channel_slug,
+            "checking variant availability for channel"
+        );
         let variant = self.load_variant(&self.db, tenant_id, variant_id).await?;
         let available = super::public_channel::check_variant_availability_for_public_channel(
             &self.db,
@@ -417,7 +492,16 @@ impl InventoryService {
         variant_id: Uuid,
         requested_quantity: i32,
     ) -> CommerceResult<bool> {
+        validate_non_nil_uuid(tenant_id, "tenant_id")?;
+        validate_non_nil_uuid(variant_id, "variant_id")?;
         validate_availability_request_quantity(requested_quantity)?;
+        tracing::debug!(
+            target: "rustok_inventory::services",
+            tenant_id = %tenant_id,
+            variant_id = %variant_id,
+            requested_quantity,
+            "checking availability"
+        );
 
         let variant = self.load_variant(&self.db, tenant_id, variant_id).await?;
 
@@ -447,7 +531,16 @@ impl InventoryService {
         variant_id: Uuid,
         quantity: i32,
     ) -> CommerceResult<InventoryReservationWriteResult> {
+        validate_non_nil_uuid(tenant_id, "tenant_id")?;
+        validate_non_nil_uuid(variant_id, "variant_id")?;
         validate_reservation_quantity(quantity)?;
+        tracing::debug!(
+            target: "rustok_inventory::services",
+            tenant_id = %tenant_id,
+            variant_id = %variant_id,
+            quantity,
+            "reserving inventory"
+        );
 
         let txn = self.db.begin().await?;
         let variant = self.load_variant(&txn, tenant_id, variant_id).await?;
@@ -545,7 +638,16 @@ impl InventoryService {
         variant_id: Uuid,
         quantity: i32,
     ) -> CommerceResult<InventoryReservationReleaseWriteResult> {
+        validate_non_nil_uuid(tenant_id, "tenant_id")?;
+        validate_non_nil_uuid(variant_id, "variant_id")?;
         validate_release_quantity(quantity)?;
+        tracing::debug!(
+            target: "rustok_inventory::services",
+            tenant_id = %tenant_id,
+            variant_id = %variant_id,
+            quantity,
+            "releasing reservation quantity"
+        );
 
         let txn = self.db.begin().await?;
         let variant = self.load_variant(&txn, tenant_id, variant_id).await?;
@@ -852,6 +954,13 @@ fn validate_release_quantity(quantity: i32) -> CommerceResult<()> {
     Ok(())
 }
 
+fn validate_non_nil_uuid(id: Uuid, field_name: &'static str) -> CommerceResult<()> {
+    if id.is_nil() {
+        return Err(CommerceError::Validation(format!("{field_name} cannot be nil")));
+    }
+    Ok(())
+}
+
 fn validate_availability_request_quantity(requested_quantity: i32) -> CommerceResult<()> {
     if requested_quantity < 0 {
         return Err(CommerceError::Validation(
@@ -1083,5 +1192,19 @@ mod tests {
                 "inStock": false
             })
         );
+    }
+
+    #[test]
+    fn validate_non_nil_uuid_in_services_rejects_nil() {
+        use super::validate_non_nil_uuid;
+        use uuid::Uuid;
+
+        let err = validate_non_nil_uuid(Uuid::nil(), "tenant_id").unwrap_err();
+        assert!(err.to_string().contains("tenant_id cannot be nil"));
+
+        let err = validate_non_nil_uuid(Uuid::nil(), "variant_id").unwrap_err();
+        assert!(err.to_string().contains("variant_id cannot be nil"));
+
+        assert!(validate_non_nil_uuid(Uuid::new_v4(), "tenant_id").is_ok());
     }
 }

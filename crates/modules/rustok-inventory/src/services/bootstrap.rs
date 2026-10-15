@@ -39,6 +39,9 @@ impl BootstrapService {
     where
         C: ConnectionTrait,
     {
+        if tenant_id.is_nil() {
+            return Err(sea_orm::DbErr::Custom("tenant_id cannot be nil".to_string()));
+        }
         if let Some(location) = entities::stock_location::Entity::find()
             .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
             .filter(entities::stock_location::Column::Code.eq("default"))
@@ -147,6 +150,12 @@ impl BootstrapService {
     where
         C: ConnectionTrait,
     {
+        if location.id.is_nil() {
+            return Err(sea_orm::DbErr::Custom("location.id cannot be nil".to_string()));
+        }
+        if input.variant_id.is_nil() {
+            return Err(sea_orm::DbErr::Custom("variant_id cannot be nil".to_string()));
+        }
         let now = Utc::now();
         let inventory_item = entities::inventory_item::ActiveModel {
             id: Set(generate_id()),
@@ -184,6 +193,9 @@ impl BootstrapService {
     where
         C: ConnectionTrait,
     {
+        if variant_id.is_nil() {
+            return Err(sea_orm::DbErr::Custom("variant_id cannot be nil".to_string()));
+        }
         let Some(item) = entities::inventory_item::Entity::find()
             .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
             .one(conn)
@@ -289,5 +301,22 @@ impl BootstrapService {
             .await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initial_inventory_debug_derives_correctly() {
+        let input = InitialInventory {
+            variant_id: Uuid::new_v4(),
+            sku: Some("SKU-123".to_string()),
+            available_quantity: 10,
+        };
+        let formatted = format!("{input:?}");
+        assert!(formatted.contains("SKU-123"));
+        assert!(formatted.contains("10"));
     }
 }
