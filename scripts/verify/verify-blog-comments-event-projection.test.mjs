@@ -16,6 +16,7 @@ function write(root, relativePath, content) {
 }
 
 function fixture({
+  duplicateTargetType = false,
   missingTenantScope = false,
   missingPostLock = false,
   missingDeliveryOrdering = false,
@@ -49,6 +50,7 @@ function fixture({
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-comments-projection-'));
   const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
   const handlerPath = 'crates/modules/rustok-blog/src/services/comment_projection.rs';
+  const targetTypePath = 'crates/modules/rustok-blog/src/services/post/routes.rs';
   const postgresHarnessPath = 'crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs';
   const restartHarnessPath = 'crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs';
   const serviceExportPath = 'crates/modules/rustok-blog/src/services/mod.rs';
@@ -66,7 +68,9 @@ function fixture({
   const processRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact';
 
   const handler = `
-const BLOG_POST_TARGET_TYPE: &str = "blog_post";
+${duplicateTargetType ? 'const BLOG_POST_TARGET_TYPE: &str = "blog_post";\n' : ''}target_type == BLOG_POST_TARGET_TYPE
+target_type == BLOG_POST_TARGET_TYPE
+target_type == BLOG_POST_TARGET_TYPE
 struct CommentProjectionChange
 fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange>
 DomainEvent::CommentCreated
@@ -236,6 +240,7 @@ CREATE TABLE sys_events
   }
 
   write(root, serviceExportPath, 'pub use comment_projection::BlogCommentProjectionHandler;');
+  write(root, targetTypePath, 'pub const BLOG_POST_TARGET_TYPE: &str = "blog_post";');
   write(root, entityPath, `
 #[sea_orm(table_name = "blog_comment_projection_deliveries")]
 #[sea_orm(primary_key, auto_increment = false)]
@@ -496,6 +501,10 @@ test('accepts the canonical Comments-to-Blog projection contract', () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('rejects a projection that redeclares the Blog target type', () => {
+  expectRejected({ duplicateTargetType: true }, /single canonical target type/);
 });
 
 test('rejects a projection without tenant scope', () => {

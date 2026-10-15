@@ -21,6 +21,9 @@ use crate::error::{BlogError, BlogResult};
 /// Every Blog route starts with this prefix. Redirect sources must match it.
 pub const BLOG_ROUTE_PREFIX: &str = "/modules/blog?";
 
+/// `TargetDeleted.target_type` and `blog_post_routes.target_kind` value of a Blog post.
+pub const BLOG_POST_TARGET_TYPE: &str = "blog_post";
+
 /// Resolved redirect owned by Blog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostRedirect {
@@ -112,7 +115,7 @@ impl BlogPostRouteOwner {
                 tenant_id,
                 actor_id,
                 &retired_route,
-                "blog_post",
+                BLOG_POST_TARGET_TYPE,
                 post_id,
             )
             .await?;
@@ -124,7 +127,7 @@ impl BlogPostRouteOwner {
                     actor_id,
                     DomainEvent::CanonicalUrlChanged {
                         target_id: post_id,
-                        target_kind: "blog_post".to_string(),
+                        target_kind: BLOG_POST_TARGET_TYPE.to_string(),
                         locale: CANONICAL_POST_ROUTE_LOCALE.to_string(),
                         new_canonical_url: canonical_route,
                         old_urls: vec![retired_route],
@@ -180,7 +183,8 @@ impl BlogPostRouteOwner {
     }
 
     /// Removes every redirect that points at a deleted or converted post and
-    /// purges its canonical route. Used when the post leaves Blog.
+    /// purges its canonical route. Used when the post leaves Blog through the
+    /// canonical delete path, where the slug is still known.
     pub async fn remove_post_routes_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -189,31 +193,86 @@ impl BlogPostRouteOwner {
         post_id: Uuid,
         current_slug: &str,
     ) -> BlogResult<()> {
-        let rows = blog_post_route::Entity::find()
-            .filter(blog_post_route::Column::TenantId.eq(tenant_id))
-            .filter(blog_post_route::Column::TargetKind.eq("blog_post"))
-            .filter(blog_post_route::Column::TargetId.eq(post_id))
-            .all(txn)
-            .await
-            .map_err(BlogError::from)?;
+        let rows = Self::target_route_sources(txn, tenant_id, post_id).await?;
 
         let mut urls = vec![canonical_post_route(current_slug)];
-        for row in &rows {
-            urls.push(row.source_route.clone());
-        }
+        urls.extend(rows);
         urls.sort();
         urls.dedup();
 
-        blog_post_route::Entity::delete_many()
+        Self::delete_target_routes_in_tx(txn, tenant_id, post_id).await?;
+        self.publish_purged(
+            txn,
+            tenant_id,
+            actor_id,
+            BLOG_POST_TARGET_TYPE,
+            post_id,
+            urls,
+        )
+        .await
+    }
+
+    /// Removes every stored Blog route that points at `target_id` and reports them
+    /// through `UrlAliasPurged`. Used when the post disappears without its slug —
+    /// a `TargetDeleted` delivery or route reconciliation — so the derived canonical
+    /// route is unknown and is not claimed as purged. Idempotent: a repeated call
+    /// finds no rows, deletes nothing, and publishes nothing.
+    pub async fn remove_target_routes_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        target_id: Uuid,
+    ) -> BlogResult<u64> {
+        let urls = Self::target_route_sources(txn, tenant_id, target_id).await?;
+        if urls.is_empty() {
+            return Ok(0);
+        }
+        let removed = Self::delete_target_routes_in_tx(txn, tenant_id, target_id).await?;
+        self.publish_purged(
+            txn,
+            tenant_id,
+            actor_id,
+            BLOG_POST_TARGET_TYPE,
+            target_id,
+            urls,
+        )
+        .await?;
+        Ok(removed)
+    }
+
+    /// Source routes of this tenant that point at one Blog post.
+    async fn target_route_sources(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        target_id: Uuid,
+    ) -> BlogResult<Vec<String>> {
+        let rows = blog_post_route::Entity::find()
             .filter(blog_post_route::Column::TenantId.eq(tenant_id))
-            .filter(blog_post_route::Column::TargetKind.eq("blog_post"))
-            .filter(blog_post_route::Column::TargetId.eq(post_id))
+            .filter(blog_post_route::Column::TargetKind.eq(BLOG_POST_TARGET_TYPE))
+            .filter(blog_post_route::Column::TargetId.eq(target_id))
+            .all(txn)
+            .await
+            .map_err(BlogError::from)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| row.source_route)
+            .collect::<Vec<_>>())
+    }
+
+    async fn delete_target_routes_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        target_id: Uuid,
+    ) -> BlogResult<u64> {
+        let result = blog_post_route::Entity::delete_many()
+            .filter(blog_post_route::Column::TenantId.eq(tenant_id))
+            .filter(blog_post_route::Column::TargetKind.eq(BLOG_POST_TARGET_TYPE))
+            .filter(blog_post_route::Column::TargetId.eq(target_id))
             .exec(txn)
             .await
             .map_err(BlogError::from)?;
-
-        self.publish_purged(txn, tenant_id, actor_id, "blog_post", post_id, urls)
-            .await
+        Ok(result.rows_affected)
     }
 
     async fn upsert_redirect_in_tx(

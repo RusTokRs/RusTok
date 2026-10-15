@@ -301,7 +301,6 @@ async fn blog_admin_create_post_native(
                     channel_slugs: None,
                     metadata: None,
                     scheduled_at: None,
-                    is_pinned: None,
                 },
             )
             .await
@@ -364,7 +363,6 @@ async fn blog_admin_update_post_native(
                         ServerFnError::new("Blog post revision is missing; reload before saving")
                     })?,
                     scheduled_at: rustok_api::Patch::Keep,
-                    is_pinned: None,
                 },
             )
             .await

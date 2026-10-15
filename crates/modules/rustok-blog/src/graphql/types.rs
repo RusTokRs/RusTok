@@ -353,7 +353,6 @@ pub struct CreatePostInput {
     pub seo_description: Option<String>,
     pub channel_slugs: Option<Vec<String>>,
     pub scheduled_at: Option<String>,
-    pub is_pinned: Option<bool>,
 }
 
 #[derive(InputObject)]
@@ -380,7 +379,6 @@ pub struct UpdatePostInput {
     pub channel_slugs: Option<Vec<String>>,
     pub version: i32,
     pub scheduled_at: MaybeUndefined<String>,
-    pub is_pinned: Option<bool>,
 }
 
 /// Filter for the public, cursor-paginated post list.
@@ -547,7 +545,6 @@ impl From<CreatePostInput> for DomainCreatePostInput {
                     .ok()
                     .map(|value| value.with_timezone(&chrono::Utc))
             }),
-            is_pinned: input.is_pinned,
         }
     }
 }
@@ -569,7 +566,6 @@ impl From<UpdatePostInput> for DomainUpdatePostInput {
             metadata: None,
             version: input.version,
             scheduled_at: graphql_patch_datetime(input.scheduled_at),
-            is_pinned: input.is_pinned,
         }
     }
 }
@@ -783,6 +779,9 @@ pub struct CreatePreviewTokenInput {
 
 #[derive(InputObject)]
 pub struct BulkOperationInput {
+    /// Mirrors `rustok_blog::services::post::bulk::MAX_BULK_POST_IDS`; the service
+    /// re-validates it, because a service caller is not a transport.
+    #[graphql(validator(max_items = 100))]
     pub post_ids: Vec<Uuid>,
 }
 
@@ -797,7 +796,10 @@ pub struct GqlBulkOperationResult {
 #[derive(SimpleObject)]
 pub struct GqlBulkOperationFailure {
     pub post_id: Uuid,
-    pub reason: String,
+    /// Stable public code from the Blog public-error boundary.
+    pub code: String,
+    /// Redacted public message for `code`.
+    pub message: String,
 }
 
 impl From<crate::dto::BulkOperationResult> for GqlBulkOperationResult {
@@ -811,7 +813,8 @@ impl From<crate::dto::BulkOperationResult> for GqlBulkOperationResult {
                 .into_iter()
                 .map(|f| GqlBulkOperationFailure {
                     post_id: f.post_id,
-                    reason: f.reason,
+                    code: f.code,
+                    message: f.message,
                 })
                 .collect(),
         }
@@ -842,7 +845,6 @@ mod tests {
             channel_slugs: None,
             version: 1,
             scheduled_at: MaybeUndefined::Undefined,
-            is_pinned: None,
         };
         let domain: DomainUpdatePostInput = input.into();
         assert_eq!(domain.content, Some(canonical));
@@ -865,7 +867,6 @@ mod tests {
             channel_slugs: Some(vec!["web".to_string()]),
             version: 7,
             scheduled_at: MaybeUndefined::Undefined,
-            is_pinned: None,
         };
         let domain: DomainUpdatePostInput = input.into();
         assert_eq!(domain.content, Some(canonical));

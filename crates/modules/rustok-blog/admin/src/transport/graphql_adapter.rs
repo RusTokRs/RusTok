@@ -101,8 +101,6 @@ struct CreatePostInput {
     seo_description: Option<String>,
     #[serde(rename = "scheduledAt")]
     scheduled_at: Option<String>,
-    #[serde(rename = "isPinned", skip_serializing_if = "Option::is_none")]
-    is_pinned: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -121,8 +119,6 @@ struct UpdatePostInput {
     seo_title: Option<String>,
     #[serde(rename = "seoDescription", skip_serializing_if = "Option::is_none")]
     seo_description: Option<String>,
-    #[serde(rename = "isPinned", skip_serializing_if = "Option::is_none")]
-    is_pinned: Option<bool>,
     version: i32,
 }
 
@@ -221,7 +217,6 @@ pub async fn create_post(
                 seo_title: None,
                 seo_description: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         },
         token.clone(),
@@ -255,7 +250,6 @@ pub async fn update_post(
                 featured_image_url: None,
                 seo_title: None,
                 seo_description: None,
-                is_pinned: None,
                 version: draft.version.ok_or_else(|| {
                     GraphqlHttpError::Graphql(
                         "Blog post revision is missing; reload before saving".into(),

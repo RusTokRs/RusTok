@@ -24,34 +24,50 @@ Implemented a pin/unpin feature with the following characteristics:
 2. **Pinning is tenant-scoped** and subject to `blog_posts:update` permission.
 3. **Ownership scoping** is enforced: users with `owned` scope can only pin their own posts.
 4. **Unpinning** always succeeds if the post exists and the user has permission.
+5. **Pin state is command-owned.** `is_pinned`/`pinned_at` are not writable through
+   `CreatePostInput`/`UpdatePostInput` (`createPost`/`updatePost`,
+   `POST /api/blog/posts`, `PUT /api/blog/posts/{id}`) or through any other writer: the
+   only write path is `pinPost`/`unpinPost`. This keeps the documented rule above true
+   by construction, because `create_post`/`update_post` produce arbitrary lifecycle
+   states (drafts, archived revisions) that cannot be pinned coherently.
+6. **Pin is atomic.** `set_pinned` runs in one transaction on a row-locked read, so a
+   concurrently deleted post fails with `PostNotFound` instead of reporting success.
+7. **Pin state is not part of the post revision.** `version` is not advanced and the
+   Search projection is not reindexed, because pin state changes list order only and is
+   not projected into the search document payload.
 
 ### Public Listing Sort Order
 
 ```sql
-ORDER BY is_pinned DESC, pinned_at DESC, published_at DESC, id DESC
+ORDER BY is_pinned DESC, pinned_at DESC NULLS LAST, published_at DESC, id DESC
 ```
 
 Pinned posts appear first, ordered by most-recently-pinned. Unpinned posts follow in standard chronological order.
+
+The public listing is keyset-paginated, so `PublishedPostCursor` carries the whole sort
+key (`is_pinned`, `pinned_at`, `published_at`, `id`). A cursor that only carried
+`(published_at, id)` would skip or repeat rows as soon as a pinned post exists.
+Legacy tokens are rejected instead of being resumed with a lossy position. The
+`v1` token is opaque to clients.
 
 ### API Surface
 
 **GraphQL:**
 - `Post.isPinned: Boolean!` and `Post.pinnedAt: String` fields
 - `PostListItem.isPinned: Boolean!` and `PostListItem.pinnedAt: String` fields
-- `CreatePostInput.isPinned: Boolean` and `UpdatePostInput.isPinned: Boolean`
 - `pinPost(id: UUID!, tenantId: UUID): Boolean!` mutation
 - `unpinPost(id: UUID!, tenantId: UUID): Boolean!` mutation
+- `CreatePostInput`/`UpdatePostInput` deliberately expose no pin field (see Business Rule 5)
 
 **REST:**
 - `POST /api/blog/posts/{id}/pin` — pin a post
 - `POST /api/blog/posts/{id}/unpin` — unpin a post
-- `is_pinned` field on `CreatePostInput` and `UpdatePostInput`
-- `isPinned` and `pinnedAt` fields on `PostResponse` and `PostSummary`
+- `isPinned` and `pinnedAt` fields on `PostResponse` and `PostSummary` (read-only)
 
 **Service Layer:**
 - `PostService::pin_post(tenant_id, post_id, security)` — pins a post
 - `PostService::unpin_post(tenant_id, post_id, security)` — unpins a post
-- `PostService::set_pinned(tenant_id, post_id, pinned, security)` — internal helper
+- `PostService::set_pinned(tenant_id, post_id, pinned, security)` — private transactional helper of `pin_post`/`unpin_post`
 
 ## Alternatives Considered
 
@@ -64,8 +80,8 @@ Pinned posts appear first, ordered by most-recently-pinned. Unpinned posts follo
 - `migrations/m20261009_000035_add_blog_post_pinned.rs` — schema migration
 - `entities/blog_post.rs` — entity fields
 - `dto/post.rs` — DTO fields
-- `services/post/commands.rs` — pin/unpin/set_pinned methods, create/update integration
-- `services/post/queries.rs` — mapping and sort order
+- `services/post/pin.rs` — transactional pin/unpin commands
+- `services/post/queries.rs` — mapping, canonical ordering, pin-aware keyset cursor
 - `graphql/types.rs` — GraphQL type fields and input fields
 - `graphql/mutation.rs` — pinPost/unpinPost mutations
 - `controllers/posts.rs` — REST pin/unpin endpoints
@@ -73,4 +89,7 @@ Pinned posts appear first, ordered by most-recently-pinned. Unpinned posts follo
 - `admin/src/model.rs` — admin UI model
 - `admin/src/transport/graphql_adapter.rs` — GraphQL adapter input
 - `admin/src/transport/native_server_adapter.rs` — native adapter input
-- All test files updated with `is_pinned: None` field
+- `services/post/tests.rs` — pinned-keyset pagination regression
+  (`public_visible_keyset_keeps_pinned_post_via_cursor_rank`)
+- `dto/post.rs` — `PublishedPostCursor` encode/decode round-trip and legacy-token
+  rejection tests

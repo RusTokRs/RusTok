@@ -32,7 +32,6 @@ pub struct CreatePostInput {
     pub channel_slugs: Option<Vec<String>>,
     pub metadata: Option<Value>,
     pub scheduled_at: Option<DateTime<Utc>>,
-    pub is_pinned: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -66,7 +65,6 @@ pub struct UpdatePostInput {
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
     #[schema(value_type = Option<String>)]
     pub scheduled_at: Patch<DateTime<Utc>>,
-    pub is_pinned: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -111,8 +109,10 @@ pub struct PostResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::CreatePostInput;
+    use super::{CreatePostInput, PublishedPostCursor};
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
     use rustok_api::RichTextDocument;
+    use uuid::Uuid;
 
     #[test]
     fn create_post_input_serde_requires_canonical_document() {
@@ -131,10 +131,75 @@ mod tests {
             channel_slugs: None,
             metadata: None,
             scheduled_at: None,
-            is_pinned: None,
         };
         let encoded = serde_json::to_value(input).expect("serialize");
         assert_eq!(encoded["content"]["type"], "doc");
+    }
+
+    #[test]
+    fn bulk_failure_reports_the_redacted_public_error() {
+        use crate::BlogError;
+
+        let post_id = Uuid::from_u128(11);
+        let mut result = super::BulkOperationResult::new();
+        result.record_failure(
+            post_id,
+            BlogError::Invariant("blog_posts row 17 failed the storage check".to_string()),
+        );
+
+        assert_eq!(result.failed, 1);
+        let failure = result.failures.first().expect("one recorded failure");
+        assert_eq!(failure.post_id, post_id);
+        assert!(
+            !failure.message.contains("row 17"),
+            "an internal invariant message must not reach the API surface"
+        );
+        assert!(
+            !failure.code.contains("row 17"),
+            "the public code carries no internal detail"
+        );
+        assert!(!failure.message.is_empty());
+    }
+
+    #[test]
+    fn public_list_cursor_round_trips_every_sort_key() {
+        let cursor = PublishedPostCursor {
+            is_pinned: true,
+            pinned_at: Some(
+                chrono::DateTime::parse_from_rfc3339("2026-10-09T10:15:30.123456789Z")
+                    .expect("pinned_at"),
+            ),
+            published_at: chrono::DateTime::parse_from_rfc3339("2026-10-08T08:00:00Z")
+                .expect("published_at"),
+            id: Uuid::from_u128(7),
+        };
+
+        let decoded =
+            PublishedPostCursor::decode(&cursor.encode()).expect("cursor must round-trip");
+        assert_eq!(decoded, cursor);
+
+        let unpinned = PublishedPostCursor {
+            is_pinned: false,
+            pinned_at: None,
+            ..cursor
+        };
+        assert_eq!(
+            PublishedPostCursor::decode(&unpinned.encode()).expect("unpinned cursor"),
+            unpinned
+        );
+    }
+
+    #[test]
+    fn public_list_cursor_rejects_legacy_and_malformed_tokens() {
+        // Legacy `(published_at, id)` tokens cannot express the pinned ordering and
+        // must be rejected so a client cannot silently resume with a lossy position.
+        let legacy = URL_SAFE_NO_PAD.encode(
+            "2026-10-08T08:00:00Z|00000000-0000-0000-0000-000000000007",
+        );
+        assert!(PublishedPostCursor::decode(&legacy).is_err());
+
+        assert!(PublishedPostCursor::decode("not-a-token").is_err());
+        assert!(PublishedPostCursor::decode("").is_err());
     }
 }
 
@@ -341,10 +406,14 @@ pub struct ArchivePostInput {
     pub reason: Option<String>,
 }
 
-/// Keyset position of a public post list: `(published_at, id)` of the last item
-/// on the previous page. Ordering is `published_at DESC, id DESC`.
+/// Keyset position of a public post list. It carries every sort key of the public
+/// ordering `is_pinned DESC, pinned_at DESC NULLS LAST, published_at DESC, id DESC`,
+/// because a cursor that omits the leading keys can skip or repeat rows once pinned
+/// posts exist.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PublishedPostCursor {
+    pub is_pinned: bool,
+    pub pinned_at: Option<DateTime<FixedOffset>>,
     pub published_at: DateTime<FixedOffset>,
     pub id: Uuid,
 }
@@ -352,8 +421,14 @@ pub struct PublishedPostCursor {
 impl PublishedPostCursor {
     /// Opaque, URL-safe token. Clients must not parse it.
     pub fn encode(&self) -> String {
+        let pinned_at = self
+            .pinned_at
+            .map(|value| value.to_rfc3339_opts(SecondsFormat::Nanos, false))
+            .unwrap_or_else(|| "-".to_string());
         let raw = format!(
-            "{}|{}",
+            "v1|{}|{}|{}|{}",
+            u8::from(self.is_pinned),
+            pinned_at,
             self.published_at
                 .to_rfc3339_opts(SecondsFormat::Nanos, false),
             self.id
@@ -367,8 +442,26 @@ impl PublishedPostCursor {
             .decode(value.trim())
             .map_err(|_| invalid())?;
         let raw = String::from_utf8(bytes).map_err(|_| invalid())?;
-        let (published_at, id) = raw.split_once('|').ok_or_else(invalid)?;
+        let parts: Vec<&str> = raw.split('|').collect();
+        let [version, is_pinned, pinned_at, published_at, id] = parts.as_slice() else {
+            return Err(invalid());
+        };
+        if *version != "v1" {
+            return Err(invalid());
+        }
+        let is_pinned = match *is_pinned {
+            "0" => false,
+            "1" => true,
+            _ => return Err(invalid()),
+        };
+        let pinned_at = if *pinned_at == "-" {
+            None
+        } else {
+            Some(DateTime::parse_from_rfc3339(pinned_at).map_err(|_| invalid())?)
+        };
         Ok(Self {
+            is_pinned,
+            pinned_at,
             published_at: DateTime::parse_from_rfc3339(published_at).map_err(|_| invalid())?,
             id: Uuid::parse_str(id).map_err(|_| invalid())?,
         })
@@ -421,10 +514,17 @@ pub struct BulkOperationResult {
 }
 
 /// A single failure in a bulk operation.
+///
+/// The failure carries the redacted public error of the Blog boundary, never the
+/// internal error display text: `BlogError::Invariant` and `BlogError::Database`
+/// messages contain storage identifiers and must not reach API consumers.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BulkOperationFailure {
     pub post_id: Uuid,
-    pub reason: String,
+    /// Stable public code, e.g. `POST_NOT_FOUND` or `BLOG_INVALID_TRANSITION`.
+    pub code: String,
+    /// Redacted public message for `code`.
+    pub message: String,
 }
 
 impl Default for BulkOperationResult {
@@ -448,11 +548,15 @@ impl BulkOperationResult {
         self.succeeded_ids.push(post_id);
     }
 
-    pub fn record_failure(&mut self, post_id: Uuid, reason: impl Into<String>) {
+    /// Records one failure through the module's single redacted public-error
+    /// boundary, so a bulk response cannot leak internal Blog diagnostics.
+    pub fn record_failure(&mut self, post_id: Uuid, error: crate::BlogError) {
+        let public = crate::error::BlogPublicError::from(error);
         self.failed += 1;
         self.failures.push(BulkOperationFailure {
             post_id,
-            reason: reason.into(),
+            code: public.code,
+            message: public.message,
         });
     }
 }

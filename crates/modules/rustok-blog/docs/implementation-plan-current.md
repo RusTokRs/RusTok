@@ -396,6 +396,105 @@ The fresh saga audit found that the first TOCTOU fix only compensated `PostNotFo
 
 A second saga audit found that the compensation delete inherited the caller's `SecurityContext`. Ordinary storefront customers have Comments create permission but delete is owner-scoped, so a compensation could itself be rejected by authorization. Blog compensation now uses a trusted `SecurityContext::system()` operation through the existing owner-managed Comments port, with a fresh idempotency key. The original user remains represented by the create-side event/audit context; compensation is explicitly a system-owned cleanup action. Source verification and a focused Rust unit regression enforce this boundary.
 
+## 2026-10-15 Engineering audit remediation
+
+This section records the remediation of the 2026-10-15 Blog engineering audit
+([`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md),
+base `1a420c8`).
+
+### Fixed in this wave
+
+- **H-1 public keyset vs pinning.** The public list ordering is one canonical
+  definition, `order_public_post_list`: `is_pinned DESC, pinned_at DESC NULLS
+  LAST, published_at DESC, id DESC`. `PublishedPostCursor` now carries the whole
+  sort key, so paging cannot skip or repeat rows once a pinned post exists;
+  legacy `(published_at, id)` tokens are rejected instead of resumed with a lossy
+  position. The regression is covered by
+  `public_visible_keyset_keeps_pinned_post_via_cursor_rank` (SQLite harness) and
+  by cursor encode/decode tests in `src/dto/post.rs`.
+- **H-2 scheduled publishing.** The owner command is tenant-scoped and
+  batch-bounded (`MAX_SCHEDULED_PUBLISH_BATCH` = 200), publishes oldest-due first,
+  and skips a concurrently edited post instead of aborting the batch. The
+  Blog-owned `blog_scheduled_publish` module-work registration (`src/services/scheduler.rs`)
+  publishes that queue to the host scheduler, which drains it in `full`/`worker`
+  host mode. See the module README "Scheduled publishing".
+- **H-6 pin atomicity and the create path.** Pin state is command-owned: the field
+  is gone from `CreatePostInput`/`UpdatePostInput` (REST, GraphQL domain, admin
+  GraphQL/native adapters, and every test fixture), so no writer can persist
+  `is_pinned` without `pinned_at` or bypass the published-only rule.
+  `pin_post`/`unpin_post` run in one transaction on a row-locked read, so a
+  concurrently deleted post fails with `PostNotFound` instead of reporting
+  success.
+
+- **H-3, M-11, M-13 preview tokens.** The TTL is validated against `1..=720` hours,
+  minting is draft-only, the token read re-checks the module gate on the token's own
+  tenant and resolves through the draft-only preview accessor, and
+  `revoke_token` reports a missing or foreign token as `PREVIEW_TOKEN_NOT_FOUND`
+  instead of a missing post. Retention is tenant-scoped:
+  `cleanup_expired(tenant_id, limit)` (clamped to `MAX_PREVIEW_TOKEN_CLEANUP_BATCH` =
+  500) is drained by the `blog_preview_token_cleanup` module-work registration, and
+  deleting a post removes its tokens through the `fk_blog_preview_tokens_post`
+  cascade.
+- **H-4 rate-limit classification coverage.** `BlogGraphqlSurface` covers all 28 Blog
+  schema roots (8 queries and 20 mutations) with an explicit permission per root;
+  `actor_is_authorized` keeps RBAC authoritative for writes that never reach the
+  limiter. `blog_schema_root_fields_are_fully_classified` fails when a root field is
+  added without a surface.
+- **H-5 bulk bounds and error redaction.** `ensure_bulk_batch_is_bounded` refuses more
+  than `MAX_BULK_POST_IDS` = 100 ids before any work starts, the GraphQL input mirrors
+  the bound with `#[graphql(validator(max_items = 100))]`, and
+  `BulkOperationResult::record_failure` reports each failure through
+  `BlogPublicError`, so internal `Invariant`/`Database` detail no longer reaches
+  consumers.
+- **H-7 route and target-deletion consistency.** `BlogTargetDeletionRouteHandler`
+  (`blog_target_deletion_routes`) consumes `TargetDeleted` for `blog_post` targets,
+  removes the matching routes in one transaction, and reports them through
+  `UrlAliasPurged`; repeated delivery is a no-op. A read of a route whose target is
+  gone returns "not found" instead of resolving a stale redirect and records the
+  `dangling_route_redirect` module metric. `blog_route_reconciliation` sweeps stale
+  routes in bounded, tenant-scoped batches as the safety net for a missed delivery.
+
+### Verification status
+
+- `cargo` is not available in the authoring environment: no compile, unit-test, or
+  PostgreSQL execution evidence was produced for this wave. Syntax of every changed
+  Rust file was validated with a tree-sitter parse; the verifier scripts and the
+  maintainer CI must run the real gates.
+- Still required from the maintainer: `cargo check -p rustok-blog --features
+  runtime`, `cargo test -p rustok-blog`, a PostgreSQL run of the pinned-keyset
+  path, and a host run in `worker` mode that publishes a due scheduled draft.
+
+- The Blog reference-module verifier `verify-blog-comments-event-projection.mjs` now
+  asserts the canonical single `blog_post` target-type definition
+  (`src/services/post/routes.rs`) and that the projection handler classifies with that
+  shared constant instead of redeclaring it; the change is covered by a new negative
+  case in its self-test (`duplicateTargetType`).
+
+### Open items from this audit
+
+Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md)):
+
+- **H-5 amplification (open).** A bulk request is now bounded at 100 ids, but the
+  command still runs one transaction and one lifecycle event per id inside the request
+  instead of queueing the batch.
+- **M-12 admin sort (open).** `src/graphql/query.rs` still hard-codes
+  `sort_by: CreatedAt, sort_order: Desc`, so the per-sort-column keyset indexes of
+  `m20260328_000001` remain unused by the GraphQL read path.
+- **M-13 residuals (open).** Preview reads have no audit trail, and archiving a post
+  does not revoke its already-minted tokens; both are documented in the module README.
+- **L-1 (open).** `create_post`/`update_post` still open their transaction before
+  input validation.
+- **L-3 (open).** `apps/next-admin/packages/blog/src/api/posts.ts` selects
+  `scheduledAt` twice in `POSTS_QUERY`.
+- **Canonical layout documentation (open, docs only).**
+  `docs/backend/module-backend-implementation.md` lists `src/runtime.rs` as an optional
+  module slot, while `verify:module-source-layout` allows only `lib.rs` and `module.rs`
+  at the `rustok-blog` source root. The Blog tree follows the verifier and keeps the
+  `runtime`-gated registrations in `src/services/scheduler.rs`.
+- **L-4, L-5, L-6 (open).** Entity re-exports versus `CRATE_API.md`, the
+  `unreachable!` in `m20260803_000011`, and the `.expect` in
+  `src/integrations/seo_targets.rs`.
+
 ## 2026-10-08 Engineering audit remediation (Waves 1 and part of 2)
 
 This section records the remediation of the 2026-10-08 Blog engineering audit.
@@ -463,13 +562,14 @@ The governing contract is
 These audit findings are deliberately out of this slice. Each needs its own
 owner decision or a larger implementation.
 
-- **H-6 scheduled publishing.** No `scheduled` status, no `publish_at`, and no
-  worker. Only `Draft -> Published` exists.
+- **H-6 scheduled publishing follow-ups.** Publishing is wired, but there is no
+  per-tenant worker toggle and no operator surface that reports overdue or failed
+  scheduled posts.
 - **H-7 list search and facets.** The `?q=` filter applies to the rows loaded so
   far, and the tag list is built from those rows. `PostsFilter` and
   `PublicPostsFilter` have no text query. Search is not wired to `rustok-search`.
-  The public list (`publicBlogPosts`) is keyset-paginated on `(published_at, id)`
-  and returns no total. The admin `posts` list is keyset-paginated on the sort
+  The public list (`publicBlogPosts`) is keyset-paginated on the full public
+  sort key `(is_pinned, pinned_at, published_at, id)` and returns no total. The admin `posts` list is keyset-paginated on the sort
   column and `id` (`nextCursor`, no total); its REST sort options are
   `published_at`, `updated_at`, and `created_at`, and NULL sort values come last.
   The GraphQL `posts` query always sorts by `created_at DESC`.
@@ -552,7 +652,7 @@ This comparison was written from the model's knowledge of the platforms and was
 
 ### Next waves (from the audit roadmap)
 
-1. H-6 scheduled publishing with a worker on the outbox or cron.
+1. H-6 follow-ups: per-tenant scheduled-publishing toggle and operator visibility.
 2. M-3 trash with retention; M-4 draft preview tokens and revisions.
 3. H-7 server-side `q`, tag and category facets, and relevance-based related
    posts (M-5); M-7 crawlable archives; M-1 Atom and per-taxonomy feeds.

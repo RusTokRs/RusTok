@@ -1,7 +1,7 @@
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
     Order, QueryFilter, QueryOrder, QuerySelect, Select, Set, TransactionTrait,
-    sea_query::{Query, SelectStatement},
+    sea_query::{NullOrdering, Query, SelectStatement},
 };
 use std::collections::HashMap;
 use tracing::instrument;
@@ -320,6 +320,9 @@ const MAX_POST_EXCERPT_CHARS: usize = 1000;
 const MAX_POST_SEO_TITLE_CHARS: usize = 255;
 const MAX_POST_SEO_DESCRIPTION_CHARS: usize = 1000;
 const MAX_POST_ARCHIVE_REASON_CHARS: usize = 1000;
+/// Upper bound for one `publish_scheduled_posts` iteration. The scheduler is a host
+/// boundary; a bounded batch keeps a large backlog from being processed in one pass.
+pub(crate) const MAX_SCHEDULED_PUBLISH_BATCH: u32 = 200;
 
 fn normalize_custom_metadata(metadata: Option<Value>) -> BlogResult<Value> {
     let metadata = metadata.unwrap_or_else(|| serde_json::json!({}));
@@ -463,7 +466,7 @@ pub(crate) fn storage_to_status(status: &str) -> BlogResult<BlogPostStatus> {
     }
 }
 
-fn status_to_storage(status: BlogPostStatus) -> &'static str {
+pub(crate) fn status_to_storage(status: BlogPostStatus) -> &'static str {
     match status {
         BlogPostStatus::Draft => "draft",
         BlogPostStatus::Published => "published",

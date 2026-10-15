@@ -21,9 +21,11 @@ Blog contract:
 
 - `src/module.rs` owns `RusToKModule` / `MigrationSource` wiring;
 - `src/domain/` owns the Blog state machine and article richtext policy;
-- `src/services/` owns application/use-case orchestration;
+- `src/services/` owns application/use-case orchestration and the `runtime`-gated
+  module-work registrations (`src/services/scheduler.rs`);
 - `src/entities/` and `src/migrations/` own Blog persistence;
-- `src/integrations/` owns SEO, reaction, and public-comment snapshot adapters;
+- `src/integrations/` owns SEO, reaction, public-comment snapshot, and
+  route/target-deletion adapters;
 - `src/graphql/` and `src/controllers/` are thin owner transport adapters;
 - `src/lib.rs` is a facade that preserves deliberate public re-exports.
 
@@ -163,6 +165,12 @@ copy must use the canonical Taxonomy owner contract.
   previous route as an alias. Public reads resolve it to the current post, and the
   storefront redirects permanently to the current slug. Creating a post may take
   a retired slug. Deleting a post purges its routes.
+- Route cleanup does not depend on that delete path: Blog consumes `TargetDeleted` for
+  `blog_post` targets (`blog_target_deletion_routes`) and removes the matching routes idempotently,
+  reporting them through `UrlAliasPurged`. A route whose target is gone no longer resolves — the
+  read returns "not found" and records the `dangling_route_redirect` module metric — and the
+  `blog_route_reconciliation` module-work registration sweeps the remaining rows in bounded,
+  tenant-scoped batches.
 - Post routes are stored under `CANONICAL_POST_ROUTE_LOCALE` (the platform
   fallback locale), because Blog slugs are global canonical identifiers.
 - `published_at` is the first publication time. It is preserved across
@@ -174,13 +182,51 @@ copy must use the canonical Taxonomy owner contract.
 
 See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md).
 
-## Known limitations
+## Scheduled publishing
+
+## Preview tokens
+
+- `PreviewTokenService` mints an opaque 256-bit token (`URL_SAFE_NO_PAD` base64) for one post of
+  one tenant. A token read is unauthenticated by design: the token is the whole authorization of
+  that read, which is why minting, expiry and revocation are strict.
+- Minting is restricted to **drafts** and to the post author or a caller with post update
+  permission. The TTL (`ttl_hours`, default 168) is validated against `1..=720`, so a token can
+  neither be born expired nor outlive 30 days; an out-of-range request is refused instead of being
+  stored.
+- `get_post_by_token` resolves only an unexpired token whose tenant still has Blog enabled, and
+  loads the post through the draft-only preview accessor. A revoked, expired, foreign, or
+  module-disabled token reads as "not found" rather than as an error.
+- `revoke_token` reports a missing or foreign token as `PreviewTokenNotFound`
+  (`PREVIEW_TOKEN_NOT_FOUND`), never as a missing post.
+- Retention is tenant-scoped: `cleanup_expired(tenant_id, limit)` (limit clamped to
+  `MAX_PREVIEW_TOKEN_CLEANUP_BATCH` = 500) is drained by the `blog_preview_token_cleanup`
+  module-work registration of `src/services/scheduler.rs`, and deleting a post removes its tokens through
+  the `fk_blog_preview_tokens_post` cascade. Like every Blog worker it runs only in host modes
+  `full`/`worker`.
+
+- `scheduled_at` is set through `create_post`/`update_post` and is announced by
+  `BlogPostScheduled`/`BlogPostScheduleCancelled`.
+- The owner command is `PostService::publish_scheduled_posts(tenant_id, limit)`:
+  it publishes due drafts of one tenant, oldest schedule first, bounded by
+  `limit` (clamped to `MAX_SCHEDULED_PUBLISH_BATCH` = 200). Each post commits in
+  its own transaction with the post version CAS, so a post edited after the scan
+  is skipped for the next iteration instead of being overwritten. Publication
+  emits `BlogPostPublished` with the system actor.
+- The command is drained by the Blog-owned `blog_scheduled_publish` module-work
+  registration (`src/services/scheduler.rs`), which the host composes through
+  `rustok_runtime::ModuleWorkRegistrations`. Claiming is a read-only discovery of
+  the tenant owning the earliest due schedule; the authoritative decision stays in
+  the owner command. No module-local timer exists.
+- The worker only runs in host modes `full` and `worker`
+  (`rustok.runtime.host_mode`); API-only and SSR surfaces do not publish scheduled
+  posts.
+
+## Known Limitations / Pending Implementation
 
 The following are not implemented. Each is tracked with its audit identifier in
 [the current implementation cursor](./docs/implementation-plan-current.md#open-backlog-known-limitations).
 
-- No scheduled publishing (H-6); no server-side text search or facets for the
-  post list (H-7).
+- No server-side text search or facets for the post list (H-7).
 - The rich-text body has no inline images, tables, or embeds (H-8).
 - Readers cannot edit, delete, or report comments, and comments send no
   notifications (H-9).
@@ -189,6 +235,12 @@ The following are not implemented. Each is tracked with its audit identifier in
 - Anonymous REST read access is not available (M-8).
 - Newsletter, membership, and paid content are not available (M-9).
 - Reactions are limited to `like` on posts (M-10).
+- Preview reads have no audit trail, and a post that leaves `draft` keeps its already-minted
+  tokens until they expire or are explicitly revoked — archiving does not revoke them (M-13 of
+  [`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md)).
+- A route row whose post disappeared stays in the database until `blog_route_reconciliation` sweeps
+  it, so the window is bounded by the host scheduler rather than by a cross-module transaction
+  (H-7 of the 2026-10-15 audit).
 - The Leptos storefront does not redirect retired slugs (M-12).
 
 ## Entry points

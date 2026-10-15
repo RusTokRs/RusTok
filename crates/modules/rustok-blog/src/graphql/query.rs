@@ -405,11 +405,12 @@ impl BlogQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = crate::services::PreviewTokenService::new(db.clone(), event_bus.clone());
         let post = service
-            .get_post_by_token(&token, &locale)
+            .get_post_by_token(&token, &locale, Some(tenant.default_locale.as_str()))
             .await
             .map_err(crate::error::public::to_graphql_error)?;
 

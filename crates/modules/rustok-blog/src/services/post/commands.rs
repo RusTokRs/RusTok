@@ -23,7 +23,6 @@ impl PostService {
             channel_slugs,
             metadata,
             scheduled_at,
-            is_pinned,
         } = input;
 
         validate_title(&title)?;
@@ -108,7 +107,7 @@ impl PostService {
             updated_at: Set(now.into()),
             archived_at: Set(None),
             scheduled_at: Set(scheduled_at_db),
-            is_pinned: Set(is_pinned.unwrap_or(false)),
+            is_pinned: Set(false),
             pinned_at: Set(None),
             comment_count: Set(0),
             version: Set(1),
@@ -226,7 +225,6 @@ impl PostService {
             metadata,
             version,
             scheduled_at,
-            is_pinned,
         } = input;
 
         if post.version != version {
@@ -314,8 +312,7 @@ impl PostService {
             || featured_image_url.is_changed()
             || normalized_channels.is_some()
             || metadata_changed
-            || scheduled_at.is_changed()
-            || is_pinned.is_some();
+            || scheduled_at.is_changed();
         let has_relation_change = tags.is_some();
         if !has_owner_change && !has_translation_change && !has_relation_change {
             return Err(BlogError::validation("No Blog post changes were supplied"));
@@ -410,19 +407,6 @@ impl PostService {
                 );
             }
         }
-        if let Some(pinned) = is_pinned {
-            let pinned_at = if pinned { Some(now) } else { None };
-            update = update
-                .col_expr(
-                    blog_post::Column::IsPinned,
-                    sea_orm::sea_query::Expr::value(pinned),
-                )
-                .col_expr(
-                    blog_post::Column::PinnedAt,
-                    sea_orm::sea_query::Expr::value(pinned_at.map(|t| t.fixed_offset())),
-                );
-        }
-
         let normalized_slug_for_error = normalized_slug.clone();
         let result = update.exec(&txn).await.map_err(|error| {
             if normalized_slug_for_error.is_some() && PostService::is_unique_constraint(&error) {
@@ -771,6 +755,11 @@ impl PostService {
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         remove_post_tag_usage_in_tx(&txn, tenant_id, post_id).await?;
+        // Preview tokens are the deleted post's authorization; they must not survive
+        // it in the same transaction (the FK cascade is the second, database-level
+        // guarantee).
+        crate::services::preview_token::delete_post_preview_tokens_in_tx(&txn, tenant_id, post_id)
+            .await?;
         let deleted = blog_post::Entity::delete_many()
             .filter(blog_post::Column::Id.eq(post_id))
             .filter(blog_post::Column::TenantId.eq(tenant_id))
@@ -803,7 +792,7 @@ impl PostService {
                 tenant_id,
                 security.user_id,
                 DomainEvent::TargetDeleted {
-                    target_type: "blog_post".to_string(),
+                    target_type: BLOG_POST_TARGET_TYPE.to_string(),
                     target_id: post_id,
                 },
             )
@@ -814,43 +803,77 @@ impl PostService {
         Ok(())
     }
 
-    /// Publish all scheduled posts whose scheduled_at time has passed.
-    /// This method is called by the scheduler worker.
-    pub async fn publish_scheduled_posts(&self) -> BlogResult<Vec<(Uuid, Uuid)>> {
+    /// Publish the scheduled drafts of **one tenant** whose `scheduled_at` has passed.
+    ///
+    /// This repository contains no scheduler worker: `rustok-blog` exposes the
+    /// owner command, and the unwired host boundary is recorded in
+    /// `README.md` under "Known limitations". The command is therefore shaped so
+    /// a host scheduler can call it repeatedly and safely:
+    ///
+    /// - the tenant is an explicit argument, so a scheduler iteration can never
+    ///   reach another tenant's rows;
+    /// - the batch is bounded by `limit` (`MAX_SCHEDULED_PUBLISH_BATCH`), oldest
+    ///   schedule first, so a backlog drains across bounded iterations;
+    /// - each post is published in its own transaction, and a concurrent edit
+    ///   conflict skips that post instead of aborting the whole batch;
+    /// - the actor is the system actor, so it must not be reachable from a
+    ///   request path or an end-user transport.
+    pub async fn publish_scheduled_posts(
+        &self,
+        tenant_id: Uuid,
+        limit: u32,
+    ) -> BlogResult<Vec<Uuid>> {
+        let limit = limit.clamp(1, MAX_SCHEDULED_PUBLISH_BATCH);
         let now = chrono::Utc::now();
 
-        // Find all draft posts with scheduled_at in the past
-        let posts = blog_post::Entity::find()
-            .filter(blog_post::Column::Status.eq("draft"))
+        let due = blog_post::Entity::find()
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
             .filter(blog_post::Column::ScheduledAt.is_not_null())
             .filter(blog_post::Column::ScheduledAt.lte(now))
+            .order_by_asc(blog_post::Column::ScheduledAt)
+            .order_by_asc(blog_post::Column::Id)
+            .limit(u64::from(limit))
             .all(&self.db)
             .await
             .map_err(BlogError::from)?;
 
         let mut published = Vec::new();
 
-        for post in posts {
+        for post in due {
             let txn = self.db.begin().await.map_err(BlogError::from)?;
 
-            // Use the same transition logic as manual publish
-            apply_status_transition_in_tx(
+            // Same transition logic as a manual publish: it carries the version CAS,
+            // so a post edited after the scan is skipped rather than overwritten.
+            match apply_status_transition_in_tx(
                 &txn,
                 post.tenant_id,
                 post.id,
                 post.version,
                 BlogPostStatus::Published,
-                Some(now),
+                Some(post.published_at.map(Into::into).unwrap_or(now)),
                 None,
             )
-            .await?;
+            .await
+            {
+                Ok(()) => {}
+                Err(BlogError::Conflict(_)) => {
+                    tracing::warn!(
+                        tenant_id = %post.tenant_id,
+                        post_id = %post.id,
+                        "Scheduled Blog post changed concurrently; leaving it for the next scheduler iteration"
+                    );
+                    drop(txn);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            }
 
-            // Publish the BlogPostPublished event
             self.event_bus
                 .publish_in_tx(
                     &txn,
                     post.tenant_id,
-                    None, // System actor
+                    None, // System actor: this command is operational, never user-facing.
                     DomainEvent::BlogPostPublished {
                         post_id: post.id,
                         author_id: Some(post.author_id),
@@ -860,7 +883,7 @@ impl PostService {
                 .map_err(BlogError::from)?;
 
             txn.commit().await.map_err(BlogError::from)?;
-            published.push((post.tenant_id, post.id));
+            published.push(post.id);
         }
 
         Ok(published)

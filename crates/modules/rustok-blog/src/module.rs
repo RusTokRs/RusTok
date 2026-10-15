@@ -89,6 +89,22 @@ impl RusToKModule for BlogModule {
                     "blog Taxonomy translation owner registration failed: {error}"
                 ))
             })?;
+        #[cfg(feature = "runtime")]
+        {
+            let registrations = extensions.get_or_insert_with::<
+                rustok_runtime::ModuleWorkRegistrations,
+                _,
+            >(Default::default);
+            registrations.register(std::sync::Arc::new(
+                crate::services::scheduler::BlogScheduledPublishWorkRegistration,
+            ));
+            registrations.register(std::sync::Arc::new(
+                crate::services::scheduler::BlogPreviewTokenCleanupWorkRegistration,
+            ));
+            registrations.register(std::sync::Arc::new(
+                crate::services::scheduler::BlogRouteReconciliationWorkRegistration,
+            ));
+        }
 
         Ok(())
     }
@@ -99,6 +115,13 @@ impl RusToKModule for BlogModule {
         ctx: &ModuleEventListenerContext<'_>,
     ) {
         registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));
+        // A post deleted outside the Blog delete path still must not leave a route
+        // that redirects to nothing.
+        registry.register(
+            crate::integrations::target_lifecycle::BlogTargetDeletionRouteHandler::new(
+                ctx.db.clone(),
+            ),
+        );
     }
 }
 

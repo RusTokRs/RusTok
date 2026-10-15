@@ -55,12 +55,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Featured/Pinned Posts** feature:
   - Migration `m20261009_000035_add_blog_post_pinned`: `is_pinned` boolean + `pinned_at` timestamp with composite index
   - Entity fields: `is_pinned: bool`, `pinned_at: Option<DateTimeWithTimeZone>`
-  - DTO: `is_pinned` in `CreatePostInput`/`UpdatePostInput`, `is_pinned`+`pinned_at` in `PostResponse`/`PostSummary`
-  - Service: `pin_post`, `unpin_post`, `set_pinned` methods with validation (only published posts can be pinned)
-  - Queries: public listing sorts by `is_pinned DESC, pinned_at DESC, published_at DESC, id DESC`
+  - DTO: `is_pinned`+`pinned_at` in `PostResponse`/`PostSummary`; pin state is deliberately **not**
+    an input field, so `CreatePostInput`/`UpdatePostInput` cannot bypass the published-only rule
+  - Service: `pin_post`/`unpin_post` commands, implemented by a private transactional, row-locked
+    `set_pinned` helper (only published posts can be pinned; a concurrently deleted post fails closed)
+  - Queries: public listing sorts by `is_pinned DESC, pinned_at DESC NULLS LAST, published_at DESC, id DESC`,
+    and `PublishedPostCursor` carries that whole sort key, so keyset pages neither skip nor repeat rows
+    once pinned posts exist (legacy `(published_at, id)` tokens are rejected, not resumed lossily)
   - GraphQL: `isPinned: Boolean!`, `pinnedAt: String`, `pinPost(id)`, `unpinPost(id)` mutations
   - REST: `POST /api/blog/posts/{id}/pin` and `POST /api/blog/posts/{id}/unpin` endpoints
-  - All test files updated with `is_pinned: None` field
+- Blog scheduled publishing is wired end to end: `PostService::publish_scheduled_posts` requires an
+  explicit `tenant_id` and a batch `limit` (clamped to 200), publishes oldest-due first, and skips a
+  concurrently edited post instead of aborting the batch. The Blog-owned
+  `blog_scheduled_publish` module-work registration (`src/services/scheduler.rs`) publishes the durable queue to
+  the host scheduler, which drains it in `full`/`worker` host mode; the module imports no local timer.
+
+#### Blog hardening (2026-10-15 engineering audit)
+- Preview tokens are bounded and draft-only: the TTL is validated against `1..=720` hours instead
+  of being stored as an already-expired or 30-day-plus token, and a token can only be minted for an
+  unpublished draft by the post author or a caller with post update permission.
+  `get_post_by_token` re-checks that the token's own tenant still has Blog enabled before it serves
+  the post, so a token minted before a tenant disabled the module stops working.
+- `PreviewTokenService::revoke_token` reports a missing or foreign token as
+  `PreviewTokenNotFound`/`PREVIEW_TOKEN_NOT_FOUND` instead of a missing post.
+- Preview token retention is tenant-scoped: `cleanup_expired(tenant_id, limit)` (limit clamped to
+  `MAX_PREVIEW_TOKEN_CLEANUP_BATCH` = 500) drains one tenant's expired tokens from the
+  `blog_preview_token_cleanup` module-work registration (`src/services/scheduler.rs`), and deleting a post
+  removes its tokens through the `fk_blog_preview_tokens_post` cascade.
+- Blog GraphQL rate limiting classifies every schema root: all 28 Blog root fields (8 queries, 20
+  mutations) map to a `BlogGraphqlSurface`, so a new root cannot silently leave the limiter's
+  surface table, and a write whose actor lacks the field's permission is not counted (RBAC stays
+  authoritative). `blog_schema_root_fields_are_fully_classified` fails when a root is unclassified.
+- Bulk post operations are bounded per request (`MAX_BULK_POST_IDS` = 100, mirrored by
+  `#[graphql(validator(max_items = 100))]`), and `BulkOperationResult::record_failure` reports each
+  failure through the redacted `BlogPublicError` boundary, so internal `Invariant`/`Database`
+  diagnostics no longer reach API consumers.
+- Blog consumes `TargetDeleted` for its own posts: `blog_target_deletion_routes`
+  (`src/integrations/target_lifecycle.rs`) removes the routes of a post deleted outside the Blog
+  delete path and reports them through `UrlAliasPurged`, idempotently on repeated delivery. A read
+  of a route whose target is gone now returns "not found" instead of resolving a stale redirect,
+  records the `dangling_route_redirect` module metric, and leaves the row to
+  `blog_route_reconciliation`, which sweeps stale routes in bounded, tenant-scoped batches.
 
 ### Added (continued)
 - Blog post slug redirects use the shared canonical URL registry of `rustok-content`

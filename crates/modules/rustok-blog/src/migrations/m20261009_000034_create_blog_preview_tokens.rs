@@ -44,6 +44,21 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // A preview token has no meaning without its post: deleting a post removes
+        // its tokens at the database level, in addition to the in-transaction delete
+        // in `PostService::delete_post`.
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name("fk_blog_preview_tokens_post")
+                    .from(BlogPreviewTokens::Table, BlogPreviewTokens::PostId)
+                    .to(BlogPosts::Table, BlogPosts::Id)
+                    .on_delete(ForeignKeyAction::Cascade)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+
         // Index for lookup by token (the unique key already covers this, but
         // an explicit index documents the hot path).
         manager
@@ -91,6 +106,14 @@ impl MigrationTrait for Migration {
             )
             .await
     }
+}
+
+#[derive(Iden)]
+enum BlogPosts {
+    #[iden = "blog_posts"]
+    Table,
+    #[iden = "id"]
+    Id,
 }
 
 #[derive(Iden)]

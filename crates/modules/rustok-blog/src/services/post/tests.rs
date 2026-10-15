@@ -246,7 +246,6 @@ async fn post_lifecycle_uses_blog_owned_tables() {
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await
@@ -305,7 +304,6 @@ async fn customer_cannot_create_or_read_draft_posts() {
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await
@@ -331,7 +329,6 @@ async fn customer_cannot_create_or_read_draft_posts() {
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await
@@ -393,7 +390,6 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
                 channel_slugs: Some(vec![" Web ".to_string(), "mobile".to_string()]),
                 metadata: Some(serde_json::json!({"custom": "value"})),
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await
@@ -429,7 +425,6 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
                 metadata: Some(serde_json::json!({"custom": "next"})),
                 version: created.version,
                 scheduled_at: Patch::Keep,
-                is_pinned: None,
             },
         )
         .await
@@ -486,7 +481,6 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
                     channel_slugs,
                     metadata: None,
                     scheduled_at: None,
-                    is_pinned: None,
                 },
             )
             .await
@@ -516,6 +510,99 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
     assert!(slugs.contains(&"web-visible".to_string()));
     assert!(slugs.contains(&"global".to_string()));
     assert!(!slugs.contains(&"mobile-only".to_string()));
+}
+
+#[tokio::test]
+async fn public_visible_keyset_keeps_pinned_post_via_cursor_rank() {
+    let db = setup_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let transport = OutboxTransport::new(db.clone());
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus);
+
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+    seed_channel(&db, tenant_id, "web").await;
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let mut created = Vec::new();
+    for index in 0..5 {
+        let post = post_service
+            .create_post(
+                tenant_id,
+                admin.clone(),
+                CreatePostInput {
+                    locale: "en".to_string(),
+                    title: format!("Paged {index}"),
+                    content: crate::richtext::article_document_from_plain_text("Body"),
+                    excerpt: None,
+                    slug: Some(format!("paged-{index}")),
+                    publish: true,
+                    tags: vec![],
+                    category_id: None,
+                    featured_image_url: None,
+                    seo_title: None,
+                    seo_description: None,
+                    channel_slugs: None,
+                    metadata: None,
+                    scheduled_at: None,
+                },
+            )
+            .await
+            .expect("post should be created");
+        created.push(post.id);
+    }
+
+    // The oldest post is pinned after publication. A cursor that only carried
+    // `(published_at, id)` could not describe this rank, so paging would either
+    // repeat or skip the remaining posts.
+    let pinned = created[0];
+    post_service
+        .pin_post(tenant_id, pinned, admin.clone())
+        .await
+        .expect("published post should be pinnable");
+
+    let mut seen: Vec<Uuid> = Vec::new();
+    let mut after: Option<PublishedPostCursor> = None;
+    let mut pages = 0;
+    loop {
+        pages += 1;
+        assert!(pages <= 5, "keyset pagination must terminate");
+        let page = post_service
+            .list_public_visible_keyset(
+                tenant_id,
+                PublicPostsPageQuery {
+                    locale: Some("en".to_string()),
+                    per_page: Some(2),
+                    after,
+                    ..Default::default()
+                },
+                Some("en"),
+                Some("web"),
+            )
+            .await
+            .expect("public keyset page should succeed");
+        seen.extend(page.items.iter().map(|item| item.id));
+
+        match page.next_cursor {
+            Some(cursor) => {
+                let decoded = PublishedPostCursor::decode(&cursor.encode())
+                    .expect("cursor must survive the client boundary");
+                assert_eq!(decoded, cursor);
+                after = Some(cursor);
+            }
+            None => break,
+        }
+    }
+
+    assert_eq!(seen.first(), Some(&pinned), "pinned post leads the first page");
+    assert_eq!(seen.len(), created.len(), "no post may be repeated");
+    let mut expected = created.clone();
+    expected.sort();
+    let mut actual = seen.clone();
+    actual.sort();
+    assert_eq!(actual, expected, "every published post must be reached once");
 }
 
 #[test]
