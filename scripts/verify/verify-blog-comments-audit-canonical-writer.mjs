@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -35,9 +36,9 @@ const outboxTransactional = read(outboxTransactionalPath);
 const outboxLib = read(outboxLibPath);
 const outboxApi = read(outboxApiPath);
 const outboxTest = read(outboxTestPath);
-const publication = read(publicationPath);
-const writer = read(writerPath);
-const runtime = read(runtimePath);
+const publication = readComposedRustSource(read, publicationPath);
+const writer = readComposedRustSource(read, writerPath);
+const runtime = readComposedRustSource(read, runtimePath);
 const plan = read(planPath);
 const evidence = JSON.parse(read(evidencePath));
 

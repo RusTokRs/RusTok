@@ -107,8 +107,9 @@ The continuation after the historical Blog cursor is:
   Taxonomy backfill, fail closed unless same-ID Taxonomy ownership is present,
   then drop `blog_category_translations` and `blog_translation_changes`;
 - CAT-12: remove the inert Translation bridge module and unregistered change
-  entity, while retaining only the crate-private donor translation entity
-  needed by the historical `000020` upgrade backfill;
+  entity. The historical `000020` upgrade backfill declares its own
+  migration-local donor translation entity, so no crate-private donor entity
+  remains on the Blog entity surface;
 - CAT-13: actualize the canonical Blog planning cursor and active Blog README
   surfaces, retire orphaned provider-era PostgreSQL evidence/verifier sources,
   and guard the post-cutover source boundary;

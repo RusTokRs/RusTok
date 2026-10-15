@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-listener-lifecycle.json';
@@ -26,7 +27,7 @@ function requireText(source, fragment, path) {
 
 const evidence = JSON.parse(read(evidencePath));
 const plan = read(planPath);
-const runtime = read(runtimePath);
+const runtime = readComposedRustSource(read, runtimePath);
 const bootstrap = read(bootstrapPath);
 const digest = read(digestPath);
 const auth = read(authPath);

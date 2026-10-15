@@ -61,27 +61,27 @@ function gitBlobSha(relativePath) {
 }
 
 requireCondition(
-  gitBlobSha(staticDelegationPath) === '3814155056a7670782a95723befac499625ccc67',
+  gitBlobSha(staticDelegationPath) === 'b4a74ea778ab72c132c1442db7e913333fcbbcda',
   'static Comments delegation owner drift',
 );
 requireCondition(
-  gitBlobSha(reloadDelegationPath) === 'dedcbb5d5099f595371b082848399b700fdf2622',
+  gitBlobSha(reloadDelegationPath) === 'f64d1c1043a150ae80a8f08c1010146c5d77d719',
   'slice-78 reloadable delegation owner drift',
 );
 requireCondition(
-  gitBlobSha(reloadTransportPath) === '1f8a79efcdca40ddefacec30d86f3a3c908a37c6',
+  gitBlobSha(reloadTransportPath) === 'b5a153dd2b4b006c079e27be2198e97cf908498e',
   'slice-78 reloadable transport drift',
 );
 requireCondition(
-  gitBlobSha(staticHostPath) === '394c2511a3daf29f1f8bac3424fb096f859535f1',
+  gitBlobSha(staticHostPath) === 'aaeb2c28ee31be601d4c1e17aff7a7f33ef2a4f1',
   'static host keyring owner drift',
 );
 requireCondition(
-  gitBlobSha(reloadHostPath) === 'e971783cc7b746b3fbde6e47281e31cac264258f',
+  gitBlobSha(reloadHostPath) === '45ad1cf7e4ae9fee3186b20f5646c3039db4382b',
   'ordinary reload host owner drift',
 );
 requireCondition(
-  gitBlobSha(reloadGuardPath) === '20c7af731847ac14a2fca1631d940308d7ea4a5f',
+  gitBlobSha(reloadGuardPath) === 'cb58eb8901bdb70fdf75d22b16dc03dc96df7694',
   'ordinary reload authority guard drift',
 );
 
@@ -154,8 +154,10 @@ hasNone(
 hasAll(
   runtime,
   [
-    'include!("comments_provider_runtime_keyring_schedule.rs");',
-    'include!("comments_provider_runtime_keyring_schedule_guard.rs");',
+    '#[path = "comments_provider_runtime_keyring_schedule.rs"]',
+    'mod keyring_schedule;',
+    '#[path = "comments_provider_runtime_keyring_schedule_guard.rs"]',
+    'mod keyring_schedule_guard;',
     'COMMENTS_TCP_DELEGATION_SCHEDULE_ENABLED_ENV',
     'SharedCommentsTcpDelegationScheduleHandle',
     'keyring_schedule_guard::register_comments_provider_runtime(extensions)',

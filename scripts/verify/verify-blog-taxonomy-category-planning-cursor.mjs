@@ -30,7 +30,6 @@ for (const path of [
   'crates/modules/rustok-blog/docs/implementation-plan-slice-98.md',
   'crates/modules/rustok-blog/src/migrations/m20260824_000020_backfill_blog_categories_to_taxonomy.rs',
   'crates/modules/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs',
-  'crates/modules/rustok-blog/src/entities/blog_category_translation.rs',
   'crates/modules/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs',
 ]) {
   requireFile(path);
@@ -56,8 +55,8 @@ if (failures.length === 0) {
 
   requireMarker(
     cursor,
-    'canonical_reference_v1_hardening_in_progress_after_taxonomy_cat_17',
-    'post-CAT-17 canonical reference cursor status',
+    'canonical_reference_v1_source_certified_execution_evidence_pending',
+    'current canonical reference cursor status',
   );
   requireMarker(cursor, 'blog_category_taxonomy_cutover = source_complete_through_cat12');
   requireMarker(
@@ -117,12 +116,7 @@ if (failures.length === 0) {
     'retired Blog owner journal contract',
   );
 
-  requireMarker(
-    entities,
-    'pub(crate) mod blog_category_translation;',
-    'crate-private historical donor entity',
-  );
-  rejectMarker(entities, 'pub mod blog_category_translation;', 'public donor entity exposure');
+  rejectMarker(entities, 'blog_category_translation', 'retired donor entity exposure');
   rejectMarker(entities, 'translation_change', 'retired change entity registration');
 }
 

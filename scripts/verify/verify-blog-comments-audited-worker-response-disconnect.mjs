@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -22,8 +23,8 @@ const planPath =
 const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-audited-worker-response-disconnect.json';
 
-const source = read(sourcePath);
-const productionStore = read(storePath);
+const source = readComposedRustSource(read, sourcePath);
+const productionStore = readComposedRustSource(read, storePath);
 const plan = read(planPath);
 const evidence = JSON.parse(read(evidencePath));
 
@@ -51,11 +52,11 @@ function gitBlobSha(relativePath) {
 const preserved = {
   [storePath]: '8a27f5ec3938f2b4efe16c6acafb93cb3faadcf6',
   'apps/server/Cargo.toml':
-    '5037a166d35e32be327941f6ba480546d1cef0bb',
+    'e80ef5a046f33d493848e695164fa5954ec27d4d',
   'apps/server/tests/blog_comments_schedule_audit_postgres.rs':
-    '4ebe3a285495a8cbeb69729a9ca7f3452456785d',
+    '7b726fe69de5d678021bb376ea4ca9a0cb2b89e6',
   'crates/modules/rustok-blog/docs/implementation-plan-slice-85.md':
-    'f8a3ad0216ae534e9e913e966fe0141adba22c94',
+    'f584014c2693cd43ce42eca4b93b1a54eae3f986',
 };
 
 for (const [relativePath, expectedSha] of Object.entries(preserved)) {

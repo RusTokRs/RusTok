@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (relativePath) => readFileSync(path.join(root, relativePath), 'utf8');
@@ -33,8 +34,8 @@ const serverManifestPath = 'apps/server/Cargo.toml';
 const blogManifestPath = 'crates/modules/rustok-blog/Cargo.toml';
 const lockPath = 'Cargo.lock';
 
-const runtime = read(runtimePath);
-const adapter = read(adapterPath);
+const runtime = readComposedRustSource(read, runtimePath);
+const adapter = readComposedRustSource(read, adapterPath);
 const migrationMod = read(migrationModPath);
 const migration = read(migrationPath);
 const plan = read(planPath);
@@ -88,7 +89,8 @@ for (const [relativePath, expected] of Object.entries(preserved)) {
 hasAll(
   runtime,
   [
-    'include!("comments_provider_runtime_keyring_schedule_persistence_postgres.rs");',
+    '#[path = "comments_provider_runtime_keyring_schedule_persistence_postgres.rs"]',
+    'mod keyring_schedule_persistence_postgres;',
     'COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY',
     'COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_TABLE',
     'PostgresCommentsTcpDelegationSchedulePersistenceStore',

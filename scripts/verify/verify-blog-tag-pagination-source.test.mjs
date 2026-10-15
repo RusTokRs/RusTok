@@ -14,6 +14,7 @@ const files = [
   'crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
   'crates/modules/rustok-blog/src/services/tag.rs',
   'crates/modules/rustok-blog/src/dto/tag.rs',
+  'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
   'crates/modules/rustok-blog/docs/implementation-plan-slice-102.md',
   'crates/modules/rustok-blog/docs/implementation-plan-current.md',
 ];
@@ -85,17 +86,17 @@ test('rejects removal of the owner page-size clamp', () => {
   assert.match(result.stderr, /bounded_tag_page_size|forbidden/);
 });
 
-test('rejects unsafe multiplication in the page offset', () => {
+test('rejects unsaturating last-page arithmetic', () => {
   const result = rejects((root) => {
     replace(
       root,
       'crates/modules/rustok-blog/src/services/tag.rs',
-      'let offset = tag_page_offset(page, per_page);',
-      'let offset = ((page - 1) * per_page) as usize;',
+      'let last_page = total.saturating_add(per_page.saturating_sub(1)) / per_page;',
+      'let last_page = (total + per_page - 1) / per_page;',
     );
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /tag_page_offset|forbidden/);
+  assert.match(result.stderr, /saturating|last_page/);
 });
 
 test('rejects removal of the published DTO maximum', () => {
@@ -122,13 +123,13 @@ test('rejects runtime promotion without execution', () => {
   assert.match(result.stderr, /identity\/status drift/);
 });
 
-test('rejects claiming database-side pagination', () => {
+test('rejects dropping the database-side pagination claim', () => {
   const result = rejects((root) => {
     const relativePath = 'crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json';
     const value = JSON.parse(readFileSync(target(root, relativePath), 'utf8'));
-    value.source_contract.database_side_pagination_claimed = true;
+    value.source_contract.database_side_pagination_claimed = false;
     write(root, relativePath, `${JSON.stringify(value, null, 2)}\n`);
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /source contract drift/);
+  assert.match(result.stderr, /database_side_pagination_claimed drift/);
 });

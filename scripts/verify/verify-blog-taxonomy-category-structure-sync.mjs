@@ -12,12 +12,13 @@ const rejectMarker = (source, marker, label = marker) => {
 };
 
 const commandPath = 'crates/modules/rustok-blog/src/services/category_command.rs';
+const createPath = 'crates/modules/rustok-blog/src/services/category.rs';
 const syncPath = 'crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs';
 const libPath = 'crates/modules/rustok-blog/src/lib.rs';
 const evidencePath = 'crates/modules/rustok-blog/src/translation_evidence.rs';
 const runtimePath = 'crates/modules/rustok-blog/tests/category_taxonomy_structure_sync.rs';
 
-for (const path of [commandPath, syncPath, libPath, runtimePath]) {
+for (const path of [commandPath, createPath, syncPath, libPath, runtimePath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 if (fs.existsSync(evidencePath)) {
@@ -26,19 +27,21 @@ if (fs.existsSync(evidencePath)) {
 
 if (failures.length === 0) {
   const command = read(commandPath);
+  const create = read(createPath);
   const sync = read(syncPath);
   const lib = read(libPath);
   const runtime = read(runtimePath);
 
-  requireMarker(command, 'touched.iter().copied().collect::<Vec<_>>()', 'bounded touched placement set');
-  requireMarker(command, 'sync_category_structures_in_tx(&txn, tenant_id, &taxonomy_structure_ids).await?;', 'transactional move/reorder Taxonomy hook');
+  requireMarker(command, 'touched.insert(category_id);', 'bounded touched placement set');
+  requireMarker(command, 'reorder_module_category_siblings_in_tx(', 'transactional move/reorder Taxonomy hook');
+  requireMarker(command, '.limit(MAX_BLOG_CATEGORY_TREE_NODES + 1)', 'bounded sibling read');
   requireMarker(command, 'txn.commit().await?;', 'Blog move transaction commit');
 
-  requireMarker(sync, 'sync_module_category_structure_with_owned_copy_in_tx', 'Taxonomy-owned structure replay');
-  requireMarker(sync, 'sync_siblings_for_parent_in_tx(txn, tenant_id, category.parent_id).await', 'create sibling compaction sync');
-  requireMarker(sync, '.limit(MAX_BLOG_CATEGORY_TREE_NODES + 1)', 'bounded sibling synchronization');
-  requireMarker(sync, 'parent_id: category.parent_id', 'Blog placement donor parent');
-  requireMarker(sync, 'position: category.position', 'Blog placement donor position');
+  requireMarker(sync, 'sync_module_category_with_owned_aliases_in_tx', 'Taxonomy-owned structure replay');
+  requireMarker(create, 'canonicalize_siblings_for_insert_in_tx(&txn, tenant_id, id, parent_id, requested_position)', 'create sibling compaction sync');
+  requireMarker(create, 'sync_category_copy_in_tx(', 'create placement donor sync');
+  requireMarker(sync, 'parent_id,', 'Blog placement donor parent');
+  requireMarker(sync, 'position,', 'Blog placement donor position');
   rejectMarker(sync, 'category.settings', 'Blog-owned settings copied into Taxonomy');
   rejectMarker(sync, 'post_count', 'Blog-owned counters copied into Taxonomy');
 

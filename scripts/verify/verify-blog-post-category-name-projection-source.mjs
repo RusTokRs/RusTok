@@ -64,9 +64,9 @@ if (evidence) {
   for (const [key, expected] of Object.entries({
     category_identity_source: 'blog_posts.category_id',
     category_name_source: 'taxonomy_owner_category.name',
-    typed_binding_source: 'blog_category_taxonomy_bindings',
+    category_identity_path: 'blog_posts.category_id -> taxonomy_owner_category.id',
     taxonomy_scope: 'module/blog',
-    tenant_bound_binding_query: true,
+    tenant_bound_category_read: true,
     detail_projection_present: true,
     authenticated_list_projection_present: true,
     public_list_projection_present: true,
@@ -77,7 +77,7 @@ if (evidence) {
     tenant_fallback_precedence: true,
     platform_fallback_precedence: true,
     first_available_fallback_retained: true,
-    incomplete_binding_or_projection_fails_closed: true,
+    incomplete_projection_fails_closed: true,
     legacy_category_translation_read_removed: true,
     category_translation_write_semantics_changed: false,
     category_translation_readiness_promoted: false,
@@ -126,17 +126,17 @@ forbid(postService, 'category_name: None', files.postService);
 forbid(postService, 'CategoryService::new(self.db.clone()', files.postService);
 
 for (const marker of [
-  'blog_category_taxonomy_binding',
   'TaxonomyOwnerCategoryReader',
+  'load_scoped_categories_strict',
   'TaxonomyScopeType::Module',
   'const BLOG_TAXONOMY_SCOPE: &str = "blog";',
-  'BlogCategoryId.is_in(category_ids.clone())',
-  'bindings.len() != category_ids.len()',
-  'binding_by_blog.len() != category_ids.len()',
-  'blog_by_taxonomy.len() != category_ids.len()',
-  'Some(&taxonomy_ids)',
-  'fallback_locale,',
+  'Some(&category_ids)',
+  'coverage is incomplete',
   'canonical.len() != category_ids.len()',
+  'canonical_by_id.len() != category_ids.len()',
+  'available_locales.is_empty()',
+  'projection is missing',
+  'fallback_locale,',
   'canonical.name.clone()',
 ]) need(categoryProjection, marker, files.categoryProjection);
 forbid(categoryProjection, 'blog_category_translation', files.categoryProjection);
@@ -146,9 +146,9 @@ for (const marker of [
   'post_category_name_projects_across_detail_and_list_paths',
   'CreateCategoryInput',
   'name: "Nachrichten".to_string()',
-  'blog_category_translation::Entity::delete_many()',
-  'blog_category_translation::Column::TenantId.eq(tenant_id)',
-  'blog_category_translation::Column::CategoryId.eq(category_id)',
+  'has_table("blog_category_translations")',
+  'post Category projection contract must run after donor storage retirement',
+  'Taxonomy category name through fallback',
   'get_post_with_locale_fallback(',
   'Some("de")',
   'list_posts_with_locale_fallback(',
@@ -164,4 +164,4 @@ if (failures.length) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log('[verify-blog-post-category-name-projection-source] PASS owner=taxonomy binding=typed detail=list=public batch=true execution=not-run');
+console.log('[verify-blog-post-category-name-projection-source] PASS owner=taxonomy identity=same-id detail=list=public batch=true execution=not-run');

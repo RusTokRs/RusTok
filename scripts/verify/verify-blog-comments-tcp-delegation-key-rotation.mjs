@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-key-rotation.json';
@@ -66,7 +67,7 @@ const exports = read(exportPath);
 const delegation = read(delegationPath);
 const transport = read(transportPath);
 const server = read(serverPath);
-const runtime = read(runtimePath);
+const runtime = readComposedRustSource(read, runtimePath);
 
 requireCondition(evidence.schema_version === 1, 'evidence schema drift');
 requireCondition(

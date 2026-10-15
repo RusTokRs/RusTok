@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (relativePath) => readFileSync(path.join(root, relativePath), 'utf8');
@@ -29,12 +30,12 @@ const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-81.m
 const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-persistence.json';
 
-const runtime = read(runtimePath);
-const scheduleFacade = read(scheduleFacadePath);
-const scheduleBridge = read(scheduleBridgePath);
-const triggerGuard = read(triggerGuardPath);
-const persistence = read(persistencePath);
-const persistedTrigger = read(persistedTriggerPath);
+const runtime = readComposedRustSource(read, runtimePath);
+const scheduleFacade = readComposedRustSource(read, scheduleFacadePath);
+const scheduleBridge = readComposedRustSource(read, scheduleBridgePath);
+const triggerGuard = readComposedRustSource(read, triggerGuardPath);
+const persistence = readComposedRustSource(read, persistencePath);
+const persistedTrigger = readComposedRustSource(read, persistedTriggerPath);
 const plan = read(planPath);
 const evidence = JSON.parse(read(evidencePath));
 
@@ -65,27 +66,29 @@ function gitBlobSha(relativePath) {
 }
 
 requireCondition(
-  gitBlobSha(scheduleBasePath) === '7d0c48df3dcea5a77bebe99dcdd4f02292f7ef47',
+  gitBlobSha(scheduleBasePath) === 'ffcb6586e3dc3f1b2d6f21f4d1ab405fb5657fcd',
   'slice-79 host schedule base drift',
 );
 requireCondition(
-  gitBlobSha(scheduleGuardPath) === 'af2d688d43286a8118823c31408dd5dc7e3f6202',
+  gitBlobSha(scheduleGuardPath) === '4a65f209a7fc23d769160166b3b8bbe462916115',
   'slice-79 schedule guard drift',
 );
 requireCondition(
-  gitBlobSha(triggerPath) === 'f44f386c36ac81d51da89ee5568ffd9af083cda0',
+  gitBlobSha(triggerPath) === 'f805a7c0c733f4a17ed79c4d019f32b90a7e606d',
   'slice-80 process-local trigger drift',
 );
 requireCondition(
-  gitBlobSha(commentsSchedulePath) === '7701953d2892e1b68b4830135639d841ebdd6ed1',
+  gitBlobSha(commentsSchedulePath) === '2cd2a8c2bba97bff61ea5a37fd21405c2c482717',
   'Comments lifecycle schedule owner drift',
 );
 
 hasAll(
   scheduleFacade,
   [
-    'include!("comments_provider_runtime_keyring_schedule_base.rs");',
-    'include!("comments_provider_runtime_keyring_schedule_persistence_bridge.rs");',
+    '#[path = "comments_provider_runtime_keyring_schedule_base.rs"]',
+    'mod historical;',
+    '#[path = "comments_provider_runtime_keyring_schedule_persistence_bridge.rs"]',
+    'mod bridge;',
     'pub struct SharedCommentsTcpDelegationScheduleHandle(',
     'pub(super) fn from_prepared_file(',
     'pub(super) fn replace_prepared_with_commit',
@@ -273,8 +276,10 @@ hasAll(
 hasAll(
   runtime,
   [
-    'include!("comments_provider_runtime_keyring_schedule_persistence.rs");',
-    'include!("comments_provider_runtime_keyring_schedule_persisted_trigger.rs");',
+    '#[path = "comments_provider_runtime_keyring_schedule_persistence.rs"]',
+    'mod keyring_schedule_persistence;',
+    '#[path = "comments_provider_runtime_keyring_schedule_persisted_trigger.rs"]',
+    'mod keyring_schedule_persisted_trigger;',
     'CommentsTcpDelegationSchedulePersistenceStore',
     'CommentsTcpDelegationSchedulePersistenceRecord',
     'CommentsTcpDelegationSchedulePersistenceDocument',

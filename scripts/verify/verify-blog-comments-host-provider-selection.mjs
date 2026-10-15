@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-host-provider-selection.json';
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-70.md';
@@ -47,7 +48,7 @@ for (const path of [
 
 const evidence = JSON.parse(read(evidencePath));
 const plan = read(planPath);
-const selector = read(selectorPath);
+const selector = readComposedRustSource(read, selectorPath);
 const services = read(servicesPath);
 const distribution = read(distributionPath);
 const graphqlConsumer = read(graphqlConsumerPath);

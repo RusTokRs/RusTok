@@ -91,8 +91,8 @@ The current boundary is:
 - Blog Category delete delegates canonical lifecycle cleanup to Taxonomy;
 - `blog_categories` remains Blog-owned for module membership, settings, owner
   revision and local command invariants;
-- historical migration `000020` may use the crate-private donor translation
-  entity during upgrade, after which `000021` irreversibly removes
+- historical migration `000020` may read the donor translation table through a
+  migration-local entity during upgrade, after which `000021` irreversibly removes
   `blog_category_translations` and `blog_translation_changes` once same-ID
   Taxonomy ownership is proven.
 

@@ -36,28 +36,28 @@ function gitBlobSha(relativePath) {
 
 const preserved = {
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_base.rs':
-    '7d0c48df3dcea5a77bebe99dcdd4f02292f7ef47',
+    'ffcb6586e3dc3f1b2d6f21f4d1ab405fb5657fcd',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_guard.rs':
-    'af2d688d43286a8118823c31408dd5dc7e3f6202',
+    '4a65f209a7fc23d769160166b3b8bbe462916115',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_trigger.rs':
-    'f44f386c36ac81d51da89ee5568ffd9af083cda0',
+    'f805a7c0c733f4a17ed79c4d019f32b90a7e606d',
   'crates/modules/rustok-comments/src/tcp_delegation_schedule.rs':
-    '7701953d2892e1b68b4830135639d841ebdd6ed1',
+    '2cd2a8c2bba97bff61ea5a37fd21405c2c482717',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence.rs':
-    '85df8deb3203ff90be55a8fe114294ce3a1f3749',
+    '5834d1021dfad4fed23e8ade98aff816f004e865',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persisted_trigger.rs':
-    'f3b37405f06e3cc4bd077cf8bd49f92d9e2cbe7a',
+    '17a3be2732cd7fbd48981ff417265055ce86e4b2',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_bridge.rs':
-    'a90bdd8e4787532bd39c1739dfef8b6a18eaa981',
+    '9ec8190ff19ad1603e60a5d60c566bb8f417ef6c',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_postgres.rs':
-    '0a6399cbf0a2dcbd5390475111e25a88a8d03361',
+    '8f3a5d8b988ad278ebbe33d00f7c663448f6f62f',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs':
-    '8a27f5ec3938f2b4efe16c6acafb93cb3faadcf6',
+    '4094539df6158d0a899e641322ae84bdbb6a129f',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_postgres_audited_trigger.rs':
-    'acb6c37a2f2c841dc5bffaf4cca74a97342731ae',
+    '8660fd1b96997bcdbaf52718847ce7c8b7eeb7e0',
   'crates/modules/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs':
-    '305f4f80abcdd6da62d11f8c21eb8ab5101bd002',
-  'apps/server/Cargo.toml': 'd6a77ff30fd67c3d4fee16afbadc584c2bcce9e7',
+    '2f6473d7889a242ef86621b8615834e8bffe1013',
+  'apps/server/Cargo.toml': 'e80ef5a046f33d493848e695164fa5954ec27d4d',
 };
 for (const [relativePath, expectedSha] of Object.entries(preserved)) {
   requireCondition(

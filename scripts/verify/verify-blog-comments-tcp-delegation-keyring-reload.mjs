@@ -58,15 +58,15 @@ function gitBlobSha(relativePath) {
 }
 
 requireCondition(
-  gitBlobSha(staticDelegationPath) === '3814155056a7670782a95723befac499625ccc67',
+  gitBlobSha(staticDelegationPath) === 'b4a74ea778ab72c132c1442db7e913333fcbbcda',
   'static Comments delegation owner drift',
 );
 requireCondition(
-  gitBlobSha(staticTransportPath) === '1b23a02eebe2f420901ed4290e34b436e0a51333',
+  gitBlobSha(staticTransportPath) === '3efa871ddda34eef5365789288facb21ab1595d5',
   'static Comments transport drift',
 );
 requireCondition(
-  gitBlobSha(staticHostPath) === '394c2511a3daf29f1f8bac3424fb096f859535f1',
+  gitBlobSha(staticHostPath) === 'aaeb2c28ee31be601d4c1e17aff7a7f33ef2a4f1',
   'static host keyring owner drift',
 );
 
@@ -143,8 +143,10 @@ hasAll(
 hasAll(
   runtime,
   [
-    'include!("comments_provider_runtime_keyring.rs");',
-    'include!("comments_provider_runtime_keyring_reload.rs");',
+    '#[path = "comments_provider_runtime_keyring.rs"]',
+    'mod keyring;',
+    '#[path = "comments_provider_runtime_keyring_reload.rs"]',
+    'mod keyring_reload;',
     'COMMENTS_TCP_DELEGATION_RELOAD_ENABLED_ENV',
     'SharedCommentsTcpDelegationKeyringReloadHandle',
     'keyring_reload::register_comments_provider_runtime(extensions)',

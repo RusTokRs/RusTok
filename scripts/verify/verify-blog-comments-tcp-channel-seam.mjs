@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-channel-seam.json';
@@ -77,7 +78,7 @@ const transport = read(transportPath);
 const server = read(serverPath);
 const auth = read(authPath);
 const delegation = read(delegationPath);
-const runtime = read(runtimePath);
+const runtime = readComposedRustSource(read, runtimePath);
 
 requireCondition(evidence.schema_version === 1, 'evidence schema drift');
 requireCondition(
