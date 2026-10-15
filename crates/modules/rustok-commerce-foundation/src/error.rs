@@ -155,6 +155,45 @@ impl From<CommerceError> for RichError {
     }
 }
 
+impl From<CommerceError> for CoreError {
+    fn from(err: CommerceError) -> Self {
+        match err {
+            CommerceError::Database(db_err) => CoreError::Database(db_err),
+            CommerceError::ProductNotFound(id) => CoreError::NotFound(format!("Product {id} not found")),
+            CommerceError::VariantNotFound(id) => CoreError::NotFound(format!("Variant {id} not found")),
+            CommerceError::DuplicateHandle { handle, locale } => {
+                CoreError::Validation(format!("Handle '{handle}' already exists for locale '{locale}'"))
+            }
+            CommerceError::DuplicateSku(sku) => CoreError::Validation(format!("SKU '{sku}' already exists")),
+            CommerceError::InvalidPrice(msg) => CoreError::Validation(msg),
+            CommerceError::InsufficientInventory {
+                requested,
+                available,
+            } => CoreError::Validation(format!(
+                "Insufficient inventory: requested {requested}, available {available}"
+            )),
+            CommerceError::InvalidOptionCombination => {
+                CoreError::Validation("Invalid option combination".to_string())
+            }
+            CommerceError::Validation(msg) => CoreError::Validation(msg),
+            CommerceError::ShippingProfileNotFound(id) => {
+                CoreError::NotFound(format!("Shipping profile {id} not found"))
+            }
+            CommerceError::DuplicateShippingProfileSlug(slug) => {
+                CoreError::Validation(format!("Shipping profile slug '{slug}' already exists"))
+            }
+            CommerceError::NoVariants => {
+                CoreError::Validation("Product must have at least one variant".to_string())
+            }
+            CommerceError::CannotDeletePublished => {
+                CoreError::Forbidden("Cannot delete published product".to_string())
+            }
+            CommerceError::Rich(rich) => CoreError::Internal(rich.to_string()),
+            CommerceError::Core(core) => core,
+        }
+    }
+}
+
 /// Helper functions for creating common commerce errors
 impl CommerceError {
     /// Create a product not found error
@@ -227,5 +266,30 @@ mod tests {
         assert_eq!(rich.kind, ErrorKind::BusinessLogic);
         assert_eq!(rich.fields.get("requested"), Some(&"10".to_string()));
         assert_eq!(rich.fields.get("available"), Some(&"5".to_string()));
+    }
+
+    #[test]
+    fn test_commerce_error_to_core_error_conversion() {
+        let id = Uuid::new_v4();
+        let err = CommerceError::product_not_found(id);
+        let core: CoreError = err.into();
+        match core {
+            CoreError::NotFound(msg) => assert!(msg.contains(&id.to_string())),
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+
+        let val_err = CommerceError::validation("invalid input");
+        let core_val: CoreError = val_err.into();
+        match core_val {
+            CoreError::Validation(msg) => assert_eq!(msg, "invalid input"),
+            other => panic!("expected Validation, got {other:?}"),
+        }
+
+        let pub_err = CommerceError::CannotDeletePublished;
+        let core_pub: CoreError = pub_err.into();
+        match core_pub {
+            CoreError::Forbidden(_) => (),
+            other => panic!("expected Forbidden, got {other:?}"),
+        }
     }
 }

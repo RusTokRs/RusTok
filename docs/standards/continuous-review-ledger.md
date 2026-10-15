@@ -137,6 +137,40 @@ The single canonical trigger to continue this audit sequence is:
 
 ---
 
+### Active Phase: FS-03 — Commerce & Business Domain Modules Queue
+
+#### 1. rustok-commerce-foundation
+- [x] **FS-03.01 — `crates/modules/rustok-commerce-foundation`** — shared error taxonomy, DTOs, search contracts. (Done: implemented From<CommerceError> for CoreError with mapping to NotFound, Validation, and Forbidden; added validate_invariants on PriceInput and AdjustInventoryInput guarding against negative prices and nil UUIDs; trimmed search patterns in product_translation_title_search_condition avoiding redundant full EXISTS subqueries on empty/whitespace searches; added 5 unit tests; verified all 8 tests pass and gatekeeper approval).
+
+#### 2. rustok-commerce core domain
+- [ ] **FS-03.02 — `crates/modules/rustok-commerce/src/services/checkout.rs` & `checkout_operation.rs`** — checkout pipeline, atomic state transitions, idempotent execution.
+- [ ] **FS-03.03 — `crates/modules/rustok-commerce/src/services/checkout_stage_pipeline*.rs` & `checkout_plan_builder.rs`** — stage execution, owner ports, plan building.
+- [ ] **FS-03.04 — `crates/modules/rustok-commerce/src/services/checkout_inventory_*.rs` & `checkout_payment_*.rs`** — inventory reservation journal/adoption, payment stages.
+- [ ] **FS-03.05 — `crates/modules/rustok-commerce/src/services/checkout_compensation*.rs`** — multi-stage compensation, failure sweeps, error-safe rollback.
+- [ ] **FS-03.06 — `crates/modules/rustok-commerce/src/services/marketplace_*.rs`** — marketplace economics, allocations, financial reconciliation, reversal inboxes.
+- [ ] **FS-03.07 — `crates/modules/rustok-commerce/src/services/fulfillment_*.rs` & `return_*.rs`** — fulfillment orchestration, label recovery, returns lifecycle.
+- [ ] **FS-03.08 — `crates/modules/rustok-commerce/src/controllers/*` & `graphql*`** — commerce REST/GraphQL transport adapters, input validation, permissions.
+
+#### 3. rustok-cart
+- [ ] **FS-03.09 — `crates/modules/rustok-cart`** — cart lifecycle, item mutation validation, pricing integration, currency/tenant scoping.
+
+#### 4. rustok-order
+- [ ] **FS-03.10 — `crates/modules/rustok-order`** — order state machine, transitions, items validation, event outbox emission.
+
+#### 5. rustok-payment
+- [ ] **FS-03.11 — `crates/modules/rustok-payment`** — payment providers, transaction lifecycle, idempotency receipts, webhook verification.
+
+#### 6. rustok-pricing
+- [ ] **FS-03.12 — `crates/modules/rustok-pricing` & `rustok-pricing-persistence`** — price resolution rules, currency arithmetic, discount evaluation.
+
+#### 7. rustok-inventory
+- [ ] **FS-03.13 — `crates/modules/rustok-inventory`** — stock allocation, reservation leases, concurrency guards, backorder policies.
+
+#### 8. rustok-fulfillment
+- [ ] **FS-03.14 — `crates/modules/rustok-fulfillment` & `rustok-distribution`** — shipping carriers, tracking, package manifests, split fulfillment.
+
+---
+
 ## Continuous Code Review & Remediation Ledger (ACRE)
 
 Tracking persistent progress across cyclical review rounds for all modules in RusToK.
@@ -144,7 +178,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-10-13T20:15:00Z`
-- **Progress:** `5 / 254` components audited (**2.0%**)
+- **Progress:** `6 / 254` components audited (**2.4%**)
 - **Total Workspace Codebase:** ~350,000 LOC across 254 modules/apps
 
 ---
@@ -225,7 +259,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 8 | 1,382 | None |  |
 | [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 297 | 129,394 | None |  |
-| [ ] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 19 | 929 | None |  |
+| [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 19 | 929 | 2026-10-15 | Completed audit track FS-03.01 (error taxonomy, DTO invariant validation, search condition trimming) |
 | [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 21 | 5,889 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 16 | 2,022 | None |  |
 | [ ] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 45 | 5,878 | None |  |

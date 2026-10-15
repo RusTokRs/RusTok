@@ -5,7 +5,11 @@ pub fn product_translation_title_search_condition(
     _locale: &str,
     search: &str,
 ) -> Condition {
-    let pattern = format!("%{search}%");
+    let trimmed = search.trim();
+    if trimmed.is_empty() {
+        return Condition::all();
+    }
+    let pattern = format!("%{trimmed}%");
 
     let exists_sql = match backend {
         DbBackend::Sqlite => {
@@ -30,4 +34,25 @@ pub fn product_translation_title_search_condition(
         exists_sql,
         vec![Value::from(pattern)],
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_search_condition_empty_or_whitespace_returns_empty_condition() {
+        let cond_empty = product_translation_title_search_condition(DbBackend::Postgres, "en", "");
+        let cond_whitespace =
+            product_translation_title_search_condition(DbBackend::Sqlite, "en", "   ");
+
+        assert!(cond_empty.is_empty());
+        assert!(cond_whitespace.is_empty());
+    }
+
+    #[test]
+    fn test_search_condition_trimmed_query() {
+        let cond = product_translation_title_search_condition(DbBackend::Postgres, "en", "  shoe  ");
+        assert!(!cond.is_empty());
+    }
 }
