@@ -393,6 +393,45 @@ pub struct PublicPostsFilter {
     pub per_page: Option<u64>,
 }
 
+/// Sort column of the authenticated Blog post list. Mirrors `PostSortField`, so the
+/// GraphQL surface cannot offer a column the owner query does not index.
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[graphql(name = "BlogPostSortField", rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlPostSortField {
+    PublishedAt,
+    UpdatedAt,
+    #[default]
+    CreatedAt,
+}
+
+impl From<GqlPostSortField> for crate::PostSortField {
+    fn from(field: GqlPostSortField) -> Self {
+        match field {
+            GqlPostSortField::PublishedAt => Self::PublishedAt,
+            GqlPostSortField::UpdatedAt => Self::UpdatedAt,
+            GqlPostSortField::CreatedAt => Self::CreatedAt,
+        }
+    }
+}
+
+/// Sort direction of the authenticated Blog post list.
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[graphql(name = "BlogPostSortOrder", rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlPostSortOrder {
+    Asc,
+    #[default]
+    Desc,
+}
+
+impl From<GqlPostSortOrder> for crate::PostSortOrder {
+    fn from(order: GqlPostSortOrder) -> Self {
+        match order {
+            GqlPostSortOrder::Asc => Self::Asc,
+            GqlPostSortOrder::Desc => Self::Desc,
+        }
+    }
+}
+
 #[derive(InputObject)]
 pub struct PostsFilter {
     pub status: Option<GqlContentStatus>,
@@ -401,8 +440,14 @@ pub struct PostsFilter {
     pub author_id: Option<Uuid>,
     pub locale: Option<String>,
     /// Opaque cursor: `nextCursor` of the previous page. Absent for the first page.
+    /// A cursor is bound to the sort it was issued for; a mismatching sort is
+    /// rejected instead of resumed with a wrong position.
     pub after: Option<String>,
     pub per_page: Option<u64>,
+    /// Column of the keyset order. Defaults to `CREATED_AT`.
+    pub sort_by: Option<GqlPostSortField>,
+    /// Direction of the keyset order. Defaults to `DESC`.
+    pub sort_order: Option<GqlPostSortOrder>,
 }
 
 impl From<PostResponse> for GqlPost {

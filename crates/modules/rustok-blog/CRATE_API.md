@@ -140,7 +140,10 @@ input validation.
 
 `PostListQuery` is an owner list/filter API, not full-text search. Sort fields
 and order are typed through `PostSortField` / `PostSortOrder`, and owner
-queries use a stable post-id tie-breaker.
+queries use a stable post-id tie-breaker. The authenticated GraphQL list exposes
+the same choice as `BlogPostSortField` / `BlogPostSortOrder` on `PostsFilter`;
+its keyset cursor is bound to the sort it was issued for, so a cursor replayed
+with another sort is rejected instead of resuming at a wrong position.
 
 Full-text search remains the Search capability's responsibility.
 

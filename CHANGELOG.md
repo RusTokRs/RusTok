@@ -97,6 +97,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   records the `dangling_route_redirect` module metric, and leaves the row to
   `blog_route_reconciliation`, which sweeps stale routes in bounded, tenant-scoped batches.
 
+- The authenticated Blog GraphQL post list exposes `sortBy`/`sortOrder`
+  (`BlogPostSortField`/`BlogPostSortOrder`) instead of ignoring the owner sort keys: each
+  sort column reads its own keyset index, a cursor is rejected when it is replayed with a
+  different sort, and the defaults stay `CREATED_AT DESC`.
+- Blog input validation no longer runs inside a transaction: `create_post` and
+  `update_post` validate the post fields and the schedule before `db.begin()`, so a
+  rejected request cannot hold a pooled connection.
+- `m20260803_000011` reports an unsupported database backend as `DbErr::Custom` instead of
+  `unreachable!`, matching the sibling Blog migrations.
+- Blog runtime code no longer panics on its SEO/reaction/comments adapter paths: the three
+  SEO mappers return errors and their callers propagate them, and the comments snapshot
+  reports a policy/read disagreement as `BLOG_COMMENTS_POLICY_UNAVAILABLE`. The three
+  remaining `.expect(...)` sites are forced by the SEO and Reactions provider traits, which
+  construct a validated key infallibly from a compile-time constant; they are now guarded
+  by tests that fail if the constant stops satisfying the owner grammar.
+- Blog Next admin `POSTS_QUERY` no longer selects `scheduledAt` twice.
+
 ### Added (continued)
 - Blog post slug redirects use the shared canonical URL registry of `rustok-content`
   (`canonical_url` / `url_alias`) through `CanonicalUrlWriter`. Renaming a post keeps its old

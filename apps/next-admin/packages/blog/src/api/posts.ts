@@ -111,7 +111,6 @@ query Posts($tenantId: UUID!, $filter: PostsFilter) {
       authorId
       createdAt
       publishedAt
-    scheduledAt
       scheduledAt
     }
     nextCursor

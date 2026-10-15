@@ -446,6 +446,34 @@ base `1a420c8`).
   `BulkOperationResult::record_failure` reports each failure through
   `BlogPublicError`, so internal `Invariant`/`Database` detail no longer reaches
   consumers.
+- **M-12 admin sort.** The authenticated `posts` resolver no longer hard-codes
+  `CreatedAt DESC`: `PostsFilter` exposes `sortBy`/`sortOrder` (GraphQL enums
+  `BlogPostSortField`/`BlogPostSortOrder` mapped onto the owner `PostSortField`/
+  `PostSortOrder`), and the defaults stay `CreatedAt`/`Desc`, so existing clients are
+  unaffected. Each sort column keeps its own index from `m20260328_000001`, and the
+  keyset cursor stays bound to the sort it was issued for.
+- **L-1 validation before the transaction.** `create_post` and `update_post` validate
+  inputs before `db.begin()`; the schedule validators moved into
+  `validate_schedule_for_create`/`validate_schedule_for_update` in
+  `src/services/post/mod.rs`, so a rejected schedule no longer holds a pooled
+  connection or rolls back implicitly.
+- **L-5 `unreachable!` in a migration.** `m20260803_000011` now returns
+  `DbErr::Custom("… does not support {backend:?}")` for an unsupported backend, like the
+  sibling Blog migrations, instead of panicking.
+- **L-6 panic inventory of the runtime code.** Blog runtime code had eight panic sites.
+  Five were replaced by explicit error mapping: the three SEO mappers now return
+  `AnyResult` and their callers propagate (`map_post_bulk_summary`,
+  `map_post_sitemap_candidate`, `map_post_response`), and the comments snapshot's
+  `unreachable!("disabled comments policy returned before provider read")` now logs and
+  returns `BlogError::CommentsPolicyUnavailable`. The remaining three are forced by the
+  extension-point traits (`SeoTargetProvider::slug`, `ReactionSubjectProvider::source`,
+  `supported_kinds`), which return validated key types infallibly from a compile-time
+  constant; they are now guarded by
+  `builtin_seo_slug_constants_satisfy_the_owner_grammar` and
+  `blog_reaction_key_constants_satisfy_the_owner_grammar`. The platform-level root cause
+  is an open item below.
+- **L-3 duplicate selection.** `apps/next-admin/packages/blog/src/api/posts.ts` selected
+  `scheduledAt` twice in `POSTS_QUERY`; the document now selects it once.
 - **H-7 route and target-deletion consistency.** `BlogTargetDeletionRouteHandler`
   (`blog_target_deletion_routes`) consumes `TargetDeleted` for `blog_post` targets,
   removes the matching routes in one transaction, and reports them through
@@ -488,23 +516,26 @@ Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit
 - **H-5 amplification (open).** A bulk request is now bounded at 100 ids, but the
   command still runs one transaction and one lifecycle event per id inside the request
   instead of queueing the batch.
-- **M-12 admin sort (open).** `src/graphql/query.rs` still hard-codes
-  `sort_by: CreatedAt, sort_order: Desc`, so the per-sort-column keyset indexes of
-  `m20260328_000001` remain unused by the GraphQL read path.
+- **M-12 follow-up (open, UI).** The GraphQL surface supports the sort, but the Next
+  admin and the Leptos admin list still request the default order: neither UI has a
+  sort control yet.
 - **M-13 residuals (open).** Preview reads have no audit trail, and archiving a post
   does not revoke its already-minted tokens; both are documented in the module README.
-- **L-1 (open).** `create_post`/`update_post` still open their transaction before
-  input validation.
-- **L-3 (open).** `apps/next-admin/packages/blog/src/api/posts.ts` selects
-  `scheduledAt` twice in `POSTS_QUERY`.
 - **Canonical layout documentation (open, docs only).**
   `docs/backend/module-backend-implementation.md` lists `src/runtime.rs` as an optional
   module slot, while `verify:module-source-layout` allows only `lib.rs` and `module.rs`
   at the `rustok-blog` source root. The Blog tree follows the verifier and keeps the
   `runtime`-gated registrations in `src/services/scheduler.rs`.
-- **L-4, L-5, L-6 (open).** Entity re-exports versus `CRATE_API.md`, the
-  `unreachable!` in `m20260803_000011`, and the `.expect` in
-  `src/integrations/seo_targets.rs`.
+- **L-4 (open).** Entity re-exports versus `CRATE_API.md`.
+- **L-6 root cause (open, platform).** `SeoTargetProvider::slug`,
+  `ReactionSubjectProvider::source`/`supported_kinds` and every peer module
+  (`rustok-forum`, `rustok-pages`, `rustok-product`, `rustok-taxonomy`) construct a
+  validated key from a compile-time constant with `.expect(...)`, because the owner
+  crates (`rustok-seo-targets`, `rustok-reactions-api`) expose only fallible
+  constructors while the traits return the key infallibly. Blog's sites are
+  test-guarded now; the real fix belongs to the owner crates — an infallible
+  constructor whose validity the compiler checks, which needs a `Cow<'static, str>`
+  inner representation, because `String` cannot be built in a `const fn`.
 
 ## 2026-10-08 Engineering audit remediation (Waves 1 and part of 2)
 
@@ -583,7 +614,8 @@ owner decision or a larger implementation.
   sort key `(is_pinned, pinned_at, published_at, id)` and returns no total. The admin `posts` list is keyset-paginated on the sort
   column and `id` (`nextCursor`, no total); its REST sort options are
   `published_at`, `updated_at`, and `created_at`, and NULL sort values come last.
-  The GraphQL `posts` query always sorts by `created_at DESC`.
+  The GraphQL `posts` query sorts by `created_at DESC`
+  unless a client requests `sortBy`/`sortOrder`.
 - **H-8 article richness.** The rich-text profile has no inline images, tables,
   embeds, footnotes, callouts, or heading anchors.
 - **H-9 comments.** Readers cannot edit, delete, or report comments. The

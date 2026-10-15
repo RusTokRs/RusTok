@@ -221,6 +221,19 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   (`rustok.runtime.host_mode`); API-only and SSR surfaces do not publish scheduled
   posts.
 
+## Admin post listing
+
+- `posts(filter:)` exposes the tenant's posts as keyset pages: `after`/`perPage` plus
+  `sortBy` (`PUBLISHED_AT`, `UPDATED_AT`, `CREATED_AT`) and `sortOrder`
+  (`ASC`/`DESC`), defaulting to `CREATED_AT DESC`. Each sort column has its own
+  index from `m20260328_000001`, so a sorted page reads the index instead of sorting
+  the table.
+- A cursor is bound to the sort it was issued for: reusing it with another
+  `sortBy`/`sortOrder` is rejected with a validation error instead of resuming at a
+  wrong position.
+- The list never counts rows; `nextCursor` is present only while another page
+  exists. NULL sort values come last in both directions.
+
 ## Known Limitations / Pending Implementation
 
 The following are not implemented. Each is tracked with its audit identifier in

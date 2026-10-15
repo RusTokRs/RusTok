@@ -62,6 +62,10 @@ impl PostService {
         let metadata = normalize_custom_metadata(metadata)?;
         let channel_slugs = normalize_channel_slugs(channel_slugs.as_deref().unwrap_or(&[]))?;
 
+        // Validated before the transaction opens: an invalid schedule must not hold a
+        // pooled connection while it is rejected.
+        let scheduled_at_db = validate_schedule_for_create(scheduled_at, publish, now)?;
+
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         self.ensure_slug_unique_in_tx(&txn, tenant_id, &slug, None)
             .await?;
@@ -74,22 +78,6 @@ impl PostService {
             BlogPostStatus::Published
         } else {
             BlogPostStatus::Draft
-        };
-
-        // Validate scheduled_at: must be in the future and cannot be set with publish=true
-        let scheduled_at_db = if let Some(scheduled) = scheduled_at {
-            if publish {
-                return Err(BlogError::validation(
-                    "Cannot set scheduled_at when publish is true",
-                ));
-            }
-            let scheduled_utc = scheduled.with_timezone(&chrono::Utc);
-            if scheduled_utc <= now {
-                return Err(BlogError::validation("scheduled_at must be in the future"));
-            }
-            Some(scheduled.fixed_offset())
-        } else {
-            None
         };
 
         let slug_for_error = slug.clone();
@@ -320,8 +308,11 @@ impl PostService {
 
         let full_reindex = has_owner_change || has_relation_change;
         let next_version = Self::next_persisted_version(post.version)?;
-        let txn = self.db.begin().await.map_err(BlogError::from)?;
+        // Validated before the transaction opens: an invalid schedule must not hold a
+        // pooled connection while it is rejected.
         let now = chrono::Utc::now();
+        let next_schedule = validate_schedule_for_update(&scheduled_at, now)?;
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
 
         if let Some(ref slug) = normalized_slug {
             self.ensure_slug_unique_in_tx(&txn, tenant_id, slug, Some(post_id))
@@ -386,16 +377,12 @@ impl PostService {
                 sea_orm::sea_query::Expr::value(next_metadata),
             );
         }
-        match scheduled_at {
+        match next_schedule {
             Patch::Keep => {}
             Patch::Set(scheduled) => {
-                let scheduled_utc = scheduled.with_timezone(&chrono::Utc);
-                if scheduled_utc <= now {
-                    return Err(BlogError::validation("scheduled_at must be in the future"));
-                }
                 update = update.col_expr(
                     blog_post::Column::ScheduledAt,
-                    sea_orm::sea_query::Expr::value(Some(scheduled.fixed_offset())),
+                    sea_orm::sea_query::Expr::value(Some(scheduled)),
                 );
             }
             Patch::Clear => {

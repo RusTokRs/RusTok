@@ -181,6 +181,49 @@ fn apply_admin_post_keyset(
     select.filter(condition)
 }
 
+/// Validates the schedule of `create_post` and normalizes it for storage.
+///
+/// Called before the command opens its transaction: an invalid schedule is rejected
+/// while no pooled connection is held, and a published post can never carry one.
+fn validate_schedule_for_create(
+    scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
+    publish: bool,
+    now: chrono::DateTime<chrono::Utc>,
+) -> BlogResult<Option<chrono::DateTime<chrono::FixedOffset>>> {
+    let Some(scheduled) = scheduled_at else {
+        return Ok(None);
+    };
+    if publish {
+        return Err(BlogError::validation(
+            "Cannot set scheduled_at when publish is true",
+        ));
+    }
+    if scheduled <= now {
+        return Err(BlogError::validation("scheduled_at must be in the future"));
+    }
+    Ok(Some(scheduled.fixed_offset()))
+}
+
+/// Validates the schedule patch of `update_post` and normalizes it for storage.
+///
+/// Called before the command opens its transaction, so a rejected schedule leaves no
+/// transaction to roll back.
+fn validate_schedule_for_update(
+    scheduled_at: &Patch<chrono::DateTime<chrono::Utc>>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> BlogResult<Patch<chrono::DateTime<chrono::FixedOffset>>> {
+    match scheduled_at {
+        Patch::Keep => Ok(Patch::Keep),
+        Patch::Clear => Ok(Patch::Clear),
+        Patch::Set(scheduled) => {
+            if *scheduled <= now {
+                return Err(BlogError::validation("scheduled_at must be in the future"));
+            }
+            Ok(Patch::Set(scheduled.fixed_offset()))
+        }
+    }
+}
+
 fn validate_title(title: &str) -> BlogResult<()> {
     if title.trim().is_empty() {
         return Err(BlogError::validation("Title cannot be empty"));

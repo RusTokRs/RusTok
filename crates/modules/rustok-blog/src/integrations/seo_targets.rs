@@ -18,13 +18,27 @@ use crate::{BlogError, PostResponse, PostService, PostSummary};
 
 const BULK_FETCH_SIZE: u32 = 48;
 
+/// The one Blog SEO target slug, built from the canonical constant.
+///
+/// The SEO slug grammar is the owner's, so a drifted constant is reported as an error
+/// on the request path that needed it — never as a panic.
+fn blog_target_slug() -> AnyResult<SeoTargetSlug> {
+    SeoTargetSlug::new(builtin_slug::BLOG_POST).map_err(|error| {
+        anyhow::anyhow!("Blog SEO target slug `{}` is invalid: {error}", builtin_slug::BLOG_POST)
+    })
+}
+
 #[derive(Clone, Default)]
 pub struct BlogSeoTargetProvider;
 
 #[async_trait]
 impl SeoTargetProvider for BlogSeoTargetProvider {
     fn slug(&self) -> SeoTargetSlug {
-        // INVARIANT: builtin_slug::BLOG_POST is a compile-time static slug conforming to SeoTargetSlug format.
+        // `SeoTargetProvider::slug` is infallible, so this method cannot report a
+        // drifted constant; every fallible Blog path builds the slug through
+        // `blog_target_slug` and returns the error instead.
+        // INVARIANT: `builtin_slug::BLOG_POST` is validated by
+        // `builtin_seo_slug_constants_satisfy_the_owner_grammar`.
         SeoTargetSlug::new(builtin_slug::BLOG_POST)
             .expect("builtin SEO target slug must stay valid")
     }
@@ -69,7 +83,7 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
             return Ok(None);
         }
 
-        Ok(Some(map_post_response(post)))
+        Ok(Some(map_post_response(post)?))
     }
 
     async fn resolve_route(
@@ -80,6 +94,7 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
         let Some(slug) = parse_blog_route(request.route)? else {
             return Ok(None);
         };
+        let target_kind = blog_target_slug()?;
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
         let post = service
             .get_post_by_slug_with_locale_fallback(
@@ -97,7 +112,9 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
                     && channel_visible(post.channel_slugs.as_slice(), request.channel_slug)
             })
             .map(|post| SeoRouteMatchRecord {
-                target_kind: self.slug(),
+                // Cloned because the closure borrows the outer binding; the slug is a
+                // small validated key.
+                target_kind: target_kind.clone(),
                 target_id: post.id,
             }))
     }
@@ -124,7 +141,11 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
             .await?;
 
         Ok(SeoBulkSummaryPage {
-            items: scan.items.into_iter().map(map_post_bulk_summary).collect(),
+            items: scan
+                .items
+                .into_iter()
+                .map(map_post_bulk_summary)
+                .collect::<AnyResult<Vec<_>>>()?,
             next_cursor: scan.next_after.map(|id| id.to_string()),
         })
     }
@@ -150,7 +171,7 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
                 .await?;
 
             for item in page.items {
-                candidates.push(map_post_sitemap_candidate(item));
+                candidates.push(map_post_sitemap_candidate(item)?);
             }
 
             match page.next_after {
@@ -163,26 +184,24 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
     }
 }
 
-fn map_post_bulk_summary(item: PostSummary) -> SeoBulkSummaryRecord {
-    SeoBulkSummaryRecord {
-        target_kind: SeoTargetSlug::new(builtin_slug::BLOG_POST)
-            .expect("builtin SEO target slug must stay valid"),
+fn map_post_bulk_summary(item: PostSummary) -> AnyResult<SeoBulkSummaryRecord> {
+    Ok(SeoBulkSummaryRecord {
+        target_kind: blog_target_slug()?,
         target_id: item.id,
         effective_locale: item.effective_locale,
         label: item.title,
         route: format!("/modules/blog?slug={}", item.slug),
-    }
+    })
 }
 
-fn map_post_sitemap_candidate(item: PostSummary) -> SeoSitemapCandidateRecord {
+fn map_post_sitemap_candidate(item: PostSummary) -> AnyResult<SeoSitemapCandidateRecord> {
     let image_alt = item.title.clone();
     let image = item
         .featured_image_url
         .and_then(|url| SeoTargetImageRecord::from_parts(url, Some(image_alt), None, None, None));
     let route = format!("/modules/blog?slug={}", item.slug);
-    SeoSitemapCandidateRecord {
-        target_kind: SeoTargetSlug::new(builtin_slug::BLOG_POST)
-            .expect("builtin SEO target slug must stay valid"),
+    Ok(SeoSitemapCandidateRecord {
+        target_kind: blog_target_slug()?,
         target_id: item.id,
         locale: item.effective_locale,
         route: route.clone(),
@@ -195,10 +214,10 @@ fn map_post_sitemap_candidate(item: PostSummary) -> SeoSitemapCandidateRecord {
                 route: route.clone(),
             })
             .collect(),
-    }
+    })
 }
 
-fn map_post_response(post: PostResponse) -> SeoLoadedTargetRecord {
+fn map_post_response(post: PostResponse) -> AnyResult<SeoLoadedTargetRecord> {
     let title = post.seo_title.clone().unwrap_or_else(|| post.title.clone());
     let description = post
         .seo_description
@@ -217,10 +236,8 @@ fn map_post_response(post: PostResponse) -> SeoLoadedTargetRecord {
     template_fields.insert("route", canonical_route.clone());
     populate_image_template_fields(&mut template_fields, open_graph_images.as_slice());
 
-    SeoLoadedTargetRecord {
-        // INVARIANT: builtin_slug::BLOG_POST is a compile-time static slug conforming to SeoTargetSlug format.
-        target_kind: SeoTargetSlug::new(builtin_slug::BLOG_POST)
-            .expect("builtin SEO target slug must stay valid"),
+    Ok(SeoLoadedTargetRecord {
+        target_kind: blog_target_slug()?,
         target_id: post.id,
         requested_locale: Some(post.requested_locale.clone()),
         effective_locale: post.effective_locale.clone(),
@@ -254,7 +271,7 @@ fn map_post_response(post: PostResponse) -> SeoLoadedTargetRecord {
         ),
         fallback_source: "blog".to_string(),
         template_fields,
-    }
+    })
 }
 
 fn primary_post_image_descriptor(
