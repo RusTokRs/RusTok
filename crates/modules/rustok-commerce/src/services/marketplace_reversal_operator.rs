@@ -114,6 +114,11 @@ impl MarketplaceReversalOperatorService {
         inbox_id: Uuid,
     ) -> MarketplaceReversalOperatorResult<MarketplaceReversalEventOperatorView> {
         validate_identity(tenant_id, inbox_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            inbox_id = %inbox_id,
+            "MarketplaceReversalOperatorService::get_event entry"
+        );
         self.get_model(tenant_id, inbox_id)
             .await
             .and_then(map_event)
@@ -129,6 +134,11 @@ impl MarketplaceReversalOperatorService {
                 "tenant_id must not be nil".to_string(),
             ));
         }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            limit = limit,
+            "MarketplaceReversalOperatorService::list_operator_review entry"
+        );
         let models = marketplace_reversal_event_inbox::Entity::find()
             .filter(marketplace_reversal_event_inbox::Column::TenantId.eq(tenant_id))
             .filter(
@@ -149,6 +159,11 @@ impl MarketplaceReversalOperatorService {
         inbox_id: Uuid,
     ) -> MarketplaceReversalOperatorResult<MarketplaceReversalEventOperatorView> {
         validate_identity(tenant_id, inbox_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            inbox_id = %inbox_id,
+            "MarketplaceReversalOperatorService::retry_event entry"
+        );
         let now = Utc::now().fixed_offset();
         let update = marketplace_reversal_event_inbox::Entity::update_many()
             .col_expr(
@@ -191,6 +206,12 @@ impl MarketplaceReversalOperatorService {
         tenant_id: Uuid,
         failure_id: Uuid,
     ) -> MarketplaceReversalOperatorResult<MarketplaceReversalAdaptationFailureOperatorView> {
+        validate_identity(tenant_id, failure_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            failure_id = %failure_id,
+            "MarketplaceReversalOperatorService::get_adaptation_failure entry"
+        );
         self.failures
             .get(tenant_id, failure_id)
             .await
@@ -204,6 +225,16 @@ impl MarketplaceReversalOperatorService {
         limit: u64,
     ) -> MarketplaceReversalOperatorResult<Vec<MarketplaceReversalAdaptationFailureOperatorView>>
     {
+        if tenant_id.is_nil() {
+            return Err(MarketplaceReversalOperatorError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            limit = limit,
+            "MarketplaceReversalOperatorService::list_adaptation_failures_operator_review entry"
+        );
         self.failures
             .list_operator_review(tenant_id, limit)
             .await
@@ -216,6 +247,12 @@ impl MarketplaceReversalOperatorService {
         tenant_id: Uuid,
         failure_id: Uuid,
     ) -> MarketplaceReversalOperatorResult<MarketplaceReversalAdaptationFailureOperatorView> {
+        validate_identity(tenant_id, failure_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            failure_id = %failure_id,
+            "MarketplaceReversalOperatorService::retry_adaptation_failure entry"
+        );
         let failure = self.failures.get(tenant_id, failure_id).await?;
         if failure.status == MarketplaceReversalAdaptationFailureStatus::Resolved.as_str() {
             return Err(MarketplaceReversalOperatorError::Conflict(format!(
@@ -260,6 +297,11 @@ impl MarketplaceReversalOperatorService {
                 "tenant_id must not be nil".to_string(),
             ));
         }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            limit = limit,
+            "MarketplaceReversalOperatorService::sweep_tenant entry"
+        );
         let now = Utc::now().fixed_offset();
         let recoverable = Condition::any()
             .add(marketplace_reversal_event_inbox::Column::Status.is_in([
@@ -390,3 +432,17 @@ fn map_adaptation_failure(
         resolved_at: model.resolved_at,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_identity_rejects_nil_uuids() {
+        assert!(validate_identity(Uuid::nil(), Uuid::new_v4()).is_err());
+        assert!(validate_identity(Uuid::new_v4(), Uuid::nil()).is_err());
+        assert!(validate_identity(Uuid::nil(), Uuid::nil()).is_err());
+        assert!(validate_identity(Uuid::new_v4(), Uuid::new_v4()).is_ok());
+    }
+}
+

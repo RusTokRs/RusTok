@@ -144,6 +144,13 @@ impl MarketplaceReversalEventInboxJournal {
         input: IngestMarketplaceReversalEvent,
     ) -> MarketplaceReversalEventInboxResult<marketplace_reversal_event_inbox::Model> {
         let input = normalize_input(input)?;
+        tracing::debug!(
+            tenant_id = %input.tenant_id,
+            provider_event_id = %input.provider_event_id,
+            event_source = %input.event_source,
+            event_id = %input.event_id,
+            "MarketplaceReversalEventInboxJournal::ingest entry"
+        );
         if let Some(existing) = self.find_existing(&input).await? {
             ensure_same_event(&existing, &input)?;
             return Ok(existing);
@@ -201,6 +208,11 @@ impl MarketplaceReversalEventInboxJournal {
         tenant_id: Uuid,
         inbox_id: Uuid,
     ) -> MarketplaceReversalEventInboxResult<marketplace_reversal_event_inbox::Model> {
+        if tenant_id.is_nil() || inbox_id.is_nil() {
+            return Err(MarketplaceReversalEventInboxError::Validation(
+                "tenant_id and inbox_id must not be nil".to_string(),
+            ));
+        }
         marketplace_reversal_event_inbox::Entity::find_by_id(inbox_id)
             .filter(marketplace_reversal_event_inbox::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -217,6 +229,9 @@ impl MarketplaceReversalEventInboxJournal {
         tenant_id: Uuid,
         provider_event_id: Uuid,
     ) -> MarketplaceReversalEventInboxResult<Option<marketplace_reversal_event_inbox::Model>> {
+        if tenant_id.is_nil() || provider_event_id.is_nil() {
+            return Ok(None);
+        }
         marketplace_reversal_event_inbox::Entity::find()
             .filter(marketplace_reversal_event_inbox::Column::TenantId.eq(tenant_id))
             .filter(marketplace_reversal_event_inbox::Column::ProviderEventId.eq(provider_event_id))
@@ -231,6 +246,11 @@ impl MarketplaceReversalEventInboxJournal {
         inbox_id: Uuid,
         lease_owner: impl Into<String>,
     ) -> MarketplaceReversalEventInboxResult<Option<marketplace_reversal_event_inbox::Model>> {
+        if tenant_id.is_nil() || inbox_id.is_nil() {
+            return Err(MarketplaceReversalEventInboxError::Validation(
+                "tenant_id and inbox_id must not be nil".to_string(),
+            ));
+        }
         let lease_owner = normalize_text(lease_owner.into(), 191, "lease_owner")?;
         let now = Utc::now().fixed_offset();
         let expires_at = now + Duration::seconds(INBOX_LEASE_SECONDS);
@@ -294,6 +314,11 @@ impl MarketplaceReversalEventInboxJournal {
         lease_owner: impl Into<String>,
         reversal: &MarketplaceLedgerReversalResponse,
     ) -> MarketplaceReversalEventInboxResult<marketplace_reversal_event_inbox::Model> {
+        if tenant_id.is_nil() || inbox_id.is_nil() {
+            return Err(MarketplaceReversalEventInboxError::Validation(
+                "tenant_id and inbox_id must not be nil".to_string(),
+            ));
+        }
         let lease_owner = normalize_text(lease_owner.into(), 191, "lease_owner")?;
         let now = Utc::now().fixed_offset();
         let update = marketplace_reversal_event_inbox::Entity::update_many()
@@ -367,6 +392,11 @@ impl MarketplaceReversalEventInboxJournal {
         code: impl Into<String>,
         message: impl Into<String>,
     ) -> MarketplaceReversalEventInboxResult<marketplace_reversal_event_inbox::Model> {
+        if tenant_id.is_nil() || inbox_id.is_nil() {
+            return Err(MarketplaceReversalEventInboxError::Validation(
+                "tenant_id and inbox_id must not be nil".to_string(),
+            ));
+        }
         let lease_owner = normalize_text(lease_owner.into(), 191, "lease_owner")?;
         let code = normalize_text(code.into(), 100, "error_code")?;
         let message = normalize_text(message.into(), 2000, "error_message")?;
@@ -516,6 +546,16 @@ impl MarketplaceReversalEventInboxService {
         tenant_id: Uuid,
         inbox_id: Uuid,
     ) -> MarketplaceReversalEventInboxResult<marketplace_reversal_event_inbox::Model> {
+        if tenant_id.is_nil() || inbox_id.is_nil() {
+            return Err(MarketplaceReversalEventInboxError::Validation(
+                "tenant_id and inbox_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            inbox_id = %inbox_id,
+            "MarketplaceReversalEventInboxService::process entry"
+        );
         let current = self.journal.get(tenant_id, inbox_id).await?;
         if current.status == MarketplaceReversalEventStatus::Processed.as_str() {
             return Ok(current);
@@ -863,3 +903,58 @@ fn normalize_text(
     }
     Ok(value)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reversal_event_hash_deterministic() {
+        let tenant_id = Uuid::new_v4();
+        let provider_event_id = Uuid::new_v4();
+        let source_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let payment_collection_id = Uuid::new_v4();
+        let occurred_at = Utc::now().fixed_offset();
+        let lines = serde_json::json!([
+            {"seller_id": Uuid::new_v4().to_string(), "amount": 100}
+        ]);
+
+        let hash1 = reversal_event_hash(
+            tenant_id,
+            provider_event_id,
+            "stripe",
+            "reversal_1",
+            MarketplaceLedgerReversalKind::Refund,
+            source_id,
+            order_id,
+            payment_collection_id,
+            occurred_at,
+            "USD",
+            2,
+            100,
+            &lines,
+        )
+        .expect("hash must succeed");
+
+        let hash2 = reversal_event_hash(
+            tenant_id,
+            provider_event_id,
+            "stripe",
+            "reversal_1",
+            MarketplaceLedgerReversalKind::Refund,
+            source_id,
+            order_id,
+            payment_collection_id,
+            occurred_at,
+            "USD",
+            2,
+            100,
+            &lines,
+        )
+        .expect("hash must succeed");
+
+        assert_eq!(hash1, hash2);
+    }
+}
+

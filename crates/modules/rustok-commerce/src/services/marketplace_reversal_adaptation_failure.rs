@@ -61,6 +61,12 @@ impl MarketplaceReversalAdaptationFailureJournal {
         retryable: bool,
     ) -> MarketplaceReversalAdaptationFailureResult<marketplace_reversal_adaptation_failure::Model>
     {
+        tracing::debug!(
+            tenant_id = %event.tenant_id,
+            provider_event_id = %event.id,
+            retryable = retryable,
+            "MarketplaceReversalAdaptationFailureJournal::record_failure entry"
+        );
         let event_type = normalize_required(
             event.event_type.clone().unwrap_or_default(),
             100,
@@ -131,6 +137,11 @@ impl MarketplaceReversalAdaptationFailureJournal {
         Option<marketplace_reversal_adaptation_failure::Model>,
     > {
         validate_identity(tenant_id, provider_event_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            provider_event_id = %provider_event_id,
+            "MarketplaceReversalAdaptationFailureJournal::mark_resolved entry"
+        );
         let now = Utc::now().fixed_offset();
         let update = marketplace_reversal_adaptation_failure::Entity::update_many()
             .col_expr(
@@ -180,6 +191,11 @@ impl MarketplaceReversalAdaptationFailureJournal {
     ) -> MarketplaceReversalAdaptationFailureResult<marketplace_reversal_adaptation_failure::Model>
     {
         validate_identity(tenant_id, failure_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            failure_id = %failure_id,
+            "MarketplaceReversalAdaptationFailureJournal::reset_for_retry entry"
+        );
         let now = Utc::now().fixed_offset();
         let update = marketplace_reversal_adaptation_failure::Entity::update_many()
             .col_expr(
@@ -223,6 +239,11 @@ impl MarketplaceReversalAdaptationFailureJournal {
     ) -> MarketplaceReversalAdaptationFailureResult<marketplace_reversal_adaptation_failure::Model>
     {
         validate_identity(tenant_id, failure_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            failure_id = %failure_id,
+            "MarketplaceReversalAdaptationFailureJournal::get entry"
+        );
         marketplace_reversal_adaptation_failure::Entity::find_by_id(failure_id)
             .filter(marketplace_reversal_adaptation_failure::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -246,6 +267,11 @@ impl MarketplaceReversalAdaptationFailureJournal {
                 "tenant_id must not be nil".to_string(),
             ));
         }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            limit = limit,
+            "MarketplaceReversalAdaptationFailureJournal::list_operator_review entry"
+        );
         marketplace_reversal_adaptation_failure::Entity::find()
             .filter(marketplace_reversal_adaptation_failure::Column::TenantId.eq(tenant_id))
             .filter(
@@ -375,3 +401,25 @@ fn normalize_required(
     }
     Ok(value)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retry_backoff_bounds() {
+        assert_eq!(retry_backoff(1), Duration::seconds(10));
+        assert_eq!(retry_backoff(2), Duration::seconds(20));
+        assert_eq!(retry_backoff(3), Duration::seconds(40));
+        assert_eq!(retry_backoff(10), Duration::seconds(MAX_BACKOFF_SECONDS));
+    }
+
+    #[test]
+    fn validate_identity_rejects_nil() {
+        assert!(validate_identity(Uuid::nil(), Uuid::new_v4()).is_err());
+        assert!(validate_identity(Uuid::new_v4(), Uuid::nil()).is_err());
+        assert!(validate_identity(Uuid::nil(), Uuid::nil()).is_err());
+        assert!(validate_identity(Uuid::new_v4(), Uuid::new_v4()).is_ok());
+    }
+}
+

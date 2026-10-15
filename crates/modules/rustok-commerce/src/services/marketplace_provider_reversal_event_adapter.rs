@@ -117,6 +117,12 @@ impl MarketplaceProviderReversalEventAdapter {
     ) -> MarketplaceProviderReversalEventAdapterResult<
         Option<crate::entities::marketplace_reversal_event_inbox::Model>,
     > {
+        tracing::debug!(
+            provider_event_id = %event.id,
+            tenant_id = %event.tenant_id,
+            provider_id = %event.provider_id,
+            "MarketplaceProviderReversalEventAdapter::ingest_provider_event entry"
+        );
         let Some(event_type) = event.event_type.as_deref() else {
             return Ok(None);
         };
@@ -166,6 +172,10 @@ impl MarketplaceProviderReversalEventAdapter {
         &self,
         limit: u64,
     ) -> MarketplaceProviderReversalEventAdapterResult<MarketplaceProviderReversalAdaptReport> {
+        tracing::debug!(
+            limit = limit,
+            "MarketplaceProviderReversalEventAdapter::adapt_pending entry"
+        );
         let candidates = provider_event::Entity::find()
             .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_PROCESSED))
             .filter(
@@ -512,11 +522,17 @@ fn parse_uuid_map(
     metadata: &Map<String, Value>,
     field: &str,
 ) -> MarketplaceProviderReversalEventAdapterResult<Uuid> {
-    Uuid::parse_str(required_string(metadata, field)?.as_str()).map_err(|_| {
+    let id = Uuid::parse_str(required_string(metadata, field)?.as_str()).map_err(|_| {
         MarketplaceProviderReversalEventAdapterError::Validation(format!(
             "normalized provider event field `{field}` must be a UUID string"
         ))
-    })
+    })?;
+    if id.is_nil() {
+        return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
+            "normalized provider event field `{field}` must not be nil UUID"
+        )));
+    }
+    Ok(id)
 }
 
 fn parse_decimal(
@@ -559,3 +575,26 @@ fn required_string(
             ))
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_uuid_map_rejects_nil() {
+        let mut map = Map::new();
+        map.insert(
+            "reversal_id".to_string(),
+            Value::String(Uuid::nil().to_string()),
+        );
+        assert!(parse_uuid_map(&map, "reversal_id").is_err());
+
+        let mut valid_map = Map::new();
+        valid_map.insert(
+            "reversal_id".to_string(),
+            Value::String(Uuid::new_v4().to_string()),
+        );
+        assert!(parse_uuid_map(&valid_map, "reversal_id").is_ok());
+    }
+}
+

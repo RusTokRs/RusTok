@@ -99,6 +99,11 @@ impl MarketplaceFinancialOperatorService {
         tenant_id: Uuid,
         checkout_operation_id: Uuid,
     ) -> MarketplaceFinancialOperatorResult<MarketplaceFinancialOperationOperatorView> {
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            checkout_operation_id = %checkout_operation_id,
+            "MarketplaceFinancialOperatorService::get_financial_operation entry"
+        );
         self.get_financial_operation_model(tenant_id, checkout_operation_id)
             .await
             .map(map_financial_operation)
@@ -110,6 +115,11 @@ impl MarketplaceFinancialOperatorService {
         inbox_id: Uuid,
     ) -> MarketplaceFinancialOperatorResult<MarketplacePaidEventOperatorView> {
         validate_identity(tenant_id, inbox_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            inbox_id = %inbox_id,
+            "MarketplaceFinancialOperatorService::get_paid_event entry"
+        );
         marketplace_paid_event_inbox::Entity::find_by_id(inbox_id)
             .filter(marketplace_paid_event_inbox::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -132,6 +142,11 @@ impl MarketplaceFinancialOperatorService {
                 "tenant_id must not be nil".to_string(),
             ));
         }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            limit = limit,
+            "MarketplaceFinancialOperatorService::list_financial_operator_review entry"
+        );
         marketplace_financial_operation::Entity::find()
             .filter(marketplace_financial_operation::Column::TenantId.eq(tenant_id))
             .filter(
@@ -157,6 +172,11 @@ impl MarketplaceFinancialOperatorService {
                 "tenant_id must not be nil".to_string(),
             ));
         }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            limit = limit,
+            "MarketplaceFinancialOperatorService::list_paid_event_operator_review entry"
+        );
         marketplace_paid_event_inbox::Entity::find()
             .filter(marketplace_paid_event_inbox::Column::TenantId.eq(tenant_id))
             .filter(
@@ -182,6 +202,11 @@ impl MarketplaceFinancialOperatorService {
                 "tenant_id must not be nil".to_string(),
             ));
         }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            limit = limit,
+            "MarketplaceFinancialOperatorService::sweep_tenant entry"
+        );
         let now = Utc::now().fixed_offset();
         let recoverable = Condition::any()
             .add(marketplace_paid_event_inbox::Column::Status.is_in([
@@ -235,6 +260,11 @@ impl MarketplaceFinancialOperatorService {
         checkout_operation_id: Uuid,
     ) -> MarketplaceFinancialOperatorResult<MarketplaceFinancialOperationOperatorView> {
         validate_identity(tenant_id, checkout_operation_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            checkout_operation_id = %checkout_operation_id,
+            "MarketplaceFinancialOperatorService::retry_financial_operation entry"
+        );
         let now = Utc::now().fixed_offset();
         let update = marketplace_financial_operation::Entity::update_many()
             .col_expr(
@@ -281,6 +311,11 @@ impl MarketplaceFinancialOperatorService {
         inbox_id: Uuid,
     ) -> MarketplaceFinancialOperatorResult<MarketplacePaidEventOperatorView> {
         validate_identity(tenant_id, inbox_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            inbox_id = %inbox_id,
+            "MarketplaceFinancialOperatorService::retry_paid_event entry"
+        );
         let transaction = self.db.begin().await?;
         let event = marketplace_paid_event_inbox::Entity::find_by_id(inbox_id)
             .filter(marketplace_paid_event_inbox::Column::TenantId.eq(tenant_id))
@@ -479,4 +514,13 @@ mod tests {
             "more than one affected operation must also fail closed"
         );
     }
+
+    #[test]
+    fn validate_identity_rejects_nil_uuids() {
+        assert!(super::validate_identity(Uuid::nil(), Uuid::new_v4()).is_err());
+        assert!(super::validate_identity(Uuid::new_v4(), Uuid::nil()).is_err());
+        assert!(super::validate_identity(Uuid::nil(), Uuid::nil()).is_err());
+        assert!(super::validate_identity(Uuid::new_v4(), Uuid::new_v4()).is_ok());
+    }
 }
+

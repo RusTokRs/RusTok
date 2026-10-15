@@ -56,6 +56,12 @@ impl MarketplaceProviderPaidEventAdapter {
     ) -> MarketplaceProviderPaidEventAdapterResult<
         Option<crate::entities::marketplace_paid_event_inbox::Model>,
     > {
+        tracing::debug!(
+            provider_event_id = %event.id,
+            tenant_id = %event.tenant_id,
+            provider_id = %event.provider_id,
+            "MarketplaceProviderPaidEventAdapter::ingest_provider_event entry"
+        );
         if event.event_type.as_deref() != Some(PAYMENT_CAPTURED_EVENT) {
             return Ok(None);
         }
@@ -101,12 +107,24 @@ impl MarketplaceProviderPaidEventAdapter {
                     payment.id
                 ))
             })?;
+        if checkout_operation_id.is_nil() {
+            return Err(MarketplaceProviderPaidEventAdapterError::Validation(format!(
+                "payment collection {} has nil checkout operation id",
+                payment.id
+            )));
+        }
         let order_id = payment.order_id.ok_or_else(|| {
             MarketplaceProviderPaidEventAdapterError::Validation(format!(
                 "payment collection {} has no order id",
                 payment.id
             ))
         })?;
+        if order_id.is_nil() {
+            return Err(MarketplaceProviderPaidEventAdapterError::Validation(format!(
+                "payment collection {} has nil order id",
+                payment.id
+            )));
+        }
         let captured_at = payment.captured_at.ok_or_else(|| {
             MarketplaceProviderPaidEventAdapterError::Validation(format!(
                 "payment collection {} has no captured_at timestamp",
@@ -150,7 +168,7 @@ impl MarketplaceProviderPaidEventAdapter {
 }
 
 fn parse_uuid(metadata: &Value, field: &str) -> MarketplaceProviderPaidEventAdapterResult<Uuid> {
-    metadata
+    let id = metadata
         .get(field)
         .and_then(Value::as_str)
         .and_then(|value| Uuid::parse_str(value).ok())
@@ -158,7 +176,13 @@ fn parse_uuid(metadata: &Value, field: &str) -> MarketplaceProviderPaidEventAdap
             MarketplaceProviderPaidEventAdapterError::Validation(format!(
                 "normalized provider event field `{field}` must be a UUID string"
             ))
-        })
+        })?;
+    if id.is_nil() {
+        return Err(MarketplaceProviderPaidEventAdapterError::Validation(format!(
+            "normalized provider event field `{field}` must not be nil UUID"
+        )));
+    }
+    Ok(id)
 }
 
 fn parse_decimal(
@@ -204,3 +228,31 @@ fn parse_currency(
     }
     Ok(value)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_uuid_rejects_nil() {
+        let val = serde_json::json!({
+            "test_id": Uuid::nil().to_string(),
+        });
+        assert!(parse_uuid(&val, "test_id").is_err());
+
+        let val_valid = serde_json::json!({
+            "test_id": Uuid::new_v4().to_string(),
+        });
+        assert!(parse_uuid(&val_valid, "test_id").is_ok());
+    }
+
+    #[test]
+    fn parse_currency_validates_three_letter_code() {
+        let val = serde_json::json!({"currency": "usd"});
+        assert_eq!(parse_currency(&val, "currency").unwrap(), "USD");
+
+        let val_invalid = serde_json::json!({"currency": "US1"});
+        assert!(parse_currency(&val_invalid, "currency").is_err());
+    }
+}
+

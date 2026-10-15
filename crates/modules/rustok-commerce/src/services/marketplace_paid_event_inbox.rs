@@ -155,6 +155,13 @@ impl MarketplacePaidEventInboxJournal {
         input: IngestMarketplacePaidEvent,
     ) -> MarketplacePaidEventInboxResult<marketplace_paid_event_inbox::Model> {
         let input = normalize_input(input)?;
+        tracing::debug!(
+            tenant_id = %input.tenant_id,
+            event_source = %input.event_source,
+            event_id = %input.event_id,
+            checkout_operation_id = %input.checkout_operation_id,
+            "MarketplacePaidEventInboxJournal::ingest entry"
+        );
         if let Some(existing) = self
             .find_by_source_event(
                 input.tenant_id,
@@ -217,6 +224,11 @@ impl MarketplacePaidEventInboxJournal {
         tenant_id: Uuid,
         inbox_id: Uuid,
     ) -> MarketplacePaidEventInboxResult<marketplace_paid_event_inbox::Model> {
+        if tenant_id.is_nil() || inbox_id.is_nil() {
+            return Err(MarketplacePaidEventInboxError::Validation(
+                "tenant_id and inbox_id must not be nil".to_string(),
+            ));
+        }
         marketplace_paid_event_inbox::Entity::find_by_id(inbox_id)
             .filter(marketplace_paid_event_inbox::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -234,6 +246,11 @@ impl MarketplacePaidEventInboxJournal {
         inbox_id: Uuid,
         lease_owner: impl Into<String>,
     ) -> MarketplacePaidEventInboxResult<Option<marketplace_paid_event_inbox::Model>> {
+        if tenant_id.is_nil() || inbox_id.is_nil() {
+            return Err(MarketplacePaidEventInboxError::Validation(
+                "tenant_id and inbox_id must not be nil".to_string(),
+            ));
+        }
         let lease_owner = normalize_text(lease_owner.into(), 191, "lease_owner")?;
         let now = Utc::now().fixed_offset();
         let expires_at = now + Duration::seconds(INBOX_LEASE_SECONDS);
@@ -296,6 +313,11 @@ impl MarketplacePaidEventInboxJournal {
         inbox_id: Uuid,
         lease_owner: impl Into<String>,
     ) -> MarketplacePaidEventInboxResult<marketplace_paid_event_inbox::Model> {
+        if tenant_id.is_nil() || inbox_id.is_nil() {
+            return Err(MarketplacePaidEventInboxError::Validation(
+                "tenant_id and inbox_id must not be nil".to_string(),
+            ));
+        }
         let lease_owner = normalize_text(lease_owner.into(), 191, "lease_owner")?;
         let now = Utc::now().fixed_offset();
         let update = marketplace_paid_event_inbox::Entity::update_many()
@@ -358,6 +380,11 @@ impl MarketplacePaidEventInboxJournal {
         code: impl Into<String>,
         message: impl Into<String>,
     ) -> MarketplacePaidEventInboxResult<marketplace_paid_event_inbox::Model> {
+        if tenant_id.is_nil() || inbox_id.is_nil() {
+            return Err(MarketplacePaidEventInboxError::Validation(
+                "tenant_id and inbox_id must not be nil".to_string(),
+            ));
+        }
         let lease_owner = normalize_text(lease_owner.into(), 191, "lease_owner")?;
         let code = normalize_text(code.into(), 100, "error_code")?;
         let message = normalize_text(message.into(), 2000, "error_message")?;
@@ -443,6 +470,9 @@ impl MarketplacePaidEventInboxJournal {
         event_source: &str,
         event_id: &str,
     ) -> MarketplacePaidEventInboxResult<Option<marketplace_paid_event_inbox::Model>> {
+        if tenant_id.is_nil() {
+            return Ok(None);
+        }
         marketplace_paid_event_inbox::Entity::find()
             .filter(marketplace_paid_event_inbox::Column::TenantId.eq(tenant_id))
             .filter(marketplace_paid_event_inbox::Column::EventSource.eq(event_source))
@@ -491,6 +521,16 @@ impl MarketplacePaidEventInboxService {
         tenant_id: Uuid,
         inbox_id: Uuid,
     ) -> MarketplacePaidEventInboxResult<marketplace_paid_event_inbox::Model> {
+        if tenant_id.is_nil() || inbox_id.is_nil() {
+            return Err(MarketplacePaidEventInboxError::Validation(
+                "tenant_id and inbox_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            inbox_id = %inbox_id,
+            "MarketplacePaidEventInboxService::process entry"
+        );
         let current = self.journal.get(tenant_id, inbox_id).await?;
         if current.status == MarketplacePaidEventStatus::Processed.as_str() {
             return Ok(current);
@@ -816,3 +856,41 @@ fn paid_event_hash(
     }
     hex::encode(hasher.finalize())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn paid_event_hash_deterministic() {
+        let tenant_id = Uuid::new_v4();
+        let checkout_operation_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let payment_collection_id = Uuid::new_v4();
+        let captured_at = Utc::now().fixed_offset();
+        let hash1 = paid_event_hash(
+            tenant_id,
+            "stripe",
+            "evt_1",
+            checkout_operation_id,
+            order_id,
+            payment_collection_id,
+            captured_at,
+            "USD",
+            Decimal::new(1000, 2),
+        );
+        let hash2 = paid_event_hash(
+            tenant_id,
+            "stripe",
+            "evt_1",
+            checkout_operation_id,
+            order_id,
+            payment_collection_id,
+            captured_at,
+            "USD",
+            Decimal::new(1000, 2),
+        );
+        assert_eq!(hash1, hash2);
+    }
+}
+

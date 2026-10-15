@@ -39,6 +39,16 @@ impl MarketplacePaidOrderFinancialHandler {
     }
 
     async fn dispatch(&self, envelope: &EventEnvelope, order_id: Uuid) -> HandlerResult {
+        if envelope.tenant_id.is_nil() || order_id.is_nil() {
+            return Err(rustok_core::Error::Validation(
+                "tenant_id and order_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %envelope.tenant_id,
+            order_id = %order_id,
+            "MarketplacePaidOrderFinancialHandler::dispatch entry"
+        );
         let operation = checkout_operation::Entity::find()
             .filter(checkout_operation::Column::TenantId.eq(envelope.tenant_id))
             .filter(checkout_operation::Column::OrderId.eq(order_id))
