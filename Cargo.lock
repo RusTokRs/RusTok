@@ -15460,6 +15460,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-manifest"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.21",
+ "toml 1.1.6+spec-1.1.0",
+]
+
+[[package]]
 name = "rustok-marketplace"
 version = "0.1.0"
 dependencies = [
@@ -17486,6 +17500,7 @@ dependencies = [
  "rustok-installer",
  "rustok-installer-persistence",
  "rustok-inventory",
+ "rustok-manifest",
  "rustok-marketplace",
  "rustok-marketplace-allocation",
  "rustok-marketplace-balance",
@@ -22749,6 +22764,7 @@ dependencies = [
  "postgres",
  "regex",
  "reqwest 0.13.5",
+ "rustok-manifest",
  "semver",
  "serde",
  "serde_json",

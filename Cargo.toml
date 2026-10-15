@@ -357,6 +357,7 @@ rustok-seo-storefront = { path = "crates/modules/rustok-seo/storefront" }
 rustok-seo-panel = { path = "crates/modules/rustok-seo/panel" }
 rustok-auth = { path = "crates/modules/rustok-auth" }
 rustok-api = { path = "crates/libs/rustok-api", default-features = false }
+rustok-manifest = { path = "crates/libs/rustok-manifest", default-features = false }
 rustok-runtime = { path = "crates/libs/rustok-runtime" }
 rustok-sandbox = { path = "crates/workers/rustok-sandbox" }
 rustok-sandbox-transport = { path = "crates/workers/rustok-sandbox-transport" }

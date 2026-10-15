@@ -279,6 +279,7 @@ url = "2.5"
 [build-dependencies]
 serde.workspace = true
 toml.workspace = true
+rustok-manifest = { workspace = true, default-features = false }
 
 [package.metadata.cargo-udeps.ignore]
 development = ["serial_test"]

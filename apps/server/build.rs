@@ -1,37 +1,9 @@
-use serde::Deserialize;
-use std::collections::BTreeMap;
+use rustok_manifest::{
+    load_module_package_manifest, load_modules_manifest, ModulePackageManifest, ModuleSpec,
+    ModulesManifest,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
-
-#[derive(Debug, Deserialize)]
-struct ModulesManifest {
-    #[serde(default)]
-    modules: BTreeMap<String, ModuleSpec>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ModuleSpec {
-    #[serde(rename = "crate")]
-    crate_name: String,
-    #[serde(default)]
-    path: Option<String>,
-    #[serde(default)]
-    required: bool,
-    #[serde(default)]
-    entry_type: Option<String>,
-    #[serde(default)]
-    graphql_query_type: Option<String>,
-    #[serde(default)]
-    graphql_mutation_type: Option<String>,
-    #[serde(default)]
-    graphql_subscription_type: Option<String>,
-    #[serde(default)]
-    graphql_runtime_data_factory: Option<String>,
-    #[serde(default)]
-    http_axum_router_fn: Option<String>,
-    #[serde(default)]
-    http_axum_webhook_router_fn: Option<String>,
-}
 
 #[derive(Debug)]
 struct OptionalModuleEntry {
@@ -45,46 +17,15 @@ struct OptionalModuleEntry {
     axum_webhook_router_expr: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Default)]
-struct ModulePackageManifest {
-    #[serde(rename = "crate", default)]
-    crate_contract: ModulePackageCrateContract,
-    #[serde(default)]
-    provides: ModulePackageProvides,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct ModulePackageCrateContract {
-    #[serde(default)]
+#[derive(Debug, Default)]
+struct ResolvedModuleWiring {
     entry_type: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct ModulePackageProvides {
-    #[serde(default)]
-    graphql: Option<ModulePackageGraphqlProvides>,
-    #[serde(default)]
-    http: Option<ModulePackageHttpProvides>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct ModulePackageGraphqlProvides {
-    #[serde(default)]
-    query: Option<String>,
-    #[serde(default)]
-    mutation: Option<String>,
-    #[serde(default)]
-    subscription: Option<String>,
-    #[serde(default)]
-    runtime_data_factory: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct ModulePackageHttpProvides {
-    #[serde(default)]
-    axum_router: Option<String>,
-    #[serde(default)]
-    axum_webhook_router: Option<String>,
+    graphql_query_type: Option<String>,
+    graphql_mutation_type: Option<String>,
+    graphql_subscription_type: Option<String>,
+    graphql_runtime_data_factory: Option<String>,
+    http_axum_router_fn: Option<String>,
+    http_axum_webhook_router_fn: Option<String>,
 }
 
 fn main() {
@@ -99,7 +40,7 @@ fn generate_module_code() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed={}", manifest_path.display());
 
     let workspace_root = workspace_root();
-    let modules: ModulesManifest = toml::from_str(&fs::read_to_string(&manifest_path)?)?;
+    let modules = load_modules_manifest(&manifest_path)?;
     let mut optional_modules = Vec::new();
     for (slug, spec) in modules.modules {
         if let Some(entry) = build_optional_module_entry(&workspace_root, slug, spec)? {
@@ -153,7 +94,7 @@ fn build_optional_module_entry(
         return Ok(None);
     }
 
-    let spec = apply_module_package_manifest(workspace_root, spec)?;
+    let wiring = apply_module_package_manifest(workspace_root, &spec)?;
     let crate_ident = spec.crate_name.replace('-', "_");
     let type_stem = pascal_case(&slug);
     let feature = format!("mod-{slug}");
@@ -169,7 +110,7 @@ fn build_optional_module_entry(
         println!("cargo:rerun-if-changed={}", path.display());
     }
 
-    let module_expr = spec
+    let module_expr = wiring
         .entry_type
         .clone()
         .or_else(|| infer_runtime_module_expr(lib_path.as_deref(), &spec.crate_name))
@@ -181,7 +122,7 @@ fn build_optional_module_entry(
             }
         });
 
-    let graphql_query_expr = spec.graphql_query_type.clone().or_else(|| {
+    let graphql_query_expr = wiring.graphql_query_type.clone().or_else(|| {
         crate_root
             .as_ref()
             .filter(|root| {
@@ -189,7 +130,7 @@ fn build_optional_module_entry(
             })
             .map(|_| format!("{crate_ident}::graphql::{type_stem}Query"))
     });
-    let graphql_mutation_expr = spec.graphql_mutation_type.clone().or_else(|| {
+    let graphql_mutation_expr = wiring.graphql_mutation_type.clone().or_else(|| {
         crate_root
             .as_ref()
             .filter(|root| {
@@ -197,14 +138,14 @@ fn build_optional_module_entry(
             })
             .map(|_| format!("{crate_ident}::graphql::{type_stem}Mutation"))
     });
-    let graphql_subscription_expr = spec.graphql_subscription_type.clone();
-    let graphql_runtime_data_factory_expr = spec.graphql_runtime_data_factory.clone();
+    let graphql_subscription_expr = wiring.graphql_subscription_type.clone();
+    let graphql_runtime_data_factory_expr = wiring.graphql_runtime_data_factory.clone();
 
-    let axum_router_expr = spec
+    let axum_router_expr = wiring
         .http_axum_router_fn
         .clone()
         .map(|value| format!("{value}(runtime)"));
-    let axum_webhook_router_expr = spec
+    let axum_webhook_router_expr = wiring
         .http_axum_webhook_router_fn
         .clone()
         .map(|value| format!("{value}(runtime)"));
@@ -223,62 +164,62 @@ fn build_optional_module_entry(
 
 fn apply_module_package_manifest(
     workspace_root: &Path,
-    mut spec: ModuleSpec,
-) -> Result<ModuleSpec, Box<dyn std::error::Error>> {
+    spec: &ModuleSpec,
+) -> Result<ResolvedModuleWiring, Box<dyn std::error::Error>> {
+    let mut wiring = ResolvedModuleWiring::default();
     let Some(module_path) = spec.path.as_ref() else {
-        return Ok(spec);
+        return Ok(wiring);
     };
     let package_manifest_path = workspace_root.join(module_path).join("rustok-module.toml");
     if !package_manifest_path.exists() {
-        return Ok(spec);
+        return Ok(wiring);
     }
 
     println!("cargo:rerun-if-changed={}", package_manifest_path.display());
-    let raw = fs::read_to_string(&package_manifest_path)?;
-    let package_manifest = toml::from_str::<ModulePackageManifest>(&raw)?;
+    let package_manifest = load_module_package_manifest(&package_manifest_path)?;
 
     if let Some(entry_type) = qualify_package_type_path(
         &spec.crate_name,
         package_manifest.crate_contract.entry_type.as_deref(),
     ) {
-        spec.entry_type = Some(entry_type);
+        wiring.entry_type = Some(entry_type);
     }
-    if let Some(graphql) = package_manifest.provides.graphql {
+    if let Some(graphql) = package_manifest.provides.graphql.as_ref() {
         if let Some(query_type) =
             qualify_package_type_path(&spec.crate_name, graphql.query.as_deref())
         {
-            spec.graphql_query_type = Some(query_type);
+            wiring.graphql_query_type = Some(query_type);
         }
         if let Some(mutation_type) =
             qualify_package_type_path(&spec.crate_name, graphql.mutation.as_deref())
         {
-            spec.graphql_mutation_type = Some(mutation_type);
+            wiring.graphql_mutation_type = Some(mutation_type);
         }
         if let Some(subscription_type) =
             qualify_package_type_path(&spec.crate_name, graphql.subscription.as_deref())
         {
-            spec.graphql_subscription_type = Some(subscription_type);
+            wiring.graphql_subscription_type = Some(subscription_type);
         }
         if let Some(factory) =
             qualify_package_type_path(&spec.crate_name, graphql.runtime_data_factory.as_deref())
         {
-            spec.graphql_runtime_data_factory = Some(factory);
+            wiring.graphql_runtime_data_factory = Some(factory);
         }
     }
-    if let Some(http) = package_manifest.provides.http {
+    if let Some(http) = package_manifest.provides.http.as_ref() {
         if let Some(axum_router_fn) =
             qualify_package_type_path(&spec.crate_name, http.axum_router.as_deref())
         {
-            spec.http_axum_router_fn = Some(axum_router_fn);
+            wiring.http_axum_router_fn = Some(axum_router_fn);
         }
         if let Some(axum_webhook_router_fn) =
             qualify_package_type_path(&spec.crate_name, http.axum_webhook_router.as_deref())
         {
-            spec.http_axum_webhook_router_fn = Some(axum_webhook_router_fn);
+            wiring.http_axum_webhook_router_fn = Some(axum_webhook_router_fn);
         }
     }
 
-    Ok(spec)
+    Ok(wiring)
 }
 
 fn qualify_package_type_path(crate_name: &str, value: Option<&str>) -> Option<String> {
