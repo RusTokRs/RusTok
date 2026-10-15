@@ -41,7 +41,9 @@ Two new events in `rustok-events`:
 - **Create**: If `scheduled_at` is set and `publish=false`, the post is saved as Draft with the schedule. Validation: `scheduled_at` must be in the future; cannot be combined with `publish=true`.
 - **Update**: `scheduled_at` can be set, changed, or cleared via `Patch` semantics. Same future-date validation applies.
 - **Publish (manual)**: When a post is manually published, `scheduled_at` is automatically cleared.
-- **`publish_scheduled_posts()`**: New method that finds all Draft posts with `scheduled_at <= now` and publishes them. Designed to be called by an external scheduler worker (cron job or daemon).
+- **`publish_scheduled_posts(tenant_id, limit)`**: publishes the due Draft posts of one
+  tenant, oldest schedule first, bounded by `limit` (clamped to
+  `MAX_SCHEDULED_PUBLISH_BATCH` = 200) with the post version CAS per post.
 
 ### GraphQL
 
@@ -65,15 +67,17 @@ Two new events in `rustok-events`:
 
 ## Scheduler Worker
 
-The `publish_scheduled_posts()` method is ready to be called by an external
-scheduler. Implementation options:
+The command is drained by the Blog-owned `blog_scheduled_publish` module-work
+registration (`src/services/scheduler.rs`), which the host composes through
+`rustok_runtime::ModuleWorkRegistrations`. No external cron job or module-local
+daemon is required or supported:
 
-1. **Cron job**: Run `cargo run --bin blog_scheduler` every minute
-2. **Long-running daemon**: Loop with configurable sleep interval
-3. **Integrated worker**: Call from the existing worker infrastructure
-
-The method is idempotent: if a post is already published or the schedule was
-cleared, it will be skipped.
+- claiming is a read-only discovery of the tenant owning the earliest due schedule;
+  the authoritative transition stays inside the owner command;
+- each post commits in its own transaction behind the version CAS, so publication is
+  idempotent and a concurrently edited post is skipped instead of overwritten;
+- the worker runs only in host modes `full` and `worker`
+  (`rustok.runtime.host_mode`), because the scheduler is only started there.
 
 ## Validation Rules
 

@@ -470,6 +470,17 @@ base `1a420c8`).
   shared constant instead of redeclaring it; the change is covered by a new negative
   case in its self-test (`duplicateTargetType`).
 
+- Verifier evidence for this wave: the `rustok-blog` verifier set was run before and
+  after against a clean worktree of the base commit. 40 scripts still fail for
+  pre-existing reasons (stale taxonomy/slice evidence, retired sources they still
+  demand, missing evidence JSONs); none failed because of this wave, and
+  `verify-module-source-layout`, `verify-module-reference-contract`,
+  `verify-api-surface-contract`, `verify-docs` and the Blog FBA chain pass.
+  `verify-blog-comments-event-projection.mjs` was updated as described above, and
+  `verify-blog-category-hierarchy-command.mjs` — which could not execute at all
+  because of three malformed string literals — now parses and passes after two marker
+  strings were aligned with the wording the tree actually uses.
+
 ### Open items from this audit
 
 Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md)):
