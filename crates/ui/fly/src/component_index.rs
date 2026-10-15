@@ -50,7 +50,13 @@ impl ComponentIndex {
                 );
             }
             let mut path = Vec::new();
-            index.visit(root, page_index, root.id().map(ToString::to_string), 1, &mut path);
+            index.visit(
+                root,
+                page_index,
+                root.id().map(ToString::to_string),
+                1,
+                &mut path,
+            );
         }
         index
     }
@@ -126,7 +132,11 @@ impl ComponentIndex {
             let mut current = root;
             let mut ok = true;
             for &idx in path {
-                if let Some(child) = current.children().get(idx).and_then(ComponentNode::as_object) {
+                if let Some(child) = current
+                    .children()
+                    .get(idx)
+                    .and_then(ComponentNode::as_object)
+                {
                     current = child;
                 } else {
                     ok = false;
@@ -172,7 +182,6 @@ pub(crate) fn navigate_mut<'a>(
 }
 
 impl ComponentIndex {
-
     /// Canonical diagnostic path string for the component, e.g. `pages[0].component.components[2]`.
     pub fn diagnostic_path(&self, id: &str) -> Option<String> {
         let (page_index, path) = self.paths.get(id)?;
@@ -339,7 +348,10 @@ mod tests {
             .expect("title mut");
         title_mut.component_type = Some("custom_heading".to_string());
         assert_eq!(
-            document.project.component("title").and_then(|c| c.component_type.as_deref()),
+            document
+                .project
+                .component("title")
+                .and_then(|c| c.component_type.as_deref()),
             Some("custom_heading")
         );
     }

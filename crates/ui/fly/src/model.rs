@@ -55,9 +55,13 @@ impl ProjectDocument {
         self.component_index().get_component(self, id)
     }
 
-    pub fn component_mut(&mut self, id: &str) -> Option<&mut ComponentObject> {
+    pub fn invalidate_caches(&mut self) {
         self.cached_hash.take();
         self.component_index.take();
+    }
+
+    pub fn component_mut(&mut self, id: &str) -> Option<&mut ComponentObject> {
+        self.invalidate_caches();
         self.project.component_mut(id)
     }
 
@@ -80,6 +84,7 @@ impl ProjectDocument {
         if self.all_component_ids_stable() {
             return;
         }
+        self.invalidate_caches();
         let mut reserved = BTreeSet::new();
         self.project.visit_components(|component, _, _| {
             if let Some(id) = component.id()

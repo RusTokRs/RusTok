@@ -58,7 +58,7 @@ The Pages SSR profile must additionally reach the Pages owner crate. The host SS
 The verifier also scans Rust sources under:
 
 - `crates/modules/rustok-pages/storefront/src`;
-- `crates/modules/rustok-page-builder-storefront/src`;
+- `crates/modules/rustok-page-builder/storefront/src`;
 - `apps/storefront/src`.
 
 Imports and composition markers for Pages admin, Page Builder admin and Fly browser/editor surfaces are forbidden. This protects the package graph and the module entrypoints together.

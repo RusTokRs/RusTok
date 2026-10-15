@@ -622,8 +622,7 @@ fn invert_insert_and_remove_are_reciprocal() {
         index: 1,
         component: new_node,
     };
-    let inverse_insert =
-        invert_command(editor.document(), &insert_cmd).expect("inverse of insert");
+    let inverse_insert = invert_command(editor.document(), &insert_cmd).expect("inverse of insert");
     assert_eq!(
         inverse_insert,
         EditorCommand::Remove {
@@ -632,11 +631,7 @@ fn invert_insert_and_remove_are_reciprocal() {
     );
 
     editor.apply(insert_cmd).expect("insert");
-    let inserted_id = editor
-        .document()
-        .component("root")
-        .unwrap()
-        .children()[1]
+    let inserted_id = editor.document().component("root").unwrap().children()[1]
         .id()
         .unwrap()
         .to_string();
@@ -644,8 +639,7 @@ fn invert_insert_and_remove_are_reciprocal() {
     let remove_cmd = EditorCommand::Remove {
         component_id: inserted_id.clone(),
     };
-    let inverse_remove =
-        invert_command(editor.document(), &remove_cmd).expect("inverse of remove");
+    let inverse_remove = invert_command(editor.document(), &remove_cmd).expect("inverse of remove");
     match inverse_remove {
         EditorCommand::Insert {
             parent_id,
@@ -671,16 +665,7 @@ fn incremental_patch_validation_produces_identical_diagnostics_to_full_validatio
         .expect("patch");
     let full_report = editor.validate();
 
-    assert_eq!(
-        incremental_report.is_valid(),
-        full_report.is_valid()
-    );
-    assert_eq!(
-        incremental_report.node_count,
-        full_report.node_count
-    );
-    assert_eq!(
-        incremental_report.diagnostics,
-        full_report.diagnostics
-    );
+    assert_eq!(incremental_report.is_valid(), full_report.is_valid());
+    assert_eq!(incremental_report.node_count, full_report.node_count);
+    assert_eq!(incremental_report.diagnostics, full_report.diagnostics);
 }

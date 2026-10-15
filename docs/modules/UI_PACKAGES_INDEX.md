@@ -146,6 +146,7 @@ integration. The canonical source of truth here is only manifest wiring.
 - `rustok-payment` storefront UI: [README](../../crates/modules/rustok-payment/storefront/README.md)
 - `rustok-order` storefront UI: [README](../../crates/modules/rustok-order/storefront/README.md)
 - `rustok-forum` storefront UI: [README](../../crates/modules/rustok-forum/storefront/README.md)
+- `rustok-page-builder` storefront UI: [README](../../crates/modules/rustok-page-builder/storefront/README.md)
 - `rustok-pages` storefront UI: [README](../../crates/modules/rustok-pages/storefront/README.md)
 - `rustok-pricing` storefront UI: [README](../../crates/modules/rustok-pricing/storefront/README.md)
 - `rustok-profiles` storefront UI: [README](../../crates/modules/rustok-profiles/storefront/README.md)

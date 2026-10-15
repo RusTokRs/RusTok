@@ -35,9 +35,9 @@ const localPlanPath = "crates/modules/rustok-pages/docs/implementation-plan.md";
 const pagesManifestPath = "crates/modules/rustok-pages/storefront/Cargo.toml";
 const pagesLibPath = "crates/modules/rustok-pages/storefront/src/lib.rs";
 const pagesInlineSourcePath = "crates/modules/rustok-pages/storefront/src/inline_edit.rs";
-const builderManifestPath = "crates/modules/rustok-page-builder-storefront/Cargo.toml";
-const builderLibPath = "crates/modules/rustok-page-builder-storefront/src/lib.rs";
-const builderInlineSourcePath = "crates/modules/rustok-page-builder-storefront/src/inline_edit.rs";
+const builderManifestPath = "crates/modules/rustok-page-builder/storefront/Cargo.toml";
+const builderLibPath = "crates/modules/rustok-page-builder/storefront/src/lib.rs";
+const builderInlineSourcePath = "crates/modules/rustok-page-builder/storefront/src/inline_edit.rs";
 const hostManifestPath = "apps/storefront/Cargo.toml";
 
 const evidence = JSON.parse(read(evidencePath));
@@ -145,7 +145,7 @@ for (const marker of [
   '"rustok-page-builder-storefront/ssr"',
   "inline-edit = [",
   '"rustok-page-builder-storefront/inline-edit"',
-  'fly = { path = "../../fly", optional = true }',
+  'fly = { path = "../../../ui/fly", optional = true }',
 ]) need(pagesManifest, marker, "Pages storefront manifest");
 for (const feature of ["default", "hydrate", "ssr"]) {
   forbid(
@@ -173,9 +173,9 @@ for (const marker of [
   '"leptos/hydrate"',
   '"leptos/ssr"',
   'inline-edit = ["dep:fly-leptos"]',
-  'fly-leptos = { path = "../fly-leptos", optional = true, default-features = false }',
-  'fly = { path = "../fly" }',
-  'rustok-page-builder = { path = "../rustok-page-builder", default-features = false }'
+  'fly-leptos = { path = "../../../ui/fly/leptos", optional = true, default-features = false }',
+  'fly = { path = "../../../ui/fly" }',
+  'rustok-page-builder = { path = "..", default-features = false }'
 ]) need(builderManifest, marker, "Page Builder storefront manifest");
 for (const forbidden of [
   "rustok-pages-admin",
@@ -243,11 +243,11 @@ const forbiddenSourceMarkers = [
 ];
 for (const sourceRoot of [
   "crates/modules/rustok-pages/storefront/src",
-  "crates/modules/rustok-page-builder-storefront/src",
+  "crates/modules/rustok-page-builder/storefront/src",
   "apps/storefront/src"
 ]) {
   for (const file of walkRustFiles(sourceRoot)) {
-    const label = path.relative(repoRoot, file);
+    const label = path.relative(repoRoot, file).replace(/\\/g, "/");
     if (label === pagesInlineSourcePath || label === builderInlineSourcePath) continue;
     const source = readFileSync(file, "utf8");
     for (const marker of forbiddenSourceMarkers) forbid(source, marker, label);

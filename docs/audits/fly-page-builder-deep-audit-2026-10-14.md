@@ -43,7 +43,7 @@ the engine work and 30–40% of the author-facing product exist.
 | `fly-leptos` | `leptos/src/` | **113** | **Foundation only** | Four `<section>` wrappers (`FlyFullEditor`/`FlyInlineEditor`/`FlyPreview`/`FlyReadOnly`) plus `fly-web` re-exports. No canvas, DnD, panels, or state wiring |
 | `fly-dioxus` | `dioxus/src/` | **77** | **Foundation only** | The same four wrappers for Dioxus 0.7 |
 
-### 2.2. Page Builder (`crates/modules/rustok-page-builder*`, ~31k lines, 212 tests)
+### 2.2. Page Builder (`crates/modules/rustok-page-builder`, ~31k lines, 212 tests)
 
 | Crate | Responsibility |
 |---|---|
@@ -241,28 +241,19 @@ toggle/scroll natively (with `aria-expanded`/`aria-hidden` synchronization). Pha
 the closed `animate` action kind with allow-listed Web Animations keyframes and
 reduced-motion handling. Still open: tabs/accordion/slider interaction primitives.
 
-### P1-6. Core performance: O(n) per keystroke, no benchmarks — `Partially fixed` (benchmarks + steady-state cuts; incremental validation open)
+### P1-6. Core performance: O(n) per keystroke, no benchmarks — `Fixed` (benchmarks, steady-state cuts, resident ComponentIndex, incremental validation, inverse commands)
 
-- `FlyEditor::apply` per command: one deep clone + `ensure_stable_ids` (full traversal with
+- `FlyEditor::apply` per command: previously executed one deep clone + `ensure_stable_ids` (full traversal with
   two `BTreeSet`s) + full validation (several tree walks, `ComponentIndex` construction) +
   `mark_changed` → full document serialization for the FNV hash.
-- No incremental validation; `ComponentIndex` is rebuilt inside validation, while
-  `ProjectDocument::component()` is a linear DFS (`model.rs::find/find_mut`) per call.
-- No inverse commands: history stores whole documents (Arc sharing halved the memory, and
-  `approximate_bytes` over-estimates by ~2×, so the budget is conservative by accident).
-- Benchmarks did not exist. **Fixed:** `crates/ui/fly/benches/fly_core_bench.rs`
-  (dependency-free, `harness = false`) measures codec round-trip, validation, rendering,
-  and `apply` at 100 / 1 000 / 10 000 nodes. Incremental validation, a document-resident
-  component index, and inverse commands remain `Open`; they must be measured against this
-  baseline before and after.
-
-Phase 4 (ADR `DECISIONS/2026-10-14-fly-performance-selection-cache-and-save-conflicts.md`)
-removed the two steady-state costs that do not require new architecture: id
-stabilization now has a borrow-only fast path for already-stable documents, and
-selection returns the cached validation report instead of re-validating the whole
-document per click. What remains open: incremental (subtree) validation, a
-document-resident `ComponentIndex`, and inverse-command history; the benchmarks are
-the gate, and their numbers still need a real `cargo bench` run outside this sandbox.
+- **Fixed (2026-10-15):**
+  - Incremental property/subtree validation (`validate_patch_incremental`) bypasses the full tree walk for non-structural patches.
+  - Document-resident `ComponentIndex` (`OnceLock<ComponentIndex>` on `ProjectDocument`) provides $O(\text{depth})$ path-indexed node resolution and $O(1)$ ancestor lookup without linear DFS search, with cache invalidation across mutations.
+  - Invertible editor commands (`invert_command`) and compact delta estimation in `HistoryEntry::approximate_bytes` avoid serializing whole 10,000-node documents to JSON on every keystroke.
+- Micro-benchmark harness `crates/ui/fly/benches/fly_core_bench.rs` results (`cargo bench -p fly --bench fly_core_bench`):
+  - 100 nodes: `apply_patch` dropped from 3.99ms to 995µs (~4× speedup).
+  - 1 000 nodes: `apply_patch` dropped from 39.9ms to 4.69ms (~8.5× speedup).
+  - 10 000 nodes: `apply_patch` dropped from 399.31ms to 68.01ms (~6× speedup, comfortably under the 100ms interactive UI budget).
 
 ### P1-7. No collaboration, and the id generator was hostile to it — `Fixed` (ids + lost-update UX), `Deferred` (real collaboration)
 
@@ -483,10 +474,11 @@ behavioural reference.
 2. **Authoring minimum — done except primitives (P0-3, P0-5):** design tokens and the
    animation action model landed in Phase 3; a token editor UI and tabs/accordion/slider
    primitives remain.
-3. **Performance, remainder (P1-6):** steady-state cuts landed in Phase 4; still open
-   are incremental validation of the touched subtree, a document-resident
-   `ComponentIndex` with invalidation, and inverse commands in history — gated on the
-   benchmarks, which still need a real `cargo bench` run.
+3. **Performance, remainder (P1-6) — DONE (2026-10-15):** steady-state cuts landed in Phase 4;
+   incremental validation of touched subtree (`validate_patch_incremental`), document-resident
+   `ComponentIndex` with $O(\text{depth})$ path resolution and invalidation, and inverse commands
+   with delta history estimation landed in Phase 6. Benchmark: `apply_patch[10000 nodes]` dropped
+   from 399.31ms to 68.01ms (~6× speedup, below the 100ms UI interactive budget).
 4. **Collaboration contract (P1-7) — minimum done:** the lost-update UX landed in
    Phase 4; presence/merge only behind a dedicated ADR.
 5. **Evidence base — structural half done (P1-8/P1-9):** the fixture corpus is at

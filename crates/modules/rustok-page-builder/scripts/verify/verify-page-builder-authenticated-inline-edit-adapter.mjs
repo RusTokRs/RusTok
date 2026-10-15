@@ -49,9 +49,9 @@ const flyCargo = read("crates/ui/fly/leptos/Cargo.toml");
 const flyRoot = read("crates/ui/fly/leptos/src/root.rs");
 const flyFoundation = read("crates/ui/fly/leptos/src/foundation.rs");
 const realDom = read("crates/ui/fly/web/src/real_dom_inline.rs");
-const storefrontCargo = read("crates/modules/rustok-page-builder-storefront/Cargo.toml");
-const storefrontLib = read("crates/modules/rustok-page-builder-storefront/src/lib.rs");
-const inline = read("crates/modules/rustok-page-builder-storefront/src/inline_edit.rs");
+const storefrontCargo = read("crates/modules/rustok-page-builder/storefront/Cargo.toml");
+const storefrontLib = read("crates/modules/rustok-page-builder/storefront/src/lib.rs");
+const inline = read("crates/modules/rustok-page-builder/storefront/src/inline_edit.rs");
 const pagesStorefrontCargo = read("crates/modules/rustok-pages/storefront/Cargo.toml");
 const pagesStorefrontLib = read("crates/modules/rustok-pages/storefront/src/lib.rs");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
@@ -152,7 +152,7 @@ forbid(realDom, "data-inline-proof", "authorization proof DOM boundary");
 
 for (const marker of [
   'inline-edit = ["dep:fly-leptos"]',
-  'fly-leptos = { path = "../../ui/fly/leptos", optional = true, default-features = false }',
+  'fly-leptos = { path = "../../../ui/fly/leptos", optional = true, default-features = false }',
   '"fly-leptos?/wasm-client"',
   '"fly-leptos?/ssr"',
 ]) need(storefrontCargo, marker, "optional Page Builder inline feature");

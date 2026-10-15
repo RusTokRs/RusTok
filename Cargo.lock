@@ -17693,6 +17693,7 @@ dependencies = [
  "rustok-notifications-storefront",
  "rustok-order-storefront",
  "rustok-outbox",
+ "rustok-page-builder-storefront",
  "rustok-pages-storefront",
  "rustok-payment-storefront",
  "rustok-pricing-storefront",

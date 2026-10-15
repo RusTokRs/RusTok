@@ -14,7 +14,7 @@ const files = {
   config: "apps/next-admin/playwright.pages-inline-edit.config.ts",
   test: "apps/next-admin/tests/pages-inline-edit/browser-evidence.spec.ts",
   package: "apps/next-admin/package.json",
-  pageBuilderInline: "crates/modules/rustok-page-builder-storefront/src/inline_edit.rs",
+  pageBuilderInline: "crates/modules/rustok-page-builder/storefront/src/inline_edit.rs",
   pagesInline: "crates/modules/rustok-pages/storefront/src/inline_edit.rs",
   adminLaunch: "crates/modules/rustok-pages/admin/src/inline_edit_launch.rs",
   realDom: "crates/ui/fly/web/src/real_dom_inline.rs",

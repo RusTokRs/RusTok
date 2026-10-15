@@ -14,7 +14,7 @@ const paths = {
   hostLib: 'crates/modules/rustok-page-builder/src/lib.rs',
   hostRuntimeContext: 'crates/modules/rustok-page-builder/src/runtime_context.rs',
   hostRender: 'crates/modules/rustok-page-builder/src/render.rs',
-  hostStorefrontRoute: 'crates/modules/rustok-page-builder-storefront/src/localized_route.rs',
+  hostStorefrontRoute: 'crates/modules/rustok-page-builder/storefront/src/localized_route.rs',
   adminSession: 'crates/modules/rustok-page-builder/admin/src/core/session.rs',
   adminRuntime: 'crates/modules/rustok-page-builder/admin/src/editor/runtime.rs',
   formsControllers: 'crates/modules/rustok-forms/src/controllers.rs',

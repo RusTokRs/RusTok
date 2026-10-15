@@ -49,15 +49,25 @@ pub fn PageBuilderPageBody(
 
     let rich_text_renderer = pages_rich_text_renderer();
     match decode_page_builder_body(&body) {
-        Ok(project_data) => view! {
-            <PageBuilderStorefront
-                project_data
-                selection=PageSelection::First
-                class=class
-                rich_text_renderer=rich_text_renderer
-            />
-        }
-        .into_any(),
+        Ok(project_data) => match rich_text_renderer {
+            Some(renderer) => view! {
+                <PageBuilderStorefront
+                    project_data
+                    selection=PageSelection::First
+                    class=class
+                    rich_text_renderer=renderer
+                />
+            }
+            .into_any(),
+            None => view! {
+                <PageBuilderStorefront
+                    project_data
+                    selection=PageSelection::First
+                    class=class
+                />
+            }
+            .into_any(),
+        },
         Err(error) => view! {
             <div
                 class=class

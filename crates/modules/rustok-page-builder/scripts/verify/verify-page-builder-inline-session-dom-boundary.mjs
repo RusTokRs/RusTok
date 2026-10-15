@@ -9,7 +9,7 @@ const failures = [];
 const files = {
   evidence:
     "crates/modules/rustok-page-builder/contracts/evidence/page-builder-authenticated-inline-edit-adapter-source.json",
-  inline: "crates/modules/rustok-page-builder-storefront/src/inline_edit.rs",
+  inline: "crates/modules/rustok-page-builder/storefront/src/inline_edit.rs",
   adapterGuard:
     "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs",
   packet:

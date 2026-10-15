@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Standalone FBA-first visual page builder reference module"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "admin_only"
+ui_classification = "dual_surface"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [crate]
@@ -22,6 +22,17 @@ nav_order = 5
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-page-builder-storefront"
+slot = "home_before_footer"
+route_segment = "page-builder"
+page_title = "Page Builder"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"
 
 [fba.provider]
 contract = "grapesjs"

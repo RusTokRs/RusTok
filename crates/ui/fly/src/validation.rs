@@ -171,7 +171,9 @@ pub fn validate_patch_incremental(
             ValidationSeverity::Warning,
             "missing_component_provider",
             &path,
-            format!("component type `{component_type}` has no registered provider; node is preserved"),
+            format!(
+                "component type `{component_type}` has no registered provider; node is preserved"
+            ),
         ));
         if let Some(parent) = location
             .parent_component_id
@@ -184,7 +186,9 @@ pub fn validate_patch_incremental(
                     ValidationSeverity::Error,
                     "invalid_component_child",
                     &path,
-                    format!("component type `{parent_type}` does not accept `{component_type}` children"),
+                    format!(
+                        "component type `{parent_type}` does not accept `{component_type}` children"
+                    ),
                 ));
             }
         }
@@ -226,7 +230,9 @@ pub fn validate_patch_incremental(
         ));
     }
 
-    let has_page_link = component.extensions.contains_key(crate::FLY_PAGE_LINK_FIELD);
+    let has_page_link = component
+        .extensions
+        .contains_key(crate::FLY_PAGE_LINK_FIELD);
     let has_action = component.extensions.contains_key(crate::FLY_ACTION_FIELD);
     let has_form = component.extensions.contains_key(crate::FLY_FORM_FIELD);
     if has_page_link && has_action {
@@ -234,7 +240,11 @@ pub fn validate_patch_incremental(
             ValidationSeverity::Error,
             "component_navigation_contract_conflict",
             &path,
-            format!("component cannot define both `{}` and `{}`", crate::FLY_PAGE_LINK_FIELD, crate::FLY_ACTION_FIELD),
+            format!(
+                "component cannot define both `{}` and `{}`",
+                crate::FLY_PAGE_LINK_FIELD,
+                crate::FLY_ACTION_FIELD
+            ),
         ));
     }
     if has_form && (has_page_link || has_action) {
@@ -242,13 +252,20 @@ pub fn validate_patch_incremental(
             ValidationSeverity::Error,
             "component_form_interaction_contract_conflict",
             &path,
-            format!("component cannot combine `{}` with `{}` or `{}`", crate::FLY_FORM_FIELD, crate::FLY_PAGE_LINK_FIELD, crate::FLY_ACTION_FIELD),
+            format!(
+                "component cannot combine `{}` with `{}` or `{}`",
+                crate::FLY_FORM_FIELD,
+                crate::FLY_PAGE_LINK_FIELD,
+                crate::FLY_ACTION_FIELD
+            ),
         ));
     }
 
     let mut new_report = previous_report.clone();
     let prefix = format!("{path}.");
-    new_report.diagnostics.retain(|d| d.path != path && !d.path.starts_with(&prefix));
+    new_report
+        .diagnostics
+        .retain(|d| d.path != path && !d.path.starts_with(&prefix));
     new_report.diagnostics.extend(diagnostics);
     deduplicate_diagnostics(&mut new_report.diagnostics);
 

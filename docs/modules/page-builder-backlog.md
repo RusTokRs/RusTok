@@ -128,9 +128,15 @@ Status source of truth per item: the deep audit
 4. **Browser evidence (rest of P1-8/P1-9).** Real GrapesJS captures in the fixture
    manifest (`browser_roundtrip`), 3–5 Playwright editor scenarios, executable
    accessibility evidence. Owner: whoever runs the browser harness.
-5. **Performance, second half (rest of P1-6).** Incremental subtree validation, a
-   document-resident `ComponentIndex`, inverse-command history — gated on the
-   benchmarks from item 1. Owner: `fly` core.
+5. **Performance, second half (P1-6) — DONE (2026-10-15).** Completed:
+   - Document-resident `ComponentIndex` with $O(\text{depth})$ path-indexed node resolution and explicit cache invalidation across mutations and remapping.
+   - Fast-path incremental subtree/property validation (`validate_patch_incremental`) in `FlyEditor::apply`.
+   - Invertible editor commands (`invert_command`) and delta-based compact history memory estimation in `HistoryEntry`.
+   Benchmark results (`fly_core_bench` release mode):
+   - 100 nodes: `apply_patch` dropped from 3.99ms to 995µs (~4× speedup).
+   - 1 000 nodes: `apply_patch` dropped from 39.9ms to 4.69ms (~8.5× speedup).
+   - 10 000 nodes: `apply_patch` dropped from 399.31ms to 68.01ms (~6× speedup, below the 100ms interactive UI budget).
+   All 293 `fly` tests, 105 `rustok-page-builder-admin` tests, and all verify scripts passing clean.
 6. **Contributions (rest of P1-12).** Product, blog, pricing, taxonomy, and SEO
    contributions beyond the forum/pages ones, so the palette can assemble
    RusTok's own storefront. Owner: module teams (commerce, blog).

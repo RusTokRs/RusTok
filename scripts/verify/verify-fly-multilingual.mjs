@@ -15,7 +15,7 @@ const paths = {
   pageBuilderLocale: 'crates/modules/rustok-page-builder/src/locale.rs',
   uiI18nAcceptLanguage: 'crates/ui/rustok-ui-i18n/src/accept_language.rs',
   pageBuilderRender: 'crates/modules/rustok-page-builder/src/render.rs',
-  storefrontLocalizedRoute: 'crates/modules/rustok-page-builder-storefront/src/localized_route.rs',
+  storefrontLocalizedRoute: 'crates/modules/rustok-page-builder/storefront/src/localized_route.rs',
   pagesIntent: 'crates/modules/rustok-pages/admin/src/browser_intent.rs',
   browserIntent: 'crates/modules/rustok-page-builder/admin/src/browser_intent.rs',
   ssrForms: 'crates/modules/rustok-page-builder/admin/src/editor/ssr_forms.rs',

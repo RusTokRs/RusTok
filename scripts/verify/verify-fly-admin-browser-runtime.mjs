@@ -75,7 +75,7 @@ for (const marker of [
   requireMarker('flyCommandEditor', marker, `Fly transaction engine is missing ${marker}`);
 }
 for (const marker of [
-  'ui_classification = "admin_only"',
+  'ui_classification = "dual_surface"',
   '[provides.admin_ui]',
   'leptos_crate = "rustok-page-builder-admin"',
   'route_segment = "page-builder"',

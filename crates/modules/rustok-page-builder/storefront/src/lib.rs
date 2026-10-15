@@ -136,7 +136,7 @@ pub fn PageBuilderStorefront(
             project_data,
             selection,
             policy,
-            rich_text_renderer.as_deref(),
+            rich_text_renderer.as_deref().map(|r| r as &dyn RichTextHtmlRenderer),
         )
         .map(|output| (output.page, 0, 0)),
     };

@@ -232,7 +232,8 @@ impl FlyEditor {
         document: &mut ProjectDocument,
         command: &EditorCommand,
     ) -> FlyResult<()> {
-        match command {
+        document.invalidate_caches();
+        let result = match command {
             EditorCommand::Select { .. } => Err(FlyError::Decode(
                 "selection commands cannot be nested in a project transaction".to_string(),
             )),
@@ -312,7 +313,9 @@ impl FlyEditor {
                 }
                 Ok(())
             }
-        }
+        };
+        document.invalidate_caches();
+        result
     }
 }
 
@@ -351,7 +354,10 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
 /// Compute the exact inverse of an editor command against the current document state.
 ///
 /// Enables lightweight delta-based history tracking and inverse-command undo operations.
-pub fn invert_command(document: &ProjectDocument, command: &EditorCommand) -> Option<EditorCommand> {
+pub fn invert_command(
+    document: &ProjectDocument,
+    command: &EditorCommand,
+) -> Option<EditorCommand> {
     match command {
         EditorCommand::Select { .. } => None,
         EditorCommand::Insert { component, .. } => {
@@ -375,20 +381,27 @@ pub fn invert_command(document: &ProjectDocument, command: &EditorCommand) -> Op
                 index: location.index,
             })
         }
-        EditorCommand::Patch { component_id, patch } => {
+        EditorCommand::Patch {
+            component_id,
+            patch,
+        } => {
             let component = document.component(component_id)?;
             let mut inverse_patch = crate::ComponentPatch::default();
 
             for (key, _) in &patch.attributes {
                 if let Some(old_val) = component.attributes.get(key) {
-                    inverse_patch.attributes.insert(key.clone(), old_val.clone());
+                    inverse_patch
+                        .attributes
+                        .insert(key.clone(), old_val.clone());
                 } else {
                     inverse_patch.remove_attributes.push(key.clone());
                 }
             }
             for key in &patch.remove_attributes {
                 if let Some(old_val) = component.attributes.get(key) {
-                    inverse_patch.attributes.insert(key.clone(), old_val.clone());
+                    inverse_patch
+                        .attributes
+                        .insert(key.clone(), old_val.clone());
                 }
             }
 
@@ -425,27 +438,30 @@ pub fn invert_command(document: &ProjectDocument, command: &EditorCommand) -> Op
                 match key.as_str() {
                     "type" => {
                         if let Some(old_type) = &component.component_type {
-                            inverse_patch
-                                .fields
-                                .insert("type".to_string(), serde_json::Value::String(old_type.clone()));
+                            inverse_patch.fields.insert(
+                                "type".to_string(),
+                                serde_json::Value::String(old_type.clone()),
+                            );
                         } else {
                             inverse_patch.remove_fields.push("type".to_string());
                         }
                     }
                     "tagName" => {
                         if let Some(old_tag) = &component.tag_name {
-                            inverse_patch
-                                .fields
-                                .insert("tagName".to_string(), serde_json::Value::String(old_tag.clone()));
+                            inverse_patch.fields.insert(
+                                "tagName".to_string(),
+                                serde_json::Value::String(old_tag.clone()),
+                            );
                         } else {
                             inverse_patch.remove_fields.push("tagName".to_string());
                         }
                     }
                     "provider" => {
                         if let Some(old_provider) = &component.provider {
-                            inverse_patch
-                                .fields
-                                .insert("provider".to_string(), serde_json::Value::String(old_provider.clone()));
+                            inverse_patch.fields.insert(
+                                "provider".to_string(),
+                                serde_json::Value::String(old_provider.clone()),
+                            );
                         } else {
                             inverse_patch.remove_fields.push("provider".to_string());
                         }
@@ -463,23 +479,26 @@ pub fn invert_command(document: &ProjectDocument, command: &EditorCommand) -> Op
                 match key.as_str() {
                     "type" => {
                         if let Some(old_type) = &component.component_type {
-                            inverse_patch
-                                .fields
-                                .insert("type".to_string(), serde_json::Value::String(old_type.clone()));
+                            inverse_patch.fields.insert(
+                                "type".to_string(),
+                                serde_json::Value::String(old_type.clone()),
+                            );
                         }
                     }
                     "tagName" => {
                         if let Some(old_tag) = &component.tag_name {
-                            inverse_patch
-                                .fields
-                                .insert("tagName".to_string(), serde_json::Value::String(old_tag.clone()));
+                            inverse_patch.fields.insert(
+                                "tagName".to_string(),
+                                serde_json::Value::String(old_tag.clone()),
+                            );
                         }
                     }
                     "provider" => {
                         if let Some(old_provider) = &component.provider {
-                            inverse_patch
-                                .fields
-                                .insert("provider".to_string(), serde_json::Value::String(old_provider.clone()));
+                            inverse_patch.fields.insert(
+                                "provider".to_string(),
+                                serde_json::Value::String(old_provider.clone()),
+                            );
                         }
                     }
                     _ => {
@@ -503,11 +522,15 @@ pub fn invert_command(document: &ProjectDocument, command: &EditorCommand) -> Op
                         .is_some_and(|candidate| candidate.id == descriptor.id)
                 }) {
                     Some(EditorCommand::Asset {
-                        command: AssetCommand::Upsert { asset: existing.clone() },
+                        command: AssetCommand::Upsert {
+                            asset: existing.clone(),
+                        },
                     })
                 } else {
                     Some(EditorCommand::Asset {
-                        command: AssetCommand::Remove { asset_id: descriptor.id },
+                        command: AssetCommand::Remove {
+                            asset_id: descriptor.id,
+                        },
                     })
                 }
             }
@@ -517,7 +540,9 @@ pub fn invert_command(document: &ProjectDocument, command: &EditorCommand) -> Op
                         .is_some_and(|candidate| candidate.id == *asset_id)
                 })?;
                 Some(EditorCommand::Asset {
-                    command: AssetCommand::Upsert { asset: existing.clone() },
+                    command: AssetCommand::Upsert {
+                        asset: existing.clone(),
+                    },
                 })
             }
         },
@@ -531,4 +556,3 @@ pub fn invert_command(document: &ProjectDocument, command: &EditorCommand) -> Op
         _ => None,
     }
 }
-
