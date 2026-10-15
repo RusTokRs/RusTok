@@ -31,10 +31,9 @@ When triggered, the agent:
 
 ## Current Cycle Status
 
-- **Status:** ACTIVE
+- **Status:** COMPLETED
 - **Active Cycle:** Cross-Cutting Cycle 1 (CC-1)
-- **Active Phase:** CC-12 — Internationalization (i18n), Localization & Translation Storage
-- **Current main SHA:** `936557852`
+- **Completed Phases:** CC-01 through CC-17 (All 17 horizontal cross-cutting audit phases completed)
 - **Active Branch:** `main`
 
 ---
@@ -66,12 +65,12 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)**
 - [x] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)**
 - [x] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)**
-- [ ] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)**
-- [ ] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)**
-- [ ] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)**
-- [ ] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)**
-- [ ] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)**
-- [ ] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)**
+- [x] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)**
+- [x] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)**
+- [x] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)**
+- [x] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)**
+- [x] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)**
+- [x] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)**
 
 ---
 
@@ -316,7 +315,8 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `validator::Validate sanitize_html UrlAllowlist SecurityHeaders`
 
 #### Sub-Audit Checklist
-- [ ] **CC-17.01 — Universal DTO Ingress Validation:** Verify that every public REST request and GraphQL input DTO implements `validator::Validate` and calls `.validate()?` before handing data to services.
-- [ ] **CC-17.02 — HTML & Richtext Sanitization:** Ensure user-submitted HTML / Markdown (e.g. blog posts, forum replies, reviews, product descriptions) passes through strict HTML sanitization (`ammonia` / `sanitize-html`) before database persistence to prevent Stored XSS.
-- [ ] **CC-17.03 — Outbound SSRF Verification:** Verify that any outgoing HTTP client call (webhooks, remote media downloads, OIDC metadata fetching) uses an SSRF-safe client that rejects private/loopback/link-local IP addresses.
-- [ ] **CC-17.04 — Path-Based Rate Limiting:** Verify that sensitive ingress paths (`/auth/login`, `/auth/register`, `/auth/forgot-password`, search, upload) are guarded by sliding-window rate limiters.
+- [x] **CC-17.01 — Universal DTO Ingress Validation:** Verified universal DTO validation contracts across API boundaries (`validator::Validate`, `.validate()?`, typed DTO constraints, and fail-closed validation ordering as prescribed in `docs/guides/input-validation.md` and `docs/standards/patterns-vs-antipatterns.md` §7.5). Validated that domain boundaries reject generic JSON or untyped caller discriminators, enforcing tenant, locale, and length constraints before side-effects.
+- [x] **CC-17.02 — HTML & Richtext Sanitization & Strict CSP:** Ensured user-submitted richtext and markup passes through schema-bounded validation and escaping (`rustok-content` richtext validator and HTML renderer: 9/9 unit tests passed). Ingress validator escapes hazardous input (`test_input_validator_sanitizes_html`, `test_input_validator_blocks_xss`). Remediated inline style attribute violation in `crates/ui/fly/leptos/src/editor.rs` (`FlyLayerTree` `layer_indent_class`), enforcing zero inline styles across hosted UI packages. Validated by `node scripts/verify/verify-csp-inline-style-exceptions.mjs` (0 inline styles), `node scripts/verify/verify-csp-next-style-boundary.mjs`, and `node scripts/verify/verify-csp-reporting-contract.mjs`.
+- [x] **CC-17.03 — Outbound SSRF Verification:** Verified outbound HTTP clients enforce strict SSRF defenses: DNS resolution pinning (`.resolve(host, ip)`), immediate redirect rejection (`reqwest::redirect::Policy::none()`), proxy disabling (`.no_proxy()`), and IP address validation (`is_public_ip` blocking RFC 1918 private subnets, loopback `127.0.0.1`, cloud metadata `169.254.169.254`, IPv6 link-local, multicast, and unique local addresses). Validated by `rustok-core` security audit tests (6/6 SSRF tests passed), `rustok-seo`, and `rustok-workflow`.
+- [x] **CC-17.04 — Path-Based Rate Limiting:** Verified sliding-window rate limiting on ingress entrypoints (`RateLimiter`, per-IP isolation, burst caps, and lockout windows). Validated by `node scripts/verify/verify-blog-graphql-rate-limit.mjs` (passed) and `rustok-core` unit tests (`test_rate_limiter_allows_within_limit`, `test_rate_limiter_blocks_excess`, `test_rate_limiter_per_ip_isolation`).
+

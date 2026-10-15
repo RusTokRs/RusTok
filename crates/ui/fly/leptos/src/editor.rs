@@ -145,6 +145,20 @@ pub fn FlyPalette(
     }
 }
 
+pub(crate) fn layer_indent_class(depth: usize) -> &'static str {
+    match depth {
+        0 => "pl-2",
+        1 => "pl-[22px]",
+        2 => "pl-9",
+        3 => "pl-[50px]",
+        4 => "pl-16",
+        5 => "pl-[78px]",
+        6 => "pl-[92px]",
+        7 => "pl-[106px]",
+        _ => "pl-[120px]",
+    }
+}
+
 /// Layer tree for a document. Rows are buttons so selection works with keyboard and
 /// assistive technology, not only pointer hit-testing.
 #[component]
@@ -168,13 +182,12 @@ pub fn FlyLayerTree(
                     let is_selected = !item.id.is_empty() && selected.as_deref() == Some(item.id.as_str());
                     let item_id = item.id.clone();
                     let label = item.label.clone();
-                    let indent = format!("padding-left:{}rem", 0.5 + item.depth as f32 * 1.25);
+                    let class = format!("fly-layers__row {}", layer_indent_class(item.depth));
                     view! {
                         <li>
                             <button
                                 type="button"
-                                class="fly-layers__row"
-                                style=indent
+                                class=class
                                 aria-current=is_selected.then_some("true")
                                 disabled=item.opaque || item_id.is_empty()
                                 on:click=move |_| {
@@ -2289,5 +2302,18 @@ pub fn FlyEditorWorkspace(
                 }}
             </div>
         </section>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn layer_indent_uses_a_bounded_class_scale() {
+        assert_eq!(layer_indent_class(0), "pl-2");
+        assert_eq!(layer_indent_class(3), "pl-[50px]");
+        assert_eq!(layer_indent_class(8), "pl-[120px]");
+        assert_eq!(layer_indent_class(usize::MAX), "pl-[120px]");
     }
 }

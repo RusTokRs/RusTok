@@ -315,13 +315,13 @@ forbidMarkers("crates/modules/rustok-forum/storefront/src/ui/leptos.rs", [
   "style=card.accent_style",
   "card.accent_style",
 ]);
-requireMarkers("crates/modules/rustok-page-builder/admin/src/editor/palette_layers.rs", [
+requireMarkers("crates/ui/fly/leptos/src/editor.rs", [
   "fn layer_indent_class",
   '0 => "pl-2"',
   '_ => "pl-[120px]"',
   "layer_indent_uses_a_bounded_class_scale",
 ]);
-forbidMarkers("crates/modules/rustok-page-builder/admin/src/editor/palette_layers.rs", [
+forbidMarkers("crates/ui/fly/leptos/src/editor.rs", [
   'style=format!("padding-left:',
 ]);
 requireMarkers("crates/modules/rustok-page-builder/admin/src/editor/isolated_canvas.rs", [
