@@ -258,6 +258,11 @@ impl CacheService {
     {
         let key = key.into();
         validate_cache_load_key(&key)?;
+        tracing::debug!(
+            key = %key,
+            ttl_ms = ttl.map(|t| t.as_millis()),
+            "load_or_fill cache entry"
+        );
         self.loaders.load_or_fill(backend, key, ttl, loader).await
     }
 
@@ -285,6 +290,11 @@ impl CacheService {
         &self,
         message: CacheInvalidationMessage,
     ) -> CacheInvalidationOutcome {
+        tracing::debug!(
+            channel = %message.channel,
+            key = %message.key,
+            "Publishing cache invalidation"
+        );
         self.invalidations.publish(message).await
     }
 
@@ -381,6 +391,25 @@ pub enum CacheInvalidationMessageError {
     EmptyKey,
     KeyTooLong { length: usize, maximum: usize },
 }
+
+impl std::fmt::Display for CacheInvalidationMessageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyChannel => f.write_str("cache invalidation channel must not be empty"),
+            Self::ChannelTooLong { length, maximum } => write!(
+                f,
+                "cache invalidation channel is {length} bytes; maximum is {maximum}"
+            ),
+            Self::EmptyKey => f.write_str("cache invalidation key must not be empty"),
+            Self::KeyTooLong { length, maximum } => write!(
+                f,
+                "cache invalidation key is {length} bytes; maximum is {maximum}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for CacheInvalidationMessageError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CacheInvalidationOutcome {

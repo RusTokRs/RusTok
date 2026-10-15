@@ -9,6 +9,7 @@ mod durable_invalidation;
 mod durable_invalidation_service;
 mod durable_invalidation_transport;
 mod envelope;
+mod error;
 mod event_dedupe;
 #[cfg(feature = "redis-cache")]
 mod fallback;
@@ -61,6 +62,7 @@ pub use envelope::{
     CACHE_ENVELOPE_FORMAT_VERSION, CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness,
     DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
 };
+pub use error::CacheError;
 pub use event_dedupe::{
     BoundedCacheEventDedupe, CacheEventDedupeDecision, CacheEventDedupeError,
     CacheEventDedupeStats, DEFAULT_CACHE_EVENT_DEDUPE_TTL, DEFAULT_MAX_CACHE_EVENT_DEDUPE_ENTRIES,

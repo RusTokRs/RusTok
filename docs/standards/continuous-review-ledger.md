@@ -132,7 +132,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-02.08 — `crates/modules/rustok-rbac/src/entities/*` & `ports.rs`** — RBAC entities, permissions matrix, ports. (Done: enforced non-nil UUID validation on tenant_id and actor user_id in parse_tenant_id and parse_user_actor; bounded maximum permissions count to 100 per check request; guarded RbacRoleAssignmentDbWriter methods against nil tenant_id and user_id; added structured debug tracing across check_permissions, assign_role_permissions_on, assign_role_on, replace_role_on, and remove_tenant_role_assignments_on; added 3 unit tests covering nil UUID and oversized permissions rejection; verified all 82 lib tests pass and gatekeeper approval).
 
 #### 4. rustok-cache
-- [ ] **FS-02.09 — `crates/modules/rustok-cache/src/services/cache_service.rs` & `error.rs`** — distributed caching, Redis/memory backends, key hashing.
+- [x] **FS-02.09 — `crates/modules/rustok-cache/src/services/cache_service.rs` & `error.rs`** — distributed caching, Redis/memory backends, key hashing. (Done: implemented unified CacheError domain taxonomy in error.rs with manual Display, Error, and From conversions; implemented Display and Error on CacheInvalidationMessageError; added structured debug tracing across load_or_fill, publish_invalidation, and backend_shared_client_with_options; added unit tests for CacheError; verified all 180 unit tests pass and gatekeeper approval).
 - [ ] **FS-02.10 — `crates/modules/rustok-cache/src/ports.rs` & `invalidation.rs`** — cache ports, invalidation listener, stampede protection.
 
 ---

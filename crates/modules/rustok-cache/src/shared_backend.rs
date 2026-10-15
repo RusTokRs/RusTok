@@ -309,6 +309,13 @@ impl CacheService {
         max_capacity: u64,
         options: CacheBackendOptions,
     ) -> Arc<dyn CacheBackend> {
+        tracing::debug!(
+            prefix = %prefix,
+            ttl_ms = ttl.as_millis(),
+            max_capacity = max_capacity,
+            metrics_enabled = options.metrics_enabled,
+            "Obtaining shared cache backend"
+        );
         let key = crate::service::SharedBackendKey {
             prefix: prefix.to_string(),
             ttl,
