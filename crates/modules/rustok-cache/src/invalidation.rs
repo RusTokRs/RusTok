@@ -27,9 +27,18 @@ impl VersionedCacheInvalidation {
         generation: u64,
         emitted_at_unix_ms: u64,
     ) -> Result<Self, CacheInvalidationPayloadError> {
+        let channel = channel.into();
+        let key = key.into();
+        tracing::debug!(
+            channel = %channel,
+            key = %key,
+            generation,
+            emitted_at_unix_ms,
+            "Creating VersionedCacheInvalidation"
+        );
         let event = Self {
-            channel: channel.into(),
-            key: key.into(),
+            channel,
+            key,
             generation,
             emitted_at_unix_ms,
         };
@@ -52,6 +61,11 @@ impl VersionedCacheInvalidation {
     pub fn from_message(
         message: &CacheInvalidationMessage,
     ) -> Result<Self, CacheInvalidationPayloadError> {
+        tracing::debug!(
+            channel = %message.channel,
+            payload_len = message.key.len(),
+            "Parsing VersionedCacheInvalidation from message"
+        );
         validate_channel(&message.channel)?;
         validate_payload_length(message.key.len())?;
 

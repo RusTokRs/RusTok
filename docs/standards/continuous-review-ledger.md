@@ -22,8 +22,8 @@
 ## Deep Full-Stack Audit Cycle — 2026-10-13 (Fresh Start)
 
 **Status:** ACTIVE  
-**Active phase:** FS-02 — Core Identity, Auth & Tenancy Modules (`rustok-auth`, `rustok-rbac`, `rustok-tenant`, `rustok-cache`)  
-**Current main SHA:** `c24c8854f`
+**Active phase:** FS-03 — Commerce & Business Domain Modules (`rustok-commerce`, `rustok-cart`, `rustok-order`, `rustok-payment`, `rustok-pricing`, `rustok-inventory`, `rustok-fulfillment`)  
+**Current main SHA:** `c6cb2191e`
 **Active branch:** `main`
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire repository starting from the host entrypoint and composition root (`apps/server`), propagating through domain modules down to shared foundation libraries.
@@ -59,7 +59,7 @@ The single canonical trigger to continue this audit sequence is:
 ### Phase Backlog — Top-Down Sequence
 
 - [x] **Phase FS-01 — Entrypoint & Composition Root (`apps/server`)**
-- [ ] **Phase FS-02 — Core Identity, Auth & Tenancy Modules (`rustok-auth`, `rustok-rbac`, `rustok-tenant`, `rustok-cache`)**
+- [x] **Phase FS-02 — Core Identity, Auth & Tenancy Modules (`rustok-auth`, `rustok-rbac`, `rustok-tenant`, `rustok-cache`)**
 - [ ] **Phase FS-03 — Commerce & Business Domain Modules (`rustok-commerce`, `rustok-cart`, `rustok-order`, `rustok-payment`, `rustok-pricing`, `rustok-inventory`, `rustok-fulfillment`)**
 - [ ] **Phase FS-04 — Content, Interaction & Social Modules (`rustok-blog`, `rustok-forum`, `rustok-content`, `rustok-notifications`, `rustok-feedback`)**
 - [ ] **Phase FS-05 — Data Classification & Metadata Modules (`rustok-taxonomy`, `rustok-seo`, `rustok-translation`, `rustok-ai`)**
@@ -133,7 +133,7 @@ The single canonical trigger to continue this audit sequence is:
 
 #### 4. rustok-cache
 - [x] **FS-02.09 — `crates/modules/rustok-cache/src/services/cache_service.rs` & `error.rs`** — distributed caching, Redis/memory backends, key hashing. (Done: implemented unified CacheError domain taxonomy in error.rs with manual Display, Error, and From conversions; implemented Display and Error on CacheInvalidationMessageError; added structured debug tracing across load_or_fill, publish_invalidation, and backend_shared_client_with_options; added unit tests for CacheError; verified all 180 unit tests pass and gatekeeper approval).
-- [ ] **FS-02.10 — `crates/modules/rustok-cache/src/ports.rs` & `invalidation.rs`** — cache ports, invalidation listener, stampede protection.
+- [x] **FS-02.10 — `crates/modules/rustok-cache/src/ports.rs` & `invalidation.rs`** — cache ports, invalidation listener, stampede protection. (Done: added structured entry debug tracing across publish_durable in durable_invalidation_service.rs, load_or_fill_with_policy in policy.rs, DurableCacheInvalidationConsumer::process in invalidation_processor.rs, and VersionedCacheInvalidation new and from_message in invalidation.rs; verified all 180 unit tests pass and gatekeeper approval).
 
 ---
 
@@ -144,7 +144,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-10-13T20:15:00Z`
-- **Progress:** `2 / 254` components audited (**0.8%**)
+- **Progress:** `5 / 254` components audited (**2.0%**)
 - **Total Workspace Codebase:** ~350,000 LOC across 254 modules/apps
 
 ---
@@ -206,7 +206,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-ai-product](../../crates/modules/rustok-ai-product) | `modules` | 1 | 307 | None |  |
 | [ ] | [rustok-ai-translation](../../crates/modules/rustok-ai-translation) | `modules` | 1 | 1,655 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-ai/admin) | `modules` | 17 | 8,538 | None |  |
-| [ ] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 12,368 | None |  |
+| [x] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 12,368 | 2026-10-15 | Completed all 3 audit tracks in Phase FS-02 (credentials/JWT, config/bootstrap, admin mutations & rest) |
 | [ ] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 18 | 6,501 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 1 | 333 | None |  |
 | [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 148 | 35,732 | None |  |
@@ -214,7 +214,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 14 | 3,289 | None |  |
 | [ ] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 22 | 3,399 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 9 | 2,081 | None |  |
-| [ ] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 45 | 15,736 | None |  |
+| [x] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 45 | 15,736 | 2026-10-15 | Completed all 2 audit tracks in Phase FS-02 (cache service/error taxonomy, invalidation/stampede protection) |
 | [ ] | [admin](../../crates/modules/rustok-cache/admin) | `modules` | 7 | 926 | None |  |
 | [ ] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 73 | 18,625 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 18 | 4,545 | None |  |
@@ -313,7 +313,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-profiles-api](../../crates/modules/rustok-profiles-api) | `modules` | 3 | 132 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 9 | 1,463 | None |  |
-| [ ] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 56 | 13,098 | None |  |
+| [x] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 56 | 13,098 | 2026-10-15 | Completed all 2 audit tracks in Phase FS-02 (rbac service/error taxonomy, entities/ports & bootstrap) |
 | [ ] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 8 | 970 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 1 | 243 | None |  |
 | [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 8 | 2,925 | None |  |

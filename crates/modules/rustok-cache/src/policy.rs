@@ -156,6 +156,11 @@ impl CacheService {
     {
         let key = key.into();
         validate_policy_key(&key)?;
+        tracing::debug!(
+            key = %key,
+            loader_timeout_ms = policy.loader_timeout.map(|t| t.as_millis()),
+            "load_or_fill_with_policy entry"
+        );
         let ttl = policy.ttl.ttl_for(&key);
         if ttl.is_some_and(|ttl| ttl.is_zero()) {
             return Err(rustok_core::Error::Cache(

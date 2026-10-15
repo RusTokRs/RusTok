@@ -12,6 +12,13 @@ impl CacheInvalidationService {
         &self,
         record: &DurableCacheInvalidationRecord,
     ) -> Result<CacheInvalidationOutcome, DurableCacheInvalidationError> {
+        tracing::debug!(
+            channel = %record.channel(),
+            key = %record.key(),
+            generation = record.generation(),
+            tenant_id = ?record.tenant_id(),
+            "Publishing durable cache invalidation"
+        );
         let message = durable_invalidation_to_message(record)?;
         Ok(self.publish(message).await)
     }

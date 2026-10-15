@@ -33,6 +33,13 @@ impl DurableCacheInvalidationConsumer {
         R: FnOnce(DurableCacheInvalidationRecord) -> RFut,
         RFut: Future<Output = rustok_core::Result<()>>,
     {
+        tracing::debug!(
+            channel = %record.channel(),
+            key = %record.key(),
+            generation = record.generation(),
+            tenant_id = ?record.tenant_id(),
+            "Processing durable cache invalidation record"
+        );
         let _in_flight = self.begin_process();
         let mut completion = DurableInvalidationProcessCompletionGuard::new(self);
         let result = async {
