@@ -401,6 +401,13 @@ mod tracing_shim {
         }};
     }
 
+    macro_rules! debug {
+        ($($tokens:tt)*) => {{
+            ::tracing::debug!($($tokens)*);
+        }};
+    }
+
+    pub(crate) use debug;
     pub(crate) use error;
     pub(crate) use warn_event;
 }
@@ -454,6 +461,14 @@ impl CheckoutPaymentStageExecutor {
         order: OrderResponse,
         plan: CheckoutOrderPlanRecord,
     ) -> CheckoutPaymentStageResult<CheckoutPaymentCapturedState> {
+        let lease_owner = lease_owner.into();
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %operation_id,
+            order_id = %order.id,
+            lease_owner = %lease_owner,
+            "advance_to_payment_captured entry"
+        );
         self.inner
             .advance_to_payment_captured(tenant_id, operation_id, lease_owner, order, plan)
             .await
@@ -466,6 +481,12 @@ impl CheckoutPaymentStageExecutor {
         order: OrderResponse,
         plan: CheckoutOrderPlanRecord,
     ) -> CheckoutPaymentStageResult<CheckoutPaymentCapturedState> {
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %operation_id,
+            order_id = %order.id,
+            "load_payment_captured_state entry"
+        );
         self.inner
             .load_payment_captured_state(tenant_id, operation_id, order, plan)
             .await

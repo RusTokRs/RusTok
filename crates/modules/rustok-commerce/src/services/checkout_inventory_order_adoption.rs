@@ -87,7 +87,19 @@ impl CheckoutInventoryOrderAdoptionService {
         lease_owner: impl Into<String>,
         order: &rustok_order::OrderResponse,
     ) -> CheckoutInventoryOrderAdoptionResult<Vec<CheckoutInventoryOrderAdoption>> {
+        if tenant_id.is_nil() || operation_id.is_nil() || order.id.is_nil() {
+            return Err(CheckoutInventoryOrderAdoptionError::Conflict(
+                "tenant_id, operation_id, and order.id must not be nil UUID".to_string(),
+            ));
+        }
         let lease_owner = lease_owner.into();
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %operation_id,
+            order_id = %order.id,
+            lease_owner = %lease_owner,
+            "adopt_and_checkpoint entry"
+        );
         let operation = self
             .operation_journal
             .renew_lease(

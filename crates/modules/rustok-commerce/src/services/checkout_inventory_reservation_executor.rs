@@ -100,7 +100,19 @@ impl CheckoutInventoryReservationExecutor {
         lease_owner: impl Into<String>,
         snapshot: &PreparedCartCheckoutSnapshot,
     ) -> CheckoutInventoryExecutionResult<Vec<checkout_inventory_reservation::Model>> {
+        if tenant_id.is_nil() || operation_id.is_nil() || snapshot.cart.id.is_nil() {
+            return Err(CheckoutInventoryExecutionError::Snapshot(
+                "tenant_id, operation_id, and cart.id must not be nil UUID".to_string(),
+            ));
+        }
         let lease_owner = lease_owner.into();
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %operation_id,
+            cart_id = %snapshot.cart.id,
+            lease_owner = %lease_owner,
+            "reserve_and_checkpoint entry"
+        );
         let operation = self
             .validate_locked_operation(tenant_id, operation_id, snapshot)
             .await?;
@@ -242,6 +254,17 @@ impl CheckoutInventoryReservationExecutor {
         operation_id: Uuid,
         snapshot: &PreparedCartCheckoutSnapshot,
     ) -> CheckoutInventoryExecutionResult<Vec<checkout_inventory_reservation::Model>> {
+        if tenant_id.is_nil() || operation_id.is_nil() || snapshot.cart.id.is_nil() {
+            return Err(CheckoutInventoryExecutionError::Snapshot(
+                "tenant_id, operation_id, and cart.id must not be nil UUID".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %operation_id,
+            cart_id = %snapshot.cart.id,
+            "release_reserved entry"
+        );
         let operation = self.operation_journal.get(tenant_id, operation_id).await?;
         validate_operation_snapshot(&operation, snapshot)?;
         let reservations = self

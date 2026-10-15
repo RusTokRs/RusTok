@@ -74,11 +74,28 @@ impl CheckoutInventoryReservationJournal {
         &self,
         input: PlanCheckoutInventoryReservation,
     ) -> CheckoutInventoryReservationResult<checkout_inventory_reservation::Model> {
+        if input.tenant_id.is_nil()
+            || input.checkout_operation_id.is_nil()
+            || input.cart_line_item_id.is_nil()
+            || input.variant_id.is_nil()
+        {
+            return Err(CheckoutInventoryReservationError::Validation(
+                "tenant_id, checkout_operation_id, cart_line_item_id, and variant_id must not be nil UUID".to_string(),
+            ));
+        }
         if input.quantity <= 0 {
             return Err(CheckoutInventoryReservationError::Validation(
                 "reservation quantity must be positive".to_string(),
             ));
         }
+        tracing::debug!(
+            tenant_id = %input.tenant_id,
+            checkout_operation_id = %input.checkout_operation_id,
+            cart_line_item_id = %input.cart_line_item_id,
+            variant_id = %input.variant_id,
+            quantity = input.quantity,
+            "CheckoutInventoryReservationJournal::plan entry"
+        );
 
         if let Some(existing) = self
             .find_by_operation_line(
@@ -195,6 +212,11 @@ impl CheckoutInventoryReservationJournal {
         tenant_id: Uuid,
         reservation_id: Uuid,
     ) -> CheckoutInventoryReservationResult<checkout_inventory_reservation::Model> {
+        if tenant_id.is_nil() || reservation_id.is_nil() {
+            return Err(CheckoutInventoryReservationError::Validation(
+                "tenant_id and reservation_id must not be nil UUID".to_string(),
+            ));
+        }
         checkout_inventory_reservation::Entity::find_by_id(reservation_id)
             .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -208,6 +230,9 @@ impl CheckoutInventoryReservationJournal {
         checkout_operation_id: Uuid,
         cart_line_item_id: Uuid,
     ) -> CheckoutInventoryReservationResult<Option<checkout_inventory_reservation::Model>> {
+        if tenant_id.is_nil() || checkout_operation_id.is_nil() || cart_line_item_id.is_nil() {
+            return Ok(None);
+        }
         checkout_inventory_reservation::Entity::find()
             .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
             .filter(
@@ -225,6 +250,9 @@ impl CheckoutInventoryReservationJournal {
         tenant_id: Uuid,
         checkout_operation_id: Uuid,
     ) -> CheckoutInventoryReservationResult<Vec<checkout_inventory_reservation::Model>> {
+        if tenant_id.is_nil() || checkout_operation_id.is_nil() {
+            return Ok(Vec::new());
+        }
         checkout_inventory_reservation::Entity::find()
             .filter(checkout_inventory_reservation::Column::TenantId.eq(tenant_id))
             .filter(
@@ -243,6 +271,17 @@ impl CheckoutInventoryReservationJournal {
         reservation_id: Uuid,
         location_id: Uuid,
     ) -> CheckoutInventoryReservationResult<checkout_inventory_reservation::Model> {
+        if tenant_id.is_nil() || reservation_id.is_nil() || location_id.is_nil() {
+            return Err(CheckoutInventoryReservationError::Validation(
+                "tenant_id, reservation_id, and location_id must not be nil UUID".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            reservation_id = %reservation_id,
+            location_id = %location_id,
+            "CheckoutInventoryReservationJournal::mark_reserved"
+        );
         let current = self.get(tenant_id, reservation_id).await?;
         if current.status == CheckoutInventoryReservationStatus::Reserved.as_str() {
             if current.location_id == Some(location_id) {
@@ -337,6 +376,11 @@ impl CheckoutInventoryReservationJournal {
         code: impl Into<String>,
         message: impl Into<String>,
     ) -> CheckoutInventoryReservationResult<checkout_inventory_reservation::Model> {
+        if tenant_id.is_nil() || reservation_id.is_nil() {
+            return Err(CheckoutInventoryReservationError::Validation(
+                "tenant_id and reservation_id must not be nil UUID".to_string(),
+            ));
+        }
         let code = normalize_bounded(code.into(), "error code", MAX_ERROR_CODE_LENGTH)?;
         let message = normalize_bounded(message.into(), "error message", MAX_ERROR_MESSAGE_LENGTH)?;
         let update = checkout_inventory_reservation::Entity::update_many()
@@ -558,5 +602,61 @@ mod tests {
             normalize_bounded("  safe  ".to_string(), "code", 10).unwrap(),
             "safe"
         );
+    }
+
+    #[tokio::test]
+    async fn plan_rejects_nil_uuids() {
+        use sea_orm::Database;
+
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let journal = CheckoutInventoryReservationJournal::new(db);
+
+        let plan_nil_tenant = PlanCheckoutInventoryReservation {
+            tenant_id: Uuid::nil(),
+            checkout_operation_id: Uuid::new_v4(),
+            cart_line_item_id: Uuid::new_v4(),
+            variant_id: Uuid::new_v4(),
+            quantity: 1,
+        };
+        assert!(matches!(
+            journal.plan(plan_nil_tenant).await,
+            Err(CheckoutInventoryReservationError::Validation(_))
+        ));
+
+        let plan_nil_operation = PlanCheckoutInventoryReservation {
+            tenant_id: Uuid::new_v4(),
+            checkout_operation_id: Uuid::nil(),
+            cart_line_item_id: Uuid::new_v4(),
+            variant_id: Uuid::new_v4(),
+            quantity: 1,
+        };
+        assert!(matches!(
+            journal.plan(plan_nil_operation).await,
+            Err(CheckoutInventoryReservationError::Validation(_))
+        ));
+
+        let plan_nil_cart_line = PlanCheckoutInventoryReservation {
+            tenant_id: Uuid::new_v4(),
+            checkout_operation_id: Uuid::new_v4(),
+            cart_line_item_id: Uuid::nil(),
+            variant_id: Uuid::new_v4(),
+            quantity: 1,
+        };
+        assert!(matches!(
+            journal.plan(plan_nil_cart_line).await,
+            Err(CheckoutInventoryReservationError::Validation(_))
+        ));
+
+        let plan_nil_variant = PlanCheckoutInventoryReservation {
+            tenant_id: Uuid::new_v4(),
+            checkout_operation_id: Uuid::new_v4(),
+            cart_line_item_id: Uuid::new_v4(),
+            variant_id: Uuid::nil(),
+            quantity: 1,
+        };
+        assert!(matches!(
+            journal.plan(plan_nil_variant).await,
+            Err(CheckoutInventoryReservationError::Validation(_))
+        ));
     }
 }

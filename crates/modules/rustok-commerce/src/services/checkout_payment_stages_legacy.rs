@@ -112,6 +112,13 @@ impl CheckoutPaymentStageExecutor {
         plan: CheckoutOrderPlanRecord,
     ) -> CheckoutPaymentStageResult<CheckoutPaymentCapturedState> {
         let lease_owner = lease_owner.into();
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %operation_id,
+            order_id = %order.id,
+            lease_owner = %lease_owner,
+            "advance_to_payment_captured (legacy) entry"
+        );
         validate_order_plan(tenant_id, operation_id, &order, &plan)?;
 
         for _ in 0..3 {
@@ -290,6 +297,12 @@ impl CheckoutPaymentStageExecutor {
         order: OrderResponse,
         plan: CheckoutOrderPlanRecord,
     ) -> CheckoutPaymentStageResult<CheckoutPaymentCapturedState> {
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %operation_id,
+            order_id = %order.id,
+            "load_payment_captured_state (legacy) entry"
+        );
         validate_order_plan(tenant_id, operation_id, &order, &plan)?;
         let operation = self.operation_journal.get(tenant_id, operation_id).await?;
         validate_operation(&operation, &order)?;
@@ -389,6 +402,11 @@ fn validate_order_plan(
     order: &OrderResponse,
     plan: &CheckoutOrderPlanRecord,
 ) -> CheckoutPaymentStageResult<()> {
+    if tenant_id.is_nil() || operation_id.is_nil() || order.id.is_nil() {
+        return Err(CheckoutPaymentStageError::Conflict(
+            "tenant_id, operation_id, and order.id must not be nil UUID".to_string(),
+        ));
+    }
     if order.tenant_id != tenant_id
         || plan.tenant_id != tenant_id
         || plan.checkout_operation_id != operation_id
