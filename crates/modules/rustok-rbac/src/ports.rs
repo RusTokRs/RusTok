@@ -67,6 +67,13 @@ where
         validate_permission_request(&request)?;
         let tenant_id = parse_tenant_id(&context)?;
         let user_id = parse_user_actor(&context)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            mode = ?request.mode,
+            permissions_count = request.permissions.len(),
+            "Checking permissions via RbacPermissionDecisionPort"
+        );
         let resolution = self
             .resolver
             .resolve_permissions(&tenant_id, &user_id)
@@ -118,12 +125,19 @@ where
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         PortError::validation(
             "rbac.invalid_tenant_id",
             "RBAC permission decision context must carry a UUID tenant_id",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "rbac.nil_tenant_id",
+            "RBAC permission decision context must carry a non-nil UUID tenant_id",
+        ));
+    }
+    Ok(id)
 }
 
 fn parse_user_actor(context: &PortContext) -> Result<Uuid, PortError> {
@@ -136,12 +150,19 @@ fn parse_user_actor(context: &PortContext) -> Result<Uuid, PortError> {
         ));
     }
 
-    Uuid::parse_str(&context.actor.id).map_err(|_| {
+    let id = Uuid::parse_str(&context.actor.id).map_err(|_| {
         PortError::validation(
             "rbac.invalid_actor_id",
             "RBAC permission decision context must carry a UUID user actor",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "rbac.nil_actor_id",
+            "RBAC permission decision context must carry a non-nil UUID user actor",
+        ));
+    }
+    Ok(id)
 }
 
 fn validate_permission_request(request: &RbacPermissionCheckRequest) -> Result<(), PortError> {
@@ -149,6 +170,12 @@ fn validate_permission_request(request: &RbacPermissionCheckRequest) -> Result<(
         return Err(PortError::validation(
             "rbac.permissions_empty",
             "permission decision port requires at least one permission",
+        ));
+    }
+    if request.permissions.len() > 100 {
+        return Err(PortError::validation(
+            "rbac.permissions_limit_exceeded",
+            "permission decision port accepts at most 100 permissions per request",
         ));
     }
     if request
@@ -257,5 +284,76 @@ mod tests {
             response.missing_permissions,
             vec!["users:delete".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn decision_port_rejects_nil_tenant_and_actor() {
+        let provider = RbacPermissionDecisionProvider::new(MockResolver {
+            permissions: vec![Permission::USERS_READ],
+        });
+
+        let nil_tenant_context = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::user(Uuid::new_v4().to_string()),
+            "en",
+            "corr-nil-tenant",
+        )
+        .with_deadline(std::time::Duration::from_secs(5));
+        let err = provider
+            .check_permissions(
+                nil_tenant_context,
+                RbacPermissionCheckRequest {
+                    permissions: vec!["users:read".to_string()],
+                    mode: RbacPermissionCheckMode::All,
+                },
+            )
+            .await
+            .expect_err("should reject nil tenant");
+        assert_eq!(err.code, "rbac.nil_tenant_id");
+
+        let nil_actor_context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(Uuid::nil().to_string()),
+            "en",
+            "corr-nil-actor",
+        )
+        .with_deadline(std::time::Duration::from_secs(5));
+        let err = provider
+            .check_permissions(
+                nil_actor_context,
+                RbacPermissionCheckRequest {
+                    permissions: vec!["users:read".to_string()],
+                    mode: RbacPermissionCheckMode::All,
+                },
+            )
+            .await
+            .expect_err("should reject nil actor");
+        assert_eq!(err.code, "rbac.nil_actor_id");
+    }
+
+    #[tokio::test]
+    async fn decision_port_rejects_oversized_permissions() {
+        let provider = RbacPermissionDecisionProvider::new(MockResolver {
+            permissions: vec![Permission::USERS_READ],
+        });
+        let context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(Uuid::new_v4().to_string()),
+            "en",
+            "corr-oversized",
+        )
+        .with_deadline(std::time::Duration::from_secs(5));
+        let oversized = (0..101).map(|i| format!("perm:{i}")).collect();
+        let err = provider
+            .check_permissions(
+                context,
+                RbacPermissionCheckRequest {
+                    permissions: oversized,
+                    mode: RbacPermissionCheckMode::All,
+                },
+            )
+            .await
+            .expect_err("should reject >100 permissions");
+        assert_eq!(err.code, "rbac.permissions_limit_exceeded");
     }
 }

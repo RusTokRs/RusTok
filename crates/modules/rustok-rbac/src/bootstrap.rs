@@ -89,6 +89,22 @@ impl RbacRoleAssignmentDbWriter {
     where
         C: ConnectionTrait,
     {
+        if tenant_id.is_nil() {
+            return Err(RbacRoleAssignmentError::Database(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if user_id.is_nil() {
+            return Err(RbacRoleAssignmentError::Database(
+                "user_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            role = %role,
+            "Assigning role permissions on db"
+        );
         ensure_supported_backend(db.get_database_backend())?;
         ConnectionRoleAssignmentWriter { db }
             .assign_role(tenant_id, user_id, role, true)
@@ -108,6 +124,22 @@ impl RbacRoleAssignmentDbWriter {
     where
         C: ConnectionTrait,
     {
+        if tenant_id.is_nil() {
+            return Err(RbacRoleAssignmentError::Database(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if user_id.is_nil() {
+            return Err(RbacRoleAssignmentError::Database(
+                "user_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            role = %role,
+            "Assigning role on db"
+        );
         ensure_supported_backend(db.get_database_backend())?;
         ConnectionRoleAssignmentWriter { db }
             .assign_role(tenant_id, user_id, role, false)
@@ -125,6 +157,22 @@ impl RbacRoleAssignmentDbWriter {
     where
         C: ConnectionTrait,
     {
+        if tenant_id.is_nil() {
+            return Err(RbacRoleAssignmentError::Database(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if user_id.is_nil() {
+            return Err(RbacRoleAssignmentError::Database(
+                "user_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            role = %role,
+            "Replacing role on db"
+        );
         Self::remove_tenant_role_assignments_on(db, tenant_id, user_id).await?;
         Self::assign_role_on(db, tenant_id, user_id, role).await
     }
@@ -141,6 +189,21 @@ impl RbacRoleAssignmentDbWriter {
     where
         C: ConnectionTrait,
     {
+        if tenant_id.is_nil() {
+            return Err(RbacRoleAssignmentError::Database(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if user_id.is_nil() {
+            return Err(RbacRoleAssignmentError::Database(
+                "user_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            "Removing tenant role assignments on db"
+        );
         let backend = db.get_database_backend();
         ensure_supported_backend(backend)?;
         ConnectionRoleAssignmentWriter { db }
@@ -628,5 +691,33 @@ mod tests {
 
         assert!(validate_builtin_role(tenant_id, "admin", role_id, true).is_ok());
         assert!(validate_builtin_role(tenant_id, "admin", role_id, false).is_err());
+    }
+
+    #[tokio::test]
+    async fn assign_role_rejects_nil_tenant_or_user() {
+        use super::*;
+        use rustok_core::UserRole;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let nil_id = Uuid::nil();
+        let valid_id = Uuid::new_v4();
+
+        let err = RbacRoleAssignmentDbWriter::assign_role_permissions_on(
+            &db,
+            nil_id,
+            valid_id,
+            UserRole::Admin,
+        )
+        .await;
+        assert!(matches!(err, Err(RbacRoleAssignmentError::Database(msg)) if msg.contains("tenant_id must not be nil")));
+
+        let err = RbacRoleAssignmentDbWriter::assign_role_permissions_on(
+            &db,
+            valid_id,
+            nil_id,
+            UserRole::Admin,
+        )
+        .await;
+        assert!(matches!(err, Err(RbacRoleAssignmentError::Database(msg)) if msg.contains("user_id must not be nil")));
     }
 }
