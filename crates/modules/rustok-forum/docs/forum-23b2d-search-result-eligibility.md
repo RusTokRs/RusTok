@@ -12,6 +12,24 @@ actual decision through `ForumSearchResultEligibilityService`, which reuses
 `ForumTopicAudienceVisibilityService` rather than copying audience policy into
 Search.
 
+## Current boundary (2026-10-15)
+
+The execution-order description below records the original FORUM-23B2D slice.
+The current explicit Forum-only Search pipeline sends **category, topic and
+reply** candidates to Forum's eligibility owner. Category rows are now
+revalidated against the current tenant setting and category audience at query
+time, including previously indexed rows; `allow_anonymous_reading=false` removes
+all three kinds from public results before totals and facets. Authenticated
+Search is never downgraded to anonymous eligibility when a Forum permission is
+missing. Generic storefront Search and autocomplete now omit Forum documents at the SQL
+boundary because those paths lack the Forum owner. The explicit Forum-only path
+below is the public route for Forum search. Its 100 raw-candidate safety limit
+remains for ordinary/authorized Forum searches. A guest in a tenant whose anonymous discovery is disabled gets an
+empty page before FTS, even if the old index contains more than 100 hits. Query
+rules can reorder only the already authorized Forum page; they cannot load an
+extra pinned raw document outside owner eligibility. See the 2026-10-15 Forum
+anonymous-discovery decision.
+
 ## Execution order
 
 1. The existing `FORUM-23B2C` path expands selected category roots through the

@@ -83,6 +83,13 @@ async fn resolve_authorized_public_category_route(
     let db = ctx.data::<DatabaseConnection>()?;
     let tenant = ctx.data::<TenantContext>()?;
     let tenant_id = super::resolve_tenant_scope(tenant, requested_tenant_id)?;
+    if ctx.data_opt::<AuthContext>().is_none()
+        && !super::forum_graphql_runtime(ctx)
+            .anonymous_reading_allowed(tenant_id)
+            .await?
+    {
+        return Ok(None);
+    }
     if !forum_channel_enabled(ctx).await? {
         return Ok(None);
     }
@@ -175,10 +182,15 @@ async fn forum_channel_enabled(ctx: &Context<'_>) -> Result<bool> {
         return Ok(true);
     };
     let db = ctx.data::<DatabaseConnection>()?;
-    ChannelService::new(db.clone())
-        .is_module_enabled(channel_id, MODULE_SLUG)
+    let tenant = ctx.data::<TenantContext>()?;
+    match ChannelService::new(db.clone())
+        .is_module_enabled_for_tenant(tenant.id, channel_id, MODULE_SLUG)
         .await
-        .map_err(|error| internal_error(format!("Channel module check failed: {error}")))
+    {
+        Ok(enabled) => Ok(enabled),
+        Err(rustok_channel::ChannelError::NotFound(_)) => Ok(false),
+        Err(error) => Err(internal_error(format!("Channel module check failed: {error}"))),
+    }
 }
 
 fn internal_error(message: impl Into<String>) -> async_graphql::Error {

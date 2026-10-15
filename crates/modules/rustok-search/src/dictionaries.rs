@@ -378,7 +378,7 @@ impl SearchDictionaryService {
         query: &SearchQuery,
         result: SearchResult,
     ) -> Result<SearchResult> {
-        Self::apply_query_rules_with_storefront_channel(db, query, result, None).await
+        Self::apply_query_rules_with_storefront_channel(db, query, result, None, true, false).await
     }
 
     pub async fn apply_storefront_query_rules(
@@ -387,7 +387,19 @@ impl SearchDictionaryService {
         result: SearchResult,
         channel: &TrustedStorefrontChannel,
     ) -> Result<SearchResult> {
-        Self::apply_query_rules_with_storefront_channel(db, query, result, Some(channel)).await
+        Self::apply_query_rules_with_storefront_channel(db, query, result, Some(channel), true, true).await
+    }
+
+    /// Forum-only results have already passed their owner visibility check.
+    /// Query rules may reorder that authorized page, but must never load an
+    /// additional persisted document outside the owner-approved candidate set.
+    pub async fn apply_authorized_storefront_query_rules(
+        db: &DatabaseConnection,
+        query: &SearchQuery,
+        result: SearchResult,
+        channel: &TrustedStorefrontChannel,
+    ) -> Result<SearchResult> {
+        Self::apply_query_rules_with_storefront_channel(db, query, result, Some(channel), false, false).await
     }
 
     async fn apply_query_rules_with_storefront_channel(
@@ -395,6 +407,8 @@ impl SearchDictionaryService {
         query: &SearchQuery,
         mut result: SearchResult,
         storefront_channel: Option<&TrustedStorefrontChannel>,
+        allow_extra_pins: bool,
+        exclude_forum: bool,
     ) -> Result<SearchResult> {
         ensure_postgres(db)?;
 
@@ -424,12 +438,12 @@ impl SearchDictionaryService {
                 continue;
             }
 
-            if has_catalog_filters(query) {
+            if !allow_extra_pins || has_catalog_filters(query) {
                 continue;
             }
 
             if let Some(item) =
-                Self::load_pinned_item(db, query, rule.document_id, storefront_channel).await?
+                Self::load_pinned_item(db, query, rule.document_id, storefront_channel, exclude_forum).await?
             {
                 pinned.push((rule.pinned_position.max(1), item));
             }
@@ -450,6 +464,7 @@ impl SearchDictionaryService {
         query: &SearchQuery,
         document_id: Uuid,
         storefront_channel: Option<&TrustedStorefrontChannel>,
+        exclude_forum: bool,
     ) -> Result<Option<SearchResultItem>> {
         let tenant_id = query
             .tenant_id
@@ -468,7 +483,7 @@ impl SearchDictionaryService {
         );
 
         let row = db.query_one_raw(stmt).await.map_err(Error::Database)?;
-        row.filter(|row| pinned_item_matches_query(query, row, storefront_channel))
+        row.filter(|row| pinned_item_matches_query(query, row, storefront_channel, exclude_forum))
             .map(map_pinned_item_row)
             .transpose()
     }
@@ -679,6 +694,7 @@ fn pinned_item_matches_query(
     query: &SearchQuery,
     row: &QueryResult,
     storefront_channel: Option<&TrustedStorefrontChannel>,
+    exclude_forum: bool,
 ) -> bool {
     let entity_type = match row.try_get::<String>("", "entity_type") {
         Ok(value) => value,
@@ -688,6 +704,9 @@ fn pinned_item_matches_query(
         Ok(value) => value,
         Err(_) => return false,
     };
+    if exclude_forum && source_module == "forum" {
+        return false;
+    }
     let locale = match row.try_get::<String>("", "locale") {
         Ok(value) => value,
         Err(_) => return false,

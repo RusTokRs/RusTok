@@ -1,11 +1,9 @@
 use async_trait::async_trait;
-use rustok_api::{
-    Permission, PortError, PortErrorKind, has_any_effective_permission, is_tenant_module_enabled,
-};
+use rustok_api::{PortError, PortErrorKind, SharedStaticModuleSettingsReader, is_tenant_module_enabled};
 use rustok_core::SecurityContext;
 use rustok_forum::{
     ForumCategoryReadOperation, ForumCategoryReadTransport, ForumError, ForumSearchResultCandidate,
-    ForumSearchResultCandidateKind, ForumSearchResultEligibilityService,
+    ForumSearchResultCandidateKind, ForumSearchResultEligibilityService, ForumSettingsProviders,
     SharedForumAudienceFactsPort, category_read_audience_port_context,
 };
 use rustok_search::{
@@ -19,28 +17,47 @@ use sea_orm::DatabaseConnection;
 pub(crate) struct ServerForumSearchResultEligibilityPort {
     db: DatabaseConnection,
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    settings_reader: Option<SharedStaticModuleSettingsReader>,
 }
 
 impl ServerForumSearchResultEligibilityPort {
     pub(crate) fn shared(
         db: DatabaseConnection,
         audience_facts: Option<SharedForumAudienceFactsPort>,
+        settings_reader: Option<SharedStaticModuleSettingsReader>,
     ) -> SharedStorefrontSearchResultEligibilityPort {
-        std::sync::Arc::new(Self { db, audience_facts })
+        std::sync::Arc::new(Self { db, audience_facts, settings_reader })
     }
 
     fn service(&self) -> ForumSearchResultEligibilityService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => {
                 ForumSearchResultEligibilityService::with_audience_facts(self.db.clone(), facts)
             }
             None => ForumSearchResultEligibilityService::new(self.db.clone()),
+        };
+        match self.settings_reader.clone() {
+            Some(reader) => service.with_settings_providers(
+                ForumSettingsProviders::default().with_static_reader(reader),
+            ),
+            None => service,
         }
     }
 }
 
 #[async_trait]
 impl StorefrontSearchResultEligibilityPort for ServerForumSearchResultEligibilityPort {
+    async fn public_forum_discovery_allowed(
+        &self,
+        tenant_id: uuid::Uuid,
+    ) -> Result<bool, PortError> {
+        ensure_forum_enabled(&self.db, tenant_id).await?;
+        self.service()
+            .public_discovery_allowed(tenant_id)
+            .await
+            .map_err(map_forum_error)
+    }
+
     async fn filter_forum_result_candidates(
         &self,
         request: StorefrontSearchResultEligibilityRequest,
@@ -89,9 +106,9 @@ impl StorefrontSearchResultEligibilityPort for ServerForumSearchResultEligibilit
             .map(to_forum_candidate)
             .collect::<Vec<_>>();
         let service = self.service();
-        let allowed = if let Some(auth) = request.auth.as_ref().filter(|auth| {
-            has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_LIST])
-        }) {
+        // Do not downgrade an authenticated Search caller to the public audience
+        // merely because its Forum permission snapshot is narrower.
+        let allowed = if let Some(auth) = request.auth.as_ref() {
             let transport = match request.transport {
                 StorefrontSearchTransport::Graphql => ForumCategoryReadTransport::Graphql,
                 StorefrontSearchTransport::NativeServer => ForumCategoryReadTransport::NativeServer,
@@ -165,6 +182,9 @@ fn to_forum_candidate(candidate: StorefrontSearchResultCandidate) -> ForumSearch
     ForumSearchResultCandidate {
         document_id: candidate.document_id,
         kind: match candidate.kind {
+            StorefrontSearchResultCandidateKind::ForumCategory => {
+                ForumSearchResultCandidateKind::Category
+            }
             StorefrontSearchResultCandidateKind::ForumTopic => {
                 ForumSearchResultCandidateKind::Topic
             }
@@ -179,6 +199,9 @@ fn from_forum_candidate(candidate: ForumSearchResultCandidate) -> StorefrontSear
     StorefrontSearchResultCandidate {
         document_id: candidate.document_id,
         kind: match candidate.kind {
+            ForumSearchResultCandidateKind::Category => {
+                StorefrontSearchResultCandidateKind::ForumCategory
+            }
             ForumSearchResultCandidateKind::Topic => {
                 StorefrontSearchResultCandidateKind::ForumTopic
             }

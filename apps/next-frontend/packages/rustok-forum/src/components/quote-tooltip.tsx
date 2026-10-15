@@ -1,24 +1,45 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Quote } from 'lucide-react';
+import { getClientAuth } from '@/shared/lib/auth';
+import { fetchStorefrontQuoteRevision } from '../api/forum';
 import { useComposer } from '../context/composer-context';
 import { useTranslations } from '@rustok/next-fluent';
 
-export function QuoteTooltip() {
-  const { appendQuote } = useComposer();
+interface QuoteTooltipProps {
+  tenantId?: string;
+  tenantSlug?: string;
+  locale: string;
+  /** The currently rendered thread. A quote from a closed composer replies here. */
+  replyTopic: { id: string; title: string } | null;
+}
+
+export function QuoteTooltip({ tenantId, tenantSlug, locale, replyTopic }: QuoteTooltipProps) {
+  const { state, openReply, appendQuote } = useComposer();
   const forum = useTranslations('Forum');
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const [selectedText, setSelectedText] = useState('');
+  const [textOnlyNotice, setTextOnlyNotice] = useState(false);
+  const [isQuoting, setIsQuoting] = useState(false);
+  const quoteInFlight = useRef(false);
+  const composerTarget = useRef({
+    isOpen: state.isOpen, isSubmitting: state.isSubmitting,
+    mode: state.mode, topicId: state.topicId, categoryId: state.categoryId,
+    parentReplyId: state.parentReplyId,
+  });
+  composerTarget.current = {
+    isOpen: state.isOpen, isSubmitting: state.isSubmitting,
+    mode: state.mode, topicId: state.topicId, categoryId: state.categoryId,
+    parentReplyId: state.parentReplyId,
+  };
   const [targetContext, setTargetContext] = useState<{
     targetKind: 'TOPIC' | 'REPLY';
     targetId: string;
-    revisionId: number;
     authorHandle?: string;
   } | null>(null);
 
   const handleSelectionChange = useCallback(() => {
-    if (typeof window === 'undefined') return;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) {
       setPosition(null);
@@ -26,42 +47,31 @@ export function QuoteTooltip() {
     }
 
     const text = selection.toString().trim();
-    if (!text || text.length < 2) {
+    if (text.length < 2) {
       setPosition(null);
       return;
     }
 
-    // Check if selection is within forum content
     const anchorNode = selection.anchorNode;
-    if (!anchorNode) {
-      setPosition(null);
-      return;
-    }
-
-    const element = anchorNode.nodeType === Node.ELEMENT_NODE
+    const element = anchorNode?.nodeType === Node.ELEMENT_NODE
       ? (anchorNode as HTMLElement)
-      : anchorNode.parentElement;
-
+      : anchorNode?.parentElement;
     const postContainer = element?.closest('[data-forum-post]');
-    if (!postContainer) {
+    // Never attach a pinned revision to text that spans multiple posts.
+    if (!postContainer || !selection.focusNode || !postContainer.contains(selection.focusNode)) {
       setPosition(null);
       return;
     }
 
-    const targetKind = (postContainer.getAttribute('data-target-kind') as 'TOPIC' | 'REPLY') || 'REPLY';
-    const targetId = postContainer.getAttribute('data-target-id') || '';
-    const revisionId = parseInt(postContainer.getAttribute('data-revision-id') || '1', 10);
-    const authorHandle = postContainer.getAttribute('data-author-handle') || undefined;
-
-    if (!targetId) {
+    const targetKind = postContainer.getAttribute('data-target-kind');
+    const targetId = postContainer.getAttribute('data-target-id');
+    if ((targetKind !== 'TOPIC' && targetKind !== 'REPLY') || !targetId) {
       setPosition(null);
       return;
     }
 
     try {
-      const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-
+      const rect = selection.getRangeAt(0).getBoundingClientRect();
       setPosition({
         top: Math.max(10, rect.top - 38),
         left: rect.left + rect.width / 2,
@@ -70,8 +80,7 @@ export function QuoteTooltip() {
       setTargetContext({
         targetKind,
         targetId,
-        revisionId,
-        authorHandle,
+        authorHandle: postContainer.getAttribute('data-author-handle') || undefined,
       });
     } catch {
       setPosition(null);
@@ -80,48 +89,108 @@ export function QuoteTooltip() {
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelectionChange);
-    return () => {
-      document.removeEventListener('selectionchange', handleSelectionChange);
-    };
+    return () => document.removeEventListener('selectionchange', handleSelectionChange);
   }, [handleSelectionChange]);
 
-  if (!position || !targetContext) return null;
+  useEffect(() => {
+    if (!textOnlyNotice) return;
+    const timeout = window.setTimeout(() => setTextOnlyNotice(false), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [textOnlyNotice]);
 
-  function onQuoteClick() {
-    if (!targetContext) return;
-    appendQuote(
-      {
-        targetKind: targetContext.targetKind,
-        targetId: targetContext.targetId,
-        revisionId: targetContext.revisionId,
-        authorHandle: targetContext.authorHandle,
-        snippet: selectedText,
-      },
-      selectedText
-    );
-    window.getSelection()?.removeAllRanges();
-    setPosition(null);
+  async function onQuoteClick() {
+    if (!targetContext || quoteInFlight.current || state.isSubmitting) return;
+    const auth = getClientAuth();
+    const parentReplyId = targetContext.targetKind === 'REPLY' ? targetContext.targetId : null;
+    const expectedTarget = state.isOpen
+      ? { mode: state.mode, topicId: state.topicId, categoryId: state.categoryId, parentReplyId: state.parentReplyId }
+      : { mode: 'reply' as const, topicId: replyTopic?.id ?? null, categoryId: null, parentReplyId };
+    // appendQuote alone opens the drawer without a target topic. Bind the
+    // reply before awaiting the revision lookup, even when it falls back to
+    // text-only. Keep an already-open composer (including a new-topic draft).
+    if (!state.isOpen) {
+      if (!replyTopic) return;
+      openReply({ topicId: replyTopic.id, topicTitle: replyTopic.title, parentReplyId });
+      composerTarget.current = { ...composerTarget.current, ...expectedTarget, isOpen: true };
+    }
+    // The lookup can finish after the viewer closes or switches composers.
+    // Never reopen a closed editor or attach this quote to another draft.
+    const stillEditingTarget = () => {
+      const currentAuth = getClientAuth();
+      const current = composerTarget.current;
+      return currentAuth.token === auth.token && currentAuth.tenant === auth.tenant &&
+        current.isOpen && !current.isSubmitting &&
+        current.mode === expectedTarget.mode && current.topicId === expectedTarget.topicId &&
+        current.categoryId === expectedTarget.categoryId &&
+        current.parentReplyId === expectedTarget.parentReplyId;
+    };
+    quoteInFlight.current = true;
+    setIsQuoting(true);
+    const { targetKind, targetId, authorHandle } = targetContext;
+    const snippet = selectedText;
+    try {
+      const revisionId = await fetchStorefrontQuoteRevision({
+        tenantId,
+        tenantSlug,
+        token: !tenantSlug || auth.tenant === tenantSlug ? auth.token || undefined : undefined,
+        targetKind,
+        targetId,
+        locale,
+      });
+      if (stillEditingTarget()) {
+        appendQuote(
+          revisionId === null
+            ? null
+            : { targetKind, targetId, revisionId, authorHandle, snippet },
+          snippet,
+          authorHandle,
+        );
+        setTextOnlyNotice(revisionId === null);
+      }
+    } catch {
+      // A quote can still be posted as text when an exact revision cannot be verified.
+      // Do not fabricate a relation ID or send one to the write owner.
+      if (stillEditingTarget()) {
+        appendQuote(null, snippet, authorHandle);
+        setTextOnlyNotice(true);
+      }
+    } finally {
+      window.getSelection()?.removeAllRanges();
+      setPosition(null);
+      quoteInFlight.current = false;
+      setIsQuoting(false);
+    }
   }
 
   return (
-    <svg className="fixed inset-0 z-50 pointer-events-none h-full w-full overflow-visible">
-      <foreignObject
-        x={Math.round(position.left - 48)}
-        y={Math.round(position.top)}
-        width="96"
-        height="36"
-        className="overflow-visible pointer-events-auto"
-      >
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={onQuoteClick}
-          className="flex items-center gap-1.5 rounded-full border border-border bg-foreground px-3 py-1 text-xs font-semibold text-background shadow-lg transition hover:scale-105 active:scale-95"
-        >
-          <Quote className="h-3 w-3" />
-          {forum('quote')}
-        </button>
-      </foreignObject>
-    </svg>
+    <>
+      {textOnlyNotice && (
+        <p role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-foreground px-4 py-2 text-xs text-background shadow-lg">
+          {forum('quoteTextOnly')}
+        </p>
+      )}
+      {position && targetContext && (state.isOpen || replyTopic !== null) && (
+        <svg className="fixed inset-0 z-50 pointer-events-none h-full w-full overflow-visible">
+          <foreignObject
+            x={Math.round(position.left - 48)}
+            y={Math.round(position.top)}
+            width="96"
+            height="36"
+            className="overflow-visible pointer-events-auto"
+          >
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void onQuoteClick()}
+              disabled={isQuoting || state.isSubmitting || (!state.isOpen && !replyTopic)}
+              className="flex items-center gap-1.5 rounded-full border border-border bg-foreground px-3 py-1 text-xs font-semibold text-background shadow-lg transition hover:scale-105 active:scale-95 disabled:opacity-60"
+            >
+              <Quote className="h-3 w-3" />
+              {forum('quote')}
+            </button>
+          </foreignObject>
+        </svg>
+      )}
+    </>
   );
 }

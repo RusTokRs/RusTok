@@ -177,13 +177,26 @@ wrappers. Each one has an owner decision or a follow-up task in
   [`DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md`](../../../DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md).
   Known gaps: the route channel is not part of the write gate; the gate runs
   before the write transaction, so a policy change committed in between can let
-  one write through; clear operations are intentionally not gated.
+  one write through. Domain topic clears are intentionally not gated, but category
+  clears require category-owner visibility to avoid existence oracles. The
+  canonical GraphQL `clearForumTopicSubscription` now acknowledges only `true`,
+  while REST `DELETE /api/forum/topics/{topic_id}/subscription` returns
+  `204 No Content` (both changed from full topic responses). They remove only
+  the caller's own row, including when the topic is hidden or absent, without
+  revealing content or a post-write 404. GraphQL category set/clear and topic
+  set, and REST category set/clear, pre-read their owner-authorized response
+  before writing and overlay the resulting `isSubscribed` / `is_subscribed` flag.
 - Widget previews (`forum.topic_list`, `forum.topic_detail`, `forum.reply_stream`)
   apply the owner audience contract for the caller. See
   [`DECISIONS/2026-10-09-forum-widget-preview-owner-audience.md`](../../../DECISIONS/2026-10-09-forum-widget-preview-owner-audience.md).
   The topic-list preview scans at most 1000 candidate topics. Larger candidate sets
   fail until `category_id` narrows them. Previews do not take a route channel.
-- The `Authoring` SEO scope keeps the system context and does not apply the
+- Public SEO topic metadata and sitemap enumeration pass the static settings
+  reader through both the audience wrapper and its topic mapper. Public SEO bulk
+  pages use audience-visible keysets: topic cursors come from the owner list;
+  category cursors come from the last visible category, never a hidden raw row.
+  Selective policies can require scanning more raw candidates than the page size.
+  The `Authoring` SEO scope keeps the system context and does not apply the
   audience contract.
 - Moderation solution write responses (REST and GraphQL mark/clear) read the topic through
   the owner path after the write. The moderation gate exempts the exact topic author, so an
@@ -194,12 +207,24 @@ wrappers. Each one has an owner decision or a follow-up task in
 - Among the `ForumModuleSettings` values, `use_reactions`, `allow_downvotes`, and
   `allow_self_voting` are enforced on internal vote writes. See
   [`DECISIONS/2026-10-09-forum-vote-policy-settings.md`](../../../DECISIONS/2026-10-09-forum-vote-policy-settings.md).
-- Three `ForumModuleSettings` fields are declared in `rustok-module.toml` and `dto/settings.rs`, and no runtime code
-  reads them yet. Changing them has no effect: `default_topic_sort` (the list order is fixed, see the topic sort item),
-  `allow_user_topic_closing` (authors cannot close or lock their own topics through this setting), and
-  `allow_anonymous_reading` (no read path checks it, and the admin form no longer shows it). Each one needs its own
-  wiring decision, because each changes a read or write path.
-  The unread settings removed by `DECISIONS/2026-10-09-forum-remove-unwired-module-settings.md` are no longer declared.
+- `allow_anonymous_reading=false` now denies anonymous category/topic/reply discovery and
+  routes, including SEO, Search projection and query-time eligibility of previously indexed
+  category/topic/reply documents. The read-only static-module-settings port is required on
+  public reads; an absent reader fails closed, whereas a missing settings *row* uses the
+  backward-compatible default `true`. Authenticated reads still require their own RBAC,
+  channel and audience decisions; native and Search storefronts never downgrade a
+  signed-in caller with missing permissions to a guest. The control remains hidden
+  in the admin form; saved `false` values are preserved. See
+  [`DECISIONS/2026-10-15-forum-anonymous-discovery-and-category-counts.md`](../../../DECISIONS/2026-10-15-forum-anonymous-discovery-and-category-counts.md).
+- Category `topic_count` and `reply_count` are public **global category aggregates**;
+  they can include discussions outside the viewer's audience and must never be used as
+  a viewer-visible list total or pagination cursor. The Next.js category UI labels
+  this distinction; per-viewer listing still comes from the exact audience owner.
+- Two declared `ForumModuleSettings` fields remain unread: `default_topic_sort`
+  (the list order is fixed, see the topic sort item) and `allow_user_topic_closing`
+  (authors cannot close or lock their own topics through this setting). Changing
+  either has no effect. The unread settings removed by
+  `DECISIONS/2026-10-09-forum-remove-unwired-module-settings.md` are no longer declared.
 - `topics_per_page` and `replies_per_page` are the default page size for REST and GraphQL list requests that omit
   `per_page`. An explicit `per_page` is bounded to 1..=100 and wins over the setting. The module storefront transports
   and the Next.js forum package omit the argument, so a configured value reaches those surfaces too; the Next.js
@@ -215,8 +240,8 @@ wrappers. Each one has an owner decision or a follow-up task in
   Both fetches omit `per_page`/`limit` so the owner applies the module settings, and both exist on
   both transports — the GraphQL list queries and the `forum/storefront-topic-page` /
   `forum/storefront-reply-page` `#[server]` endpoints - with no cross-transport fallback. The feed
-  header count stays the selected category's authored topic count and the paging footer reports how
-  many entries are actually loaded; the thread timeline measures the loaded window against the
+  header count stays the selected category's **global** authored topic count (which may include
+  topics this viewer cannot access) and the paging footer reports how many entries are actually loaded; the thread timeline measures the loaded window against the
   topic's `reply_count`, never a position inside posts that were not fetched. A failed page is
   named in the list that failed. Guarded by
   `scripts/verify/verify-forum-storefront-cursor-paging.mjs`.
@@ -307,10 +332,37 @@ wrappers. Each one has an owner decision or a follow-up task in
   projection recomputed from the newest approved reply in both counter directions, so
   an imported or restored reply cannot move a topic by a timestamp the data does not
   carry; `updated_at` still advances with the counter write.
-- The Next.js storefront has no load-more control: the topic feed and the thread panel render the
-  first owner page, and `nextCursor` is only followed while resolving a reply deep link (see
-  `DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md`). Paging copy for that host is not
-  defined, so the two hosts are not interchangeable here.
+- `forumStorefrontUnreadTopics` defaults to the full authenticated, audience-visible
+  feed with read-state badges for the native/GraphQL Leptos storefront. Its
+  `unreadOnly: true` mode (used by the Next.js unread tab) selects only unread
+  topics *after* audience and canonical read-state checks, scanning further
+  bounded owner pages through read-only stretches. Its cursor belongs to the
+  last returned unread topic, and is present only when another unread topic
+  exists. Sparse unread feeds can scan many owner candidates; an indexed
+  unread-and-audience composition and PostgreSQL performance evidence remain
+  within the unfinished `FORUM-20` work.
+- The Next.js storefront pages topic feeds and replies with the owner's `nextCursor`,
+  appending deduplicated visible items; a full thread refresh invalidates any older
+  in-flight reply page so it cannot roll back the cursor after posting. Reply deep links
+  additionally scan a bounded number of pages (see
+  `DECISIONS/2026-10-11-forum-reply-anchor-route-contract.md`). The category rail,
+  overview and composer fetch all audience-visible categories in aligned 100-item
+  GraphQL pages (up to the owner's 512-node bound) using `pageInfo.totalCount`;
+  the overview also includes deeper descendants. A search match on a root
+  category retains its complete visible branch, including siblings whose own
+  names/slugs do not match. The composer requires an explicit category when opened from the unfiltered feed: it never silently
+  assigns an unscoped draft to the first category. The chosen category owns both
+  the topic mutation target and the current viewer's draft key; switching to a
+  category with an existing saved draft restores that draft and saves the
+  outgoing edits under their previous key rather than overwriting either.
+  Closing or switching editors and leaving the route flush pending text before
+  cancelling autosave; failed browser writes are reported in the editor and block
+  a draft switch.
+  The loaded category list clears an unavailable category selection after an
+  account or audience change. Highlighting text in a thread opens a reply to
+  that thread (or inserts into an already-open composer), with an exact quote
+  relation only if its revision lookup succeeds. Next.js hides reply actions
+  for locked or non-`open` topics; the write owner still decides permission.
 - The Leptos storefront composer writes real content: topics go through
   `createForumTopicWithQuotes` (GraphQL) or `forum/storefront-topic-create`
   (native `#[server]`) and replies through `createForumReplyWithQuotes` or

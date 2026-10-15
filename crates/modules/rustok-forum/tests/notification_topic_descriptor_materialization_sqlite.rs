@@ -1,3 +1,6 @@
+#[path = "support/forum_public_settings.rs"]
+mod forum_public_settings;
+
 #[path = "support/posting_cooldown.rs"]
 mod posting_cooldown;
 
@@ -121,6 +124,12 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
                 tenant_id,
                 category.id,
                 SecurityContext::new(UserRole::Customer, Some(recipient_id)),
+                PortContext::new(
+                    tenant_id.to_string(),
+                    PortActor::user(recipient_id.to_string()),
+                    "en",
+                    "test-category-subscription",
+                ),
             )
             .await
             .expect("category subscription should persist");
@@ -155,7 +164,7 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
     let mut public_extensions = registry
         .build_runtime_extensions()
         .expect("public fallback extensions should initialize");
-    let public_host = public_extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()));
+    let public_host = public_extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()).with_shared_value(forum_public_settings::default_settings_reader()));
     let public_providers =
         materialize_notification_source_registry(&mut public_extensions, &public_host)
             .expect("public fallback source registry should materialize");
@@ -185,7 +194,7 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
         .expect("recipient-aware extensions should initialize");
     recipient_extensions.insert(recipient_port);
     let recipient_host =
-        recipient_extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()));
+        recipient_extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()).with_shared_value(forum_public_settings::default_settings_reader()));
     let recipient_providers =
         materialize_notification_source_registry(&mut recipient_extensions, &recipient_host)
             .expect("recipient-aware source registry should materialize");

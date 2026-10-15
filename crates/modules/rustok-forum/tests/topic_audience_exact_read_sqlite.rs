@@ -1,5 +1,7 @@
 #[path = "support/posting_cooldown.rs"]
 mod posting_cooldown;
+#[path = "support/forum_public_settings.rs"]
+mod forum_public_settings;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -263,7 +265,7 @@ async fn exact_topic_read_enforces_inherited_and_topic_audience_before_hydration
             low_trust_user_id,
             requests: requests.clone(),
         }),
-    );
+    ).with_settings_providers(forum_public_settings::default_public_settings());
 
     assert!(
         service
@@ -445,4 +447,96 @@ async fn exact_topic_read_enforces_inherited_and_topic_audience_before_hydration
             .expect("missing topic should resolve as absent")
             .is_none()
     );
+}
+
+struct ClosedGraphqlForumSettings;
+
+#[async_trait]
+impl rustok_api::StaticModuleSettingsReader for ClosedGraphqlForumSettings {
+    async fn settings(&self, _tenant: Uuid, slug: &str) -> Result<Option<rustok_api::StaticModuleSettingsSnapshot>, PortError> {
+        assert_eq!(slug, "forum");
+        Ok(Some(rustok_api::StaticModuleSettingsSnapshot {
+            enabled: true,
+            settings: serde_json::json!({"allow_anonymous_reading": false}),
+        }))
+    }
+}
+
+#[tokio::test]
+async fn graphql_storefront_list_uses_guest_gate_but_keeps_authorized_viewer_readable() {
+    use async_graphql::{EmptyMutation, EmptySubscription, Request, Schema};
+    use rustok_api::{
+        AuthContext, HostRuntimeContext, Permission, SharedStaticModuleSettingsReader,
+        TenantContext, graphql::GraphqlRuntimeInputs,
+    };
+    use rustok_forum::{ForumQuery, graphql::attach_schema_data};
+
+    let (db, event_bus) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let admin_id = Uuid::new_v4();
+    let reader_id = Uuid::new_v4();
+    insert_user(&db, tenant_id, admin_id).await;
+    insert_user(&db, tenant_id, reader_id).await;
+    let category_id = create_category(&db, tenant_id, SecurityContext::new(UserRole::Admin, Some(admin_id)), "open", None).await;
+    let topic_id = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
+        .create(tenant_id, SecurityContext::new(UserRole::Admin, Some(admin_id)), CreateTopicInput {
+            locale: "en".into(), category_id, title: "Reading still works".into(),
+            slug: Some("reading-still-works".into()),
+            body: rustok_api::RichTextDocument::single_paragraph("Safe for signed-in readers"),
+            metadata: serde_json::json!({}), tags: Vec::new(), channel_slugs: None,
+        }).await.expect("fixture topic").id;
+    db.execute_unprepared(&format!(
+        "CREATE TABLE tenant_modules (tenant_id TEXT NOT NULL, module_slug TEXT NOT NULL, enabled INTEGER NOT NULL); \
+         INSERT INTO tenant_modules VALUES ('{tenant_id}', 'forum', 1);"
+    )).await.expect("module enablement fixture");
+
+    let settings_reader = Arc::new(ClosedGraphqlForumSettings);
+    let host = HostRuntimeContext::new(db.clone())
+        .with_shared_value(SharedStaticModuleSettingsReader(settings_reader));
+    let runtime = attach_schema_data(&GraphqlRuntimeInputs::new(host)).expect("GraphQL runtime");
+    let schema = Schema::build(ForumQuery::default(), EmptyMutation, EmptySubscription)
+        .data(db)
+        .data(event_bus)
+        .data(TenantContext {
+            id: tenant_id, name: "Forum test".into(), slug: "forum-test".into(),
+            domain: None, settings: serde_json::json!({}), default_locale: "en".into(),
+            is_active: true,
+        })
+        .data(runtime)
+        .finish();
+    let query = "{ forumStorefrontAudienceTopics(locale: \"en\", perPage: 10) { items { id title } nextCursor } }";
+    let guest = schema.execute(query).await;
+    assert!(guest.errors.is_empty(), "guest errors: {:?}", guest.errors);
+    assert_eq!(guest.data.into_json().unwrap()["forumStorefrontAudienceTopics"]["items"], serde_json::json!([]));
+
+    let user = AuthContext {
+        user_id: reader_id, session_id: Uuid::new_v4(), tenant_id,
+        permissions: vec![Permission::FORUM_TOPICS_LIST, Permission::FORUM_TOPICS_READ, Permission::FORUM_CATEGORIES_READ],
+        client_id: None, scopes: Vec::new(), grant_type: "user".into(),
+    };
+    let authorized = schema.execute(Request::new(query).data(user.clone())).await;
+    assert!(authorized.errors.is_empty(), "authorized errors: {:?}", authorized.errors);
+    let data = authorized.data.into_json().unwrap();
+    assert_eq!(data["forumStorefrontAudienceTopics"]["items"][0]["id"], topic_id.to_string());
+    assert_eq!(data["forumStorefrontAudienceTopics"]["items"][0]["title"], "Reading still works");
+
+    // The category route also hides itself from guests before route lookup, but
+    // authenticated users keep their own RBAC/audience check.
+    let category_route = "{ forumStorefrontCategoryRoute(locale: \"en\", slug: \"open\") { canonical { categoryId } } }";
+    let guest_route = schema.execute(category_route).await;
+    assert!(guest_route.errors.is_empty(), "guest route errors: {:?}", guest_route.errors);
+    assert_eq!(guest_route.data.into_json().unwrap()["forumStorefrontCategoryRoute"], serde_json::Value::Null);
+    let authorized_route = schema.execute(Request::new(category_route).data(user.clone())).await;
+    assert!(authorized_route.errors.is_empty(), "authorized route errors: {:?}", authorized_route.errors);
+    assert_eq!(authorized_route.data.into_json().unwrap()["forumStorefrontCategoryRoute"]["canonical"]["categoryId"], category_id.to_string());
+
+    let short_id = rustok_forum::ForumTopicRouteService::short_identity(topic_id);
+    let topic_route = format!("{{ forumStorefrontTopicRoute(locale: \"en\", shortId: \"{short_id}\", slug: \"reading-still-works\") {{ canonical {{ topicId }} }} }}");
+    let guest_route = schema.execute(topic_route.as_str()).await;
+    assert!(guest_route.errors.is_empty(), "guest topic route errors: {:?}", guest_route.errors);
+    assert_eq!(guest_route.data.into_json().unwrap()["forumStorefrontTopicRoute"], serde_json::Value::Null);
+    let authorized_route = schema.execute(Request::new(topic_route).data(user.clone())).await;
+    assert!(authorized_route.errors.is_empty(), "authorized topic route errors: {:?}", authorized_route.errors);
+    assert_eq!(authorized_route.data.into_json().unwrap()["forumStorefrontTopicRoute"]["canonical"]["topicId"], topic_id.to_string());
 }

@@ -149,13 +149,11 @@ pub(crate) fn resolve_tenant_scope(
     }
 }
 
+/// Storefront admission is channel-scoped for every viewer, even when the
+/// viewer also holds owner/admin permissions on a separate read surface.
 pub(crate) async fn require_public_forum_channel_enabled(
     ctx: &async_graphql::Context<'_>,
 ) -> async_graphql::Result<()> {
-    if ctx.data_opt::<rustok_api::AuthContext>().is_some() {
-        return Ok(());
-    }
-
     let Some(request) = ctx.data_opt::<rustok_api::RequestContext>() else {
         return Ok(());
     };
@@ -164,19 +162,21 @@ pub(crate) async fn require_public_forum_channel_enabled(
     };
 
     let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-    let enabled = rustok_channel::ChannelService::new(db.clone())
-        .is_module_enabled(channel_id, "forum")
+    let tenant = ctx.data::<rustok_api::TenantContext>()?;
+    match rustok_channel::ChannelService::new(db.clone())
+        .is_module_enabled_for_tenant(tenant.id, channel_id, "forum")
         .await
-        .map_err(|error| {
-            async_graphql::Error::new(format!("Channel module check failed: {error}"))
-                .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR"))
-        })?;
-    if enabled {
-        Ok(())
-    } else {
-        Err(
+    {
+        Ok(true) => Ok(()),
+        // Unknown and foreign channels must look like disabled channels to
+        // the storefront; neither is authority to read this tenant's Forum.
+        Ok(false) | Err(rustok_channel::ChannelError::NotFound(_)) => Err(
             async_graphql::Error::new("Forum module is not enabled for this channel")
                 .extend_with(|_, extension| extension.set("code", "FORBIDDEN")),
-        )
+        ),
+        Err(error) => Err(
+            async_graphql::Error::new(format!("Channel module check failed: {error}"))
+                .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR")),
+        ),
     }
 }

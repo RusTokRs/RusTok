@@ -504,7 +504,7 @@ pub async fn subscribe_topic(
     tag = "forum",
     params(("topic_id" = Uuid, Path, description = "Topic ID")),
     responses(
-        (status = 200, description = "Topic subscription cleared", body = TopicResponse),
+        (status = 204, description = "Own topic subscription cleared (also for hidden or absent topics); no topic body"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
@@ -513,41 +513,22 @@ pub async fn unsubscribe_topic(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
-) -> HttpResult<Json<TopicResponse>> {
+) -> HttpResult<StatusCode> {
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
         "Permission denied: forum_topics:read required",
     )?;
 
+    // Clearing only the caller's own row must not probe or return hidden content.
+    // A blind clear is an acknowledgement, never a topic read after the write.
     runtime
         .subscription_service()
         .clear_topic_subscription(tenant.id, topic_id, forum_security(&auth))
         .await
         .map_err(crate::controllers::map_forum_error)?;
-
-    let read_context = topic_read_audience_port_context(
-        ForumTopicReadTransport::Rest,
-        ForumTopicReadOperation::SelectedTopic,
-        tenant.id,
-        &auth,
-        Some(&request_context),
-        request_context.locale.as_str(),
-    )
-    .map_err(crate::controllers::map_forum_error)?;
-    let topic = topic_audience_read_service(&runtime)
-        .get_authenticated_owner_visible_with_audience_context(
-            tenant.id,
-            forum_security(&auth),
-            read_context,
-            topic_id,
-            Some(tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-    Ok(Json(topic))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn ensure_forum_permission(

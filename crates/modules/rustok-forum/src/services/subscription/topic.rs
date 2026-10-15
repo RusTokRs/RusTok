@@ -13,7 +13,7 @@ use rustok_core::SecurityContext;
 use crate::dto::{
     ForumSubscriptionResponse, ForumSubscriptionTargetType, UpdateForumSubscriptionInput,
 };
-use crate::entities::{forum_topic, forum_topic_subscription};
+use crate::entities::forum_topic_subscription;
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 use crate::services::topic_subscription_lock::{
@@ -58,8 +58,8 @@ impl SubscriptionService {
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         // No existence or audience probe here: clearing only removes the caller's own row, and
-        // a missing or hidden topic must not produce a different outcome. Transports read the
-        // topic through the owner audience path afterwards, which reports both as not found.
+        // a missing or hidden topic must not produce a different outcome. Blind REST/GraphQL
+        // clears acknowledge success without trying to return the inaccessible topic.
         let existing = self
             .find_topic_subscription(tenant_id, topic_id, user_id)
             .await?;
@@ -82,16 +82,28 @@ impl SubscriptionService {
         Ok(())
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, security, context))]
     pub async fn get_topic_subscription(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
         security: SecurityContext,
+        context: PortContext,
     ) -> ForumResult<ForumSubscriptionResponse> {
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
-        self.find_topic(tenant_id, topic_id).await?;
+        if !topic_write_audience_allows(
+            &self.db,
+            self.audience_facts.clone(),
+            tenant_id,
+            topic_id,
+            &security,
+            context,
+        )
+        .await?
+        {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
         Ok(
             match self
                 .find_topic_subscription(tenant_id, topic_id, user_id)
@@ -260,12 +272,4 @@ impl SubscriptionService {
             .await?)
     }
 
-    async fn find_topic(&self, tenant_id: Uuid, topic_id: Uuid) -> ForumResult<()> {
-        forum_topic::Entity::find_by_id(topic_id)
-            .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .map(|_| ())
-            .ok_or(ForumError::TopicNotFound(topic_id))
-    }
 }

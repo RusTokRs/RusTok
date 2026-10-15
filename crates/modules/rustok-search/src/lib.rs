@@ -159,7 +159,7 @@ impl RusToKModule for SearchModule {
         ctx: &ModuleEventListenerContext<'_>,
     ) {
         let forum_source = search_projection_source_registry_from_extensions(ctx.extensions)
-            .and_then(|sources| sources.build("forum", ctx.db.clone()));
+            .and_then(|sources| sources.build_with_extensions("forum", ctx.db.clone(), ctx.extensions));
         registry.register(SearchIngestionHandler::with_forum_source(
             ctx.db.clone(),
             forum_source,

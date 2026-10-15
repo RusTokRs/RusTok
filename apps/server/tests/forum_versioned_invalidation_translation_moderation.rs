@@ -1,3 +1,6 @@
+#[path = "support/forum_public_settings.rs"]
+mod forum_public_settings;
+
 use std::collections::BTreeSet;
 use std::env;
 use std::error::Error;
@@ -17,7 +20,7 @@ use rustok_events::{
 };
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumModule,
-    ForumSearchProjectionSourceFactory, ForumSearchResultCandidate, ForumSearchResultCandidateKind,
+    ForumSearchResultCandidate, ForumSearchResultCandidateKind,
     ForumSearchResultEligibilityService, ModerationService, ReplyService, TopicService,
     UpdateCategoryInput, UpdateTopicInput,
 };
@@ -218,6 +221,16 @@ struct RealForumPublicEligibilityPort {
 
 #[async_trait]
 impl StorefrontSearchResultEligibilityPort for RealForumPublicEligibilityPort {
+    async fn public_forum_discovery_allowed(&self, tenant_id: Uuid) -> Result<bool, PortError> {
+        forum_public_settings::default_settings()
+            .anonymous_reading_allowed(tenant_id)
+            .await
+            .map_err(|_| PortError::unavailable(
+                "forum.search_result_eligibility.public_discovery_unavailable",
+                "Forum public discovery is temporarily unavailable",
+            ))
+    }
+
     async fn filter_forum_result_candidates(
         &self,
         request: StorefrontSearchResultEligibilityRequest,
@@ -232,7 +245,7 @@ impl StorefrontSearchResultEligibilityPort for RealForumPublicEligibilityPort {
             .request_context
             .as_ref()
             .and_then(|context| context.channel_slug.as_deref());
-        let allowed = ForumSearchResultEligibilityService::new(self.db.clone())
+        let allowed = forum_public_settings::eligibility_service(self.db.clone())
             .filter_public_storefront_visible(request.tenant_id, channel_slug, &candidates)
             .await
             .map_err(|_| {
@@ -249,6 +262,9 @@ fn to_forum_candidate(candidate: StorefrontSearchResultCandidate) -> ForumSearch
     ForumSearchResultCandidate {
         document_id: candidate.document_id,
         kind: match candidate.kind {
+            StorefrontSearchResultCandidateKind::ForumCategory => {
+                ForumSearchResultCandidateKind::Category
+            }
             StorefrontSearchResultCandidateKind::ForumTopic => {
                 ForumSearchResultCandidateKind::Topic
             }
@@ -263,6 +279,9 @@ fn from_forum_candidate(candidate: ForumSearchResultCandidate) -> StorefrontSear
     StorefrontSearchResultCandidate {
         document_id: candidate.document_id,
         kind: match candidate.kind {
+            ForumSearchResultCandidateKind::Category => {
+                StorefrontSearchResultCandidateKind::ForumCategory
+            }
             ForumSearchResultCandidateKind::Topic => {
                 StorefrontSearchResultCandidateKind::ForumTopic
             }
@@ -298,7 +317,7 @@ async fn translation_and_moderation_approval_reach_storefront_search() -> TestRe
 
 async fn run_translation_moderation_proof(db: &DatabaseConnection) -> TestResult<ScenarioEvidence> {
     let fixture = create_forum_fixture(db).await?;
-    let projection_source = ForumSearchProjectionSourceFactory.build(db.clone());
+    let projection_source = forum_public_settings::projection_source(db.clone());
     let reconciler = ForumProjectionReconciler::new(db.clone(), projection_source);
 
     let baseline_revisions = load_owner_revisions_after(db, fixture.tenant_id, 0).await?;

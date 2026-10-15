@@ -78,6 +78,9 @@ async fn storefront_forum_topic_page_native(
         let request = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
+        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
+            return Err(ServerFnError::new("Forum module is not enabled for this channel"));
+        }
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
@@ -100,7 +103,9 @@ async fn storefront_forum_topic_page_native(
         ) {
             (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
                 .with_static_readers(static_reader, transactional_reader),
-            _ => ForumSettingsProviders::default(),
+            (Some(static_reader), None) =>
+                ForumSettingsProviders::default().with_static_reader(static_reader),
+            (None, _) => ForumSettingsProviders::default(),
         };
         let per_page = settings_providers
             .default_topics_per_page(tenant.id)
@@ -140,7 +145,7 @@ async fn storefront_forum_topic_page_native(
                     facts,
                 ),
                 None => ForumStorefrontReadStateService::new(db.clone(), event_bus.clone()),
-            };
+            }.with_settings_providers(settings_providers.clone());
             let page = service
                 .list_topics_with_unread_audience_visible(
                     tenant.id,
@@ -148,6 +153,7 @@ async fn storefront_forum_topic_page_native(
                     audience_context,
                     filter,
                     Some(tenant.default_locale.as_str()),
+                    false, // The native feed shows read and unread topics with read-state badges.
                 )
                 .await
                 .map_err(server_error)?;
@@ -157,6 +163,11 @@ async fn storefront_forum_topic_page_native(
             });
         }
 
+        if auth.is_some() {
+            // The plain continuation is for guests only; authenticated callers
+            // cannot drop their viewer context by forging `read_state_available`.
+            return Err(ServerFnError::new("Forum read state is unavailable for this principal"));
+        }
         let service = match audience_facts {
             Some(facts) => ForumTopicAudienceListService::with_audience_facts(
                 db.clone(),
@@ -164,7 +175,7 @@ async fn storefront_forum_topic_page_native(
                 facts,
             ),
             None => ForumTopicAudienceListService::new(db.clone(), event_bus.clone()),
-        };
+        }.with_settings_providers(settings_providers);
         let page = service
             .list_public_storefront_visible_with_locale_fallback(
                 tenant.id,
@@ -222,6 +233,9 @@ async fn storefront_forum_reply_page_native(
         let request = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
+        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
+            return Err(ServerFnError::new("Forum module is not enabled for this channel"));
+        }
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
@@ -245,7 +259,9 @@ async fn storefront_forum_reply_page_native(
         ) {
             (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
                 .with_static_readers(static_reader, transactional_reader),
-            _ => ForumSettingsProviders::default(),
+            (Some(static_reader), None) =>
+                ForumSettingsProviders::default().with_static_reader(static_reader),
+            (None, _) => ForumSettingsProviders::default(),
         };
         let per_page = settings_providers
             .default_replies_per_page(tenant.id)
@@ -264,11 +280,9 @@ async fn storefront_forum_reply_page_native(
                 facts,
             ),
             None => ForumReplyAudienceReadService::new(db.clone(), event_bus.clone()),
-        };
+        }.with_settings_providers(settings_providers);
 
-        if let Some(auth) = auth.as_ref().filter(|auth| {
-            has_any_effective_permission(&auth.permissions, &[Permission::FORUM_REPLIES_LIST])
-        }) {
+        if let Some(auth) = auth.as_ref() {
             let security =
                 SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
             let audience_context = reply_read_audience_port_context(

@@ -18,6 +18,7 @@ import {
   FileEdit,
 } from 'lucide-react';
 import { useComposer } from '../context/composer-context';
+import { getClientAuth } from '@/shared/lib/auth';
 import {
   createForumReply,
   createForumTopic,
@@ -46,27 +47,35 @@ export function Composer({
     expand,
     setTitle,
     setDocument,
+    selectCategory,
     removeQuote,
     setSubmitting,
     setError,
     reset,
+    isCurrentViewer,
   } = useComposer();
 
   const [activeTab, setActiveTab] = useState<'write' | 'preview'>('write');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
-    state.categoryId ?? categories[0]?.id ?? ''
-  );
-
-  useEffect(() => {
-    if (state.categoryId) {
-      setSelectedCategoryId(state.categoryId);
-    } else if (!selectedCategoryId && categories.length > 0) {
-      setSelectedCategoryId(categories[0].id);
-    }
-  }, [state.categoryId, categories, selectedCategoryId]);
+  const [draftRestored, setDraftRestored] = useState(false);
+  // An unassigned draft must show an unassigned category until the user makes
+  // a choice; never post it to the first category just because it arrived first.
+  // A category missing from this viewer's current list must not be submitted.
+  const selectedCategoryId = state.categoryId && categories.some((cat) => cat.id === state.categoryId)
+    ? state.categoryId : '';
 
   const richText = useTranslations('richText');
   const forum = useTranslations('Forum');
+
+  useEffect(() => { setDraftRestored(false); }, [state.isOpen, state.mode]);
+
+  function handleCategoryChange(nextCategoryId: string) {
+    const result = selectCategory(nextCategoryId);
+    if (result === 'failed') {
+      setError(forum('errorDraftStorage'));
+    } else {
+      setDraftRestored(result === 'restored');
+    }
+  }
 
   const richTextMessages = useMemo(
     () => ({
@@ -141,6 +150,12 @@ export function Composer({
       return;
     }
 
+    const auth = getClientAuth();
+    if (!isCurrentViewer() || !auth.token || (tenantSlug && auth.tenant !== tenantSlug)) {
+      setError(forum('signInRequired'));
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
@@ -149,6 +164,7 @@ export function Composer({
         const replyResult = await createForumReply({
           tenantId,
           tenantSlug,
+          token: auth.token,
           topicId: state.topicId,
           input: {
             locale,
@@ -162,6 +178,7 @@ export function Composer({
           },
         });
 
+        if (!isCurrentViewer()) return;
         if (replyResult) {
           const tId = state.topicId;
           reset();
@@ -170,7 +187,7 @@ export function Composer({
           setError(forum('errorReplyFailed'));
         }
       } else if (state.mode === 'topic') {
-        const cId = state.categoryId || selectedCategoryId || categories[0]?.id;
+        const cId = selectedCategoryId;
         if (!cId) {
           setError(forum('errorMissingCategory'));
           setSubmitting(false);
@@ -180,6 +197,7 @@ export function Composer({
         const topicResult = await createForumTopic({
           tenantId,
           tenantSlug,
+          token: auth.token,
           input: {
             locale,
             categoryId: cId,
@@ -194,6 +212,7 @@ export function Composer({
           },
         });
 
+        if (!isCurrentViewer()) return;
         if (topicResult) {
           const createdTopicId = topicResult.id;
           reset();
@@ -203,9 +222,9 @@ export function Composer({
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : forum('errorGeneric'));
+      if (isCurrentViewer()) setError(err instanceof Error ? err.message : forum('errorGeneric'));
     } finally {
-      setSubmitting(false);
+      if (isCurrentViewer()) setSubmitting(false);
     }
   }
 
@@ -260,9 +279,12 @@ export function Composer({
               />
               <select
                 value={selectedCategoryId}
-                onChange={(e) => setSelectedCategoryId(e.target.value)}
+                onChange={(e) => handleCategoryChange(e.target.value)}
+                disabled={state.isSubmitting || categories.length === 0}
+                required
                 className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
               >
+                <option value="" disabled>{forum('errorMissingCategory')}</option>
                 {categories.map((cat) => (
                   <option key={cat.id} value={cat.id}>
                     {cat.name}
@@ -368,6 +390,12 @@ export function Composer({
             )}
           </div>
 
+          {draftRestored && state.mode === 'topic' && (
+            <p role="status" className="border-t border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+              {forum('draftRestoredForCategory')}
+            </p>
+          )}
+
           {/* Error notice */}
           {state.error && (
             <div className="border-t border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive">
@@ -378,7 +406,10 @@ export function Composer({
           {/* Footer action bar */}
           <div className="flex items-center justify-between border-t border-border bg-muted/20 px-4 py-3">
             <span className="text-xs text-muted-foreground">
-              {forum('draftSavedLocally')}
+              {state.draftStorage === 'saved' ? forum('draftSavedLocally')
+                : state.draftStorage === 'failed' ? forum('draftSaveFailed')
+                : state.draftStorage === 'pending' ? forum('draftSaving')
+                : forum('draftNotSaved')}
             </span>
 
             <div className="flex items-center gap-2">

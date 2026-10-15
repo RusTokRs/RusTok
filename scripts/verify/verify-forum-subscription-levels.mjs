@@ -43,6 +43,9 @@ const paths = {
   controllers: "crates/modules/rustok-forum/src/controllers/subscriptions.rs",
   router: "crates/modules/rustok-forum/src/controllers/mod.rs",
   openapi: "crates/modules/rustok-forum/src/openapi.rs",
+  graphqlMutation: "crates/modules/rustok-forum/src/graphql/mutation.rs",
+  restTopics: "crates/modules/rustok-forum/src/controllers/topics.rs",
+  restCategories: "crates/modules/rustok-forum/src/controllers/categories.rs",
   sqliteTest: "crates/modules/rustok-forum/tests/subscription_levels_sqlite.rs",
   contractTest: "crates/modules/rustok-forum/tests/subscription_levels_contract.rs",
 };
@@ -81,6 +84,9 @@ function verifyStatic() {
   const controllers = text(paths.controllers);
   const router = text(paths.router);
   const openapi = text(paths.openapi);
+  const graphqlMutation = text(paths.graphqlMutation);
+  const restTopics = text(paths.restTopics);
+  const restCategories = text(paths.restCategories);
   text(paths.sqliteTest);
   text(paths.contractTest);
 
@@ -135,7 +141,7 @@ function verifyStatic() {
     "is_explicitly_subscribed",
   ]);
   requireTokens(paths.migration, migration, [
-    "forum.subscription.changed.v1",
+    "forum.subscription.changed",
     "forum_subscription_policies",
     "forum_auto_subscribe_topic_author",
     "forum_auto_subscribe_reply_participant",
@@ -167,17 +173,74 @@ function verifyStatic() {
     "UpdateForumSubscriptionPolicyInput",
     "ForumSubscriptionPolicyResponse",
   ]);
+  requireTokens(paths.graphqlMutation, graphqlMutation, [
+    "category.is_subscribed = true;",
+    "category.is_subscribed = false;",
+    "response.is_subscribed = true;",
+    "async fn subscription_topic_response(",
+  ]);
+  const topicSet = graphqlMutation.slice(
+    graphqlMutation.indexOf("async fn set_forum_topic_subscription("),
+    graphqlMutation.indexOf("async fn clear_forum_topic_subscription("),
+  );
+  const read = topicSet.indexOf("subscription_topic_response(");
+  const write = topicSet.indexOf(".set_topic_subscription(");
+  if (read < 0 || write < 0 || read > write ||
+      topicSet.indexOf("response.is_subscribed = true;") < write) {
+    fail(`${paths.graphqlMutation}: topic set must pre-read and overlay the post-write flag`);
+  }
+  const blindClear = graphqlMutation.slice(
+    graphqlMutation.indexOf("async fn clear_forum_topic_subscription("),
+    graphqlMutation.indexOf("async fn create_forum_reply("),
+  );
+  if (!blindClear.includes(".clear_topic_subscription(") ||
+      !blindClear.includes("resolve_tenant_scope(") ||
+      !blindClear.includes("-> Result<bool>") ||
+      !blindClear.includes("Ok(true)") ||
+      graphqlMutation.includes("async fn clear_forum_topic_subscription_by_id(") ||
+      blindClear.includes("subscription_topic_response(") ||
+      blindClear.includes("get_authenticated_owner_visible_with_audience_context(")) {
+    fail(`${paths.graphqlMutation}: canonical topic clear must only acknowledge the caller's row`);
+  }
+  const restClear = restTopics.slice(
+    restTopics.indexOf("pub async fn unsubscribe_topic("),
+    restTopics.indexOf("fn ensure_forum_permission(", restTopics.indexOf("pub async fn unsubscribe_topic(")),
+  );
+  if (!restClear.includes(".clear_topic_subscription(") ||
+      !restClear.includes("Ok(StatusCode::NO_CONTENT)") ||
+      restClear.includes("get_authenticated_owner_visible_with_audience_context(")) {
+    fail(`${paths.restTopics}: REST blind clear must return an acknowledgement, never a topic body`);
+  }
+  const categoryRest = restCategories.slice(
+    restCategories.indexOf("pub async fn subscribe_category("),
+    restCategories.indexOf("fn category_audience_read_service(", restCategories.indexOf("pub async fn subscribe_category(")),
+  );
+  requireTokens(paths.restCategories, categoryRest, [
+    "category.is_subscribed = true;", "category.is_subscribed = false;",
+  ]);
+  for (const [operation, flag] of [["subscribe", "true"], ["unsubscribe", "false"]]) {
+    const section = categoryRest.slice(
+      categoryRest.indexOf(`pub async fn ${operation}_category(`),
+      operation === "subscribe" ? categoryRest.indexOf("pub async fn unsubscribe_category(") : undefined,
+    );
+    const read = section.indexOf("get_authenticated_owner_visible_with_audience_context(");
+    const write = section.indexOf(`.${operation === "subscribe" ? "set" : "clear"}_category_subscription(`);
+    const overlay = section.indexOf(`category.is_subscribed = ${flag};`);
+    if (read < 0 || write < 0 || overlay < 0 || read > write || overlay < write) {
+      fail(`${paths.restCategories}: ${operation} must pre-read and overlay the post-write flag`);
+    }
+  }
 
   if (/DELETE FROM forum_(topic|category)_subscriptions[\s\S]{0,200}muted/i.test(serviceContract)) {
     fail(`${paths.service}: explicit mute must remain a persisted row`);
   }
-  const eventOccurrences = migration.match(/forum\.subscription\.changed\.v1/g) ?? [];
-  if (eventOccurrences.length < 8) {
-    fail(`${paths.migration}: expected versioned event wiring for both backends`);
+  const eventOccurrences = migration.match(/forum\.subscription\.changed/g) ?? [];
+  if (eventOccurrences.length < 8 || !migration.includes("'forum.subscription.changed',1")) {
+    fail(`${paths.migration}: expected event type with schema v1 wiring for both backends`);
   }
 
   console.log(
-    "forum subscription-level static verification passed (4 levels, revision, policy, auto-subscribe, v1 event)",
+    "forum subscription-level static verification passed (4 levels, revision, policy, auto-subscribe, schema v1 event)",
   );
 }
 

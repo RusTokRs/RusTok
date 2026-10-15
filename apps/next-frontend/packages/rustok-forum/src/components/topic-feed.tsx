@@ -24,8 +24,16 @@ export type TopicFilterTab = 'latest' | 'top' | 'unread' | 'solved';
 interface TopicFeedProps {
   /** The first page is still in flight; the empty state must not claim there is nothing. */
   isLoading?: boolean;
+  /** A failed owner read must not masquerade as an empty or all-read forum. */
+  hasError?: boolean;
   topics: ForumTopicListItem[];
+  /** Count of loaded, audience-visible items, not a global category aggregate. */
   total: number;
+  activeTab: TopicFilterTab;
+  onTabChange: (tab: TopicFilterTab) => void;
+  isAuthenticated: boolean;
+  hasMore: boolean;
+  onLoadMore: () => void;
   selectedTopicId: string | null;
   onSelectTopic?: (topicId: string) => void;
   selectedCategoryId: string | null;
@@ -34,8 +42,14 @@ interface TopicFeedProps {
 
 export function TopicFeed({
   isLoading = false,
+  hasError = false,
   topics,
   total,
+  activeTab,
+  onTabChange,
+  isAuthenticated,
+  hasMore,
+  onLoadMore,
   selectedTopicId,
   onSelectTopic,
   selectedCategoryId,
@@ -43,7 +57,6 @@ export function TopicFeed({
 }: TopicFeedProps) {
   const forum = useTranslations('Forum');
   const { openNewTopic } = useComposer();
-  const [activeTab, setActiveTab] = useState<TopicFilterTab>('latest');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filter and sort topics based on active tab and search query
@@ -66,9 +79,7 @@ export function TopicFeed({
         result.sort((a, b) => (b.replyCount ?? 0) - (a.replyCount ?? 0));
         break;
       case 'unread':
-        result = result.filter(
-          (t) => Boolean(t.isUnread) || (t.unreadCount !== undefined && t.unreadCount > 0)
-        );
+        // Already selected by the authenticated owner query, not from the public page.
         break;
       case 'solved':
         result = result.filter((t) => Boolean(t.solutionReplyId));
@@ -87,18 +98,14 @@ export function TopicFeed({
     return result;
   }, [topics, searchQuery, activeTab]);
 
-  const unreadCountTotal = useMemo(() => {
-    return topics.filter(
-      (t) => Boolean(t.isUnread) || (t.unreadCount !== undefined && t.unreadCount > 0)
-    ).length;
-  }, [topics]);
+  const unreadCountTotal = activeTab === 'unread' ? topics.length : 0;
 
   const solvedCountTotal = useMemo(() => {
     return topics.filter((t) => Boolean(t.solutionReplyId)).length;
   }, [topics]);
 
   const handleResetFilters = () => {
-    setActiveTab('latest');
+    onTabChange('latest');
     setSearchQuery('');
   };
 
@@ -117,7 +124,7 @@ export function TopicFeed({
 
         <div className="flex items-center gap-2">
           <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-            {total} {forum('threads')}
+            {forum('loadedThreads', { count: total })}
           </span>
           <button
             type="button"
@@ -136,7 +143,7 @@ export function TopicFeed({
         <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-border bg-muted/30 p-1">
           <button
             type="button"
-            onClick={() => setActiveTab('latest')}
+            onClick={() => onTabChange('latest')}
             className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
               activeTab === 'latest'
                 ? 'bg-background text-foreground shadow-xs'
@@ -149,7 +156,7 @@ export function TopicFeed({
 
           <button
             type="button"
-            onClick={() => setActiveTab('top')}
+            onClick={() => onTabChange('top')}
             className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
               activeTab === 'top'
                 ? 'bg-background text-foreground shadow-xs'
@@ -162,7 +169,7 @@ export function TopicFeed({
 
           <button
             type="button"
-            onClick={() => setActiveTab('unread')}
+            onClick={() => onTabChange('unread')}
             className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
               activeTab === 'unread'
                 ? 'bg-background text-foreground shadow-xs'
@@ -180,7 +187,7 @@ export function TopicFeed({
 
           <button
             type="button"
-            onClick={() => setActiveTab('solved')}
+            onClick={() => onTabChange('solved')}
             className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
               activeTab === 'solved'
                 ? 'bg-background text-foreground shadow-xs'
@@ -219,10 +226,28 @@ export function TopicFeed({
         </div>
       </div>
 
+      {/* These filters and text search apply to loaded pages, not the whole forum. */}
+      {(searchQuery || activeTab === 'top' || activeTab === 'solved') && (
+        <p className="text-xs text-muted-foreground">{forum('filtersLoadedOnly')}</p>
+      )}
+
       {/* Topic List */}
       {isLoading && topics.length === 0 ? (
         <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
           {forum('loading')}
+        </div>
+      ) : activeTab === 'unread' && !isAuthenticated ? (
+        <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+          {forum('signInForUnread')}
+        </div>
+      ) : hasError && topics.length === 0 ? (
+        <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+          {forum('errorLoad')}
+        </div>
+      ) : activeTab === 'unread' && topics.length === 0 ? (
+        <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center">
+          <h4 className="text-base font-semibold text-card-foreground">{forum('noUnreadTopics')}</h4>
+          <p className="mt-2 text-sm text-muted-foreground">{forum('noUnreadTopicsHint')}</p>
         </div>
       ) : topics.length === 0 ? (
         <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center">
@@ -359,6 +384,16 @@ export function TopicFeed({
             );
           })}
         </div>
+      )}
+      {hasMore && (
+        <button
+          type="button"
+          onClick={onLoadMore}
+          disabled={isLoading}
+          className="w-full rounded-xl border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+        >
+          {isLoading ? forum('loading') : forum('loadMoreTopics')}
+        </button>
       )}
     </section>
   );

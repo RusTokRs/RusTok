@@ -18,6 +18,7 @@ use super::category_audience_visibility::{
     ForumCategoryAudienceViewer, ForumCategoryAudienceVisibilityService,
 };
 use super::category_owner::CategoryService;
+use super::engagement_mode::ForumSettingsProviders;
 use super::rbac::enforce_scope;
 
 const FORUM_CATEGORY_AUDIENCE_SCAN_PAGE_SIZE: u64 = MAX_FORUM_READ_LIMIT;
@@ -48,6 +49,11 @@ impl ForumCategoryAudienceReadService {
         facts_port: SharedForumAudienceFactsPort,
     ) -> Self {
         Self::with_optional_audience_facts(db, Some(facts_port))
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.visibility = self.visibility.with_settings_providers(settings);
+        self
     }
 
     fn with_optional_audience_facts(
@@ -253,6 +259,9 @@ impl ForumCategoryAudienceReadService {
     ) -> ForumResult<ForumCategoryAudiencePage> {
         enforce_scope(&security, Resource::ForumCategories, Action::List)?;
         validate_page(page, per_page)?;
+        if !viewer.is_authenticated() && !self.visibility.anonymous_reading_allowed(tenant_id).await? {
+            return Ok(ForumCategoryAudiencePage { items: Vec::new(), total: 0 });
+        }
 
         let requested_start = page
             .saturating_sub(1)

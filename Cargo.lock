@@ -17411,6 +17411,7 @@ dependencies = [
  "anyhow",
  "async-graphql",
  "async-trait",
+ "rustok-api",
  "rustok-core",
  "rustok-outbox",
  "schemars 1.2.2",

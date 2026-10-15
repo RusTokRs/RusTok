@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{Result as AnyResult, anyhow};
 use async_trait::async_trait;
 use rustok_seo_targets::{
-    SeoBulkSummaryPage, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
+    SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
+    SeoSitemapCandidateRecord,
     SeoTargetAlternateRoute, SeoTargetBulkPageRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
     SeoTargetLoadScope, SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
     SeoTargetSitemapRequest, SeoTargetSlug,
@@ -12,8 +13,9 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::{
-    ForumCategoryRouteService, ForumError, ForumPublicDiscoveryService, ForumTopicRouteDisposition,
-    ForumTopicRouteService,
+    ForumCategoryRouteService, ForumError, ForumPublicDiscoveryService,
+    ForumTopicAudienceListService, ForumTopicRouteDisposition, ForumTopicRouteService,
+    ListTopicsFilter, MAX_FORUM_READ_LIMIT,
 };
 
 const MAX_FORUM_SEO_ALTERNATE_ROUTES: usize = 64;
@@ -164,43 +166,88 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
     ) -> AnyResult<SeoBulkSummaryPage> {
         let tenant_id = request.tenant_id;
         let default_locale = request.default_locale;
-        let page = category_provider()
-            .list_bulk_summaries_page(runtime, request)
-            .await?;
-        let next_cursor = page.next_cursor;
-        let candidates = page.items;
         let discovery = public_discovery(runtime);
+        if !discovery.anonymous_reading_allowed(tenant_id).await? {
+            return Ok(SeoBulkSummaryPage { items: Vec::new(), next_cursor: None });
+        }
+        // The legacy mapper scans a raw category keyset. Its cursor may point at a
+        // category that the public owner would hide; never forward that cursor or
+        // return a sparse page when hidden candidates separate visible ones.
+        let limit = request.limit.clamp(1, MAX_FORUM_READ_LIMIT) as usize;
         let route_service = ForumCategoryRouteService::new(runtime.db.clone());
-        let mut visible = Vec::with_capacity(candidates.len());
-        for mut candidate in candidates {
-            if discovery
-                .get_public_category_with_locale_fallback(
-                    tenant_id,
-                    candidate.target_id,
-                    candidate.effective_locale.as_str(),
-                    Some(default_locale),
-                )
-                .await?
-                .is_none()
-            {
-                continue;
-            }
-            let descriptor = route_service
-                .canonical_descriptor(
-                    tenant_id,
-                    candidate.target_id,
-                    candidate.effective_locale.as_str(),
-                    Some(default_locale),
+        let mut scan_after = request.after.map(str::to_owned);
+        let mut visible = Vec::with_capacity(limit);
+        let mut has_more = false;
+        'scan: loop {
+            let page = category_provider()
+                .list_bulk_summaries_page(
+                    runtime,
+                    SeoTargetBulkPageRequest {
+                        after: scan_after.as_deref(),
+                        limit: limit as u64,
+                        ..request
+                    },
                 )
                 .await?;
-            candidate.effective_locale = descriptor.locale;
-            candidate.route = descriptor.path;
-            visible.push(candidate);
+            for mut candidate in page.items {
+                if discovery
+                    .get_public_category_with_locale_fallback(
+                        tenant_id,
+                        candidate.target_id,
+                        candidate.effective_locale.as_str(),
+                        Some(default_locale),
+                    )
+                    .await?
+                    .is_none()
+                {
+                    continue;
+                }
+                if visible.len() == limit {
+                    has_more = true;
+                    break 'scan;
+                }
+                let descriptor = route_service
+                    .canonical_descriptor(
+                        tenant_id,
+                        candidate.target_id,
+                        candidate.effective_locale.as_str(),
+                        Some(default_locale),
+                    )
+                    .await?;
+                candidate.effective_locale = descriptor.locale;
+                candidate.route = descriptor.path;
+                visible.push(candidate);
+            }
+            match page.next_cursor {
+                Some(next) if scan_after.as_deref() == Some(next.as_str()) => {
+                    return Err(anyhow!("Forum category SEO keyset did not advance"));
+                }
+                Some(next) => scan_after = Some(next),
+                None => break,
+            }
         }
+        let next_cursor = if has_more {
+            visible.last().map(|candidate| candidate.target_id.to_string())
+        } else {
+            None
+        };
         Ok(SeoBulkSummaryPage {
             items: visible,
             next_cursor,
         })
+    }
+
+    async fn public_sitemap_requires_refresh(
+        &self,
+        runtime: &SeoTargetRuntimeContext,
+        tenant_id: Uuid,
+    ) -> AnyResult<bool> {
+        // A saved sitemap can also predate a newly restricted category/topic
+        // audience policy when anonymous reading remains enabled.
+        public_discovery(runtime)
+            .anonymous_reading_allowed(tenant_id)
+            .await?;
+        Ok(true)
     }
 
     async fn sitemap_candidates(
@@ -210,10 +257,13 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
         let tenant_id = request.tenant_id;
         let default_locale = request.default_locale;
+        let discovery = public_discovery(runtime);
+        if !discovery.anonymous_reading_allowed(tenant_id).await? {
+            return Ok(Vec::new());
+        }
         let candidates = category_provider()
             .sitemap_candidates(runtime, request)
             .await?;
-        let discovery = public_discovery(runtime);
         let route_service = ForumCategoryRouteService::new(runtime.db.clone());
         let mut visible = Vec::with_capacity(candidates.len());
         for mut candidate in candidates {
@@ -378,43 +428,75 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
     ) -> AnyResult<SeoBulkSummaryPage> {
         let tenant_id = request.tenant_id;
         let default_locale = request.default_locale;
-        let page = topic_provider()
-            .list_bulk_summaries_page(runtime, request)
-            .await?;
-        let next_cursor = page.next_cursor;
-        let candidates = page.items;
         let discovery = public_discovery(runtime);
-        let route_service = ForumTopicRouteService::new(runtime.db.clone());
-        let mut visible = Vec::with_capacity(candidates.len());
-        for mut candidate in candidates {
-            if discovery
-                .get_public_topic_with_locale_fallback(
-                    tenant_id,
-                    candidate.target_id,
-                    candidate.effective_locale.as_str(),
-                    Some(default_locale),
-                    None,
+        if !discovery.anonymous_reading_allowed(tenant_id).await? {
+            return Ok(SeoBulkSummaryPage { items: Vec::new(), next_cursor: None });
+        }
+        // Unlike the legacy mapper's raw topic list, this owner derives both the
+        // items and the cursor from the audience-allowed sequence before paging.
+        let page = ForumTopicAudienceListService::new(runtime.db.clone(), runtime.event_bus.clone())
+            .with_settings_providers(crate::seo_targets::seo_settings_providers(runtime))
+            .list_public_storefront_visible_with_locale_fallback(
+                tenant_id,
+                ListTopicsFilter {
+                    category_id: None,
+                    status: None,
+                    locale: Some(request.locale.to_string()),
+                    after: request.after.map(str::to_owned),
+                    per_page: request.limit.clamp(1, MAX_FORUM_READ_LIMIT),
+                },
+                Some(default_locale),
+                None,
+            )
+            .await?;
+        let has_more = page.next_cursor.is_some();
+        let mut visible = Vec::with_capacity(page.items.len());
+        let mut last_visible_cursor = None;
+        for item in page.items {
+            // Recheck before hydrating a public SEO summary; a policy may have
+            // narrowed between the list scan and this route's load.
+            let Some(record) = self
+                .load_target(
+                    runtime,
+                    SeoTargetLoadRequest {
+                        tenant_id,
+                        default_locale,
+                        locale: item.effective_locale.as_str(),
+                        target_id: item.id,
+                        scope: SeoTargetLoadScope::PublicRoute,
+                        channel_slug: None,
+                    },
                 )
                 .await?
-                .is_none()
-            {
+            else {
                 continue;
-            }
-            let descriptor = route_service
-                .canonical_descriptor(
-                    tenant_id,
-                    candidate.target_id,
-                    candidate.effective_locale.as_str(),
-                )
-                .await?;
-            candidate.effective_locale = descriptor.locale;
-            candidate.route = descriptor.path;
-            visible.push(candidate);
+            };
+            last_visible_cursor = item.sort_key.map(|key| key.encode());
+            visible.push(SeoBulkSummaryRecord {
+                target_kind: record.target_kind,
+                target_id: record.target_id,
+                effective_locale: record.effective_locale,
+                label: record.title,
+                route: record.canonical_route,
+            });
         }
         Ok(SeoBulkSummaryPage {
             items: visible,
-            next_cursor,
+            next_cursor: if has_more { last_visible_cursor } else { None },
         })
+    }
+
+    async fn public_sitemap_requires_refresh(
+        &self,
+        runtime: &SeoTargetRuntimeContext,
+        tenant_id: Uuid,
+    ) -> AnyResult<bool> {
+        // A saved sitemap can also predate a newly restricted category/topic
+        // audience policy when anonymous reading remains enabled.
+        public_discovery(runtime)
+            .anonymous_reading_allowed(tenant_id)
+            .await?;
+        Ok(true)
     }
 
     async fn sitemap_candidates(
@@ -424,10 +506,13 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
         let tenant_id = request.tenant_id;
         let default_locale = request.default_locale;
+        let discovery = public_discovery(runtime);
+        if !discovery.anonymous_reading_allowed(tenant_id).await? {
+            return Ok(Vec::new());
+        }
         let candidates = topic_provider()
             .sitemap_candidates(runtime, request)
             .await?;
-        let discovery = public_discovery(runtime);
         let route_service = ForumTopicRouteService::new(runtime.db.clone());
         let mut visible = Vec::with_capacity(candidates.len());
         for mut candidate in candidates {
@@ -596,6 +681,7 @@ fn topic_route_absent(error: &ForumError) -> bool {
 
 fn public_discovery(runtime: &SeoTargetRuntimeContext) -> ForumPublicDiscoveryService {
     ForumPublicDiscoveryService::new(runtime.db.clone(), runtime.event_bus.clone())
+        .with_settings_providers(crate::seo_targets::seo_settings_providers(runtime))
 }
 
 fn category_provider() -> crate::seo_targets::ForumCategorySeoTargetProvider {
@@ -609,6 +695,96 @@ fn topic_provider() -> crate::seo_targets::ForumTopicSeoTargetProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use async_trait::async_trait;
+    use rustok_api::{
+        PortError, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
+        StaticModuleSettingsSnapshot,
+    };
+    use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+    use sea_orm::Database;
+
+    struct ForumReading(bool);
+
+    #[async_trait]
+    impl StaticModuleSettingsReader for ForumReading {
+        async fn settings(&self, _tenant: Uuid, slug: &str) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+            assert_eq!(slug, "forum");
+            Ok(Some(StaticModuleSettingsSnapshot {
+                enabled: true,
+                settings: serde_json::json!({"allow_anonymous_reading": self.0}),
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn private_tenant_exposes_no_seo_bulk_cursor_or_sitemap_candidates() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let reader = SharedStaticModuleSettingsReader(Arc::new(ForumReading(false)));
+        let runtime = SeoTargetRuntimeContext {
+            event_bus: TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
+            db,
+            static_settings_reader: Some(reader),
+        };
+        let tenant = Uuid::new_v4();
+        assert!(ForumCategorySeoTargetProvider
+            .public_sitemap_requires_refresh(&runtime, tenant)
+            .await
+            .unwrap());
+        assert!(ForumTopicSeoTargetProvider
+            .public_sitemap_requires_refresh(&runtime, tenant)
+            .await
+            .unwrap());
+        for page in [
+            ForumCategorySeoTargetProvider.list_bulk_summaries_page(&runtime, SeoTargetBulkPageRequest {
+                tenant_id: tenant, default_locale: "en", locale: "en", after: None, limit: 10,
+            }).await.unwrap(),
+            ForumTopicSeoTargetProvider.list_bulk_summaries_page(&runtime, SeoTargetBulkPageRequest {
+                tenant_id: tenant, default_locale: "en", locale: "en", after: None, limit: 10,
+            }).await.unwrap(),
+        ] {
+            assert!(page.items.is_empty());
+            assert!(page.next_cursor.is_none());
+        }
+        for candidates in [
+            ForumCategorySeoTargetProvider.sitemap_candidates(&runtime, SeoTargetSitemapRequest {
+                tenant_id: tenant, default_locale: "en",
+            }).await.unwrap(),
+            ForumTopicSeoTargetProvider.sitemap_candidates(&runtime, SeoTargetSitemapRequest {
+                tenant_id: tenant, default_locale: "en",
+            }).await.unwrap(),
+        ] {
+            assert!(candidates.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn public_sitemaps_recheck_owner_policy_even_when_anonymous_reading_is_enabled() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let mut runtime = SeoTargetRuntimeContext {
+            event_bus: TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
+            db,
+            static_settings_reader: Some(SharedStaticModuleSettingsReader(Arc::new(
+                ForumReading(true),
+            ))),
+        };
+        let tenant = Uuid::new_v4();
+        for refresh in [
+            ForumCategorySeoTargetProvider.public_sitemap_requires_refresh(&runtime, tenant).await,
+            ForumTopicSeoTargetProvider.public_sitemap_requires_refresh(&runtime, tenant).await,
+        ] {
+            assert!(refresh.expect("stored URLs may predate a changed audience policy"));
+        }
+        runtime.static_settings_reader = None;
+        assert!(ForumCategorySeoTargetProvider
+            .public_sitemap_requires_refresh(&runtime, tenant)
+            .await
+            .is_err());
+        assert!(ForumTopicSeoTargetProvider
+            .public_sitemap_requires_refresh(&runtime, tenant)
+            .await
+            .is_err());
+    }
 
     #[test]
     fn recognizes_only_canonical_forum_category_and_topic_paths() {
@@ -686,3 +862,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "seo_audience_targets_sqlite_tests.rs"]
+mod sqlite_tests;

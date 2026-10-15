@@ -138,7 +138,7 @@ requireAll(
     ".skip(request.query.offset)",
     ".take(request.query.limit)",
     "if document_filters.is_empty()",
-    "SearchDictionaryService::apply_storefront_query_rules",
+    "SearchDictionaryService::apply_authorized_storefront_query_rules",
   ],
   paths.execution,
 );

@@ -11,6 +11,7 @@ use crate::error::{ForumError, ForumResult};
 
 use super::category_audience::load_category_audience_policy;
 use super::category_visibility::ForumCategoryVisibilityPolicyService;
+use super::engagement_mode::ForumSettingsProviders;
 
 /// Exact viewer identity used while composing inherited category audience layers.
 #[derive(Clone, Debug)]
@@ -79,6 +80,7 @@ impl ForumCategoryAudienceViewer {
 pub struct ForumCategoryAudienceVisibilityService {
     db: DatabaseConnection,
     facts_resolver: ForumAudienceFactsResolver,
+    settings: ForumSettingsProviders,
 }
 
 impl ForumCategoryAudienceVisibilityService {
@@ -86,11 +88,21 @@ impl ForumCategoryAudienceVisibilityService {
         Self {
             db,
             facts_resolver: ForumAudienceFactsResolver::new(facts_port),
+            settings: ForumSettingsProviders::default(),
         }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.settings = settings;
+        self
     }
 
     pub fn without_facts_provider(db: DatabaseConnection) -> Self {
         Self::new(db, None)
+    }
+
+    pub async fn anonymous_reading_allowed(&self, tenant_id: Uuid) -> ForumResult<bool> {
+        self.settings.anonymous_reading_allowed(tenant_id).await
     }
 
     /// Missing, foreign, base-floor-denied and richer-audience-denied categories
@@ -102,6 +114,9 @@ impl ForumCategoryAudienceVisibilityService {
         viewer: &ForumCategoryAudienceViewer,
     ) -> ForumResult<bool> {
         self.validate_viewer_context(tenant_id, viewer)?;
+        if !viewer.is_authenticated() && !self.settings.anonymous_reading_allowed(tenant_id).await? {
+            return Ok(false);
+        }
 
         if !ForumCategoryVisibilityPolicyService::new(self.db.clone())
             .is_category_visible_to_viewer(tenant_id, category_id, viewer.is_authenticated())

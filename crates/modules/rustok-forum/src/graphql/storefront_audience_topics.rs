@@ -9,15 +9,19 @@ use std::{
 use async_graphql::{Context, Object, Result};
 use prometheus::{IntCounterVec, Opts};
 use rustok_api::{
-    RequestContext, TenantContext,
+    AuthContext, RequestContext, TenantContext,
     graphql::{require_module_enabled, resolve_graphql_locale},
 };
+use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::TopicListItem;
+use crate::{
+    ForumTopicReadOperation, ForumTopicReadTransport, TopicListItem,
+    topic_read_audience_port_context,
+};
 
 use super::{ForumTopicPage, types::*};
 
@@ -36,11 +40,11 @@ pub struct ForumStorefrontAudienceTopicsQuery;
 
 #[Object]
 impl ForumStorefrontAudienceTopicsQuery {
-    /// Public storefront topic pagination through the exact richer-audience owner.
+    /// Viewer-scoped storefront pagination through the exact richer-audience owner.
     ///
-    /// The response page and its `next_cursor` are derived from the same allowed sequence.
-    /// Authenticated callers may use this field as the public fallback surface;
-    /// user-specific unread composition remains on `forumStorefrontUnreadTopics`.
+    /// An authenticated caller uses its own audience facts; a guest uses public
+    /// discovery (including the tenant's anonymous-reading setting). Unread
+    /// state remains on `forumStorefrontUnreadTopics`.
     async fn forum_storefront_audience_topics(
         &self,
         ctx: &Context<'_>,
@@ -69,21 +73,43 @@ impl ForumStorefrontAudienceTopicsQuery {
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let list_started_at = Instant::now();
-        let page = super::forum_graphql_runtime(ctx)
-            .topic_audience_list_service(db.clone(), event_bus.clone())
-            .list_public_storefront_visible_with_locale_fallback(
+        let service = super::forum_graphql_runtime(ctx)
+            .topic_audience_list_service(db.clone(), event_bus.clone());
+        let filter = crate::ListTopicsFilter {
+            category_id,
+            status: None,
+            locale: Some(locale.clone()),
+            after,
+            per_page,
+        };
+        let page = if let Some(auth) = ctx.data_opt::<AuthContext>() {
+            let audience_context = topic_read_audience_port_context(
+                ForumTopicReadTransport::Graphql,
+                ForumTopicReadOperation::TopicList,
                 tenant_id,
-                crate::ListTopicsFilter {
-                    category_id,
-                    status: None,
-                    locale: Some(locale),
-                    after,
-                    per_page,
-                },
-                Some(tenant.default_locale.as_str()),
-                request.and_then(|request| request.channel_slug.as_deref()),
-            )
-            .await?;
+                auth,
+                request,
+                locale.as_str(),
+            )?;
+            service
+                .list_authenticated_storefront_visible_with_audience_context(
+                    tenant_id,
+                    SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions),
+                    audience_context,
+                    filter,
+                    Some(tenant.default_locale.as_str()),
+                )
+                .await?
+        } else {
+            service
+                .list_public_storefront_visible_with_locale_fallback(
+                    tenant_id,
+                    filter,
+                    Some(tenant.default_locale.as_str()),
+                    request.and_then(|request| request.channel_slug.as_deref()),
+                )
+                .await?
+        };
         metrics::record_read_path_query(
             "graphql",
             "forum.storefront_audience_topics",

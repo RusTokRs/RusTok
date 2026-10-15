@@ -51,6 +51,7 @@ export function CategoryRail({
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {total} {forum('sectionsPublished')}
           </p>
+          <p className="mt-1 text-xs text-muted-foreground">{forum('categoryTotalsHint')}</p>
         </div>
         {onSwitchToOverview && (
           <button
@@ -118,7 +119,7 @@ export function CategoryRail({
                       c/{category.slug}
                     </p>
                   </div>
-                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground" title={forum('categoryTopicsTotal')} aria-label={`${category.topicCount} ${forum('categoryTopicsTotal')}`}>
                     {category.topicCount}
                   </span>
                 </div>

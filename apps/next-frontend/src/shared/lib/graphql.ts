@@ -1,4 +1,4 @@
-import { ApolloClient, gql, HttpLink, InMemoryCache } from "@apollo/client/core";
+import { ApolloClient, CombinedGraphQLErrors, gql, HttpLink, InMemoryCache } from "@apollo/client/core";
 import type { OperationVariables } from "@apollo/client/core";
 
 export const GRAPHQL_ENDPOINT = "/api/graphql";
@@ -21,10 +21,7 @@ export type GraphqlResponse<T> = {
 
 type ApolloExecutionResult<T> = {
   data?: T | null;
-  error?: {
-    message?: string;
-    graphQLErrors?: ReadonlyArray<GraphqlError>;
-  };
+  error?: { message: string };
 };
 
 export type FrontendGraphqlOptions<V> = {
@@ -84,7 +81,9 @@ export async function storefrontGraphql<T, V = Record<string, unknown>>(
   }
 
   const document = gql(query);
-  const context = { headers };
+  // Browser and Next server requests must not retain a viewer's response in an
+  // HTTP/data cache. Apollo's `no-cache` option alone only covers Apollo storage.
+  const context = { headers, fetchOptions: token ? { cache: "no-store" as const } : undefined };
   const client = apolloClientFor(baseUrl);
   const isMutation = query.trimStart().toLowerCase().startsWith("mutation");
   const apolloVariables =
@@ -105,8 +104,14 @@ export async function storefrontGraphql<T, V = Record<string, unknown>>(
 
   return {
     data: result.data ?? undefined,
-    errors: result.error?.graphQLErrors?.map((error) => ({
-      message: error.message,
-    })),
+    // Apollo Client 4 returns `CombinedGraphQLErrors` in `result.error` under
+    // `errorPolicy: "all"`; the old Apollo 3 `graphQLErrors` property is absent.
+    // Preserve failures even when Apollo also returned partial data, otherwise
+    // a permission denial looks like a legitimately empty Forum page.
+    errors: result.error
+      ? CombinedGraphQLErrors.is(result.error)
+        ? result.error.errors.map((error) => ({ message: error.message }))
+        : [{ message: result.error.message }]
+      : undefined,
   };
 }

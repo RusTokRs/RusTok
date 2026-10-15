@@ -69,7 +69,8 @@ impl ForumTopicAudienceListService {
     /// base topic read path, so the audience-aware list honours the same flags as
     /// the plain list.
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
-        self.topic_service = self.topic_service.with_settings_providers(settings);
+        self.topic_service = self.topic_service.with_settings_providers(settings.clone());
+        self.visibility = self.visibility.with_settings_providers(settings);
         self
     }
 
@@ -180,6 +181,12 @@ impl ForumTopicAudienceListService {
             )));
         }
         let per_page = filter.per_page as usize;
+        if matches!(audience, TopicListAudience::Storefront { .. })
+            && !viewer.is_authenticated()
+            && !self.visibility.anonymous_reading_allowed(tenant_id).await?
+        {
+            return Ok(ForumTopicAudiencePage { items: Vec::new(), next_cursor: None });
+        }
 
         // Walk owner keyset batches from the cursor, keeping only topics the audience can
         // see. The cursor advances over scanned candidates; a page is closed only when one

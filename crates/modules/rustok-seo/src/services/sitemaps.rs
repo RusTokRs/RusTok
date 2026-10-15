@@ -539,6 +539,80 @@ impl SeoService {
         Ok(true)
     }
 
+    /// Serve a public sitemap using current owner visibility when an owner can
+    /// narrow it between operator jobs. A stored XML page might still contain
+    /// routes since made private by a setting or an audience policy.
+    pub async fn public_sitemap_index(&self, tenant: &TenantContext) -> SeoResult<Option<String>> {
+        let Some(file) = self.latest_sitemap_index(tenant.id).await? else {
+            return Ok(None);
+        };
+        if !self.public_sitemap_requires_refresh(tenant.id).await? {
+            return Ok(Some(file.content));
+        }
+        self.render_current_public_sitemap(tenant, "sitemap.xml")
+            .await
+    }
+
+    pub async fn public_sitemap_file(
+        &self,
+        tenant: &TenantContext,
+        path: &str,
+    ) -> SeoResult<Option<String>> {
+        if self.public_sitemap_requires_refresh(tenant.id).await? {
+            // Reject unexpected/oversized page names before collecting live
+            // owner candidates; an arbitrary path must not cause a full scan.
+            if path != "sitemap.xml" && live_sitemap_page_index(path).is_none() {
+                return Ok(None);
+            }
+            // A public sitemap must still have an operator-generated job. The
+            // live content is only used to enforce a changed owner policy.
+            if self.latest_sitemap_index(tenant.id).await?.is_none() {
+                return Ok(None);
+            }
+            return self.render_current_public_sitemap(tenant, path).await;
+        }
+        Ok(self.sitemap_file(tenant.id, path).await?.map(|file| file.content))
+    }
+
+    async fn public_sitemap_requires_refresh(&self, tenant_id: Uuid) -> SeoResult<bool> {
+        let mut refresh = false;
+        for provider in self
+            .registry
+            .providers_with_capability(SeoTargetCapabilityKind::Sitemaps)
+        {
+            // Evaluate every provider, even after one requested refresh, so a
+            // missing privacy reader cannot silently fall back to a stale file.
+            refresh |= provider
+                .public_sitemap_requires_refresh(&self.target_runtime(), tenant_id)
+                .await
+                .map_err(|error| {
+                    SeoError::validation(format!(
+                        "SEO target provider `{}` failed to validate public sitemap: {error}",
+                        provider.slug().as_str()
+                    ))
+                })?;
+        }
+        Ok(refresh)
+    }
+
+    async fn render_current_public_sitemap(
+        &self,
+        tenant: &TenantContext,
+        path: &str,
+    ) -> SeoResult<Option<String>> {
+        let settings = self.load_settings(tenant.id).await?;
+        let origin = PublicOrigin::resolve(tenant)?;
+        let urls = self
+            .collect_sitemap_urls(tenant, &origin, &settings.sitemap_exclude_patterns)
+            .await?;
+        if urls.len() > MAX_SITEMAP_URLS {
+            return Err(SeoError::validation(format!(
+                "sitemap URL set exceeds the {MAX_SITEMAP_URLS} URL limit"
+            )));
+        }
+        Ok(render_live_public_sitemap(&urls, &origin, &settings, path))
+    }
+
     pub async fn latest_sitemap_index(
         &self,
         tenant_id: Uuid,
@@ -965,6 +1039,46 @@ pub(super) async fn load_noindex_target_ids(
         }
     }
     Ok(noindex_ids)
+}
+
+fn live_sitemap_page_index(path: &str) -> Option<usize> {
+    let index = path
+        .strip_prefix("sitemap-")?
+        .strip_suffix(".xml")?
+        .parse::<usize>()
+        .ok()?;
+    (index > 0 && index <= MAX_SITEMAP_URLS && path == format!("sitemap-{index}.xml"))
+        .then_some(index)
+}
+
+fn render_live_public_sitemap(
+    urls: &[SitemapUrlRecord],
+    origin: &PublicOrigin,
+    settings: &SeoModuleSettings,
+    path: &str,
+) -> Option<String> {
+    let chunk_size = settings.sitemap_max_entries_per_file.max(1) as usize;
+    if path == "sitemap.xml" {
+        let files = (1..=urls.len().div_ceil(chunk_size))
+            .map(|index| format!("{}/sitemaps/sitemap-{index}.xml", origin.as_str()))
+            .collect::<Vec<_>>();
+        return Some(render_sitemap_index(&files));
+    }
+    let index = live_sitemap_page_index(path)?;
+    let start = (index - 1).checked_mul(chunk_size)?;
+    let chunk = urls.get(start..urls.len().min(start.checked_add(chunk_size)?))?;
+    if chunk.is_empty() {
+        return None;
+    }
+    Some(render_sitemap_file(
+        chunk,
+        settings.sitemap_changefreq.as_str(),
+        settings.sitemap_priority.as_str(),
+        settings.sitemap_include_images,
+        settings.hreflang_in_sitemap
+            && settings.hreflang_enabled
+            && settings.submodule_hreflang_enabled,
+    ))
 }
 
 fn render_robots_body_with_settings(base_url: &str, settings: &SeoModuleSettings) -> String {

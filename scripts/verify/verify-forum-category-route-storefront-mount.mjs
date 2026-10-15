@@ -90,12 +90,17 @@ for (const marker of [
   "private_permanent_redirect(location.as_str())",
   "query_params.insert(\"category\".to_string(), category_id)",
   "query_params.remove(\"topic\")",
-  "fn safe_owner_path(path: &str) -> bool",
-  "path.starts_with('/')",
-  "!path.starts_with(\"//\")",
-  "!path.chars().any(char::is_control)",
+  "fetch_seo_page_context(",
+  "fn valid_category_descriptor(",
+  "canonical.path == format!(\"/{locale}/forum/c/{slug}\")",
+  "safe_route_segment(slug)",
+  "rustok_api::normalize_locale_tag(locale)",
 ]) {
   requireText(source.host, marker, paths.host);
+}
+if (source.host.indexOf("ForumCategoryHostAction::Render { category_id } =>") >
+    source.host.indexOf("fetch_seo_page_context(")) {
+  failures.push(`${paths.host}: SEO context must be requested only after owner route admission`);
 }
 for (const marker of [
   "ForumCategoryRouteService",
@@ -104,7 +109,6 @@ for (const marker of [
   "Statement::from_sql_and_values",
   "SELECT ",
   "StatusCode::GONE",
-  "fetch_seo_page_context",
   "hreflang",
   "schema.org",
 ]) {

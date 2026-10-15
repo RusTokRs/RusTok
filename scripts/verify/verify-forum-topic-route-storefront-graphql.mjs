@@ -68,7 +68,7 @@ for (const marker of [
   "pub canonical: Option<GqlForumTopicRouteDescriptor>",
   "require_module_enabled(ctx, MODULE_SLUG).await?",
   "forum_channel_enabled(ctx).await?",
-  "Permission denied: tenant scope mismatch",
+  "super::resolve_tenant_scope(tenant, requested_tenant_id)?",
   "ForumTopicRouteService::new(db.clone())",
   ".topic_audience_read_service(db.clone(), event_bus.clone())",
   "topic_read_audience_port_context(",

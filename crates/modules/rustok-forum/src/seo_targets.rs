@@ -17,11 +17,21 @@ use crate::constants::topic_status;
 use crate::state_machine::TopicStatus;
 use crate::{
     CategoryListItem, CategoryResponse, CategoryService, ForumError, ForumResult,
-    ForumTopicAudienceListService, ForumTopicAudienceReadService, ListTopicsFilter, TopicListItem,
-    TopicResponse, TopicService,
+    ForumSettingsProviders, ForumTopicAudienceListService, ForumTopicAudienceReadService,
+    ListTopicsFilter, TopicListItem, TopicResponse, TopicService,
 };
 
 const BULK_FETCH_SIZE: u64 = 48;
+
+/// Keep the mapper's public topic reads on the same tenant settings port as the
+/// audience-aware SEO wrapper. Without it a permitted anonymous SEO request
+/// passes the outer discovery gate but fails closed while loading the topic.
+pub(crate) fn seo_settings_providers(runtime: &SeoTargetRuntimeContext) -> ForumSettingsProviders {
+    match runtime.static_settings_reader.clone() {
+        Some(reader) => ForumSettingsProviders::default().with_static_reader(reader),
+        None => ForumSettingsProviders::default(),
+    }
+}
 
 #[derive(Clone, Default)]
 pub struct ForumCategorySeoTargetProvider;
@@ -216,6 +226,7 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
             // plus every inherited category layer and the topic-local layer.
             SeoTargetLoadScope::PublicRoute => {
                 ForumTopicAudienceReadService::new(runtime.db.clone(), runtime.event_bus.clone())
+                    .with_settings_providers(seo_settings_providers(runtime))
                     .get_public_storefront_visible_with_locale_fallback(
                         request.tenant_id,
                         request.target_id,
@@ -336,7 +347,8 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         // Sitemap candidates are public: the owner list applies the storefront audience
         // contract before pagination, so restricted topics never reach the sitemap.
         let audience_list =
-            ForumTopicAudienceListService::new(runtime.db.clone(), runtime.event_bus.clone());
+            ForumTopicAudienceListService::new(runtime.db.clone(), runtime.event_bus.clone())
+                .with_settings_providers(seo_settings_providers(runtime));
         let mut after: Option<String> = None;
         let mut candidates = Vec::new();
 

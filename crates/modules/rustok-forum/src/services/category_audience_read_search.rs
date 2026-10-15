@@ -9,6 +9,14 @@ impl ForumCategoryAudienceReadService {
     ) -> ForumResult<CategoryTreeResponse> {
         let security = SecurityContext::public_read();
         enforce_scope(&security, Resource::ForumCategories, Action::List)?;
+        // Do not even load Taxonomy rows when the tenant disallows public discovery.
+        if !self.visibility.anonymous_reading_allowed(tenant_id).await? {
+            return Ok(CategoryTreeResponse {
+                roots: Vec::new(),
+                total_nodes: 0,
+                max_depth: 0,
+            });
+        }
         let viewer = ForumCategoryAudienceViewer::public();
         let mut tree = self
             .category_service

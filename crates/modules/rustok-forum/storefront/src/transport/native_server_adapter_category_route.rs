@@ -40,15 +40,15 @@ async fn storefront_category_route_native(
             .await
             .map_err(ServerFnError::new)?;
         let db = runtime_ctx.db_clone();
+        let settings_providers = super::native_server_adapter::forum_settings_providers(&runtime_ctx);
+        if auth.is_none()
+            && !settings_providers.anonymous_reading_allowed(tenant.id).await.map_err(server_error)?
+        {
+            return Ok(None);
+        }
 
-        if let Some(channel_id) = request.channel_id {
-            let enabled = rustok_channel::ChannelService::new(db.clone())
-                .is_module_enabled(channel_id, "forum")
-                .await
-                .map_err(server_error)?;
-            if !enabled {
-                return Ok(None);
-            }
+        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
+            return Ok(None);
         }
 
         let resolution = match ForumCategoryRouteService::new(db.clone())
@@ -70,7 +70,7 @@ async fn storefront_category_route_native(
         let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
             Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db, facts),
             None => ForumCategoryAudienceReadService::new(db),
-        };
+        }.with_settings_providers(settings_providers);
         let visible = if let Some(auth) = auth.as_ref() {
             let security =
                 SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);

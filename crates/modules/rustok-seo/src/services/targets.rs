@@ -110,6 +110,7 @@ impl SeoService {
         SeoTargetRuntimeContext {
             db: self.db.clone(),
             event_bus: self.event_bus.clone(),
+            static_settings_reader: self.static_settings_reader.clone(),
         }
     }
 }

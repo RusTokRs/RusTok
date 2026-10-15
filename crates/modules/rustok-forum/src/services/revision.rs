@@ -9,8 +9,9 @@ use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
 use crate::dto::{ReplyRevisionResponse, TopicRevisionResponse};
-use crate::entities::{forum_reply_revision, forum_topic_revision};
+use crate::entities::{forum_relation_revision, forum_reply_revision, forum_topic_revision};
 use crate::error::{ForumError, ForumResult};
+use crate::mentions::{ForumContentTarget, ForumContentTargetKind};
 use crate::services::rbac::enforce_scope;
 
 const MAX_REVISION_PAGE_SIZE: u64 = 100;
@@ -43,6 +44,34 @@ impl RevisionService {
         reply_id: Uuid,
     ) -> ForumResult<u64> {
         Self::current_reply_revision_in(&self.db, tenant_id, reply_id).await
+    }
+
+    /// Exact persisted relation-revision ID used by quote references. This is
+    /// NOT `current_topic_revision`/`current_reply_revision`: those are the
+    /// content version used by reactions, not the global relation primary key.
+    /// The caller must authorize the selected topic or approved reply through
+    /// its audience owner before exposing this ID.
+    pub async fn current_quote_revision(
+        &self,
+        tenant_id: Uuid,
+        target: ForumContentTarget,
+        locale: &str,
+    ) -> ForumResult<Option<i64>> {
+        let kind = match target.kind() {
+            ForumContentTargetKind::Topic => "topic",
+            ForumContentTargetKind::Reply => "reply",
+        };
+        Ok(forum_relation_revision::Entity::find()
+            .select_only()
+            .column(forum_relation_revision::Column::RevisionId)
+            .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
+            .filter(forum_relation_revision::Column::TargetKind.eq(kind))
+            .filter(forum_relation_revision::Column::TargetId.eq(target.id()))
+            .filter(forum_relation_revision::Column::Locale.eq(locale))
+            .order_by_desc(forum_relation_revision::Column::RevisionId)
+            .into_tuple::<i64>()
+            .one(&self.db)
+            .await?)
     }
 
     pub async fn current_topic_revision_in<C: ConnectionTrait>(

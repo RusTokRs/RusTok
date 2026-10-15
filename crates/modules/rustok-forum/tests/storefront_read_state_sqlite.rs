@@ -2,11 +2,14 @@
 mod posting_cooldown;
 
 use std::sync::Arc;
+use std::time::Duration;
 
+use rustok_api::{PortActor, PortContext};
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumModule,
-    ForumStorefrontReadStateService, ListTopicsFilter, ReplyService, TopicService,
+    CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumAudienceConstraints,
+    ForumModule, ForumStorefrontReadStateService, ForumTopicAudiencePolicyService, ListTopicsFilter,
+    ReplyService, SetForumTopicAudiencePolicyInput, TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
@@ -66,6 +69,16 @@ fn topic_filter(category_id: Option<Uuid>, per_page: u64) -> ListTopicsFilter {
         after: None,
         per_page,
     }
+}
+
+fn read_context(tenant_id: Uuid, reader_id: Uuid) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(reader_id.to_string()),
+        "en",
+        "storefront-unread-page",
+    )
+    .with_deadline(Duration::from_secs(30))
 }
 
 async fn create_category(
@@ -286,9 +299,124 @@ async fn channel_restricted_topic_cannot_be_enriched_or_marked_outside_its_chann
 async fn storefront_unread_page_rejects_unbounded_requests_before_querying() {
     let (db, event_bus, tenant_id) = setup().await;
     let reader = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
-    let error = ForumStorefrontReadStateService::new(db, event_bus)
-        .list_topics_with_unread(tenant_id, reader, topic_filter(None, 101), Some("en"), None)
+    let service = ForumStorefrontReadStateService::new(db, event_bus);
+    let error = service
+        .list_topics_with_unread(tenant_id, reader.clone(), topic_filter(None, 101), Some("en"), None)
         .await
         .expect_err("unbounded storefront unread page should fail");
     assert!(error.to_string().contains("between 1 and 100"));
+    let reader_id = reader.user_id.expect("reader id");
+    let error = service
+        .list_topics_with_unread_audience_visible(
+            tenant_id, reader, read_context(tenant_id, reader_id),
+            topic_filter(None, 101), Some("en"), true,
+        )
+        .await
+        .expect_err("unbounded audience-aware unread page should fail");
+    assert!(error.to_string().contains("between 1 and 100"));
+}
+
+#[tokio::test]
+async fn unread_only_skips_read_and_hidden_topics_without_sparse_pages_or_raw_cursors() {
+    let (db, event_bus, tenant_id) = setup().await;
+    let author = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let reader_id = Uuid::new_v4();
+    let reader = SecurityContext::new(UserRole::Customer, Some(reader_id));
+    let category = create_category(&db, tenant_id, author.clone(), "unread-only").await;
+
+    let writer = TopicService::new(db.clone(), event_bus.clone())
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers());
+    for index in 0..5 {
+        let slug = format!("unread-page-{index}");
+        let topic = writer
+            .create(
+                tenant_id,
+                author.clone(),
+                CreateTopicInput {
+                    locale: "en".into(),
+                    category_id: category.id,
+                    title: slug.clone(),
+                    slug: Some(slug),
+                    body: rustok_api::RichTextDocument::single_paragraph("Unseen opening post"),
+                    metadata: serde_json::json!({}),
+                    tags: vec![],
+                    channel_slugs: None,
+                },
+            )
+            .await
+            .expect("storefront test topic should be created");
+        if index == 4 {
+            ForumTopicAudiencePolicyService::new(db.clone())
+                .set(
+                    tenant_id,
+                    topic.id,
+                    author.clone(),
+                    SetForumTopicAudiencePolicyInput {
+                        constraints: ForumAudienceConstraints {
+                            deny_user_ids: vec![reader_id],
+                            ..ForumAudienceConstraints::default()
+                        },
+                    },
+                )
+                .await
+                .expect("hidden topic policy should persist");
+        }
+    }
+
+    let service = ForumStorefrontReadStateService::new(db, event_bus);
+    let all = service
+        .list_topics_with_unread_audience_visible(
+            tenant_id, reader.clone(), read_context(tenant_id, reader_id),
+            topic_filter(Some(category.id), 20), Some("en"), false,
+        )
+        .await
+        .expect("personalized feed should load");
+    assert_eq!(all.items.len(), 4, "hidden audience topic must not be enriched");
+    assert!(all.items.iter().all(|item| item.is_unread));
+
+    // Read the first two topics in actual keyset order. An unread-only request
+    // for one result must pass the now-empty first candidate batch and continue.
+    for item in &all.items[..2] {
+        service
+            .mark_topic_read_current_audience_visible(
+                tenant_id, item.topic.id, reader.clone(),
+                read_context(tenant_id, reader_id), Some("en"),
+            )
+            .await
+            .expect("visible topic should be marked read");
+    }
+    let after_mark = service
+        .list_topics_with_unread_audience_visible(
+            tenant_id, reader.clone(), read_context(tenant_id, reader_id),
+            topic_filter(Some(category.id), 20), Some("en"), false,
+        )
+        .await
+        .expect("read-state badges should remain on the ordinary feed");
+    assert_eq!(after_mark.items.len(), 4);
+    assert_eq!(after_mark.items.iter().filter(|item| item.is_unread).count(), 2);
+
+    let first = service
+        .list_topics_with_unread_audience_visible(
+            tenant_id, reader.clone(), read_context(tenant_id, reader_id),
+            topic_filter(Some(category.id), 1), Some("en"), true,
+        )
+        .await
+        .expect("first unread-only page should skip the read-only batch");
+    assert_eq!(first.items.len(), 1);
+    assert_eq!(first.items[0].topic.id, all.items[2].topic.id);
+    let cursor = first.next_cursor.expect("one more unread topic exists");
+    assert_eq!(rustok_forum::TopicListCursor::decode(&cursor).expect("valid cursor").id,
+        first.items[0].topic.id, "cursor must point to the returned unread topic");
+
+    let second = service
+        .list_topics_with_unread_audience_visible(
+            tenant_id, reader, read_context(tenant_id, reader_id),
+            ListTopicsFilter { after: Some(cursor), ..topic_filter(Some(category.id), 1) },
+            Some("en"), true,
+        )
+        .await
+        .expect("second unread-only page should load");
+    assert_eq!(second.items.len(), 1);
+    assert_eq!(second.items[0].topic.id, all.items[3].topic.id);
+    assert!(second.next_cursor.is_none());
 }

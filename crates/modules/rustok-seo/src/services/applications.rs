@@ -315,6 +315,18 @@ impl SeoSitemapService {
         self.runtime.robots_preview(tenant).await
     }
 
+    pub async fn public_sitemap_index(&self, tenant: &TenantContext) -> SeoResult<Option<String>> {
+        self.runtime.public_sitemap_index(tenant).await
+    }
+
+    pub async fn public_sitemap_file(
+        &self,
+        tenant: &TenantContext,
+        path: &str,
+    ) -> SeoResult<Option<String>> {
+        self.runtime.public_sitemap_file(tenant, path).await
+    }
+
     pub async fn latest_sitemap_index(
         &self,
         tenant_id: Uuid,

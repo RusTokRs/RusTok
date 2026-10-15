@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::{
     CategoryListItem, CategoryResponse, CategoryService, CreateCategoryInput,
     ForumCategoryAudienceReadService, ForumCategoryReadOperation, ForumCategoryReadTransport,
-    SubscriptionService, UpdateCategoryInput, category_read_audience_port_context,
+    UpdateCategoryInput, category_read_audience_port_context,
 };
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -282,30 +282,33 @@ pub async fn subscribe_category(
         "Permission denied: forum_categories:read required",
     )?;
 
-    SubscriptionService::new(runtime.db_clone())
-        .set_category_subscription(tenant.id, id, forum_security(&auth))
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-
     let context = category_read_audience_port_context(
         ForumCategoryReadTransport::Rest,
-        ForumCategoryReadOperation::SelectedCategory,
+        ForumCategoryReadOperation::Subscription,
         tenant.id,
         &auth,
         Some(&request_context),
         request_context.locale.as_str(),
     )
     .map_err(crate::controllers::map_forum_error)?;
-    let category = category_audience_read_service(&runtime)
+    // Build the response only from the exact owner read before committing the
+    // mutation: a post-commit read failure must not masquerade as a failed write.
+    let mut category = category_audience_read_service(&runtime)
         .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
-            context,
+            context.clone(),
             id,
             Some(tenant.default_locale.as_str()),
         )
         .await
         .map_err(crate::controllers::map_forum_error)?;
+    runtime
+        .subscription_service()
+        .set_category_subscription(tenant.id, id, forum_security(&auth), context)
+        .await
+        .map_err(crate::controllers::map_forum_error)?;
+    category.is_subscribed = true;
     Ok(Json(category))
 }
 
@@ -333,30 +336,31 @@ pub async fn unsubscribe_category(
         "Permission denied: forum_categories:read required",
     )?;
 
-    SubscriptionService::new(runtime.db_clone())
-        .clear_category_subscription(tenant.id, id, forum_security(&auth))
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-
     let context = category_read_audience_port_context(
         ForumCategoryReadTransport::Rest,
-        ForumCategoryReadOperation::SelectedCategory,
+        ForumCategoryReadOperation::Subscription,
         tenant.id,
         &auth,
         Some(&request_context),
         request_context.locale.as_str(),
     )
     .map_err(crate::controllers::map_forum_error)?;
-    let category = category_audience_read_service(&runtime)
+    let mut category = category_audience_read_service(&runtime)
         .get_authenticated_owner_visible_with_audience_context(
             tenant.id,
             forum_security(&auth),
-            context,
+            context.clone(),
             id,
             Some(tenant.default_locale.as_str()),
         )
         .await
         .map_err(crate::controllers::map_forum_error)?;
+    runtime
+        .subscription_service()
+        .clear_category_subscription(tenant.id, id, forum_security(&auth), context)
+        .await
+        .map_err(crate::controllers::map_forum_error)?;
+    category.is_subscribed = false;
     Ok(Json(category))
 }
 

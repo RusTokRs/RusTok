@@ -8,9 +8,10 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
-    ForumSubscriptionPolicyResponse, ForumSubscriptionResponse, ForumTopicReadOperation,
-    ForumTopicReadTransport, SubscriptionService, UpdateForumSubscriptionInput,
-    UpdateForumSubscriptionPolicyInput, topic_read_audience_port_context,
+    ForumCategoryReadOperation, ForumCategoryReadTransport, ForumSubscriptionPolicyResponse,
+    ForumSubscriptionResponse, ForumTopicReadOperation, ForumTopicReadTransport,
+    SubscriptionService, UpdateForumSubscriptionInput, UpdateForumSubscriptionPolicyInput,
+    category_read_audience_port_context, topic_read_audience_port_context,
 };
 
 #[utoipa::path(
@@ -28,6 +29,7 @@ pub async fn get_category_subscription_settings(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ForumSubscriptionResponse>> {
     ensure_permission(
@@ -35,8 +37,18 @@ pub async fn get_category_subscription_settings(
         &[Permission::FORUM_CATEGORIES_READ],
         "Permission denied: forum_categories:read required",
     )?;
-    let settings = SubscriptionService::new(runtime.db_clone())
-        .get_category_subscription(tenant.id, id, security(&auth))
+    let context = category_read_audience_port_context(
+        ForumCategoryReadTransport::Rest,
+        ForumCategoryReadOperation::Subscription,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(operation_error)?;
+    let settings = runtime
+        .subscription_service()
+        .get_category_subscription(tenant.id, id, security(&auth), context)
         .await
         .map_err(operation_error)?;
     Ok(Json(settings))
@@ -59,6 +71,7 @@ pub async fn update_category_subscription_settings(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateForumSubscriptionInput>,
 ) -> HttpResult<Json<ForumSubscriptionResponse>> {
@@ -67,8 +80,18 @@ pub async fn update_category_subscription_settings(
         &[Permission::FORUM_CATEGORIES_READ],
         "Permission denied: forum_categories:read required",
     )?;
-    let settings = SubscriptionService::new(runtime.db_clone())
-        .update_category_subscription(tenant.id, id, security(&auth), input)
+    let context = category_read_audience_port_context(
+        ForumCategoryReadTransport::Rest,
+        ForumCategoryReadOperation::Subscription,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(operation_error)?;
+    let settings = runtime
+        .subscription_service()
+        .update_category_subscription(tenant.id, id, security(&auth), context, input)
         .await
         .map_err(operation_error)?;
     Ok(Json(settings))
@@ -89,6 +112,7 @@ pub async fn get_topic_subscription_settings(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ForumSubscriptionResponse>> {
     ensure_permission(
@@ -96,8 +120,18 @@ pub async fn get_topic_subscription_settings(
         &[Permission::FORUM_TOPICS_READ],
         "Permission denied: forum_topics:read required",
     )?;
-    let settings = SubscriptionService::new(runtime.db_clone())
-        .get_topic_subscription(tenant.id, id, security(&auth))
+    let context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::Subscription,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(operation_error)?;
+    let settings = runtime
+        .subscription_service()
+        .get_topic_subscription(tenant.id, id, security(&auth), context)
         .await
         .map_err(operation_error)?;
     Ok(Json(settings))

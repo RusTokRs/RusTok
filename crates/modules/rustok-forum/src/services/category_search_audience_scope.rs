@@ -8,6 +8,7 @@ use crate::dto::CategoryTreeQuery;
 use crate::error::ForumResult;
 
 use super::category_audience_read::ForumCategoryAudienceReadService;
+use super::engagement_mode::ForumSettingsProviders;
 use super::category_search_scope::{
     ForumSearchCategoryScope, expand_search_category_scope_from_visible_tree,
 };
@@ -32,6 +33,11 @@ impl ForumSearchCategoryAudienceScopeService {
         Self {
             category_reads: ForumCategoryAudienceReadService::with_audience_facts(db, facts_port),
         }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.category_reads = self.category_reads.with_settings_providers(settings);
+        self
     }
 
     /// Expands public category roots after the complete inherited category

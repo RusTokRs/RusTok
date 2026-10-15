@@ -1,3 +1,6 @@
+#[path = "support/forum_public_settings.rs"]
+mod forum_public_settings;
+
 #[path = "support/posting_cooldown.rs"]
 mod posting_cooldown;
 
@@ -170,7 +173,7 @@ async fn mention_description_and_audience_use_the_exact_recipient_for_topics_and
             manager_id,
         });
     extensions.insert(recipient_port);
-    let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()));
+    let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()).with_shared_value(forum_public_settings::default_settings_reader()));
     let providers = materialize_notification_source_registry(&mut extensions, &host)
         .expect("Forum source factory should consume the recipient capability");
     let provider = providers

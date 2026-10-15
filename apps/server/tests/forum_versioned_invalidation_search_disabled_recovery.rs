@@ -1,3 +1,6 @@
+#[path = "support/forum_public_settings.rs"]
+mod forum_public_settings;
+
 use std::collections::BTreeSet;
 use std::env;
 use std::error::Error;
@@ -15,7 +18,7 @@ use rustok_events::{ContractEventEnvelope, EventEnvelope};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumError, ForumEventService,
     ForumModule, ForumProjectionOwnerRevisionImpact as ForumOwnerRevisionImpact,
-    ForumSearchProjectionSourceFactory, TopicService,
+    TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_search::{
@@ -327,7 +330,7 @@ async fn run_search_disabled_recovery_proof(
         ));
     }
 
-    let projection_source = ForumSearchProjectionSourceFactory.build(db.clone());
+    let projection_source = forum_public_settings::projection_source(db.clone());
     let owner_source = Arc::new(RealForumOwnerRevisionSource { db: db.clone() });
     let reconciler = ForumProjectionReconciler::with_owner_revision_source(
         db.clone(),
