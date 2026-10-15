@@ -9,10 +9,8 @@ pub(crate) fn load_manifest() -> Result<Manifest> {
 }
 
 pub(crate) fn load_manifest_from(path: &Path) -> Result<Manifest> {
-    let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    let manifest: Manifest =
-        toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))?;
+    let manifest = rustok_manifest::load_modules_manifest(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
 
     if manifest.schema != 2 {
         anyhow::bail!("Unsupported manifest schema: {}", manifest.schema);
@@ -40,9 +38,8 @@ pub(crate) fn module_package_manifest_path(
 }
 
 pub(crate) fn load_module_package_manifest(path: &Path) -> Result<ModulePackageManifest> {
-    let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))
+    rustok_manifest::load_module_package_manifest(path)
+        .with_context(|| format!("Failed to read {}", path.display()))
 }
 
 pub(crate) fn workspace_root() -> PathBuf {

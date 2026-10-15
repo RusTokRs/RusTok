@@ -328,20 +328,14 @@ Reasons:
 - Current guardrails require explicit optional module wiring through `mod-<slug>` features and registry entry, which better
   corresponds to a controlled rollout.
 
-Recommended order if coupling between `apps/server` and registry/bootstrap validation becomes a blocker again:
+Recommended order for decoupling manifest processing:
 
-1. First extract a shared foundation contract for reading and normalizing `modules.toml`/`rustok-module.toml`.
-2. Move shared DTOs, canonical hash and pure validation rules there without dependency on server runtime.
-3. Leave `apps/server` as the owner of runtime wiring, and `xtask` as the owner of preflight/CI validation.
+1. Extract a shared foundation contract for reading and normalizing `modules.toml`/`rustok-module.toml`. (Completed: `crates/libs/rustok-manifest`).
+2. Move shared DTOs, canonical hash and pure validation rules there without dependency on server runtime. (Completed: `rustok-manifest`).
+3. Leave `apps/server` as the owner of runtime wiring, and `xtask` as the owner of preflight/CI validation. (Completed: `apps/server/build.rs` and `xtask` consume `rustok-manifest`).
 4. Only after that consider a build-time compiler as a thin generator over the foundation package.
 
-The first step is partially done: `rustok-api::module_registry_contract` now owns framework-independent
-comparison of manifest snapshot and runtime registry snapshot. Checks for missing runtime entry,
-`required`/`core` mismatch and dependency mismatch are no longer implemented inside `apps/server`;
-the composition root only transforms its runtime DTOs into the shared contract. File loading,
-package-manifest overlay and actual `ModuleRegistry` wiring remain in `apps/server`.
-
-Until such extraction, a build-time compiler is considered a deferred optimization, not a mandatory production gate.
+The foundation layer is now canonical in `crates/libs/rustok-manifest`. It provides zero-dependency parsing, validation, and deterministic BTreeMap serialization for both build scripts and CLI tools. `rustok-api::module_registry_contract` owns runtime comparison of manifest snapshot and registry state.
 
 ## Minimal `modules.toml` Example
 

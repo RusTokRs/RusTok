@@ -292,7 +292,7 @@ pub type ModulePackageStorefrontUiComponent = ModuleUiComponentProvides;
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub struct ModuleUiI18nProvides {
     #[serde(default)]
-    pub default_locale: String,
+    pub default_locale: Option<String>,
     #[serde(default)]
     pub supported_locales: Vec<String>,
     #[serde(default)]

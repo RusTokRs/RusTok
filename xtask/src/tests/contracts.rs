@@ -1442,7 +1442,7 @@ fn validate_default_enabled_server_contract_rejects_missing_server_default_featu
         schema: 2,
         app: "rustok-server".to_string(),
         build: None,
-        modules: HashMap::from([
+        modules: std::collections::BTreeMap::from([
             (
                 "content".to_string(),
                 ModuleSpec {
@@ -1517,7 +1517,7 @@ fn validate_default_enabled_server_contract_rejects_required_module_in_default_e
         schema: 2,
         app: "rustok-server".to_string(),
         build: None,
-        modules: HashMap::from([(
+        modules: std::collections::BTreeMap::from([(
             "channel".to_string(),
             ModuleSpec {
                 crate_name: "rustok-channel".to_string(),
@@ -1573,7 +1573,7 @@ fn validate_default_enabled_server_contract_accepts_present_server_default_featu
         schema: 2,
         app: "rustok-server".to_string(),
         build: None,
-        modules: HashMap::from([
+        modules: std::collections::BTreeMap::from([
             (
                 "content".to_string(),
                 ModuleSpec {
@@ -1646,7 +1646,7 @@ fn validate_default_enabled_server_contract_rejects_missing_optional_dependency_
         schema: 2,
         app: "rustok-server".to_string(),
         build: None,
-        modules: HashMap::from([
+        modules: std::collections::BTreeMap::from([
             (
                 "content".to_string(),
                 ModuleSpec {
@@ -3058,7 +3058,7 @@ fn validate_central_module_registry_inventory_contract_rejects_undocumented_modu
         schema: 2,
         app: "rustok-server".to_string(),
         build: None,
-        modules: HashMap::from([(
+        modules: std::collections::BTreeMap::from([(
             "demo".to_string(),
             ModuleSpec {
                 crate_name: "rustok-demo".to_string(),

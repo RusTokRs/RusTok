@@ -14,10 +14,10 @@ Extract shared manifest DTOs, pure validators, and snapshot hashing into `crates
 
 - [x] **Milestone 1**: Create `crates/libs/rustok-manifest` with canonical DTOs, parsing, and pure validation rules.
 - [x] **Milestone 2**: Author ADR `2026-10-15-rustok-manifest-foundation-library.md` and index it in `DECISIONS/README.md`.
-- [ ] **Milestone 3**: Register `rustok-manifest` in root `Cargo.toml` workspace dependencies.
-- [ ] **Milestone 4**: Adopt `rustok-manifest` in `apps/server/build.rs` to replace duplicate internal structs.
-- [ ] **Milestone 5**: Adopt `rustok-manifest` in `xtask` to replace local types in `manifest_io.rs` and `xtask_types.rs`.
-- [ ] **Milestone 6**: Run scoped verifications (`cargo check -p rustok-manifest`, `cargo test -p rustok-manifest`, `cargo xtask validate-manifest`).
+- [x] **Milestone 3**: Register `rustok-manifest` in root `Cargo.toml` workspace dependencies.
+- [x] **Milestone 4**: Adopt `rustok-manifest` in `apps/server/build.rs` to replace duplicate internal structs.
+- [x] **Milestone 5**: Adopt `rustok-manifest` in `xtask` to replace local types in `manifest_io.rs` and `xtask_types.rs`.
+- [x] **Milestone 6**: Run scoped verifications (`cargo check -p rustok-manifest`, `cargo test -p rustok-manifest`, `cargo xtask validate-manifest`, `cargo xtask module validate blog`, `cargo xtask generate-registry`).
 
 ## Verification
 
