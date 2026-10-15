@@ -49,7 +49,7 @@ impl PreviewTokenService {
     /// The token is the whole authorization of the preview read, so its minting is
     /// restricted to unpublished drafts: a published post is already public, and an
     /// archived post must not be reachable through a token minted before archiving.
-    /// The TTL is clamped to `MIN_TTL_HOURS..=MAX_TTL_HOURS`; an out-of-range request
+    /// The TTL must lie in `MIN_TTL_HOURS..=MAX_TTL_HOURS`; an out-of-range request
     /// is rejected instead of being silently stored as already-expired.
     #[instrument(skip(self, security))]
     pub async fn create_token(

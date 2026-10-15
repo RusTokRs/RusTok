@@ -555,6 +555,20 @@ base `1a420c8`).
   `verify-blog-admin-boundary`, `verify-blog-storefront-boundary` and `verify-docs`
   pass, and the four Rust files this pass changed are clean under the same `rustfmt`
   calibration.
+- Second re-verification pass (still without `cargo`), against the sources of the files the
+  wave added or changed: the preview-token service comment claiming a clamped TTL now states
+  the refusal rule the code implements; `docs/2026-10-09-blog-draft-preview-tokens.md` was
+  brought back in line with the current `get_post_by_token`/`cleanup_expired` signatures, the
+  `blog_preview_token_cleanup` retention registration and the draft-only accessor (the
+  "system security context bypasses RBAC" invariant no longer holds); and the
+  `src/tests/hardening.rs` harness no longer creates a `tenants` table, because no Blog,
+  Taxonomy or outbox migration declares a foreign key to it — the harness relies on
+  `tenant_modules` alone, which the preview read reaches through
+  `rustok_api::is_tenant_module_enabled`, and on `ChannelService` returning early for an empty
+  slug list, which keeps `create_post` off the channel tables the harness does not migrate.
+  The same pass re-ran the five failing Blog self-tests in the `1a420c8` worktree and
+  confirmed they fail there for the same absent sources, so none of them was invalidated by
+  this branch.
 
 ### Open items from this audit
 

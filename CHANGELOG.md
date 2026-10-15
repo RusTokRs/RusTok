@@ -120,6 +120,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registered listeners by name instead of assuming a single handler, and the removed
   `isPinned` input field no longer appears in `rustok-ai`'s draft handler or in
   `rustok-content-orchestration`'s demote test.
+- The hand-off was then verified a second time against the sources: the preview-token service
+  no longer describes its TTL rule as clamped (an out-of-range TTL is refused),
+  `docs/2026-10-09-blog-draft-preview-tokens.md` matches the current
+  `get_post_by_token`/`cleanup_expired` signatures, the implemented
+  `blog_preview_token_cleanup` retention and the draft-only accessor, and the
+  `src/tests/hardening.rs` harness creates only the host table its paths read
+  (`tenant_modules`), because no Blog, Taxonomy or outbox migration declares a foreign key to
+  `tenants` and the exercised paths seed no channel.
 
 ### Added (continued)
 - Blog post slug redirects use the shared canonical URL registry of `rustok-content`

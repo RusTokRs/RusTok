@@ -24,8 +24,11 @@ use crate::services::{
     BLOG_POST_TARGET_TYPE, BlogPostRouteOwner, PostService, canonical_post_route,
 };
 
-/// The platform records enabled tenant modules outside the module migrations, so the
-/// harness creates the table the host owns.
+/// The host owns `tenant_modules` outside the module migrations, and the preview read
+/// path consults it through `rustok_api::is_tenant_module_enabled`, so the harness
+/// creates the table and each test writes the row it needs. No `tenants` table is
+/// required: none of the Blog, Taxonomy or outbox migrations declares a foreign key to
+/// it, and the harness seeds no channel, which is the only Blog dependency that does.
 const TENANT_MODULES_DDL: &str = r#"
 CREATE TABLE IF NOT EXISTS tenant_modules (
     tenant_id TEXT NOT NULL,
@@ -36,28 +39,10 @@ CREATE TABLE IF NOT EXISTS tenant_modules (
 )
 "#;
 
-/// The Blog migrations declare foreign keys to the host `tenants` table, which the
-/// host owns.
-const TENANTS_DDL: &str = r#"
-CREATE TABLE IF NOT EXISTS tenants (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    slug TEXT NOT NULL,
-    settings TEXT NOT NULL DEFAULT '{}',
-    default_locale TEXT NOT NULL DEFAULT 'en',
-    is_active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-)
-"#;
-
 /// Schema plus the outbox-backed event bus the production paths use, so events land in
 /// `sys_events` where a test can assert them.
 pub(crate) async fn setup_hardening_schema() -> (DatabaseConnection, TransactionalEventBus) {
     let db = setup_test_db().await;
-    db.execute_unprepared(TENANTS_DDL)
-        .await
-        .expect("tenants table should exist");
     db.execute_unprepared(TENANT_MODULES_DDL)
         .await
         .expect("tenant_modules table should exist");
