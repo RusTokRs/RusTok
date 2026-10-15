@@ -189,10 +189,10 @@ if (packageJson.devDependencies?.["@playwright/test"] === undefined) {
 }
 
 for (const marker of [
-  "aria-pressed=active.to_string()",
-  "aria-label=new_page_name_accessible_label",
-  "<span class=\"font-medium\">{name_label.clone()}</span>",
-  "<span class=\"font-medium\">{id_label}</span>",
+  "aria-pressed=is_active.to_string()",
+  "aria-label=new_page_name_label.clone()",
+  "<span>{page_name_label}</span>",
+  "<span>{page_id_label}</span>",
 ]) {
   requireContains(pageManager, marker, `page manager browser boundary missing ${marker}`);
 }
