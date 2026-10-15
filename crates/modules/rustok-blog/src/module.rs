@@ -223,9 +223,20 @@ mod tests {
         BlogModule.register_event_listeners(&mut registry, &context);
 
         let handlers = registry.into_handlers();
-        assert_eq!(handlers.len(), 1);
+        // The module registers two listeners: the Comments projection and the
+        // `TargetDeleted` purge that retires a deleted post's routes.
+        let mut registered = handlers
+            .iter()
+            .map(|handler| handler.name())
+            .collect::<Vec<_>>();
+        registered.sort_unstable();
+        assert_eq!(
+            registered,
+            vec!["blog_comment_projection", "blog_target_deletion_routes"]
+        );
         let handler = handlers
-            .first()
+            .iter()
+            .find(|handler| handler.name() == "blog_comment_projection")
             .expect("Blog must register its Comments projection handler");
         assert_eq!(handler.name(), "blog_comment_projection");
 

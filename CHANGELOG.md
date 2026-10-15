@@ -116,6 +116,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   construct a validated key infallibly from a compile-time constant; they are now guarded
   by tests that fail if the constant stops satisfying the owner grammar.
 - Blog Next admin `POSTS_QUERY` no longer selects `scheduledAt` twice.
+- The wave's own fallout was swept before hand-off: the Blog tests pin the two
+  registered listeners by name instead of assuming a single handler, and the removed
+  `isPinned` input field no longer appears in `rustok-ai`'s draft handler or in
+  `rustok-content-orchestration`'s demote test.
 
 ### Added (continued)
 - Blog post slug redirects use the shared canonical URL registry of `rustok-content`

@@ -142,10 +142,13 @@ async fn event_dispatcher_replays_duplicate_envelope_without_double_commit() -> 
     BlogModule.register_event_listeners(&mut registry, &context);
 
     let mut handlers = registry.into_handlers();
-    assert_eq!(handlers.len(), 1);
-    let projection = handlers
-        .pop()
+    // The module also registers its `TargetDeleted` route purge, so the handler under
+    // test is selected by name instead of by position.
+    let projection_index = handlers
+        .iter()
+        .position(|handler| handler.name() == "blog_comment_projection")
         .expect("Blog must register the comment projection handler");
+    let projection = handlers.remove(projection_index);
     assert_eq!(projection.name(), "blog_comment_projection");
 
     let completed = Arc::new(AtomicUsize::new(0));

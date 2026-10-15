@@ -420,7 +420,8 @@ base `1a420c8`).
   host mode. See the module README "Scheduled publishing".
 - **H-6 pin atomicity and the create path.** Pin state is command-owned: the field
   is gone from `CreatePostInput`/`UpdatePostInput` (REST, GraphQL domain, admin
-  GraphQL/native adapters, and every test fixture), so no writer can persist
+  GraphQL/native adapters, and the `rustok-ai`/`rustok-content-orchestration` callers
+  updated in the re-verification pass below), so no writer can persist
   `is_pinned` without `pinned_at` or bypass the published-only rule.
   `pin_post`/`unpin_post` run in one transaction on a row-locked read, so a
   concurrently deleted post fails with `PostNotFound` instead of reporting
@@ -534,6 +535,26 @@ base `1a420c8`).
   pre-existing failures), the 51 unrelated verifiers that read Next-admin or Blog paths
   (12 pre-existing failures, identical to the base worktree), and the 22 Blog verifier
   self-tests (5 pre-existing failures).
+
+- Re-verification pass over the whole branch (`1a420c8..1de458b`, still without
+  `cargo`): the H-7 route purge had left two tests asserting a single registered
+  listener — the host-routing harness in `src/module.rs` and the PostgreSQL dispatcher
+  test, whose positional `pop()` had started selecting the route-purge handler — so
+  both now select the `blog_comment_projection` handler by name and pin the registered
+  set (`blog_comment_projection`, `blog_target_deletion_routes`). The H-6 input removal
+  had also left three stale `is_pinned` initializers outside the Blog crate: two in
+  `rustok-ai`'s draft handler and one in `rustok-content-orchestration`'s demote test.
+  Because removing a struct field or narrowing a signature breaks every constructor and
+  call site, the pass compared every changed Blog signature and removed field with its
+  callers across the workspace; no further stale consumer was found. Verifier evidence
+  after the pass: the Blog set fails the base worktree's 41 failures minus
+  `verify-blog-category-hierarchy-command.mjs`, which was repaired earlier in this wave
+  (its three malformed string literals made the script unparseable); the 51 unrelated
+  scripts fail the same 12, and the Blog self-tests the same 5.
+  `verify-module-source-layout`, `verify-module-reference-contract`,
+  `verify-blog-admin-boundary`, `verify-blog-storefront-boundary` and `verify-docs`
+  pass, and the four Rust files this pass changed are clean under the same `rustfmt`
+  calibration.
 
 ### Open items from this audit
 
@@ -716,6 +737,13 @@ This comparison was written from the model's knowledge of the platforms and was
 | Anonymous read API | GraphQL only | REST | Content API | M-8 |
 | View analytics | Removed (field had no writer) | Plugins | Native | H-5 |
 | Multi-tenant modular runtime, outbox events | Yes | No | No | strength |
+
+The table describes the 2026-10-08 slice. Three cells moved since: scheduled
+publishing (H-6) and the pinned posts of M-5 are implemented — the owner command plus
+the `blog_scheduled_publish`/`blog_preview_token_cleanup`/`blog_route_reconciliation`
+registrations, and the pin commands with their keyset ordering — and the authenticated
+list sort (M-13) closed on 2026-10-15; see the 2026-10-15 section above for the current
+state and for what is still open.
 
 ### Next waves (from the audit roadmap)
 

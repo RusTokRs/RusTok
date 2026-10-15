@@ -810,7 +810,6 @@ impl DirectTaskHandler for BlogDraftHandler {
                         metadata: None,
                         version: existing_post.version,
                         scheduled_at: rustok_api::Patch::Keep,
-                        is_pinned: None,
                     },
                 )
                 .await
@@ -1421,7 +1420,6 @@ fn build_blog_draft_create_input(request: BlogDraftCreateRequest<'_>) -> AiResul
         channel_slugs: None,
         metadata: None,
         scheduled_at: None,
-        is_pinned: None,
     })
 }
 

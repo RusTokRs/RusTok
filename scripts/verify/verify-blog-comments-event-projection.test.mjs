@@ -274,7 +274,18 @@ async fn module_registers_comment_projection_handler_with_host_routing() {
 let mut registry = ModuleEventListenerRegistry::new();
 BlogModule.register_event_listeners(&mut registry, &context);
 let handlers = registry.into_handlers();
-assert_eq!(handlers.len(), 1);
+let mut registered = handlers
+.iter()
+.map(|handler| handler.name())
+.collect::<Vec<_>>();
+registered.sort_unstable();
+assert_eq!(
+registered,
+vec!["blog_comment_projection", "blog_target_deletion_routes"]
+);
+let handler = handlers
+.iter()
+.find(|handler| handler.name() == "blog_comment_projection");
 assert_eq!(handler.name(), "blog_comment_projection");
 assert!(handler.handles(&blog_created));
 assert!(handler.handles(&blog_updated));
