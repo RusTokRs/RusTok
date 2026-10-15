@@ -200,6 +200,14 @@ pub async fn load_role_user_ids_on<C: ConnectionTrait>(
     tenant_id: uuid::Uuid,
     role: rustok_core::UserRole,
 ) -> Result<Vec<uuid::Uuid>, sea_orm::DbErr> {
+    if tenant_id.is_nil() {
+        return Ok(Vec::new());
+    }
+    tracing::debug!(
+        tenant_id = %tenant_id,
+        role = %role,
+        "Loading role user IDs"
+    );
     let store = ConnectionRelationPermissionStore { db };
     db.query_all_raw(store.statement(
         "SELECT DISTINCT subject.id FROM users subject JOIN user_roles membership ON membership.user_id = subject.id JOIN roles role ON role.id = membership.role_id AND role.tenant_id = subject.tenant_id WHERE role.tenant_id = ? AND role.slug = ? ORDER BY subject.id",
@@ -327,6 +335,14 @@ pub async fn resolve_permissions_from_relations<S: RelationPermissionStore>(
     tenant_id: &uuid::Uuid,
     user_id: &uuid::Uuid,
 ) -> Result<Vec<Permission>, S::Error> {
+    if tenant_id.is_nil() || user_id.is_nil() {
+        return Ok(vec![]);
+    }
+    tracing::debug!(
+        tenant_id = %tenant_id,
+        user_id = %user_id,
+        "Resolving permissions from relations"
+    );
     let user_role_ids = store.load_user_role_ids(user_id).await?;
     if user_role_ids.is_empty() {
         return Ok(vec![]);
@@ -356,6 +372,17 @@ where
     S: RelationPermissionStore,
     C: PermissionCache + Sync,
 {
+    if tenant_id.is_nil() || user_id.is_nil() {
+        return Ok(crate::PermissionResolution {
+            permissions: Vec::new(),
+            cache_hit: false,
+        });
+    }
+    tracing::debug!(
+        tenant_id = %tenant_id,
+        user_id = %user_id,
+        "Resolving permissions with cache"
+    );
     for _ in 0..MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS {
         let (cached_permissions, token) = cache.lookup(tenant_id, user_id).await.into_parts();
         if let Some(cached_permissions) = cached_permissions {
@@ -391,6 +418,14 @@ pub async fn invalidate_cached_permissions<C: PermissionCache + Sync>(
     tenant_id: &uuid::Uuid,
     user_id: &uuid::Uuid,
 ) {
+    if tenant_id.is_nil() || user_id.is_nil() {
+        return;
+    }
+    tracing::debug!(
+        tenant_id = %tenant_id,
+        user_id = %user_id,
+        "Invalidating cached permissions"
+    );
     cache.invalidate(tenant_id, user_id).await;
 }
 
@@ -939,5 +974,41 @@ mod tests {
             resolved.permissions,
             vec![Permission::USERS_MANAGE, Permission::USERS_READ]
         );
+    }
+
+    #[tokio::test]
+    async fn nil_uuids_fast_path_to_empty_permissions() {
+        let store = StubStore {
+            role_ids: vec![uuid::Uuid::new_v4()],
+            tenant_role_ids: vec![uuid::Uuid::new_v4()],
+            permissions: vec![Permission::USERS_READ],
+        };
+        let cache = StubCache::default();
+
+        let nil_tenant = uuid::Uuid::nil();
+        let valid_user = uuid::Uuid::new_v4();
+        let perms = resolve_permissions_from_relations(&store, &nil_tenant, &valid_user)
+            .await
+            .unwrap();
+        assert!(perms.is_empty());
+
+        let res = resolve_permissions_with_cache(&store, &cache, &nil_tenant, &valid_user)
+            .await
+            .unwrap();
+        assert!(res.permissions.is_empty());
+        assert!(!res.cache_hit);
+
+        let valid_tenant = uuid::Uuid::new_v4();
+        let nil_user = uuid::Uuid::nil();
+        let perms = resolve_permissions_from_relations(&store, &valid_tenant, &nil_user)
+            .await
+            .unwrap();
+        assert!(perms.is_empty());
+
+        let res = resolve_permissions_with_cache(&store, &cache, &valid_tenant, &nil_user)
+            .await
+            .unwrap();
+        assert!(res.permissions.is_empty());
+        assert!(!res.cache_hit);
     }
 }

@@ -20,6 +20,12 @@ pub async fn authorize_permission<R: PermissionResolver>(
     user_id: &uuid::Uuid,
     required_permission: &Permission,
 ) -> Result<AuthorizationDecision, R::Error> {
+    tracing::debug!(
+        tenant_id = %tenant_id,
+        user_id = %user_id,
+        permission = %required_permission,
+        "Authorizing permission"
+    );
     let resolved = resolver.resolve_permissions(tenant_id, user_id).await?;
     let engine = AuthzEngine::Policy;
     let (allowed, missing_permissions, denied_reason) = decision_from_policy_check(
@@ -46,6 +52,12 @@ pub async fn authorize_any_permission<R: PermissionResolver>(
     user_id: &uuid::Uuid,
     required_permissions: &[Permission],
 ) -> Result<AuthorizationDecision, R::Error> {
+    tracing::debug!(
+        tenant_id = %tenant_id,
+        user_id = %user_id,
+        required_count = required_permissions.len(),
+        "Authorizing any permission"
+    );
     let resolved = resolver.resolve_permissions(tenant_id, user_id).await?;
     let engine = AuthzEngine::Policy;
     let (allowed, missing_permissions, denied_reason) = decision_from_policy_check(
@@ -72,6 +84,12 @@ pub async fn authorize_all_permissions<R: PermissionResolver>(
     user_id: &uuid::Uuid,
     required_permissions: &[Permission],
 ) -> Result<AuthorizationDecision, R::Error> {
+    tracing::debug!(
+        tenant_id = %tenant_id,
+        user_id = %user_id,
+        required_count = required_permissions.len(),
+        "Authorizing all permissions"
+    );
     let resolved = resolver.resolve_permissions(tenant_id, user_id).await?;
     let engine = AuthzEngine::Policy;
     let (allowed, missing_permissions, denied_reason) = decision_from_policy_check(
