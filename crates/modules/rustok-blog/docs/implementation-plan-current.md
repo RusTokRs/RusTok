@@ -462,7 +462,10 @@ base `1a420c8`).
   `cleanup_batch_is_clamped_into_the_bounded_range` in `src/services/preview_token.rs`)
   is drained by the `blog_preview_token_cleanup` module-work registration, and
   deleting a post removes its tokens through the `fk_blog_preview_tokens_post`
-  cascade.
+  cascade, which the migration declares inside `CREATE TABLE` rather than with
+  `ALTER TABLE ... ADD CONSTRAINT` — the latter is rejected by SQLite, the unit-test
+  backend, and would have failed every migration-applying test; a verifier rule now
+  requires a `DatabaseBackend` guard on any migration that uses `create_foreign_key`.
 - **H-4 rate-limit classification coverage.** `BlogGraphqlSurface` covers all 28 Blog
   schema roots (8 queries and 20 mutations) with an explicit permission per root;
   `actor_is_authorized` keeps RBAC authoritative for writes that never reach the

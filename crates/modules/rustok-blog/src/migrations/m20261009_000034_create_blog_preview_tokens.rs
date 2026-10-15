@@ -23,6 +23,17 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(BlogPreviewTokens::PostId).uuid().not_null())
+                    // Declared inside `CREATE TABLE` rather than with `ALTER TABLE ... ADD
+                    // CONSTRAINT`: SQLite (the unit-test backend) rejects the latter, which is
+                    // why the older Blog category migration has to skip its constraint on SQLite.
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_blog_preview_tokens_post")
+                            .from(BlogPreviewTokens::Table, BlogPreviewTokens::PostId)
+                            .to(BlogPosts::Table, BlogPosts::Id)
+                            .on_delete(ForeignKeyAction::Cascade)
+                            .on_update(ForeignKeyAction::Cascade),
+                    )
                     .col(
                         ColumnDef::new(BlogPreviewTokens::Token)
                             .string_len(128)
@@ -40,21 +51,6 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .to_owned(),
-            )
-            .await?;
-
-        // A preview token has no meaning without its post: deleting a post removes
-        // its tokens at the database level, in addition to the in-transaction delete
-        // in `PostService::delete_post`.
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_blog_preview_tokens_post")
-                    .from(BlogPreviewTokens::Table, BlogPreviewTokens::PostId)
-                    .to(BlogPosts::Table, BlogPosts::Id)
-                    .on_delete(ForeignKeyAction::Cascade)
-                    .on_update(ForeignKeyAction::Cascade)
                     .to_owned(),
             )
             .await?;

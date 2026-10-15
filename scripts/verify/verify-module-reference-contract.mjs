@@ -640,6 +640,23 @@ forbid("crates/modules/rustok-blog/src/ports/mod.rs", [
   "blog_tag_usage",
 ]);
 
+// SQLite (the unit-test backend of `rustok-test-utils`) rejects
+// `ALTER TABLE ... ADD CONSTRAINT`, so a Blog migration may only add a foreign key through a
+// guarded `create_foreign_key`; a table that is created in the same migration declares its
+// foreign keys inside `CREATE TABLE` instead.
+for (const path of rustFiles("crates/modules/rustok-blog/src/migrations")) {
+  const lines = read(path).split("\n");
+  lines.forEach((line, index) => {
+    if (!line.includes(".create_foreign_key(")) return;
+    const window = lines.slice(Math.max(0, index - 20), index).join("\n");
+    if (!window.includes("DatabaseBackend::")) {
+      fail(
+        `${path}:${index + 1}: create_foreign_key must be guarded by a DatabaseBackend check (SQLite rejects ALTER TABLE ADD CONSTRAINT)`,
+      );
+    }
+  });
+}
+
 forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
   "blog-category-tree:",
 ]);
