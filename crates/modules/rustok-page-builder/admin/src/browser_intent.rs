@@ -208,16 +208,17 @@ fn dispatch_named_intent(
                 .collect::<std::collections::BTreeSet<_>>();
             let id = unique_page_id_for(&existing, &name);
             let index = controller.page_summaries().len();
-            controller.dispatch(UiIntent::execute(EditorCommand::Page {
+            let mut effects = controller.dispatch(UiIntent::execute(EditorCommand::Page {
                 command: PageCommand::Add {
                     index,
                     page: Box::new(blank_page(id.clone(), name)),
                 },
             }))?;
-            controller.dispatch(UiIntent::ActivatePage {
+            effects.extend(controller.dispatch(UiIntent::ActivatePage {
                 page_id: Some(id),
                 page_index: index,
-            })?;
+            })?);
+            effects
         }
         "remove_page" => {
             let page_index = integer_field(payload, "page_index")? as usize;
@@ -231,7 +232,7 @@ fn dispatch_named_intent(
             };
             controller.dispatch(UiIntent::execute(EditorCommand::Page {
                 command: PageCommand::Remove { locator },
-            }))?;
+            }))?
         }
         "rename_page" => {
             let locator = page_locator_from_payload(payload)?;
@@ -268,7 +269,7 @@ fn dispatch_named_intent(
                         ..PagePatch::default()
                     },
                 },
-            }))?;
+            }))?
         }
         "patch_page_metadata" => {
             let locator = page_locator_from_payload(payload)?;
@@ -284,7 +285,7 @@ fn dispatch_named_intent(
                     locator,
                     patch: metadata.normalized().into_page_patch(),
                 },
-            }))?;
+            }))?
         }
         "move_page" => {
             let locator = page_locator_from_payload(payload)?;
@@ -292,7 +293,7 @@ fn dispatch_named_intent(
             let source_index = locator
                 .resolve(controller.editor().document())
                 .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
-            controller.dispatch(UiIntent::execute(EditorCommand::Page {
+            let mut effects = controller.dispatch(UiIntent::execute(EditorCommand::Page {
                 command: PageCommand::Move {
                     locator: locator.clone(),
                     index: target_index,
@@ -308,10 +309,11 @@ fn dispatch_named_intent(
                 .into_iter()
                 .find(|page| page.index == landed_index)
                 .and_then(|page| page.id);
-            controller.dispatch(UiIntent::ActivatePage {
+            effects.extend(controller.dispatch(UiIntent::ActivatePage {
                 page_id,
                 page_index: landed_index,
-            })?;
+            })?);
+            effects
         }
         "upsert_style_rule" => {
             let component_id = required_string(payload, "component_id")?;
@@ -327,7 +329,7 @@ fn dispatch_named_intent(
                 .get("remove")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            let scope = match scope_kind.as_str() {
+            let scope = match scope_kind {
                 "media" => StyleRuleScope::Media {
                     query: scope_value.to_string(),
                 },
@@ -362,12 +364,12 @@ fn dispatch_named_intent(
             }
             controller.dispatch(UiIntent::execute(EditorCommand::StyleRule {
                 command: StyleRuleCommand::UpsertComponentRule {
-                    component_id,
+                    component_id: component_id.to_string(),
                     scope,
                     declarations,
                     remove_properties: patch.remove_style_properties,
                 },
-            }))?;
+            }))?
         }
         "key_stroke" => {
             let stroke_value = payload
@@ -582,6 +584,37 @@ pub enum BrowserIntentDispatchError {
     RevisionConflict { expected: String, actual: String },
     #[error("browser project hash conflict: expected `{expected}`, received `{actual}`")]
     ProjectHashConflict { expected: String, actual: String },
+}
+
+fn unique_page_id_for(existing: &std::collections::BTreeSet<String>, name: &str) -> String {
+    let normalized = normalize_slug(name.to_string());
+    let base = if normalized.is_empty() {
+        "page".to_string()
+    } else {
+        normalized
+    };
+    if !existing.contains(&base) {
+        return base;
+    }
+    for suffix in 2..=10_000 {
+        let candidate = format!("{base}-{suffix}");
+        if !existing.contains(&candidate) {
+            return candidate;
+        }
+    }
+    format!("{base}-{}", existing.len().saturating_add(1))
+}
+
+fn page_locator_from_payload(payload: &Value) -> Result<PageLocator, BrowserIntentDispatchError> {
+    let page_index = integer_field(payload, "page_index")? as usize;
+    let page_id = payload
+        .get("page_id")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    Ok(match page_id {
+        Some(page_id) => PageLocator::by_id(page_id),
+        None => PageLocator::by_index(page_index),
+    })
 }
 
 #[cfg(test)]
@@ -838,35 +871,4 @@ mod tests {
             BrowserIntentDispatchError::RevisionConflict { .. }
         ));
     }
-}
-
-fn unique_page_id_for(existing: &std::collections::BTreeSet<String>, name: &str) -> String {
-    let normalized = normalize_slug(name.to_string());
-    let base = if normalized.is_empty() {
-        "page".to_string()
-    } else {
-        normalized
-    };
-    if !existing.contains(&base) {
-        return base;
-    }
-    for suffix in 2..=10_000 {
-        let candidate = format!("{base}-{suffix}");
-        if !existing.contains(&candidate) {
-            return candidate;
-        }
-    }
-    format!("{base}-{}", existing.len().saturating_add(1))
-}
-
-fn page_locator_from_payload(payload: &Value) -> Result<PageLocator, BrowserIntentDispatchError> {
-    let page_index = integer_field(payload, "page_index")? as usize;
-    let page_id = payload
-        .get("page_id")
-        .and_then(Value::as_str)
-        .map(ToString::to_string);
-    Ok(match page_id {
-        Some(page_id) => PageLocator::by_id(page_id),
-        None => PageLocator::by_index(page_index),
-    })
 }

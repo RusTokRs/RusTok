@@ -45,7 +45,7 @@ pub use contribution_manifest::{
     build_admin_contribution_registry_from_manifests,
     build_storefront_contribution_registry_from_manifests,
 };
-pub use dnd::{DragSource, DragState, DropPosition, HitTestCandidate};
+pub use dnd::{DragSource, DragState, DropPosition, HitTestCandidate, command_for_drop};
 pub use error::UiError;
 pub use keyboard::{EditorShortcut, KeyStroke, ModifierState, resolve_editor_shortcut};
 pub use layers::{

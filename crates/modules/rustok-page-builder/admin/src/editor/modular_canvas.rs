@@ -1,6 +1,6 @@
 use crate::editor::{
     AdapterWorkspacePanel, AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel,
-    CapabilityPolicyPanel, ConsumerPropertiesPanel, ContextContractToolsPanel,
+    CapabilityFieldset, CapabilityPolicyPanel, ConsumerPropertiesPanel, ContextContractToolsPanel,
     ContextDependencyPanel, ContextSchemaPanel, ContributionPreviewPanel,
     ContributionPropertiesPanel, DiagnosticsSection, DynamicRuntimePanel, IsolatedAuthoringCanvas,
     PublishScenarioSelectorPanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
@@ -19,7 +19,10 @@ use fly::TraitSchemaRegistry;
 use rustok_page_builder::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
 };
-use fly_ui::{CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation, UiIntent};
+use fly_ui::{
+    CapabilityState, ContributionAssemblyResult, EditorCapability, EditorCapabilityEvaluation,
+    UiIntent,
+};
 use leptos::prelude::*;
 use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
@@ -194,20 +197,30 @@ pub fn AdminCanvas(
                 provider_status=server_preview_provider_status
             />
             <div class="grid min-h-[680px] grid-cols-[minmax(420px,1fr)_minmax(280px,360px)] gap-3">
-                <IsolatedAuthoringCanvas runtime=canvas_runtime.clone() />
+                <CapabilityFieldset
+                    runtime=canvas_runtime.clone()
+                    capability=EditorCapability::Edit
+                >
+                    <IsolatedAuthoringCanvas runtime=canvas_runtime.clone() />
+                </CapabilityFieldset>
                 <div class="space-y-3 overflow-auto">
                     <CapabilityPolicyPanel
                         runtime=capability_runtime
                         provider_status=capability_provider_status
                     />
-                    <ConsumerPropertiesPanel
-                        runtime=consumer_properties
-                        contribution_assembly=consumer_property_assembly
-                    />
-                    <ContributionPropertiesPanel
-                        runtime=contribution_property_runtime
-                        contribution_assembly=contribution_property_assembly
-                    />
+                    <CapabilityFieldset
+                        runtime=properties_runtime.clone()
+                        capability=EditorCapability::Properties
+                    >
+                        <ConsumerPropertiesPanel
+                            runtime=consumer_properties
+                            contribution_assembly=consumer_property_assembly
+                        />
+                        <ContributionPropertiesPanel
+                            runtime=contribution_property_runtime
+                            contribution_assembly=contribution_property_assembly
+                        />
+                    </CapabilityFieldset>
                     <ContributionPreviewPanel
                         runtime=contribution_preview_runtime
                         contribution_assembly=contribution_preview_assembly

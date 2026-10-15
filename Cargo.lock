@@ -5799,6 +5799,7 @@ version = "0.1.0"
 dependencies = [
  "dioxus",
  "fly",
+ "fly-browser",
  "fly-ui",
  "fly-web",
  "serde",
@@ -5810,6 +5811,7 @@ name = "fly-leptos"
 version = "0.1.0"
 dependencies = [
  "fly",
+ "fly-browser",
  "fly-ui",
  "fly-web",
  "js-sys",

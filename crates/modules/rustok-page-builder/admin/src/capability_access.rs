@@ -160,7 +160,9 @@ fn capability_requirements(
         | BrowserIntentKind::SetNativeFormField
         | BrowserIntentKind::SetRuntimeContext
         | BrowserIntentKind::SetRuntimeLocale => command_requirements(property_command()),
-        BrowserIntentKind::SetThemeToken | BrowserIntentKind::RemoveThemeToken => {
+        BrowserIntentKind::SetThemeToken
+        | BrowserIntentKind::RemoveThemeToken
+        | BrowserIntentKind::UpsertStyleRule => {
             command_requirements(theme_command())
         }
         BrowserIntentKind::UpsertAsset | BrowserIntentKind::RemoveAsset => {
@@ -177,7 +179,8 @@ fn capability_requirements(
         | BrowserIntentKind::MoveSelectedDown
         | BrowserIntentKind::PatchSelected
         | BrowserIntentKind::CreatePage
-        | BrowserIntentKind::RemovePage => command_requirements(structural_command()),
+        | BrowserIntentKind::RemovePage
+        | BrowserIntentKind::MovePage => command_requirements(structural_command()),
     };
     Ok(Some((kind, requirements)))
 }

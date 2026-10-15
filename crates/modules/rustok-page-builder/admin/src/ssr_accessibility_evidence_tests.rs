@@ -98,17 +98,17 @@ fn generic_editor_ssr_exposes_selected_page_and_programmatic_page_name() {
 
     let home_button = element_containing(&html, "Home", "<button", "</button>");
     assert!(
-        home_button.contains("aria-pressed=\"true\""),
+        home_button.contains("aria-current=\"page\""),
         "active Home page control must expose selected state: {home_button}"
     );
     let about_button = element_containing(&html, "About", "<button", "</button>");
     assert!(
-        about_button.contains("aria-pressed=\"false\""),
+        !about_button.contains("aria-current"),
         "inactive About page control must expose unselected state: {about_button}"
     );
     assert!(
-        html.matches("Page name").count() >= 2,
-        "rendered HTML must retain both the add-page accessible name and visible Page name label"
+        html.contains("Page name"),
+        "rendered HTML must retain the visible Page name label"
     );
     assert!(
         html.contains("Page id"),

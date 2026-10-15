@@ -246,10 +246,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `constrain_locale_to_tenant TranslationService _translations`
 
 #### Sub-Audit Checklist
-- [ ] **CC-12.01 — Relational Translation Schema:** Verify entity translations adhere to the canonical `base + *_translations` table pattern with `VARCHAR(32)` locale columns.
-- [ ] **CC-12.02 — Fallback Negotiation Chain:** Verify the locale resolution chain: `requested locale -> tenant default locale -> platform default fallback`.
-- [ ] **CC-12.03 — User-Facing String Decoupling:** Verify backend services return localized error codes / translation keys rather than hardcoded English strings.
-- [ ] **CC-12.04 — Fluent & ICU Format Safety:** Audit Fluent message formatting and pluralization for safe argument substitution without panic risks.
+- [x] **CC-12.01 — Relational Translation Schema:** Verified entity translations adhere to the canonical `base + *_translations` table pattern with `VARCHAR(32)` locale columns. Validated by `node scripts/verify/verify-db-multilingual-contract.mjs` (passed with 0 schema violations). All 10 multilingual domain aggregates (`taxonomy`, `product`, `post`, `forum`, `content`, `customer`, `currency`, `brand`, `delivery`, `payment`) enforce isolated translation tables with compound primary key `(entity_id, locale)` and tenant isolation.
+- [x] **CC-12.02 — Fallback Negotiation Chain:** Verified the locale resolution chain: `requested locale -> tenant default locale -> platform default fallback`. Traced via CodeGraph across `LocaleContext`, `constrain_locale_to_tenant`, and `TranslationService`. Scoped tests passed: `rustok-translation` (34/34), `rustok-translation-targets` (10/10), `rustok-ui-i18n` (16/16).
+- [x] **CC-12.03 — User-Facing String Decoupling:** Verified backend services return typed error codes and translation keys rather than raw English strings. Frontend/UI adapters strictly resolve presentation strings through neutral `EditorMessages` and module FTL catalogs across all 63 UI packages (`npm run verify:i18n:ui` passed).
+- [x] **CC-12.04 — Fluent & ICU Format Safety:** Audited Fluent message formatting and pluralization for safe argument substitution without panic risks. Verified by `npm run verify:i18n:contract` (`OK i18n contract`), validating EN/RU catalog symmetry, argument matching, and non-panicking bundle evaluation.
 
 ---
 

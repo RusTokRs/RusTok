@@ -96,10 +96,10 @@ fn validate_node(node: &Value, depth: usize, nodes: &mut usize) -> Result<(), St
     if object.get("type").and_then(Value::as_str).is_none() {
         return Err("rich text node is missing its `type`".to_string());
     }
-    if let Some(text) = object.get("text") {
-        if !text.is_string() {
-            return Err("rich text `text` must be a string".to_string());
-        }
+    if let Some(text) = object.get("text")
+        && !text.is_string()
+    {
+        return Err("rich text `text` must be a string".to_string());
     }
     if let Some(content) = object.get("content") {
         let children = content

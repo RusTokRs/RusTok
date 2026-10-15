@@ -70,7 +70,7 @@ pub fn FlyContributionSummary(
                             role=role
                             data-fly-contribution-diagnostic=code.clone()
                         >
-                            <code>{code}</code>
+                            <code>{code.clone()}</code>
                             {format!(": {}", diagnostic.message)}
                         </p>
                     }
@@ -90,7 +90,7 @@ pub fn FlyContributionSummary(
 pub fn FlyPalette(
     blocks: Vec<PaletteBlockItem>,
     on_insert: Callback<String>,
-    #[prop(optional)] capabilities: Option<CapabilityState>,
+    #[prop(optional_no_strip)] capabilities: Option<CapabilityState>,
     #[prop(optional)] messages: Option<EditorMessages>,
 ) -> impl IntoView {
     let palette_label = messages.unwrap_or_default().palette;
@@ -230,7 +230,7 @@ pub fn FlyThemeTokenEditor(
     tokens: Vec<ThemeTokenItem>,
     on_upsert: Callback<DesignToken>,
     on_remove: Callback<String>,
-    #[prop(optional)] capabilities: Option<CapabilityState>,
+    #[prop(optional_no_strip)] capabilities: Option<CapabilityState>,
     #[prop(optional)] messages: Option<EditorMessages>,
 ) -> impl IntoView {
     let messages = messages.unwrap_or_default();
@@ -336,7 +336,7 @@ pub fn FlyThemeTokenEditor(
 pub fn FlyCanvasPreview(
     document: ProjectDocument,
     #[prop(optional)] page_index: Option<usize>,
-    #[prop(optional)] viewport_width: Option<u32>,
+    #[prop(optional_no_strip)] viewport_width: Option<u32>,
     #[prop(optional)] messages: Option<EditorMessages>,
 ) -> impl IntoView {
     let canvas_style =
@@ -422,14 +422,14 @@ pub fn FlyPageTabs(
     on_activate: Callback<usize>,
     #[prop(optional)] on_add: Option<Callback<String>>,
     #[prop(optional)] on_remove: Option<Callback<usize>>,
-    #[prop(optional)] capabilities: Option<CapabilityState>,
+    #[prop(optional_no_strip)] capabilities: Option<CapabilityState>,
     #[prop(optional)] messages: Option<EditorMessages>,
 ) -> impl IntoView {
     let messages = messages.unwrap_or_default();
     let can_edit = capabilities.map(|state| state.edit).unwrap_or(true);
     let pages_label = messages.pages.clone();
-    let new_page_name_label = messages.new_page_name.clone();
     let add_page_label = messages.add_page.clone();
+    let new_page_name_label = format!("{add_page_label}: {}", messages.page_name_label);
     let remove_page_label = messages.remove_page.clone();
     let new_page_name = RwSignal::new(String::new());
     let remove_disabled = pages.len() <= 1;
@@ -448,6 +448,7 @@ pub fn FlyPageTabs(
                                 type="button"
                                 class="fly-pages__tab"
                                 aria-current=is_active.then_some("page")
+                                aria-pressed=is_active.to_string()
                                 on:click=move |_| on_activate.run(page_index)
                             >
                                 {page_name}
@@ -471,31 +472,38 @@ pub fn FlyPageTabs(
                 .collect_view()}
             {on_add.map(|on_add| {
                 view! {
-                    <span class="fly-pages__create">
-                        <input
-                            type="text"
-                            class="fly-pages__new-name"
-                            disabled=!can_edit
-                            aria-label=new_page_name_label.clone()
-                            placeholder=new_page_name_label
-                            prop:value=move || new_page_name.get()
-                            on:input=move |event| {
-                                new_page_name.set(event_target_value(&event))
-                            }
-                        />
-                        <button
-                            type="button"
-                            class="fly-pages__add"
-                            disabled=!can_edit
-                            on:click=move |_| {
-                                let name = new_page_name.get_untracked();
-                                on_add.run(name);
-                                new_page_name.set(String::new());
-                            }
-                        >
-                            {add_page_label}
-                        </button>
-                    </span>
+                    <fieldset
+                        class="contents"
+                        disabled=!can_edit
+                        aria-disabled=(!can_edit).to_string()
+                        data-fly-capability="edit"
+                    >
+                        <span class="fly-pages__create">
+                            <input
+                                type="text"
+                                class="fly-pages__new-name"
+                                disabled=!can_edit
+                                aria-label=new_page_name_label.clone()
+                                placeholder=new_page_name_label
+                                prop:value=move || new_page_name.get()
+                                on:input=move |event| {
+                                    new_page_name.set(event_target_value(&event))
+                                }
+                            />
+                            <button
+                                type="button"
+                                class="fly-pages__add"
+                                disabled=!can_edit
+                                on:click=move |_| {
+                                    let name = new_page_name.get_untracked();
+                                    on_add.run(name);
+                                    new_page_name.set(String::new());
+                                }
+                            >
+                                {add_page_label}
+                            </button>
+                        </span>
+                    </fieldset>
                 }
             })}
         </nav>
@@ -513,7 +521,7 @@ pub fn FlyStyleRules(
     rules: fly::StyleRuleCatalog,
     on_upsert: Callback<ScopedStyleChange>,
     #[prop(optional)] on_preview_breakpoint: Option<Callback<String>>,
-    #[prop(optional)] capabilities: Option<CapabilityState>,
+    #[prop(optional_no_strip)] capabilities: Option<CapabilityState>,
     #[prop(optional)] messages: Option<EditorMessages>,
 ) -> impl IntoView {
     let messages = messages.unwrap_or_else(EditorMessages::english);
@@ -525,7 +533,7 @@ pub fn FlyStyleRules(
         return view! {
             <section class="fly-style-rules">
                 <h3>{messages.responsive_styles}</h3>
-                <p class="fly-style-rules__empty">{messages.no_component_selected}</p>
+                <p class="fly-style-rules__empty">{messages.no_selection}</p>
             </section>
         }
         .into_any();
@@ -633,7 +641,7 @@ pub fn FlyStyleRules(
                     }
                 >
                     {descriptors.iter().map(|descriptor| view! {
-                        <option value=descriptor.property>{descriptor.property}</option>
+                        <option value=descriptor.property.clone()>{descriptor.property.clone()}</option>
                     }).collect_view()}
                 </select>
                 <input
@@ -717,7 +725,7 @@ pub fn FlyStyleRules(
                     }
                 >
                     {descriptors.iter().map(|descriptor| view! {
-                        <option value=descriptor.property>{descriptor.property}</option>
+                        <option value=descriptor.property.clone()>{descriptor.property.clone()}</option>
                     }).collect_view()}
                 </select>
                 <input
@@ -776,7 +784,7 @@ pub fn FlyPageProperties(
     page_count: usize,
     on_apply: Callback<PagePropertiesUpdate>,
     #[prop(optional)] on_move: Option<Callback<i32>>,
-    #[prop(optional)] capabilities: Option<CapabilityState>,
+    #[prop(optional_no_strip)] capabilities: Option<CapabilityState>,
     #[prop(optional)] messages: Option<EditorMessages>,
 ) -> impl IntoView {
     let messages = messages.unwrap_or_default();
@@ -816,16 +824,17 @@ pub fn FlyPageProperties(
             class="fly-page-properties"
             on:submit=move |event| {
                 event.prevent_default();
-                let mut metadata = PageMetadata::default();
-                metadata.title = Some(title.get_untracked());
-                metadata.description = Some(description.get_untracked());
-                metadata.slug = Some(slug.get_untracked());
-                metadata.canonical_url = Some(canonical_url.get_untracked());
-                metadata.open_graph_title = Some(open_graph_title.get_untracked());
-                metadata.open_graph_description =
-                    Some(open_graph_description.get_untracked());
-                metadata.open_graph_image = Some(open_graph_image.get_untracked());
-                metadata.no_index = no_index.get_untracked();
+                let metadata = PageMetadata {
+                    title: Some(title.get_untracked()),
+                    description: Some(description.get_untracked()),
+                    slug: Some(slug.get_untracked()),
+                    canonical_url: Some(canonical_url.get_untracked()),
+                    open_graph_title: Some(open_graph_title.get_untracked()),
+                    open_graph_description: Some(open_graph_description.get_untracked()),
+                    open_graph_image: Some(open_graph_image.get_untracked()),
+                    no_index: no_index.get_untracked(),
+                    ..Default::default()
+                };
                 on_apply.run(PagePropertiesUpdate {
                     summary: summary_for_apply.clone(),
                     name: name.get_untracked().trim().to_string(),
@@ -834,6 +843,12 @@ pub fn FlyPageProperties(
                 });
             }
         >
+            <fieldset
+                class="contents"
+                disabled=!can_properties
+                aria-disabled=(!can_properties).to_string()
+                data-fly-capability="properties"
+            >
             <label class="fly-page-properties__field">
                 <span>{page_name_label}</span>
                 <input
@@ -939,6 +954,7 @@ pub fn FlyPageProperties(
                     }
                 })}
             </div>
+            </fieldset>
         </form>
     }
 }
@@ -954,7 +970,7 @@ pub fn FlyPageProperties(
 pub fn FlyComponentProperties(
     view: Option<ComponentPropertyView>,
     on_patch: Callback<ComponentPropertyChange>,
-    #[prop(optional)] capabilities: Option<CapabilityState>,
+    #[prop(optional_no_strip)] capabilities: Option<CapabilityState>,
     #[prop(optional)] messages: Option<EditorMessages>,
 ) -> impl IntoView {
     let messages = messages.unwrap_or_default();
@@ -1036,7 +1052,12 @@ pub fn FlyComponentProperties(
                     <dd>{component_type}</dd>
                 </div>
             </dl>
-            <fieldset disabled=!can_properties || !has_selection>
+            <fieldset
+                class="contents"
+                disabled=!can_properties || !has_selection
+                aria-disabled=(!can_properties).to_string()
+                data-fly-capability="properties"
+            >
                 <label class="fly-component-properties__field">
                     <span>{tag_label.clone()}</span>
                     <input
@@ -1203,7 +1224,12 @@ pub fn FlyComponentProperties(
                     </ul>
                 </div>
             </fieldset>
-            <fieldset disabled=!can_styles || !has_selection>
+            <fieldset
+                class="contents"
+                disabled=!can_styles || !has_selection
+                aria-disabled=(!can_styles).to_string()
+                data-fly-capability="styles"
+            >
                 <h3>{styles_label}</h3>
                 <label class="fly-component-properties__field">
                     <span>{style_property_label.clone()}</span>
@@ -1345,7 +1371,7 @@ pub fn FlyAssets(
     on_upsert: Callback<(Option<String>, String)>,
     on_remove: Callback<String>,
     on_apply: Callback<(String, String)>,
-    #[prop(optional)] capabilities: Option<CapabilityState>,
+    #[prop(optional_no_strip)] capabilities: Option<CapabilityState>,
     #[prop(optional)] messages: Option<EditorMessages>,
 ) -> impl IntoView {
     let messages = messages.unwrap_or_default();
@@ -1365,7 +1391,12 @@ pub fn FlyAssets(
     view! {
         <section class="fly-assets">
             <h2>{assets_label}</h2>
-            <fieldset disabled=!can_assets>
+            <fieldset
+                class="contents"
+                disabled=!can_assets
+                aria-disabled=(!can_assets).to_string()
+                data-fly-capability="assets"
+            >
                 <label class="fly-assets__field">
                     <span>{asset_id_label.clone()}</span>
                     <input
@@ -1470,7 +1501,7 @@ pub fn FlyAssets(
 pub fn FlyEditorWorkspace(
     document: ProjectDocument,
     #[prop(optional)] registries: Option<RegistrySet>,
-    #[prop(optional)] contribution_assembly: Option<ContributionAssemblyResult>,
+    #[prop(optional_no_strip)] contribution_assembly: Option<ContributionAssemblyResult>,
     #[prop(optional)] instance_id: Option<String>,
     #[prop(optional)] on_intent: Option<Callback<BrowserIntentEnvelope>>,
     #[prop(optional)] on_change: Option<Callback<ProjectDocument>>,
@@ -1779,7 +1810,7 @@ pub fn FlyEditorWorkspace(
         });
     });
     let on_upsert_style = Callback::new({
-        let intent_instance = instance_id.clone();
+        let intent_instance = intent_instance.clone();
         let apply_editor = editor;
         move |change: ScopedStyleChange| {
             if let Some(on_intent) = on_intent {
@@ -1832,10 +1863,11 @@ pub fn FlyEditorWorkspace(
                 report_workspace_error(on_error, "Save scoped style failed", error);
                 return;
             }
-            if let Some(on_change) = on_change {
-                if let Some(document) = apply_editor.try_with(|editor| editor.document().clone()) {
-                    on_change.run(document);
-                }
+            if let (Some(on_change), Some(document)) = (
+                on_change,
+                apply_editor.try_with(|editor| editor.document().clone()),
+            ) {
+                on_change.run(document);
             }
         }
     });
@@ -2136,7 +2168,7 @@ pub fn FlyEditorWorkspace(
                         on_add=on_add_page
                         on_remove=on_remove_page
                         capabilities=capabilities
-                        messages=Some(tabs_messages.clone())
+                        messages=tabs_messages.clone()
                     />
                 }
             }}
@@ -2145,7 +2177,7 @@ pub fn FlyEditorWorkspace(
                     view! {
                         <FlyContributionSummary
                             assembly=assembly
-                            messages=Some(theme_messages.clone())
+                            messages=theme_messages.clone()
                         />
                     }
                 })}
@@ -2153,7 +2185,7 @@ pub fn FlyEditorWorkspace(
                     blocks=blocks
                     on_insert=on_insert
                     capabilities=capabilities
-                    messages=Some(theme_messages.clone())
+                    messages=theme_messages.clone()
                 />
                 {move || {
                     let tokens = editor.with(|editor| theme_token_items(editor.document()));
@@ -2163,7 +2195,7 @@ pub fn FlyEditorWorkspace(
                             on_upsert=on_token_upsert
                             on_remove=on_token_remove
                             capabilities=capabilities
-                            messages=Some(theme_messages.clone())
+                            messages=theme_messages.clone()
                         />
                     }
                 }}
@@ -2178,7 +2210,7 @@ pub fn FlyEditorWorkspace(
                                 on_apply=on_apply_page_properties
                                 on_move=on_move_page
                                 capabilities=capabilities
-                                messages=Some(properties_messages.clone())
+                                messages=properties_messages.clone()
                             />
                         }
                         .into_any(),
@@ -2196,43 +2228,49 @@ pub fn FlyEditorWorkspace(
                             selected=selected
                             on_select=on_select
                             page_index=page_index
-                            messages=Some(panel_messages.clone())
+                            messages=panel_messages.clone()
                         />
                         <FlyCanvasPreview
                             document=document
-                            page_index=Some(page_index)
+                            page_index=page_index
                             viewport_width=preview_width.get()
-                            messages=Some(panel_messages.clone())
+                            messages=panel_messages.clone()
                         />
                     }
                 }}
-                {move || {
-                    let view = selection_snapshot.get();
-                    view! {
-                        <FlyComponentProperties
-                            view=view
-                            on_patch=on_patch_property
-                            capabilities=capabilities
-                            messages=Some(component_messages.clone())
-                        />
+                {
+                    let component_messages = component_messages.clone();
+                    move || {
+                        let view = selection_snapshot.get();
+                        view! {
+                            <FlyComponentProperties
+                                view=view
+                                on_patch=on_patch_property
+                                capabilities=capabilities
+                                messages=component_messages.clone()
+                            />
+                        }
                     }
-                }}
-                {move || {
-                    let document = editor.with(|editor| editor.document().clone());
-                    let component_id =
-                        editor.with(|editor| editor.selection().map(ToString::to_string));
-                    let catalog = fly::StyleRuleCatalog::from_document(&document);
-                    view! {
-                        <FlyStyleRules
-                            component_id=component_id
-                            rules=catalog
-                            on_upsert=on_upsert_style
-                            on_preview_breakpoint=on_preview_breakpoint
-                            capabilities=capabilities
-                            messages=Some(component_messages.clone())
-                        />
+                }
+                {
+                    let component_messages = component_messages.clone();
+                    move || {
+                        let document = editor.with(|editor| editor.document().clone());
+                        let component_id =
+                            editor.with(|editor| editor.selection().map(ToString::to_string));
+                        let catalog = fly::StyleRuleCatalog::from_document(&document);
+                        view! {
+                            <FlyStyleRules
+                                component_id=component_id
+                                rules=catalog
+                                on_upsert=on_upsert_style
+                                on_preview_breakpoint=on_preview_breakpoint
+                                capabilities=capabilities
+                                messages=component_messages.clone()
+                            />
+                        }
                     }
-                }}
+                }
                 {move || {
                     let assets = asset_snapshot.get();
                     let selected_component =
@@ -2245,7 +2283,7 @@ pub fn FlyEditorWorkspace(
                             on_remove=on_remove_asset
                             on_apply=on_apply_asset
                             capabilities=capabilities
-                            messages=Some(asset_messages.clone())
+                            messages=asset_messages.clone()
                         />
                     }
                 }}

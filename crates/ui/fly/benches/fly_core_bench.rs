@@ -5,6 +5,8 @@
 //! exists to make performance regressions visible rather than to produce statistical reports.
 //! Scenarios mirror the audit baseline sizes: 100 / 1 000 / 10 000 component nodes.
 
+#![allow(clippy::print_stdout)]
+
 use fly::{
     ComponentPatch, EditorCommand, FlyEditor, GrapesJsCodec, PageSelection, RegistrySet,
     RenderPolicy, render_page,

@@ -392,7 +392,7 @@ impl LandingRendererManifest {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LandingRenderedPage {
     pub page_index: usize,
     pub page_id: Option<String>,
@@ -457,7 +457,7 @@ pub struct StaticLandingBuildIdentity {
     pub build_hash: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StaticLandingPage {
     pub page_index: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -473,7 +473,7 @@ pub struct StaticLandingPage {
     pub landing_sections: Vec<LandingSectionSnapshot>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StaticLandingArtifact {
     pub identity: StaticLandingBuildIdentity,
     pub artifact_hash: String,

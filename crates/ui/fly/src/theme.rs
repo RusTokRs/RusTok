@@ -12,8 +12,8 @@
 //! flattened extension map already guarantees that.
 
 use crate::ProjectDocument;
-use serde_json::Value;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 pub const FLY_THEME_FIELD: &str = "flyTheme";
 pub const MAXIMUM_THEME_TOKENS: usize = 256;
@@ -251,7 +251,9 @@ pub fn apply_theme_command(
     let mut tokens = decode_theme_tokens(document)
         .map_err(|message| crate::FlyError::Decode(format!("invalid flyTheme: {message}")))?;
     match command {
-        ThemeCommand::Replace { tokens: replacement } => {
+        ThemeCommand::Replace {
+            tokens: replacement,
+        } => {
             tokens = replacement.clone();
         }
         ThemeCommand::Upsert { token } => {
@@ -308,7 +310,10 @@ pub fn apply_theme_command(
 #[cfg(test)]
 mod command_tests {
     use super::*;
-    use crate::{EditorCommand, FlyEditor, GrapesJsCodec, PageSelection, RegistrySet, RenderPolicy, render_page};
+    use crate::{
+        EditorCommand, FlyEditor, GrapesJsCodec, PageSelection, RegistrySet, RenderPolicy,
+        render_page,
+    };
     use serde_json::json;
 
     #[test]
@@ -323,35 +328,58 @@ mod command_tests {
         editor
             .apply(EditorCommand::Theme {
                 command: ThemeCommand::Upsert {
-                    token: DesignToken { name: "brand".to_string(), value: "#0b5fff".to_string() },
+                    token: DesignToken {
+                        name: "brand".to_string(),
+                        value: "#0b5fff".to_string(),
+                    },
                 },
             })
             .expect("upsert");
         editor
             .apply(EditorCommand::Theme {
                 command: ThemeCommand::Upsert {
-                    token: DesignToken { name: "brand".to_string(), value: "#ff0000".to_string() },
+                    token: DesignToken {
+                        name: "brand".to_string(),
+                        value: "#ff0000".to_string(),
+                    },
                 },
             })
             .expect("update");
-        let page = render_page(editor.document(), &PageSelection::First, &RenderPolicy::default())
-            .expect("render");
+        let page = render_page(
+            editor.document(),
+            &PageSelection::First,
+            &RenderPolicy::default(),
+        )
+        .expect("render");
         assert!(page.css.contains("--brand:#ff0000"), "css: {}", page.css);
         editor
             .apply(EditorCommand::Theme {
-                command: ThemeCommand::Remove { name: "brand".to_string() },
+                command: ThemeCommand::Remove {
+                    name: "brand".to_string(),
+                },
             })
             .expect("remove");
-        assert!(decode_theme_tokens(editor.document()).expect("tokens").is_empty());
+        assert!(
+            decode_theme_tokens(editor.document())
+                .expect("tokens")
+                .is_empty()
+        );
         assert!(
             editor
                 .apply(EditorCommand::Theme {
-                    command: ThemeCommand::Remove { name: "brand".to_string() },
+                    command: ThemeCommand::Remove {
+                        name: "brand".to_string()
+                    },
                 })
                 .is_err(),
             "removing a missing token must fail"
         );
         editor.undo().expect("undo remove");
-        assert_eq!(decode_theme_tokens(editor.document()).expect("tokens").len(), 1);
+        assert_eq!(
+            decode_theme_tokens(editor.document())
+                .expect("tokens")
+                .len(),
+            1
+        );
     }
 }

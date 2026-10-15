@@ -1,6 +1,7 @@
 use crate::{
     ContentDigest, FlyError, FlyResult, GrapesJsCodec, PageLocator, ProjectDocument, ProjectHash,
-    RegistrySet, ValidationLimits, ValidationReport, audit_page, constant_time_eq, validate_project,
+    RegistrySet, ValidationLimits, ValidationReport, audit_page, constant_time_eq,
+    validate_project,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};

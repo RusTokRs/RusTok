@@ -48,7 +48,7 @@ impl DragState {
     }
 }
 
-pub(crate) fn command_for_drop(
+pub fn command_for_drop(
     source: DragSource,
     candidate: &HitTestCandidate,
 ) -> UiResult<EditorCommand> {

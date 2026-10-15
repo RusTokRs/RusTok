@@ -62,20 +62,37 @@ impl ProjectDocument {
 impl ProjectDocument {
     fn all_component_ids_stable(&self) -> bool {
         let mut seen = std::collections::HashSet::new();
-        let mut stable = true;
-        self.project.visit_components(|component, _, _| {
-            if !stable {
-                return;
+        for page in &self.project.pages {
+            let Some(root) = page.component.as_ref() else {
+                return false;
+            };
+            if !check_component_ids_stable(root, &mut seen) {
+                return false;
             }
-            match component.id() {
-                Some(id) if validate_identifier(id).is_ok() => {
-                    stable = seen.insert(id);
-                }
-                _ => stable = false,
-            }
-        });
-        stable
+        }
+        true
     }
+}
+
+fn check_component_ids_stable<'a>(
+    node: &'a ComponentNode,
+    seen: &mut std::collections::HashSet<&'a str>,
+) -> bool {
+    let Some(object) = node.as_object() else {
+        return false;
+    };
+    let Some(id) = object.id() else {
+        return false;
+    };
+    if validate_identifier(id).is_err() || !seen.insert(id) {
+        return false;
+    }
+    for child in object.children() {
+        if !check_component_ids_stable(child, seen) {
+            return false;
+        }
+    }
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

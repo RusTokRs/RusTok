@@ -1275,8 +1275,8 @@ mod tests {
         .expect("document");
         let page = render_page(&document, &PageSelection::First, &RenderPolicy::default())
             .expect("rendered");
-        assert!(page.html.contains("id=\"panel\""), "html: {}", page.html);
-        assert!(!page.html.contains("id=\"plain\""), "html: {}", page.html);
+        assert!(page.html.contains(" id=\"panel\""), "html: {}", page.html);
+        assert!(!page.html.contains(" id=\"plain\""), "html: {}", page.html);
         assert!(
             !page.html.contains("data-fly-component-id"),
             "test must run without instrumentation: {}",

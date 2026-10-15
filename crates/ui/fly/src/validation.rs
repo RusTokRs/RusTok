@@ -478,25 +478,25 @@ fn walk_component(
 
     check_component_public_urls(component, path, &mut report.diagnostics);
     check_raw_html_content(component, path, &mut report.diagnostics);
-    if let Some(raw) = component.extensions.get(crate::FLY_RICH_TEXT_FIELD) {
-        if let Err(reason) = crate::decode_rich_text_payload(raw) {
-            report.diagnostics.push(diagnostic(
-                ValidationSeverity::Error,
-                "rich_text_payload_invalid",
-                format!("{path}.{}", crate::FLY_RICH_TEXT_FIELD),
-                reason,
-            ));
-        }
+    if let Some(raw) = component.extensions.get(crate::FLY_RICH_TEXT_FIELD)
+        && let Err(reason) = crate::decode_rich_text_payload(raw)
+    {
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "rich_text_payload_invalid",
+            format!("{path}.{}", crate::FLY_RICH_TEXT_FIELD),
+            reason,
+        ));
     }
-    if let Some(raw) = component.extensions.get(crate::FLY_EMBED_FIELD) {
-        if let Err(reason) = crate::decode_embed_spec(raw) {
-            report.diagnostics.push(diagnostic(
-                ValidationSeverity::Error,
-                "embed_invalid",
-                format!("{path}.{}", crate::FLY_EMBED_FIELD),
-                reason,
-            ));
-        }
+    if let Some(raw) = component.extensions.get(crate::FLY_EMBED_FIELD)
+        && let Err(reason) = crate::decode_embed_spec(raw)
+    {
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "embed_invalid",
+            format!("{path}.{}", crate::FLY_EMBED_FIELD),
+            reason,
+        ));
     }
 
     // A *child list* can be opaque too (`ComponentChildren::Opaque`), and `children()` reports it

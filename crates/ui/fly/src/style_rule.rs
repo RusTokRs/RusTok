@@ -492,8 +492,7 @@ fn scope_from_rule_object(object: &Map<String, Value>) -> StyleRuleScope {
     let pseudo = object
         .get("state")
         .and_then(Value::as_str)
-        .map(|value| value.trim().trim_start_matches(':').to_ascii_lowercase())
-        .filter(|value| !value.is_empty());
+        .map(|value| value.trim().trim_start_matches(':').to_ascii_lowercase());
     match (media_query, pseudo) {
         (Some(query), Some(pseudo)) => StyleRuleScope::MediaState { query, pseudo },
         (Some(query), None) => StyleRuleScope::Media { query },

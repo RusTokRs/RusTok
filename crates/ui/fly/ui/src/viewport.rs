@@ -204,6 +204,6 @@ mod tests {
         let preset = custom_viewport(10, 100_000, 20.0);
         assert_eq!(preset.width, 240);
         assert_eq!(preset.height, 4320);
-        assert_eq!(preset.default_zoom, 4.0);
+        assert!((preset.default_zoom - 4.0).abs() < f32::EPSILON);
     }
 }

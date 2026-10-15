@@ -223,14 +223,14 @@ mod tests {
     #[test]
     fn south_east_resize_snaps_dimensions() {
         let result = session(ResizeHandle::SouthEast).update(219.0, 117.0);
-        assert_eq!(result.rect.width, 216.0);
-        assert_eq!(result.rect.height, 120.0);
+        assert!((result.rect.width - 216.0).abs() < f64::EPSILON);
+        assert!((result.rect.height - 120.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn west_resize_preserves_right_edge() {
         let result = session(ResizeHandle::West).update(232.0, 100.0);
-        assert_eq!(result.rect.x + result.rect.width, 210.0);
+        assert!((result.rect.x + result.rect.width - 210.0).abs() < f64::EPSILON);
     }
 
     #[test]

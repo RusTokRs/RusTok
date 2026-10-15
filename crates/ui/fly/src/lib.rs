@@ -11,6 +11,7 @@ mod action;
 mod asset;
 mod audit;
 mod binding;
+mod bundle;
 mod codec;
 mod command;
 mod component_index;
@@ -57,10 +58,11 @@ mod translation;
 mod validation;
 
 pub use action::{
-    ActionMaterialization, AnimationKind, ComponentAction, ComponentForm, FLY_ACTION_DATA_ATTRIBUTE,
-    FLY_ACTION_FIELD, FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD, FormEncoding, FormMethod,
-    FormProviderEndpointResolver, VisibilityMode, materialize_component_actions,
-    materialize_component_actions_with_providers, validate_component_actions,
+    ActionMaterialization, AnimationKind, ComponentAction, ComponentForm,
+    FLY_ACTION_DATA_ATTRIBUTE, FLY_ACTION_FIELD, FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD,
+    FormEncoding, FormMethod, FormProviderEndpointResolver, VisibilityMode,
+    materialize_component_actions, materialize_component_actions_with_providers,
+    validate_component_actions,
 };
 pub use asset::{
     AssetCatalog, AssetDescriptor, AssetKind, AssetPolicy, AssetReference, source_allowed,
@@ -70,6 +72,11 @@ pub use binding::{
     BindingCatalog, BindingCommand, BindingMaterialization, BindingTarget, BindingTransform,
     FLY_RUNTIME_BINDINGS_FIELD, RuntimeBinding, apply_binding_command, materialize_bindings,
     validate_binding_definitions,
+};
+pub use bundle::{
+    BundleDecodePolicy, BundleInspection, BundleMetadata, DecodedProjectBundle, ProjectBundle,
+    bundle_hash, decode_project_bundle, decode_project_bundle_value, encode_project_bundle,
+    export_project_bundle, inspect_project_bundle,
 };
 pub use codec::{GrapesJsCodec, MAXIMUM_DECODE_DEPTH};
 pub use command::{
@@ -165,8 +172,8 @@ pub use registry::{
     builtin_component_definitions,
 };
 pub use render::{
-    AlternateLocaleLink, PageHead, PageSelection, RenderPolicy, RenderedPage, compose_document_html,
-    render_page, render_page_with_rich_text, resolve_page,
+    AlternateLocaleLink, PageHead, PageSelection, RenderPolicy, RenderedPage,
+    compose_document_html, render_page, render_page_with_rich_text, resolve_page,
 };
 pub use rich_text::{
     FLY_RICH_TEXT_FIELD, MAXIMUM_RICH_TEXT_BYTES, MAXIMUM_RICH_TEXT_DEPTH, MAXIMUM_RICH_TEXT_NODES,
@@ -195,7 +202,7 @@ pub use style_rule::{
     normalize_pseudo_class,
 };
 pub use symbol::{
-    FLY_SYMBOLS_FIELD, MAX_SYMBOL_COMPONENTS, MAX_SYMBOL_DEFINITIONS, MAX_SYMBOL_DEFINITION_BYTES,
+    FLY_SYMBOLS_FIELD, MAX_SYMBOL_COMPONENTS, MAX_SYMBOL_DEFINITION_BYTES, MAX_SYMBOL_DEFINITIONS,
     SymbolDescriptor, apply_symbol_command, convert_component_to_symbol,
     document_has_symbol_instances, insert_symbol_instance, resolve_symbol_instances,
     set_symbol_descriptors, symbol_reference_cycles, symbol_references,

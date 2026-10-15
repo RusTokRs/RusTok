@@ -62,19 +62,19 @@ pub fn AdapterWorkspacePanel(
         <FlyEditorWorkspace
             document=document
             contribution_assembly=assembly
-            instance_id=Some(instance_id)
+            instance_id=instance_id
             on_intent=on_intent
             on_error=on_error
-            messages=Some(messages)
-            initial_page=Some(initial_page)
-            capabilities=Some(capabilities)
+            messages=messages
+            initial_page=initial_page
+            capabilities=capabilities
         />
     }
 }
 
 /// Builds the adapter's neutral message set from this module's catalog, so the
 /// workspace renders with the same localized strings as the SSR panels.
-pub(crate) fn adapter_editor_messages(locale: Option<&str>) -> EditorMessages {
+pub fn adapter_editor_messages(locale: Option<&str>) -> EditorMessages {
     EditorMessages {
         undo: t(locale, "page_builder.action.undo", "Undo"),
         redo: t(locale, "page_builder.action.redo", "Redo"),

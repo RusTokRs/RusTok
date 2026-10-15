@@ -83,12 +83,12 @@ impl EmbedProviderRegistry {
         if spec.title.trim().is_empty() {
             return Err("embed requires a non-empty title for accessibility".to_string());
         }
-        if let Some(ratio) = spec.aspect_ratio.as_deref() {
-            if !valid_aspect_ratio(ratio) {
-                return Err(format!(
-                    "embed aspect ratio `{ratio}` must look like `16 / 9`"
-                ));
-            }
+        if let Some(ratio) = spec.aspect_ratio.as_deref()
+            && !valid_aspect_ratio(ratio)
+        {
+            return Err(format!(
+                "embed aspect ratio `{ratio}` must look like `16 / 9`"
+            ));
         }
         Ok(())
     }
