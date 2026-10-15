@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
+import { flattenWhitespace } from './lib/verify-text.mjs';
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -22,8 +24,8 @@ const planPath =
 const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-audited-worker-response-disconnect.json';
 
-const source = read(sourcePath);
-const productionStore = read(storePath);
+const source = readComposedRustSource(read, sourcePath);
+const productionStore = readComposedRustSource(read, storePath);
 const plan = read(planPath);
 const evidence = JSON.parse(read(evidencePath));
 
@@ -40,6 +42,18 @@ function hasAll(content, markers, label) {
   }
 }
 
+function hasAllProse(content, markers, label) {
+  // See scripts/verify/lib/verify-text.mjs: prose markers are wording contracts, so they
+  // are compared against a whitespace-flattened view of the source.
+  const flattened = flattenWhitespace(content);
+  for (const marker of markers) {
+    requireCondition(
+      flattened.includes(flattenWhitespace(marker)),
+      `${label} missing marker: ${marker}`,
+    );
+  }
+}
+
 function gitBlobSha(relativePath) {
   const content = readBuffer(relativePath);
   return createHash('sha1')
@@ -49,13 +63,13 @@ function gitBlobSha(relativePath) {
 }
 
 const preserved = {
-  [storePath]: '8a27f5ec3938f2b4efe16c6acafb93cb3faadcf6',
+  [storePath]: '4094539df6158d0a899e641322ae84bdbb6a129f',
   'apps/server/Cargo.toml':
-    '5037a166d35e32be327941f6ba480546d1cef0bb',
+    'e80ef5a046f33d493848e695164fa5954ec27d4d',
   'apps/server/tests/blog_comments_schedule_audit_postgres.rs':
-    '4ebe3a285495a8cbeb69729a9ca7f3452456785d',
+    '7b726fe69de5d678021bb376ea4ca9a0cb2b89e6',
   'crates/modules/rustok-blog/docs/implementation-plan-slice-85.md':
-    'f8a3ad0216ae534e9e913e966fe0141adba22c94',
+    'f584014c2693cd43ce42eca4b93b1a54eae3f986',
 };
 
 for (const [relativePath, expectedSha] of Object.entries(preserved)) {
@@ -70,7 +84,7 @@ hasAll(source, [
   'PostgresAuditedPersistenceStore::Production(store)',
   '#[cfg(test)]\n    ResponseDisconnect(AuditedStoreResponseDisconnectHarness)',
   '#[cfg(test)]\n    fn from_response_disconnect_harness',
-  '#[cfg(test)]\nstruct AuditedStoreResponseDisconnectHarness',
+  'struct AuditedStoreResponseDisconnectHarness {',
   'mpsc::sync_channel(1)',
   'AuditedStoreResponseDisconnectCommand::VerifyCurrent',
   'AuditedStoreResponseDisconnectCommand::BootstrapEmpty',
@@ -78,7 +92,7 @@ hasAll(source, [
   'drop(response);',
   'response_receiver.recv().unwrap_or(Err(',
   'CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable',
-  ') => abort_on_indeterminate_audited_store_response(),',
+  'fn abort_on_indeterminate_audited_store_response() -> ! {',
   'fn audited_worker_response_disconnect_aborts()',
   'fn audited_worker_response_disconnect_child()',
   'std::env::current_exe()',
@@ -92,6 +106,19 @@ hasAll(source, [
   'SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger::from_response_disconnect_harness',
   'audited.replace_host_schedule(',
 ], 'audited worker-response disconnect source');
+
+// The abort helper must stay wired to the two fail-stop paths, not merely be defined: the
+// indeterminate-store match arm and the response-completion drop guard. A bare
+// `abort_on_indeterminate_audited_store_response()` marker would also be satisfied by the
+// function definition alone, which would let a stranded call site pass unnoticed.
+requireCondition(
+  /Unavailable\) => \{\s*abort_on_indeterminate_audited_store_response\(\)/.test(source),
+  'indeterminate audited store arm must abort',
+);
+requireCondition(
+  /if !self\.completed \{\s*abort_on_indeterminate_audited_store_response\(\);/.test(source),
+  'dropped audited response completion guard must abort',
+);
 
 requireCondition(
   (
@@ -123,7 +150,7 @@ hasAll(productionStore, [
   'run_postgres_audit_store_worker(runtime, database, receiver);',
 ], 'production audited PostgreSQL store');
 
-hasAll(plan, [
+hasAllProse(plan, [
   '## 2026-08-03 continuation audit',
   'Slice 86 — audited worker-response disconnect fail-stop harness',
   'compiled only under `cfg(test)`',

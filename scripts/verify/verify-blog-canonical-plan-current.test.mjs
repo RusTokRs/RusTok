@@ -27,7 +27,6 @@ const files = [
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json',
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json',
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-listener-lifecycle.json',
-  'crates/modules/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json',
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
   'crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
@@ -64,6 +63,20 @@ function rejects(mutator) {
   try { return run(root); }
   finally { rmSync(root, { recursive: true, force: true }); }
 }
+/// Rewrites one section: the markers bracket it and the mutator has to change it, so a
+/// fixture can never pass by editing a lookalike elsewhere in the document.
+function mutateSection(root, relativePath, startMarker, endMarker, mutator) {
+  const target = absolute(root, relativePath);
+  const source = readFileSync(target, 'utf8');
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  assert.ok(start >= 0 && end > start, `fixture anchors must exist in ${relativePath}`);
+  const section = source.slice(start, end);
+  const mutated = mutator(section);
+  assert.notEqual(mutated, section, `fixture mutation must change ${relativePath}`);
+  write(root, relativePath, source.slice(0, start) + mutated + source.slice(end));
+}
+
 function mutateJson(root, relativePath, mutator) {
   const target = absolute(root, relativePath);
   const value = JSON.parse(readFileSync(target, 'utf8'));
@@ -76,7 +89,7 @@ test('accepts the canonical Blog current implementation cursor', () => {
   try {
     const result = run(root);
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /cursor=slice-105/);
+    assert.match(result.stdout, /cursor=cat17/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -105,21 +118,24 @@ test('rejects claiming another source gap without a fresh audit', () => {
   assert.match(result.stderr, /planning\/execution claim drift/);
 });
 
-test('rejects Translation PostgreSQL execution promotion without retained execution', () => {
+test('rejects reviving the retired Category Translation provider evidence', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json', (value) => {
-      value.source_contract.postgres_execution_observed = true;
-    });
+    write(
+      root,
+      'crates/modules/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json',
+      `${JSON.stringify({ status: 'blog_category_translation_postgres_source_unvalidated' }, null, 2)}\n`,
+    );
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Translation PostgreSQL source status drift/);
+  assert.match(result.stderr, /retired provider evidence must remain absent/);
 });
 
-test('rejects reviving an active storefront comment form', () => {
+test('rejects a storefront write-surface regression to the retired absence claim', () => {
   const result = rejects((root) => {
     mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json', (value) => {
-      value.source_contract.comment_form_present = true;
-      value.source_contract.create_comment_surface_present = true;
+      value.status = 'source_verified_absent';
+      value.source_contract.comment_form_present = false;
+      value.source_contract.create_comment_surface_present = false;
     });
   });
   assert.notEqual(result.status, 0);
@@ -146,14 +162,24 @@ test('rejects reopening the tag pagination source gap', () => {
   assert.match(result.stderr, /tag pagination track drift/);
 });
 
-test('rejects claiming database-side tag pagination', () => {
+test('rejects dropping the database-side tag pagination claim', () => {
   const result = rejects((root) => {
     mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json', (value) => {
-      value.source_contract.database_side_pagination_claimed = true;
+      value.source_contract.database_side_pagination_claimed = false;
     });
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /tag pagination source evidence drift/);
+});
+
+test('rejects a pagination track that disagrees with its owner evidence', () => {
+  const result = rejects((root) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
+      value.source_tracks.tag_list_pagination.maximum_page_size = 1000;
+    });
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /tag pagination track maximum_page_size disagrees/);
 });
 
 test('rejects metadata tags becoming canonical again', () => {
@@ -222,15 +248,46 @@ test('rejects listing the historical plan before the canonical current cursor', 
 
 test('rejects an unrecorded advance of the historical embedded slice list', () => {
   const result = rejects((root) => {
-    const file = 'crates/modules/rustok-blog/docs/implementation-plan.md';
+    mutateSection(
+      root,
+      'crates/modules/rustok-blog/docs/implementation-plan.md',
+      '## Completed implementation slices',
+      '## Next results',
+      (section) => `${section.trimEnd()}\n73. Unrecorded historical-list advance.\n`,
+    );
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not match the recorded boundary/);
+});
+
+test('rejects a live cursor that keeps a superseded phrase outside the archive', () => {
+  const result = rejects((root) => {
+    const file = 'crates/modules/rustok-blog/docs/implementation-plan-current.md';
     const source = readFileSync(absolute(root, file), 'utf8');
     write(root, file, source.replace(
-      '\n## Next results',
-      '\n68. Unrecorded historical-list advance.\n\n## Next results',
+      '# rustok-blog canonical implementation cursor',
+      '# rustok-blog canonical implementation cursor\n\nremote transport remains pending',
     ));
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /historical embedded completed-slice list unexpectedly advanced/);
+  assert.match(result.stderr, /forbidden live cursor marker/);
+});
+
+test('rejects dropping an archived superseded phrase', () => {
+  const result = rejects((root) => {
+    mutateSection(
+      root,
+      'crates/modules/rustok-blog/docs/implementation-plan-current.md',
+      '## Superseded historical cursor phrases',
+      '## Validation boundary',
+      (section) => section.replace(
+        '- `Status: `canonical_source_cursor_actualized_through_slice_105`.`\n',
+        '',
+      ),
+    );
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /archive: missing/);
 });
 
 test('rejects remote transport operation parity regression', () => {

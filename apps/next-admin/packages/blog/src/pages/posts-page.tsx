@@ -1,5 +1,15 @@
-import type { BlogPostStatus, GqlOpts, PostSummary } from '../api/posts';
-import { listPosts } from '../api/posts';
+import type {
+  BlogPostSortField,
+  BlogPostSortOrder,
+  BlogPostStatus,
+  GqlOpts,
+  PostSummary
+} from '../api/posts';
+import {
+  listPosts,
+  parsePostSortField,
+  parsePostSortOrder
+} from '../api/posts';
 import { PostTable, type PostTablePager } from '../components/post-table';
 import { columns } from '../components/post-table/columns';
 
@@ -12,6 +22,10 @@ interface PostsPageProps {
     perPage?: string;
     title?: string;
     status?: string;
+    /** Sort column of the keyset order; narrowed before it reaches the owner. */
+    sortBy?: string;
+    /** Sort direction of the keyset order; narrowed before it reaches the owner. */
+    sortOrder?: string;
   };
   token?: string | null;
   tenantSlug?: string | null;
@@ -21,12 +35,17 @@ interface PostsPageProps {
 function buildPageHref(params: {
   perPage: number;
   status?: BlogPostStatus;
+  sortBy: BlogPostSortField;
+  sortOrder: BlogPostSortOrder;
   after?: string;
   history: string[];
 }): string {
   const query = new URLSearchParams();
   query.set('perPage', String(params.perPage));
   if (params.status) query.set('status', params.status);
+  // Paging must keep the sort: the cursor in `after` is only valid for the sort that issued it.
+  query.set('sortBy', params.sortBy);
+  query.set('sortOrder', params.sortOrder);
   if (params.after) query.set('after', params.after);
   if (params.history.length > 0) query.set('history', params.history.join(','));
   return `?${query.toString()}`;
@@ -44,9 +63,14 @@ export default async function PostsPage({
   const history = searchParams.history
     ? searchParams.history.split(',').filter(Boolean)
     : [];
+  const sortBy = parsePostSortField(searchParams.sortBy);
+  const sortOrder = parsePostSortOrder(searchParams.sortOrder);
 
   const opts: GqlOpts = { token, tenantSlug, tenantId };
-  const data = await listPosts({ after, perPage, status }, opts);
+  const data = await listPosts(
+    { after, perPage, status, sortBy, sortOrder },
+    opts
+  );
 
   const posts: PostSummary[] = data.items;
 
@@ -58,6 +82,8 @@ export default async function PostsPage({
         : buildPageHref({
             perPage,
             status,
+            sortBy,
+            sortOrder,
             after: history[history.length - 1],
             history: history.slice(0, -1)
           }),
@@ -65,6 +91,8 @@ export default async function PostsPage({
       ? buildPageHref({
           perPage,
           status,
+          sortBy,
+          sortOrder,
           after: data.nextCursor,
           history: after === undefined ? history : [...history, after]
         })

@@ -100,7 +100,6 @@ async fn test_post_lifecycle() -> TestResult<()> {
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await?;
@@ -174,7 +173,6 @@ async fn test_create_and_publish_post() -> TestResult<()> {
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await?;
@@ -231,7 +229,6 @@ async fn test_post_read_paths_normalize_requested_and_fallback_locale() -> TestR
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await?;
@@ -301,7 +298,6 @@ async fn test_list_posts_with_pagination() -> TestResult<()> {
                     channel_slugs: None,
                     metadata: None,
                     scheduled_at: None,
-                    is_pinned: None,
                 },
             )
             .await?;
@@ -399,7 +395,6 @@ async fn test_filter_posts_by_tag() -> TestResult<()> {
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await?;
@@ -423,7 +418,6 @@ async fn test_filter_posts_by_tag() -> TestResult<()> {
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await?;
@@ -471,7 +465,6 @@ async fn test_cannot_delete_published_post() -> TestResult<()> {
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await?;
@@ -883,7 +876,6 @@ async fn test_blog_comment_surface_policy_preserves_comment_data() -> TestResult
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await?;
@@ -1043,7 +1035,6 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await
@@ -1126,7 +1117,6 @@ async fn test_public_comment_create_rejects_draft_and_hidden_channel() -> TestRe
                 channel_slugs: Some(vec!["web".to_string()]),
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await?;
@@ -1203,7 +1193,6 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await?;
@@ -1396,7 +1385,6 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await?;
@@ -1625,7 +1613,6 @@ mod unit_tests {
             channel_slugs: None,
             metadata: None,
             scheduled_at: None,
-            is_pinned: None,
         };
 
         assert_eq!(input.locale, "ru");

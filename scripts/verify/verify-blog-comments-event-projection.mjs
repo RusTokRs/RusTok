@@ -45,6 +45,7 @@ const entityPath = 'crates/modules/rustok-blog/src/entities/blog_comment_project
 const migrationPath = 'crates/modules/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs';
 const migrationRegistryPath = 'crates/modules/rustok-blog/src/migrations/mod.rs';
 const modulePath = 'crates/modules/rustok-blog/src/module.rs';
+const targetTypePath = 'crates/modules/rustok-blog/src/services/post/routes.rs';
 const registryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.json';
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-current.md';
 const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
@@ -64,6 +65,7 @@ const entity = read(entityPath);
 const migration = read(migrationPath);
 const migrationRegistry = read(migrationRegistryPath);
 const moduleSource = read(modulePath);
+const targetTypeSource = read(targetTypePath);
 const plan = read(planPath);
 let evidence = null;
 let registry = null;
@@ -80,7 +82,7 @@ try {
 }
 
 for (const marker of [
-  'const BLOG_POST_TARGET_TYPE: &str = "blog_post";',
+  'target_type == BLOG_POST_TARGET_TYPE',
   'struct CommentProjectionChange',
   'fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange>',
   'DomainEvent::CommentCreated',
@@ -135,6 +137,25 @@ for (const marker of [
 ]) {
   requireNoMarker(handler, marker, handlerPath);
 }
+
+// The Blog target-type literal has exactly one definition in the crate: the projection
+// handler classifies with that shared constant and must not redeclare it.
+requireMarker(
+  targetTypeSource,
+  'pub const BLOG_POST_TARGET_TYPE: &str = "blog_post";',
+  targetTypePath,
+);
+requireCount(
+  handler,
+  'target_type == BLOG_POST_TARGET_TYPE',
+  3,
+  `${handlerPath}: Blog target classification`,
+);
+requireNoMarker(
+  handler,
+  'const BLOG_POST_TARGET_TYPE',
+  `${handlerPath}: single canonical target type`,
+);
 
 const handlesStart = handler.indexOf('fn handles(&self, event: &DomainEvent) -> bool');
 const handleStart = handler.indexOf('async fn handle(&self, envelope: &EventEnvelope)', handlesStart);
@@ -381,7 +402,8 @@ for (const marker of [
   'let mut registry = ModuleEventListenerRegistry::new();',
   'BlogModule.register_event_listeners(&mut registry, &context);',
   'let handlers = registry.into_handlers();',
-  'assert_eq!(handlers.len(), 1);',
+  'handler.name() == "blog_comment_projection"',
+  'blog_target_deletion_routes',
   'assert_eq!(handler.name(), "blog_comment_projection");',
   'assert!(handler.handles(&blog_created));',
   'assert!(handler.handles(&blog_updated));',

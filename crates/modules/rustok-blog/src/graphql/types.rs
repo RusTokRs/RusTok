@@ -353,7 +353,6 @@ pub struct CreatePostInput {
     pub seo_description: Option<String>,
     pub channel_slugs: Option<Vec<String>>,
     pub scheduled_at: Option<String>,
-    pub is_pinned: Option<bool>,
 }
 
 #[derive(InputObject)]
@@ -380,7 +379,6 @@ pub struct UpdatePostInput {
     pub channel_slugs: Option<Vec<String>>,
     pub version: i32,
     pub scheduled_at: MaybeUndefined<String>,
-    pub is_pinned: Option<bool>,
 }
 
 /// Filter for the public, cursor-paginated post list.
@@ -395,6 +393,45 @@ pub struct PublicPostsFilter {
     pub per_page: Option<u64>,
 }
 
+/// Sort column of the authenticated Blog post list. Mirrors `PostSortField`, so the
+/// GraphQL surface cannot offer a column the owner query does not index.
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[graphql(name = "BlogPostSortField", rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlPostSortField {
+    PublishedAt,
+    UpdatedAt,
+    #[default]
+    CreatedAt,
+}
+
+impl From<GqlPostSortField> for crate::PostSortField {
+    fn from(field: GqlPostSortField) -> Self {
+        match field {
+            GqlPostSortField::PublishedAt => Self::PublishedAt,
+            GqlPostSortField::UpdatedAt => Self::UpdatedAt,
+            GqlPostSortField::CreatedAt => Self::CreatedAt,
+        }
+    }
+}
+
+/// Sort direction of the authenticated Blog post list.
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[graphql(name = "BlogPostSortOrder", rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlPostSortOrder {
+    Asc,
+    #[default]
+    Desc,
+}
+
+impl From<GqlPostSortOrder> for crate::PostSortOrder {
+    fn from(order: GqlPostSortOrder) -> Self {
+        match order {
+            GqlPostSortOrder::Asc => Self::Asc,
+            GqlPostSortOrder::Desc => Self::Desc,
+        }
+    }
+}
+
 #[derive(InputObject)]
 pub struct PostsFilter {
     pub status: Option<GqlContentStatus>,
@@ -403,8 +440,14 @@ pub struct PostsFilter {
     pub author_id: Option<Uuid>,
     pub locale: Option<String>,
     /// Opaque cursor: `nextCursor` of the previous page. Absent for the first page.
+    /// A cursor is bound to the sort it was issued for; a mismatching sort is
+    /// rejected instead of resumed with a wrong position.
     pub after: Option<String>,
     pub per_page: Option<u64>,
+    /// Column of the keyset order. Defaults to `CREATED_AT`.
+    pub sort_by: Option<GqlPostSortField>,
+    /// Direction of the keyset order. Defaults to `DESC`.
+    pub sort_order: Option<GqlPostSortOrder>,
 }
 
 impl From<PostResponse> for GqlPost {
@@ -547,7 +590,6 @@ impl From<CreatePostInput> for DomainCreatePostInput {
                     .ok()
                     .map(|value| value.with_timezone(&chrono::Utc))
             }),
-            is_pinned: input.is_pinned,
         }
     }
 }
@@ -569,7 +611,6 @@ impl From<UpdatePostInput> for DomainUpdatePostInput {
             metadata: None,
             version: input.version,
             scheduled_at: graphql_patch_datetime(input.scheduled_at),
-            is_pinned: input.is_pinned,
         }
     }
 }
@@ -783,6 +824,9 @@ pub struct CreatePreviewTokenInput {
 
 #[derive(InputObject)]
 pub struct BulkOperationInput {
+    /// Mirrors `rustok_blog::services::post::bulk::MAX_BULK_POST_IDS`; the service
+    /// re-validates it, because a service caller is not a transport.
+    #[graphql(validator(max_items = 100))]
     pub post_ids: Vec<Uuid>,
 }
 
@@ -797,7 +841,10 @@ pub struct GqlBulkOperationResult {
 #[derive(SimpleObject)]
 pub struct GqlBulkOperationFailure {
     pub post_id: Uuid,
-    pub reason: String,
+    /// Stable public code from the Blog public-error boundary.
+    pub code: String,
+    /// Redacted public message for `code`.
+    pub message: String,
 }
 
 impl From<crate::dto::BulkOperationResult> for GqlBulkOperationResult {
@@ -811,7 +858,8 @@ impl From<crate::dto::BulkOperationResult> for GqlBulkOperationResult {
                 .into_iter()
                 .map(|f| GqlBulkOperationFailure {
                     post_id: f.post_id,
-                    reason: f.reason,
+                    code: f.code,
+                    message: f.message,
                 })
                 .collect(),
         }
@@ -842,7 +890,6 @@ mod tests {
             channel_slugs: None,
             version: 1,
             scheduled_at: MaybeUndefined::Undefined,
-            is_pinned: None,
         };
         let domain: DomainUpdatePostInput = input.into();
         assert_eq!(domain.content, Some(canonical));
@@ -865,7 +912,6 @@ mod tests {
             channel_slugs: Some(vec!["web".to_string()]),
             version: 7,
             scheduled_at: MaybeUndefined::Undefined,
-            is_pinned: None,
         };
         let domain: DomainUpdatePostInput = input.into();
         assert_eq!(domain.content, Some(canonical));

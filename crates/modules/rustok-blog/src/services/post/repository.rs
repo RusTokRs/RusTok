@@ -246,13 +246,25 @@ impl PostService {
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await
-            .map_err(BlogError::from)?
-            .ok_or_else(|| {
-                BlogError::invariant(format!(
-                    "Blog redirect '{slug}' references missing post {}",
-                    redirect.target_id
-                ))
-            })?;
+            .map_err(BlogError::from)?;
+        // A route whose post is gone is stale, not a corrupt read: another owner may
+        // have deleted the post without Blog's delete path, or a delivery may still be
+        // in flight. Answer "not found" and let `blog_route_reconciliation` remove the
+        // row, instead of failing a public read with an internal error.
+        let Some(post) = post else {
+            rustok_telemetry::metrics::record_module_error(
+                "blog",
+                "dangling_route_redirect",
+                "warning",
+            );
+            tracing::warn!(
+                tenant_id = %tenant_id,
+                source_route = %canonical_post_route(slug),
+                target_id = %redirect.target_id,
+                "Blog redirect points at a post that no longer exists; the route is left for reconciliation"
+            );
+            return Ok(None);
+        };
         Self::validate_persisted_version(&post)?;
         Ok(Some(post))
     }

@@ -46,7 +46,9 @@ crates/modules/rustok-<module>/
     migrations/                    owner migrations and dependency descriptors
     graphql/                       owner GraphQL adapters when published
     controllers/ or rest/          owner HTTP adapters when published
-    runtime.rs                     optional narrow reusable runtime state
+    runtime.rs                     optional narrow reusable runtime state; not admitted by the
+                                   enrolled reference profile, which keeps the root at
+                                   lib.rs/module.rs
     tests/                         crate-private contract tests needing private access
   tests/                           public-API integration tests
   admin/                           optional module-owned Leptos admin UI adapter package
@@ -82,6 +84,11 @@ semantics it implements.
 Its physical layout is checked by `npm run verify:module-source-layout`. Existing
 modules adopt the target incrementally in bounded mechanical PRs and become strict
 when enrolled in that verifier; historical layout is not an alternative standard.
+An enrolled profile admits only `lib.rs` and `module.rs` at the source root: the
+verifier fails on any other root-level `.rs` file, so `src/runtime.rs` is not part of
+the reference layout. A runtime handle bundle that grows out of `module.rs` moves into
+an existing responsibility slot instead of a new root file — `rustok-blog` keeps its
+`runtime`-gated module-work registrations in `src/services/scheduler.rs`.
 
 Shared/support libraries follow the same responsibility principles but are not
 forced into module-only concepts. A shared crate keeps a thin `lib.rs` and uses
@@ -109,7 +116,9 @@ Use these placement rules:
 | Cross-module stable backend port | `src/ports/` |
 | Domain event | owner service/event module under the narrowest responsibility; extract `src/events/` when it becomes a real family |
 | Module/runtime registration | `src/module.rs` |
-| Module runtime handle bundle | `src/runtime.rs` |
+| Module runtime handle bundle | `src/runtime.rs` in the general layout; the enrolled reference
+profile admits only `lib.rs` and `module.rs` at the source root, so a bundle that grows out of
+`module.rs` moves into an existing responsibility slot |
 | Capability integration adapter | `src/integrations/` |
 | GraphQL root/resolver/DTO owned by the module | `src/graphql/` |
 | REST handler/DTO owned by the module | `src/rest/` or `src/controllers/` |
@@ -131,7 +140,9 @@ In particular:
 - runtime locale fallback never becomes stored write provenance;
 - nullable edits use explicit `Patch<T>` semantics;
 - aggregate revisions are predecessor-bound CAS inputs, not optional hints;
-- persistence entities are private;
+- persistence entities are private, with at most one explicitly documented bridge exception per
+  module that must be pinned by its layout/reference verifier and tracked in the module cursor
+  (`rustok-blog`: the orchestration bridge surface in `src/ports/`, finding L-4);
 - lifecycle commands execute the domain transition table;
 - derived projections do not mutate owner business revisions;
 - public transports use owner-safe/redacted error mapping;

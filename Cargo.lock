@@ -14011,6 +14011,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-profiles-api",
  "rustok-reactions-api",
+ "rustok-runtime",
  "rustok-seo-targets",
  "rustok-taxonomy",
  "rustok-telemetry",

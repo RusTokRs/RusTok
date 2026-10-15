@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -23,8 +24,8 @@ const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-audit-canonical-handoff-contract.json';
 const relayPath = 'crates/modules/rustok-outbox/src/relay.rs';
 
-const source = read(sourcePath);
-const runtime = read(runtimePath);
+const source = readComposedRustSource(read, sourcePath);
+const runtime = readComposedRustSource(read, runtimePath);
 const plan = read(planPath);
 const evidence = JSON.parse(read(evidencePath));
 const relay = read(relayPath);
@@ -52,22 +53,22 @@ function gitBlobSha(relativePath) {
 
 const preserved = {
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs':
-    '8a27f5ec3938f2b4efe16c6acafb93cb3faadcf6',
+    '4094539df6158d0a899e641322ae84bdbb6a129f',
   'crates/modules/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs':
-    '305f4f80abcdd6da62d11f8c21eb8ab5101bd002',
+    '2f6473d7889a242ef86621b8615834e8bffe1013',
   'crates/modules/rustok-blog/docs/implementation-plan-slice-86.md':
-    '52ddf0aabe1632578437c0d327022d3519615a60',
-  [relayPath]: '4e77aa064a1425668787eabb9ed63b76499d1e5b',
+    'c969aed84350f2ec7af4c60846f429debc47dfbe',
+  [relayPath]: '47f98da024744f5d61c9faeca7492a4a6456c75d',
   'crates/modules/rustok-outbox/docs/implementation-plan.md':
-    '93b04248364dbf3b352c49dd4f5c068c05df622c',
+    'b198630b31bff569503c45428c639ec4507259f7',
   'crates/libs/rustok-events/src/lib.rs':
-    '949039a7a6e876141577d3633ec41cc35fa4c7b7',
+    'd2593f110102800bd1e0e77f2d4aeaaf7791ae7c',
   'crates/libs/rustok-events/src/contract.rs':
-    'c192ad15c1c99ce511d0ceae5616c49b161714ab',
+    'caee66898db718514c6695b12cba1df3e6b491b5',
   'crates/libs/rustok-events/contracts/event-contract-digests.json':
-    '270df1b67a5a679b3fdcec1cf851478dd7fb3d57',
+    'aee557e02c5c34c08b64fd85454036a247567378',
   'apps/server/Cargo.toml':
-    '5037a166d35e32be327941f6ba480546d1cef0bb',
+    'e80ef5a046f33d493848e695164fa5954ec27d4d',
 };
 
 for (const [relativePath, expectedSha] of Object.entries(preserved)) {
@@ -110,7 +111,7 @@ hasAll(source, [
 
 hasAll(runtime, [
   'mod keyring_schedule_audit_publication',
-  'include!("comments_provider_runtime_keyring_schedule_audit_publication.rs")',
+  '#[path = "comments_provider_runtime_keyring_schedule_audit_publication.rs"]',
   'CommentsTcpDelegationScheduleAuditCanonicalPublication',
   'CommentsTcpDelegationScheduleAuditCanonicalWriter',
   'SharedCommentsTcpDelegationScheduleAuditCanonicalWriter',

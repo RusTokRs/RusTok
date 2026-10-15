@@ -89,6 +89,20 @@ impl RusToKModule for BlogModule {
                     "blog Taxonomy translation owner registration failed: {error}"
                 ))
             })?;
+        #[cfg(feature = "runtime")]
+        {
+            let registrations = extensions
+                .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default);
+            registrations.register(std::sync::Arc::new(
+                crate::services::scheduler::BlogScheduledPublishWorkRegistration,
+            ));
+            registrations.register(std::sync::Arc::new(
+                crate::services::scheduler::BlogPreviewTokenCleanupWorkRegistration,
+            ));
+            registrations.register(std::sync::Arc::new(
+                crate::services::scheduler::BlogRouteReconciliationWorkRegistration,
+            ));
+        }
 
         Ok(())
     }
@@ -99,6 +113,13 @@ impl RusToKModule for BlogModule {
         ctx: &ModuleEventListenerContext<'_>,
     ) {
         registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));
+        // A post deleted outside the Blog delete path still must not leave a route
+        // that redirects to nothing.
+        registry.register(
+            crate::integrations::target_lifecycle::BlogTargetDeletionRouteHandler::new(
+                ctx.db.clone(),
+            ),
+        );
     }
 }
 
@@ -202,9 +223,20 @@ mod tests {
         BlogModule.register_event_listeners(&mut registry, &context);
 
         let handlers = registry.into_handlers();
-        assert_eq!(handlers.len(), 1);
+        // The module registers two listeners: the Comments projection and the
+        // `TargetDeleted` purge that retires a deleted post's routes.
+        let mut registered = handlers
+            .iter()
+            .map(|handler| handler.name())
+            .collect::<Vec<_>>();
+        registered.sort_unstable();
+        assert_eq!(
+            registered,
+            vec!["blog_comment_projection", "blog_target_deletion_routes"]
+        );
         let handler = handlers
-            .first()
+            .iter()
+            .find(|handler| handler.name() == "blog_comment_projection")
             .expect("Blog must register its Comments projection handler");
         assert_eq!(handler.name(), "blog_comment_projection");
 

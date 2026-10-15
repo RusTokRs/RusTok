@@ -2,6 +2,7 @@ mod graphql_adapter;
 mod moderation_adapter;
 mod native_server_adapter;
 
+use crate::core::BlogPostAdminSort;
 use crate::model::{
     BlogModerationCommentList, BlogModerationStatus, BlogPostDetail, BlogPostDraft, BlogPostList,
 };
@@ -25,14 +26,15 @@ pub async fn fetch_posts(
     tenant_slug: Option<String>,
     locale: Option<String>,
     after: Option<String>,
+    sort: BlogPostAdminSort,
 ) -> Result<BlogPostList, ApiError> {
     let native_locale = locale.clone();
     let native_after = after.clone();
     execute_selected_transport(
         "blog/admin/posts",
         selected_transport_path(),
-        move || native_server_adapter::fetch_posts(native_locale, native_after),
-        move || graphql_adapter::fetch_posts(token, tenant_slug, locale, after),
+        move || native_server_adapter::fetch_posts(native_locale, native_after, sort),
+        move || graphql_adapter::fetch_posts(token, tenant_slug, locale, after, sort),
     )
     .await
 }

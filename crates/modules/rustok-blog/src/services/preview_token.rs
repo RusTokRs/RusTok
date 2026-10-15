@@ -9,14 +9,29 @@ use rustok_core::SecurityContext;
 use crate::PostResponse;
 use crate::entities::blog_preview_token;
 use crate::error::{BlogError, BlogResult};
-use crate::services::post::PostService;
+use crate::services::post::{PostService, storage_to_status};
 use crate::services::rbac::enforce_owned_scope;
+use crate::state_machine::BlogPostStatus;
 use rustok_outbox::TransactionalEventBus;
 
 /// Default token TTL: 7 days
 const DEFAULT_TTL_HOURS: i64 = 168;
 /// Maximum token TTL: 30 days
 const MAX_TTL_HOURS: i64 = 720;
+/// Minimum token TTL: one hour. A shorter window is refused instead of being
+/// persisted as an already-expired token.
+const MIN_TTL_HOURS: i64 = 1;
+/// Upper bound for one cleanup iteration, so retention housekeeping stays bounded
+/// on a large backlog.
+pub(crate) const MAX_PREVIEW_TOKEN_CLEANUP_BATCH: u32 = 500;
+
+/// Clamps a caller-supplied cleanup limit into `1..=MAX_PREVIEW_TOKEN_CLEANUP_BATCH`.
+///
+/// `0` means "one row", never "the whole backlog": the bound is applied to the query
+/// itself, so an out-of-range request cannot delete more than one batch.
+fn bounded_cleanup_batch(limit: u32) -> u32 {
+    limit.clamp(1, MAX_PREVIEW_TOKEN_CLEANUP_BATCH)
+}
 
 pub struct PreviewTokenService {
     db: DatabaseConnection,
@@ -37,10 +52,13 @@ impl PreviewTokenService {
         Self { db, event_bus }
     }
 
-    /// Create a preview token for a draft post.
+    /// Create a preview token for a **draft** post.
     ///
-    /// The token allows unauthenticated access to the post content for preview
-    /// purposes. Tokens have a configurable TTL (default 7 days, max 30 days).
+    /// The token is the whole authorization of the preview read, so its minting is
+    /// restricted to unpublished drafts: a published post is already public, and an
+    /// archived post must not be reachable through a token minted before archiving.
+    /// The TTL must lie in `MIN_TTL_HOURS..=MAX_TTL_HOURS`; an out-of-range request
+    /// is rejected instead of being silently stored as already-expired.
     #[instrument(skip(self, security))]
     pub async fn create_token(
         &self,
@@ -58,8 +76,21 @@ impl PreviewTokenService {
             Action::Update,
             post.author_id,
         )?;
+        if storage_to_status(&post.status)? != BlogPostStatus::Draft {
+            return Err(BlogError::validation(
+                "Preview tokens can only be created for draft posts",
+            ));
+        }
 
-        let ttl = ttl_hours.unwrap_or(DEFAULT_TTL_HOURS).min(MAX_TTL_HOURS);
+        let ttl = match ttl_hours {
+            Some(requested) if !(MIN_TTL_HOURS..=MAX_TTL_HOURS).contains(&requested) => {
+                return Err(BlogError::validation(format!(
+                    "Preview token TTL must be between {MIN_TTL_HOURS} and {MAX_TTL_HOURS} hours"
+                )));
+            }
+            Some(requested) => requested,
+            None => DEFAULT_TTL_HOURS,
+        };
         let now = Utc::now();
         let expires_at = now + Duration::hours(ttl);
 
@@ -88,13 +119,20 @@ impl PreviewTokenService {
         })
     }
 
-    /// Look up a post by preview token. Returns the post even if it's a Draft.
-    /// Returns None if the token is invalid, expired, or the post doesn't exist.
+    /// Look up a post by preview token.
+    ///
+    /// Returns the post for a valid, unexpired token of a tenant that still has the
+    /// Blog module enabled. The module gate is checked on the token's own tenant,
+    /// because an unauthenticated preview request carries no tenant context: without
+    /// it a token minted before a tenant disabled Blog would keep serving content.
+    /// Returns `None` for an invalid, expired, or module-disabled token, and for a
+    /// post that no longer exists.
     #[instrument(skip(self))]
     pub async fn get_post_by_token(
         &self,
         token: &str,
         locale: &str,
+        fallback_locale: Option<&str>,
     ) -> BlogResult<Option<PostResponse>> {
         let token_record = blog_preview_token::Entity::find()
             .filter(blog_preview_token::Column::Token.eq(token))
@@ -112,24 +150,36 @@ impl PreviewTokenService {
             return Ok(None);
         }
 
-        // Load the post using the system security context (bypasses normal auth)
+        match rustok_api::is_tenant_module_enabled(&self.db, token_record.tenant_id, "blog").await {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::warn!(
+                    tenant_id = %token_record.tenant_id,
+                    post_id = %token_record.post_id,
+                    "Preview token read refused because the tenant no longer has the Blog module enabled"
+                );
+                return Ok(None);
+            }
+            Err(error) => return Err(BlogError::from(error)),
+        }
+
+        // The token is the authorization of this read, so it is resolved through the
+        // draft-only preview accessor rather than through system authority.
         let post_service = PostService::new(self.db.clone(), self.event_bus.clone());
-        match post_service
-            .get_post(
+        post_service
+            .get_draft_preview(
                 token_record.tenant_id,
-                SecurityContext::system(),
                 token_record.post_id,
                 locale,
+                fallback_locale,
             )
             .await
-        {
-            Ok(post) => Ok(Some(post)),
-            Err(BlogError::PostNotFound(_)) => Ok(None),
-            Err(e) => Err(e),
-        }
     }
 
     /// Revoke a specific preview token.
+    ///
+    /// Revoking a token that does not exist for this tenant is reported as a missing
+    /// preview token, never as a missing post.
     #[instrument(skip(self, security))]
     pub async fn revoke_token(
         &self,
@@ -144,7 +194,7 @@ impl PreviewTokenService {
             .map_err(BlogError::from)?;
 
         let Some(token_record) = token_record else {
-            return Err(BlogError::PostNotFound(token_id));
+            return Err(BlogError::preview_token_not_found(token_id));
         };
 
         // Verify the caller has permission (author or admin)
@@ -204,18 +254,51 @@ impl PreviewTokenService {
             .collect())
     }
 
-    /// Clean up expired tokens. Should be called periodically.
+    /// Delete expired tokens of one tenant. Called by the Blog-owned
+    /// `blog_preview_token_cleanup` module-work registration, which is tenant-scoped
+    /// like every other platform work item; the table also cascades on post deletion,
+    /// so this is bounded retention housekeeping rather than the only cleanup path.
     #[instrument(skip(self))]
-    pub async fn cleanup_expired(&self) -> BlogResult<u64> {
+    pub async fn cleanup_expired(&self, tenant_id: Uuid, limit: u32) -> BlogResult<u64> {
         let now = Utc::now();
-        let result = blog_preview_token::Entity::delete_many()
+        let expired = blog_preview_token::Entity::find()
+            .filter(blog_preview_token::Column::TenantId.eq(tenant_id))
             .filter(blog_preview_token::Column::ExpiresAt.lt(now))
+            .limit(u64::from(bounded_cleanup_batch(limit)))
+            .all(&self.db)
+            .await
+            .map_err(BlogError::from)?;
+        if expired.is_empty() {
+            return Ok(0);
+        }
+        let ids = expired
+            .into_iter()
+            .map(|token| token.id)
+            .collect::<Vec<_>>();
+        let result = blog_preview_token::Entity::delete_many()
+            .filter(blog_preview_token::Column::Id.is_in(ids))
             .exec(&self.db)
             .await
             .map_err(BlogError::from)?;
 
         Ok(result.rows_affected)
     }
+}
+
+/// Deletes every preview token of a post inside the caller's transaction. A deleted
+/// post must not leave a token that still resolves to a preview read.
+pub(crate) async fn delete_post_preview_tokens_in_tx(
+    txn: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    post_id: Uuid,
+) -> BlogResult<u64> {
+    let result = blog_preview_token::Entity::delete_many()
+        .filter(blog_preview_token::Column::TenantId.eq(tenant_id))
+        .filter(blog_preview_token::Column::PostId.eq(post_id))
+        .exec(txn)
+        .await
+        .map_err(BlogError::from)?;
+    Ok(result.rows_affected)
 }
 
 /// Generate a cryptographically random preview token.
@@ -225,4 +308,30 @@ fn generate_preview_token() -> String {
 
     let bytes: [u8; 32] = rand::random();
     URL_SAFE_NO_PAD.encode(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Both directions of the cleanup bound are pinned here, because only a pure unit
+    /// test can observe the upper clamp without writing `MAX + 1` expired rows.
+    #[test]
+    fn cleanup_batch_is_clamped_into_the_bounded_range() {
+        assert_eq!(bounded_cleanup_batch(0), 1, "zero means one row");
+        assert_eq!(bounded_cleanup_batch(1), 1);
+        assert_eq!(
+            bounded_cleanup_batch(MAX_PREVIEW_TOKEN_CLEANUP_BATCH),
+            MAX_PREVIEW_TOKEN_CLEANUP_BATCH
+        );
+        assert_eq!(
+            bounded_cleanup_batch(MAX_PREVIEW_TOKEN_CLEANUP_BATCH + 1),
+            MAX_PREVIEW_TOKEN_CLEANUP_BATCH,
+            "a larger request is clamped, not honoured"
+        );
+        assert_eq!(
+            bounded_cleanup_batch(u32::MAX),
+            MAX_PREVIEW_TOKEN_CLEANUP_BATCH
+        );
+    }
 }

@@ -1,7 +1,7 @@
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
     Order, QueryFilter, QueryOrder, QuerySelect, Select, Set, TransactionTrait,
-    sea_query::{Query, SelectStatement},
+    sea_query::{NullOrdering, Query, SelectStatement},
 };
 use std::collections::HashMap;
 use tracing::instrument;
@@ -68,8 +68,9 @@ mod pin;
 mod queries;
 mod repository;
 mod routes;
+mod scheduled;
 
-pub use routes::{BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner};
+pub use routes::{BLOG_POST_TARGET_TYPE, BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner};
 
 pub(crate) use repository::load_post_subject_snapshot;
 
@@ -179,6 +180,58 @@ fn apply_admin_post_keyset(
         None => Condition::all().add(column.is_null()).add(id_beyond),
     };
     select.filter(condition)
+}
+
+/// Validates the schedule of `create_post` and normalizes it for storage.
+///
+/// Called before the command opens its transaction: an invalid schedule is rejected
+/// while no pooled connection is held, and a published post can never carry one.
+fn validate_schedule_for_create(
+    scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
+    publish: bool,
+    now: chrono::DateTime<chrono::Utc>,
+) -> BlogResult<Option<chrono::DateTime<chrono::FixedOffset>>> {
+    let Some(scheduled) = scheduled_at else {
+        return Ok(None);
+    };
+    if publish {
+        return Err(BlogError::validation(
+            "Cannot set scheduled_at when publish is true",
+        ));
+    }
+    if scheduled <= now {
+        return Err(BlogError::validation("scheduled_at must be in the future"));
+    }
+    Ok(Some(scheduled.fixed_offset()))
+}
+
+/// Validates the schedule patch of `update_post` and normalizes it for storage.
+///
+/// Called before the command opens its transaction, so a rejected schedule leaves no
+/// transaction to roll back. A schedule is a draft-only intent, exactly as on the create
+/// path: `publish_scheduled_posts` scans drafts, so a schedule stored on a published or
+/// archived post would be persisted but never honoured. Clearing a schedule stays available
+/// on every status, so a stale one can still be removed.
+fn validate_schedule_for_update(
+    scheduled_at: &Patch<chrono::DateTime<chrono::Utc>>,
+    status: BlogPostStatus,
+    now: chrono::DateTime<chrono::Utc>,
+) -> BlogResult<Patch<chrono::DateTime<chrono::FixedOffset>>> {
+    match scheduled_at {
+        Patch::Keep => Ok(Patch::Keep),
+        Patch::Clear => Ok(Patch::Clear),
+        Patch::Set(scheduled) => {
+            if status != BlogPostStatus::Draft {
+                return Err(BlogError::validation(
+                    "scheduled_at can only be set while the post is a draft",
+                ));
+            }
+            if *scheduled <= now {
+                return Err(BlogError::validation("scheduled_at must be in the future"));
+            }
+            Ok(Patch::Set(scheduled.fixed_offset()))
+        }
+    }
 }
 
 fn validate_title(title: &str) -> BlogResult<()> {
@@ -320,6 +373,9 @@ const MAX_POST_EXCERPT_CHARS: usize = 1000;
 const MAX_POST_SEO_TITLE_CHARS: usize = 255;
 const MAX_POST_SEO_DESCRIPTION_CHARS: usize = 1000;
 const MAX_POST_ARCHIVE_REASON_CHARS: usize = 1000;
+/// Upper bound for one `publish_scheduled_posts` iteration. The scheduler is a host
+/// boundary; a bounded batch keeps a large backlog from being processed in one pass.
+pub(crate) const MAX_SCHEDULED_PUBLISH_BATCH: u32 = 200;
 
 fn normalize_custom_metadata(metadata: Option<Value>) -> BlogResult<Value> {
     let metadata = metadata.unwrap_or_else(|| serde_json::json!({}));
@@ -463,7 +519,7 @@ pub(crate) fn storage_to_status(status: &str) -> BlogResult<BlogPostStatus> {
     }
 }
 
-fn status_to_storage(status: BlogPostStatus) -> &'static str {
+pub(crate) fn status_to_storage(status: BlogPostStatus) -> &'static str {
     match status {
         BlogPostStatus::Draft => "draft",
         BlogPostStatus::Published => "published",

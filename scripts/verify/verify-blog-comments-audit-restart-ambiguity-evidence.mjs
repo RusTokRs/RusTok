@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const runtimePath = 'apps/server/src/services/comments_provider_runtime.rs';
@@ -58,20 +59,23 @@ for (const file of [
   }
 }
 
-const runtime = read(runtimePath);
-const handoffSupport = read(handoffSupportPath);
-const recoverySupport = read(recoverySupportPath);
-const harness = read(harnessPath);
-const handoff = read(handoffPath);
-const recovery = read(recoveryPath);
-const writer = read(writerPath);
+const runtime = readComposedRustSource(read, runtimePath);
+const handoffSupport = readComposedRustSource(read, handoffSupportPath);
+const recoverySupport = readComposedRustSource(read, recoverySupportPath);
+const harness = readComposedRustSource(read, harnessPath);
+const handoff = readComposedRustSource(read, handoffPath);
+const recovery = readComposedRustSource(read, recoveryPath);
+const writer = readComposedRustSource(read, writerPath);
 const plan = read(planPath);
 const evidence = JSON.parse(read(evidencePath));
 
 requireAll('runtime test mounts', runtime, [
-  'include!("comments_provider_runtime_keyring_schedule_audit_recovery_postgres_test_support.rs");',
-  'include!("comments_provider_runtime_keyring_schedule_audit_restart_ambiguity_postgres_evidence.rs");',
-  'include!("comments_provider_runtime_keyring_schedule_audit_operator_postgres_evidence.rs");',
+  '#[path = "comments_provider_runtime_keyring_schedule_audit_recovery_postgres_test_support.rs"]',
+  'mod test_support;',
+  '#[path = "comments_provider_runtime_keyring_schedule_audit_restart_ambiguity_postgres_evidence.rs"]',
+  'mod restart_ambiguity_postgres_evidence;',
+  '#[path = "comments_provider_runtime_keyring_schedule_audit_operator_postgres_evidence.rs"]',
+  'mod operator_postgres_evidence;',
 ]);
 
 requireAll('handoff test seam', handoffSupport, [

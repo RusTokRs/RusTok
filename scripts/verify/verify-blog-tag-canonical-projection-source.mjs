@@ -82,8 +82,12 @@ if (evidence) {
 for (const marker of [
   'let mut tags_by_post = post_ids', '.map(|post_id| (post_id, Vec::new()))',
   'if relations.is_empty() {', 'return Ok(tags_by_post);',
-  'resolve_term_names(tenant_id, &term_ids, locale, fallback_locale)',
+  // The tag names are resolved in one batch through the Taxonomy owner reader; the
+  // per-post loop only picks the locale variant out of the resolved names.
   'TaxonomyOwnerReader',
+  'load_term_names_strict_for_module(',
+  'resolve_name_for_locale_chain(&locale_chain)',
+  'references missing Taxonomy tag',
   '.load_scoped_terms(',
 ]) need(tagService, marker, files.tagService);
 for (const marker of [
@@ -102,7 +106,7 @@ for (const marker of [
 for (const marker of [
   'global Taxonomy Tag translation should enqueue a Search reindex event',
   'index.reindex_requested',
-  'global Taxonomy Tag update and delete enqueue search reindex',
+  'async fn global_tag_update_and_delete_enqueue_search_reindex()',
 ]) need(taxonomyTranslationTests, marker, files.taxonomyTranslationTests);
 
 for (const marker of [
@@ -115,7 +119,10 @@ for (const marker of [
 for (const marker of [
   'post_read_does_not_resurrect_metadata_tags_after_relations_are_removed',
   'stale-metadata-tag',
-  'blog_post_tag::Entity::delete_many()',
+  // The harness detaches the canonical relation at the persistence boundary on purpose:
+  // the read path must not fall back to the `blog_posts.metadata.tags` mirror when the
+  // relation rows are gone, whatever removed them.
+  'DELETE FROM blog_post_tags WHERE post_id = ?',
   'assert!(post.tags.is_empty());',
 ]) need(blogReadHarness, marker, files.blogReadHarness);
 
@@ -146,10 +153,25 @@ for (const marker of [
   'metadata-only rows', 'Implement `tag_mutation_atomic_reindex` as slice 104',
   'No tests, Cargo commands, Node verifiers',
 ]) need(slice, marker, files.slice);
-for (const marker of [
-  '`tag_canonical_projection = source_ready_maintainer_execution_pending`',
+// The cursor states the retained track as source-complete, which is what the evidence
+// says (`status: source_verified_no_compile` with the only remaining gap being maintainer
+// execution). The token is checked against the evidence so the two cannot drift apart.
+const retainedTrackToken = /`tag_canonical_projection = ([a-z_]+)`/u.exec(current);
+if (retainedTrackToken === null) {
+  failures.push(`${files.current}: missing the tag_canonical_projection track token`);
+} else if (
+  evidence?.next_source_gap?.status === 'maintainer_execution_pending' &&
+  retainedTrackToken[1] !== 'source_complete_maintainer_execution_pending'
+) {
+  failures.push(
+    `${files.current}: tag_canonical_projection = ${retainedTrackToken[1]} disagrees with the evidence's source-verified status`,
+  );
+}
+need(
+  current,
   '`global_tag_search_invalidation = source_complete_maintainer_execution_pending`',
-]) need(current, marker, files.current);
+  files.current,
+);
 
 if (failures.length) {
   console.error('[verify-blog-tag-canonical-projection-source] FAIL');

@@ -19,9 +19,12 @@ Author creates draft → generates preview token → shares URL with reviewer
                                                     ↓
                                               Reviewer opens URL
                                                     ↓
-                                              Token validated (exists + not expired)
+                     Token validated (exists, unexpired, tenant still has Blog enabled)
                                                     ↓
-                                              Post returned (even if Draft)
+                        Post returned only while the post is still a Draft
+                                                    ↓
+        Post leaves draft (publish, scheduled publish, archive) → its tokens are revoked in the
+        same lifecycle transaction; unpublish/restore does not revive them
 ```
 
 ### Security Model
@@ -29,6 +32,9 @@ Author creates draft → generates preview token → shares URL with reviewer
 - **Token creation**: Requires `blog_posts:update` permission + ownership (author or admin)
 - **Token access**: Unauthenticated — anyone with the token can view the post
 - **Token revocation**: Requires `blog_posts:update` permission + ownership
+- **Token invalidation on status change**: A token authorizes a draft read only, so the lifecycle
+  transition that takes the post out of `draft` (manual publish, `blog_scheduled_publish`, archive)
+  revokes the post's tokens inside the same transaction
 - **Token expiry**: Configurable TTL (default 7 days, max 30 days)
 - **Token format**: 32 bytes of cryptographic randomness, base64url-encoded (43 chars)
 
@@ -48,11 +54,13 @@ Author creates draft → generates preview token → shares URL with reviewer
 ### Service
 
 - `PreviewTokenService` with methods:
-  - `create_token(tenant_id, post_id, security, ttl_hours)` → `PreviewToken`
-  - `get_post_by_token(token, locale)` → `Option<PostResponse>`
-  - `revoke_token(tenant_id, token_id, security)` → `()`
-  - `list_tokens(tenant_id, post_id, security)` → `Vec<PreviewToken>`
-  - `cleanup_expired()` → `u64` (rows deleted)
+  - `create_token(tenant_id, post_id, security, ttl_hours)` → `BlogResult<PreviewToken>`. A TTL
+    outside `1..=720` hours is refused with a validation error instead of being clamped.
+  - `get_post_by_token(token, locale, fallback_locale)` → `BlogResult<Option<PostResponse>>`
+  - `revoke_token(tenant_id, token_id, security)` → `BlogResult<()>`
+  - `list_tokens(tenant_id, post_id, security)` → `BlogResult<Vec<PreviewToken>>`
+  - `cleanup_expired(tenant_id, limit)` → `BlogResult<u64>` (rows deleted, `limit` clamped to
+    `MAX_PREVIEW_TOKEN_CLEANUP_BATCH` = 500)
 
 ### GraphQL
 
@@ -80,16 +88,22 @@ Author creates draft → generates preview token → shares URL with reviewer
 
 ## Cleanup
 
-Expired tokens should be cleaned up periodically by calling
-`PreviewTokenService::cleanup_expired()`. This can be done:
-1. Via a cron job
-2. Integrated into the existing scheduler worker
-3. Lazily on token creation (delete expired tokens for the same post)
+Retention is wired into the host scheduler: the Blog-owned `blog_preview_token_cleanup`
+module-work registration calls `PreviewTokenService::cleanup_expired(tenant_id, limit)` for
+one tenant per work item, so housekeeping is tenant-scoped and bounded by
+`MAX_PREVIEW_TOKEN_CLEANUP_BATCH` instead of deleting a whole backlog in one pass. Deleting a
+post additionally removes its tokens in the same transaction and through the table's cascade.
 
 ## Invariants
 
 - A token is unique across the entire system (not just per-tenant)
 - A token grants read-only access to a single post
 - A token cannot be used to access posts in other tenants
+- A token read resolves through the draft-only preview accessor, not through system authority,
+  and only while the token's own tenant still has Blog enabled; an expired, revoked or
+  module-disabled token answers "not found" without leaking whether the post exists
 - Deleting a post cascades to delete all its preview tokens
-- The system security context is used for token-based access (bypasses normal RBAC)
+- A post that leaves `draft` loses its tokens in the same lifecycle transition (publish by the
+  owner command or the scheduler, archive), so a token row never outlives the state it
+  authorizes; `unpublish` and `restore` return the post to draft without reviving a token that
+  the earlier transition revoked

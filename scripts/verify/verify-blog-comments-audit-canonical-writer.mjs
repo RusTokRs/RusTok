@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
+import { flattenWhitespace } from './lib/verify-text.mjs';
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -35,9 +37,9 @@ const outboxTransactional = read(outboxTransactionalPath);
 const outboxLib = read(outboxLibPath);
 const outboxApi = read(outboxApiPath);
 const outboxTest = read(outboxTestPath);
-const publication = read(publicationPath);
-const writer = read(writerPath);
-const runtime = read(runtimePath);
+const publication = readComposedRustSource(read, publicationPath);
+const writer = readComposedRustSource(read, writerPath);
+const runtime = readComposedRustSource(read, runtimePath);
 const plan = read(planPath);
 const evidence = JSON.parse(read(evidencePath));
 
@@ -49,6 +51,18 @@ function hasAll(content, markers, label) {
   for (const marker of markers) {
     requireCondition(
       content.includes(marker),
+      `${label} missing marker: ${marker}`,
+    );
+  }
+}
+
+function hasAllProse(content, markers, label) {
+  // See scripts/verify/lib/verify-text.mjs: prose markers are wording contracts, so they
+  // are compared against a whitespace-flattened view of the source.
+  const flattened = flattenWhitespace(content);
+  for (const marker of markers) {
+    requireCondition(
+      flattened.includes(flattenWhitespace(marker)),
       `${label} missing marker: ${marker}`,
     );
   }
@@ -157,14 +171,14 @@ hasAll(outboxTest, [
   'SysEvents::find().count(&db)',
 ], 'write-once integration source coverage');
 
-hasAll(eventApi, [
+hasAllProse(eventApi, [
   'ContractEventEnvelope::new_with_envelope_id',
   'caller-owned durable identity',
   'both envelope ID and correlation ID',
   'does not perform',
 ], 'event API documentation');
 
-hasAll(outboxApi, [
+hasAllProse(outboxApi, [
   'publish_contract_once_direct_in_tx_with_envelope_id',
   'ContractEventWriteOnceError { Conflict, Unavailable }',
   'ON CONFLICT DO NOTHING',
@@ -173,7 +187,7 @@ hasAll(outboxApi, [
   'OutboxRelay',
 ], 'outbox API documentation');
 
-hasAll(plan, [
+hasAllProse(plan, [
   '## Slice 89 — canonical typed write-once writer',
   'ContractEventEnvelope::new_with_envelope_id',
   'ON CONFLICT (id) DO NOTHING',

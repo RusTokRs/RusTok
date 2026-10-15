@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-bearer-auth.json';
@@ -64,7 +65,7 @@ const auth = read(authPath);
 const delegation = read(delegationPath);
 const server = read(serverPath);
 const transport = read(transportPath);
-const runtime = read(runtimePath);
+const runtime = readComposedRustSource(read, runtimePath);
 const digest = read(digestPath);
 const manifest = read(manifestPath);
 const lock = read(lockPath);

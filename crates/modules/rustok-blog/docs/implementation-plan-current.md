@@ -31,7 +31,8 @@ The hardened contract now requires:
 - public-comment snapshot keys include the latest committed monotonic Blog comment projection revision per tenant/post; invalidation survives cross-comment out-of-order delivery and requires no cache-key enumeration or second invalidation index;
 - current-tenant authority on GraphQL reads and writes;
 - one redacted Blog public-error mapping boundary;
-- private persistence entities and integrations that consume owner service state;
+- private persistence entities and integrations that consume owner service state (the single
+  documented exception is the orchestration bridge surface in `src/ports/`, see L-4 below);
 - deterministic typed list ordering and fail-closed missing-translation reads;
 - stable Comments write `command_id` across retries while FBA remains honestly
   `boundary_ready`;
@@ -107,8 +108,9 @@ The continuation after the historical Blog cursor is:
   Taxonomy backfill, fail closed unless same-ID Taxonomy ownership is present,
   then drop `blog_category_translations` and `blog_translation_changes`;
 - CAT-12: remove the inert Translation bridge module and unregistered change
-  entity, while retaining only the crate-private donor translation entity
-  needed by the historical `000020` upgrade backfill;
+  entity. The historical `000020` upgrade backfill declares its own
+  migration-local donor translation entity, so no crate-private donor entity
+  remains on the Blog entity surface;
 - CAT-13: actualize the canonical Blog planning cursor and active Blog README
   surfaces, retire orphaned provider-era PostgreSQL evidence/verifier sources,
   and guard the post-cutover source boundary;
@@ -189,9 +191,18 @@ previous cursor. Their latest retained source states remain:
 - `canonical_outbox_relay_postgres_evidence_source_ready_maintainer_execution_pending`;
 - `cached_public_comments_snapshot = source_implemented_maintainer_execution_pending`;
 - `comment_form_policy = source_verified_hide_on_provider_absence`; the active storefront writes only when Comments is available, while unavailable/timeout states preserve explicit read availability and may render the cached approved snapshot.
-- `tag_list_pagination = source_complete_maintainer_execution_pending`;
+- `tag_list_pagination = source_complete_maintainer_execution_pending`; the list paginates in the
+  database and is bounded by the owner-clamped page size and by the saturating page index, so
+  no request can reach an unbounded or overflow-prone offset.
 - `tag_canonical_projection = source_complete_maintainer_execution_pending`;
-- `tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending`;
+- `tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending`; the tag source line is
+  source-complete through slice 104 (bounded list pagination in slice 102, canonical
+  relation/Taxonomy read and Search source in slice 103, atomic dictionary mutation with the
+  Blog reindex in slice 104); `tag_delete_relation_cleanup = declared_fk_cascade`, because the
+  manual relation pre-delete is gone and `blog_post_tags.tag_id -> taxonomy_terms.id ON DELETE
+  CASCADE` removes the attachment rows inside the Taxonomy-owned transaction. What remains is
+  maintainer execution: running the retained harness, and the cross-module permission item
+  recorded below.
 - `global_tag_search_invalidation = source_complete_maintainer_execution_pending`;
 - `post_category_name_projection = source_complete_canonical_taxonomy_read`.
 - `comment_target_lifecycle_guard = source_complete`; comment reads and mutations that begin from a Comments record revalidate canonical Blog post existence, so asynchronously stale Comments threads cannot remain operable after terminal post deletion.
@@ -396,6 +407,477 @@ The fresh saga audit found that the first TOCTOU fix only compensated `PostNotFo
 
 A second saga audit found that the compensation delete inherited the caller's `SecurityContext`. Ordinary storefront customers have Comments create permission but delete is owner-scoped, so a compensation could itself be rejected by authorization. Blog compensation now uses a trusted `SecurityContext::system()` operation through the existing owner-managed Comments port, with a fresh idempotency key. The original user remains represented by the create-side event/audit context; compensation is explicitly a system-owned cleanup action. Source verification and a focused Rust unit regression enforce this boundary.
 
+## 2026-10-15 Engineering audit remediation
+
+This section records the remediation of the 2026-10-15 Blog engineering audit
+([`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md),
+base `1a420c8`).
+
+### Fixed in this wave
+
+- **H-1 public keyset vs pinning.** The public list ordering is one canonical
+  definition, `order_public_post_list`: `is_pinned DESC, pinned_at DESC NULLS
+  LAST, published_at DESC, id DESC`. `PublishedPostCursor` now carries the whole
+  sort key, so paging cannot skip or repeat rows once a pinned post exists;
+  legacy `(published_at, id)` tokens are rejected instead of resumed with a lossy
+  position. The regression is covered by
+  `public_visible_keyset_keeps_pinned_post_via_cursor_rank` (SQLite harness) and
+  by cursor encode/decode tests in `src/dto/post.rs`.
+- **H-2 scheduled publishing.** The owner command is tenant-scoped and
+  batch-bounded (`MAX_SCHEDULED_PUBLISH_BATCH` = 200), publishes oldest-due first,
+  and skips a concurrently edited post instead of aborting the batch. The
+  Blog-owned `blog_scheduled_publish` module-work registration (`src/services/scheduler.rs`)
+  publishes that queue to the host scheduler, which drains it in `full`/`worker`
+  host mode. See the module README "Scheduled publishing". The schedule **input contract**
+  is uniform across both write paths: a schedule may only be set while the post is a draft
+  (`validate_schedule_for_create` refuses it together with `publish: true`, and
+  `validate_schedule_for_update` refuses a `Set` patch on a published or archived row, which
+  the update path used to accept and store as a field the scheduler never reads), and
+  publishing clears the schedule it consumed. Pinned by
+  `schedule_patch_is_bounded_to_drafts_and_the_future` and
+  `published_posts_reject_a_schedule_patch` (`src/services/post/tests.rs`).
+- **H-6 pin atomicity and the create path.** Pin state is command-owned: the field
+  is gone from `CreatePostInput`/`UpdatePostInput` (REST, GraphQL domain, admin
+  GraphQL/native adapters, and the `rustok-ai`/`rustok-content-orchestration` callers
+  updated in the re-verification pass below), so no writer can persist
+  `is_pinned` without `pinned_at` or bypass the published-only rule.
+  `pin_post`/`unpin_post` run in one transaction on a row-locked read, so a
+  concurrently deleted post fails with `PostNotFound` instead of reporting
+  success. The write itself is narrowed to `is_pinned`, `pinned_at` and
+  `updated_at`: it used to save the read entity back, which carries every column of
+  `blog_posts`, so `status`/`published_at`/`archived_at`/`scheduled_at`/`version` stayed
+  out of the pin's reach only because the statement happened to rewrite the values it
+  had just read. `pin_writes_leave_lifecycle_columns_and_version_untouched`
+  (`src/tests/owner_commands.rs`) holds that boundary, and it is assessed as a contract
+  test: with the row lock held for the whole command, SQLite cannot stage the
+  concurrent writer that would have made the old shape observably wrong.
+
+- **H-3, M-11, M-13 preview tokens.** The TTL is validated against `1..=720` hours,
+  minting is draft-only, the token read re-checks the module gate on the token's own
+  tenant and resolves through the draft-only preview accessor, and
+  `revoke_token` reports a missing or foreign token as `PREVIEW_TOKEN_NOT_FOUND`
+  instead of a missing post. Retention is tenant-scoped:
+  `cleanup_expired(tenant_id, limit)` (clamped to `MAX_PREVIEW_TOKEN_CLEANUP_BATCH` =
+  500 through `bounded_cleanup_batch`, whose both clamp directions are pinned by
+  `cleanup_batch_is_clamped_into_the_bounded_range` in `src/services/preview_token.rs`)
+  is drained by the `blog_preview_token_cleanup` module-work registration, and
+  deleting a post removes its tokens through the `fk_blog_preview_tokens_post`
+  cascade, which the migration declares inside `CREATE TABLE` rather than with
+  `ALTER TABLE ... ADD CONSTRAINT` — the latter is rejected by SQLite, the unit-test
+  backend, and would have failed every migration-applying test; a verifier rule now
+  requires a `DatabaseBackend` guard on any migration that uses `create_foreign_key`.
+- **H-4 rate-limit classification coverage.** `BlogGraphqlSurface` covers all 28 Blog
+  schema roots (8 queries and 20 mutations) with an explicit permission per root;
+  `actor_is_authorized` keeps RBAC authoritative for writes that never reach the
+  limiter. `blog_schema_root_fields_are_fully_classified` fails when a root field is
+  added without a surface.
+- **H-5 bulk bounds and error redaction.** `ensure_bulk_batch_is_bounded` refuses more
+  than `MAX_BULK_POST_IDS` = 100 ids before any work starts, the GraphQL input mirrors
+  the bound with `#[graphql(validator(max_items = 100))]`, and
+  `BulkOperationResult::record_failure` reports each failure through
+  `BlogPublicError`, so internal `Invariant`/`Database` detail no longer reaches
+  consumers. Both halves are pinned by unit tests in `src/services/post/bulk.rs`
+  (`bulk_batches_are_bounded_before_any_work_starts`,
+  `bulk_failures_are_reported_through_the_public_boundary`), and the transport contract
+  itself — cap, per-id transaction, per-id result, redacted failures — is documented in the
+  module README "Bulk post operations".
+- **M-12 admin sort.** The authenticated `posts` resolver no longer hard-codes
+  `CreatedAt DESC`: `PostsFilter` exposes `sortBy`/`sortOrder` (GraphQL enums
+  `BlogPostSortField`/`BlogPostSortOrder` mapped onto the owner `PostSortField`/
+  `PostSortOrder`), and the defaults stay `CreatedAt`/`Desc`, so existing clients are
+  unaffected. Each sort column keeps its own index from `m20260328_000001`, and the
+  keyset cursor stays bound to the sort it was issued for.
+  Both admin lists request it: the Leptos admin table gained a sort column/direction
+  toolbar (`BlogPostSortField`/`BlogPostSortOrder` in `admin/src/model.rs` as the single
+  owner of the wire spelling, `BlogPostAdminSort` in `admin/src/core/presentation.rs`,
+  threaded through both transports), and the Next admin post list gained the same two
+  controls over `sortBy`/`sortOrder` route params. Either control clears `after` and the
+  page history, so the list restarts at page one instead of replaying a cursor against a
+  different sort.
+- **L-1 validation before the transaction.** `create_post` and `update_post` validate
+  inputs before `db.begin()`; the schedule validators moved into
+  `validate_schedule_for_create`/`validate_schedule_for_update` in
+  `src/services/post/mod.rs`, so a rejected schedule no longer holds a pooled
+  connection or rolls back implicitly.
+- **L-5 `unreachable!` in a migration.** `m20260803_000011` now returns
+  `DbErr::Custom("… does not support {backend:?}")` for an unsupported backend, like the
+  sibling Blog migrations, instead of panicking.
+- **L-6 panic inventory of the runtime code.** Blog runtime code had eight panic sites.
+  Five were replaced by explicit error mapping: the three SEO mappers now return
+  `AnyResult` and their callers propagate (`map_post_bulk_summary`,
+  `map_post_sitemap_candidate`, `map_post_response`), and the comments snapshot's
+  `unreachable!("disabled comments policy returned before provider read")` now logs and
+  returns `BlogError::CommentsPolicyUnavailable`. The remaining three are forced by the
+  extension-point traits (`SeoTargetProvider::slug`, `ReactionSubjectProvider::source`,
+  `supported_kinds`), which return validated key types infallibly from a compile-time
+  constant; they are now guarded by
+  `builtin_seo_slug_constants_satisfy_the_owner_grammar` and
+  `blog_reaction_key_constants_satisfy_the_owner_grammar`. The platform-level root cause
+  is an open item below.
+- **L-3 duplicate selection.** `apps/next-admin/packages/blog/src/api/posts.ts` selected
+  `scheduledAt` twice in `POSTS_QUERY`; the document now selects it once.
+- **H-7 route and target-deletion consistency.** `BlogTargetDeletionRouteHandler`
+  (`blog_target_deletion_routes`) consumes `TargetDeleted` for `blog_post` targets,
+  removes the matching routes in one transaction, and reports them through
+  `UrlAliasPurged`; repeated delivery is a no-op. A read of a route whose target is
+  gone returns "not found" instead of resolving a stale redirect and records the
+  `dangling_route_redirect` module metric. `blog_route_reconciliation` sweeps stale
+  routes in bounded, tenant-scoped batches as the safety net for a missed delivery.
+- **M-6 OpenAPI registration drift.** `BlogApiDoc` (`src/controllers/openapi.rs`)
+  registered 16 of the 19 handlers that declare a `#[utoipa::path]`: `preview_post`
+  (`GET /api/blog/preview/{token}`), `pin_post` and `unpin_post`
+  (`POST /api/blog/posts/{id}/pin|unpin`) are served by `axum_router` but were absent
+  from the document the server merges and exports, so they were invisible to generated
+  clients. All three are registered now, and the pairing is gated by
+  `tests/openapi_document_contract.rs`, a compiled test over the generated document:
+  it fails when a documented handler is not registered in `BlogApiDoc`, when a path
+  `axum_router` serves is missing from `openapi_document()`, or when the declared
+  handler set changes without the document being updated. The text verifier set cannot
+  make that assertion — no OpenAPI artifact is committed, and
+  `verify-api-surface-contract.mjs` reads the router and the module manifest only.
+- **L-7 owner-command tests.** `src/tests/owner_commands.rs` adds the owner coverage the
+  audit found missing for `publish_scheduled_posts` (the due-post scan, the explicit
+  tenant scope, oldest-due-first order, the `MAX_SCHEDULED_PUBLISH_BATCH` clamp, one
+  `BlogPostPublished` per published post, and the drain on a second iteration) and for
+  the `pin_post`/`unpin_post` write path that `src/services/post/pin.rs` covered only as
+  a predicate (flag and timestamp written together, archiving keeps the pin state, unpin
+  releases both, the published-only rule rejects a draft without writing pin state, a
+  foreign tenant sees `PostNotFound`, and the statement leaves the lifecycle columns and
+  the revision `version` alone). The scheduled-publish **worker** is covered in
+  `src/services/scheduler.rs` too: the claim hands the host the tenant with the oldest
+  due schedule, never a tenant without due work, ignores a future schedule and another
+  Blog worker's slug, and the item the claim produced publishes that tenant's due draft
+  through `execute`. The harness's direct schedule write moved into
+  `src/tests/hardening.rs` (`set_post_schedule`/`make_post_due`) so the owner tests and
+  the worker tests share one way to reach a due state. `bulk_*` keeps its in-module bound
+  test and preview tokens were already covered by the H-1 tests.
+- **M-13 residual, token half.** A preview token now authorizes a draft read for exactly as
+  long as the post is a draft. `apply_status_transition_in_tx`
+  (`src/services/post/commands.rs`) deletes the post's tokens inside the transition
+  transaction whenever the post leaves the draft state, so manual publish, scheduled publish
+  (`blog_scheduled_publish`) and archive all revoke them together with the status change.
+  The delete is tenant- and post-scoped and a no-op without tokens. This closes the silent
+  resurrection path the audit described: the accessor refuses to serve a non-draft post, but
+  a surviving row became a live authorization again once `unpublish` or `restore` returned the
+  post to draft. Covered by `leaving_draft_revokes_the_post_preview_tokens`
+  (`src/tests/preview_token.rs`), which walks draft → publish → unpublish → publish → archive
+  and asserts both the row count and that a revoked token never resolves again, with another
+  tenant's live token untouched.
+
+### Verification status
+
+- `cargo` is not available in the authoring environment: no compile, unit-test, or
+  PostgreSQL execution evidence was produced for this wave. Syntax of every changed
+  Rust file was validated with a tree-sitter parse; the verifier scripts and the
+  maintainer CI must run the real gates.
+- Still required from the maintainer: `cargo check -p rustok-blog --features
+  runtime`, `cargo test -p rustok-blog`, a PostgreSQL run of the pinned-keyset
+  path, and a host run in `worker` mode that publishes a due scheduled draft.
+- Build-integrity repairs found by the branch's first CI run (no cargo locally, so none of the
+  three could be caught here): 1) `Cargo.lock` was missing the `rustok-runtime` edge that the
+  new optional dependency of `rustok-blog` requires, which made every `--locked` cargo step fail
+  before compiling; 2) the preview-token migration added its foreign key with
+  `ALTER TABLE ... ADD CONSTRAINT`, which SQLite (the unit-test backend) rejects; 3) the crate
+  did not compile at all: `src/services/mod.rs` re-exported `post::BLOG_POST_TARGET_TYPE` while
+  `src/services/post/mod.rs` never exposed that name (its `routes` module is private), and
+  `src/services/comment_projection.rs` dropped its local copy of the constant in the same
+  refactor while relying on the `services` re-export the missing name starved. `services/post/mod.rs`
+  now re-exports the constant, and `verify-module-reference-contract.mjs` resolves every
+  `src/services/mod.rs` re-export against the module it names, so a re-export of a symbol that
+  does not exist fails the guard instead of reaching `rustc`.
+- Still open after those three repairs: the Blog cargo workflows (`delete lifecycle`,
+  `mirror write retirement`, `category hierarchy contract`, `legacy storage retirement`) fail on
+  this branch at their first `cargo test --locked -p rustok-blog` step. The environment cannot
+  retrieve the job logs (`EOF` from the Actions log receiver) and has no cargo, so the failure
+  text is unknown. The only clearly branch-attributable red is `delete lifecycle`, which
+  succeeds on `main` (3b54e18, d543e9d) and failed on every branch push; the other three already
+  fail on `main` at an earlier step (touched-file formatting or a node guard), so their cargo
+  steps had never run there and may be pre-existing. Workspace-wide `Cargo Check`, `Clippy`,
+  `Documentation` and `Unused Dependencies` are red on `main` as well. `cargo test -p
+  rustok-blog` and `cargo test -p rustok-blog --features runtime` remain the gate that
+  separates a remaining compile error from a test-level difference.
+- The unit tests added with the bulk/token documentation step
+  (`bulk_failures_are_reported_through_the_public_boundary`,
+  `cleanup_batch_is_clamped_into_the_bounded_range`) are **source-level only in this
+  environment**: they were written against the existing harness-free shapes and were not
+  executed, because `cargo` is absent. They belong to the maintainer's `cargo test -p
+  rustok-blog` run.
+
+- The Blog reference-module verifier `verify-blog-comments-event-projection.mjs` now
+  asserts the canonical single `blog_post` target-type definition
+  (`src/services/post/routes.rs`) and that the projection handler classifies with that
+  shared constant instead of redeclaring it; the change is covered by a new negative
+  case in its self-test (`duplicateTargetType`).
+
+- Verifier evidence for this wave: the `rustok-blog` verifier set was run before and
+  after against a clean worktree of the base commit. 40 scripts still fail for
+  pre-existing reasons (stale taxonomy/slice evidence, retired sources they still
+  demand, missing evidence JSONs); none failed because of this wave, and
+  `verify-module-source-layout`, `verify-module-reference-contract`,
+  `verify-api-surface-contract`, `verify-docs` and the Blog FBA chain pass.
+  `verify-blog-comments-event-projection.mjs` was updated as described above, and
+  `verify-blog-category-hierarchy-command.mjs` — which could not execute at all
+  because of three malformed string literals — now parses and passes after two marker
+  strings were aligned with the wording the tree actually uses.
+
+- UI follow-up evidence (admin sort controls; still no `cargo`, so nothing was compiled
+  or executed as a Rust test): every Rust file this branch touches was parsed with
+  tree-sitter and checked with `rustfmt` (the formatter built to WebAssembly,
+  `@scalar/rust-fmt`). 15 files had drifted from rustfmt — the earlier waves' wrapping
+  and import order plus this wave's additions — and were reformatted; the whole set is
+  clean under the same options (`edition 2024`, `styleEdition 2024`). The tool was
+  calibrated before it was trusted: the base revision's copies of the same files and 116
+  of 120 random untouched crate files were already clean under it.
+- The six changed TypeScript files are prettier-clean (`prettier` 3.9.9 with the values
+  from `apps/next-admin/.prettierrc`, minus the Tailwind class-sorting plugin), and the
+  sort control plus the API module type-check under `tsc` 7.0.2 with `strict` against
+  `nuqs` 2.10.1's published types; the host modules were stubbed for that check, so
+  `apps/next-admin`'s own `npm run typecheck` still has to run on a machine with its
+  `node_modules`.
+- Re-run after the reformat with no change in outcome: the Blog verifier set (40
+  pre-existing failures), the 51 unrelated verifiers that read Next-admin or Blog paths
+  (12 pre-existing failures, identical to the base worktree), and the 22 Blog verifier
+  self-tests (5 pre-existing failures).
+
+- Re-verification pass over the whole branch (`1a420c8..1de458b`, still without
+  `cargo`): the H-7 route purge had left two tests asserting a single registered
+  listener — the host-routing harness in `src/module.rs` and the PostgreSQL dispatcher
+  test, whose positional `pop()` had started selecting the route-purge handler — so
+  both now select the `blog_comment_projection` handler by name and pin the registered
+  set (`blog_comment_projection`, `blog_target_deletion_routes`). The H-6 input removal
+  had also left three stale `is_pinned` initializers outside the Blog crate: two in
+  `rustok-ai`'s draft handler and one in `rustok-content-orchestration`'s demote test.
+  Because removing a struct field or narrowing a signature breaks every constructor and
+  call site, the pass compared every changed Blog signature and removed field with its
+  callers across the workspace; no further stale consumer was found. Verifier evidence
+  after the pass: the Blog set fails the base worktree's 41 failures minus
+  `verify-blog-category-hierarchy-command.mjs`, which was repaired earlier in this wave
+  (its three malformed string literals made the script unparseable); the 51 unrelated
+  scripts fail the same 12, and the Blog self-tests the same 5.
+  `verify-module-source-layout`, `verify-module-reference-contract`,
+  `verify-blog-admin-boundary`, `verify-blog-storefront-boundary` and `verify-docs`
+  pass, and the four Rust files this pass changed are clean under the same `rustfmt`
+  calibration.
+- Second re-verification pass (still without `cargo`), against the sources of the files the
+  wave added or changed: the preview-token service comment claiming a clamped TTL now states
+  the refusal rule the code implements; `docs/2026-10-09-blog-draft-preview-tokens.md` was
+  brought back in line with the current `get_post_by_token`/`cleanup_expired` signatures, the
+  `blog_preview_token_cleanup` retention registration and the draft-only accessor (the
+  "system security context bypasses RBAC" invariant no longer holds); and the
+  `src/tests/hardening.rs` harness no longer creates a `tenants` table, because no Blog,
+  Taxonomy or outbox migration declares a foreign key to it — the harness relies on
+  `tenant_modules` alone, which the preview read reaches through
+  `rustok_api::is_tenant_module_enabled`, and on `ChannelService` returning early for an empty
+  slug list, which keeps `create_post` off the channel tables the harness does not migrate.
+  The same pass re-ran the five failing Blog self-tests in the `1a420c8` worktree and
+  confirmed they fail there for the same absent sources, so none of them was invalidated by
+  this branch.
+- Slice after that pass (M-6 and L-7, still without `cargo`): the OpenAPI registration fix was
+  checked against the sources by re-implementing the contract test's extraction logic — 13
+  paths in `controllers::axum_router`, 19 handlers declaring `#[utoipa::path]`, none missing
+  from `BlogApiDoc` and every declared path registered — and the four Rust files of this slice
+  (two of them new) are clean under the same `rustfmt` calibration and parse under
+  tree-sitter. Verifier evidence: the Blog set fails the same 45 scripts as before the slice,
+  the 51 unrelated scripts that read Blog or Next-admin paths fail the same 12, and
+  `verify-module-source-layout`, `verify-module-reference-contract`,
+  `verify-api-surface-contract`, `verify-docs`, `verify-blog-admin-boundary`,
+  `verify-blog-storefront-boundary` and `verify-blog-comments-event-projection` pass. The new
+  tests in `tests/openapi_document_contract.rs`, `src/tests/owner_commands.rs`,
+  `src/tests/hardening.rs` and `src/services/scheduler.rs` were written against the signatures
+  read in the tree but were **not compiled**: `cargo test -p rustok-blog` and
+  `cargo test -p rustok-blog --features runtime` (the scheduler worker tests) remain the gate
+  for them.
+
+- Verifier-repair wave (same day, still without `cargo`). The stale `scripts/verify/*blog*.mjs`
+  guards were repaired rather than re-baselined. Two shared helpers were added:
+  `scripts/verify/lib/rust-facade-source.mjs` composes an entry file with every file it declares
+  (recursively), so a verifier that used to read one `include!`-composed host file keeps seeing
+  the same source now that `apps/server/src/services/comments_provider_runtime*` is split into
+  `#[path = "..."] mod ...;` parts, and `scripts/verify/lib/verify-text.mjs` flattens whitespace
+  for prose markers so a re-wrapped sentence no longer breaks a plan or `CRATE_API.md` guard.
+  Guards for retired designs were converted into retirement guards instead of being deleted or
+  relaxed: the CAT-6 typed Blog Category binding (retired by
+  `m20260916_000022_clean_blog_category_canonical_taxonomy`), the crate-private donor translation
+  entity (the historical `000020` backfill is self-contained), and the offset-slicing tag
+  pagination (the list now paginates in the database through `blog_tag_usage`). Blob pins,
+  `#[path]`/`mod` expectations, plan-cursor tokens and renamed call-site markers were resynced
+  with the tree.
+  Measured against a clean base worktree: 46 of the 90 `*blog*.mjs` invocations fail at
+  `1a420c8` and 24 fail at the branch tip, so 22 are repaired and none of the remaining 24
+  regressed. (The earlier count in this file said 45 because
+  `verify-blog-category-hierarchy-command.mjs` was already repaired by `92f6a13` before the
+  baseline was taken; at base that script dies with a `SyntaxError` and is part of the 22.)
+  Green again: the whole Category guard family
+  (`taxonomy-category-{binding,dual-write,planning-cursor,read-cutover,structure-sync}`), the
+  post category-name projection and its self-test, the tag pagination guard and its self-test,
+  and `comments-audit-{canonical-writer,event-contract,canonical-handoff-contract}`,
+  `comments-tcp-delegation-schedule-audit-{postgres-faults,postgres-harness}` and
+  `comments-audited-worker-response-disconnect`. Unchanged green:
+  `verify-docs`, `verify-module-reference-contract`, `verify-module-source-layout`,
+  `verify-api-surface-contract`, the Blog FBA boundary chain and
+  `verify-blog-comments-event-projection` (with its self-test).
+  The 24 that still fail are the Comments host-runtime slice guards
+  (`comments-tcp-delegation-schedule-{audit-outbox,persistence,postgres,trigger}`,
+  `comments-audit-{canonical-handoff-postgres,handoff-runner,operator-requeue,outbox-relay-postgres-source,source-retry-policy,source-retry-runner}`,
+  `comments-{host-provider-selection,tcp-channel-seam,tcp-host-channel-selection,tcp-transport,tcp-user-delegation}`,
+  and `comments-audit-{recovery-postgres-evidence,restart-ambiguity-evidence}`, which still
+  assert the pre-split `mod keyring_schedule_audit_operator {` / slice-96 prose markers), the plan-cursor pair
+  (`canonical-plan-current` and its self-test, which require the provider-era
+  `blog-category-translation-postgres-source.json` that
+  `verify-blog-taxonomy-category-planning-cursor.mjs` requires to stay absent), the reaction
+  subject provider guard, and the two Tag source guards
+  (`tag-canonical-projection-source`, `tag-mutation-reindex-source`). Each needs the same
+  treatment: read the marker against the code or document that actually owns it, keep the
+  assertion, and never soften it to green. No Rust was compiled in this wave either.
+
+  Follow-up repair pass over the same set (still no `cargo`): the reaction subject provider
+  guard and the two Tag source guards were resynced the same way, taking the set from 24 to
+  19 failures, again with no new reds anywhere in the repository's 1325 verifier scripts.
+  - `verify-blog-reaction-subject-provider.mjs`: the provider resolves its subject through
+    `load_post_subject_snapshot` instead of holding its own copy of the two owner queries, and
+    the module dependency set it registers under is now `content, taxonomy, outbox, channel`
+    (Comments is reached through the host port, not as a module dependency). The guard asserts
+    the provider's lifecycle/channel/revision rules, then the two queries **in the loader that
+    owns them** (`services/post/repository.rs`), and cross-checks the declared dependency set
+    against `rustok-module.toml`. Ten mutations were used to confirm it still bites.
+  - `verify-blog-tag-canonical-projection-source.mjs`: the tag names are resolved in one batch
+    through `TaxonomyOwnerReader::load_term_names_strict_for_module`; the guard now asserts that
+    call, the per-post `resolve_name_for_locale_chain` projection, the fail-closed "references
+    missing Taxonomy tag" invariant, the real Taxonomy reindex test name, and the persistence-
+    boundary detach the Blog harness uses.
+  - `verify-blog-tag-mutation-reindex-source.mjs`: the retained-track token is now checked
+    against the evidence's own planning result instead of a hand-written string, and the
+    slice-104 scope is enforced as the slice states it (no database migration).
+  - `verify-blog-tag-mutation-reindex-source.test.mjs`: two fixtures mutated the wrong
+    function — one anchor no longer existed and the other edited `create_tag`'s reindex call,
+    so both cases silently asserted nothing while the guard stayed green. Both now mutate their
+    section (bracketed by the function boundaries) and fail if the mutation does not apply.
+  - The plan-cursor pair itself (`canonical-plan-current` and its self-test) was the last
+    blog-scoped item of that set, and it was repaired by re-pointing it at the current cursor
+    generation: the retired provider-era evidence is asserted **absent** (the mirror of
+    `taxonomy-category-planning-cursor`), the CAT-17 actualization is asserted, the track
+    statuses are checked against the evidence files they restate, the superseded slice 97-105
+    vocabulary is archived in a marked section and forbidden as a live claim, and the
+    historical baseline boundary is checked against the value the cursor evidence records.
+    The Blog set is now 17 failures, all of them the Comments host-runtime slice guards listed
+    below, and the repository-wide run has no red script that is green at the base commit.
+  - Evidence corrections: `blog-tag-mutation-reindex-source.json` claimed
+    `taxonomy_*_permission_preserved` (three peer-side guarantees the Taxonomy owner never
+    provided — its `_security` parameter is unused at base too) and
+    `database_schema_changed: true` against slice 104's explicit "no database migration". Both
+    are corrected and the cross-module permission item is tracked under open items below.
+
+- Mutation re-verification of the repaired guards (same session, still without `cargo`). Each
+  guard was re-run against a mutated copy of the tree to prove it still bites: the binding
+  retirement guard against a removed `drop_table`, a resurrected binding entity and a
+  resurrected `blog_categories.parent_id`; the read-cutover guard against a non-strict Taxonomy
+  read and a resurrected `pub use category::CategoryService;`; the dual-write guard against a
+  re-registered donor entity; the structure-sync guard against a removed Taxonomy reorder hook;
+  the cursor guard against a wrong status token; the category-name projection guard against an
+  unbounded membership read and a retired translation-table reference; the tag pagination guard
+  against an unbounded page size, a removed owner clamp and unsaturating last-page arithmetic;
+  and the prose guard against changed `CRATE_API.md` wording. One real hole was found and fixed:
+  the audited worker-response disconnect guard accepted a bare
+  `abort_on_indeterminate_audited_store_response()` marker, which the *definition* alone
+  satisfies, so a stranded call site could have passed unnoticed; it now asserts the
+  indeterminate-store match arm and the response-completion drop guard separately, and both
+  new checks were shown to fail when their call site is removed. Two of the first mutation
+  attempts were themselves no-ops (a `sed` that matched nothing and one that hit only one of
+  two call sites); they were redone until the mutation actually changed the source.
+
+- Contract-record resync (same session). The aggregate plan-cursor record
+  (`contracts/evidence/blog-canonical-plan-current-source.json`) and
+  `verify-blog-canonical-plan-current.mjs` still named the retired typed binding table
+  (`blog_category_taxonomy_bindings`, `tenant_bound_binding_query`) as the Category name
+  projection's identity source, which is the same CAT-6 retirement the per-surface evidence and
+  the Category guard family were already repaired for; both now read
+  `category_identity_path: blog_posts.category_id -> taxonomy_owner_category.id` and
+  `tenant_bound_category_read: true`, matching
+  `contracts/evidence/blog-post-category-name-projection-source.json`. This removes the one
+  failure line the repair wave had added to `verify-blog-canonical-plan-current.mjs`. Both
+  assertions were mutation-checked: reverting either record back to the retired vocabulary
+  reproduces its drift line, and the guard stays red for its 28 remaining pre-existing reasons
+  (the plan-cursor pair, per the list above).
+
+### Open items from this audit
+
+Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md)):
+
+- **H-5 amplification (decision recorded; the queue variant is not implemented).** A bulk
+  request is bounded at 100 ids (`MAX_BULK_POST_IDS` plus the GraphQL `max_items` mirror) and
+  rate-limited per root, so one request is at most 100 transactions and 100 events. The per-id
+  transaction and per-id lifecycle event are the **documented contract**, not an oversight:
+  the response is per id and one id's failure must not abort the others (module README
+  "Bulk post operations", `src/services/post/bulk.rs`). What remains unimplemented is the
+  audit's alternative — a queue-based bulk command that survives a request timeout and resumes;
+  no host or UI caller issues bulk work today (the four GraphQL mutations are its only callers),
+  so the boundary is recorded here and in the README "Known Limitations / Pending
+  Implementation" rather than shipped unexercised.
+- **M-13 residual (open).** Preview reads have no audit trail; it is documented in the
+  module README. The token half of M-13 is closed — leaving the draft state revokes the
+  post's tokens in the same lifecycle transaction (see "Fixed in this wave").
+- **Canonical layout documentation (resolved, docs only).** The contradiction is closed in
+  the platform doc: `docs/backend/module-backend-implementation.md` now records that an
+  enrolled reference profile admits only `lib.rs` and `module.rs` at the source root, so its
+  optional `src/runtime.rs` slot does not apply to `rustok-blog`; the module README states
+  the same rule next to the verifier it follows, and the `runtime`-gated registrations stay
+  in `src/services/scheduler.rs`.
+- **Next-admin post form offers the schedule field on every status (UI follow-up, M-7 family).**
+  `apps/next-admin/packages/blog/src/components/post-form.tsx` submits `scheduledAt` on every
+  save: an empty field becomes a `Clear` patch, which stays allowed on any status, but a date
+  typed while editing a published or archived post now returns the validation error from
+  `validate_schedule_for_update` and the form shows its generic "Failed to save post". The
+  backend rule is the contract; hiding or disabling the field for non-drafts is a UI change that
+  belongs to the Next-admin typecheck gate (not run here).
+- **L-4 (exception documented; the migration is open).** `src/ports/mod.rs` re-exports four Blog
+  entity modules (`blog_category`, `blog_post`, `blog_post_tag`, `blog_post_translation`) and
+  `lib.rs` publishes that module, so `rustok-content-orchestration` writes Blog rows directly
+  inside its own transaction (`bridge/promote.rs`, `bridge/demote.rs`, `bridge/tags.rs`) instead of
+  through owner commands. That contradicts the module's own privacy claim (`CRATE_API.md`), the
+  platform contract ("persistence entities are private") and `verify-module-reference-contract.mjs`
+  — which forbade the pattern in `src/lib.rs` and `src/integrations/` only, leaving `src/ports/`
+  uncovered. Closed in this pass: the exception is stated at its source and in `CRATE_API.md`, and
+  the exact four-module set is now pinned by that verifier so the surface cannot widen silently.
+  Open: migrating the bridge onto owner in-transaction commands and updating
+  `verify-content-orchestration-contract.mjs`, which currently asserts the direct entity writes —
+  a cross-module change, not a Blog-local one.
+- **Taxonomy module-term API takes a `SecurityContext` it never reads (open, cross-module).**
+  `update_module_term_in_tx` and `delete_module_term_in_tx`
+  (`crates/modules/rustok-taxonomy/src/module_term_mutation.rs`) accept `_security` and enforce
+  nothing with it; `TagService::create_module_term_in_tx` takes no context at all. The unused
+  parameter is present at the base commit `1a420c8`, so it is not a consequence of this branch,
+  but it makes the peer-API convention explicit: **authorization belongs to the caller**. Blog
+  acts on that — `TagService::update_tag`/`delete_tag` enforce `Tags:Update`/`Tags:Delete` before
+  the call and forward the same context, so Blog tag mutations are authorized and the principal
+  is already plumbed through for the day the owner starts checking. Two consequences are
+  recorded rather than papered over: the slice-104 evidence no longer claims
+  `taxonomy_*_permission_preserved` (it now records `blog_caller_permission_enforced`,
+  `security_context_forwarded_to_taxonomy_owner` and the observed
+  `taxonomy_owner_permission_check_present: false`), and the owner-side check is an open item for
+  the Taxonomy owner. It is deliberately **not** added here: enabling `Resource::Taxonomy`
+  enforcement changes peer behaviour for every caller, and a Blog editor whose role holds
+  `Tags:Update` without `Taxonomy:Update` would start failing tag edits. Only
+  SuperAdmin/Admin carry `Taxonomy` in the built-in role sets (`rustok-core/src/rbac.rs`), so the
+  change is a policy decision for the Taxonomy owner and the RBAC catalogue, not a Blog fix.
+- **Suspected status write outside the transition command (checked, not present).** An
+  earlier note in this file tracked a `PostService::update` path that was supposed to
+  write `status` through a filtered UPDATE and bypass `apply_status_transition_in_tx`.
+  The claim does not reproduce: `UpdatePostInput` has no status field in any layer
+  (REST, GraphQL domain, admin adapters, `rustok-ai`, `rustok-content-orchestration`), and
+  `blog_post::Column::Status` is written in exactly one place in the module —
+  `apply_status_transition_in_tx`. The one remaining whole-entity write on `blog_posts`
+  was `pin.rs`, which is now narrowed to the pin columns as described under H-6, so no
+  writer can reach a lifecycle column without going through the transition command.
+- **L-6 root cause (open, platform).** `SeoTargetProvider::slug`,
+  `ReactionSubjectProvider::source`/`supported_kinds` and every peer module
+  (`rustok-forum`, `rustok-pages`, `rustok-product`, `rustok-taxonomy`) construct a
+  validated key from a compile-time constant with `.expect(...)`, because the owner
+  crates (`rustok-seo-targets`, `rustok-reactions-api`) expose only fallible
+  constructors while the traits return the key infallibly. Blog's sites are
+  test-guarded now; the real fix belongs to the owner crates — an infallible
+  constructor whose validity the compiler checks, which needs a `Cow<'static, str>`
+  inner representation, because `String` cannot be built in a `const fn`.
+
 ## 2026-10-08 Engineering audit remediation (Waves 1 and part of 2)
 
 This section records the remediation of the 2026-10-08 Blog engineering audit.
@@ -463,16 +945,18 @@ The governing contract is
 These audit findings are deliberately out of this slice. Each needs its own
 owner decision or a larger implementation.
 
-- **H-6 scheduled publishing.** No `scheduled` status, no `publish_at`, and no
-  worker. Only `Draft -> Published` exists.
+- **H-6 scheduled publishing follow-ups.** Publishing is wired, but there is no
+  per-tenant worker toggle and no operator surface that reports overdue or failed
+  scheduled posts.
 - **H-7 list search and facets.** The `?q=` filter applies to the rows loaded so
   far, and the tag list is built from those rows. `PostsFilter` and
   `PublicPostsFilter` have no text query. Search is not wired to `rustok-search`.
-  The public list (`publicBlogPosts`) is keyset-paginated on `(published_at, id)`
-  and returns no total. The admin `posts` list is keyset-paginated on the sort
+  The public list (`publicBlogPosts`) is keyset-paginated on the full public
+  sort key `(is_pinned, pinned_at, published_at, id)` and returns no total. The admin `posts` list is keyset-paginated on the sort
   column and `id` (`nextCursor`, no total); its REST sort options are
   `published_at`, `updated_at`, and `created_at`, and NULL sort values come last.
-  The GraphQL `posts` query always sorts by `created_at DESC`.
+  The GraphQL `posts` query sorts by `created_at DESC`
+  unless a client requests `sortBy`/`sortOrder`.
 - **H-8 article richness.** The rich-text profile has no inline images, tables,
   embeds, footnotes, callouts, or heading anchors.
 - **H-9 comments.** Readers cannot edit, delete, or report comments. The
@@ -505,8 +989,9 @@ owner decision or a larger implementation.
 - **M-12 duplicated storefronts.** Blog is implemented in both the Next
   storefront and the Leptos `BlogView`. The Leptos storefront resolves retired
   slugs but does not redirect them. The canonical storefront decision is open.
-- **M-13 sorting.** The authenticated GraphQL `posts` path hard-codes
-  `CreatedAt DESC`, and the filter exposes no sort field.
+- **M-13 sorting (closed 2026-10-15).** The authenticated GraphQL `posts` path takes
+  `sortBy`/`sortOrder` and both admin lists expose them; see the 2026-10-15 section
+  above. The only remaining list gap here is search/facets (H-7).
 - **L-1** Counter types are `i32` in storage and `i64` in DTOs
   (`comment_count`); overflow semantics are undocumented.
 - **L-2** Reading time is computed on the frontend from plain text, so it can
@@ -550,9 +1035,16 @@ This comparison was written from the model's knowledge of the platforms and was
 | View analytics | Removed (field had no writer) | Plugins | Native | H-5 |
 | Multi-tenant modular runtime, outbox events | Yes | No | No | strength |
 
+The table describes the 2026-10-08 slice. Three cells moved since: scheduled
+publishing (H-6) and the pinned posts of M-5 are implemented — the owner command plus
+the `blog_scheduled_publish`/`blog_preview_token_cleanup`/`blog_route_reconciliation`
+registrations, and the pin commands with their keyset ordering — and the authenticated
+list sort (M-13) closed on 2026-10-15; see the 2026-10-15 section above for the current
+state and for what is still open.
+
 ### Next waves (from the audit roadmap)
 
-1. H-6 scheduled publishing with a worker on the outbox or cron.
+1. H-6 follow-ups: per-tenant scheduled-publishing toggle and operator visibility.
 2. M-3 trash with retention; M-4 draft preview tokens and revisions.
 3. H-7 server-side `q`, tag and category facets, and relevance-based related
    posts (M-5); M-7 crawlable archives; M-1 Atom and per-taxonomy feeds.
@@ -564,3 +1056,54 @@ This comparison was written from the model's knowledge of the platforms and was
    - Provide `EntityCardResolverPort` adapter for `BlogPost` (`urn:rustok:<tenant>:blog:post:<id>`) supporting Inline Pill, Compact Bookmark Card, and Interactive Article Widget with reading time and author bio.
    - Reverse Backlinks Accordion: query `docs_entity_links` to display "Referenced in Documentation" in blog post management and public article footer.
    - Cross-domain publishing: integrate with `rustok-content-orchestration` to support `publish_doc_to_blog` (direct export of finalized internal documents into blog drafts/posts).
+
+## Superseded historical cursor phrases
+
+The retired slice 97-105 vocabulary is recorded here so that a grep for it finds an
+explanation instead of a mystery. Each entry names where the phrase still exists - the
+historical records keep their own point-in-time claims - and what superseded it in this
+cursor. None of them states the current source state.
+
+Still present in a historical record:
+
+- `category_translation_postgres = source_ready_maintainer_execution_pending`,
+  `cached_public_comments_snapshot = source_ready_maintainer_execution_pending` and
+  `comment_form_fallback = not_applicable_no_storefront_write_surface`, all in
+  `implementation-plan-slice-101.md:25-27`. Superseded by the retired provider
+  (`blog_category_translation_postgres_evidence = superseded_by_taxonomy_cutover`), by the
+  implemented cached snapshot, and by
+  `comment_form_policy = source_verified_hide_on_provider_absence`.
+- `tag_mutation_atomic_reindex = source_ready_maintainer_execution_pending` in
+  `implementation-plan-slice-104.md:53`; the track is source-complete through slice 104.
+- `post_category_name_projection = source_ready_maintainer_execution_pending` in
+  `implementation-plan-slice-105.md:19`; the track is
+  `post_category_name_projection = source_complete_canonical_taxonomy_read`.
+- `It does **not** claim database-side pagination.` in `implementation-plan-slice-102.md:60`.
+  That was accurate for the offset-era slice 102; the tag list paginates in the database
+  now, and the slice-102 sentence is preserved there as its own historical claim.
+
+Retired cursor-generation expectations with no live occurrence in the tree. These are kept
+because the previous `verify-blog-canonical-plan-current` generation required them verbatim
+in this file, and the CAT-17 actualization superseded the cursor status they describe:
+
+- `Status: `canonical_source_cursor_actualized_through_slice_105`.`
+- `tag_list_pagination = source_ready_maintainer_execution_pending` and
+  `tag_canonical_projection = source_ready_maintainer_execution_pending` - the slice tokens
+  are `tag_list_pagination_owner_bound_source_ready_maintainer_execution_pending`
+  (`implementation-plan-slice-102.md:3`) and
+  `tag_canonical_read_search_projection_source_ready_maintainer_execution_pending`
+  (`implementation-plan-slice-103.md:3`); both tracks are source-complete here.
+- `source-complete through slice 105`,
+  `No independent production source gap is claimed after slice 105.`
+- `do not advance that source work before retained maintainer execution of slices 95–97` -
+  the Comments gate is tracked by result in "Remaining execution-owned results".
+
+## Validation boundary
+
+No tests, Cargo commands, Node verifiers, SQLite or PostgreSQL scenarios, builds, Clippy,
+formatting runs, workflow runs, CI runs, HTTP execution or production validation are asserted
+*by this cursor*: every statement it adds about the current source state is a source-read
+claim, and the execution-owned results above stay open until a maintainer runs them at an
+exact revision. Executed results that the historical records already carry stay there - item
+67 of `implementation-plan.md` is the retained example - and this file neither repeats nor
+extends them.

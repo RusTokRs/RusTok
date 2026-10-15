@@ -532,6 +532,80 @@ pub enum BlogPostStatusOperation {
     Unpublish,
 }
 
+/// Sort choices of the admin post list, in the order the UI offers them.
+///
+/// The list is keyset-paged, so the choice is a transport request rather than a
+/// client-side reorder: changing it restarts the list, which is why the option set is
+/// owned here and not in the render adapter.
+pub const BLOG_POST_ADMIN_SORT_FIELDS: [BlogPostSortField; 3] = [
+    BlogPostSortField::CreatedAt,
+    BlogPostSortField::UpdatedAt,
+    BlogPostSortField::PublishedAt,
+];
+
+pub fn blog_post_admin_sort_field_label_key(field: BlogPostSortField) -> &'static str {
+    match field {
+        BlogPostSortField::CreatedAt => "blog.table.sortCreatedAt",
+        BlogPostSortField::UpdatedAt => "blog.table.sortUpdatedAt",
+        BlogPostSortField::PublishedAt => "blog.table.sortPublishedAt",
+    }
+}
+
+pub fn blog_post_admin_sort_order_label_key(order: BlogPostSortOrder) -> &'static str {
+    match order {
+        BlogPostSortOrder::Asc => "blog.table.sortAsc",
+        BlogPostSortOrder::Desc => "blog.table.sortDesc",
+    }
+}
+
+/// Fallback copy when the host has no catalog for the key, so a missing locale entry
+/// degrades to readable English instead of an empty option.
+pub fn blog_post_admin_sort_field_default_label(field: BlogPostSortField) -> &'static str {
+    match field {
+        BlogPostSortField::CreatedAt => "Newest created",
+        BlogPostSortField::UpdatedAt => "Recently updated",
+        BlogPostSortField::PublishedAt => "Recently published",
+    }
+}
+
+pub fn blog_post_admin_sort_order_default_label(order: BlogPostSortOrder) -> &'static str {
+    match order {
+        BlogPostSortOrder::Asc => "Ascending",
+        BlogPostSortOrder::Desc => "Descending",
+    }
+}
+
+/// The whole sort of the admin post list: the column and its direction.
+///
+/// Serializable because the native server-function transport carries it as an argument,
+/// exactly like the GraphQL adapter carries it as a variable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct BlogPostAdminSort {
+    pub field: BlogPostSortField,
+    pub order: BlogPostSortOrder,
+}
+
+impl Default for BlogPostAdminSort {
+    fn default() -> Self {
+        Self {
+            field: BlogPostSortField::default(),
+            order: BlogPostSortOrder::default(),
+        }
+    }
+}
+
+impl BlogPostAdminSort {
+    /// A new sort always restarts the list: a cursor issued for another sort cannot be
+    /// replayed against this one.
+    pub fn with_field(self, field: BlogPostSortField) -> Self {
+        Self { field, ..self }
+    }
+
+    pub fn with_order(self, order: BlogPostSortOrder) -> Self {
+        Self { order, ..self }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostStatusCommand {
     pub post_id: String,

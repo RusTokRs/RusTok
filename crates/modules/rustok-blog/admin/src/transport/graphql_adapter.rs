@@ -63,6 +63,12 @@ struct PostsFilter {
     after: Option<String>,
     #[serde(rename = "perPage")]
     per_page: u64,
+    /// Optional in the schema, always sent by the admin: the sort is part of the
+    /// request, not a client-side reorder of the loaded rows.
+    #[serde(rename = "sortBy")]
+    sort_by: crate::model::BlogPostSortField,
+    #[serde(rename = "sortOrder")]
+    sort_order: crate::model::BlogPostSortOrder,
 }
 
 #[derive(Debug, Serialize)]
@@ -101,8 +107,6 @@ struct CreatePostInput {
     seo_description: Option<String>,
     #[serde(rename = "scheduledAt")]
     scheduled_at: Option<String>,
-    #[serde(rename = "isPinned", skip_serializing_if = "Option::is_none")]
-    is_pinned: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -121,8 +125,6 @@ struct UpdatePostInput {
     seo_title: Option<String>,
     #[serde(rename = "seoDescription", skip_serializing_if = "Option::is_none")]
     seo_description: Option<String>,
-    #[serde(rename = "isPinned", skip_serializing_if = "Option::is_none")]
-    is_pinned: Option<bool>,
     version: i32,
 }
 
@@ -162,6 +164,7 @@ pub async fn fetch_posts(
     tenant_slug: Option<String>,
     locale: Option<String>,
     after: Option<String>,
+    sort: crate::core::BlogPostAdminSort,
 ) -> Result<BlogPostList, ApiError> {
     let response: BlogPostsResponse = request(
         BLOG_POSTS_QUERY,
@@ -170,6 +173,8 @@ pub async fn fetch_posts(
                 locale,
                 after,
                 per_page: 20,
+                sort_by: sort.field,
+                sort_order: sort.order,
             },
         },
         token,
@@ -221,7 +226,6 @@ pub async fn create_post(
                 seo_title: None,
                 seo_description: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         },
         token.clone(),
@@ -255,7 +259,6 @@ pub async fn update_post(
                 featured_image_url: None,
                 seo_title: None,
                 seo_description: None,
-                is_pinned: None,
                 version: draft.version.ok_or_else(|| {
                     GraphqlHttpError::Graphql(
                         "Blog post revision is missing; reload before saving".into(),

@@ -10,6 +10,20 @@ const requireFile = (path) => {
 const requireAbsent = (path) => {
   if (fs.existsSync(path)) failures.push(`${path}: retired file must remain absent`);
 };
+/// The cursor keeps superseded phrases verbatim in its marked archive section (see the
+/// `## Superseded historical cursor phrases` heading), and the canonical-plan-current guard
+/// enforces that they appear *only* there. The retirement checks below are about live text,
+/// so they run against the document with that section removed. A missing section leaves the
+/// document untouched, which keeps the rejection fail-closed.
+const liveCursorText = (source) => {
+  const start = source.indexOf('## Superseded historical cursor phrases');
+  if (start < 0) return source;
+  const end = source.indexOf('## Validation boundary', start);
+  // Both boundaries are required: an unterminated archive section would otherwise hide
+  // everything after it from the retirement checks.
+  if (end < 0) return source;
+  return source.slice(0, start) + source.slice(end);
+};
 const requireMarker = (source, marker, label = marker) => {
   if (!source.includes(marker)) failures.push(`missing ${label}`);
 };
@@ -30,7 +44,6 @@ for (const path of [
   'crates/modules/rustok-blog/docs/implementation-plan-slice-98.md',
   'crates/modules/rustok-blog/src/migrations/m20260824_000020_backfill_blog_categories_to_taxonomy.rs',
   'crates/modules/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs',
-  'crates/modules/rustok-blog/src/entities/blog_category_translation.rs',
   'crates/modules/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs',
 ]) {
   requireFile(path);
@@ -50,14 +63,15 @@ for (const path of [
 
 if (failures.length === 0) {
   const cursor = read(currentCursorPath);
+  const liveCursor = liveCursorText(cursor);
   const crateReadme = read(crateReadmePath);
   const docsReadme = read(docsReadmePath);
   const entities = read(entitiesPath);
 
   requireMarker(
     cursor,
-    'canonical_reference_v1_hardening_in_progress_after_taxonomy_cat_17',
-    'post-CAT-17 canonical reference cursor status',
+    'canonical_reference_v1_source_certified_execution_evidence_pending',
+    'current canonical reference cursor status',
   );
   requireMarker(cursor, 'blog_category_taxonomy_cutover = source_complete_through_cat12');
   requireMarker(
@@ -84,17 +98,17 @@ if (failures.length === 0) {
     'There is no predeclared Blog Category Translation cleanup slice after CAT-17.',
   );
   rejectMarker(
-    cursor,
+    liveCursor,
     'canonical_source_cursor_actualized_through_taxonomy_cat_12`.',
     'stale CAT-12-only cursor status',
   );
   rejectMarker(
-    cursor,
+    liveCursor,
     'The next bounded source task is a cross-cutting documentation actualization:',
     'completed cross-cutting documentation next cursor',
   );
   rejectMarker(
-    cursor,
+    liveCursor,
     'category_translation_postgres = source_ready_maintainer_execution_pending',
     'superseded Blog Category provider execution gate',
   );
@@ -117,12 +131,7 @@ if (failures.length === 0) {
     'retired Blog owner journal contract',
   );
 
-  requireMarker(
-    entities,
-    'pub(crate) mod blog_category_translation;',
-    'crate-private historical donor entity',
-  );
-  rejectMarker(entities, 'pub mod blog_category_translation;', 'public donor entity exposure');
+  rejectMarker(entities, 'blog_category_translation', 'retired donor entity exposure');
   rejectMarker(entities, 'translation_change', 'retired change entity registration');
 }
 

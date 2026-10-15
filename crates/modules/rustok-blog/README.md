@@ -21,9 +21,11 @@ Blog contract:
 
 - `src/module.rs` owns `RusToKModule` / `MigrationSource` wiring;
 - `src/domain/` owns the Blog state machine and article richtext policy;
-- `src/services/` owns application/use-case orchestration;
+- `src/services/` owns application/use-case orchestration and the `runtime`-gated
+  module-work registrations (`src/services/scheduler.rs`);
 - `src/entities/` and `src/migrations/` own Blog persistence;
-- `src/integrations/` owns SEO, reaction, and public-comment snapshot adapters;
+- `src/integrations/` owns SEO, reaction, public-comment snapshot, and
+  route/target-deletion adapters;
 - `src/graphql/` and `src/controllers/` are thin owner transport adapters;
 - `src/lib.rs` is a facade that preserves deliberate public re-exports.
 
@@ -31,7 +33,11 @@ Large responsibilities are nested below their owner slot. In particular,
 `PostService` is split into command, query, repository/projection, helper-policy,
 and test files instead of one shared source hotspot.
 
-The source shape is guarded by `npm run verify:module-source-layout`.
+The source shape is guarded by `npm run verify:module-source-layout`. That profile
+admits only `lib.rs` and `module.rs` at the source root, so Blog has no root
+`runtime.rs`: a runtime handle bundle belongs in `src/module.rs` or an existing
+responsibility slot, which is why the `runtime`-gated
+module-work registrations live in `src/services/scheduler.rs`.
 
 ## Canonical reference semantic contract
 
@@ -42,8 +48,10 @@ first implementation of the semantic reference contract in
 Key invariants include current-tenant authority, truthful locale provenance,
 explicit `Patch<T>` updates, mandatory edit CAS, one executable lifecycle
 policy, derived-state/business-revision separation, redacted public errors,
-private persistence entities, owner-service integration seams, deterministic
-pagination, and honest FBA readiness.
+private persistence entities (the one documented exception is the
+orchestration bridge surface re-exported by `ports`, pinned by
+`verify:module-reference-contract` and tracked as L-4), owner-service integration
+seams, deterministic pagination, and honest FBA readiness.
 
 The module-owned UI packages use a separate adapter profile:
 `core/` for commands/presentation/tests, `transport/` for GraphQL/native
@@ -89,8 +97,8 @@ The current boundary is:
 - Blog Category delete delegates canonical lifecycle cleanup to Taxonomy;
 - `blog_categories` remains Blog-owned for module membership, settings, owner
   revision and local command invariants;
-- historical migration `000020` may use the crate-private donor translation
-  entity during upgrade, after which `000021` irreversibly removes
+- historical migration `000020` may read the donor translation table through a
+  migration-local entity during upgrade, after which `000021` irreversibly removes
   `blog_category_translations` and `blog_translation_changes` once same-ID
   Taxonomy ownership is proven.
 
@@ -163,6 +171,12 @@ copy must use the canonical Taxonomy owner contract.
   previous route as an alias. Public reads resolve it to the current post, and the
   storefront redirects permanently to the current slug. Creating a post may take
   a retired slug. Deleting a post purges its routes.
+- Route cleanup does not depend on that delete path: Blog consumes `TargetDeleted` for
+  `blog_post` targets (`blog_target_deletion_routes`) and removes the matching routes idempotently,
+  reporting them through `UrlAliasPurged`. A route whose target is gone no longer resolves — the
+  read returns "not found" and records the `dangling_route_redirect` module metric — and the
+  `blog_route_reconciliation` module-work registration sweeps the remaining rows in bounded,
+  tenant-scoped batches.
 - Post routes are stored under `CANONICAL_POST_ROUTE_LOCALE` (the platform
   fallback locale), because Blog slugs are global canonical identifiers.
 - `published_at` is the first publication time. It is preserved across
@@ -174,13 +188,111 @@ copy must use the canonical Taxonomy owner contract.
 
 See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md).
 
-## Known limitations
+## Scheduled publishing
+
+- Blog owns three durable work queues and publishes them to the host scheduler as
+  `ModuleWorkRegistrations`; there is no module-local timer. The registration is
+  `runtime`-gated in `src/module.rs`, the adapters live in `src/services/scheduler.rs`, and the
+  host owns the poll loop and the deployment stop signal: `blog_scheduled_publish`,
+  `blog_preview_token_cleanup` and `blog_route_reconciliation`. A deployment that does not
+  run the host's module-work scheduler in `full`/`worker` mode gets no scheduled publishing.
+- Every work item is tenant-scoped. Discovery is a read-only hint (the tenant with the
+  earliest due schedule) and the owner command re-checks the due predicate through the
+  post-version CAS, so one tenant's backlog cannot starve another and a stale hint cannot
+  publish the wrong post.
+- `PostService::publish_scheduled_posts(tenant_id, limit)` publishes the drafts of one
+  tenant whose `scheduled_at` has passed, oldest first, at most
+  `limit.clamp(1, MAX_SCHEDULED_PUBLISH_BATCH)` = 200 per call. Each post runs the same
+  transition command as a manual publish in its own transaction: a post edited after the scan
+  fails the CAS and is skipped with a warning instead of being overwritten, and the next
+  scheduler iteration picks it up. The `BlogPostPublished` event is published in the same
+  transaction, under the system actor — which is why this command is never reachable from an
+  end-user transport.
+- `scheduled_at` is a draft-only intent on both write paths. On create, setting it together
+  with `publish: true` is rejected; on update, a `Set` patch is refused unless the row is a
+  draft, and a past timestamp is refused on both. Publishing clears the schedule it consumed,
+  so a published post never carries one.
+- Setting a schedule announces `BlogPostScheduled` in the same transaction (on create and on a
+  `Set` patch); clearing it announces `BlogPostScheduleCancelled`. A `Keep` patch publishes
+  neither event.
+- `blog_preview_token_cleanup` deletes the expired preview tokens of one tenant, at most
+  `bounded_cleanup_batch(limit)` rows per iteration (clamped into
+  `1..=MAX_PREVIEW_TOKEN_CLEANUP_BATCH`, i.e. 500 — `0` means one row, never the whole backlog).
+- `blog_route_reconciliation` removes at most 200 stale routes per iteration whose
+  `blog_post` target no longer exists, and reports them through `UrlAliasPurged`. It is the
+  safety net for a missed `TargetDeleted` delivery, so it complements the idempotent
+  `blog_target_deletion_routes` handler rather than replacing it.
+
+## Preview tokens
+
+- `PreviewTokenService` mints an opaque 256-bit token (`URL_SAFE_NO_PAD` base64) for one post of
+  one tenant. A token read is unauthenticated by design: the token is the whole authorization of
+  that read, which is why minting, expiry and revocation are strict.
+- Minting is restricted to **drafts** and to the post author or a caller with post update
+  permission. The TTL (`ttl_hours`, default 168) is validated against `1..=720`, so a token can
+  neither be born expired nor outlive 30 days; an out-of-range request is refused instead of being
+  stored.
+- `get_post_by_token` resolves only an unexpired token whose tenant still has Blog enabled, and
+  loads the post through the draft-only preview accessor. A revoked, expired, foreign, or
+  module-disabled token reads as "not found" rather than as an error.
+- `revoke_token` reports a missing or foreign token as `PreviewTokenNotFound`
+  (`PREVIEW_TOKEN_NOT_FOUND`), never as a missing post.
+- A token authorizes a read of a draft only, so leaving the draft state revokes the post's
+  tokens inside the same lifecycle transaction: publishing (manually or through
+  `blog_scheduled_publish`) and archiving both delete them. The accessor already refuses to
+  serve a non-draft post, and revoking on the transition keeps a token row from coming back
+  to life if the post returns to draft through `unpublish` or `restore`.
+- Retention is tenant-scoped: `cleanup_expired(tenant_id, limit)` (limit clamped to
+  `MAX_PREVIEW_TOKEN_CLEANUP_BATCH` = 500) is drained by the `blog_preview_token_cleanup`
+  module-work registration of `src/services/scheduler.rs`, and deleting a post removes its tokens through
+  the `fk_blog_preview_tokens_post` cascade. Like every Blog worker it runs only in host modes
+  `full`/`worker`.
+
+## Admin post listing
+
+- `posts(filter:)` exposes the tenant's posts as keyset pages: `after`/`perPage` plus
+  `sortBy` (`PUBLISHED_AT`, `UPDATED_AT`, `CREATED_AT`) and `sortOrder`
+  (`ASC`/`DESC`), defaulting to `CREATED_AT DESC`. Each sort column has its own
+  index from `m20260328_000001`, so a sorted page reads the index instead of sorting
+  the table.
+- A cursor is bound to the sort it was issued for: reusing it with another
+  `sortBy`/`sortOrder` is rejected with a validation error instead of resuming at a
+  wrong position.
+- The list never counts rows; `nextCursor` is present only while another page
+  exists. NULL sort values come last in both directions.
+- Both admin surfaces (the Leptos `rustok-blog-admin` table and the Next
+  `@rustok/blog-admin` post list) expose that sort as a control. Changing the column or
+  the direction clears `after` and the page history, because a cursor issued for one sort
+  cannot be replayed against another.
+
+## Bulk post operations
+
+- Four GraphQL mutations act on a list of post ids — `bulkPublishPosts`,
+  `bulkUnpublishPosts`, `bulkArchivePosts` (post publish permission) and `bulkDeletePosts`
+  (post delete permission). No REST endpoint exposes bulk work.
+- The request is bounded at `MAX_BULK_POST_IDS` = 100 ids. The GraphQL input mirrors the
+  bound with `#[graphql(validator(max_items = 100))]`, and
+  `PostService::ensure_bulk_batch_is_bounded` re-checks it before any work starts, because a
+  service caller is not a transport. An oversized request is refused as a validation error
+  rather than truncated.
+- A batch is **not** atomic across ids, and that is the contract: each id runs its own
+  transition command in its own transaction with its own lifecycle event, and one id's
+  failure never aborts the others. The response is per id — `succeeded`, `failed`,
+  `succeededIds` and `failures { postId, code, message }` — so a caller can retry exactly the
+  ids that failed.
+- Every failure is reported through `BlogPublicError`, the module's single redacted public
+  boundary: an `Invariant` or `Database` failure reaches the caller as the internal code and a
+  generic message, never as display text naming storage internals.
+- The fan-out is bounded from both sides: the 100-id cap and the per-root rate limit
+  (`bulk_publish_posts`, `bulk_unpublish_posts`, `bulk_archive_posts`, `bulk_delete_posts` in
+  the GraphQL rate-limit table), so one request is at most 100 transactions and 100 events.
+
+## Known Limitations / Pending Implementation
 
 The following are not implemented. Each is tracked with its audit identifier in
 [the current implementation cursor](./docs/implementation-plan-current.md#open-backlog-known-limitations).
 
-- No scheduled publishing (H-6); no server-side text search or facets for the
-  post list (H-7).
+- No server-side text search or facets for the post list (H-7).
 - The rich-text body has no inline images, tables, or embeds (H-8).
 - Readers cannot edit, delete, or report comments, and comments send no
   notifications (H-9).
@@ -189,7 +301,26 @@ The following are not implemented. Each is tracked with its audit identifier in
 - Anonymous REST read access is not available (M-8).
 - Newsletter, membership, and paid content are not available (M-9).
 - Reactions are limited to `like` on posts (M-10).
+- Preview reads have no audit trail (M-13 of
+  [`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md));
+  the token lifecycle itself is closed — a token of a post that left `draft` is revoked by the
+  transition (see "Preview tokens").
+- Bulk post operations run one transaction and one lifecycle event per id inside the request, so a
+  batch is not atomic across ids and a request that dies mid-way leaves the remaining ids
+  unprocessed; a queue-based bulk command that resumes is not implemented (H-5 of the 2026-10-15
+  audit). The fan-out is bounded by the [100-id cap and the per-root rate limit](#bulk-post-operations).
+- A route row whose post disappeared stays in the database until `blog_route_reconciliation` sweeps
+  it, so the window is bounded by the host scheduler rather than by a cross-module transaction
+  (H-7 of the 2026-10-15 audit).
 - The Leptos storefront does not redirect retired slugs (M-12).
+- Blog Tag mutations are authorized by this module, not by the Taxonomy owner: the owner's
+  `update_module_term_in_tx`/`delete_module_term_in_tx` accept a `SecurityContext` they do not
+  read (`crates/modules/rustok-taxonomy/src/module_term_mutation.rs`), so
+  `TagService::update_tag`/`delete_tag` enforce `Tags:Update`/`Tags:Delete` before the call and
+  forward the same context. Adding `Resource::Taxonomy` enforcement to the owner is a
+  cross-module policy decision (a role holding `Tags:Update` without `Taxonomy:Update` would
+  stop being able to edit tags), tracked in
+  [the current implementation cursor](./docs/implementation-plan-current.md#open-backlog-known-limitations).
 
 ## Entry points
 

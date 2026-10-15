@@ -160,8 +160,15 @@ pub async fn list_public_comments_with_snapshot(
                     crate::domain::comment_policy::BlogCommentsMode::ReadOnly => {
                         PublicCommentsAvailability::ReadOnly
                     }
+                    // The disabled mode returns before the provider read, so this arm
+                    // is a policy/read disagreement: report it instead of panicking.
                     crate::domain::comment_policy::BlogCommentsMode::Disabled => {
-                        unreachable!("disabled comments policy returned before provider read")
+                        tracing::error!(
+                            tenant_id = %tenant_id,
+                            post_id = %post_id,
+                            "Blog comments policy reported disabled after a successful provider read"
+                        );
+                        return Err(BlogError::CommentsPolicyUnavailable);
                     }
                 },
                 cached_snapshot: false,
