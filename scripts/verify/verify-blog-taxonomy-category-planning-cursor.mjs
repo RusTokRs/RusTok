@@ -10,6 +10,20 @@ const requireFile = (path) => {
 const requireAbsent = (path) => {
   if (fs.existsSync(path)) failures.push(`${path}: retired file must remain absent`);
 };
+/// The cursor keeps superseded phrases verbatim in its marked archive section (see the
+/// `## Superseded historical cursor phrases` heading), and the canonical-plan-current guard
+/// enforces that they appear *only* there. The retirement checks below are about live text,
+/// so they run against the document with that section removed. A missing section leaves the
+/// document untouched, which keeps the rejection fail-closed.
+const liveCursorText = (source) => {
+  const start = source.indexOf('## Superseded historical cursor phrases');
+  if (start < 0) return source;
+  const end = source.indexOf('## Validation boundary', start);
+  // Both boundaries are required: an unterminated archive section would otherwise hide
+  // everything after it from the retirement checks.
+  if (end < 0) return source;
+  return source.slice(0, start) + source.slice(end);
+};
 const requireMarker = (source, marker, label = marker) => {
   if (!source.includes(marker)) failures.push(`missing ${label}`);
 };
@@ -49,6 +63,7 @@ for (const path of [
 
 if (failures.length === 0) {
   const cursor = read(currentCursorPath);
+  const liveCursor = liveCursorText(cursor);
   const crateReadme = read(crateReadmePath);
   const docsReadme = read(docsReadmePath);
   const entities = read(entitiesPath);
@@ -83,17 +98,17 @@ if (failures.length === 0) {
     'There is no predeclared Blog Category Translation cleanup slice after CAT-17.',
   );
   rejectMarker(
-    cursor,
+    liveCursor,
     'canonical_source_cursor_actualized_through_taxonomy_cat_12`.',
     'stale CAT-12-only cursor status',
   );
   rejectMarker(
-    cursor,
+    liveCursor,
     'The next bounded source task is a cross-cutting documentation actualization:',
     'completed cross-cutting documentation next cursor',
   );
   rejectMarker(
-    cursor,
+    liveCursor,
     'category_translation_postgres = source_ready_maintainer_execution_pending',
     'superseded Blog Category provider execution gate',
   );

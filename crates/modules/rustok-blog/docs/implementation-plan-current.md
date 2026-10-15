@@ -190,13 +190,18 @@ previous cursor. Their latest retained source states remain:
 - `canonical_outbox_relay_postgres_evidence_source_ready_maintainer_execution_pending`;
 - `cached_public_comments_snapshot = source_implemented_maintainer_execution_pending`;
 - `comment_form_policy = source_verified_hide_on_provider_absence`; the active storefront writes only when Comments is available, while unavailable/timeout states preserve explicit read availability and may render the cached approved snapshot.
-- `tag_list_pagination = source_complete_maintainer_execution_pending`;
+- `tag_list_pagination = source_complete_maintainer_execution_pending`; the list paginates in the
+  database and is bounded by the owner-clamped page size and by the saturating page index, so
+  no request can reach an unbounded or overflow-prone offset.
 - `tag_canonical_projection = source_complete_maintainer_execution_pending`;
 - `tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending`; the tag source line is
   source-complete through slice 104 (bounded list pagination in slice 102, canonical
   relation/Taxonomy read and Search source in slice 103, atomic dictionary mutation with the
-  Blog reindex in slice 104). What remains is maintainer execution: running the retained
-  harness, and the cross-module permission item recorded below.
+  Blog reindex in slice 104); `tag_delete_relation_cleanup = declared_fk_cascade`, because the
+  manual relation pre-delete is gone and `blog_post_tags.tag_id -> taxonomy_terms.id ON DELETE
+  CASCADE` removes the attachment rows inside the Taxonomy-owned transaction. What remains is
+  maintainer execution: running the retained harness, and the cross-module permission item
+  recorded below.
 - `global_tag_search_invalidation = source_complete_maintainer_execution_pending`;
 - `post_category_name_projection = source_complete_canonical_taxonomy_read`.
 - `comment_target_lifecycle_guard = source_complete`; comment reads and mutations that begin from a Comments record revalidate canonical Blog post existence, so asynchronously stale Comments threads cannot remain operable after terminal post deletion.
@@ -701,6 +706,15 @@ base `1a420c8`).
     function — one anchor no longer existed and the other edited `create_tag`'s reindex call,
     so both cases silently asserted nothing while the guard stayed green. Both now mutate their
     section (bracketed by the function boundaries) and fail if the mutation does not apply.
+  - The plan-cursor pair itself (`canonical-plan-current` and its self-test) was the last
+    blog-scoped item of that set, and it was repaired by re-pointing it at the current cursor
+    generation: the retired provider-era evidence is asserted **absent** (the mirror of
+    `taxonomy-category-planning-cursor`), the CAT-17 actualization is asserted, the track
+    statuses are checked against the evidence files they restate, the superseded slice 97-105
+    vocabulary is archived in a marked section and forbidden as a live claim, and the
+    historical baseline boundary is checked against the value the cursor evidence records.
+    The Blog set is now 17 failures, all of them the Comments host-runtime slice guards listed
+    below, and the repository-wide run has no red script that is green at the base commit.
   - Evidence corrections: `blog-tag-mutation-reindex-source.json` claimed
     `taxonomy_*_permission_preserved` (three peer-side guarantees the Taxonomy owner never
     provided — its `_security` parameter is unused at base too) and
@@ -970,3 +984,54 @@ state and for what is still open.
    - Provide `EntityCardResolverPort` adapter for `BlogPost` (`urn:rustok:<tenant>:blog:post:<id>`) supporting Inline Pill, Compact Bookmark Card, and Interactive Article Widget with reading time and author bio.
    - Reverse Backlinks Accordion: query `docs_entity_links` to display "Referenced in Documentation" in blog post management and public article footer.
    - Cross-domain publishing: integrate with `rustok-content-orchestration` to support `publish_doc_to_blog` (direct export of finalized internal documents into blog drafts/posts).
+
+## Superseded historical cursor phrases
+
+The retired slice 97-105 vocabulary is recorded here so that a grep for it finds an
+explanation instead of a mystery. Each entry names where the phrase still exists - the
+historical records keep their own point-in-time claims - and what superseded it in this
+cursor. None of them states the current source state.
+
+Still present in a historical record:
+
+- `category_translation_postgres = source_ready_maintainer_execution_pending`,
+  `cached_public_comments_snapshot = source_ready_maintainer_execution_pending` and
+  `comment_form_fallback = not_applicable_no_storefront_write_surface`, all in
+  `implementation-plan-slice-101.md:25-27`. Superseded by the retired provider
+  (`blog_category_translation_postgres_evidence = superseded_by_taxonomy_cutover`), by the
+  implemented cached snapshot, and by
+  `comment_form_policy = source_verified_hide_on_provider_absence`.
+- `tag_mutation_atomic_reindex = source_ready_maintainer_execution_pending` in
+  `implementation-plan-slice-104.md:53`; the track is source-complete through slice 104.
+- `post_category_name_projection = source_ready_maintainer_execution_pending` in
+  `implementation-plan-slice-105.md:19`; the track is
+  `post_category_name_projection = source_complete_canonical_taxonomy_read`.
+- `It does **not** claim database-side pagination.` in `implementation-plan-slice-102.md:60`.
+  That was accurate for the offset-era slice 102; the tag list paginates in the database
+  now, and the slice-102 sentence is preserved there as its own historical claim.
+
+Retired cursor-generation expectations with no live occurrence in the tree. These are kept
+because the previous `verify-blog-canonical-plan-current` generation required them verbatim
+in this file, and the CAT-17 actualization superseded the cursor status they describe:
+
+- `Status: `canonical_source_cursor_actualized_through_slice_105`.`
+- `tag_list_pagination = source_ready_maintainer_execution_pending` and
+  `tag_canonical_projection = source_ready_maintainer_execution_pending` - the slice tokens
+  are `tag_list_pagination_owner_bound_source_ready_maintainer_execution_pending`
+  (`implementation-plan-slice-102.md:3`) and
+  `tag_canonical_read_search_projection_source_ready_maintainer_execution_pending`
+  (`implementation-plan-slice-103.md:3`); both tracks are source-complete here.
+- `source-complete through slice 105`,
+  `No independent production source gap is claimed after slice 105.`
+- `do not advance that source work before retained maintainer execution of slices 95–97` -
+  the Comments gate is tracked by result in "Remaining execution-owned results".
+
+## Validation boundary
+
+No tests, Cargo commands, Node verifiers, SQLite or PostgreSQL scenarios, builds, Clippy,
+formatting runs, workflow runs, CI runs, HTTP execution or production validation are asserted
+*by this cursor*: every statement it adds about the current source state is a source-read
+claim, and the execution-owned results above stay open until a maintainer runs them at an
+exact revision. Executed results that the historical records already carry stay there - item
+67 of `implementation-plan.md` is the retained example - and this file neither repeats nor
+extends them.

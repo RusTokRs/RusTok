@@ -8,7 +8,7 @@
   "historical_baseline": "crates/modules/rustok-blog/docs/implementation-plan.md",
   "canonical_current_cursor": "crates/modules/rustok-blog/docs/implementation-plan-current.md",
   "actualization_slice": "crates/modules/rustok-blog/docs/implementation-plan-slice-101.md",
-  "historical_baseline_last_embedded_slice": 67,
+  "historical_baseline_last_embedded_slice": 72,
   "latest_behavior_slice": 105,
   "current_recorded_slice": 105,
   "source_tracks": {
@@ -24,34 +24,30 @@
       "must_not_advance_before_execution": true
     },
     "category_translation_postgres": {
-      "status": "source_ready_maintainer_execution_pending",
-      "slice": "crates/modules/rustok-blog/docs/implementation-plan-slice-98.md",
-      "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json",
+      "status": "superseded_by_taxonomy_cutover",
+      "retired_slice": "crates/modules/rustok-blog/docs/implementation-plan-slice-98.md",
+      "retired_evidence": "crates/modules/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json",
+      "must_remain_absent": true,
       "must_not_reopen_as_source_gap": true
     },
     "cached_public_comments_snapshot": {
-      "status": "source_ready_maintainer_execution_pending",
+      "status": "source_implemented_maintainer_execution_pending",
       "slice": "crates/modules/rustok-blog/docs/implementation-plan-slice-99.md",
       "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json",
       "must_not_reopen_as_source_gap": true
     },
-    "storefront_comment_form_fallback": {
-      "status": "not_applicable_no_storefront_write_surface",
-      "slice": "crates/modules/rustok-blog/docs/implementation-plan-slice-100.md",
-      "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json",
-      "must_not_reopen_as_source_gap": true
-    },
     "tag_list_pagination": {
-      "status": "source_ready_maintainer_execution_pending",
+      "status": "source_complete_maintainer_execution_pending",
       "slice": "crates/modules/rustok-blog/docs/implementation-plan-slice-102.md",
       "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json",
       "maximum_page_size": 100,
-      "offset_overflow_safe": true,
-      "database_side_pagination_claimed": false,
-      "must_not_reopen_as_source_gap": true
+      "database_side_pagination_claimed": true,
+      "must_not_reopen_as_source_gap": true,
+      "page_index_uses_saturating_arithmetic": true,
+      "extreme_page_skips_database_fetch_after_total_count_guard": true
     },
     "tag_canonical_projection": {
-      "status": "source_ready_maintainer_execution_pending",
+      "status": "source_complete_maintainer_execution_pending",
       "slice": "crates/modules/rustok-blog/docs/implementation-plan-slice-103.md",
       "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json",
       "attachment_source": "blog_post_tags",
@@ -61,7 +57,7 @@
       "must_not_reopen_as_source_gap": true
     },
     "tag_mutation_atomic_reindex": {
-      "status": "source_ready_maintainer_execution_pending",
+      "status": "source_complete_maintainer_execution_pending",
       "slice": "crates/modules/rustok-blog/docs/implementation-plan-slice-104.md",
       "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json",
       "canonical_source_defined": true,
@@ -72,7 +68,7 @@
       "must_not_reopen_as_source_gap": true
     },
     "post_category_name_projection": {
-      "status": "taxonomy_owner_cutover_source_ready_maintainer_execution_pending",
+      "status": "source_complete_canonical_taxonomy_read",
       "slice": "crates/modules/rustok-blog/docs/implementation-plan-slice-105.md",
       "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json",
       "category_identity_source": "blog_posts.category_id",
@@ -85,6 +81,13 @@
       "list_batch_projection": true,
       "legacy_category_translation_read_removed": true,
       "category_translation_readiness_promoted": false,
+      "must_not_reopen_as_source_gap": true
+    },
+    "comment_form_policy": {
+      "status": "source_verified_hide_on_provider_absence",
+      "slice": "crates/modules/rustok-blog/docs/implementation-plan-slice-100.md",
+      "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json",
+      "write_surface_evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json",
       "must_not_reopen_as_source_gap": true
     }
   },
@@ -116,5 +119,6 @@
     "no_workflow_result",
     "no_ci_result",
     "no_production_result"
-  ]
+  ],
+  "documentation_cursor_actualization": "owner_scoped_actualized_through_cat17"
 }
