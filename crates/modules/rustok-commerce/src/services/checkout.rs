@@ -126,6 +126,22 @@ impl CheckoutService {
         actor_id: Uuid,
         input: CompleteCheckoutInput,
     ) -> CheckoutResult<CompleteCheckoutResponse> {
+        if tenant_id.is_nil() {
+            return Err(CheckoutError::Validation("tenant_id must not be nil UUID".to_string()));
+        }
+        if actor_id.is_nil() {
+            return Err(CheckoutError::Validation("actor_id must not be nil UUID".to_string()));
+        }
+        if input.cart_id.is_nil() {
+            return Err(CheckoutError::Validation("cart_id must not be nil UUID".to_string()));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            cart_id = %input.cart_id,
+            locale = ?input.locale,
+            "complete_checkout entry"
+        );
         input
             .validate()
             .map_err(|error| CheckoutError::Validation(error.to_string()))?;

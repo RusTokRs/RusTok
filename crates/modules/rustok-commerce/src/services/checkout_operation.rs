@@ -510,6 +510,12 @@ impl CheckoutOperationJournal {
         input: BeginCheckoutOperation,
     ) -> CheckoutOperationResult<checkout_operation::Model> {
         let input = normalize_begin_input(input)?;
+        tracing::debug!(
+            tenant_id = %input.tenant_id,
+            cart_id = %input.cart_id,
+            idempotency_key = %input.idempotency_key,
+            "begin checkout operation"
+        );
         if let Some(existing) = self
             .find_by_key(
                 input.tenant_id,
@@ -1003,9 +1009,41 @@ impl CheckoutOperationJournal {
         &self,
         input: CheckoutOperationCheckpoint,
     ) -> CheckoutOperationResult<checkout_operation::Model> {
+        if input.tenant_id.is_nil() {
+            return Err(CheckoutOperationError::Validation(
+                "tenant_id must not be nil UUID".to_string(),
+            ));
+        }
+        if input.operation_id.is_nil() {
+            return Err(CheckoutOperationError::Validation(
+                "operation_id must not be nil UUID".to_string(),
+            ));
+        }
+        if let Some(order_id) = input.order_id {
+            if order_id.is_nil() {
+                return Err(CheckoutOperationError::Validation(
+                    "order_id must not be nil UUID".to_string(),
+                ));
+            }
+        }
+        if let Some(payment_collection_id) = input.payment_collection_id {
+            if payment_collection_id.is_nil() {
+                return Err(CheckoutOperationError::Validation(
+                    "payment_collection_id must not be nil UUID".to_string(),
+                ));
+            }
+        }
         let lease_owner = normalize_lease_owner(input.lease_owner)?;
         let lease_seconds = normalize_lease_seconds(input.lease_seconds)?;
         let snapshot_hash = input.snapshot_hash.map(normalize_hash).transpose()?;
+        tracing::debug!(
+            tenant_id = %input.tenant_id,
+            operation_id = %input.operation_id,
+            expected_stage = input.expected_stage.as_str(),
+            next_stage = input.next_stage.as_str(),
+            lease_owner = %lease_owner,
+            "checkpoint checkout operation"
+        );
         let now = Utc::now().fixed_offset();
         let lease_expires_at = now + Duration::seconds(lease_seconds);
 
@@ -1883,6 +1921,11 @@ async fn ensure_cart_tenant(
     tenant_id: Uuid,
     cart_id: Uuid,
 ) -> CheckoutOperationResult<()> {
+    if tenant_id.is_nil() || cart_id.is_nil() {
+        return Err(CheckoutOperationError::Validation(
+            "tenant_id and cart_id must not be nil UUID".to_string(),
+        ));
+    }
     let found = rustok_cart::entities::cart::Entity::find_by_id(cart_id)
         .filter(rustok_cart::entities::cart::Column::TenantId.eq(tenant_id))
         .one(db)
@@ -1900,6 +1943,11 @@ async fn ensure_order_tenant(
     tenant_id: Uuid,
     order_id: Uuid,
 ) -> CheckoutOperationResult<()> {
+    if tenant_id.is_nil() || order_id.is_nil() {
+        return Err(CheckoutOperationError::Validation(
+            "tenant_id and order_id must not be nil UUID".to_string(),
+        ));
+    }
     let found = rustok_order::entities::order::Entity::find_by_id(order_id)
         .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
         .one(db)
@@ -1917,6 +1965,11 @@ async fn ensure_payment_collection_tenant(
     tenant_id: Uuid,
     payment_collection_id: Uuid,
 ) -> CheckoutOperationResult<()> {
+    if tenant_id.is_nil() || payment_collection_id.is_nil() {
+        return Err(CheckoutOperationError::Validation(
+            "tenant_id and payment_collection_id must not be nil UUID".to_string(),
+        ));
+    }
     let found =
         rustok_payment::entities::payment_collection::Entity::find_by_id(payment_collection_id)
             .filter(rustok_payment::entities::payment_collection::Column::TenantId.eq(tenant_id))
@@ -1975,6 +2028,16 @@ fn active_cart_conflict(cart_id: Uuid, operation_id: Uuid) -> CheckoutOperationE
 fn normalize_begin_input(
     mut input: BeginCheckoutOperation,
 ) -> CheckoutOperationResult<BeginCheckoutOperation> {
+    if input.tenant_id.is_nil() {
+        return Err(CheckoutOperationError::Validation(
+            "tenant_id must not be nil UUID".to_string(),
+        ));
+    }
+    if input.cart_id.is_nil() {
+        return Err(CheckoutOperationError::Validation(
+            "cart_id must not be nil UUID".to_string(),
+        ));
+    }
     input.idempotency_key = normalize_bounded("idempotency_key", input.idempotency_key, 191)?;
     input.request_hash = normalize_hash(input.request_hash)?;
     input.snapshot_hash = input.snapshot_hash.map(normalize_hash).transpose()?;
@@ -2160,5 +2223,35 @@ mod tests {
         assert!(CheckoutOperationStatus::ReconciliationRequired.is_parked());
         assert!(!CheckoutOperationStatus::Compensating.is_parked());
         assert!(!CheckoutOperationStatus::CompensationRequired.requires_completed_at());
+    }
+
+    #[test]
+    fn begin_checkout_operation_rejects_nil_uuids() {
+        let valid = BeginCheckoutOperation {
+            tenant_id: Uuid::new_v4(),
+            cart_id: Uuid::new_v4(),
+            idempotency_key: "idem-key-1".to_string(),
+            request_hash: "a1b2c3d4".to_string(),
+            snapshot_hash: None,
+        };
+        assert!(normalize_begin_input(valid).is_ok());
+
+        let nil_tenant = BeginCheckoutOperation {
+            tenant_id: Uuid::nil(),
+            cart_id: Uuid::new_v4(),
+            idempotency_key: "idem-key-1".to_string(),
+            request_hash: "a1b2c3d4".to_string(),
+            snapshot_hash: None,
+        };
+        assert!(normalize_begin_input(nil_tenant).is_err());
+
+        let nil_cart = BeginCheckoutOperation {
+            tenant_id: Uuid::new_v4(),
+            cart_id: Uuid::nil(),
+            idempotency_key: "idem-key-1".to_string(),
+            request_hash: "a1b2c3d4".to_string(),
+            snapshot_hash: None,
+        };
+        assert!(normalize_begin_input(nil_cart).is_err());
     }
 }
