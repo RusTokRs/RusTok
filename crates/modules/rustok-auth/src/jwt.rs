@@ -81,6 +81,16 @@ pub fn encode_access_token(
     role: UserRole,
     session_id: Uuid,
 ) -> Result<String> {
+    if user_id.is_nil() || tenant_id.is_nil() || session_id.is_nil() {
+        return Err(AuthError::TokenEncodingFailed);
+    }
+    tracing::debug!(
+        user_id = %user_id,
+        tenant_id = %tenant_id,
+        role = ?role,
+        session_id = %session_id,
+        "Encoding access token"
+    );
     let now = Utc::now();
     let exp = token_expiration(now, config.access_expiration)?;
 
@@ -106,6 +116,17 @@ pub fn encode_oauth_access_token(
     config: &AuthConfig,
     input: OauthAccessTokenInput<'_>,
 ) -> Result<String> {
+    if input.app_id.is_nil() || input.tenant_id.is_nil() || input.client_id.is_nil() {
+        return Err(AuthError::TokenEncodingFailed);
+    }
+    tracing::debug!(
+        app_id = %input.app_id,
+        tenant_id = %input.tenant_id,
+        role = ?input.role,
+        client_id = %input.client_id,
+        grant_type = %input.grant_type,
+        "Encoding OAuth access token"
+    );
     let now = Utc::now();
     let exp = token_expiration(now, input.expires_in_secs)?;
 
@@ -138,11 +159,22 @@ pub struct OauthAccessTokenInput<'a> {
 }
 
 pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(AuthError::InvalidAccessToken);
+    }
+    tracing::debug!("Decoding access token");
     let validation = strict_jwt_validation(config);
 
-    decode::<Claims>(token, &decoding_key(config)?, &validation)
+    let claims = decode::<Claims>(token, &decoding_key(config)?, &validation)
         .map(|data| data.claims)
-        .map_err(|_| AuthError::InvalidAccessToken)
+        .map_err(|_| AuthError::InvalidAccessToken)?;
+
+    if claims.sub.is_nil() || claims.tenant_id.is_nil() {
+        return Err(AuthError::InvalidAccessToken);
+    }
+
+    Ok(claims)
 }
 
 // ─── Special-purpose tokens ──────────────────────────────────────────
@@ -153,6 +185,11 @@ pub fn encode_password_reset_token(
     email: &str,
     ttl_seconds: u64,
 ) -> Result<String> {
+    let email = email.trim();
+    if email.is_empty() || tenant_id.is_nil() {
+        return Err(AuthError::TokenEncodingFailed);
+    }
+    tracing::debug!(tenant_id = %tenant_id, "Encoding password reset token");
     let now = Utc::now();
     let exp = token_expiration(now, ttl_seconds)?;
 
@@ -174,13 +211,18 @@ pub fn decode_password_reset_token(
     config: &AuthConfig,
     token: &str,
 ) -> Result<PasswordResetClaims> {
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(AuthError::InvalidResetToken);
+    }
+    tracing::debug!("Decoding password reset token");
     let validation = strict_jwt_validation(config);
 
     let claims = decode::<PasswordResetClaims>(token, &decoding_key(config)?, &validation)
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidResetToken)?;
 
-    if claims.purpose != PASSWORD_RESET_PURPOSE {
+    if claims.tenant_id.is_nil() || claims.sub.trim().is_empty() || claims.purpose != PASSWORD_RESET_PURPOSE {
         return Err(AuthError::InvalidResetToken);
     }
 
@@ -193,6 +235,11 @@ pub fn encode_email_verification_token(
     email: &str,
     ttl_seconds: u64,
 ) -> Result<String> {
+    let email = email.trim();
+    if email.is_empty() || tenant_id.is_nil() {
+        return Err(AuthError::TokenEncodingFailed);
+    }
+    tracing::debug!(tenant_id = %tenant_id, "Encoding email verification token");
     let now = Utc::now();
     let exp = token_expiration(now, ttl_seconds)?;
 
@@ -214,13 +261,18 @@ pub fn decode_email_verification_token(
     config: &AuthConfig,
     token: &str,
 ) -> Result<EmailVerificationClaims> {
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(AuthError::InvalidVerificationToken);
+    }
+    tracing::debug!("Decoding email verification token");
     let validation = strict_jwt_validation(config);
 
     let claims = decode::<EmailVerificationClaims>(token, &decoding_key(config)?, &validation)
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidVerificationToken)?;
 
-    if claims.purpose != EMAIL_VERIFICATION_PURPOSE {
+    if claims.tenant_id.is_nil() || claims.sub.trim().is_empty() || claims.purpose != EMAIL_VERIFICATION_PURPOSE {
         return Err(AuthError::InvalidVerificationToken);
     }
 
@@ -234,6 +286,11 @@ pub fn encode_invite_token(
     role: UserRole,
     ttl_seconds: u64,
 ) -> Result<String> {
+    let email = email.trim();
+    if email.is_empty() || tenant_id.is_nil() {
+        return Err(AuthError::TokenEncodingFailed);
+    }
+    tracing::debug!(tenant_id = %tenant_id, role = ?role, "Encoding invite token");
     let now = Utc::now();
     let exp = token_expiration(now, ttl_seconds)?;
 
@@ -253,13 +310,18 @@ pub fn encode_invite_token(
 }
 
 pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteClaims> {
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(AuthError::InvalidInviteToken);
+    }
+    tracing::debug!("Decoding invite token");
     let validation = strict_jwt_validation(config);
 
     let claims = decode::<InviteClaims>(token, &decoding_key(config)?, &validation)
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidInviteToken)?;
 
-    if claims.purpose != INVITE_PURPOSE {
+    if claims.tenant_id.is_nil() || claims.sub.trim().is_empty() || claims.purpose != INVITE_PURPOSE {
         return Err(AuthError::InvalidInviteToken);
     }
 
@@ -724,5 +786,99 @@ mod tests {
 
         let claims = decode_access_token(&config, &token).unwrap();
         assert_eq!(claims.exp - claims.iat, 3600);
+    }
+
+    #[test]
+    fn encode_access_token_rejects_nil_uuids() {
+        let config = test_config();
+        assert!(
+            encode_access_token(
+                &config,
+                Uuid::nil(),
+                Uuid::new_v4(),
+                UserRole::Admin,
+                Uuid::new_v4()
+            )
+            .is_err()
+        );
+        assert!(
+            encode_access_token(
+                &config,
+                Uuid::new_v4(),
+                Uuid::nil(),
+                UserRole::Admin,
+                Uuid::new_v4()
+            )
+            .is_err()
+        );
+        assert!(
+            encode_access_token(
+                &config,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                UserRole::Admin,
+                Uuid::nil()
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn decode_access_token_trims_whitespace_and_rejects_empty() {
+        let config = test_config();
+        let token = encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Admin,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+
+        let padded_token = format!("   {}   \n", token);
+        let claims = decode_access_token(&config, &padded_token).expect("padded token should decode");
+        assert_eq!(claims.role, UserRole::Admin);
+
+        assert!(decode_access_token(&config, "").is_err());
+        assert!(decode_access_token(&config, "   ").is_err());
+    }
+
+    #[test]
+    fn special_purpose_tokens_reject_empty_email_and_nil_tenant() {
+        let config = test_config();
+        let valid_tenant = Uuid::new_v4();
+
+        assert!(encode_password_reset_token(&config, valid_tenant, "", 900).is_err());
+        assert!(encode_password_reset_token(&config, valid_tenant, "   ", 900).is_err());
+        assert!(encode_password_reset_token(&config, Uuid::nil(), "user@example.com", 900).is_err());
+
+        assert!(encode_email_verification_token(&config, valid_tenant, "", 900).is_err());
+        assert!(encode_email_verification_token(&config, valid_tenant, "   ", 900).is_err());
+        assert!(encode_email_verification_token(&config, Uuid::nil(), "user@example.com", 900).is_err());
+
+        assert!(encode_invite_token(&config, valid_tenant, "", UserRole::Manager, 900).is_err());
+        assert!(encode_invite_token(&config, valid_tenant, "   ", UserRole::Manager, 900).is_err());
+        assert!(encode_invite_token(&config, Uuid::nil(), "user@example.com", UserRole::Manager, 900).is_err());
+    }
+
+    #[test]
+    fn special_purpose_tokens_trim_whitespace_and_reject_empty() {
+        let config = test_config();
+        let tenant_id = Uuid::new_v4();
+
+        let reset_token = encode_password_reset_token(&config, tenant_id, "user@example.com", 900).unwrap();
+        let padded_reset = format!("  {}  ", reset_token);
+        assert!(decode_password_reset_token(&config, &padded_reset).is_ok());
+        assert!(decode_password_reset_token(&config, "").is_err());
+
+        let verify_token = encode_email_verification_token(&config, tenant_id, "user@example.com", 900).unwrap();
+        let padded_verify = format!("  {}  ", verify_token);
+        assert!(decode_email_verification_token(&config, &padded_verify).is_ok());
+        assert!(decode_email_verification_token(&config, "").is_err());
+
+        let invite_token = encode_invite_token(&config, tenant_id, "user@example.com", UserRole::Manager, 900).unwrap();
+        let padded_invite = format!("  {}  ", invite_token);
+        assert!(decode_invite_token(&config, &padded_invite).is_ok());
+        assert!(decode_invite_token(&config, "").is_err());
     }
 }

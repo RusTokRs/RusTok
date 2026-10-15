@@ -12,6 +12,7 @@ pub const MAX_PASSWORD_LENGTH_BYTES: usize = 1024;
 
 /// Hash a password with Argon2id and a random salt.
 pub fn hash_password(password: &str) -> Result<String> {
+    tracing::debug!(password_len = password.len(), "Hashing password with Argon2id");
     if password.is_empty() || password.len() > MAX_PASSWORD_LENGTH_BYTES {
         return Err(AuthError::PasswordHashFailed);
     }
@@ -23,10 +24,14 @@ pub fn hash_password(password: &str) -> Result<String> {
 
 /// Verify a password against an Argon2 hash.
 pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
+    tracing::debug!(password_len = password.len(), "Verifying password against hash");
     if password.is_empty() || password.len() > MAX_PASSWORD_LENGTH_BYTES {
         return Ok(false);
     }
-    let parsed = PasswordHash::new(password_hash).map_err(|_| AuthError::InvalidCredentials)?;
+    let parsed = match PasswordHash::new(password_hash) {
+        Ok(p) => p,
+        Err(_) => return Ok(false),
+    };
     Ok(Argon2::default()
         .verify_password(password.as_bytes(), &parsed)
         .is_ok())
@@ -34,6 +39,7 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
 
 /// Generate a cryptographically secure 256-bit refresh token (64 hex chars).
 pub fn generate_refresh_token() -> Result<String> {
+    tracing::debug!("Generating 256-bit cryptographically secure refresh token");
     let mut bytes = [0u8; 32];
     OsRng
         .try_fill_bytes(&mut bytes)
@@ -43,6 +49,7 @@ pub fn generate_refresh_token() -> Result<String> {
 
 /// SHA-256 hash of a refresh token for secure storage.
 pub fn hash_refresh_token(token: &str) -> String {
+    tracing::debug!("Hashing refresh token with SHA-256 for secure storage");
     let token = token.trim();
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
@@ -123,5 +130,12 @@ mod tests {
         assert!(hash_password(&oversized).is_err());
         assert!(!verify_password("", "$argon2id$v=19$m=19456,t=2,p=1$fake$fake").unwrap_or(true));
         assert!(!verify_password(&oversized, "$argon2id$v=19$m=19456,t=2,p=1$fake$fake").unwrap_or(true));
+    }
+
+    #[test]
+    fn password_verify_handles_malformed_hash_gracefully() {
+        assert!(!verify_password("password", "not-a-valid-argon2-hash").unwrap_or(true));
+        assert!(!verify_password("password", "").unwrap_or(true));
+        assert!(!verify_password("password", "   ").unwrap_or(true));
     }
 }
