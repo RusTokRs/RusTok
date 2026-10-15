@@ -129,6 +129,19 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
     ) -> Result<FulfillmentResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, "read_fulfillment_projection")?;
+        if request.fulfillment_id.is_nil() {
+            return Err(PortError::validation(
+                "fulfillment.validation",
+                "fulfillment_id must not be nil",
+            ));
+        }
+        tracing::debug!(
+            owner = FULFILLMENT_OWNER,
+            operation = "read_fulfillment_projection",
+            correlation_id = %context.correlation_id,
+            fulfillment_id = %request.fulfillment_id,
+            "reading fulfillment projection"
+        );
         let request_facts = fulfillment_lifecycle_read_request_facts(
             Some(request.fulfillment_id),
             None,
@@ -153,6 +166,30 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
     ) -> Result<FulfillmentProjectionPage, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, "list_fulfillment_projections")?;
+        if matches!(request.order_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "fulfillment.validation",
+                "order_id must not be nil",
+            ));
+        }
+        if matches!(request.customer_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "fulfillment.validation",
+                "customer_id must not be nil",
+            ));
+        }
+        let page = request.page.max(1);
+        let per_page = request.per_page.clamp(1, 100);
+        tracing::debug!(
+            owner = FULFILLMENT_OWNER,
+            operation = "list_fulfillment_projections",
+            correlation_id = %context.correlation_id,
+            page,
+            per_page,
+            order_id = ?request.order_id,
+            customer_id = ?request.customer_id,
+            "listing fulfillment projections"
+        );
         let status_length = request.status.as_deref().map(str::len);
         let order_id = request.order_id;
         let customer_id = request.customer_id;
@@ -165,8 +202,8 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
             self.inner.list_fulfillments(
                 tenant_id,
                 ListFulfillmentsInput {
-                    page: request.page,
-                    per_page: request.per_page,
+                    page,
+                    per_page,
                     status: request.status,
                     order_id,
                     customer_id,
@@ -185,6 +222,19 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
     ) -> Result<Option<FulfillmentResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, "find_latest_fulfillment_by_order_projection")?;
+        if request.order_id.is_nil() {
+            return Err(PortError::validation(
+                "fulfillment.validation",
+                "order_id must not be nil",
+            ));
+        }
+        tracing::debug!(
+            owner = FULFILLMENT_OWNER,
+            operation = "find_latest_fulfillment_by_order_projection",
+            correlation_id = %context.correlation_id,
+            order_id = %request.order_id,
+            "finding latest fulfillment by order projection"
+        );
         let request_facts =
             fulfillment_lifecycle_read_request_facts(None, Some(request.order_id), None, None);
 
@@ -374,7 +424,8 @@ fn fulfillment_lifecycle_read_request_facts(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let raw = context.tenant_id.trim();
+    let tenant_id = Uuid::parse_str(raw).map_err(|_| {
         let context_facts = fulfillment_lifecycle_read_context_facts(context);
         tracing::warn!(
             owner = FULFILLMENT_OWNER,
@@ -404,7 +455,25 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
             "fulfillment.context_invalid",
             "fulfillment request context is invalid",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let context_facts = fulfillment_lifecycle_read_context_facts(context);
+        tracing::warn!(
+            owner = FULFILLMENT_OWNER,
+            operation,
+            correlation_id = %context.correlation_id,
+            tenant_id_parse_failed = true,
+            tenant_id_length = context_facts.tenant_id_length,
+            code = "fulfillment.context_invalid",
+            boundary = FULFILLMENT_LIFECYCLE_READ_BOUNDARY,
+            "fulfillment lifecycle read tenant context must not be nil"
+        );
+        return Err(PortError::validation(
+            "fulfillment.context_invalid",
+            "fulfillment request tenant context must not be nil",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn map_owner_error(

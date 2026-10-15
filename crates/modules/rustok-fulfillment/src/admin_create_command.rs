@@ -226,6 +226,26 @@ impl FulfillmentAdminCreateCommandPort for InProcessFulfillmentAdminCreateComman
                 "fulfillment create request is invalid",
             )
         })?;
+        if request.input.order_id.is_nil() {
+            return Err(PortError::validation(
+                "fulfillment.validation",
+                "order_id must not be nil",
+            ));
+        }
+        if matches!(request.input.shipping_option_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "fulfillment.validation",
+                "shipping_option_id must not be nil",
+            ));
+        }
+        tracing::debug!(
+            boundary = ADMIN_CREATE_BOUNDARY,
+            owner_operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            order_id = %request.input.order_id,
+            provider_id = %request.provider_id,
+            "executing create admin fulfillment command"
+        );
         let provider_id = request.provider_id.trim().to_string();
         if provider_id.is_empty() || provider_id.len() > 100 {
             return Err(PortError::validation(
@@ -654,7 +674,8 @@ fn ensure_create_label_request_unchanged(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
+    let raw = context.tenant_id.trim();
+    let tenant_id = Uuid::parse_str(raw).map_err(|_| {
         tracing::error!(
             boundary = ADMIN_CREATE_BOUNDARY,
             owner_operation = operation,
@@ -665,7 +686,20 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
             "fulfillment.tenant_invalid",
             "fulfillment tenant identity is invalid",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        tracing::error!(
+            boundary = ADMIN_CREATE_BOUNDARY,
+            owner_operation = operation,
+            tenant_id_length = context.tenant_id.len(),
+            "fulfillment admin create command received nil tenant identity"
+        );
+        return Err(PortError::validation(
+            "fulfillment.tenant_invalid",
+            "fulfillment tenant identity must not be nil",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn map_fulfillment_error(

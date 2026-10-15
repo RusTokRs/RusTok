@@ -152,6 +152,22 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         const OPERATION: &str = "ship_admin_fulfillment";
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        if request.fulfillment_id.is_nil() {
+            let error = PortError::validation(
+                "fulfillment.validation",
+                "fulfillment_id must not be nil",
+            );
+            log_port_error(&context, OPERATION, "fulfillment_id", &error);
+            return Err(error);
+        }
+        tracing::debug!(
+            owner = "rustok_fulfillment",
+            operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            fulfillment_id = %request.fulfillment_id,
+            boundary = ADMIN_COMMAND_BOUNDARY,
+            "executing ship fulfillment command"
+        );
         request.input.validate().map_err(|_| {
             PortError::validation(
                 "fulfillment.validation",
@@ -269,6 +285,22 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         const OPERATION: &str = "deliver_admin_fulfillment";
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        if request.fulfillment_id.is_nil() {
+            let error = PortError::validation(
+                "fulfillment.validation",
+                "fulfillment_id must not be nil",
+            );
+            log_port_error(&context, OPERATION, "fulfillment_id", &error);
+            return Err(error);
+        }
+        tracing::debug!(
+            owner = "rustok_fulfillment",
+            operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            fulfillment_id = %request.fulfillment_id,
+            boundary = ADMIN_COMMAND_BOUNDARY,
+            "executing deliver fulfillment command"
+        );
         request.input.validate().map_err(|_| {
             PortError::validation(
                 "fulfillment.validation",
@@ -289,6 +321,22 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         const OPERATION: &str = "reopen_admin_fulfillment";
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        if request.fulfillment_id.is_nil() {
+            let error = PortError::validation(
+                "fulfillment.validation",
+                "fulfillment_id must not be nil",
+            );
+            log_port_error(&context, OPERATION, "fulfillment_id", &error);
+            return Err(error);
+        }
+        tracing::debug!(
+            owner = "rustok_fulfillment",
+            operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            fulfillment_id = %request.fulfillment_id,
+            boundary = ADMIN_COMMAND_BOUNDARY,
+            "executing reopen fulfillment command"
+        );
         self.service
             .reopen_fulfillment(tenant_id, request.fulfillment_id, request.input)
             .await
@@ -303,6 +351,22 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         const OPERATION: &str = "reship_admin_fulfillment";
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        if request.fulfillment_id.is_nil() {
+            let error = PortError::validation(
+                "fulfillment.validation",
+                "fulfillment_id must not be nil",
+            );
+            log_port_error(&context, OPERATION, "fulfillment_id", &error);
+            return Err(error);
+        }
+        tracing::debug!(
+            owner = "rustok_fulfillment",
+            operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            fulfillment_id = %request.fulfillment_id,
+            boundary = ADMIN_COMMAND_BOUNDARY,
+            "executing reship fulfillment command"
+        );
         request.input.validate().map_err(|_| {
             PortError::validation(
                 "fulfillment.validation",
@@ -427,6 +491,22 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         const OPERATION: &str = "cancel_admin_fulfillment";
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        if request.fulfillment_id.is_nil() {
+            let error = PortError::validation(
+                "fulfillment.validation",
+                "fulfillment_id must not be nil",
+            );
+            log_port_error(&context, OPERATION, "fulfillment_id", &error);
+            return Err(error);
+        }
+        tracing::debug!(
+            owner = "rustok_fulfillment",
+            operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            fulfillment_id = %request.fulfillment_id,
+            boundary = ADMIN_COMMAND_BOUNDARY,
+            "executing cancel fulfillment command"
+        );
         request.input.validate().map_err(|_| {
             PortError::validation(
                 "fulfillment.validation",
@@ -892,14 +972,24 @@ fn require_write_admission(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let raw = context.tenant_id.trim();
+    let tenant_id = Uuid::parse_str(raw).map_err(|_| {
         let error = PortError::validation(
             "fulfillment.tenant_id_invalid",
             "fulfillment command tenant context is invalid",
         );
         log_port_error(context, operation, "tenant_id", &error);
         error
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let error = PortError::validation(
+            "fulfillment.tenant_id_invalid",
+            "fulfillment command tenant context must not be nil",
+        );
+        log_port_error(context, operation, "tenant_id", &error);
+        return Err(error);
+    }
+    Ok(tenant_id)
 }
 
 fn map_fulfillment_error(

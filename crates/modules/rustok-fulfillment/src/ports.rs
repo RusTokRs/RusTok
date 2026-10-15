@@ -96,6 +96,20 @@ impl ShippingSelectionPort for crate::FulfillmentService {
     ) -> Result<SellerShippingOptionsSnapshot, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, "list_seller_shipping_options")?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "fulfillment.cart_id_nil",
+                "fulfillment cart id cannot be nil",
+            ));
+        }
+        tracing::debug!(
+            target: "rustok_fulfillment::ports",
+            operation = "list_seller_shipping_options",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            seller_id = ?request.seller_id,
+            "listing seller shipping options"
+        );
         let options = self
             .list_shipping_options(tenant_id, Some(&context.locale), Some(&context.locale))
             .await
@@ -133,6 +147,27 @@ impl ShippingSelectionPort for crate::FulfillmentService {
     ) -> Result<SelectedShippingOptionSnapshot, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_port_tenant_id(&context, "select_shipping_option")?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "fulfillment.cart_id_nil",
+                "fulfillment cart id cannot be nil",
+            ));
+        }
+        if request.shipping_option_id.is_nil() {
+            return Err(PortError::validation(
+                "fulfillment.shipping_option_id_nil",
+                "fulfillment shipping option id cannot be nil",
+            ));
+        }
+        tracing::debug!(
+            target: "rustok_fulfillment::ports",
+            operation = "select_shipping_option",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            shipping_option_id = %request.shipping_option_id,
+            seller_id = ?request.seller_id,
+            "selecting shipping option"
+        );
         let option = self
             .get_shipping_option(
                 tenant_id,
@@ -276,7 +311,7 @@ fn parse_port_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
         let context_facts = fulfillment_port_context_facts(context);
         tracing::warn!(
             owner = FULFILLMENT_OWNER,
@@ -306,7 +341,26 @@ fn parse_port_tenant_id(
             "fulfillment.context_invalid",
             "fulfillment request context is invalid",
         )
-    })
+    })?;
+
+    if tenant_id.is_nil() {
+        let context_facts = fulfillment_port_context_facts(context);
+        tracing::warn!(
+            owner = FULFILLMENT_OWNER,
+            operation = owner_operation,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            code = "fulfillment.tenant_id_nil",
+            boundary = SHIPPING_SELECTION_BOUNDARY,
+            "fulfillment shipping selection tenant id cannot be nil"
+        );
+        return Err(PortError::validation(
+            "fulfillment.tenant_id_nil",
+            "fulfillment tenant id cannot be nil",
+        ));
+    }
+
+    Ok(tenant_id)
 }
 
 fn fulfillment_error_to_port_error(
@@ -433,3 +487,34 @@ fn fulfillment_error_to_port_error(
 
     PortError::new(kind, code, message, retryable)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_port_tenant_id_rejects_empty_and_nil() {
+        let empty_context = PortContext::new("", rustok_api::PortActor::system(), "en", "test");
+        let err = parse_port_tenant_id(&empty_context, "test").unwrap_err();
+        assert_eq!(err.code, "fulfillment.context_invalid");
+
+        let nil_context = PortContext::new(
+            Uuid::nil().to_string(),
+            rustok_api::PortActor::system(),
+            "en",
+            "test",
+        );
+        let err = parse_port_tenant_id(&nil_context, "test").unwrap_err();
+        assert_eq!(err.code, "fulfillment.tenant_id_nil");
+
+        let valid_id = Uuid::new_v4();
+        let valid_context = PortContext::new(
+            format!("  {}  ", valid_id),
+            rustok_api::PortActor::system(),
+            "en",
+            "test",
+        );
+        assert_eq!(parse_port_tenant_id(&valid_context, "test").unwrap(), valid_id);
+    }
+}
+

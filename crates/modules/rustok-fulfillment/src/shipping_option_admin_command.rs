@@ -171,6 +171,37 @@ impl InProcessShippingOptionAdminCommandPort {
     ) -> Result<ShippingOptionResponse, PortError> {
         require_write_admission(context, operation)?;
         let tenant_id = parse_tenant_id(context, operation)?;
+        match &command {
+            ShippingOptionAdminCommand::Update(request) if request.shipping_option_id.is_nil() => {
+                return Err(PortError::validation(
+                    "fulfillment.shipping_option_id_nil",
+                    "shipping option id cannot be nil",
+                ));
+            }
+            ShippingOptionAdminCommand::Deactivate(request)
+                if request.shipping_option_id.is_nil() =>
+            {
+                return Err(PortError::validation(
+                    "fulfillment.shipping_option_id_nil",
+                    "shipping option id cannot be nil",
+                ));
+            }
+            ShippingOptionAdminCommand::Reactivate(request)
+                if request.shipping_option_id.is_nil() =>
+            {
+                return Err(PortError::validation(
+                    "fulfillment.shipping_option_id_nil",
+                    "shipping option id cannot be nil",
+                ));
+            }
+            _ => {}
+        }
+        tracing::debug!(
+            target: "rustok_fulfillment::shipping_option_admin_command",
+            operation,
+            tenant_id = %tenant_id,
+            "executing idempotent shipping option admin command"
+        );
         let idempotency_key = context.idempotency_key.as_deref().unwrap_or_default();
 
         let lease = match idempotency::admit(
@@ -296,14 +327,23 @@ fn require_write_admission(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
         let error = PortError::validation(
             "fulfillment.tenant_id_invalid",
             "fulfillment command tenant context is invalid",
         );
         log_port_error(context, operation, "tenant_id", &error);
         error
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let error = PortError::validation(
+            "fulfillment.tenant_id_nil",
+            "fulfillment command tenant id cannot be nil",
+        );
+        log_port_error(context, operation, "tenant_id", &error);
+        return Err(error);
+    }
+    Ok(tenant_id)
 }
 
 fn map_fulfillment_error(

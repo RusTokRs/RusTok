@@ -144,6 +144,13 @@ impl ShippingOptionReadPort for InProcessShippingOptionReadPort {
     ) -> Result<Vec<ShippingOptionResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, "list_shipping_option_projections")?;
+        tracing::debug!(
+            target: "rustok_fulfillment::shipping_option_read",
+            operation = "list_shipping_option_projections",
+            tenant_id = %tenant_id,
+            requested_locale = ?request.requested_locale,
+            "listing shipping option projections"
+        );
         let request_facts = shipping_option_read_request_facts(
             None,
             request.requested_locale.as_deref().map(str::len),
@@ -174,6 +181,19 @@ impl ShippingOptionReadPort for InProcessShippingOptionReadPort {
     ) -> Result<ShippingOptionResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, "read_shipping_option_projection")?;
+        if request.shipping_option_id.is_nil() {
+            return Err(PortError::validation(
+                "fulfillment.shipping_option_id_nil",
+                "shipping option id cannot be nil",
+            ));
+        }
+        tracing::debug!(
+            target: "rustok_fulfillment::shipping_option_read",
+            operation = "read_shipping_option_projection",
+            tenant_id = %tenant_id,
+            shipping_option_id = %request.shipping_option_id,
+            "reading shipping option projection"
+        );
         let request_facts = shipping_option_read_request_facts(
             Some(request.shipping_option_id),
             request.requested_locale.as_deref().map(str::len),
@@ -208,6 +228,13 @@ impl ShippingOptionAdminReadPort for InProcessShippingOptionAdminReadPort {
     ) -> Result<Vec<ShippingOptionResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, "list_all_shipping_option_projections")?;
+        tracing::debug!(
+            target: "rustok_fulfillment::shipping_option_read",
+            operation = "list_all_shipping_option_projections",
+            tenant_id = %tenant_id,
+            requested_locale = ?request.requested_locale,
+            "listing all shipping option projections"
+        );
         let request_facts = shipping_option_read_request_facts(
             None,
             request.requested_locale.as_deref().map(str::len),
@@ -348,7 +375,7 @@ fn shipping_option_read_request_facts(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
         let context_facts = shipping_option_read_context_facts(context);
         tracing::warn!(
             owner = FULFILLMENT_OWNER,
@@ -378,7 +405,26 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
             "fulfillment.context_invalid",
             "fulfillment request context is invalid",
         )
-    })
+    })?;
+
+    if tenant_id.is_nil() {
+        let context_facts = shipping_option_read_context_facts(context);
+        tracing::warn!(
+            owner = FULFILLMENT_OWNER,
+            operation,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context_facts.tenant_id_length,
+            code = "fulfillment.tenant_id_nil",
+            boundary = SHIPPING_OPTION_READ_BOUNDARY,
+            "fulfillment shipping-option read tenant id cannot be nil"
+        );
+        return Err(PortError::validation(
+            "fulfillment.tenant_id_nil",
+            "fulfillment tenant id cannot be nil",
+        ));
+    }
+
+    Ok(tenant_id)
 }
 
 fn map_owner_error(
