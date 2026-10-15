@@ -15,12 +15,11 @@ use serde::Deserialize;
 
 use crate::error::ForumError;
 
-const PAGE_BACKED_FORUM_QUERY_FIELDS: [&str; 6] = [
+const PAGE_BACKED_FORUM_QUERY_FIELDS: [&str; 5] = [
     "forumCategories",
     "forumTopics",
     "forumReplies",
     "forumStorefrontCategories",
-    "forumStorefrontTopics",
     "forumStorefrontReplies",
 ];
 const PAGE_BOUNDARY_ERROR: &str = "Forum pagination window must start on a page boundary";

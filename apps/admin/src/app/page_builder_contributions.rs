@@ -262,6 +262,9 @@ fn required_contribution_permissions(enabled_modules: &HashSet<String>) -> Vec<S
     if enabled_modules.contains("forum") {
         permissions.extend(rustok_forum_admin::forum_contribution_manifest().required_permissions);
     }
+    if enabled_modules.contains("blog") {
+        permissions.extend(rustok_blog_admin::blog_contribution_manifest().required_permissions);
+    }
     permissions.sort();
     permissions.dedup();
     permissions
@@ -286,6 +289,15 @@ fn ResolvedPageBuilderContributionScope(
             .with_preview_port(Arc::new(ForumPageBuilderPreviewPort))
             .with_property_port(Arc::new(ForumPageBuilderPropertyPort)),
         );
+    }
+    if enabled_modules.contains("blog") {
+        extensions.push(PageBuilderContributionHostExtension::new(
+            rustok_blog_admin::blog_contribution_manifest(),
+            |registries| {
+                rustok_blog_admin::register_blog_fly_widgets(registries)
+                    .map_err(|error| error.to_string())
+            },
+        ));
     }
 
     match PageBuilderContributionHostContext::new(extensions) {

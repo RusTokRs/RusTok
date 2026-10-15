@@ -8,7 +8,10 @@ use crate::{
     SearchSuggestionQuery, SearchSuggestionService,
 };
 
-/// Transport-neutral owner boundary for search execution and suggestions.
+/// Raw Search owner boundary for trusted admin/host consumers only. This port
+/// does not resolve a storefront channel or compose Forum's audience owner;
+/// never expose it directly through a public search transport. Use the
+/// storefront-specific owner execution path for public requests instead.
 #[async_trait]
 pub trait SearchQueryPort: Send + Sync {
     async fn execute_search(
@@ -55,6 +58,8 @@ impl SearchQueryPort for PgSearchEngine {
 }
 
 /// Transport-neutral owner boundary for autocomplete suggestions.
+/// Raw suggestions for trusted admin/host consumers only; a storefront must
+/// use `SearchSuggestionService::storefront_suggestions` with a resolved channel.
 #[async_trait]
 pub trait SearchSuggestionPort: Send + Sync {
     async fn suggest(

@@ -75,6 +75,16 @@ pub trait SearchProjectionSourceFactory: Send + Sync {
     fn source_module(&self) -> &'static str;
 
     fn build(&self, db: DatabaseConnection) -> Arc<dyn SearchProjectionSource>;
+
+    /// Hosted sources can retrieve neutral owner ports at materialization time.
+    /// The registry is registered before the host publishes all capabilities.
+    fn build_with_extensions(
+        &self,
+        db: DatabaseConnection,
+        _extensions: &ModuleRuntimeExtensions,
+    ) -> Arc<dyn SearchProjectionSource> {
+        self.build(db)
+    }
 }
 
 #[derive(Clone, Default)]
@@ -106,6 +116,18 @@ impl SearchProjectionSourceRegistry {
         self.factories
             .get(&source_module)
             .map(|factory| factory.build(db))
+    }
+
+    pub fn build_with_extensions(
+        &self,
+        source_module: &str,
+        db: DatabaseConnection,
+        extensions: &ModuleRuntimeExtensions,
+    ) -> Option<Arc<dyn SearchProjectionSource>> {
+        let source_module = normalize_source_module(source_module).ok()?;
+        self.factories
+            .get(&source_module)
+            .map(|factory| factory.build_with_extensions(db, extensions))
     }
 
     pub fn source_modules(&self) -> Vec<String> {

@@ -16,6 +16,12 @@ pub(super) fn validate_identity(identity: &CheckoutPaymentIdentity) -> Result<()
             "checkout payment identity contains invalid UUID or amount fields",
         ));
     }
+    if matches!(identity.customer_id, Some(id) if id.is_nil()) {
+        return Err(PortError::validation(
+            "payment.checkout_customer_id_nil",
+            "checkout payment customer_id must not be a nil UUID",
+        ));
+    }
     let currency = identity.currency_code.trim();
     if currency.len() != 3
         || !currency
@@ -150,4 +156,57 @@ pub(super) fn provider_id_for_collection(collection: &PaymentCollectionResponse)
         .provider_id
         .clone()
         .unwrap_or_else(|| MANUAL_PAYMENT_PROVIDER_ID.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_identity() -> CheckoutPaymentIdentity {
+        CheckoutPaymentIdentity {
+            checkout_operation_id: Uuid::new_v4(),
+            cart_id: Uuid::new_v4(),
+            order_id: Uuid::new_v4(),
+            customer_id: Some(Uuid::new_v4()),
+            currency_code: "USD".to_string(),
+            amount: Decimal::new(100, 0),
+            order_plan_hash: "a".repeat(64),
+        }
+    }
+
+    #[test]
+    fn validate_identity_accepts_valid() {
+        assert!(validate_identity(&valid_identity()).is_ok());
+    }
+
+    #[test]
+    fn validate_identity_rejects_nil_uuids() {
+        let mut id = valid_identity();
+        id.checkout_operation_id = Uuid::nil();
+        assert_eq!(
+            validate_identity(&id).unwrap_err().code,
+            "payment.checkout_identity_invalid"
+        );
+
+        let mut id = valid_identity();
+        id.cart_id = Uuid::nil();
+        assert_eq!(
+            validate_identity(&id).unwrap_err().code,
+            "payment.checkout_identity_invalid"
+        );
+
+        let mut id = valid_identity();
+        id.order_id = Uuid::nil();
+        assert_eq!(
+            validate_identity(&id).unwrap_err().code,
+            "payment.checkout_identity_invalid"
+        );
+
+        let mut id = valid_identity();
+        id.customer_id = Some(Uuid::nil());
+        assert_eq!(
+            validate_identity(&id).unwrap_err().code,
+            "payment.checkout_customer_id_nil"
+        );
+    }
 }

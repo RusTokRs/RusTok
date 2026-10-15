@@ -7,8 +7,8 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ForumTopicReadOperation, ForumTopicReadTransport, RevisionService, TopicResponse,
-    topic_read_audience_port_context,
+    ForumContentTarget, ForumTopicReadOperation, ForumTopicReadTransport, RevisionService,
+    TopicResponse, topic_read_audience_port_context,
 };
 
 use super::{ForumGraphqlRuntimeData, GqlForumTopic};
@@ -55,6 +55,31 @@ impl ForumStorefrontAudienceTopicQuery {
             .current_topic_revision(tenant_id, topic.id)
             .await?;
         Ok(Some(revision.to_string()))
+    }
+
+    /// Global relation-revision primary key for a visible topic's effective
+    /// locale, suitable for `GqlForumQuoteReferenceInput.revisionId`. Missing
+    /// and audience-denied topics are indistinguishable and expose no ID.
+    async fn forum_storefront_topic_quote_revision(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+        locale: Option<String>,
+    ) -> Result<Option<String>> {
+        let (tenant_id, topic) =
+            load_storefront_audience_topic(ctx, id, tenant_id, locale.as_deref()).await?;
+        let Some(topic) = topic else {
+            return Ok(None);
+        };
+        let revision = RevisionService::new(ctx.data::<DatabaseConnection>()?.clone())
+            .current_quote_revision(
+                tenant_id,
+                ForumContentTarget::topic(topic.id),
+                &topic.effective_locale,
+            )
+            .await?;
+        Ok(revision.map(|id| id.to_string()))
     }
 }
 

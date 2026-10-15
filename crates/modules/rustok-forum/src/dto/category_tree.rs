@@ -44,6 +44,7 @@ pub struct CategoryTreeNode {
     pub allows_topics: bool,
     pub archived_at: Option<String>,
     pub is_archived: bool,
+    /// Forum-owned global category totals, not viewer-visible list counts.
     pub topic_count: i32,
     pub reply_count: i32,
     pub is_subscribed: bool,

@@ -87,13 +87,13 @@ impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {
             ORDER_COMPENSATION_BOUNDARY,
             COMPENSATE_OPERATION,
         )?;
-        parse_order_tenant_id(
+        let tenant_id = parse_order_tenant_id(
             &context,
             ORDER_COMPENSATION_OWNER,
             ORDER_COMPENSATION_BOUNDARY,
             COMPENSATE_OPERATION,
         )?;
-        parse_order_actor_id(
+        let actor_id = parse_order_actor_id(
             &context,
             ORDER_COMPENSATION_OWNER,
             ORDER_COMPENSATION_BOUNDARY,
@@ -107,6 +107,16 @@ impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {
             "order.checkout_compensation_causation_invalid",
             request.checkout_operation_id,
         )?;
+        tracing::debug!(
+            boundary = ORDER_COMPENSATION_BOUNDARY,
+            operation = COMPENSATE_OPERATION,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            checkout_operation_id = %request.checkout_operation_id,
+            cart_id = %request.cart_id,
+            expected_order_id = ?request.expected_order_id,
+            "checkout compensation entered owner context"
+        );
         self.inner.compensate_checkout_order(context, request).await
     }
 }
@@ -161,13 +171,13 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
             ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
             SETTLE_PAYMENT_OPERATION,
         )?;
-        parse_order_tenant_id(
+        let tenant_id = parse_order_tenant_id(
             &context,
             ORDER_PAYMENT_SETTLEMENT_OWNER,
             ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
             SETTLE_PAYMENT_OPERATION,
         )?;
-        parse_order_actor_id(
+        let actor_id = parse_order_actor_id(
             &context,
             ORDER_PAYMENT_SETTLEMENT_OWNER,
             ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
@@ -181,6 +191,15 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
             "order.checkout_payment_causation_invalid",
             request.checkout_operation_id,
         )?;
+        tracing::debug!(
+            boundary = ORDER_PAYMENT_SETTLEMENT_BOUNDARY,
+            operation = SETTLE_PAYMENT_OPERATION,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            checkout_operation_id = %request.checkout_operation_id,
+            order_id = %request.order_id,
+            "checkout payment settlement entered owner context"
+        );
         let diagnostic_context = context.clone();
         let result = self.inner.settle_checkout_payment(context, request).await;
         result.map_err(|error| {
@@ -450,7 +469,7 @@ fn parse_order_tenant_id(
     boundary: &'static str,
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let error = PortError::validation(
             "order.tenant_id_invalid",
             "order request context is invalid",
@@ -468,7 +487,27 @@ fn parse_order_tenant_id(
             },
         );
         error
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let error = PortError::validation(
+            "order.tenant_id_nil",
+            "order tenant_id must not be a nil UUID",
+        );
+        log_order_checkout_context_rejection(
+            context,
+            owner,
+            boundary,
+            operation,
+            "tenant_id_nil",
+            &error,
+            CheckoutContextRejectionEvidence {
+                parse_failed: true,
+                expected_checkout_operation_id: None,
+            },
+        );
+        return Err(error);
+    }
+    Ok(tenant_id)
 }
 
 fn parse_order_actor_id(
@@ -477,7 +516,7 @@ fn parse_order_actor_id(
     boundary: &'static str,
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.actor.id).map_err(|_| {
+    let actor_id = Uuid::parse_str(&context.actor.id).map_err(|_| {
         let error =
             PortError::validation("order.actor_id_invalid", "order request context is invalid");
         log_order_checkout_context_rejection(
@@ -493,7 +532,27 @@ fn parse_order_actor_id(
             },
         );
         error
-    })
+    })?;
+    if actor_id.is_nil() {
+        let error = PortError::validation(
+            "order.actor_id_nil",
+            "order actor_id must not be a nil UUID",
+        );
+        log_order_checkout_context_rejection(
+            context,
+            owner,
+            boundary,
+            operation,
+            "actor_id_nil",
+            &error,
+            CheckoutContextRejectionEvidence {
+                parse_failed: true,
+                expected_checkout_operation_id: None,
+            },
+        );
+        return Err(error);
+    }
+    Ok(actor_id)
 }
 
 fn require_order_checkout_causation(
@@ -504,6 +563,25 @@ fn require_order_checkout_causation(
     code: &'static str,
     checkout_operation_id: Uuid,
 ) -> Result<(), PortError> {
+    if checkout_operation_id.is_nil() {
+        let error = PortError::validation(
+            "order.checkout_operation_id_nil",
+            "checkout_operation_id must not be a nil UUID",
+        );
+        log_order_checkout_context_rejection(
+            context,
+            owner,
+            boundary,
+            operation,
+            "checkout_operation_id_nil",
+            &error,
+            CheckoutContextRejectionEvidence {
+                parse_failed: false,
+                expected_checkout_operation_id: Some(checkout_operation_id),
+            },
+        );
+        return Err(error);
+    }
     let (context_operation, parse_failed) = match context.causation_id.as_deref() {
         Some(value) => match Uuid::parse_str(value) {
             Ok(value) => (Some(value), false),

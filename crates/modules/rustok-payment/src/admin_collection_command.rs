@@ -140,6 +140,19 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
         const OPERATION: &str = "authorize_admin_payment_collection";
         require_admin_collection_write_admission(&context, OPERATION)?;
         let tenant_id = parse_admin_collection_tenant_id(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ADMIN_COLLECTION_COMMAND_BOUNDARY,
+            operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            collection_id = %request.collection_id,
+            "payment admin collection authorize entered"
+        );
+        if request.collection_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.collection_id_nil",
+                "collection_id must not be a nil UUID",
+            ));
+        }
         request.input.validate().map_err(|_| {
             PortError::validation(
                 "payment.validation",
@@ -273,6 +286,19 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
         const OPERATION: &str = "capture_admin_payment_collection";
         require_admin_collection_write_admission(&context, OPERATION)?;
         let tenant_id = parse_admin_collection_tenant_id(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ADMIN_COLLECTION_COMMAND_BOUNDARY,
+            operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            collection_id = %request.collection_id,
+            "payment admin collection capture entered"
+        );
+        if request.collection_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.collection_id_nil",
+                "collection_id must not be a nil UUID",
+            ));
+        }
         let collection = self
             .payment_service
             .get_collection(tenant_id, request.collection_id)
@@ -384,6 +410,19 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
         const OPERATION: &str = "cancel_admin_payment_collection";
         require_admin_collection_write_admission(&context, OPERATION)?;
         let tenant_id = parse_admin_collection_tenant_id(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ADMIN_COLLECTION_COMMAND_BOUNDARY,
+            operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            collection_id = %request.collection_id,
+            "payment admin collection cancel entered"
+        );
+        if request.collection_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.collection_id_nil",
+                "collection_id must not be a nil UUID",
+            ));
+        }
         let mut input = request.input;
         let collection = self
             .payment_service
@@ -912,14 +951,23 @@ fn parse_admin_collection_tenant_id(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let error = PortError::validation(
             "payment.tenant_id_invalid",
             "payment command tenant context is invalid",
         );
         log_port_error(context, operation, "tenant_id", &error);
         error
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let error = PortError::validation(
+            "payment.tenant_id_nil",
+            "PortContext.tenant_id must not be a nil UUID",
+        );
+        log_port_error(context, operation, "tenant_id", &error);
+        return Err(error);
+    }
+    Ok(tenant_id)
 }
 
 fn map_payment_error(
@@ -1156,4 +1204,41 @@ fn log_local_persistence_failure(
         boundary = ADMIN_COLLECTION_COMMAND_BOUNDARY,
         "payment provider operation succeeded but local persistence did not complete"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::{PortActor, PortContext};
+
+    #[test]
+    fn parse_admin_collection_tenant_id_accepts_valid_and_rejects_nil_or_invalid() {
+        let valid_tenant = Uuid::new_v4();
+        let ctx = PortContext::new(
+            valid_tenant.to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        assert_eq!(
+            parse_admin_collection_tenant_id(&ctx, "test_op").unwrap(),
+            valid_tenant
+        );
+
+        let nil_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        let err = parse_admin_collection_tenant_id(&nil_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "payment.tenant_id_nil");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+
+        let invalid_ctx =
+            PortContext::new("not-a-uuid", PortActor::system(), "en-US", Uuid::new_v4());
+        let err = parse_admin_collection_tenant_id(&invalid_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "payment.tenant_id_invalid");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+    }
 }

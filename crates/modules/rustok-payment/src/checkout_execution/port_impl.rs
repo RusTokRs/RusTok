@@ -25,6 +25,15 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
             owner_operation,
             request.identity.checkout_operation_id,
         )?;
+        tracing::debug!(
+            boundary = CHECKOUT_PAYMENT_BOUNDARY,
+            operation = owner_operation,
+            correlation_id = %context.correlation_id,
+            checkout_operation_id = %request.identity.checkout_operation_id,
+            cart_id = %request.identity.cart_id,
+            order_id = %request.identity.order_id,
+            "prepare_checkout_collection entered"
+        );
         let diagnostic_context = context.clone();
         let diagnostic_facts =
             checkout_payment_execution_diagnostic_facts(&request.identity, None, None, None);
@@ -54,6 +63,20 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
             owner_operation,
             request.identity.checkout_operation_id,
         )?;
+        tracing::debug!(
+            boundary = CHECKOUT_PAYMENT_BOUNDARY,
+            operation = owner_operation,
+            correlation_id = %context.correlation_id,
+            checkout_operation_id = %request.identity.checkout_operation_id,
+            collection_id = %request.collection_id,
+            "authorize_checkout_collection entered"
+        );
+        if request.collection_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.collection_id_nil",
+                "collection_id must not be a nil UUID",
+            ));
+        }
         let diagnostic_context = context.clone();
         let diagnostic_facts = checkout_payment_execution_diagnostic_facts(
             &request.identity,
@@ -87,6 +110,20 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
             owner_operation,
             request.identity.checkout_operation_id,
         )?;
+        tracing::debug!(
+            boundary = CHECKOUT_PAYMENT_BOUNDARY,
+            operation = owner_operation,
+            correlation_id = %context.correlation_id,
+            checkout_operation_id = %request.identity.checkout_operation_id,
+            collection_id = %request.collection_id,
+            "capture_checkout_collection entered"
+        );
+        if request.collection_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.collection_id_nil",
+                "collection_id must not be a nil UUID",
+            ));
+        }
         let diagnostic_context = context.clone();
         let diagnostic_facts = checkout_payment_execution_diagnostic_facts(
             &request.identity,
@@ -120,6 +157,20 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
             owner_operation,
             request.identity.checkout_operation_id,
         )?;
+        tracing::debug!(
+            boundary = CHECKOUT_PAYMENT_BOUNDARY,
+            operation = owner_operation,
+            correlation_id = %context.correlation_id,
+            checkout_operation_id = %request.identity.checkout_operation_id,
+            collection_id = %request.collection_id,
+            "read_checkout_collection entered"
+        );
+        if request.collection_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.collection_id_nil",
+                "collection_id must not be a nil UUID",
+            ));
+        }
         let diagnostic_context = context.clone();
         let diagnostic_facts = checkout_payment_execution_diagnostic_facts(
             &request.identity,

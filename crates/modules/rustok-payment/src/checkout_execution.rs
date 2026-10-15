@@ -23,6 +23,7 @@ use crate::{
     PROVIDER_OPERATION_SUCCEEDED, PaymentError, PaymentProviderOperationJournal, PaymentService,
 };
 
+const CHECKOUT_PAYMENT_BOUNDARY: &str = "checkout_payment_execution_port";
 const PREPARE_CHECKOUT_COLLECTION_OPERATION: &str = "prepare_checkout_collection";
 const AUTHORIZE_CHECKOUT_COLLECTION_OPERATION: &str = "authorize_checkout_collection";
 const CAPTURE_CHECKOUT_COLLECTION_OPERATION: &str = "capture_checkout_collection";

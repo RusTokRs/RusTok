@@ -10,6 +10,40 @@ use crate::model::{
     ForumTopicDetail, ForumTopicListItem,
 };
 
+/// Storefront channel policy applies to guests and authenticated readers alike.
+/// The tenant-bound check prevents a channel ID belonging to another tenant from
+/// granting access to the current tenant's Forum storefront.
+#[cfg(feature = "ssr")]
+pub(super) async fn forum_channel_enabled(
+    runtime: &rustok_api::HostRuntimeContext,
+    tenant_id: uuid::Uuid,
+    request: &rustok_api::RequestContext,
+) -> Result<bool, ServerFnError> {
+    let Some(channel_id) = request.channel_id else {
+        return Ok(true);
+    };
+    match rustok_channel::ChannelService::new(runtime.db_clone())
+        .is_module_enabled_for_tenant(tenant_id, channel_id, "forum")
+        .await
+    {
+        Ok(enabled) => Ok(enabled),
+        Err(rustok_channel::ChannelError::NotFound(_)) => Ok(false),
+        Err(error) => Err(server_error(error)),
+    }
+}
+
+/// Read the host's static-module-settings owner port for public audience reads.
+/// Missing ports remain absent so the public owner fails closed, not to defaults.
+#[cfg(feature = "ssr")]
+pub(super) fn forum_settings_providers(
+    runtime: &rustok_api::HostRuntimeContext,
+) -> rustok_forum::ForumSettingsProviders {
+    match runtime.shared_get::<rustok_api::SharedStaticModuleSettingsReader>() {
+        Some(reader) => rustok_forum::ForumSettingsProviders::default().with_static_reader(reader),
+        None => rustok_forum::ForumSettingsProviders::default(),
+    }
+}
+
 pub async fn fetch_storefront_forum_server(
     selected_category_id: Option<String>,
     selected_topic_id: Option<String>,
@@ -66,6 +100,9 @@ async fn storefront_forum_native(
         let request = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
+        if !forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
+            return Err(ServerFnError::new("Forum module is not enabled for this channel"));
+        }
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
@@ -91,7 +128,9 @@ async fn storefront_forum_native(
         ) {
             (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
                 .with_static_readers(static_reader, transactional_reader),
-            _ => ForumSettingsProviders::default(),
+            (Some(static_reader), None) =>
+                ForumSettingsProviders::default().with_static_reader(static_reader),
+            (None, _) => ForumSettingsProviders::default(),
         };
         let topics_per_page = settings_providers
             .default_topics_per_page(tenant.id)
@@ -104,7 +143,7 @@ async fn storefront_forum_native(
         let category_audience_service = match audience_facts.clone() {
             Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db.clone(), facts),
             None => ForumCategoryAudienceReadService::new(db.clone()),
-        };
+        }.with_settings_providers(settings_providers.clone());
         let topic_audience_service = match audience_facts.clone() {
             Some(facts) => ForumTopicAudienceReadService::with_audience_facts(
                 db.clone(),
@@ -112,7 +151,7 @@ async fn storefront_forum_native(
                 facts,
             ),
             None => ForumTopicAudienceReadService::new(db.clone(), event_bus.clone()),
-        };
+        }.with_settings_providers(settings_providers.clone());
         let topic_audience_list_service = match audience_facts.clone() {
             Some(facts) => ForumTopicAudienceListService::with_audience_facts(
                 db.clone(),
@@ -120,7 +159,7 @@ async fn storefront_forum_native(
                 facts,
             ),
             None => ForumTopicAudienceListService::new(db.clone(), event_bus.clone()),
-        };
+        }.with_settings_providers(settings_providers.clone());
         let reply_audience_service = match audience_facts.clone() {
             Some(facts) => ForumReplyAudienceReadService::with_audience_facts(
                 db.clone(),
@@ -128,7 +167,7 @@ async fn storefront_forum_native(
                 facts,
             ),
             None => ForumReplyAudienceReadService::new(db.clone(), event_bus.clone()),
-        };
+        }.with_settings_providers(settings_providers.clone());
         let read_state_service = match audience_facts {
             Some(facts) => ForumStorefrontReadStateService::with_audience_facts(
                 db.clone(),
@@ -136,12 +175,10 @@ async fn storefront_forum_native(
                 facts,
             ),
             None => ForumStorefrontReadStateService::new(db.clone(), event_bus.clone()),
-        };
+        }.with_settings_providers(settings_providers.clone());
         let channel_slug = request.channel_slug.as_deref();
 
-        let category_page = if let Some(auth) = auth.as_ref().filter(|auth| {
-            has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_LIST])
-        }) {
+        let category_page = if let Some(auth) = auth.as_ref() {
             let security =
                 SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
             let audience_context = category_read_audience_port_context(
@@ -229,9 +266,7 @@ async fn storefront_forum_native(
 
         let (topic_items, topics_next_cursor, first_topic_id, read_state_available) =
             if let Some(auth) =
-            auth.as_ref().filter(|auth| {
-                has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_LIST])
-            }) {
+            auth.as_ref() {
             let security =
                 SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
             let audience_context = topic_read_audience_port_context(
@@ -250,6 +285,7 @@ async fn storefront_forum_native(
                     audience_context,
                     topic_filter,
                     Some(tenant.default_locale.as_str()),
+                    false, // Preserve the full personalized feed and its read-state badges.
                 )
                 .await
                 .map_err(server_error)?;
@@ -305,9 +341,7 @@ async fn storefront_forum_native(
             && selected_topic.is_some()
         {
             let approved_statuses = [ReplyStatus::Approved];
-            let page = if let Some(auth) = auth.as_ref().filter(|auth| {
-                has_any_effective_permission(&auth.permissions, &[Permission::FORUM_REPLIES_LIST])
-            }) {
+            let page = if let Some(auth) = auth.as_ref() {
                 let security = SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
@@ -442,6 +476,9 @@ async fn storefront_topic_mark_read_native(
         let request = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
+        if !forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
+            return Err(ServerFnError::new("Forum module is not enabled for this channel"));
+        }
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
@@ -535,12 +572,7 @@ async fn load_audience_visible_category(
     locale: &str,
     fallback_locale: &str,
 ) -> Result<Option<rustok_forum::CategoryResponse>, ServerFnError> {
-    if let Some(auth) = auth.filter(|auth| {
-        rustok_api::has_any_effective_permission(
-            &auth.permissions,
-            &[rustok_api::Permission::FORUM_CATEGORIES_LIST],
-        )
-    }) {
+    if let Some(auth) = auth {
         let security = rustok_core::SecurityContext::from_permission_snapshot(
             Some(auth.user_id),
             &auth.permissions,

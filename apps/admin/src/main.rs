@@ -28,10 +28,11 @@ async fn main() {
         request_auth_snapshot, request_csp_nonce, shell, validate_admin_security_profile,
     };
     use rustok_pages_admin::{
-        BrowserIntentEnvelope, PagesBrowserIntentAccessError, PagesBrowserIntentProblem,
-        PagesBrowserIntentResponse, PagesBuilderSaveSnapshot,
+        BrowserIntentEnvelope, FLY_CSRF_HEADER_NAME, PagesBrowserIntentAccessError,
+        PagesBrowserIntentProblem, PagesBrowserIntentResponse, PagesBuilderSaveSnapshot,
         dispatch_pages_browser_intent_with_capabilities, fetch_pages_builder_rollout_snapshot,
         pages_editor_capabilities_for_snapshot, pages_editor_capability_policy_for_role,
+        verify_csrf_token,
     };
     use rustok_ui_auth::AuthError;
     use serde_json::{Value, json};
@@ -45,10 +46,9 @@ async fn main() {
         // One authority per request. An `authorization: Bearer` request is an API client, which
         // may state its tenant in `x-tenant-slug` (the documented transport contract); a request
         // without one is the standalone admin's own browser session, and then BOTH the token and
-        // the tenant come from that session alone. The previous fallback chain paired a session
-        // token with a client-supplied tenant header, so the browser could carry its own cookie
-        // while a different tenant label decided which page and rollout snapshot the intent
-        // resolved against.
+        // the tenant come from that session alone, and a valid `x-csrf-token` header derived from
+        // the session token is required to protect ambient cookie authentication against cross-origin
+        // request forgery (CLEAN-060 / P1-10).
         let (token, tenant_slug) = match bearer_token(&headers) {
             Some(token) => {
                 let tenant_slug = header_value(&headers, "x-tenant-slug")
@@ -65,7 +65,24 @@ async fn main() {
                         "Page Builder access token is missing",
                     )
                 })?;
-                (session.token.clone(), session.tenant.clone())
+                let csrf_header = header_value(&headers, FLY_CSRF_HEADER_NAME);
+                match csrf_header {
+                    Some(client_csrf) if verify_csrf_token(&session.token, &client_csrf) => {
+                        (session.token.clone(), session.tenant.clone())
+                    }
+                    Some(_) => {
+                        return Err(auth_error(
+                            StatusCode::FORBIDDEN,
+                            "Page Builder CSRF token is invalid",
+                        ));
+                    }
+                    None => {
+                        return Err(auth_error(
+                            StatusCode::FORBIDDEN,
+                            "Page Builder intent requires a valid CSRF token",
+                        ));
+                    }
+                }
             }
         };
         let verified_user =

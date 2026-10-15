@@ -14,7 +14,7 @@
 - expose diagnostics with readiness scoring, issue aggregates, hreflang gap detection, canonical redirect chain/loop detection, `cross_link_gap` hints, and image descriptor quality checks (`missing_image_alt`, `missing_image_size`) for SEO-critical targets
 - normalize JSON-LD into typed `SeoStructuredDataBlock` records with schema kind, source state, and `@graph` expansion
 - manage manual redirects and canonical overrides
-- generate sitemap files, serve `robots.txt`, and submit sitemap indexes via runtime adapters with per-endpoint aggregation and bounded partial-failure summaries
+- generate sitemap files, serve `robots.txt`, and submit sitemap indexes via runtime adapters with per-endpoint aggregation and bounded partial-failure summaries; public sitemap responses use `no-store`. If a target owner can narrow visibility between operator jobs (Forum settings and audience policy), the public index/pages always rebuild from current owner candidates without writing a new operator job. Monitor this per-request read cost on large catalogs. Forum's public bulk SEO pages also derive cursors from audience-visible categories/topics rather than forwarding raw target cursors; selective policies can make these reads scan more raw candidates than a single page.
 - prepare Phase D productionization seams for typed SEO events, outbox emission/idempotency, and SEO→index integration without breaking existing public contracts
 - expose a headless REST read path for `SeoPageContext` at `/api/seo/page-context`, reusing canonical request locale/channel context
 - keep REST handlers on narrow `SeoHttpRuntime` state with explicit DB/event bus/runtime extension handles; controller state is isolated to the Axum adapter

@@ -146,7 +146,15 @@ impl OrderReadPort for InProcessOrderReadPort {
     ) -> Result<OrderResponse, PortError> {
         const OPERATION: &str = "read_order_projection";
         context.require_policy(PortCallPolicy::read())?;
+        validate_non_nil_uuid(request.order_id, "order_id")?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ORDER_READ_BOUNDARY,
+            operation = OPERATION,
+            tenant_id = %tenant_id,
+            order_id = %request.order_id,
+            "read order projection entered"
+        );
         let fallback_locale_length = request.tenant_default_locale.as_deref().map(str::len);
 
         self.inner
@@ -180,7 +188,23 @@ impl OrderReadPort for InProcessOrderReadPort {
     ) -> Result<OrderProjectionPage, PortError> {
         const OPERATION: &str = "list_order_projections";
         context.require_policy(PortCallPolicy::read())?;
+        if matches!(request.customer_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "order.customer_id_nil",
+                "customer_id must not be a nil UUID",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ORDER_READ_BOUNDARY,
+            operation = OPERATION,
+            tenant_id = %tenant_id,
+            page = request.page,
+            per_page = request.per_page,
+            customer_id = ?request.customer_id,
+            status = ?request.status,
+            "list order projections entered"
+        );
         let status_length = request.status.as_deref().map(str::len);
         let customer_id = request.customer_id;
         let fallback_locale_length = request.tenant_default_locale.as_deref().map(str::len);
@@ -224,7 +248,15 @@ impl OrderReadPort for InProcessOrderReadPort {
     ) -> Result<OrderReturnResponse, PortError> {
         const OPERATION: &str = "read_order_return_projection";
         context.require_policy(PortCallPolicy::read())?;
+        validate_non_nil_uuid(request.return_id, "return_id")?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ORDER_READ_BOUNDARY,
+            operation = OPERATION,
+            tenant_id = %tenant_id,
+            return_id = %request.return_id,
+            "read order return projection entered"
+        );
 
         self.inner
             .get_return(tenant_id, request.return_id)
@@ -252,7 +284,22 @@ impl OrderReadPort for InProcessOrderReadPort {
     ) -> Result<OrderReturnProjectionPage, PortError> {
         const OPERATION: &str = "list_order_return_projections";
         context.require_policy(PortCallPolicy::read())?;
+        if matches!(request.order_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "order.order_id_nil",
+                "order_id must not be a nil UUID",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ORDER_READ_BOUNDARY,
+            operation = OPERATION,
+            tenant_id = %tenant_id,
+            order_id = ?request.order_id,
+            page = request.page,
+            per_page = request.per_page,
+            "list order return projections entered"
+        );
         let order_id = request.order_id;
         let status_length = request.status.as_deref().map(str::len);
 
@@ -293,7 +340,15 @@ impl OrderReadPort for InProcessOrderReadPort {
     ) -> Result<OrderChangeResponse, PortError> {
         const OPERATION: &str = "read_order_change_projection";
         context.require_policy(PortCallPolicy::read())?;
+        validate_non_nil_uuid(request.change_id, "change_id")?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ORDER_READ_BOUNDARY,
+            operation = OPERATION,
+            tenant_id = %tenant_id,
+            change_id = %request.change_id,
+            "read order change projection entered"
+        );
 
         self.inner
             .get_order_change(tenant_id, request.change_id)
@@ -321,7 +376,22 @@ impl OrderReadPort for InProcessOrderReadPort {
     ) -> Result<OrderChangeProjectionPage, PortError> {
         const OPERATION: &str = "list_order_change_projections";
         context.require_policy(PortCallPolicy::read())?;
+        if matches!(request.order_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "order.order_id_nil",
+                "order_id must not be a nil UUID",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ORDER_READ_BOUNDARY,
+            operation = OPERATION,
+            tenant_id = %tenant_id,
+            order_id = ?request.order_id,
+            page = request.page,
+            per_page = request.per_page,
+            "list order change projections entered"
+        );
         let order_id = request.order_id;
         let status_length = request.status.as_deref().map(str::len);
         let change_type_length = request.change_type.as_deref().map(str::len);
@@ -517,8 +587,19 @@ fn order_read_owner_error_facts(error: &OrderError) -> OrderReadOwnerErrorFacts 
     }
 }
 
+fn validate_non_nil_uuid(id: Uuid, field: &'static str) -> Result<(), PortError> {
+    if id.is_nil() {
+        Err(PortError::validation(
+            format!("order.{field}_nil"),
+            format!("{field} must not be a nil UUID"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let facts = order_read_context_facts(context);
         tracing::warn!(
             owner = ORDER_READ_OWNER,
@@ -545,7 +626,39 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
             "order read context was rejected with bounded diagnostics"
         );
         PortError::validation("order.context_invalid", "order request context is invalid")
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let facts = order_read_context_facts(context);
+        tracing::warn!(
+            owner = ORDER_READ_OWNER,
+            operation,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = facts.tenant_id_length,
+            tenant_id_parseable = true,
+            actor_kind = facts.actor_kind,
+            actor_id_length = facts.actor_id_length,
+            claim_count = facts.claim_count,
+            role_count = facts.role_count,
+            channel_present = facts.channel_present,
+            channel_length = ?facts.channel_length,
+            locale_length = facts.locale_length,
+            causation_id_present = facts.causation_id_present,
+            causation_id_length = ?facts.causation_id_length,
+            traceparent_present = facts.traceparent_present,
+            traceparent_length = ?facts.traceparent_length,
+            idempotency_key_present = facts.idempotency_key_present,
+            idempotency_key_length = ?facts.idempotency_key_length,
+            deadline_ms = ?facts.deadline_ms,
+            code = "order.tenant_id_nil",
+            boundary = ORDER_READ_BOUNDARY,
+            "order read tenant_id was rejected as nil UUID"
+        );
+        return Err(PortError::validation(
+            "order.tenant_id_nil",
+            "order tenant_id must not be a nil UUID",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn order_read_owner_error_policy(

@@ -6,8 +6,9 @@ use super::{
     normalize_sitemap_submission_endpoints, record_invalid_endpoint, record_submission_failure,
     record_submission_success, render_robots_body, resolve_public_origin_from_values,
     sitemap_event_key, sitemap_file_count, sitemap_locale_path, sitemap_public_url,
-    sitemap_route_excluded,
+    sitemap_route_excluded, render_live_public_sitemap, SitemapUrlRecord,
 };
+use crate::dto::SeoModuleSettings;
 use crate::services::SeoService;
 use rustok_api::TenantContext;
 use rustok_tenant::entities::tenant_module;
@@ -126,6 +127,39 @@ fn tenant_context(tenant_id: Uuid) -> TenantContext {
         default_locale: "en".to_string(),
         is_active: true,
     }
+}
+
+#[test]
+fn live_sitemap_renders_only_current_owner_candidates_and_valid_paged_paths() {
+    let origin = resolve_public_origin_from_values(Some("store.example.com"), None, None)
+        .expect("origin");
+    let settings = SeoModuleSettings {
+        sitemap_max_entries_per_file: 1,
+        ..Default::default()
+    };
+    // The older persisted file may contain Forum URLs. When its owner closes
+    // public discovery, only the currently admitted records reach this renderer.
+    let current = vec![SitemapUrlRecord {
+        url: "https://store.example.com/en/catalog".into(),
+        ..Default::default()
+    }];
+    let index = render_live_public_sitemap(&current, &origin, &settings, "sitemap.xml")
+        .expect("current index");
+    assert!(index.contains("sitemap-1.xml"));
+    assert!(!index.contains("sitemap-2.xml"));
+    let file = render_live_public_sitemap(&current, &origin, &settings, "sitemap-1.xml")
+        .expect("current file");
+    assert!(file.contains("/en/catalog"));
+    assert!(!file.contains("/forum/"));
+    for path in [
+        "sitemap-0.xml", "sitemap-01.xml", "sitemap-2.xml",
+        "sitemap-1000001.xml", "../sitemap-1.xml",
+    ] {
+        assert!(render_live_public_sitemap(&current, &origin, &settings, path).is_none());
+    }
+    let empty_index = render_live_public_sitemap(&[], &origin, &settings, "sitemap.xml")
+        .expect("empty index");
+    assert!(!empty_index.contains("sitemap-1.xml"));
 }
 
 #[test]

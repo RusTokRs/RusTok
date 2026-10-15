@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use rustok_api::{PortError, SharedStaticModuleSettingsReader, StaticModuleSettingsReader, StaticModuleSettingsSnapshot};
 use rustok_core::events::EventHandler;
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_core::{MemoryTransport, MigrationSource, ModuleRuntimeExtensions, SecurityContext, UserRole};
 use rustok_events::{ContractEventEnvelope, DomainEvent, EventEnvelope};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumModule,
@@ -24,6 +26,16 @@ use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 const SEARCH_TEST_DATABASE_ENV: &str = "RUSTOK_SEARCH_TEST_DATABASE_URL";
+
+struct DefaultForumSettingsReader;
+
+#[async_trait]
+impl StaticModuleSettingsReader for DefaultForumSettingsReader {
+    async fn settings(&self, _tenant: Uuid, slug: &str) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        assert_eq!(slug, "forum");
+        Ok(Some(StaticModuleSettingsSnapshot { enabled: true, settings: serde_json::json!({}) }))
+    }
+}
 
 struct TestDb {
     control: DatabaseConnection,
@@ -222,7 +234,9 @@ async fn forum_reindex_atomically_replaces_legacy_routes_with_owner_canonical_ro
     )
     .await?;
 
-    let source = ForumSearchProjectionSourceFactory.build(test.db.clone());
+    let mut extensions = ModuleRuntimeExtensions::default();
+    extensions.insert(SharedStaticModuleSettingsReader(Arc::new(DefaultForumSettingsReader)));
+    let source = ForumSearchProjectionSourceFactory.build_with_extensions(test.db.clone(), &extensions);
     let handler = SearchIngestionHandler::with_forum_source(test.db.clone(), Some(source));
     let reindex = envelope(
         tenant_id,

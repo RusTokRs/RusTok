@@ -20,6 +20,8 @@ const paths = {
     "crates/modules/rustok-forum/storefront/src/transport/topic_route_graphql_adapter.rs",
   nativeAdapter:
     "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
+  nativeSharedAdapter:
+    "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs",
   host: "apps/storefront/src/forum_topic_route.rs",
   hostLib: "apps/storefront/src/lib.rs",
   contract:
@@ -58,16 +60,17 @@ try {
 
 for (const marker of [
   "async fn forum_storefront_topic_route(",
-  "resolve_authorized_public_route(\n            ctx, tenant_id, locale, short_id, slug, false,",
+  "resolve_authorized_public_route(ctx, tenant_id, locale, short_id, slug, false)",
   "ForumTopicRouteDisposition::Gone => return Ok(None)",
   "async fn forum_storefront_topic_route_decision(",
-  "resolve_authorized_public_route(\n            ctx, tenant_id, locale, short_id, slug, true,",
+  "resolve_authorized_public_route(ctx, tenant_id, locale, short_id, slug, true)",
   "GqlForumStorefrontTopicRouteDecisionDisposition::Gone",
   "pub canonical: Option<GqlForumTopicRouteDescriptor>",
   "ForumTopicRouteTombstoneVisibilityService::new(db.clone())",
   ".can_disclose_public_gone(",
   "public_channel_slug(ctx).as_deref()",
-  "if !gone_channel_enabled",
+  "let channel_enabled = forum_channel_enabled(ctx).await?;",
+  "if !channel_enabled",
 ]) {
   requireText(source.graphql, marker, paths.graphql);
 }
@@ -107,10 +110,11 @@ for (const marker of [
   "request.channel_slug.as_deref()",
   "StorefrontForumTopicRouteDisposition::Gone",
   "(StorefrontForumTopicRouteDisposition::Gone, None)",
-  "let gone_channel_enabled = if authenticated",
+  "forum_channel_enabled(&runtime_ctx, tenant.id, &request).await?",
 ]) {
   requireText(source.nativeAdapter, marker, paths.nativeAdapter);
 }
+requireText(source.nativeSharedAdapter, ".is_module_enabled_for_tenant(tenant_id, channel_id, \"forum\")", paths.nativeSharedAdapter);
 for (const marker of [
   "ForumTopicHostAction::Gone",
   "StatusCode::GONE",

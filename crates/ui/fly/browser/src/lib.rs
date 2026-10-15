@@ -22,6 +22,9 @@ pub const DEFAULT_PENDING_INTENT_LIMIT_MESSAGE: &str = "Editor action limit reac
 pub const DEFAULT_INTENT_REQUEST_TIMEOUT_MESSAGE: &str = "Editor action timed out";
 pub const FLY_BROWSER_ADAPTER_JS: &str = include_str!("../assets/fly-browser.js");
 
+/// Canonical header name used by Fly browser adapters to transmit CSRF tokens for intent requests.
+pub const FLY_CSRF_HEADER_NAME: &str = "x-csrf-token";
+
 /// Standalone action runtime for published pages (see `assets/fly-actions.js`). Hosts serve
 /// or inline this asset on public pages that materialize `data-fly-action` attributes; the
 /// editor bridge above never loads it.
@@ -774,6 +777,44 @@ fn default_intent_request_timeout_message() -> String {
     DEFAULT_INTENT_REQUEST_TIMEOUT_MESSAGE.to_string()
 }
 
+/// Deterministically derives a secret CSRF token from an authenticated session token.
+///
+/// An ambient session cookie (e.g. `SameSite=Lax`) is vulnerable to cross-origin forgery if
+/// state-changing routes do not require an explicit credential that only same-origin JavaScript
+/// can read and provide. Because cross-origin scripts cannot read the session cookie under SOP,
+/// a SHA-256 derivation of the session token is unguessable by an attacker.
+pub fn derive_csrf_token(session_token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(b"fly-intent-csrf-v1:");
+    hasher.update(session_token.as_bytes());
+    hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// Constant-time verification of a client-supplied CSRF token against the expected session token.
+pub fn verify_csrf_token(session_token: &str, candidate_csrf_token: &str) -> bool {
+    if session_token.trim().is_empty() || candidate_csrf_token.trim().is_empty() {
+        return false;
+    }
+    let expected = derive_csrf_token(session_token);
+    constant_time_eq(expected.as_bytes(), candidate_csrf_token.as_bytes())
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut difference = 0u8;
+    for (a, b) in left.iter().zip(right) {
+        difference |= a ^ b;
+    }
+    difference == 0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -880,10 +921,12 @@ mod tests {
         assert_eq!(value["intentRequestTimeoutMs"], 1_500);
         assert_eq!(value["pendingIntentLimitMessage"], "Pending limit");
         assert_eq!(value["intentRequestTimeoutMessage"], "Request timeout");
-        assert!(serde_json::from_value::<BrowserAdapterConfig>(json!({
-            "root_selector": "#unsupported"
-        }))
-        .is_err());
+        assert!(
+            serde_json::from_value::<BrowserAdapterConfig>(json!({
+                "root_selector": "#unsupported"
+            }))
+            .is_err()
+        );
     }
 
     #[test]
@@ -1189,5 +1232,23 @@ mod tests {
         };
         assert_eq!(extension.kind(), None);
         assert!(!extension.is_mutating());
+    }
+
+    #[test]
+    fn csrf_token_derivation_and_verification() {
+        let session = "test-session-secret-token-12345";
+        let csrf = derive_csrf_token(session);
+        assert!(!csrf.is_empty());
+        assert_eq!(csrf.len(), 64);
+        assert!(verify_csrf_token(session, &csrf));
+
+        // Mismatched token
+        assert!(!verify_csrf_token(session, "invalid-csrf-token"));
+        assert!(!verify_csrf_token("different-session", &csrf));
+
+        // Empty cases
+        assert!(!verify_csrf_token("", &csrf));
+        assert!(!verify_csrf_token(session, ""));
+        assert!(!verify_csrf_token("   ", &csrf));
     }
 }

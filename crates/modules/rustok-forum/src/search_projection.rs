@@ -6,7 +6,8 @@ use rustok_core::search_projection::{
     MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchProjectionPage,
     SearchProjectionSource, SearchProjectionSourceFactory,
 };
-use rustok_core::{Error, Result};
+use rustok_api::SharedStaticModuleSettingsReader;
+use rustok_core::{Error, ModuleRuntimeExtensions, Result};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::{TaxonomyError, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 use sea_orm::{
@@ -21,7 +22,10 @@ use crate::search_projection_author::{
     public_author_payload,
 };
 use crate::state_machine::ReplyStatus;
-use crate::{ForumCategoryRouteService, ForumPublicDiscoveryService, ForumTopicRouteService};
+use crate::{
+    ForumCategoryRouteService, ForumPublicDiscoveryService, ForumSettingsProviders,
+    ForumTopicRouteService,
+};
 
 const FORUM_SOURCE_MODULE: &str = "forum";
 const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
@@ -39,7 +43,20 @@ impl SearchProjectionSourceFactory for ForumSearchProjectionSourceFactory {
     }
 
     fn build(&self, db: DatabaseConnection) -> Arc<dyn SearchProjectionSource> {
-        Arc::new(ForumSearchProjectionSource::new(db))
+        // Standalone composition without the settings owner fails closed on public reads.
+        Arc::new(ForumSearchProjectionSource::new(db, ForumSettingsProviders::default()))
+    }
+
+    fn build_with_extensions(
+        &self,
+        db: DatabaseConnection,
+        extensions: &ModuleRuntimeExtensions,
+    ) -> Arc<dyn SearchProjectionSource> {
+        let settings = match extensions.get::<SharedStaticModuleSettingsReader>().cloned() {
+            Some(reader) => ForumSettingsProviders::default().with_static_reader(reader),
+            None => ForumSettingsProviders::default(),
+        };
+        Arc::new(ForumSearchProjectionSource::new(db, settings))
     }
 }
 
@@ -50,10 +67,13 @@ struct ForumSearchProjectionSource {
 }
 
 impl ForumSearchProjectionSource {
-    fn new(db: DatabaseConnection) -> Self {
+    fn new(db: DatabaseConnection, settings: ForumSettingsProviders) -> Self {
         let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
         Self {
-            discovery: Arc::new(ForumPublicDiscoveryService::new(db.clone(), event_bus)),
+            discovery: Arc::new(
+                ForumPublicDiscoveryService::new(db.clone(), event_bus)
+                    .with_settings_providers(settings),
+            ),
             db,
         }
     }
@@ -599,6 +619,9 @@ impl SearchProjectionSource for ForumSearchProjectionSource {
                 "Forum Search projection page size must be between 1 and {MAX_SEARCH_PROJECTION_PAGE_SIZE}"
             )));
         }
+        if !self.discovery.anonymous_reading_allowed(tenant_id).await.map_err(map_forum_error)? {
+            return Ok(SearchProjectionPage::default());
+        }
         let cursor = after.as_deref().map(ProjectionCursor::parse).transpose()?;
         let candidates = self.candidate_page(tenant_id, cursor, limit).await?;
         let next_cursor = (candidates.len() == limit)
@@ -622,6 +645,9 @@ impl SearchProjectionSource for ForumSearchProjectionSource {
         entity_type: &str,
         entity_id: Uuid,
     ) -> Result<Vec<SearchProjectionDocument>> {
+        if !self.discovery.anonymous_reading_allowed(tenant_id).await.map_err(map_forum_error)? {
+            return Ok(Vec::new());
+        }
         let candidates = self
             .entity_candidates(tenant_id, entity_type, entity_id)
             .await?;

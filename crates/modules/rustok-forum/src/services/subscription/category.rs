@@ -7,14 +7,17 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource};
+use rustok_api::{Action, PortContext, Resource};
 use rustok_core::SecurityContext;
 
 use crate::dto::{
     ForumSubscriptionResponse, ForumSubscriptionTargetType, UpdateForumSubscriptionInput,
 };
-use crate::entities::{forum_category, forum_category_subscription};
+use crate::entities::forum_category_subscription;
 use crate::error::{ForumError, ForumResult};
+use crate::services::category_audience_visibility::{
+    ForumCategoryAudienceViewer, ForumCategoryAudienceVisibilityService,
+};
 use crate::services::rbac::enforce_scope;
 use crate::subscription::ForumSubscriptionLevel;
 
@@ -26,33 +29,38 @@ use super::helpers::{
 };
 
 impl SubscriptionService {
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, security, context))]
     pub async fn set_category_subscription(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
         security: SecurityContext,
+        context: PortContext,
     ) -> ForumResult<()> {
         self.update_category_subscription(
             tenant_id,
             category_id,
             security,
+            context,
             UpdateForumSubscriptionInput::watching(),
         )
         .await?;
         Ok(())
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, security, context))]
     pub async fn clear_category_subscription(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
         security: SecurityContext,
+        context: PortContext,
     ) -> ForumResult<()> {
         enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
-        self.find_category(tenant_id, category_id).await?;
+        // Even a no-op clear must not reveal whether an inaccessible category exists.
+        self.require_category_visible(tenant_id, category_id, &security, context.clone())
+            .await?;
         let existing = self
             .find_category_subscription(tenant_id, category_id, user_id)
             .await?;
@@ -61,6 +69,7 @@ impl SubscriptionService {
                 tenant_id,
                 category_id,
                 security,
+                context,
                 UpdateForumSubscriptionInput {
                     level: ForumSubscriptionLevel::Normal,
                     notify_mentions: None,
@@ -75,16 +84,18 @@ impl SubscriptionService {
         Ok(())
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, security, context))]
     pub async fn get_category_subscription(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
         security: SecurityContext,
+        context: PortContext,
     ) -> ForumResult<ForumSubscriptionResponse> {
         enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
-        self.find_category(tenant_id, category_id).await?;
+        self.require_category_visible(tenant_id, category_id, &security, context)
+            .await?;
         Ok(
             match self
                 .find_category_subscription(tenant_id, category_id, user_id)
@@ -101,17 +112,21 @@ impl SubscriptionService {
         )
     }
 
-    #[instrument(skip(self, security, input))]
+    /// Reads and writes are gated by the same category owner audience contract.
+    /// Absent and audience-denied categories both return `CategoryNotFound`.
+    #[instrument(skip(self, security, context, input))]
     pub async fn update_category_subscription(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
         security: SecurityContext,
+        context: PortContext,
         input: UpdateForumSubscriptionInput,
     ) -> ForumResult<ForumSubscriptionResponse> {
         enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
-        self.find_category(tenant_id, category_id).await?;
+        self.require_category_visible(tenant_id, category_id, &security, context)
+            .await?;
         let preferences = resolve_preferences(&input);
         let txn = self.db.begin().await?;
         let existing = forum_category_subscription::Entity::find()
@@ -223,12 +238,23 @@ impl SubscriptionService {
             .await?)
     }
 
-    async fn find_category(&self, tenant_id: Uuid, category_id: Uuid) -> ForumResult<()> {
-        forum_category::Entity::find_by_id(category_id)
-            .filter(forum_category::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .map(|_| ())
-            .ok_or(ForumError::CategoryNotFound(category_id))
+    async fn require_category_visible(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        security: &SecurityContext,
+        context: PortContext,
+    ) -> ForumResult<()> {
+        let viewer = ForumCategoryAudienceViewer::authenticated(security.clone(), context)?;
+        if !ForumCategoryAudienceVisibilityService::new(
+            self.db.clone(),
+            self.audience_facts.clone(),
+        )
+        .is_category_visible(tenant_id, category_id, &viewer)
+        .await?
+        {
+            return Err(ForumError::CategoryNotFound(category_id));
+        }
+        Ok(())
     }
 }

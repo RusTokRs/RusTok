@@ -1074,6 +1074,14 @@ fn PagesFlyBuilder(
                 .with_runtime_scenarios(scenarios)
                 .with_browser_intent_endpoint(browser_endpoint)
                 .on_runtime_scenario_baseline(on_baseline);
+            if let Some(csrf) = token
+                .get_untracked()
+                .as_deref()
+                .filter(|s| !s.trim().is_empty())
+                .map(fly_browser::derive_csrf_token)
+            {
+                host = host.with_browser_csrf_token(csrf);
+            }
             if let Some(baseline) = baseline {
                 host = host.with_runtime_scenario_baseline(baseline);
             }

@@ -86,8 +86,10 @@ impl ForumStorefrontReadStateService {
         self
     }
 
-    /// Selects one exact authenticated audience-visible storefront page before
-    /// enriching those exact IDs through the canonical unread aggregate.
+    /// Enriches only exact authenticated audience-visible storefront topics.
+    /// For `unread_only`, filter *after* both audience selection and the canonical
+    /// unread aggregate, then page over the resulting unread sequence. The ordinary
+    /// personalized feed still includes read topics with their read-state badges.
     pub async fn list_topics_with_unread_audience_visible(
         &self,
         tenant_id: Uuid,
@@ -95,7 +97,13 @@ impl ForumStorefrontReadStateService {
         context: PortContext,
         filter: ListTopicsFilter,
         fallback_locale: Option<&str>,
+        unread_only: bool,
     ) -> ForumResult<ForumStorefrontUnreadTopicPage> {
+        if !(1..=MAX_FORUM_READ_LIMIT).contains(&filter.per_page) {
+            return Err(ForumError::Validation(format!(
+                "Forum storefront unread page size must be between 1 and {MAX_FORUM_READ_LIMIT}"
+            )));
+        }
         let service = match self.audience_facts.clone() {
             Some(facts) => ForumTopicAudienceListService::with_audience_facts(
                 self.db.clone(),
@@ -105,6 +113,11 @@ impl ForumStorefrontReadStateService {
             None => ForumTopicAudienceListService::new(self.db.clone(), self.event_bus.clone()),
         }
         .with_settings_providers(self.settings.clone());
+        if unread_only {
+            return self
+                .list_unread_topics(tenant_id, security, context, filter, fallback_locale, &service)
+                .await;
+        }
         let page = service
             .list_authenticated_storefront_visible_with_audience_context(
                 tenant_id,
@@ -116,6 +129,67 @@ impl ForumStorefrontReadStateService {
             .await?;
         self.enrich_topics_with_unread(tenant_id, security, page.items, page.next_cursor)
             .await
+    }
+
+    async fn list_unread_topics(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        context: PortContext,
+        mut filter: ListTopicsFilter,
+        fallback_locale: Option<&str>,
+        service: &ForumTopicAudienceListService,
+    ) -> ForumResult<ForumStorefrontUnreadTopicPage> {
+        let requested = filter.per_page as usize;
+        let mut items = Vec::with_capacity(requested);
+        // Start with just enough visible candidates for a dense unread page;
+        // widen subsequent batches for sparse unread streams. An audience page
+        // can contain no unread topics, so keep scanning instead of returning a
+        // false empty state or a cursor from a read topic.
+        filter.per_page = filter.per_page.saturating_add(1).min(MAX_FORUM_READ_LIMIT);
+        loop {
+            let page = service
+                .list_authenticated_storefront_visible_with_audience_context(
+                    tenant_id,
+                    security.clone(),
+                    context.clone(),
+                    filter.clone(),
+                    fallback_locale,
+                )
+                .await?;
+            let next_candidate = page.next_cursor;
+            let enriched = self
+                .enrich_topics_with_unread(tenant_id, security.clone(), page.items, None)
+                .await?;
+            for item in enriched.items.into_iter().filter(|item| item.is_unread) {
+                if items.len() == requested {
+                    // The lookahead is unread and authorized; the exposed cursor
+                    // belongs to the last *returned* unread topic, never a read
+                    // topic or a hidden audience candidate.
+                    let next_cursor = items
+                        .last()
+                        .and_then(|last: &ForumStorefrontUnreadTopic| last.topic.sort_key)
+                        .map(|key| key.encode())
+                        .ok_or_else(|| {
+                            ForumError::Validation(
+                                "Forum unread topic page is missing its keyset position".to_string(),
+                            )
+                        })?;
+                    return Ok(ForumStorefrontUnreadTopicPage {
+                        items,
+                        next_cursor: Some(next_cursor),
+                    });
+                }
+                items.push(item);
+            }
+            match next_candidate {
+                Some(after) => {
+                    filter.after = Some(after);
+                    filter.per_page = MAX_FORUM_READ_LIMIT;
+                }
+                None => return Ok(ForumStorefrontUnreadTopicPage { items, next_cursor: None }),
+            }
+        }
     }
 
     /// Compatibility composition for consumers that have not yet supplied an

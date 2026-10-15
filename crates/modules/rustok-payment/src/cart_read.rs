@@ -81,6 +81,28 @@ impl PaymentCartReadPort for InProcessPaymentCartReadPort {
             log_context_rejection(&context, OPERATION, "tenant_id", &error);
             error
         })?;
+        if tenant_id.is_nil() {
+            let error = PortError::validation(
+                "payment.tenant_id_nil",
+                "PortContext.tenant_id must not be a nil UUID",
+            );
+            log_context_rejection(&context, OPERATION, "tenant_id", &error);
+            return Err(error);
+        }
+
+        tracing::debug!(
+            boundary = PAYMENT_CART_READ_BOUNDARY,
+            operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            cart_id = %request.cart_id,
+            "payment cart read entered"
+        );
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
 
         self.inner
             .find_reusable_collection_by_cart(tenant_id, request.cart_id)
@@ -199,4 +221,38 @@ fn log_context_rejection(
         boundary = PAYMENT_CART_READ_BOUNDARY,
         "payment cart read context was rejected"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::{PortActor, PortContext};
+
+    #[test]
+    fn parse_cart_read_tenant_id_accepts_valid_and_rejects_nil_or_invalid() {
+        let valid_tenant = Uuid::new_v4();
+        let valid_cart = Uuid::new_v4();
+        let request = ReusablePaymentCollectionByCartRequest {
+            cart_id: valid_cart,
+        };
+        assert!(!request.cart_id.is_nil());
+
+        let ctx = PortContext::new(
+            valid_tenant.to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        let parsed = Uuid::parse_str(&ctx.tenant_id).unwrap();
+        assert!(!parsed.is_nil());
+
+        let nil_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        let parsed = Uuid::parse_str(&nil_ctx.tenant_id).unwrap();
+        assert!(parsed.is_nil());
+    }
 }

@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "typegen:i18n": "next-fluent typegen -i messages/en.ftl -o src/types/i18n.d.ts",
     "typecheck": "npm run typegen:i18n && next typegen && tsc --noEmit",
+    "test:forum": "node --experimental-strip-types --test packages/rustok-forum/src/api/category-pages.test.mjs packages/rustok-forum/src/api/forum-unread.test.mjs packages/rustok-forum/src/components/category-overview-hierarchy.test.mjs packages/rustok-forum/src/components/quote-tooltip.test.mjs packages/rustok-forum/src/components/topic-reply-availability.test.mjs packages/rustok-forum/src/context/draft-storage.test.mjs src/shared/lib/graphql.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install chromium",

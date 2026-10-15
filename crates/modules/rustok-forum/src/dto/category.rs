@@ -43,6 +43,7 @@ pub struct CategoryResponse {
     pub color: Option<String>,
     pub parent_id: Option<Uuid>,
     pub position: i32,
+    /// Forum-owned global category totals, not viewer-visible list counts.
     pub topic_count: i32,
     pub reply_count: i32,
     pub moderated: bool,
@@ -62,6 +63,7 @@ pub struct CategoryListItem {
     pub icon: Option<String>,
     pub color: Option<String>,
     pub parent_id: Option<Uuid>,
+    /// Forum-owned global category totals, not viewer-visible list counts.
     pub topic_count: i32,
     pub reply_count: i32,
     pub is_subscribed: bool,

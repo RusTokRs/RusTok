@@ -102,13 +102,15 @@ async fn resolve_authorized_public_route(
     let db = ctx.data::<DatabaseConnection>()?;
     let tenant = ctx.data::<TenantContext>()?;
     let tenant_id = super::resolve_tenant_scope(tenant, requested_tenant_id)?;
-    let authenticated = ctx.data_opt::<AuthContext>().is_some();
-    let anonymous_channel_enabled = if authenticated {
-        true
-    } else {
-        forum_channel_enabled(ctx).await?
-    };
-    if !anonymous_channel_enabled {
+    if ctx.data_opt::<AuthContext>().is_none()
+        && !super::forum_graphql_runtime(ctx)
+            .anonymous_reading_allowed(tenant_id)
+            .await?
+    {
+        return Ok(None);
+    }
+    let channel_enabled = forum_channel_enabled(ctx).await?;
+    if !channel_enabled {
         return Err(
             async_graphql::Error::new("Forum module is not enabled for this channel")
                 .extend_with(|_, extension| extension.set("code", "FORBIDDEN")),
@@ -128,14 +130,6 @@ async fn resolve_authorized_public_route(
 
     if resolution.disposition == ForumTopicRouteDisposition::Gone {
         if !disclose_gone {
-            return Ok(None);
-        }
-        let gone_channel_enabled = if authenticated {
-            forum_channel_enabled(ctx).await?
-        } else {
-            anonymous_channel_enabled
-        };
-        if !gone_channel_enabled {
             return Ok(None);
         }
         let topic_id = resolution.requested_topic_id.ok_or_else(|| {
@@ -278,13 +272,18 @@ async fn forum_channel_enabled(ctx: &Context<'_>) -> Result<bool> {
         return Ok(true);
     };
     let db = ctx.data::<DatabaseConnection>()?;
-    ChannelService::new(db.clone())
-        .is_module_enabled(channel_id, MODULE_SLUG)
+    let tenant = ctx.data::<TenantContext>()?;
+    match ChannelService::new(db.clone())
+        .is_module_enabled_for_tenant(tenant.id, channel_id, MODULE_SLUG)
         .await
-        .map_err(|error| {
+    {
+        Ok(enabled) => Ok(enabled),
+        Err(rustok_channel::ChannelError::NotFound(_)) => Ok(false),
+        Err(error) => Err(
             async_graphql::Error::new(format!("Channel module check failed: {error}"))
-                .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR"))
-        })
+                .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR")),
+        ),
+    }
 }
 
 fn internal_error(message: &'static str) -> async_graphql::Error {

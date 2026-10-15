@@ -339,7 +339,15 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
     ) -> Result<Option<CheckoutOrderIdentitySnapshot>, PortError> {
         let owner_operation = "read_checkout_identity_by_operation";
         context.require_policy(PortCallPolicy::read())?;
+        validate_non_nil_uuid(request.checkout_operation_id, "checkout_operation_id")?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        tracing::debug!(
+            boundary = ORDER_PORT_BOUNDARY,
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            checkout_operation_id = %request.checkout_operation_id,
+            "read checkout identity by operation"
+        );
         self.journal
             .get_by_operation(tenant_id, request.checkout_operation_id)
             .await
@@ -356,7 +364,15 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
     ) -> Result<Option<CheckoutOrderIdentitySnapshot>, PortError> {
         let owner_operation = "read_checkout_identity_by_cart";
         context.require_policy(PortCallPolicy::read())?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        tracing::debug!(
+            boundary = ORDER_PORT_BOUNDARY,
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "read checkout identity by cart"
+        );
         self.journal
             .get_by_cart(tenant_id, request.cart_id)
             .await
@@ -374,7 +390,31 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
         let owner_operation = "bind_checkout_identity";
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.checkout_operation_id, "checkout_operation_id")?;
+        validate_non_nil_uuid(request.order_id, "order_id")?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
+        if matches!(request.payment_collection_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "order.payment_collection_id_nil",
+                "payment_collection_id must not be a nil UUID",
+            ));
+        }
+        if matches!(request.shipping_option_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "order.shipping_option_id_nil",
+                "shipping_option_id must not be a nil UUID",
+            ));
+        }
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        tracing::debug!(
+            boundary = ORDER_PORT_BOUNDARY,
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            checkout_operation_id = %request.checkout_operation_id,
+            order_id = %request.order_id,
+            cart_id = %request.cart_id,
+            "bind checkout identity"
+        );
         self.journal
             .record(RecordOrderCheckoutIdentity {
                 tenant_id,
@@ -649,9 +689,58 @@ impl CheckoutCompletionPort for crate::InProcessCheckoutCompletionPort {
         let owner_operation = "complete_checkout";
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
+        if matches!(request.customer_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "order.customer_id_nil",
+                "customer_id must not be a nil UUID",
+            ));
+        }
+        if matches!(request.payment_collection_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "order.payment_collection_id_nil",
+                "payment_collection_id must not be a nil UUID",
+            ));
+        }
+        if matches!(request.shipping_option_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "order.shipping_option_id_nil",
+                "shipping_option_id must not be a nil UUID",
+            ));
+        }
+        if matches!(request.channel_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "order.channel_id_nil",
+                "channel_id must not be a nil UUID",
+            ));
+        }
+        for item in &request.line_items {
+            if matches!(item.product_id, Some(id) if id.is_nil()) {
+                return Err(PortError::validation(
+                    "order.product_id_nil",
+                    "product_id must not be a nil UUID",
+                ));
+            }
+            if matches!(item.variant_id, Some(id) if id.is_nil()) {
+                return Err(PortError::validation(
+                    "order.variant_id_nil",
+                    "variant_id must not be a nil UUID",
+                ));
+            }
+        }
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let actor_id = parse_port_actor_id(&context, owner_operation)?;
         let checkout_operation_id = parse_checkout_operation_id(&context, owner_operation)?;
+        tracing::debug!(
+            boundary = ORDER_PORT_BOUNDARY,
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            checkout_operation_id = %checkout_operation_id,
+            cart_id = %request.cart_id,
+            line_items_count = request.line_items.len(),
+            "complete checkout entered owner port"
+        );
         let (snapshot_hash, request_hash) =
             checkout_request_hashes(&context, owner_operation, &request)?;
 
@@ -795,7 +884,15 @@ impl CheckoutCompletionPort for crate::InProcessCheckoutCompletionPort {
     ) -> Result<CheckoutCompletionSnapshot, PortError> {
         let owner_operation = "read_checkout_result";
         context.require_policy(PortCallPolicy::read())?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        tracing::debug!(
+            boundary = ORDER_PORT_BOUNDARY,
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "read checkout result"
+        );
         let identity = self
             .identity_port
             .read_by_cart(
@@ -836,7 +933,15 @@ impl CheckoutCompletionPort for crate::InProcessCheckoutCompletionPort {
     ) -> Result<CheckoutCompletionSnapshot, PortError> {
         let owner_operation = "read_checkout_result_by_operation";
         context.require_policy(PortCallPolicy::read())?;
+        validate_non_nil_uuid(request.checkout_operation_id, "checkout_operation_id")?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        tracing::debug!(
+            boundary = ORDER_PORT_BOUNDARY,
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            checkout_operation_id = %request.checkout_operation_id,
+            "read checkout result by operation"
+        );
         let identity = self
             .identity_port
             .read_by_operation(
@@ -877,7 +982,15 @@ impl CheckoutCompletionPort for crate::InProcessCheckoutCompletionPort {
     ) -> Result<OrderStatusSnapshot, PortError> {
         let owner_operation = "read_order_status";
         context.require_policy(PortCallPolicy::read())?;
+        validate_non_nil_uuid(request.order_id, "order_id")?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        tracing::debug!(
+            boundary = ORDER_PORT_BOUNDARY,
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            order_id = %request.order_id,
+            "read order status"
+        );
         let response = self
             .order_service
             .get_order(tenant_id, request.order_id)
@@ -964,11 +1077,22 @@ impl CheckoutCompletionSnapshot {
     }
 }
 
+fn validate_non_nil_uuid(id: Uuid, field: &'static str) -> Result<(), PortError> {
+    if id.is_nil() {
+        Err(PortError::validation(
+            format!("order.{field}_nil"),
+            format!("{field} must not be a nil UUID"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 fn parse_port_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+    let tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
         log_order_context_rejection(
             context,
             owner_operation,
@@ -979,14 +1103,27 @@ fn parse_port_tenant_id(
             "order.tenant_id_invalid",
             "order request context is invalid",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        log_order_context_rejection(
+            context,
+            owner_operation,
+            "order.tenant_id_nil",
+            "tenant_id",
+        );
+        return Err(PortError::validation(
+            "order.tenant_id_nil",
+            "order tenant_id must not be a nil UUID",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn parse_port_actor_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.actor.id.trim()).map_err(|_| {
+    let actor_id = Uuid::parse_str(context.actor.id.trim()).map_err(|_| {
         log_order_context_rejection(
             context,
             owner_operation,
@@ -994,7 +1131,20 @@ fn parse_port_actor_id(
             "actor_id",
         );
         PortError::validation("order.actor_id_invalid", "order request context is invalid")
-    })
+    })?;
+    if actor_id.is_nil() {
+        log_order_context_rejection(
+            context,
+            owner_operation,
+            "order.actor_id_nil",
+            "actor_id",
+        );
+        return Err(PortError::validation(
+            "order.actor_id_nil",
+            "order actor_id must not be a nil UUID",
+        ));
+    }
+    Ok(actor_id)
 }
 
 fn parse_checkout_operation_id(
@@ -1013,7 +1163,7 @@ fn parse_checkout_operation_id(
             "order request context is invalid",
         )
     })?;
-    Uuid::parse_str(value).map_err(|_| {
+    let id = Uuid::parse_str(value).map_err(|_| {
         log_order_context_rejection(
             context,
             owner_operation,
@@ -1024,7 +1174,20 @@ fn parse_checkout_operation_id(
             "order.checkout_operation_id_invalid",
             "order request context is invalid",
         )
-    })
+    })?;
+    if id.is_nil() {
+        log_order_context_rejection(
+            context,
+            owner_operation,
+            "order.checkout_operation_id_nil",
+            "causation_id",
+        );
+        return Err(PortError::validation(
+            "order.checkout_operation_id_nil",
+            "order checkout_operation_id must not be a nil UUID",
+        ));
+    }
+    Ok(id)
 }
 
 fn checkout_request_hashes(
@@ -1272,3 +1435,100 @@ fn order_error_to_port_error(
         ),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::PortActor;
+
+    #[test]
+    fn test_validate_non_nil_uuid_rejects_nil() {
+        let err = validate_non_nil_uuid(Uuid::nil(), "order_id").unwrap_err();
+        assert_eq!(err.code, "order.order_id_nil");
+        assert!(err.message.contains("order_id must not be a nil UUID"));
+    }
+
+    #[test]
+    fn test_validate_non_nil_uuid_accepts_valid() {
+        let id = Uuid::new_v4();
+        assert!(validate_non_nil_uuid(id, "order_id").is_ok());
+    }
+
+    #[test]
+    fn test_parse_port_tenant_id_validation() {
+        let valid_id = Uuid::new_v4();
+        let mut ctx = PortContext::new(
+            valid_id.to_string(),
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
+
+        assert_eq!(
+            parse_port_tenant_id(&ctx, "test_op").unwrap(),
+            valid_id
+        );
+
+        ctx.tenant_id = Uuid::nil().to_string();
+        let err = parse_port_tenant_id(&ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "order.tenant_id_nil");
+
+        ctx.tenant_id = "invalid-uuid".to_string();
+        let err = parse_port_tenant_id(&ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "order.tenant_id_invalid");
+    }
+
+    #[test]
+    fn test_parse_port_actor_id_validation() {
+        let valid_id = Uuid::new_v4();
+        let mut ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(valid_id.to_string()),
+            "en",
+            "corr-1",
+        );
+
+        assert_eq!(
+            parse_port_actor_id(&ctx, "test_op").unwrap(),
+            valid_id
+        );
+
+        ctx.actor = PortActor::user(Uuid::nil().to_string());
+        let err = parse_port_actor_id(&ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "order.actor_id_nil");
+
+        ctx.actor = PortActor::user("invalid-uuid".to_string());
+        let err = parse_port_actor_id(&ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "order.actor_id_invalid");
+    }
+
+    #[test]
+    fn test_parse_checkout_operation_id_validation() {
+        let valid_id = Uuid::new_v4();
+        let mut ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::system(),
+            "en",
+            "corr-1",
+        )
+        .with_causation_id(valid_id.to_string());
+
+        assert_eq!(
+            parse_checkout_operation_id(&ctx, "test_op").unwrap(),
+            valid_id
+        );
+
+        ctx.causation_id = Some(Uuid::nil().to_string());
+        let err = parse_checkout_operation_id(&ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "order.checkout_operation_id_nil");
+
+        ctx.causation_id = Some("not-a-uuid".to_string());
+        let err = parse_checkout_operation_id(&ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "order.checkout_operation_id_invalid");
+
+        ctx.causation_id = None;
+        let err = parse_checkout_operation_id(&ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "order.checkout_operation_id_required");
+    }
+}
+

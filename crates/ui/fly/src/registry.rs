@@ -83,6 +83,11 @@ fn validate_registry_id(id: &str) -> FlyResult<()> {
         "rich_text",
         "embed",
         "symbol",
+        "product_card",
+        "product_grid",
+        "product_price",
+        "cart_button",
+        "pricing_table",
     ];
     if id.is_empty() || (!id.contains('.') && !BUILT_INS.contains(&id)) {
         return Err(FlyError::InvalidRegistryId(id.to_string()));
@@ -308,6 +313,11 @@ pub fn builtin_component_definitions() -> Vec<ComponentDefinition> {
                     | "media"
                     | "form"
                     | "symbol"
+                    | "product_card"
+                    | "product_grid"
+                    | "pricing_table"
+                    | "product_price"
+                    | "cart_button"
             );
             ComponentDefinition {
                 id: id.to_string(),
@@ -388,6 +398,11 @@ fn builtin_component_ids() -> Vec<&'static str> {
         "rich_text",
         "embed",
         "symbol",
+        "product_card",
+        "product_grid",
+        "product_price",
+        "cart_button",
+        "pricing_table",
     ]
 }
 
@@ -548,6 +563,233 @@ fn builtin_component_template(id: &str) -> ComponentNode {
                 "aspect_ratio": "16 / 9"
             }
         }),
+        "product_price" => json!({
+            "type": "product_price",
+            "tagName": "div",
+            "style": { "display": "inline-flex", "align-items": "baseline", "gap": "8px" },
+            "components": [
+                {
+                    "type": "text",
+                    "tagName": "span",
+                    "content": "$99.00",
+                    "style": { "font-size": "24px", "font-weight": "700", "color": "#0f172a" }
+                },
+                {
+                    "type": "text",
+                    "tagName": "span",
+                    "content": "$129.00",
+                    "style": { "font-size": "16px", "text-decoration": "line-through", "color": "#94a3b8" }
+                },
+                {
+                    "type": "text",
+                    "tagName": "span",
+                    "content": "-23%",
+                    "style": {
+                        "font-size": "12px",
+                        "font-weight": "600",
+                        "color": "#16a34a",
+                        "background": "#dcfce7",
+                        "padding": "2px 8px",
+                        "border-radius": "9999px"
+                    }
+                }
+            ]
+        }),
+        "cart_button" => json!({
+            "type": "cart_button",
+            "tagName": "a",
+            "attributes": { "href": "/cart" },
+            "style": {
+                "display": "inline-flex",
+                "align-items": "center",
+                "gap": "10px",
+                "padding": "8px 16px",
+                "border": "1px solid #e2e8f0",
+                "border-radius": "10px",
+                "background": "#ffffff",
+                "color": "#0f172a",
+                "text-decoration": "none",
+                "font-weight": "600"
+            },
+            "components": [
+                { "type": "text", "content": "Cart" },
+                {
+                    "type": "text",
+                    "tagName": "span",
+                    "content": "3",
+                    "style": {
+                        "display": "inline-flex",
+                        "align-items": "center",
+                        "justify-content": "center",
+                        "min-width": "20px",
+                        "height": "20px",
+                        "padding": "0 6px",
+                        "border-radius": "10px",
+                        "background": "#2563eb",
+                        "color": "#ffffff",
+                        "font-size": "12px",
+                        "font-weight": "700"
+                    }
+                }
+            ]
+        }),
+        "product_card" => json!({
+            "type": "product_card",
+            "tagName": "article",
+            "style": {
+                "display": "flex",
+                "flex-direction": "column",
+                "padding": "16px",
+                "border": "1px solid #e2e8f0",
+                "border-radius": "16px",
+                "background": "#ffffff"
+            },
+            "components": [
+                {
+                    "type": "image",
+                    "tagName": "img",
+                    "attributes": {
+                        "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23f1f5f9'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2394a3b8' font-family='sans-serif' font-size='16'%3EProduct%3C/text%3E%3C/svg%3E",
+                        "alt": "Product thumbnail"
+                    },
+                    "style": {
+                        "width": "100%",
+                        "height": "220px",
+                        "object-fit": "cover",
+                        "border-radius": "12px",
+                        "margin-bottom": "12px"
+                    }
+                },
+                {
+                    "type": "heading",
+                    "tagName": "h3",
+                    "content": "Premium Wireless Headphones",
+                    "style": {
+                        "font-size": "18px",
+                        "font-weight": "600",
+                        "line-height": "1.3",
+                        "margin": "0 0 8px",
+                        "color": "#0f172a"
+                    }
+                },
+                {
+                    "type": "text",
+                    "content": "Crystal clear sound with active noise cancellation and 30-hour battery life.",
+                    "style": {
+                        "font-size": "14px",
+                        "line-height": "1.5",
+                        "color": "#64748b",
+                        "margin": "0 0 16px",
+                        "flex-grow": "1"
+                    }
+                },
+                builtin_component_template("product_price"),
+                {
+                    "type": "button",
+                    "tagName": "button",
+                    "attributes": { "type": "button" },
+                    "content": "Add to cart",
+                    "style": {
+                        "display": "block",
+                        "width": "100%",
+                        "padding": "10px 16px",
+                        "border": "0",
+                        "border-radius": "10px",
+                        "background": "#2563eb",
+                        "color": "#ffffff",
+                        "font-size": "14px",
+                        "font-weight": "600",
+                        "cursor": "pointer",
+                        "margin-top": "12px"
+                    }
+                }
+            ]
+        }),
+        "product_grid" => json!({
+            "type": "product_grid",
+            "tagName": "section",
+            "style": { "padding": "48px 24px", "max-width": "1200px", "margin": "0 auto" },
+            "components": [
+                {
+                    "type": "heading",
+                    "tagName": "h2",
+                    "content": "Featured Products",
+                    "style": {
+                        "font-size": "32px",
+                        "font-weight": "700",
+                        "margin": "0 0 8px",
+                        "text-align": "center",
+                        "color": "#0f172a"
+                    }
+                },
+                {
+                    "type": "text",
+                    "content": "Explore our curated collection of bestselling items.",
+                    "style": {
+                        "font-size": "16px",
+                        "color": "#64748b",
+                        "margin": "0 0 32px",
+                        "text-align": "center"
+                    }
+                },
+                {
+                    "type": "grid",
+                    "style": {
+                        "display": "grid",
+                        "grid-template-columns": "repeat(auto-fit, minmax(280px, 1fr))",
+                        "gap": "24px"
+                    },
+                    "components": [
+                        builtin_component_template("product_card"),
+                        builtin_component_template("product_card"),
+                        builtin_component_template("product_card")
+                    ]
+                }
+            ]
+        }),
+        "pricing_table" => json!({
+            "type": "pricing_table",
+            "tagName": "section",
+            "style": { "padding": "64px 24px", "max-width": "1120px", "margin": "0 auto" },
+            "components": [
+                {
+                    "type": "heading",
+                    "tagName": "h2",
+                    "content": "Simple, transparent pricing",
+                    "style": {
+                        "font-size": "36px",
+                        "font-weight": "700",
+                        "text-align": "center",
+                        "margin": "0 0 12px",
+                        "color": "#0f172a"
+                    }
+                },
+                {
+                    "type": "text",
+                    "content": "Choose the plan that fits your needs. Cancel anytime.",
+                    "style": {
+                        "font-size": "18px",
+                        "color": "#64748b",
+                        "text-align": "center",
+                        "margin": "0 0 48px"
+                    }
+                },
+                {
+                    "type": "grid",
+                    "style": {
+                        "display": "grid",
+                        "grid-template-columns": "repeat(auto-fit, minmax(280px, 1fr))",
+                        "gap": "24px",
+                        "align-items": "stretch"
+                    },
+                    "components": [
+                        pricing_card("Starter", "$19", "/month", "Perfect for small teams and individuals.", false),
+                        pricing_card("Professional", "$49", "/month", "Advanced features for growing businesses.", true),
+                        pricing_card("Enterprise", "$129", "/month", "Dedicated support and maximum performance.", false)
+                    ]
+                }
+            ]
+        }),
         _ => json!({ "type": id }),
     };
     serde_json::from_value(value).expect("built-in block templates use valid component JSON")
@@ -697,6 +939,100 @@ fn feature_card(title: &str, body: &str) -> serde_json::Value {
     })
 }
 
+fn pricing_card(
+    name: &str,
+    price: &str,
+    period: &str,
+    description: &str,
+    is_popular: bool,
+) -> serde_json::Value {
+    let border_color = if is_popular { "#2563eb" } else { "#e2e8f0" };
+    let bg_color = if is_popular { "#f8fafc" } else { "#ffffff" };
+    let mut card = json!({
+        "type": "column",
+        "style": {
+            "display": "flex",
+            "flex-direction": "column",
+            "padding": "32px 24px",
+            "border": format!("2px solid {border_color}"),
+            "border-radius": "16px",
+            "background": bg_color
+        },
+        "components": [
+            {
+                "type": "heading",
+                "tagName": "h3",
+                "content": name,
+                "style": { "font-size": "22px", "font-weight": "700", "margin": "0 0 8px", "color": "#0f172a" }
+            },
+            {
+                "type": "text",
+                "content": description,
+                "style": { "font-size": "14px", "color": "#64748b", "margin": "0 0 20px" }
+            },
+            {
+                "type": "row",
+                "style": { "display": "flex", "align-items": "baseline", "gap": "4px", "margin-bottom": "24px" },
+                "components": [
+                    { "type": "text", "tagName": "span", "content": price, "style": { "font-size": "36px", "font-weight": "800", "color": "#0f172a" } },
+                    { "type": "text", "tagName": "span", "content": period, "style": { "font-size": "14px", "color": "#64748b" } }
+                ]
+            },
+            {
+                "type": "list",
+                "tagName": "ul",
+                "style": { "margin": "0 0 32px", "padding": "0 0 0 20px", "flex-grow": "1", "color": "#334155" },
+                "components": [
+                    { "type": "list_item", "tagName": "li", "content": "Full catalog access" },
+                    { "type": "list_item", "tagName": "li", "content": "Unlimited carts & checkouts" },
+                    { "type": "list_item", "tagName": "li", "content": "Standard analytics" }
+                ]
+            },
+            {
+                "type": "button",
+                "tagName": "a",
+                "attributes": { "href": "#" },
+                "content": if is_popular { "Get started with Pro" } else { "Choose plan" },
+                "style": {
+                    "display": "block",
+                    "text-align": "center",
+                    "padding": "12px 20px",
+                    "border-radius": "10px",
+                    "background": if is_popular { "#2563eb" } else { "#0f172a" },
+                    "color": "#ffffff",
+                    "text-decoration": "none",
+                    "font-weight": "600"
+                }
+            }
+        ]
+    });
+    if is_popular
+        && let Some(components) = card.get_mut("components").and_then(|c| c.as_array_mut())
+    {
+        components.insert(
+            0,
+            json!({
+                "type": "text",
+                "tagName": "span",
+                "content": "MOST POPULAR",
+                "style": {
+                    "display": "inline-block",
+                    "align-self": "flex-start",
+                    "font-size": "11px",
+                    "font-weight": "700",
+                    "letter-spacing": "0.05em",
+                    "color": "#2563eb",
+                    "background": "#dbeafe",
+                    "padding": "4px 8px",
+                    "border-radius": "6px",
+                    "margin-bottom": "12px"
+                }
+            }),
+        );
+    }
+    card
+}
+
 fn humanize_id(id: &str) -> String {
     let mut characters = id.replace('_', " ").chars().collect::<Vec<_>>();
     if let Some(first) = characters.first_mut() {
@@ -719,6 +1055,11 @@ fn builtin_block_label(id: &str) -> String {
         "raw_html" => "Raw HTML (escaped as text)".to_string(),
         "rich_text" => "Rich text".to_string(),
         "embed" => "Embed (video / map)".to_string(),
+        "product_card" => "Product card".to_string(),
+        "product_grid" => "Product grid".to_string(),
+        "product_price" => "Product price".to_string(),
+        "cart_button" => "Cart widget button".to_string(),
+        "pricing_table" => "Pricing table".to_string(),
         _ => humanize_id(id),
     }
 }
@@ -729,6 +1070,9 @@ fn builtin_category(id: &str) -> &'static str {
         "image" | "video" | "media" | "embed" => "media",
         "form" | "input" | "textarea" | "select" | "checkbox" | "submit" => "forms",
         "raw_html" => "advanced",
+        "product_card" | "product_grid" | "product_price" | "cart_button" | "pricing_table" => {
+            "commerce"
+        }
         _ => "content",
     }
 }
@@ -736,6 +1080,36 @@ fn builtin_category(id: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn commerce_blocks_are_registered_and_have_commerce_category() {
+        let blocks = builtin_blocks();
+        for id in [
+            "product_card",
+            "product_grid",
+            "product_price",
+            "cart_button",
+            "pricing_table",
+        ] {
+            let block = blocks
+                .iter()
+                .find(|b| b.id == id)
+                .unwrap_or_else(|| panic!("expected block {id} to exist"));
+            assert_eq!(block.category, "commerce");
+            let root = block.component.as_object().expect("block root is object");
+            assert!(!root.component_type().is_empty());
+        }
+    }
+
+    #[test]
+    fn commerce_containers_accept_child_components() {
+        let registries = RegistrySet::with_builtins();
+        assert!(registries.accepts_child_type(Some("product_card"), "image"));
+        assert!(registries.accepts_child_type(Some("product_card"), "product_price"));
+        assert!(registries.accepts_child_type(Some("product_card"), "button"));
+        assert!(registries.accepts_child_type(Some("product_grid"), "product_card"));
+        assert!(registries.accepts_child_type(Some("pricing_table"), "grid"));
+    }
 
     #[test]
     fn landing_templates_have_visible_nested_content() {

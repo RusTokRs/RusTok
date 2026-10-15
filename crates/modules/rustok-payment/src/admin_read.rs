@@ -126,6 +126,41 @@ impl PaymentAdminReadPort for InProcessPaymentAdminReadPort {
     ) -> Result<PaymentCollectionProjectionPage, PortError> {
         let operation = "list_payment_collection_projections";
         let tenant_id = require_admin_read_context(&context, operation)?;
+        tracing::debug!(
+            boundary = PAYMENT_ADMIN_READ_BOUNDARY,
+            operation,
+            correlation_id = %context.correlation_id,
+            page = request.page,
+            per_page = request.per_page,
+            order_id = ?request.order_id,
+            cart_id = ?request.cart_id,
+            customer_id = ?request.customer_id,
+            "payment list_payment_collection_projections entered"
+        );
+        if matches!(request.order_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "payment.order_id_nil",
+                "order_id must not be a nil UUID",
+            ));
+        }
+        if matches!(request.cart_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "payment.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        if matches!(request.customer_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "payment.customer_id_nil",
+                "customer_id must not be a nil UUID",
+            ));
+        }
+        if request.page == 0 || request.per_page == 0 {
+            return Err(PortError::validation(
+                "payment.pagination_invalid",
+                "page and per_page must be greater than zero",
+            ));
+        }
         let (items, total) = self
             .inner
             .list_collections(
@@ -151,6 +186,19 @@ impl PaymentAdminReadPort for InProcessPaymentAdminReadPort {
     ) -> Result<PaymentCollectionResponse, PortError> {
         let operation = "read_payment_collection_projection";
         let tenant_id = require_admin_read_context(&context, operation)?;
+        tracing::debug!(
+            boundary = PAYMENT_ADMIN_READ_BOUNDARY,
+            operation,
+            correlation_id = %context.correlation_id,
+            collection_id = %request.collection_id,
+            "payment read_payment_collection_projection entered"
+        );
+        if request.collection_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.collection_id_nil",
+                "collection_id must not be a nil UUID",
+            ));
+        }
         self.inner
             .get_collection(tenant_id, request.collection_id)
             .await
@@ -164,6 +212,34 @@ impl PaymentAdminReadPort for InProcessPaymentAdminReadPort {
     ) -> Result<RefundProjectionPage, PortError> {
         let operation = "list_refund_projections";
         let tenant_id = require_admin_read_context(&context, operation)?;
+        tracing::debug!(
+            boundary = PAYMENT_ADMIN_READ_BOUNDARY,
+            operation,
+            correlation_id = %context.correlation_id,
+            page = request.page,
+            per_page = request.per_page,
+            payment_collection_id = ?request.payment_collection_id,
+            order_id = ?request.order_id,
+            "payment list_refund_projections entered"
+        );
+        if matches!(request.payment_collection_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "payment.payment_collection_id_nil",
+                "payment_collection_id must not be a nil UUID",
+            ));
+        }
+        if matches!(request.order_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "payment.order_id_nil",
+                "order_id must not be a nil UUID",
+            ));
+        }
+        if request.page == 0 || request.per_page == 0 {
+            return Err(PortError::validation(
+                "payment.pagination_invalid",
+                "page and per_page must be greater than zero",
+            ));
+        }
         let (items, total) = self
             .inner
             .list_refunds(
@@ -188,6 +264,19 @@ impl PaymentAdminReadPort for InProcessPaymentAdminReadPort {
     ) -> Result<RefundResponse, PortError> {
         let operation = "read_refund_projection";
         let tenant_id = require_admin_read_context(&context, operation)?;
+        tracing::debug!(
+            boundary = PAYMENT_ADMIN_READ_BOUNDARY,
+            operation,
+            correlation_id = %context.correlation_id,
+            refund_id = %request.refund_id,
+            "payment read_refund_projection entered"
+        );
+        if request.refund_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.refund_id_nil",
+                "refund_id must not be a nil UUID",
+            ));
+        }
         self.inner
             .get_refund(tenant_id, request.refund_id)
             .await
@@ -204,14 +293,23 @@ fn require_admin_read_context(
         .inspect_err(|error| {
             log_context_rejection(context, operation, "policy", error);
         })?;
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let error = PortError::validation(
             "payment.admin_read_context_invalid",
             "payment admin read context is invalid",
         );
         log_context_rejection(context, operation, "tenant_id", &error);
         error
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let error = PortError::validation(
+            "payment.tenant_id_nil",
+            "PortContext.tenant_id must not be a nil UUID",
+        );
+        log_context_rejection(context, operation, "tenant_id", &error);
+        return Err(error);
+    }
+    Ok(tenant_id)
 }
 
 fn map_payment_error(
@@ -333,5 +431,45 @@ fn actor_kind(kind: &PortActorKind) -> &'static str {
         PortActorKind::User => "user",
         PortActorKind::Service => "service",
         PortActorKind::System => "system",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::{PortActor, PortContext};
+
+    #[test]
+    fn require_admin_read_context_accepts_valid_and_rejects_nil_or_invalid() {
+        let valid_tenant = Uuid::new_v4();
+        let ctx = PortContext::new(
+            valid_tenant.to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        )
+        .with_deadline(std::time::Duration::from_millis(5000));
+        assert_eq!(
+            require_admin_read_context(&ctx, "test_op").unwrap(),
+            valid_tenant
+        );
+
+        let nil_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        )
+        .with_deadline(std::time::Duration::from_millis(5000));
+        let err = require_admin_read_context(&nil_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "payment.tenant_id_nil");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+
+        let invalid_ctx =
+            PortContext::new("not-a-uuid", PortActor::system(), "en-US", Uuid::new_v4())
+                .with_deadline(std::time::Duration::from_millis(5000));
+        let err = require_admin_read_context(&invalid_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "payment.admin_read_context_invalid");
+        assert_eq!(err.kind, PortErrorKind::Validation);
     }
 }

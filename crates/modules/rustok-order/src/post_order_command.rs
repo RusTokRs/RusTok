@@ -141,6 +141,17 @@ impl OrderPostOrderCommandRuntime {
     }
 }
 
+fn validate_non_nil_uuid(id: Uuid, field: &'static str) -> Result<(), PortError> {
+    if id.is_nil() {
+        Err(PortError::validation(
+            format!("order.{field}_nil"),
+            format!("{field} must not be a nil UUID"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
     async fn create_change(
@@ -149,8 +160,17 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
         request: CreateOrderChangeRequest,
     ) -> Result<OrderChangeResponse, PortError> {
         const OPERATION: &str = "create_change";
+        validate_non_nil_uuid(request.order_id, "order_id")?;
         let (tenant_id, actor_id, idempotency_key) =
             require_post_order_command_context(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ORDER_POST_ORDER_COMMAND_BOUNDARY,
+            operation = OPERATION,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            order_id = %request.order_id,
+            "create order change entered"
+        );
         self.inner
             .create_order_change(
                 tenant_id,
@@ -169,8 +189,17 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
         request: ApplyOrderChangeRequest,
     ) -> Result<OrderChangeResponse, PortError> {
         const OPERATION: &str = "apply_change";
+        validate_non_nil_uuid(request.change_id, "change_id")?;
         let (tenant_id, actor_id, idempotency_key) =
             require_post_order_command_context(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ORDER_POST_ORDER_COMMAND_BOUNDARY,
+            operation = OPERATION,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            change_id = %request.change_id,
+            "apply order change entered"
+        );
         self.inner
             .apply_order_change(
                 tenant_id,
@@ -189,8 +218,17 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
         request: CancelOrderChangeRequest,
     ) -> Result<OrderChangeResponse, PortError> {
         const OPERATION: &str = "cancel_change";
+        validate_non_nil_uuid(request.change_id, "change_id")?;
         let (tenant_id, actor_id, idempotency_key) =
             require_post_order_command_context(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ORDER_POST_ORDER_COMMAND_BOUNDARY,
+            operation = OPERATION,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            change_id = %request.change_id,
+            "cancel order change entered"
+        );
         self.inner
             .cancel_order_change(
                 tenant_id,
@@ -209,8 +247,17 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
         request: CreateOrderReturnRequest,
     ) -> Result<OrderReturnResponse, PortError> {
         const OPERATION: &str = "create_return";
+        validate_non_nil_uuid(request.order_id, "order_id")?;
         let (tenant_id, actor_id, idempotency_key) =
             require_post_order_command_context(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ORDER_POST_ORDER_COMMAND_BOUNDARY,
+            operation = OPERATION,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            order_id = %request.order_id,
+            "create order return entered"
+        );
         self.inner
             .create_return(
                 tenant_id,
@@ -229,8 +276,17 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
         request: CompleteOrderReturnRequest,
     ) -> Result<OrderReturnResponse, PortError> {
         const OPERATION: &str = "complete_return";
+        validate_non_nil_uuid(request.return_id, "return_id")?;
         let (tenant_id, actor_id, idempotency_key) =
             require_post_order_command_context(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ORDER_POST_ORDER_COMMAND_BOUNDARY,
+            operation = OPERATION,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            return_id = %request.return_id,
+            "complete order return entered"
+        );
         self.inner
             .complete_return(
                 tenant_id,
@@ -249,8 +305,17 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
         request: CancelOrderReturnRequest,
     ) -> Result<OrderReturnResponse, PortError> {
         const OPERATION: &str = "cancel_return";
+        validate_non_nil_uuid(request.return_id, "return_id")?;
         let (tenant_id, actor_id, idempotency_key) =
             require_post_order_command_context(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ORDER_POST_ORDER_COMMAND_BOUNDARY,
+            operation = OPERATION,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            return_id = %request.return_id,
+            "cancel order return entered"
+        );
         self.inner
             .cancel_return(
                 tenant_id,
@@ -281,6 +346,14 @@ fn require_post_order_command_context(
         log_context_error(context, operation, "tenant_id", &error);
         error
     })?;
+    if tenant_id.is_nil() {
+        let error = PortError::validation(
+            "order.tenant_id_nil",
+            "order tenant_id must not be a nil UUID",
+        );
+        log_context_error(context, operation, "tenant_id_nil", &error);
+        return Err(error);
+    }
     let actor_id = Uuid::parse_str(&context.actor.id).map_err(|_| {
         let error = PortError::validation(
             "order.post_order_command_context_invalid",
@@ -289,6 +362,14 @@ fn require_post_order_command_context(
         log_context_error(context, operation, "actor_id", &error);
         error
     })?;
+    if actor_id.is_nil() {
+        let error = PortError::validation(
+            "order.actor_id_nil",
+            "order actor_id must not be a nil UUID",
+        );
+        log_context_error(context, operation, "actor_id_nil", &error);
+        return Err(error);
+    }
     let idempotency_key = context
         .idempotency_key
         .as_deref()

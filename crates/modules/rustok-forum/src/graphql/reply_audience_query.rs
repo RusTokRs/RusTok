@@ -11,7 +11,8 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::{
-    ForumReplyReadOperation, ForumReplyReadTransport, ReplyResponse, ReplyStatus, RevisionService,
+    ForumContentTarget, ForumReplyReadOperation, ForumReplyReadTransport, ReplyResponse,
+    ReplyStatus, RevisionService,
     reply_read_audience_port_context,
 };
 
@@ -203,59 +204,95 @@ impl ForumReplyAudienceQuery {
         tenant_id: Option<Uuid>,
         locale: Option<String>,
     ) -> Result<Option<String>> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        super::require_public_forum_channel_enabled(ctx).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let locale = resolve_graphql_locale(ctx, locale.as_deref());
-        let runtime = ctx
-            .data_opt::<ForumGraphqlRuntimeData>()
-            .cloned()
-            .unwrap_or_default();
-        let service = runtime.reply_audience_read_service(db.clone(), event_bus.clone());
-
-        let reply = if let Some(auth) = ctx.data_opt::<AuthContext>() {
-            let context = reply_read_audience_port_context(
-                ForumReplyReadTransport::Graphql,
-                ForumReplyReadOperation::SelectedReply,
-                tenant_id,
-                auth,
-                ctx.data_opt::<RequestContext>(),
-                locale.as_str(),
-            )?;
-            service
-                .get_authenticated_storefront_visible_with_audience_context(
-                    tenant_id,
-                    forum_security(auth),
-                    context,
-                    id,
-                    Some(tenant.default_locale.as_str()),
-                    Some(&PUBLIC_REPLY_STATUSES),
-                )
-                .await?
-        } else {
-            service
-                .get_public_storefront_visible_with_locale_fallback(
-                    tenant_id,
-                    id,
-                    locale.as_str(),
-                    Some(tenant.default_locale.as_str()),
-                    public_channel_slug(ctx).as_deref(),
-                    Some(&PUBLIC_REPLY_STATUSES),
-                )
-                .await?
-        };
+        let (tenant_id, reply) =
+            load_visible_storefront_reply(ctx, id, tenant_id, locale.as_deref()).await?;
         let Some(reply) = reply else {
             return Ok(None);
         };
 
-        let revision = RevisionService::new(db.clone())
+        let revision = RevisionService::new(ctx.data::<DatabaseConnection>()?.clone())
             .current_reply_revision(tenant_id, reply.id)
             .await?;
         Ok(Some(revision.to_string()))
     }
+
+    /// The persisted global relation-revision ID for a visible, approved reply
+    /// and its effective locale, not the content version used by reactions.
+    async fn forum_storefront_reply_quote_revision(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+        locale: Option<String>,
+    ) -> Result<Option<String>> {
+        let (tenant_id, reply) =
+            load_visible_storefront_reply(ctx, id, tenant_id, locale.as_deref()).await?;
+        let Some(reply) = reply else {
+            return Ok(None);
+        };
+        let revision = RevisionService::new(ctx.data::<DatabaseConnection>()?.clone())
+            .current_quote_revision(
+                tenant_id,
+                ForumContentTarget::reply(reply.id),
+                &reply.effective_locale,
+            )
+            .await?;
+        Ok(revision.map(|id| id.to_string()))
+    }
+}
+
+/// Reuse the exact storefront reply audience and approval gate for revision facts.
+async fn load_visible_storefront_reply(
+    ctx: &Context<'_>,
+    id: Uuid,
+    requested_tenant_id: Option<Uuid>,
+    requested_locale: Option<&str>,
+) -> Result<(Uuid, Option<ReplyResponse>)> {
+    require_module_enabled(ctx, MODULE_SLUG).await?;
+    super::require_public_forum_channel_enabled(ctx).await?;
+    let db = ctx.data::<DatabaseConnection>()?;
+    let event_bus = ctx.data::<TransactionalEventBus>()?;
+    let tenant = ctx.data::<TenantContext>()?;
+    let tenant_id = super::resolve_tenant_scope(tenant, requested_tenant_id)?;
+    let locale = resolve_graphql_locale(ctx, requested_locale);
+    let runtime = ctx
+        .data_opt::<ForumGraphqlRuntimeData>()
+        .cloned()
+        .unwrap_or_default();
+    let service = runtime.reply_audience_read_service(db.clone(), event_bus.clone());
+
+    let reply = if let Some(auth) = ctx.data_opt::<AuthContext>() {
+        let context = reply_read_audience_port_context(
+            ForumReplyReadTransport::Graphql,
+            ForumReplyReadOperation::SelectedReply,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            locale.as_str(),
+        )?;
+        service
+            .get_authenticated_storefront_visible_with_audience_context(
+                tenant_id,
+                forum_security(auth),
+                context,
+                id,
+                Some(tenant.default_locale.as_str()),
+                Some(&PUBLIC_REPLY_STATUSES),
+            )
+            .await?
+    } else {
+        service
+            .get_public_storefront_visible_with_locale_fallback(
+                tenant_id,
+                id,
+                locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+                public_channel_slug(ctx).as_deref(),
+                Some(&PUBLIC_REPLY_STATUSES),
+            )
+            .await?
+    };
+    Ok((tenant_id, reply))
 }
 
 fn forum_security(auth: &AuthContext) -> SecurityContext {

@@ -1,9 +1,16 @@
+#[path = "support/forum_public_settings.rs"]
+mod forum_public_settings;
+
 #[path = "support/posting_cooldown.rs"]
 mod posting_cooldown;
 
 use std::sync::Arc;
 
-use rustok_api::HostRuntimeContext;
+use async_trait::async_trait;
+use rustok_api::{
+    HostRuntimeContext, PortActor, PortContext, PortError, SharedStaticModuleSettingsReader,
+    StaticModuleSettingsReader, StaticModuleSettingsSnapshot,
+};
 use rustok_core::{MigrationSource, ModuleRegistry, SecurityContext, UserRole};
 use rustok_forum::entities::forum_domain_event;
 use rustok_forum::{
@@ -59,6 +66,12 @@ async fn notification_source_rechecks_category_and_topic_richer_visibility() {
             tenant_id,
             category.id,
             SecurityContext::new(UserRole::Customer, Some(recipient_id)),
+            PortContext::new(
+                tenant_id.to_string(),
+                PortActor::user(recipient_id.to_string()),
+                "en",
+                "test-category-subscription",
+            ),
         )
         .await
         .expect("category watcher should be stored");
@@ -93,7 +106,7 @@ async fn notification_source_rechecks_category_and_topic_richer_visibility() {
     let mut extensions = registry
         .build_runtime_extensions()
         .expect("Notifications and Forum runtime extensions should initialize");
-    let host = extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()));
+    let host = extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()).with_shared_value(forum_public_settings::default_settings_reader()));
     let providers = materialize_notification_source_registry(&mut extensions, &host)
         .expect("Forum source factory should materialize");
     let provider = providers
@@ -211,6 +224,134 @@ async fn notification_source_rechecks_category_and_topic_richer_visibility() {
         .await
         .expect("category-narrowed target authorization should fail closed");
     assert_eq!(category_open, NotificationOpenAuthorization::Unavailable);
+}
+
+struct PrivateForumSettings;
+
+#[async_trait]
+impl StaticModuleSettingsReader for PrivateForumSettings {
+    async fn settings(
+        &self,
+        _tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        assert_eq!(module_slug, "forum");
+        Ok(Some(StaticModuleSettingsSnapshot {
+            enabled: true,
+            settings: serde_json::json!({"allow_anonymous_reading": false}),
+        }))
+    }
+}
+
+#[tokio::test]
+async fn notification_public_description_and_stale_audience_obey_private_tenant_setting() {
+    let (db, event_bus) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let author = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let recipient_id = Uuid::new_v4();
+    let category = CategoryService::new(db.clone())
+        .create(
+            tenant_id,
+            author.clone(),
+            CreateCategoryInput {
+                locale: "en".into(),
+                name: "Privacy switch".into(),
+                slug: "privacy-switch".into(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: None,
+                position: Some(0),
+                moderated: false,
+            },
+        )
+        .await
+        .expect("category");
+    SubscriptionService::new(db.clone())
+        .set_category_subscription(
+            tenant_id,
+            category.id,
+            SecurityContext::new(UserRole::Customer, Some(recipient_id)),
+            PortContext::new(
+                tenant_id.to_string(),
+                PortActor::user(recipient_id.to_string()),
+                "en",
+                "private-settings-notification-subscription",
+            ),
+        )
+        .await
+        .expect("subscription");
+    let topic = TopicService::new(db.clone(), event_bus)
+        .with_settings_providers(posting_cooldown::zero_cooldown_providers())
+        .create(
+            tenant_id,
+            author,
+            topic_input(category.id, "Privacy switch", "privacy-switch-topic"),
+        )
+        .await
+        .expect("topic");
+    let event_ref = source_event_ref(&topic_created_event(&db, tenant_id, topic.id).await);
+
+    let registry = ModuleRegistry::new()
+        .register(NotificationsModule)
+        .register(ForumModule);
+    let mut open_extensions = registry.build_runtime_extensions().expect("open registry");
+    let open_host = open_extensions.apply_to_host_runtime(
+        HostRuntimeContext::new(db.clone())
+            .with_shared_value(forum_public_settings::default_settings_reader()),
+    );
+    let open_registry = materialize_notification_source_registry(&mut open_extensions, &open_host)
+        .expect("open source");
+    let open_source = open_registry.get_by_str("forum").expect("open forum source");
+    let descriptor = open_source
+        .describe_event(DescribeNotificationRequest { event: event_ref.clone() })
+        .await
+        .expect("public description")
+        .expect("previously public topic is describable");
+    assert_eq!(
+        open_source
+            .resolve_audience(ResolveNotificationAudienceRequest {
+                event: event_ref.clone(),
+                descriptor: descriptor.clone(),
+                cursor: None,
+                limit: 10,
+            })
+            .await
+            .expect("public audience")
+            .recipients()
+            .len(),
+        1,
+    );
+
+    // Simulate a saved settings change without changing the event or its old
+    // descriptor. The notification owner must not reuse that descriptor to leak
+    // the public audience after the tenant closes anonymous reads.
+    let mut closed_extensions = registry.build_runtime_extensions().expect("closed registry");
+    let closed_host = closed_extensions.apply_to_host_runtime(
+        HostRuntimeContext::new(db).with_shared_value(
+            SharedStaticModuleSettingsReader(Arc::new(PrivateForumSettings)),
+        ),
+    );
+    let closed_registry =
+        materialize_notification_source_registry(&mut closed_extensions, &closed_host)
+            .expect("closed source");
+    let closed_source = closed_registry.get_by_str("forum").expect("closed forum source");
+    assert!(closed_source
+        .describe_event(DescribeNotificationRequest { event: event_ref.clone() })
+        .await
+        .expect("private description")
+        .is_none());
+    let page = closed_source
+        .resolve_audience(ResolveNotificationAudienceRequest {
+            event: event_ref,
+            descriptor,
+            cursor: None,
+            limit: 10,
+        })
+        .await
+        .expect("private audience");
+    assert!(page.recipients().is_empty());
+    assert!(page.is_complete());
 }
 
 fn topic_input(category_id: Uuid, title: &str, slug: &str) -> CreateTopicInput {

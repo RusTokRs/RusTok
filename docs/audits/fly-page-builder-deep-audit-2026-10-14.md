@@ -296,14 +296,11 @@ arbitrary-tree generator, max 24 nodes, are good but small). Executable accessib
 evidence is **pending** by the module's own plan: no WCAG or screen-reader confirmation,
 only source tests.
 
-### P1-10. Security tail: CLEAN-060 — `Open` (host-owned)
+### P1-10. Security tail: CLEAN-060 — `Partially Resolved` (CSRF Enforced; HttpOnly Cookie host-owned)
 
-The Fly side is closed, but the admin session is still issued by the browser (a
-`localStorage` token mirrored into `rustok-admin-session-v1`, readable by any script on the
-admin origin), and there is no explicit server-side CSRF check on the intent route —
-protection rests on incidental properties (`SameSite=Lax`, JSON content type, no CORS).
-Recorded in `crates/ui/fly/SECURITY.md`; it blocks a "production" sign-off for the editor
-even though the fix belongs to the admin shell.
+**CSRF Fixed (2026-10-15):** The Page Builder intent route in `apps/admin/src/main.rs` now explicitly enforces CSRF protection for cookie-authenticated browser sessions. `fly_browser::derive_csrf_token` generates a domain-separated SHA-256 token from the session token, which is passed down through `rustok-pages-admin::PagesFlyBuilder` into `data-fly-csrf-token` and sent in the `x-csrf-token` header by `fly-browser.js`. The server strictly verifies this token via constant-time comparison (`fly_browser::verify_csrf_token`). Requests with ambient cookies lacking a valid token are rejected with `403 Forbidden`.
+
+The remaining tail is server-side HttpOnly cookie issuance on login (avoiding client-side `localStorage` mirroring), tracked under platform hardening `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`.
 
 ### P1-11. Metadata and SEO were a thin layer — `Fixed`
 
@@ -313,15 +310,11 @@ Was: `PageHead` emitted title, description, canonical, robots, and basic Open Gr
 alternates (`PageHead::with_alternate_locale_links`, supplied by the consumer that owns
 localized routing). Tests cover emission, fallback, breakout refusal, and link validation.
 
-### P1-12. Module contributions are barely materialized — `Open`
+### P1-12. Module contributions are barely materialized — `Partially Resolved` (Commerce Palette Integrated 2026-10-15)
 
-`fly-ui` has a complete contribution contract (manifest, factory, adapter), but the only
-real module widgets are the forum ones. The plan
-(`docs/modules/page-builder-implementation-plan.md:694-696`) lists what is not connected:
-"Media/Pages reusable sections; Blog, Product, Pricing, Taxonomy and SEO contributions."
-Today's palette is 26 `fly.builtin` primitives plus landing templates — no product card,
-post list, or pricing block, so the builder cannot assemble the storefront page RusTok
-exists for without hand-rolled dynamic bindings.
+`fly-ui` has a complete contribution contract (manifest, factory, adapter). On 2026-10-15, core built-in Commerce components and blocks were integrated into the Fly palette under a dedicated `"commerce"` category: `product_card`, `product_grid`, `product_price`, `cart_button`, and `pricing_table` (3-tier plans: Starter, Pro, Enterprise), complete with container acceptance rules and semantic HTML render tags (`article`, `section`, `a`, `div`). The Leptos editor palette opens the `"commerce"` category by default alongside `"landing"`.
+
+Remaining: module-owned blog/media widget manifests and storefront integration.
 
 ### P2-13. The `fly` core is a god-crate with RusTok domain leakage — `Fixed` (2026-10-14; cargo verification rides the maintainer run, backlog item 1)
 
@@ -490,8 +483,8 @@ behavioural reference.
 6. **Contributions (P1-12):** product/blog/media widgets — without them the builder does
    not cover RusTok's own storefront, and the contribution contract gets its second
    consumer.
-7. **Security tail (P1-10):** server-issued HttpOnly session + explicit CSRF on the intent
-   route (CLEAN-060) — outside Fly, but it blocks a production sign-off for the editor.
+7. **Security tail (P1-10):** intent CSRF enforced (2026-10-15); server-issued HttpOnly session
+   cookie (CLEAN-060) remains host-owned in platform hardening.
 8. **Hygiene (P2/P3):** move the landing/scenario domain out of the `fly` core into
    `rustok-page-builder` (or rename the core honestly); curate the public API instead of
    56 glob re-exports before standalone extraction; one owned plan instead of three.

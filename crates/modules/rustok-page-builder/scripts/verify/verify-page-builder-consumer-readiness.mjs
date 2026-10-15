@@ -20,6 +20,7 @@ if (!arg) {
 const moduleToCrate = {
   pages: "rustok-pages",
   forum: "rustok-forum",
+  blog: "rustok-blog",
 };
 const crateName = moduleToCrate[arg];
 if (!crateName) {

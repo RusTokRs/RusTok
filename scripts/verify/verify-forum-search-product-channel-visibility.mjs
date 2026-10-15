@@ -170,14 +170,14 @@ requireAll(
   engine,
   [
     "pub async fn search_storefront(",
-    "search_with_storefront_channel(query, Some(channel))",
+    "search_with_storefront_channel(query, Some(channel), true)",
     // pg_engine applies the storefront-wide predicate (products *and* blog posts), while the
     // product-only wrapper is what the suggestion path reuses.
     "storefront_channel_visibility_sql(",
     "run_fts_search(",
     "run_typo_tolerant_search(",
-    "build_filter_clause(request.query, 4, request.storefront_channel)",
-    "self.search_with_storefront_channel(query, None).await",
+    "build_filter_clause(request.query, 4, request.storefront_channel, request.exclude_forum)",
+    "self.search_with_storefront_channel(query, None, false).await",
   ],
   paths.engine,
 );
@@ -233,8 +233,8 @@ requireAll(
   forumExecution,
   [
     "trusted_channel: TrustedStorefrontChannel",
-    ".search_storefront(scan_query.clone(), request.trusted_channel)",
-    "apply_storefront_query_rules(",
+    ".search_forum_storefront_candidates(scan_query.clone(), request.trusted_channel)",
+    "apply_authorized_storefront_query_rules(",
   ],
   paths.forumExecution,
 );

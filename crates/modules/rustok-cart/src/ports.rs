@@ -759,3 +759,50 @@ fn cart_error_to_port_error(error: CartError) -> PortError {
         } => PortError::new(kind, code, message, retryable),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::PortActor;
+
+    #[test]
+    fn validate_non_nil_uuid_rejects_nil() {
+        let err = validate_non_nil_uuid(Uuid::nil(), "cart_id").expect_err("should reject nil");
+        assert_eq!(err.code, "cart.cart_id_nil");
+        assert!(err.message.contains("cart_id must not be a nil UUID"));
+
+        assert!(validate_non_nil_uuid(Uuid::new_v4(), "cart_id").is_ok());
+    }
+
+    #[test]
+    fn parse_port_tenant_id_validates_nil_and_malformed() {
+        let nil_context = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en",
+            "req-1",
+        );
+        let err = parse_port_tenant_id(&nil_context).expect_err("should reject nil tenant");
+        assert_eq!(err.code, "cart.tenant_id_nil");
+
+        let invalid_context = PortContext::new(
+            "not-a-uuid".to_string(),
+            PortActor::system(),
+            "en",
+            "req-2",
+        );
+        let err = parse_port_tenant_id(&invalid_context).expect_err("should reject invalid tenant");
+        assert_eq!(err.code, "cart.tenant_id_invalid");
+
+        let valid_uuid = Uuid::new_v4();
+        let valid_context = PortContext::new(
+            valid_uuid.to_string(),
+            PortActor::system(),
+            "en",
+            "req-3",
+        );
+        let parsed = parse_port_tenant_id(&valid_context).expect("valid tenant");
+        assert_eq!(parsed, valid_uuid);
+    }
+}
+

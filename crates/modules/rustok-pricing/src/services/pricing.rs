@@ -1124,6 +1124,11 @@ impl PricingService {
     /// no second check to lean on. `resolve_variant_price` states the same rule
     /// inline; both now share this loader.
     async fn ensure_variant_tenant(&self, tenant_id: Uuid, variant_id: Uuid) -> CommerceResult<()> {
+        if tenant_id.is_nil() || variant_id.is_nil() {
+            return Err(CommerceError::Validation(
+                "tenant_id and variant_id must not be nil UUIDs".to_string(),
+            ));
+        }
         entities::product_variant::Entity::find_by_id(variant_id)
             .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -1805,6 +1810,18 @@ async fn validate_channel_scope_in_tx(
     channel_id: Option<Uuid>,
     channel_slug: Option<&str>,
 ) -> CommerceResult<()> {
+    if tenant_id.is_nil() {
+        return Err(CommerceError::Validation(
+            "tenant_id must not be a nil UUID".to_string(),
+        ));
+    }
+    if let Some(channel_id) = channel_id
+        && channel_id.is_nil()
+    {
+        return Err(CommerceError::Validation(
+            "channel_id must not be a nil UUID".to_string(),
+        ));
+    }
     let normalized_slug = normalize_channel_slug(channel_slug);
     match channel_id {
         Some(channel_id) => {
@@ -1855,6 +1872,11 @@ async fn load_variant_for_update_in_tx(
     tenant_id: Uuid,
     variant_id: Uuid,
 ) -> CommerceResult<entities::product_variant::Model> {
+    if tenant_id.is_nil() || variant_id.is_nil() {
+        return Err(CommerceError::Validation(
+            "tenant_id and variant_id must not be nil UUIDs".to_string(),
+        ));
+    }
     let query = entities::product_variant::Entity::find_by_id(variant_id)
         .filter(entities::product_variant::Column::TenantId.eq(tenant_id));
     let variant = match txn.get_database_backend() {
@@ -1880,6 +1902,11 @@ async fn resolve_active_price_list(
     tenant_id: Uuid,
     price_list_id: Uuid,
 ) -> CommerceResult<entities::price_list::Model> {
+    if tenant_id.is_nil() || price_list_id.is_nil() {
+        return Err(CommerceError::Validation(
+            "tenant_id and price_list_id must not be nil UUIDs".to_string(),
+        ));
+    }
     let price_list = entities::price_list::Entity::find_by_id(price_list_id)
         .filter(entities::price_list::Column::TenantId.eq(tenant_id))
         .one(db)
@@ -1895,6 +1922,11 @@ async fn resolve_active_price_list_tx(
     tenant_id: Uuid,
     price_list_id: Uuid,
 ) -> CommerceResult<entities::price_list::Model> {
+    if tenant_id.is_nil() || price_list_id.is_nil() {
+        return Err(CommerceError::Validation(
+            "tenant_id and price_list_id must not be nil UUIDs".to_string(),
+        ));
+    }
     let query = entities::price_list::Entity::find_by_id(price_list_id)
         .filter(entities::price_list::Column::TenantId.eq(tenant_id));
     let price_list = match txn.get_database_backend() {
@@ -2474,5 +2506,79 @@ fn map_product_catalog_error(error: rustok_product::CommerceError) -> CommerceEr
             CommerceError::Validation(format!("product image not found: {id}"))
         }
         rustok_product::CommerceError::Core(error) => CommerceError::Core(error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_discount_percent_bounds() {
+        assert!(validate_discount_percent(Decimal::new(10, 0)).is_ok());
+        assert!(validate_discount_percent(Decimal::new(100, 0)).is_ok());
+        assert!(validate_discount_percent(Decimal::ZERO).is_err());
+        assert!(validate_discount_percent(Decimal::new(-5, 0)).is_err());
+        assert!(validate_discount_percent(Decimal::new(101, 0)).is_err());
+    }
+
+    #[test]
+    fn validate_price_tier_quantities_bounds() {
+        assert!(validate_price_tier_quantities(Some(1), Some(10)).is_ok());
+        assert!(validate_price_tier_quantities(Some(5), Some(5)).is_ok());
+        assert!(validate_price_tier_quantities(None, None).is_ok());
+        assert!(validate_price_tier_quantities(Some(0), Some(10)).is_err());
+        assert!(validate_price_tier_quantities(Some(10), Some(5)).is_err());
+        assert!(validate_price_tier_quantities(Some(1), Some(-1)).is_err());
+    }
+
+    #[test]
+    fn calculate_discount_percent_precision() {
+        let amount = Decimal::new(80, 0);
+        let compare_at = Some(Decimal::new(100, 0));
+        assert_eq!(
+            calculate_discount_percent(amount, compare_at),
+            Some(Decimal::new(2000, 2))
+        );
+
+        let amount_equal = Decimal::new(100, 0);
+        assert_eq!(calculate_discount_percent(amount_equal, compare_at), None);
+
+        let amount_greater = Decimal::new(120, 0);
+        assert_eq!(calculate_discount_percent(amount_greater, compare_at), None);
+    }
+
+    #[test]
+    fn normalize_resolution_currency_accepts_valid_and_rejects_invalid() {
+        assert_eq!(normalize_resolution_currency("usd").unwrap(), "USD");
+        assert_eq!(normalize_resolution_currency("EUR").unwrap(), "EUR");
+        assert!(normalize_resolution_currency("US").is_err());
+        assert!(normalize_resolution_currency("USDT").is_err());
+        assert!(normalize_resolution_currency("123").is_err());
+    }
+
+    #[test]
+    fn normalize_resolution_quantity_bounds() {
+        assert_eq!(normalize_resolution_quantity(Some(5)).unwrap(), 5);
+        assert_eq!(normalize_resolution_quantity(None).unwrap(), 1);
+        assert!(normalize_resolution_quantity(Some(0)).is_err());
+        assert!(normalize_resolution_quantity(Some(-1)).is_err());
+    }
+
+    #[test]
+    fn is_sale_price_behavior() {
+        assert!(is_sale_price(
+            Decimal::new(80, 0),
+            Some(Decimal::new(100, 0))
+        ));
+        assert!(!is_sale_price(
+            Decimal::new(100, 0),
+            Some(Decimal::new(100, 0))
+        ));
+        assert!(!is_sale_price(
+            Decimal::new(120, 0),
+            Some(Decimal::new(100, 0))
+        ));
+        assert!(!is_sale_price(Decimal::new(80, 0), None));
     }
 }

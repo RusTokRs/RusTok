@@ -41,36 +41,42 @@ for (const marker of [
   requireText(graphql, marker, `${graphqlPath}: missing ${marker}`);
 }
 
-const ownerCall = graphql.indexOf(
+// Both viewer branches must await the exact owner before the *single* locale
+// observation and response mapping. Observing within either branch would let
+// authenticated/public metrics diverge or double-count after a refactor.
+const authenticatedCall = graphql.indexOf(
+  ".list_authenticated_storefront_visible_with_audience_context(",
+);
+const publicCall = graphql.indexOf(
   ".list_public_storefront_visible_with_locale_fallback(",
 );
-const ownerAwait = graphql.indexOf(".await?;", ownerCall);
 const observation = graphql.indexOf(
   "observe_storefront_topic_list_locale_resolution(&page.items);",
-  ownerAwait,
 );
 const mapping = graphql.indexOf("let items = page", observation);
 const response = graphql.indexOf("Ok(ForumTopicPage {", mapping);
 if (
-  ownerCall < 0 ||
-  ownerAwait <= ownerCall ||
-  observation <= ownerAwait ||
+  authenticatedCall < 0 ||
+  publicCall <= authenticatedCall ||
+  !graphql.slice(authenticatedCall, publicCall).includes(".await?") ||
+  !graphql.slice(publicCall, observation).includes(".await?") ||
+  observation <= publicCall ||
   mapping <= observation ||
   response <= mapping
 ) {
   throw new Error(
-    `${graphqlPath}: expected owner call -> await -> locale observation -> mapping -> response ordering`,
+    `${graphqlPath}: expected authenticated/public owners -> await -> one locale observation -> mapping -> response ordering`,
   );
 }
 
 const observerStart = graphql.indexOf(
   "fn storefront_topic_list_locale_resolution_outcome(",
 );
-const tenantScopeStart = graphql.indexOf("fn resolve_tenant_scope(", observerStart);
-if (observerStart < 0 || tenantScopeStart <= observerStart) {
+const mapperStart = graphql.indexOf("fn map_topic_list_item(", observerStart);
+if (observerStart < 0 || mapperStart <= observerStart) {
   throw new Error(`${graphqlPath}: storefront locale observer source boundary is invalid`);
 }
-const observer = graphql.slice(observerStart, tenantScopeStart);
+const observer = graphql.slice(observerStart, mapperStart);
 
 for (const forbidden of [
   "tenant_id",
@@ -126,7 +132,7 @@ for (const marker of [
   "rustok_forum_graphql_storefront_topic_list_locale_resolution_total",
   "observation counter",
   "no database query",
-  "Tenant-controlled locale string",
+  "tenant-controlled locale string",
   "Spam-outcome telemetry therefore remains blocked",
   "public Moderation application-operation read/status contract",
   "stop locale expansion",

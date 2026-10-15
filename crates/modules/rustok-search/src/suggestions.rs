@@ -165,6 +165,14 @@ async fn fetch_query_suggestions(
         .collect()
 }
 
+fn suggestion_document_source_scope(storefront: bool) -> &'static str {
+    if storefront {
+        "source_module <> 'forum'"
+    } else {
+        "TRUE"
+    }
+}
+
 async fn fetch_document_suggestions(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -196,6 +204,9 @@ async fn fetch_document_suggestions(
         .unwrap_or_else(|| "TRUE".to_string());
     let limit_param = next_param;
     values.push(Value::from(limit as i64));
+    // Generic storefront suggestions have no Forum audience owner. The
+    // dedicated Forum storefront path is the only public Forum Search reader.
+    let forum_scope = suggestion_document_source_scope(storefront_channel.is_some());
 
     let stmt = Statement::from_sql_and_values(
         DbBackend::Postgres,
@@ -220,6 +231,7 @@ async fn fetch_document_suggestions(
           AND ($5 = '' OR locale = $5)
           AND ($6 = FALSE OR is_public = TRUE)
           AND {product_scope}
+          AND {forum_scope}
           AND (
               lower(title) LIKE $4
               OR lower(COALESCE(slug, '')) LIKE $4
@@ -343,7 +355,14 @@ fn ensure_postgres(db: &DatabaseConnection) -> Result<()> {
 mod tests {
     use super::{
         SearchSuggestion, SearchSuggestionKind, merge_suggestions, normalize_suggestion_query,
+        suggestion_document_source_scope,
     };
+
+    #[test]
+    fn public_suggestions_never_read_raw_forum_documents() {
+        assert_eq!(suggestion_document_source_scope(true), "source_module <> 'forum'");
+        assert_eq!(suggestion_document_source_scope(false), "TRUE");
+    }
 
     #[test]
     fn normalize_suggestion_query_collapses_whitespace() {

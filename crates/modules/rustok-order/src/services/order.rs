@@ -249,6 +249,30 @@ impl OrderService {
         channel_slug: Option<String>,
         checkout_identity: Option<CreateCheckoutOrderIdentityInput>,
     ) -> OrderResult<OrderResponse> {
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            channel_id = ?channel_id,
+            line_item_count = input.line_items.len(),
+            "creating order"
+        );
+
+        if tenant_id.is_nil() || actor_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id and actor_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
+        if matches!(channel_id, Some(id) if id.is_nil()) {
+            return Err(OrderError::Validation(
+                "channel_id must be a valid non-nil UUID when provided".to_string(),
+            ));
+        }
+        if matches!(input.customer_id, Some(id) if id.is_nil()) {
+            return Err(OrderError::Validation(
+                "customer_id must be a valid non-nil UUID when provided".to_string(),
+            ));
+        }
+
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
@@ -517,6 +541,11 @@ impl OrderService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> OrderResult<OrderResponse> {
+        if tenant_id.is_nil() || order_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id and order_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
         let order = self.load_order_model(tenant_id, order_id).await?;
         self.build_response(order, locale, fallback_locale).await
     }
@@ -538,6 +567,17 @@ impl OrderService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> OrderResult<(Vec<OrderResponse>, u64)> {
+        if tenant_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id must be a valid non-nil UUID".to_string(),
+            ));
+        }
+        if matches!(input.customer_id, Some(id) if id.is_nil()) {
+            return Err(OrderError::Validation(
+                "customer_id cannot be a nil UUID".to_string(),
+            ));
+        }
+
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
 
@@ -655,6 +695,18 @@ impl OrderService {
         order_id: Uuid,
         delivered_signature: Option<String>,
     ) -> OrderResult<OrderResponse> {
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            order_id = %order_id,
+            "delivering order"
+        );
+        if tenant_id.is_nil() || actor_id.is_nil() || order_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id, actor_id, and order_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
+
         let txn = self.db.begin().await?;
         let existing = find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
         let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
@@ -705,6 +757,18 @@ impl OrderService {
         order_id: Uuid,
         reason: Option<String>,
     ) -> OrderResult<OrderResponse> {
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            order_id = %order_id,
+            "cancelling order"
+        );
+        if tenant_id.is_nil() || actor_id.is_nil() || order_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id, actor_id, and order_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
+
         let txn = self.db.begin().await?;
         let existing = find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
         let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
@@ -764,6 +828,20 @@ impl OrderService {
     where
         F: FnOnce(&mut entities::order::ActiveModel, chrono::DateTime<Utc>),
     {
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            order_id = %order_id,
+            expected_from,
+            next_status,
+            "transitioning order status"
+        );
+        if tenant_id.is_nil() || actor_id.is_nil() || order_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id, actor_id, and order_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
+
         let txn = self.db.begin().await?;
         let existing = find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
         let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
@@ -998,6 +1076,16 @@ impl OrderService {
     fn validate_line_item(item: &CreateOrderLineItemInput) -> OrderResult<()> {
         item.validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
+        if matches!(item.product_id, Some(id) if id.is_nil()) {
+            return Err(OrderError::Validation(
+                "item product_id cannot be a nil UUID".to_string(),
+            ));
+        }
+        if matches!(item.variant_id, Some(id) if id.is_nil()) {
+            return Err(OrderError::Validation(
+                "item variant_id cannot be a nil UUID".to_string(),
+            ));
+        }
         normalize_order_line_item_shipping_profile(
             item.fulfillment_requirement,
             item.shipping_profile_slug.as_deref(),
@@ -1046,6 +1134,11 @@ impl OrderService {
             tax_line
                 .validate()
                 .map_err(|error| OrderError::Validation(error.to_string()))?;
+            if matches!(tax_line.shipping_option_id, Some(id) if id.is_nil()) {
+                return Err(OrderError::Validation(
+                    "tax line shipping_option_id cannot be a nil UUID".to_string(),
+                ));
+            }
             if tax_line.amount <= Decimal::ZERO {
                 return Err(OrderError::Validation(
                     "tax line amount must be greater than zero".to_string(),
@@ -1241,6 +1334,17 @@ fn validate_return_resolution_links(
     refund_id: Option<Uuid>,
     order_change_id: Option<Uuid>,
 ) -> OrderResult<()> {
+    if matches!(refund_id, Some(id) if id.is_nil()) {
+        return Err(OrderError::Validation(
+            "refund_id cannot be a nil UUID".to_string(),
+        ));
+    }
+    if matches!(order_change_id, Some(id) if id.is_nil()) {
+        return Err(OrderError::Validation(
+            "order_change_id cannot be a nil UUID".to_string(),
+        ));
+    }
+
     match resolution_type {
         None => {
             if refund_id.is_some() || order_change_id.is_some() {
@@ -1635,6 +1739,12 @@ impl OrderService {
         idempotency_key: impl Into<String>,
         input: CreateOrderChangeInput,
     ) -> OrderResult<OrderChangeResponse> {
+        if tenant_id.is_nil() || actor_id.is_nil() || order_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id, actor_id, and order_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
+
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
@@ -1712,6 +1822,11 @@ impl OrderService {
         tenant_id: Uuid,
         change_id: Uuid,
     ) -> OrderResult<OrderChangeResponse> {
+        if tenant_id.is_nil() || change_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id and change_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
         let row = self.load_order_change_model(tenant_id, change_id).await?;
         Ok(map_order_change_response(row))
     }
@@ -1721,6 +1836,17 @@ impl OrderService {
         tenant_id: Uuid,
         input: ListOrderChangesInput,
     ) -> OrderResult<(Vec<OrderChangeResponse>, u64)> {
+        if tenant_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id must be a valid non-nil UUID".to_string(),
+            ));
+        }
+        if matches!(input.order_id, Some(id) if id.is_nil()) {
+            return Err(OrderError::Validation(
+                "order_id cannot be a nil UUID".to_string(),
+            ));
+        }
+
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
         let mut query = entities::order_change::Entity::find()
@@ -1760,6 +1886,12 @@ impl OrderService {
         idempotency_key: impl Into<String>,
         input: ApplyOrderChangeInput,
     ) -> OrderResult<OrderChangeResponse> {
+        if tenant_id.is_nil() || actor_id.is_nil() || change_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id, actor_id, and change_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
+
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
@@ -1815,6 +1947,12 @@ impl OrderService {
         idempotency_key: impl Into<String>,
         input: CancelOrderChangeInput,
     ) -> OrderResult<OrderChangeResponse> {
+        if tenant_id.is_nil() || actor_id.is_nil() || change_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id, actor_id, and change_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
+
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
@@ -1932,6 +2070,12 @@ impl OrderService {
         idempotency_key: impl Into<String>,
         input: CreateOrderReturnInput,
     ) -> OrderResult<OrderReturnResponse> {
+        if tenant_id.is_nil() || actor_id.is_nil() || order_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id, actor_id, and order_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
+
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
@@ -2020,6 +2164,11 @@ impl OrderService {
 
         let mut seen_line_item_ids = HashSet::new();
         for item in &input.items {
+            if item.line_item_id.is_nil() {
+                return Err(OrderError::Validation(
+                    "return line_item_id cannot be a nil UUID".to_string(),
+                ));
+            }
             let Some(order_item) = order_items_by_id.get(&item.line_item_id) else {
                 return Err(OrderError::Validation(format!(
                     "return line item {} does not belong to order {}",
@@ -2096,6 +2245,11 @@ impl OrderService {
         tenant_id: Uuid,
         return_id: Uuid,
     ) -> OrderResult<OrderReturnResponse> {
+        if tenant_id.is_nil() || return_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id and return_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
         let row = self.load_return_model(tenant_id, return_id).await?;
         let items = self.load_return_items(tenant_id, return_id).await?;
         Ok(map_order_return_response(row, items))
@@ -2109,6 +2263,12 @@ impl OrderService {
         idempotency_key: impl Into<String>,
         input: CompleteOrderReturnInput,
     ) -> OrderResult<OrderReturnResponse> {
+        if tenant_id.is_nil() || actor_id.is_nil() || return_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id, actor_id, and return_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
+
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
@@ -2179,6 +2339,12 @@ impl OrderService {
         idempotency_key: impl Into<String>,
         input: CancelOrderReturnInput,
     ) -> OrderResult<OrderReturnResponse> {
+        if tenant_id.is_nil() || actor_id.is_nil() || return_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id, actor_id, and return_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
+
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
@@ -2239,6 +2405,17 @@ impl OrderService {
         tenant_id: Uuid,
         input: ListOrderReturnsInput,
     ) -> OrderResult<(Vec<OrderReturnResponse>, u64)> {
+        if tenant_id.is_nil() {
+            return Err(OrderError::Validation(
+                "tenant_id must be a valid non-nil UUID".to_string(),
+            ));
+        }
+        if matches!(input.order_id, Some(id) if id.is_nil()) {
+            return Err(OrderError::Validation(
+                "order_id cannot be a nil UUID".to_string(),
+            ));
+        }
+
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
         let mut query = entities::order_return::Entity::find()

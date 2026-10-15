@@ -167,7 +167,7 @@ for (const marker of [
   "deny_user_ids: vec![denied_first, denied_fourth]",
   "topic audience should become non-public and deny exact recipients",
   "first_page.recipients().is_empty()",
-  "recorded_calls(&calls), vec![denied_first, unavailable_second]",
+  "vec![denied_first, unavailable_second]",
   "second_page.recipients()[0].recipient_id, allowed_third",
   "third_page.recipients()[0].recipient_id, allowed_fifth",
   "BTreeSet::from([allowed_third, allowed_fifth])",

@@ -23,7 +23,7 @@ RusToK.
 - Consume Blog lifecycle and scoped rebuild events into Search-owned documents.
 - Own canonical application URLs for normalized `SearchResultItem` values through
   `canonical_search_result_url`.
-- Serve storefront Search, admin preview, and host global-search capabilities.
+- Serve storefront Search, admin preview, and host global-search capabilities. Generic storefront FTS and suggestions exclude Forum documents at the SQL boundary (including totals, facets and pinned query rules) because those surfaces have no Forum audience owner; admin Search is unaffected. The explicit Forum-only storefront path preflights the Forum owner's public-discovery policy before scanning raw indexed candidates; its query rules may reorder only the already authorized page and never inject a pinned document outside owner eligibility.
 - Publish transport-neutral `SearchQueryPort` and `SearchSuggestionPort` provider
   boundaries.
 

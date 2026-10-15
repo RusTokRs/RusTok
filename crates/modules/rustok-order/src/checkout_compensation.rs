@@ -215,6 +215,22 @@ impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {
                 "checkout compensation request is invalid",
             ));
         }
+        if matches!(request.expected_order_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "order.expected_order_id_nil",
+                "expected_order_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = ORDER_COMPENSATION_BOUNDARY,
+            operation = COMPENSATE_OPERATION,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            checkout_operation_id = %request.checkout_operation_id,
+            cart_id = %request.cart_id,
+            expected_order_id = ?request.expected_order_id,
+            "compensate checkout order entered compensation port"
+        );
 
         let Some(identity) = self.resolve_identity(&context, &request).await? else {
             return if request.expected_order_id.is_none() {
@@ -545,7 +561,7 @@ fn require_operation_context(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         log_context_parse_rejection(
             context,
             operation,
@@ -557,11 +573,25 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
             "order.tenant_id_invalid",
             "order request context is invalid",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        log_context_parse_rejection(
+            context,
+            operation,
+            "tenant_id",
+            context.tenant_id.chars().count(),
+            "order.tenant_id_nil",
+        );
+        return Err(PortError::validation(
+            "order.tenant_id_nil",
+            "order tenant_id must not be a nil UUID",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.actor.id).map_err(|_| {
+    let actor_id = Uuid::parse_str(&context.actor.id).map_err(|_| {
         log_context_parse_rejection(
             context,
             operation,
@@ -570,7 +600,21 @@ fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid
             "order.actor_id_invalid",
         );
         PortError::validation("order.actor_id_invalid", "order request context is invalid")
-    })
+    })?;
+    if actor_id.is_nil() {
+        log_context_parse_rejection(
+            context,
+            operation,
+            "actor_id",
+            context.actor.id.chars().count(),
+            "order.actor_id_nil",
+        );
+        return Err(PortError::validation(
+            "order.actor_id_nil",
+            "order actor_id must not be a nil UUID",
+        ));
+    }
+    Ok(actor_id)
 }
 
 fn log_context_parse_rejection(

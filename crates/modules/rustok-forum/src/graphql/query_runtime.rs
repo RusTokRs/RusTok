@@ -18,10 +18,10 @@ use uuid::Uuid;
 
 use crate::{
     CategoryListItem, CategoryResponse, ForumCategoryReadOperation, ForumCategoryReadTransport,
-    ForumError, ForumReplyReadOperation, ForumReplyReadTransport, ForumResult,
+    ForumError, ForumReplyReadOperation, ForumReplyReadTransport,
     ForumTopicReadOperation, ForumTopicReadTransport, ForumWidgetCatalogResponse,
     ForumWidgetContractService, ReplyResponse, ReplyStatus, TopicListItem, TopicResponse,
-    TopicService, UserStatsService, category_read_audience_port_context,
+    UserStatsService, category_read_audience_port_context,
     reply_read_audience_port_context, topic_read_audience_port_context,
 };
 
@@ -412,6 +412,8 @@ impl ForumContentQuery {
             &[Permission::FORUM_TOPICS_READ],
             "Permission denied: forum_topics:read required",
         )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = super::resolve_tenant_scope(tenant, Some(tenant_id))?;
         let stats = UserStatsService::new(db.clone())
             .get(
                 tenant_id,
@@ -518,90 +520,6 @@ impl ForumContentQuery {
             offset,
             limit,
         ))
-    }
-
-    async fn forum_storefront_topics(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Option<Uuid>,
-        category_id: Option<Uuid>,
-        locale: Option<String>,
-        after: Option<String>,
-        per_page: Option<i32>,
-    ) -> Result<ForumTopicPage> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        super::require_public_forum_channel_enabled(ctx).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let service =
-            super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone());
-        let requested_limit = per_page.map(|value| value.max(0) as u64);
-        let per_page = match requested_limit {
-            Some(value) => crate::dto::bounded_forum_read_limit(Some(value)),
-            None => forum_runtime(ctx)
-                .default_topics_per_page(tenant_id)
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
-        };
-        let locale = resolve_graphql_locale(ctx, locale.as_deref());
-        let filter = crate::ListTopicsFilter {
-            category_id,
-            status: None,
-            locale: Some(locale.clone()),
-            after,
-            per_page,
-        };
-
-        let started_at = Instant::now();
-        let page = list_public_storefront_topics(
-            &service,
-            tenant_id,
-            forum_request_security(ctx),
-            filter,
-            Some(tenant.default_locale.as_str()),
-            public_channel_slug(ctx),
-        )
-        .await?;
-        metrics::record_read_path_query(
-            "graphql",
-            "forum.storefront_topics",
-            "service_list",
-            started_at.elapsed().as_secs_f64(),
-            page.items.len() as u64,
-        );
-
-        let next_cursor = page.next_cursor;
-        let topics = page.items;
-
-        let author_profiles = load_author_profiles_map(
-            ctx,
-            db,
-            tenant_id,
-            topics.iter().map(|topic| topic.author_id),
-            locale.as_str(),
-            tenant.default_locale.as_str(),
-        )
-        .await?;
-        let items = topics
-            .into_iter()
-            .map(|topic| {
-                let author_profile = topic
-                    .author_id
-                    .and_then(|author_id| author_profiles.get(&author_id).cloned());
-                map_topic_list_item(topic, author_profile)
-            })
-            .collect::<Vec<_>>();
-        metrics::record_read_path_budget(
-            "graphql",
-            "forum.storefront_topics",
-            requested_limit,
-            per_page,
-            items.len(),
-        );
-
-        Ok(ForumTopicPage { items, next_cursor })
     }
 
     async fn forum_storefront_replies(
@@ -716,14 +634,6 @@ fn forum_runtime(ctx: &Context<'_>) -> ForumGraphqlRuntimeData {
     ctx.data_opt::<ForumGraphqlRuntimeData>()
         .cloned()
         .unwrap_or_default()
-}
-
-fn forum_request_security(ctx: &Context<'_>) -> SecurityContext {
-    ctx.data_opt::<AuthContext>()
-        .map(|auth| {
-            SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
-        })
-        .unwrap_or_else(SecurityContext::public_read)
 }
 
 fn map_category_list_item(category: CategoryListItem) -> GqlForumCategory {
@@ -951,23 +861,4 @@ where
 fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
     ctx.data_opt::<RequestContext>()
         .and_then(|request| request.channel_slug.clone())
-}
-
-async fn list_public_storefront_topics(
-    service: &TopicService,
-    tenant_id: Uuid,
-    security: SecurityContext,
-    base_filter: crate::ListTopicsFilter,
-    fallback_locale: Option<&str>,
-    channel_slug: Option<String>,
-) -> ForumResult<crate::dto::TopicPage<TopicListItem>> {
-    service
-        .list_storefront_visible_with_locale_fallback(
-            tenant_id,
-            security,
-            base_filter,
-            fallback_locale,
-            channel_slug.as_deref(),
-        )
-        .await
 }

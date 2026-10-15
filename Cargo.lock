@@ -5791,6 +5791,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2 0.11.0",
 ]
 
 [[package]]
@@ -14032,6 +14033,8 @@ dependencies = [
 name = "rustok-blog-admin"
 version = "0.1.0"
 dependencies = [
+ "fly",
+ "fly-ui",
  "leptos",
  "leptos-auth",
  "leptos-ui",
@@ -14053,6 +14056,7 @@ dependencies = [
  "sea-orm",
  "serde",
  "serde_json",
+ "toml 1.1.6+spec-1.1.0",
  "uuid",
 ]
 
@@ -16633,6 +16637,7 @@ dependencies = [
  "rustok-core",
  "sea-orm",
  "serde",
+ "tokio",
  "uuid",
 ]
 
@@ -17407,6 +17412,7 @@ dependencies = [
  "anyhow",
  "async-graphql",
  "async-trait",
+ "rustok-api",
  "rustok-core",
  "rustok-outbox",
  "schemars 1.2.2",

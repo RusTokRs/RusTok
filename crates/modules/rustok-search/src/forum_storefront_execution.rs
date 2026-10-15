@@ -12,7 +12,7 @@ use crate::forum_current_channel_filter::ForumStorefrontCurrentChannelFilter;
 use crate::{
     FORUM_SEARCH_SOURCE_MODULE, ForumStorefrontDocumentFilters, MAX_FORUM_SEARCH_RESULT_CANDIDATES,
     PgSearchEngine, SearchAnalyticsService, SearchAttributeFilter, SearchDictionaryService,
-    SearchFilterPresetService, SearchQuery, SearchQueryLogRecord, SearchRankingProfile,
+    SearchEngineKind, SearchFilterPresetService, SearchQuery, SearchQueryLogRecord, SearchRankingProfile,
     SearchResult, SearchResultItem, SearchSettingsService, SharedStorefrontSearchCategoryScopePort,
     SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopeRequest,
     StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
@@ -231,7 +231,7 @@ pub async fn execute_forum_storefront_search(
     )
     .await?;
     let result = if document_filters.is_empty() && current_channel_filter.is_empty() {
-        SearchDictionaryService::apply_storefront_query_rules(
+        SearchDictionaryService::apply_authorized_storefront_query_rules(
             db,
             &search_query,
             result,
@@ -286,13 +286,39 @@ async fn execute_result_eligible_search(
     request: ResultEligibleSearchRequest<'_>,
 ) -> Result<SearchResult, ForumStorefrontSearchExecutionError> {
     let started_at = Instant::now();
+    if request.auth.is_none() {
+        let port = request.eligibility_port.as_ref().ok_or_else(|| {
+            PortError::unavailable(
+                "forum.search_result_eligibility.owner_unavailable",
+                "Forum Search result eligibility is temporarily unavailable",
+            )
+        })?;
+        if !port
+            .public_forum_discovery_allowed(
+                request.query.tenant_id.expect("validated Forum Search tenant"),
+            )
+            .await?
+        {
+            // Skip FTS and its raw 100-candidate bound entirely. Old indexed
+            // Forum rows can outlive a saved privacy change, but they must not
+            // turn a closed public search into a validation error or a facet.
+            return Ok(SearchResult {
+                items: Vec::new(),
+                total: 0,
+                took_ms: started_at.elapsed().as_millis() as u64,
+                engine: SearchEngineKind::Postgres,
+                ranking_profile: request.query.ranking_profile,
+                facets: build_forum_result_facets(&[]),
+            });
+        }
+    }
     let engine = PgSearchEngine::new(db.clone());
     let mut scan_query = request.query.clone();
     scan_query.limit = FORUM_RESULT_SCAN_PAGE_SIZE;
     scan_query.offset = 0;
 
     let first_page = engine
-        .search_storefront(scan_query.clone(), request.trusted_channel)
+        .search_forum_storefront_candidates(scan_query.clone(), request.trusted_channel)
         .await?;
     let raw_total = usize::try_from(first_page.total).map_err(|_| {
         ForumStorefrontSearchExecutionError::Validation(
@@ -313,7 +339,7 @@ async fn execute_result_eligible_search(
     while all_items.len() < raw_total {
         scan_query.offset = all_items.len();
         let page = engine
-            .search_storefront(scan_query.clone(), request.trusted_channel)
+            .search_forum_storefront_candidates(scan_query.clone(), request.trusted_channel)
             .await?;
         if page.total != raw_total as u64 || page.items.is_empty() {
             return Err(ForumStorefrontSearchExecutionError::Invariant(
@@ -363,12 +389,8 @@ async fn execute_result_eligible_search(
 
     let visible_items = all_items
         .into_iter()
-        .filter(|item| match item.entity_type.as_str() {
-            "forum_category" => true,
-            "forum_topic" | "forum_reply" => {
-                result_candidate(item).is_some_and(|candidate| allowed.contains(&candidate))
-            }
-            _ => false,
+        .filter(|item| {
+            result_candidate(item).is_some_and(|candidate| allowed.contains(&candidate))
         })
         .collect::<Vec<_>>();
     let total = visible_items.len() as u64;
@@ -805,8 +827,80 @@ fn validation<T>(message: impl Into<String>) -> Result<T, ForumStorefrontSearchE
 
 #[cfg(test)]
 mod tests {
-    use super::{forum_visible_status, normalize_optional_rfc3339, resolve_current_channel_filter};
-    use crate::TrustedStorefrontChannel;
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use rustok_api::PortError;
+    use sea_orm::Database;
+    use uuid::Uuid;
+
+    use super::{
+        ForumStorefrontCurrentChannelFilter, ForumStorefrontDocumentFilters,
+        ResultEligibleSearchRequest, StorefrontSearchResultCandidate,
+        StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
+        StorefrontSearchTransport, build_forum_result_facets, execute_result_eligible_search,
+        forum_visible_status, normalize_optional_rfc3339, resolve_current_channel_filter,
+    };
+    use crate::{SearchQuery, SearchRankingProfile, TrustedStorefrontChannel};
+
+    struct PrivateForum;
+
+    #[async_trait]
+    impl StorefrontSearchResultEligibilityPort for PrivateForum {
+        async fn public_forum_discovery_allowed(&self, _tenant_id: Uuid) -> Result<bool, PortError> {
+            Ok(false)
+        }
+
+        async fn filter_forum_result_candidates(
+            &self,
+            _request: StorefrontSearchResultEligibilityRequest,
+        ) -> Result<Vec<StorefrontSearchResultCandidate>, PortError> {
+            panic!("a private tenant must not scan or authorize stale indexed documents")
+        }
+    }
+
+    #[tokio::test]
+    async fn private_forum_skips_raw_search_and_its_candidate_limit() {
+        // No Search tables, or even PostgreSQL: the owner denial must happen
+        // before querying the raw index (which may contain >100 old hits).
+        let db = Database::connect("sqlite::memory:").await.expect("sqlite");
+        let query = SearchQuery {
+            tenant_id: Some(Uuid::new_v4()),
+            locale: Some("en".into()),
+            channel_id: None,
+            original_query: "hidden".into(),
+            query: "hidden".into(),
+            ranking_profile: SearchRankingProfile::Balanced,
+            preset_key: None,
+            limit: 10,
+            offset: 0,
+            published_only: true,
+            entity_types: vec![],
+            source_modules: vec!["forum".into()],
+            statuses: vec![],
+            category_ids: vec![],
+            attribute_filters: vec![],
+            sort_attribute_code: None,
+            sort_desc: false,
+        };
+        let channel = TrustedStorefrontChannel::default();
+        let filters = ForumStorefrontDocumentFilters::default();
+        let channel_filter = ForumStorefrontCurrentChannelFilter::default();
+        let result = execute_result_eligible_search(&db, ResultEligibleSearchRequest {
+            query: &query,
+            eligibility_port: Some(Arc::new(PrivateForum)),
+            effective_locale: "en".into(),
+            auth: None,
+            request_context: None,
+            trusted_channel: &channel,
+            document_filters: &filters,
+            current_channel_filter: &channel_filter,
+            transport: StorefrontSearchTransport::Graphql,
+        }).await.expect("closed public search");
+        assert!(result.items.is_empty());
+        assert_eq!(result.total, 0);
+        assert_eq!(result.facets, build_forum_result_facets(&[]));
+    }
 
     #[test]
     fn visible_forum_statuses_match_owner_eligibility() {
