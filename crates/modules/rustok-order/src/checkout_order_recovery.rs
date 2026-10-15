@@ -50,8 +50,19 @@ impl CheckoutOrderRecoveryAdapter {
     ) -> Result<Option<OrderResponse>, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.checkout_operation_id, "checkout_operation_id")?;
+        validate_non_nil_uuid(request.completion.cart_id, "cart_id")?;
         let tenant_id = parse_tenant_id(&context, RECOVER_OPERATION)?;
         let actor_id = parse_actor_id(&context, RECOVER_OPERATION)?;
+        tracing::debug!(
+            boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+            operation = RECOVER_OPERATION,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            checkout_operation_id = %request.checkout_operation_id,
+            cart_id = %request.completion.cart_id,
+            "recover existing checkout entered recovery adapter"
+        );
         require_operation_context(&context, RECOVER_OPERATION, request.checkout_operation_id)?;
         let legacy_snapshot_hash = normalize_hash(
             &context,
@@ -113,7 +124,15 @@ impl CheckoutOrderRecoveryAdapter {
         request: ReadCheckoutOrderProjectionRequest,
     ) -> Result<OrderResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        validate_non_nil_uuid(request.checkout_operation_id, "checkout_operation_id")?;
         let tenant_id = parse_tenant_id(&context, READ_OPERATION)?;
+        tracing::debug!(
+            boundary = CHECKOUT_ORDER_RECOVERY_BOUNDARY,
+            operation = READ_OPERATION,
+            tenant_id = %tenant_id,
+            checkout_operation_id = %request.checkout_operation_id,
+            "read checkout order entered recovery adapter"
+        );
         let identity = self
             .identity_port
             .read_by_operation(
@@ -422,8 +441,19 @@ fn require_operation_context(
     Ok(())
 }
 
+fn validate_non_nil_uuid(id: Uuid, field: &'static str) -> Result<(), PortError> {
+    if id.is_nil() {
+        Err(PortError::validation(
+            format!("order.{field}_nil"),
+            format!("{field} must not be a nil UUID"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         log_checkout_order_recovery_admission_rejection(
             context,
             operation,
@@ -440,11 +470,30 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
             "order.tenant_id_invalid",
             "order request context is invalid",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        log_checkout_order_recovery_admission_rejection(
+            context,
+            operation,
+            "tenant_id",
+            true,
+            Some(context.tenant_id.chars().count()),
+            false,
+            None,
+            None,
+            None,
+            "order.tenant_id_nil",
+        );
+        return Err(PortError::validation(
+            "order.tenant_id_nil",
+            "order tenant_id must not be a nil UUID",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.actor.id).map_err(|_| {
+    let actor_id = Uuid::parse_str(&context.actor.id).map_err(|_| {
         log_checkout_order_recovery_admission_rejection(
             context,
             operation,
@@ -458,7 +507,26 @@ fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid
             "order.actor_id_invalid",
         );
         PortError::validation("order.actor_id_invalid", "order request context is invalid")
-    })
+    })?;
+    if actor_id.is_nil() {
+        log_checkout_order_recovery_admission_rejection(
+            context,
+            operation,
+            "actor_id",
+            true,
+            Some(context.actor.id.chars().count()),
+            false,
+            None,
+            None,
+            None,
+            "order.actor_id_nil",
+        );
+        return Err(PortError::validation(
+            "order.actor_id_nil",
+            "order actor_id must not be a nil UUID",
+        ));
+    }
+    Ok(actor_id)
 }
 
 fn checkout_request_hashes(

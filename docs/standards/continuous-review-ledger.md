@@ -155,7 +155,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-03.09 — `crates/modules/rustok-cart`** — cart lifecycle, item mutation validation, pricing integration, currency/tenant scoping. (Done: enforced non-nil UUID validation for tenant_id, cart_id, line_item_id, channel_id, customer_id, region_id, and shipping_option_id across ports, checkout_snapshot, marketplace_snapshot, atomic_checkout_guard, atomic_checkout_port, owner_ports, promotion_guard, guarded_ports, helpers, and cart service; added structured entry debug tracing across all cart port boundaries and mutation services; added unit tests for UUID validations in ports and checkout_snapshot; verified all 32 lib tests pass).
 
 #### 4. rustok-order
-- [ ] **FS-03.10 — `crates/modules/rustok-order`** — order state machine, transitions, items validation, event outbox emission.
+- [x] **FS-03.10 — `crates/modules/rustok-order`** — order state machine, transitions, items validation, event outbox emission. (Done: enforced non-nil UUID validation across ports, order service state machine transitions, line items, tax lines, checkout identity, recovery, compensation, settlement, admin commands, post-order commands, and reads; added structured entry debug tracing across all port and service boundaries; added unit tests for non-nil UUID guards and port context validation; verified all 14 unit tests pass, clippy clean).
 
 #### 5. rustok-payment
 - [ ] **FS-03.11 — `crates/modules/rustok-payment`** — payment providers, transaction lifecycle, idempotency receipts, webhook verification.
@@ -178,7 +178,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-10-13T20:15:00Z`
-- **Progress:** `8 / 254` components audited (**3.1%**)
+- **Progress:** `9 / 254` components audited (**3.5%**)
 - **Total Workspace Codebase:** ~350,000 LOC across 254 modules/apps
 
 ---
@@ -317,7 +317,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-notifications-api](../../crates/modules/rustok-notifications-api) | `modules` | 5 | 1,166 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 6 | 127 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 16 | 3,152 | None |  |
-| [ ] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 85 | 21,547 | None |  |
+| [x] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 85 | 21,547 | 2026-10-15 | Completed Phase FS-03.10 (state machine transitions, ports, checkout identity, post-order commands & nil UUID guards) |
 | [ ] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 14 | 2,813 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 12 | 2,171 | None |  |
 | [ ] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 26 | 4,758 | None |  |

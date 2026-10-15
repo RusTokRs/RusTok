@@ -103,6 +103,17 @@ impl OrderAdminCommandRuntime {
     }
 }
 
+fn validate_non_nil_uuid(id: Uuid, field: &'static str) -> Result<(), PortError> {
+    if id.is_nil() {
+        Err(PortError::validation(
+            format!("order.{field}_nil"),
+            format!("{field} must not be a nil UUID"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl OrderAdminCommandPort for InProcessOrderAdminCommandPort {
     async fn mark_paid(
@@ -111,7 +122,18 @@ impl OrderAdminCommandPort for InProcessOrderAdminCommandPort {
         request: MarkOrderPaidRequest,
     ) -> Result<OrderResponse, PortError> {
         let operation = "mark_paid";
+        validate_non_nil_uuid(request.order_id, "order_id")?;
         let (tenant_id, actor_id) = require_admin_command_context(&context, operation)?;
+        tracing::debug!(
+            boundary = ORDER_ADMIN_COMMAND_BOUNDARY,
+            operation,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            order_id = %request.order_id,
+            payment_id = %request.payment_id,
+            payment_method = %request.payment_method,
+            "order admin mark_paid entered"
+        );
         self.inner
             .mark_paid(
                 tenant_id,
@@ -130,7 +152,18 @@ impl OrderAdminCommandPort for InProcessOrderAdminCommandPort {
         request: ShipOrderRequest,
     ) -> Result<OrderResponse, PortError> {
         let operation = "ship";
+        validate_non_nil_uuid(request.order_id, "order_id")?;
         let (tenant_id, actor_id) = require_admin_command_context(&context, operation)?;
+        tracing::debug!(
+            boundary = ORDER_ADMIN_COMMAND_BOUNDARY,
+            operation,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            order_id = %request.order_id,
+            tracking_number = %request.tracking_number,
+            carrier = %request.carrier,
+            "order admin ship entered"
+        );
         self.inner
             .ship_order(
                 tenant_id,
@@ -149,7 +182,17 @@ impl OrderAdminCommandPort for InProcessOrderAdminCommandPort {
         request: DeliverOrderRequest,
     ) -> Result<OrderResponse, PortError> {
         let operation = "deliver";
+        validate_non_nil_uuid(request.order_id, "order_id")?;
         let (tenant_id, actor_id) = require_admin_command_context(&context, operation)?;
+        tracing::debug!(
+            boundary = ORDER_ADMIN_COMMAND_BOUNDARY,
+            operation,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            order_id = %request.order_id,
+            delivered_signature = ?request.delivered_signature,
+            "order admin deliver entered"
+        );
         self.inner
             .deliver_order(
                 tenant_id,
@@ -167,7 +210,17 @@ impl OrderAdminCommandPort for InProcessOrderAdminCommandPort {
         request: CancelOrderRequest,
     ) -> Result<OrderResponse, PortError> {
         let operation = "cancel";
+        validate_non_nil_uuid(request.order_id, "order_id")?;
         let (tenant_id, actor_id) = require_admin_command_context(&context, operation)?;
+        tracing::debug!(
+            boundary = ORDER_ADMIN_COMMAND_BOUNDARY,
+            operation,
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            order_id = %request.order_id,
+            reason = ?request.reason,
+            "order admin cancel entered"
+        );
         self.inner
             .cancel_order(tenant_id, actor_id, request.order_id, request.reason)
             .await
@@ -187,6 +240,13 @@ fn require_admin_command_context(
             "order command context is invalid",
         )
     })?;
+    if tenant_id.is_nil() {
+        log_invalid_context(context, operation, "tenant_id_nil");
+        return Err(PortError::validation(
+            "order.tenant_id_nil",
+            "order tenant_id must not be a nil UUID",
+        ));
+    }
     let actor_id = Uuid::parse_str(&context.actor.id).map_err(|_| {
         log_invalid_context(context, operation, "actor_id");
         PortError::validation(
@@ -194,6 +254,13 @@ fn require_admin_command_context(
             "order command context is invalid",
         )
     })?;
+    if actor_id.is_nil() {
+        log_invalid_context(context, operation, "actor_id_nil");
+        return Err(PortError::validation(
+            "order.actor_id_nil",
+            "order actor_id must not be a nil UUID",
+        ));
+    }
     Ok((tenant_id, actor_id))
 }
 
@@ -297,3 +364,62 @@ fn map_order_error(
 
     PortError::new(kind, code, message, retryable)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::PortActor;
+    use std::time::Duration;
+
+    #[test]
+    fn test_require_admin_command_context_success() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(actor_id.to_string()),
+            "en",
+            "corr-1",
+        )
+        .with_idempotency_key("idem-1")
+        .with_deadline(Duration::from_millis(5000));
+
+        let (parsed_tenant, parsed_actor) =
+            require_admin_command_context(&context, "test_admin_cmd").unwrap();
+        assert_eq!(parsed_tenant, tenant_id);
+        assert_eq!(parsed_actor, actor_id);
+    }
+
+    #[test]
+    fn test_require_admin_command_context_rejects_nil_tenant() {
+        let actor_id = Uuid::new_v4();
+        let context = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::user(actor_id.to_string()),
+            "en",
+            "corr-1",
+        )
+        .with_idempotency_key("idem-1")
+        .with_deadline(Duration::from_millis(5000));
+
+        let err = require_admin_command_context(&context, "test_admin_cmd").unwrap_err();
+        assert_eq!(err.code, "order.tenant_id_nil");
+    }
+
+    #[test]
+    fn test_require_admin_command_context_rejects_nil_actor() {
+        let tenant_id = Uuid::new_v4();
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(Uuid::nil().to_string()),
+            "en",
+            "corr-1",
+        )
+        .with_idempotency_key("idem-1")
+        .with_deadline(Duration::from_millis(5000));
+
+        let err = require_admin_command_context(&context, "test_admin_cmd").unwrap_err();
+        assert_eq!(err.code, "order.actor_id_nil");
+    }
+}
+
