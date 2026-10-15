@@ -370,6 +370,16 @@ pub async fn list_products(
         &[Permission::PRODUCTS_LIST],
         "Permission denied: products:list required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PRODUCT_BOUNDARY,
+        operation = "list_products",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "handling list_products"
+    );
 
     let requested_limit = params
         .pagination
@@ -567,6 +577,20 @@ pub async fn show_product(
         &[Permission::PRODUCTS_READ],
         "Permission denied: products:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PRODUCT_BOUNDARY,
+        operation = "show_product",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        product_id = %id,
+        "handling show_product"
+    );
 
     let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
     let product = service
@@ -601,6 +625,20 @@ pub async fn delete_product(
         &[Permission::PRODUCTS_DELETE],
         "Permission denied: products:delete required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PRODUCT_BOUNDARY,
+        operation = "delete_product",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        product_id = %id,
+        "handling delete_product"
+    );
 
     let idempotency_key = admin_product_lifecycle_idempotency_key(
         &headers,
@@ -646,6 +684,20 @@ pub async fn publish_product(
         &[Permission::PRODUCTS_UPDATE],
         "Permission denied: products:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PRODUCT_BOUNDARY,
+        operation = "publish_product",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        product_id = %id,
+        "handling publish_product"
+    );
 
     let idempotency_key = admin_product_lifecycle_idempotency_key(
         &headers,
@@ -691,6 +743,20 @@ pub async fn unpublish_product(
         &[Permission::PRODUCTS_UPDATE],
         "Permission denied: products:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PRODUCT_BOUNDARY,
+        operation = "unpublish_product",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        product_id = %id,
+        "handling unpublish_product"
+    );
 
     let idempotency_key = admin_product_lifecycle_idempotency_key(
         &headers,
@@ -741,6 +807,20 @@ pub async fn archive_product(
         &[Permission::PRODUCTS_UPDATE],
         "Permission denied: products:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PRODUCT_BOUNDARY,
+        operation = "archive_product",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        product_id = %id,
+        "handling archive_product"
+    );
 
     let idempotency_key = admin_product_lifecycle_idempotency_key(
         &headers,

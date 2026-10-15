@@ -394,6 +394,16 @@ pub async fn list_payment_collections(
         &[Permission::PAYMENTS_READ],
         "Permission denied: payments:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PAYMENT_READ_BOUNDARY,
+        operation = "list_payment_collections",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "handling list_payment_collections"
+    );
     let pagination = params.pagination.unwrap_or_default();
     let context = admin_payment_read_context(
         &tenant,
@@ -455,6 +465,20 @@ pub async fn show_payment_collection(
         &[Permission::PAYMENTS_READ],
         "Permission denied: payments:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_payment_collection_id", "Payment collection ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PAYMENT_READ_BOUNDARY,
+        operation = "show_payment_collection",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        collection_id = %id,
+        "handling show_payment_collection"
+    );
     let context = admin_payment_read_context(
         &tenant,
         &auth,
@@ -507,6 +531,20 @@ pub async fn authorize_payment_collection(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_payment_collection_id", "Payment collection ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PAYMENT_COMMAND_BOUNDARY,
+        operation = "authorize_payment_collection",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        collection_id = %id,
+        "handling authorize_payment_collection"
+    );
     let idempotency_key = require_command_idempotency_key(&headers)?;
     let context = admin_payment_collection_command_context(
         &tenant,
@@ -564,6 +602,20 @@ pub async fn capture_payment_collection(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_payment_collection_id", "Payment collection ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PAYMENT_COMMAND_BOUNDARY,
+        operation = "capture_payment_collection",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        collection_id = %id,
+        "handling capture_payment_collection"
+    );
     let idempotency_key = require_command_idempotency_key(&headers)?;
     let context = admin_payment_collection_command_context(
         &tenant,
@@ -621,6 +673,20 @@ pub async fn cancel_payment_collection(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_payment_collection_id", "Payment collection ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PAYMENT_COMMAND_BOUNDARY,
+        operation = "cancel_payment_collection",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        collection_id = %id,
+        "handling cancel_payment_collection"
+    );
     let idempotency_key = require_command_idempotency_key(&headers)?;
     let context = admin_payment_collection_command_context(
         &tenant,
@@ -683,6 +749,20 @@ pub async fn create_refund(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_payment_collection_id", "Payment collection ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_REFUND_COMMAND_BOUNDARY,
+        operation = "create_refund",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        collection_id = %id,
+        "handling create_refund"
+    );
     let creation_key = refund_creation_key(&headers)?;
     let context =
         admin_refund_create_context(&tenant, &auth, &request_context, id, creation_key.as_str());
@@ -730,6 +810,16 @@ pub async fn list_refunds(
         &[Permission::PAYMENTS_READ],
         "Permission denied: payments:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PAYMENT_READ_BOUNDARY,
+        operation = "list_refunds",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "handling list_refunds"
+    );
     let pagination = params.pagination.unwrap_or_default();
     let context =
         admin_payment_read_context(&tenant, &auth, &request_context, None, "list_refunds");
@@ -785,6 +875,20 @@ pub async fn show_refund(
         &[Permission::PAYMENTS_READ],
         "Permission denied: payments:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_refund_id", "Refund ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_PAYMENT_READ_BOUNDARY,
+        operation = "show_refund",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        refund_id = %id,
+        "handling show_refund"
+    );
     let context =
         admin_payment_read_context(&tenant, &auth, &request_context, Some(id), "show_refund");
     let refund = runtime
@@ -832,6 +936,20 @@ pub async fn complete_refund(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_refund_id", "Refund ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_REFUND_COMMAND_BOUNDARY,
+        operation = "complete_refund",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        refund_id = %id,
+        "handling complete_refund"
+    );
     let idempotency_key = require_command_idempotency_key(&headers)?;
     let context = admin_refund_transition_context(
         &tenant,
@@ -890,6 +1008,20 @@ pub async fn cancel_refund(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_refund_id", "Refund ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_REFUND_COMMAND_BOUNDARY,
+        operation = "cancel_refund",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        refund_id = %id,
+        "handling cancel_refund"
+    );
     let idempotency_key = require_command_idempotency_key(&headers)?;
     let context = admin_refund_transition_context(
         &tenant,

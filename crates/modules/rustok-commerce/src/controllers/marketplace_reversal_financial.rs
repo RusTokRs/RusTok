@@ -110,6 +110,8 @@ pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
         )
 }
 
+const MARKETPLACE_REVERSAL_BOUNDARY: &str = "commerce_admin_marketplace_reversal_http";
+
 #[utoipa::path(
     get,
     path = "/admin/marketplace-financial/reversal-events/operator-review",
@@ -128,6 +130,17 @@ pub async fn list_operator_review(
     Query(query): Query<MarketplaceReversalOperatorListQuery>,
 ) -> HttpResult<Json<Vec<MarketplaceReversalEventResponse>>> {
     ensure_read_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_REVERSAL_BOUNDARY,
+        operation = "list_operator_review",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        limit = ?query.limit,
+        "listing reversal events requiring operator review"
+    );
     let items = runtime
         .marketplace_reversal_operator_service()
         .list_operator_review(tenant.id, query.limit.unwrap_or(50))
@@ -155,6 +168,20 @@ pub async fn show_event(
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<MarketplaceReversalEventResponse>> {
     ensure_read_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Event ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_REVERSAL_BOUNDARY,
+        operation = "show_event",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        event_id = %id,
+        "showing reversal event"
+    );
     runtime
         .marketplace_reversal_operator_service()
         .get_event(tenant.id, id)
@@ -183,6 +210,20 @@ pub async fn retry_event(
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<MarketplaceReversalEventResponse>> {
     ensure_manage_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Event ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_REVERSAL_BOUNDARY,
+        operation = "retry_event",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        event_id = %id,
+        "retrying reversal event"
+    );
     runtime
         .marketplace_reversal_operator_service()
         .retry_event(tenant.id, id)
@@ -211,6 +252,17 @@ pub async fn run_recovery_sweep(
     Json(input): Json<MarketplaceReversalSweepInput>,
 ) -> HttpResult<Json<MarketplaceReversalSweepResponse>> {
     ensure_manage_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_REVERSAL_BOUNDARY,
+        operation = "run_recovery_sweep",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        limit = ?input.limit,
+        "running reversal recovery sweep"
+    );
     let report = runtime
         .marketplace_reversal_operator_service()
         .sweep_tenant(tenant.id, input.limit.unwrap_or(100))
@@ -250,6 +302,17 @@ pub async fn list_adaptation_failures_operator_review(
     Query(query): Query<MarketplaceReversalOperatorListQuery>,
 ) -> HttpResult<Json<Vec<MarketplaceReversalAdaptationFailureResponse>>> {
     ensure_read_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_REVERSAL_BOUNDARY,
+        operation = "list_adaptation_failures_operator_review",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        limit = ?query.limit,
+        "listing adaptation failures requiring operator review"
+    );
     let items = runtime
         .marketplace_reversal_operator_service()
         .list_adaptation_failures_operator_review(tenant.id, query.limit.unwrap_or(50))
@@ -277,6 +340,20 @@ pub async fn show_adaptation_failure(
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<MarketplaceReversalAdaptationFailureResponse>> {
     ensure_read_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Adaptation failure ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_REVERSAL_BOUNDARY,
+        operation = "show_adaptation_failure",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        failure_id = %id,
+        "showing adaptation failure"
+    );
     runtime
         .marketplace_reversal_operator_service()
         .get_adaptation_failure(tenant.id, id)
@@ -306,6 +383,20 @@ pub async fn retry_adaptation_failure(
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<MarketplaceReversalAdaptationFailureResponse>> {
     ensure_manage_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Adaptation failure ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_REVERSAL_BOUNDARY,
+        operation = "retry_adaptation_failure",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        failure_id = %id,
+        "retrying adaptation failure"
+    );
     runtime
         .marketplace_reversal_operator_service()
         .retry_adaptation_failure(tenant.id, id)

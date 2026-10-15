@@ -481,6 +481,20 @@ pub async fn apply_order_change(
         &[Permission::ORDERS_UPDATE],
         "Permission denied: orders:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Order change ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_ORDER_CHANGE_BOUNDARY,
+        operation = "apply_order_change",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        order_change_id = %id,
+        "applying order change"
+    );
 
     let actor_id = auth.user_id;
     let idempotency_key = require_idempotency_key(&headers)?;

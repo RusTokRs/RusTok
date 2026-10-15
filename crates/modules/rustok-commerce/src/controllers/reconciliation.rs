@@ -180,6 +180,17 @@ pub async fn list_reconciliation_required(
     Query(params): Query<ListReconciliationParams>,
 ) -> HttpResult<Json<Vec<AdminReconciliationProviderOperationResponse>>> {
     require_manage_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_RECONCILIATION_BOUNDARY,
+        operation = "list_reconciliation_required",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        limit = ?params.limit,
+        "listing reconciliation required provider operations"
+    );
     let operations = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
         .list_reconciliation_required(tenant.id, params.limit.unwrap_or(100))
         .await
@@ -217,6 +228,18 @@ pub async fn quarantine_stale_executing(
     Json(input): Json<QuarantineStaleInput>,
 ) -> HttpResult<Json<QuarantineStaleResponse>> {
     require_manage_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_RECONCILIATION_BOUNDARY,
+        operation = "quarantine_stale_executing",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        stale_after_seconds = input.stale_after_seconds,
+        limit = ?input.limit,
+        "quarantining stale executing provider operations"
+    );
     let stale_after_seconds = input.stale_after_seconds.clamp(60, 7 * 24 * 60 * 60);
     let stale_before = Utc::now() - Duration::seconds(stale_after_seconds as i64);
     let quarantined = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
@@ -258,6 +281,20 @@ pub async fn resolve_unknown_as_failed(
     Json(input): Json<ResolveUnknownFailedInput>,
 ) -> HttpResult<Json<AdminReconciliationProviderOperationResponse>> {
     require_manage_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if operation_id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_operation_id", "Operation ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_RECONCILIATION_BOUNDARY,
+        operation = "resolve_unknown_as_failed",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        operation_id = %operation_id,
+        "resolving unknown provider operation as failed"
+    );
     let operation = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
         .resolve_unknown_as_failed(tenant.id, operation_id, input.reason)
         .await
@@ -298,6 +335,20 @@ pub async fn resolve_unknown_as_succeeded(
     Json(input): Json<ResolveUnknownSucceededInput>,
 ) -> HttpResult<Json<AdminReconciliationProviderOperationResponse>> {
     require_manage_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if operation_id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_operation_id", "Operation ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_RECONCILIATION_BOUNDARY,
+        operation = "resolve_unknown_as_succeeded",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        operation_id = %operation_id,
+        "resolving unknown provider operation as succeeded"
+    );
     let context = AdminReconciliationErrorContext::new(
         tenant.id,
         auth.user_id,
@@ -336,6 +387,20 @@ pub async fn retry_local_persistence(
     Path(operation_id): Path<Uuid>,
 ) -> HttpResult<Json<crate::dto::FulfillmentResponse>> {
     require_manage_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if operation_id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_operation_id", "Operation ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_RECONCILIATION_BOUNDARY,
+        operation = "retry_local_persistence",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        operation_id = %operation_id,
+        "retrying local fulfillment persistence"
+    );
     let fulfillment = FulfillmentReconciliationService::new(runtime.db_clone())
         .retry_local_persistence(tenant.id, operation_id)
         .await
@@ -375,6 +440,20 @@ pub async fn retry_create_label(
     Path(operation_id): Path<Uuid>,
 ) -> HttpResult<Json<crate::dto::FulfillmentResponse>> {
     require_manage_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if operation_id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_operation_id", "Operation ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_RECONCILIATION_BOUNDARY,
+        operation = "retry_create_label",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        operation_id = %operation_id,
+        "retrying fulfillment create label"
+    );
     let fulfillment = FulfillmentCreateLabelRecoveryService::new(runtime.db_clone())
         .with_provider_registry(runtime.fulfillment_provider_registry())
         .retry(tenant.id, operation_id)
@@ -591,5 +670,32 @@ mod tests {
         assert_eq!(value["provider_reference"], "external-reference");
         assert_eq!(value["provider_result_present"], true);
         assert_eq!(value["error_present"], true);
+    }
+
+    #[test]
+    fn require_manage_permission_rejects_nil_tenant_or_user() {
+        let auth_nil_tenant = AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id: Uuid::nil(),
+            permissions: vec![Permission::FULFILLMENTS_MANAGE],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let err = require_manage_permission(&auth_nil_tenant).unwrap_err();
+        assert_eq!(err.code, "commerce_invalid_tenant");
+
+        let auth_nil_user = AuthContext {
+            user_id: Uuid::nil(),
+            session_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            permissions: vec![Permission::FULFILLMENTS_MANAGE],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let err2 = require_manage_permission(&auth_nil_user).unwrap_err();
+        assert_eq!(err2.code, "commerce_invalid_actor");
     }
 }

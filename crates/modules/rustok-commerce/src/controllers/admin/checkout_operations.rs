@@ -246,6 +246,20 @@ pub async fn show_checkout_operation(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Checkout operation ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
+        operation = "show_checkout_operation",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        operation_id = %id,
+        "showing checkout operation"
+    );
     let operation = crate::CheckoutOperationJournal::new(runtime.db_clone(), runtime.event_bus())
         .get(tenant.id, id)
         .await
@@ -286,6 +300,20 @@ pub async fn compensate_checkout_operation(
         &[Permission::ORDERS_MANAGE],
         "Permission denied: orders:manage required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Checkout operation ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
+        operation = "compensate_checkout_operation",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        operation_id = %id,
+        "compensating checkout operation"
+    );
     let service = crate::CheckoutCompensationService::new(
         runtime.db_clone(),
         runtime.event_bus(),
@@ -341,6 +369,18 @@ pub async fn list_checkout_operations(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
+        operation = "list_checkout_operations",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        status = ?query.status,
+        limit = ?query.limit,
+        "listing checkout operations"
+    );
     let operations = crate::CheckoutOperationJournal::new(runtime.db_clone(), runtime.event_bus())
         .list_by_status(
             tenant.id,
@@ -393,6 +433,21 @@ pub async fn execute_checkout_reconciliation_action(
         action.required_permissions(),
         action_permission_message(action),
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Checkout operation ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
+        operation = "execute_checkout_reconciliation_action",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        operation_id = %id,
+        action = ?action,
+        "executing checkout reconciliation action"
+    );
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = reconciliation_port_context(
         &tenant,
@@ -470,6 +525,21 @@ pub async fn list_checkout_reconciliation_actions(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Checkout operation ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
+        operation = "list_checkout_reconciliation_actions",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        operation_id = %id,
+        limit = ?query.limit,
+        "listing checkout reconciliation actions"
+    );
     let actions = CheckoutReconciliationService::new(
         runtime.db_clone(),
         runtime.event_bus(),
@@ -516,6 +586,17 @@ pub async fn sweep_checkout_compensations(
         &[Permission::ORDERS_MANAGE],
         "Permission denied: orders:manage required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_CHECKOUT_OPERATION_BOUNDARY,
+        operation = "sweep_checkout_compensations",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        limit = ?input.limit,
+        "sweeping checkout compensations"
+    );
     let report = crate::CheckoutCompensationSweepService::new(
         runtime.db_clone(),
         runtime.event_bus(),

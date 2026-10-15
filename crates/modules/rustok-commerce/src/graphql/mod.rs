@@ -124,9 +124,16 @@ pub(crate) fn current_tenant_scope(
     let tenant = ctx.data::<TenantContext>().map_err(|_| {
         <FieldError as GraphQLError>::permission_denied("Tenant context is required")
     })?;
-    if requested_tenant_id.is_some_and(|requested| requested != tenant.id) {
-        let message = format!("{operation} must use the current tenant");
-        return Err(<FieldError as GraphQLError>::permission_denied(&message));
+    if tenant.id.is_nil() {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Tenant context has invalid nil ID",
+        ));
+    }
+    if let Some(requested) = requested_tenant_id {
+        if requested.is_nil() || requested != tenant.id {
+            let message = format!("{operation} must use the current tenant");
+            return Err(<FieldError as GraphQLError>::permission_denied(&message));
+        }
     }
     Ok(tenant.id)
 }
@@ -144,7 +151,10 @@ pub(crate) fn require_commerce_permission(
         <FieldError as GraphQLError>::permission_denied("Tenant context is required")
     })?;
 
-    if auth.tenant_id != tenant.id {
+    if auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+        return Err(<FieldError as GraphQLError>::unauthenticated());
+    }
+    if tenant.id.is_nil() || auth.tenant_id != tenant.id {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "Authenticated actor is not bound to the current tenant",
         ));
@@ -164,7 +174,10 @@ pub(crate) fn product_mutation_actor(ctx: &Context<'_>) -> Result<(uuid::Uuid, u
         <FieldError as GraphQLError>::permission_denied("Tenant context is required")
     })?;
 
-    if tenant.id != auth.tenant_id {
+    if auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+        return Err(<FieldError as GraphQLError>::unauthenticated());
+    }
+    if tenant.id.is_nil() || tenant.id != auth.tenant_id {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "Authenticated actor is not bound to the current tenant",
         ));
@@ -180,7 +193,7 @@ pub(crate) fn product_query_tenant(
     let tenant = ctx.data::<TenantContext>().map_err(|_| {
         <FieldError as GraphQLError>::permission_denied("Tenant context is required")
     })?;
-    if requested_tenant_id != tenant.id {
+    if tenant.id.is_nil() || requested_tenant_id.is_nil() || requested_tenant_id != tenant.id {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "Product reads must use the current tenant",
         ));
@@ -275,6 +288,45 @@ mod tests {
             .finish();
         let response = schema
             .execute(format!("{{ tenant(requested: \"{}\") }}", Uuid::new_v4()))
+            .await;
+        assert!(!response.errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn tenant_scope_rejects_nil_requested_tenant() {
+        let current = Uuid::new_v4();
+        let schema = Schema::build(Query, EmptyMutation, EmptySubscription)
+            .data(TenantContext {
+                id: current,
+                name: "Tenant".to_string(),
+                slug: "tenant".to_string(),
+                domain: None,
+                settings: serde_json::json!({}),
+                default_locale: "en".to_string(),
+                is_active: true,
+            })
+            .finish();
+        let response = schema
+            .execute(format!("{{ tenant(requested: \"{}\") }}", Uuid::nil()))
+            .await;
+        assert!(!response.errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn tenant_scope_rejects_nil_current_tenant() {
+        let schema = Schema::build(Query, EmptyMutation, EmptySubscription)
+            .data(TenantContext {
+                id: Uuid::nil(),
+                name: "Tenant".to_string(),
+                slug: "tenant".to_string(),
+                domain: None,
+                settings: serde_json::json!({}),
+                default_locale: "en".to_string(),
+                is_active: true,
+            })
+            .finish();
+        let response = schema
+            .execute("{ tenant(requested: null) }")
             .await;
         assert!(!response.errors.is_empty());
     }

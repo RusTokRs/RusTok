@@ -392,6 +392,16 @@ pub async fn list_products(
     request_context: RequestContext,
     Query(params): Query<StoreListProductsParams>,
 ) -> HttpResult<Json<PaginatedResponse<ProductListItem>>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_storefront_product_http",
+        operation = "list_products",
+        tenant_id = %tenant.id,
+        "handling list_products"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let _requested_limit = params
@@ -540,6 +550,20 @@ pub async fn show_product(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_storefront_product_http",
+        operation = "show_product",
+        tenant_id = %tenant.id,
+        product_id = %id,
+        "handling show_product"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let public_channel_slug = public_channel_slug_from_request(&request_context);
@@ -591,6 +615,16 @@ pub async fn list_regions(
     tenant: TenantContext,
     request_context: RequestContext,
 ) -> HttpResult<Json<Vec<RegionResponse>>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_storefront_auxiliary_http",
+        operation = "list_regions",
+        tenant_id = %tenant.id,
+        "handling list_regions"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let regions = rustok_region::in_process_region_read_port(runtime.db_clone())
@@ -644,6 +678,16 @@ pub async fn list_shipping_options(
     request_context: RequestContext,
     Query(query): Query<StoreContextQuery>,
 ) -> HttpResult<Json<Vec<ShippingOptionResponse>>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_storefront_auxiliary_http",
+        operation = "list_shipping_options",
+        tenant_id = %tenant.id,
+        "handling list_shipping_options"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =

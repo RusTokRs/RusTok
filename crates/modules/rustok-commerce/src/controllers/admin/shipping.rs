@@ -356,6 +356,16 @@ pub async fn list_shipping_profiles(
         &[Permission::FULFILLMENTS_READ],
         "Permission denied: fulfillments:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        operation = "list_shipping_profiles",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "handling list_shipping_profiles"
+    );
 
     let pagination = params.pagination.unwrap_or_default();
     let (items, total) = ShippingProfileService::new(runtime.db_clone())
@@ -402,6 +412,16 @@ pub async fn create_shipping_profile(
         &[Permission::FULFILLMENTS_CREATE],
         "Permission denied: fulfillments:create required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        operation = "create_shipping_profile",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "handling create_shipping_profile"
+    );
 
     let profile = ShippingProfileService::new(runtime.db_clone())
         .create_shipping_profile(tenant.id, input)
@@ -435,6 +455,20 @@ pub async fn show_shipping_profile(
         &[Permission::FULFILLMENTS_READ],
         "Permission denied: fulfillments:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_shipping_profile_id", "Shipping profile ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        operation = "show_shipping_profile",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        profile_id = %id,
+        "handling show_shipping_profile"
+    );
 
     let profile = ShippingProfileService::new(runtime.db_clone())
         .get_shipping_profile(
@@ -474,6 +508,20 @@ pub async fn update_shipping_profile(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_shipping_profile_id", "Shipping profile ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        operation = "update_shipping_profile",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        profile_id = %id,
+        "handling update_shipping_profile"
+    );
 
     let profile = ShippingProfileService::new(runtime.db_clone())
         .update_shipping_profile(tenant.id, id, input)
@@ -506,6 +554,20 @@ pub async fn deactivate_shipping_profile(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_shipping_profile_id", "Shipping profile ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        operation = "deactivate_shipping_profile",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        profile_id = %id,
+        "handling deactivate_shipping_profile"
+    );
 
     let profile = ShippingProfileService::new(runtime.db_clone())
         .deactivate_shipping_profile(tenant.id, id)
@@ -538,6 +600,20 @@ pub async fn reactivate_shipping_profile(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_shipping_profile_id", "Shipping profile ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        operation = "reactivate_shipping_profile",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        profile_id = %id,
+        "handling reactivate_shipping_profile"
+    );
 
     let profile = ShippingProfileService::new(runtime.db_clone())
         .reactivate_shipping_profile(tenant.id, id)
@@ -570,6 +646,16 @@ pub async fn list_shipping_options(
         &[Permission::FULFILLMENTS_READ],
         "Permission denied: fulfillments:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        operation = "list_shipping_options",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "handling list_shipping_options"
+    );
 
     let pagination = params.pagination.unwrap_or_default();
     let read_context = admin_shipping_option_read_port_context(
@@ -650,6 +736,16 @@ pub async fn create_shipping_option(
         &[Permission::FULFILLMENTS_CREATE],
         "Permission denied: fulfillments:create required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        operation = "create_shipping_option",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "handling create_shipping_option"
+    );
 
     validate_shipping_option_profile_inputs(
         runtime.db(),
@@ -708,6 +804,20 @@ pub async fn show_shipping_option(
         &[Permission::FULFILLMENTS_READ],
         "Permission denied: fulfillments:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_shipping_option_id", "Shipping option ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        operation = "show_shipping_option",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        option_id = %id,
+        "handling show_shipping_option"
+    );
 
     let read_context = admin_shipping_option_read_port_context(
         tenant.id,
@@ -769,6 +879,20 @@ pub async fn update_shipping_option(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_shipping_option_id", "Shipping option ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        operation = "update_shipping_option",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        option_id = %id,
+        "handling update_shipping_option"
+    );
 
     validate_shipping_option_profile_inputs(
         runtime.db(),
@@ -834,6 +958,20 @@ pub async fn deactivate_shipping_option(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_shipping_option_id", "Shipping option ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        operation = "deactivate_shipping_option",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        option_id = %id,
+        "handling deactivate_shipping_option"
+    );
 
     let request = DeactivateAdminShippingOptionRequest {
         shipping_option_id: id,
@@ -895,6 +1033,20 @@ pub async fn reactivate_shipping_option(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_shipping_option_id", "Shipping option ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_SHIPPING_BOUNDARY,
+        operation = "reactivate_shipping_option",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        option_id = %id,
+        "handling reactivate_shipping_option"
+    );
 
     let request = ReactivateAdminShippingOptionRequest {
         shipping_option_id: id,

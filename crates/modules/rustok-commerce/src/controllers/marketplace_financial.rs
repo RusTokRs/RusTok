@@ -103,6 +103,8 @@ pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
         .route("/recovery-sweep", axum::routing::post(run_recovery_sweep))
 }
 
+const MARKETPLACE_FINANCIAL_BOUNDARY: &str = "commerce_admin_marketplace_financial_http";
+
 #[utoipa::path(
     get,
     path = "/admin/marketplace-financial/operations/operator-review",
@@ -121,6 +123,17 @@ pub async fn list_financial_operator_review(
     Query(query): Query<MarketplaceFinancialOperatorListQuery>,
 ) -> HttpResult<Json<Vec<MarketplaceFinancialOperationResponse>>> {
     ensure_read_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
+        operation = "list_financial_operator_review",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        limit = ?query.limit,
+        "listing financial operations requiring operator review"
+    );
     let service = runtime.marketplace_financial_operator_service();
     let items = service
         .list_financial_operator_review(tenant.id, query.limit.unwrap_or(50))
@@ -148,6 +161,20 @@ pub async fn show_financial_operation(
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<MarketplaceFinancialOperationResponse>> {
     ensure_read_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Operation ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
+        operation = "show_financial_operation",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        operation_id = %id,
+        "showing financial operation"
+    );
     runtime
         .marketplace_financial_operator_service()
         .get_financial_operation(tenant.id, id)
@@ -176,6 +203,20 @@ pub async fn retry_financial_operation(
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<MarketplaceFinancialOperationResponse>> {
     ensure_manage_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Operation ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
+        operation = "retry_financial_operation",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        operation_id = %id,
+        "retrying financial operation"
+    );
     runtime
         .marketplace_financial_operator_service()
         .retry_financial_operation(tenant.id, id)
@@ -203,6 +244,17 @@ pub async fn list_paid_event_operator_review(
     Query(query): Query<MarketplaceFinancialOperatorListQuery>,
 ) -> HttpResult<Json<Vec<MarketplacePaidEventResponse>>> {
     ensure_read_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
+        operation = "list_paid_event_operator_review",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        limit = ?query.limit,
+        "listing paid events requiring operator review"
+    );
     let items = runtime
         .marketplace_financial_operator_service()
         .list_paid_event_operator_review(tenant.id, query.limit.unwrap_or(50))
@@ -230,6 +282,20 @@ pub async fn show_paid_event(
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<MarketplacePaidEventResponse>> {
     ensure_read_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Paid event ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
+        operation = "show_paid_event",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        event_id = %id,
+        "showing paid event"
+    );
     runtime
         .marketplace_financial_operator_service()
         .get_paid_event(tenant.id, id)
@@ -258,6 +324,20 @@ pub async fn retry_paid_event(
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<MarketplacePaidEventResponse>> {
     ensure_manage_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Paid event ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
+        operation = "retry_paid_event",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        event_id = %id,
+        "retrying paid event"
+    );
     runtime
         .marketplace_financial_operator_service()
         .retry_paid_event(tenant.id, id)
@@ -286,6 +366,17 @@ pub async fn run_recovery_sweep(
     Json(input): Json<MarketplaceFinancialSweepInput>,
 ) -> HttpResult<Json<MarketplaceFinancialSweepResponse>> {
     ensure_manage_permission(&auth)?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
+        operation = "run_recovery_sweep",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        limit = ?input.limit,
+        "running recovery sweep"
+    );
     let report = runtime
         .marketplace_financial_operator_service()
         .sweep_tenant(tenant.id, input.limit.unwrap_or(100))

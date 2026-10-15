@@ -311,6 +311,19 @@ pub async fn list_fulfillments(
         &[Permission::FULFILLMENTS_READ],
         "Permission denied: fulfillments:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
+        operation = "list_fulfillments",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        status = ?params.status,
+        order_id = ?params.order_id,
+        customer_id = ?params.customer_id,
+        "listing admin fulfillments"
+    );
 
     let pagination = params.pagination.unwrap_or_default();
     let read_context =
@@ -373,6 +386,20 @@ pub async fn show_fulfillment(
         &[Permission::FULFILLMENTS_READ],
         "Permission denied: fulfillments:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
+        operation = "show_fulfillment",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        fulfillment_id = %id,
+        "showing admin fulfillment"
+    );
 
     let read_context = admin_fulfillment_read_context(
         &tenant,
@@ -428,6 +455,20 @@ pub async fn create_fulfillment(
         "Permission denied: fulfillments:create required",
     )?;
     let order_id = input.order_id;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if order_id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_FULFILLMENT_CREATE_OWNER,
+        operation = "create_fulfillment",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        order_id = %order_id,
+        "creating admin fulfillment"
+    );
     let idempotency_key = require_idempotency_key(&headers)?;
     let read_context =
         admin_fulfillment_create_read_context(&tenant, &auth, &request_context, order_id);
@@ -482,6 +523,21 @@ pub async fn ship_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
+        operation = "ship_fulfillment",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        fulfillment_id = %id,
+        carrier = ?input.carrier,
+        "shipping fulfillment"
+    );
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_fulfillment_command_context(
         &tenant,
@@ -543,6 +599,20 @@ pub async fn deliver_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
+        operation = "deliver_fulfillment",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        fulfillment_id = %id,
+        "delivering fulfillment"
+    );
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_fulfillment_command_context(
         &tenant,
@@ -604,6 +674,20 @@ pub async fn reopen_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
+        operation = "reopen_fulfillment",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        fulfillment_id = %id,
+        "reopening fulfillment"
+    );
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_fulfillment_command_context(
         &tenant,
@@ -665,6 +749,20 @@ pub async fn reship_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
+        operation = "reship_fulfillment",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        fulfillment_id = %id,
+        "reshipping fulfillment"
+    );
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_fulfillment_command_context(
         &tenant,
@@ -726,6 +824,20 @@ pub async fn cancel_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
+        operation = "cancel_fulfillment",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        fulfillment_id = %id,
+        "cancelling fulfillment"
+    );
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_fulfillment_command_context(
         &tenant,

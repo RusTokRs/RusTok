@@ -540,6 +540,20 @@ pub async fn get_me(
     request_context: RequestContext,
     auth: rustok_api::AuthContext,
 ) -> HttpResult<Json<CustomerResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+        operation = "get_me",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "handling get_me"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_context = super::storefront_customer_port_context(tenant.id, auth.user_id);
@@ -577,6 +591,24 @@ pub async fn get_order(
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<OrderResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+        operation = "get_order",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        order_id = %id,
+        "handling get_order"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id = current_storefront_customer_id(&runtime, tenant.id, &auth, "get_order")
@@ -632,6 +664,24 @@ pub async fn create_order_return(
     headers: HeaderMap,
     Json(input): Json<CreateOrderReturnInput>,
 ) -> HttpResult<(StatusCode, Json<OrderReturnResponse>)> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+        operation = "create_order_return",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        order_id = %id,
+        "handling create_order_return"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id = ensure_customer_owns_order(
@@ -702,6 +752,24 @@ pub async fn list_order_returns(
     Path(id): Path<Uuid>,
     Query(params): Query<StoreOrderReturnsParams>,
 ) -> HttpResult<Json<PaginatedResponse<OrderReturnResponse>>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+        operation = "list_order_returns",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        order_id = %id,
+        "handling list_order_returns"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id = ensure_customer_owns_order(
@@ -781,6 +849,24 @@ pub async fn list_order_refunds(
     Path(id): Path<Uuid>,
     Query(params): Query<StoreOrderRefundsParams>,
 ) -> HttpResult<Json<PaginatedResponse<RefundResponse>>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = STOREFRONT_ORDER_PAYMENT_BOUNDARY,
+        operation = "list_order_refunds",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        order_id = %id,
+        "handling list_order_refunds"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id = ensure_customer_owns_order(
@@ -859,6 +945,24 @@ pub async fn list_order_changes(
     Path(id): Path<Uuid>,
     Query(params): Query<StoreOrderChangesParams>,
 ) -> HttpResult<Json<PaginatedResponse<OrderChangeResponse>>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+        operation = "list_order_changes",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        order_id = %id,
+        "handling list_order_changes"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id = ensure_customer_owns_order(

@@ -74,6 +74,16 @@ pub async fn create_cart(
     request_context: RequestContext,
     Json(input): Json<StoreCreateCartInput>,
 ) -> HttpResult<(StatusCode, Json<StoreCartResponse>)> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_storefront_cart_http",
+        operation = "create_cart",
+        tenant_id = %tenant.id,
+        "handling create_cart"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =
@@ -163,6 +173,20 @@ pub async fn get_cart(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<CartResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_storefront_cart_http",
+        operation = "get_cart",
+        tenant_id = %tenant.id,
+        cart_id = %id,
+        "handling get_cart"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =
@@ -218,6 +242,20 @@ pub async fn update_cart_context(
     Path(id): Path<Uuid>,
     Json(input): Json<StoreUpdateCartInput>,
 ) -> HttpResult<Json<StoreCartResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_storefront_cart_http",
+        operation = "update_cart_context",
+        tenant_id = %tenant.id,
+        cart_id = %id,
+        "handling update_cart_context"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =
@@ -291,6 +329,20 @@ pub async fn add_cart_line_item(
     Path(id): Path<Uuid>,
     Json(input): Json<StoreAddCartLineItemInput>,
 ) -> HttpResult<Json<CartResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_storefront_cart_http",
+        operation = "add_cart_line_item",
+        tenant_id = %tenant.id,
+        cart_id = %id,
+        "handling add_cart_line_item"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =
@@ -395,6 +447,24 @@ pub async fn update_cart_line_item(
     Path((id, line_id)): Path<(Uuid, Uuid)>,
     Json(input): Json<StoreUpdateCartLineItemInput>,
 ) -> HttpResult<Json<CartResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+    }
+    if line_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_line_item_id", "Line item ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_storefront_cart_http",
+        operation = "update_cart_line_item",
+        tenant_id = %tenant.id,
+        cart_id = %id,
+        line_item_id = %line_id,
+        "handling update_cart_line_item"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =
@@ -547,6 +617,24 @@ pub async fn remove_cart_line_item(
     request_context: RequestContext,
     Path((id, line_id)): Path<(Uuid, Uuid)>,
 ) -> HttpResult<Json<CartResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+    }
+    if line_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_line_item_id", "Line item ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_storefront_cart_http",
+        operation = "remove_cart_line_item",
+        tenant_id = %tenant.id,
+        cart_id = %id,
+        line_item_id = %line_id,
+        "handling remove_cart_line_item"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let customer_id =

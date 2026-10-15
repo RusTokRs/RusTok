@@ -175,6 +175,20 @@ pub async fn create_payment_collection(
     request_context: RequestContext,
     Json(input): Json<StoreCreatePaymentCollectionInput>,
 ) -> HttpResult<(StatusCode, Json<PaymentCollectionResponse>)> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if input.cart_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = STOREFRONT_PAYMENT_COLLECTION_BOUNDARY,
+        operation = "create_payment_collection",
+        tenant_id = %tenant.id,
+        cart_id = %input.cart_id,
+        "handling create_payment_collection"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let actor_id = super::checkout_actor_id(auth.0.as_ref());
@@ -315,6 +329,20 @@ pub async fn complete_cart_checkout(
     Path(cart_id): Path<Uuid>,
     Json(input): Json<StoreCompleteCartInput>,
 ) -> HttpResult<Json<CompleteCheckoutResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if cart_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = STOREFRONT_CHECKOUT_BOUNDARY,
+        operation = "complete_cart_checkout",
+        tenant_id = %tenant.id,
+        cart_id = %cart_id,
+        "handling complete_cart_checkout"
+    );
+
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
     let idempotency_key = required_idempotency_key(&headers)?;
     let actor_id = super::checkout_actor_id(auth.0.as_ref());

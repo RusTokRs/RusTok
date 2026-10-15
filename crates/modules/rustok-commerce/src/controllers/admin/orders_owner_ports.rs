@@ -303,6 +303,18 @@ pub async fn list_orders(
         &[Permission::ORDERS_LIST],
         "Permission denied: orders:list required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_ORDER_BOUNDARY,
+        operation = "list_orders",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        status = ?params.status,
+        customer_id = ?params.customer_id,
+        "listing admin orders"
+    );
 
     let pagination = params.pagination.unwrap_or_default();
     let customer_id = params.customer_id;
@@ -364,6 +376,20 @@ pub async fn show_order(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_ORDER_BOUNDARY,
+        operation = "show_order",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        order_id = %id,
+        "showing admin order detail"
+    );
 
     let order_context =
         admin_order_port_context(&tenant, &auth, &request_context, Some(id), "get_order");
@@ -453,6 +479,20 @@ pub async fn mark_order_paid(
         &[Permission::ORDERS_UPDATE],
         "Permission denied: orders:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_ORDER_BOUNDARY,
+        operation = "mark_order_paid",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        order_id = %id,
+        "marking order as paid"
+    );
 
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_order_command_port_context(
@@ -517,6 +557,21 @@ pub async fn ship_order(
         &[Permission::ORDERS_UPDATE],
         "Permission denied: orders:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_ORDER_BOUNDARY,
+        operation = "ship_order",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        order_id = %id,
+        carrier = ?input.carrier,
+        "shipping order"
+    );
 
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_order_command_port_context(
@@ -581,6 +636,20 @@ pub async fn deliver_order(
         &[Permission::ORDERS_UPDATE],
         "Permission denied: orders:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_ORDER_BOUNDARY,
+        operation = "deliver_order",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        order_id = %id,
+        "delivering order"
+    );
 
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_order_command_port_context(
@@ -644,6 +713,21 @@ pub async fn cancel_order(
         &[Permission::ORDERS_UPDATE],
         "Permission denied: orders:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_ORDER_BOUNDARY,
+        operation = "cancel_order",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        order_id = %id,
+        reason = ?input.reason,
+        "cancelling order"
+    );
 
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_order_command_port_context(

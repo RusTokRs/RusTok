@@ -67,6 +67,18 @@ pub(super) fn ensure_permissions(
     permissions: &[Permission],
     message: &str,
 ) -> HttpResult<()> {
+    if auth.tenant_id.is_nil() {
+        return Err(HttpError::forbidden(
+            "commerce_invalid_tenant",
+            "Authenticated context has an invalid nil tenant ID".to_string(),
+        ));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::forbidden(
+            "commerce_invalid_actor",
+            "Authenticated context has an invalid nil user ID".to_string(),
+        ));
+    }
     if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden(
             "commerce_permission_denied",
@@ -105,5 +117,46 @@ mod tests {
 
         assert_eq!(error.status, axum::http::StatusCode::FORBIDDEN);
         assert_eq!(error.code, "commerce_permission_denied");
+    }
+
+    #[test]
+    fn authenticated_context_rejects_nil_tenant_or_user() {
+        let auth_nil_tenant = AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id: Uuid::nil(),
+            permissions: vec![Permission::ORDERS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+
+        let err = ensure_permissions(
+            &auth_nil_tenant,
+            &[Permission::ORDERS_READ],
+            "Permission denied: orders:read required",
+        )
+        .expect_err("nil tenant must be rejected");
+        assert_eq!(err.status, axum::http::StatusCode::FORBIDDEN);
+        assert_eq!(err.code, "commerce_invalid_tenant");
+
+        let auth_nil_user = AuthContext {
+            user_id: Uuid::nil(),
+            session_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            permissions: vec![Permission::ORDERS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+
+        let err2 = ensure_permissions(
+            &auth_nil_user,
+            &[Permission::ORDERS_READ],
+            "Permission denied: orders:read required",
+        )
+        .expect_err("nil user must be rejected");
+        assert_eq!(err2.status, axum::http::StatusCode::FORBIDDEN);
+        assert_eq!(err2.code, "commerce_invalid_actor");
     }
 }

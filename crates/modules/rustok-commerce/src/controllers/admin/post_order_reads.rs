@@ -189,6 +189,16 @@ pub async fn list_order_returns(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_POST_ORDER_BOUNDARY,
+        operation = "list_order_returns",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "handling list_order_returns"
+    );
     let pagination = params.pagination.unwrap_or_default();
     let order_id = params.order_id;
     let context = admin_post_order_read_context(
@@ -253,6 +263,20 @@ pub async fn show_order_return(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_order_return_id", "Order return ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_POST_ORDER_BOUNDARY,
+        operation = "show_order_return",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        return_id = %id,
+        "handling show_order_return"
+    );
     let context = admin_post_order_read_context(
         tenant.id,
         &auth,
@@ -306,6 +330,16 @@ pub async fn list_order_changes(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_POST_ORDER_BOUNDARY,
+        operation = "list_order_changes",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "handling list_order_changes"
+    );
     let pagination = params.pagination.unwrap_or_default();
     let order_id = params.order_id;
     let context = admin_post_order_read_context(
@@ -371,6 +405,20 @@ pub async fn show_order_change(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_order_change_id", "Order change ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = ADMIN_POST_ORDER_BOUNDARY,
+        operation = "show_order_change",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        change_id = %id,
+        "handling show_order_change"
+    );
     let context = admin_post_order_read_context(
         tenant.id,
         &auth,

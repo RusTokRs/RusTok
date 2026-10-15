@@ -126,6 +126,16 @@ pub async fn list_return_completion_operations(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = RETURN_COMPLETION_OPERATOR_BOUNDARY,
+        operation = "list_return_completion_operations",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "listing return completion operations"
+    );
     let pagination = params.pagination.unwrap_or_default();
     let (items, total) = runtime
         .return_completion_orchestration()
@@ -179,6 +189,20 @@ pub async fn show_return_completion_operation(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Return completion operation ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = RETURN_COMPLETION_OPERATOR_BOUNDARY,
+        operation = "show_return_completion_operation",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        operation_id = %id,
+        "showing return completion operation"
+    );
     let operation = runtime
         .return_completion_orchestration()
         .get_operation(tenant.id, id)
@@ -222,6 +246,20 @@ pub async fn retry_return_completion_operation(
         &[Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE],
         "Permission denied: orders:manage and payments:manage required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("commerce_invalid_id", "Return completion operation ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = RETURN_COMPLETION_OPERATOR_BOUNDARY,
+        operation = "retry_return_completion_operation",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        operation_id = %id,
+        "retrying return completion operation"
+    );
     let order_return = runtime
         .return_completion_orchestration()
         .retry_operation(tenant.id, auth.user_id, id)

@@ -218,6 +218,16 @@ pub async fn list_products(
         &[Permission::PRODUCTS_LIST],
         "Permission denied: products:list required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_admin_product_http",
+        operation = "list_products",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "handling list_products"
+    );
 
     let requested_limit = params
         .pagination
@@ -340,6 +350,16 @@ pub async fn create_product(
         &[Permission::PRODUCTS_CREATE],
         "Permission denied: products:create required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_admin_product_http",
+        operation = "create_product",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        "handling create_product"
+    );
 
     validate_admin_product_shipping_profile_input(
         runtime.db(),
@@ -400,6 +420,20 @@ pub async fn show_product(
         &[Permission::PRODUCTS_READ],
         "Permission denied: products:read required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_admin_product_http",
+        operation = "show_product",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        product_id = %id,
+        "handling show_product"
+    );
 
     let port_context = rustok_api::PortContext::new(
         tenant.id.to_string(),
@@ -463,6 +497,20 @@ pub async fn update_product(
         &[Permission::PRODUCTS_UPDATE],
         "Permission denied: products:update required",
     )?;
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+    }
+    tracing::debug!(
+        boundary = "commerce_admin_product_http",
+        operation = "update_product",
+        tenant_id = %tenant.id,
+        actor_id = %auth.user_id,
+        product_id = %id,
+        "handling update_product"
+    );
 
     validate_admin_product_shipping_profile_input(
         runtime.db(),
