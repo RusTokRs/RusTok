@@ -152,6 +152,37 @@ pub(crate) async fn insert_route(
     source_route
 }
 
+/// Writes the schedule a post would have, which is how a draft reaches a due state once
+/// the clock passes its `scheduled_at`. The owner commands refuse a schedule that is not in
+/// the future, so a test that needs a due draft writes the row directly.
+pub(crate) async fn set_post_schedule(
+    db: &DatabaseConnection,
+    post_id: Uuid,
+    scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
+) {
+    let post = crate::entities::blog_post::Entity::find_by_id(post_id)
+        .one(db)
+        .await
+        .expect("post read should not fail")
+        .expect("post should exist");
+    let mut active: crate::entities::blog_post::ActiveModel = post.into();
+    active.scheduled_at = sea_orm::Set(scheduled_at.map(|value| value.fixed_offset()));
+    active
+        .update(db)
+        .await
+        .expect("schedule write should not fail");
+}
+
+/// Makes a draft due, i.e. scheduled `hours_ago` hours in the past.
+pub(crate) async fn make_post_due(db: &DatabaseConnection, post_id: Uuid, hours_ago: i64) {
+    set_post_schedule(
+        db,
+        post_id,
+        Some(chrono::Utc::now() - chrono::Duration::hours(hours_ago)),
+    )
+    .await;
+}
+
 pub(crate) async fn outbox_event_count(db: &DatabaseConnection, event_type: &str) -> i64 {
     let row = db
         .query_one_raw(Statement::from_sql_and_values(

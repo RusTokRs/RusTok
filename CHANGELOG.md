@@ -128,6 +128,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `src/tests/hardening.rs` harness creates only the host table its paths read
   (`tenant_modules`), because no Blog, Taxonomy or outbox migration declares a foreign key to
   `tenants` and the exercised paths seed no channel.
+- The Blog OpenAPI document describes every route the module serves again: `BlogApiDoc`
+  registers the three handlers the audit found missing — `preview_post`
+  (`GET /api/blog/preview/{token}`), `pin_post` and `unpin_post`
+  (`POST /api/blog/posts/{id}/pin|unpin`) — so they reach generated clients through the
+  server document that merges the module document
+  (`apps/server/src/controllers/swagger.rs`). The pairing is now gated by
+  `tests/openapi_document_contract.rs`: the compiled test fails when a handler with a
+  `#[utoipa::path]` attribute is absent from `BlogApiDoc`, or when a path the module's
+  `axum_router` serves is absent from the generated `openapi_document()`. The text verifier
+  set cannot make that assertion — no OpenAPI artifact is committed, so
+  `verify-api-surface-contract.mjs` reads the router and the module manifest only.
+- Owner-command coverage was added for the slices the audit found untested (L-7):
+  `src/tests/owner_commands.rs` exercises `publish_scheduled_posts` (only the tenant's due
+  drafts, oldest-due first, the batch clamp, one `blog.post.published` per published post and
+  a drained queue on the next iteration) and the pin write path `src/services/post/pin.rs`
+  could only cover as a predicate (the flag and its timestamp are written together, archiving
+  keeps the pin state and unpin releases both). The scheduled-publish worker's claim is
+  covered in `src/services/scheduler.rs`: it selects the tenant with the oldest due schedule,
+  ignores a future schedule and another worker's slug, and the claimed item publishes that
+  tenant's due draft. The harness's direct schedule write lives in `src/tests/hardening.rs`
+  (`set_post_schedule`/`make_post_due`), shared by both test modules.
 
 ### Added (continued)
 - Blog post slug redirects use the shared canonical URL registry of `rustok-content`

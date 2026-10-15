@@ -489,6 +489,32 @@ base `1a420c8`).
   gone returns "not found" instead of resolving a stale redirect and records the
   `dangling_route_redirect` module metric. `blog_route_reconciliation` sweeps stale
   routes in bounded, tenant-scoped batches as the safety net for a missed delivery.
+- **M-6 OpenAPI registration drift.** `BlogApiDoc` (`src/controllers/openapi.rs`)
+  registered 16 of the 19 handlers that declare a `#[utoipa::path]`: `preview_post`
+  (`GET /api/blog/preview/{token}`), `pin_post` and `unpin_post`
+  (`POST /api/blog/posts/{id}/pin|unpin`) are served by `axum_router` but were absent
+  from the document the server merges and exports, so they were invisible to generated
+  clients. All three are registered now, and the pairing is gated by
+  `tests/openapi_document_contract.rs`, a compiled test over the generated document:
+  it fails when a documented handler is not registered in `BlogApiDoc`, when a path
+  `axum_router` serves is missing from `openapi_document()`, or when the declared
+  handler set changes without the document being updated. The text verifier set cannot
+  make that assertion — no OpenAPI artifact is committed, and
+  `verify-api-surface-contract.mjs` reads the router and the module manifest only.
+- **L-7 owner-command tests.** `src/tests/owner_commands.rs` adds the owner coverage the
+  audit found missing for `publish_scheduled_posts` (the due-post scan, the explicit
+  tenant scope, oldest-due-first order, the `MAX_SCHEDULED_PUBLISH_BATCH` clamp, one
+  `BlogPostPublished` per published post, and the drain on a second iteration) and for
+  the `pin_post`/`unpin_post` write path that `src/services/post/pin.rs` covered only as
+  a predicate (flag and timestamp written together, archiving keeps the pin state, unpin
+  releases both). The scheduled-publish **worker** is covered in
+  `src/services/scheduler.rs` too: the claim hands the host the tenant with the oldest
+  due schedule, never a tenant without due work, ignores a future schedule and another
+  Blog worker's slug, and the item the claim produced publishes that tenant's due draft
+  through `execute`. The harness's direct schedule write moved into
+  `src/tests/hardening.rs` (`set_post_schedule`/`make_post_due`) so the owner tests and
+  the worker tests share one way to reach a due state. `bulk_*` keeps its in-module bound
+  test and preview tokens were already covered by the H-1 tests.
 
 ### Verification status
 
@@ -569,6 +595,21 @@ base `1a420c8`).
   The same pass re-ran the five failing Blog self-tests in the `1a420c8` worktree and
   confirmed they fail there for the same absent sources, so none of them was invalidated by
   this branch.
+- Slice after that pass (M-6 and L-7, still without `cargo`): the OpenAPI registration fix was
+  checked against the sources by re-implementing the contract test's extraction logic — 13
+  paths in `controllers::axum_router`, 19 handlers declaring `#[utoipa::path]`, none missing
+  from `BlogApiDoc` and every declared path registered — and the four Rust files of this slice
+  (two of them new) are clean under the same `rustfmt` calibration and parse under
+  tree-sitter. Verifier evidence: the Blog set fails the same 45 scripts as before the slice,
+  the 51 unrelated scripts that read Blog or Next-admin paths fail the same 12, and
+  `verify-module-source-layout`, `verify-module-reference-contract`,
+  `verify-api-surface-contract`, `verify-docs`, `verify-blog-admin-boundary`,
+  `verify-blog-storefront-boundary` and `verify-blog-comments-event-projection` pass. The new
+  tests in `tests/openapi_document_contract.rs`, `src/tests/owner_commands.rs`,
+  `src/tests/hardening.rs` and `src/services/scheduler.rs` were written against the signatures
+  read in the tree but were **not compiled**: `cargo test -p rustok-blog` and
+  `cargo test -p rustok-blog --features runtime` (the scheduler worker tests) remain the gate
+  for them.
 
 ### Open items from this audit
 
