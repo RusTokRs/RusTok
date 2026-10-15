@@ -15,7 +15,7 @@ where
 }
 
 fn normalize_bootstrap_email(email: &str) -> String {
-    email.to_lowercase()
+    email.trim().to_lowercase()
 }
 
 /// Narrow identity input for bootstrap and installer workflows.
@@ -70,7 +70,29 @@ impl AuthUserBootstrapDbWriter {
     {
         let backend = db.get_database_backend();
         ensure_supported_backend(backend)?;
+        if request.tenant_id.is_nil() {
+            return Err(AuthLifecycleMutationError::Internal(
+                "tenant_id must not be nil for user bootstrap".to_string(),
+            ));
+        }
         let email = normalize_bootstrap_email(&request.email);
+        if email.is_empty() {
+            return Err(AuthLifecycleMutationError::Internal(
+                "email must not be empty for user bootstrap".to_string(),
+            ));
+        }
+        if request.password.is_empty() {
+            return Err(AuthLifecycleMutationError::Internal(
+                "password must not be empty for user bootstrap".to_string(),
+            ));
+        }
+        let name = request.name.trim();
+        if name.is_empty() {
+            return Err(AuthLifecycleMutationError::Internal(
+                "name must not be empty for user bootstrap".to_string(),
+            ));
+        }
+        tracing::debug!(tenant_id = %request.tenant_id, "Ensuring auth user bootstrap identity");
         if let Some(existing) = Self::find_user_on(db, request.tenant_id, &email).await? {
             return Ok(existing);
         }
@@ -104,7 +126,7 @@ impl AuthUserBootstrapDbWriter {
                     request.tenant_id.into(),
                     email.clone().into(),
                     password_hash.into(),
-                    request.name.into(),
+                    name.to_string().into(),
                 ],
             ))
             .await
@@ -150,6 +172,10 @@ impl AuthUserBootstrapDbWriter {
     {
         let backend = db.get_database_backend();
         ensure_supported_backend(backend)?;
+        if tenant_id.is_nil() || email.trim().is_empty() {
+            return Ok(None);
+        }
+        tracing::debug!(tenant_id = %tenant_id, "Looking up bootstrap auth user");
         let email = normalize_bootstrap_email(email);
         let sql = match backend {
             DbBackend::Sqlite => {
@@ -213,6 +239,10 @@ mod tests {
             super::normalize_bootstrap_email("Admin@Example.COM"),
             "admin@example.com"
         );
+        assert_eq!(
+            super::normalize_bootstrap_email("   Admin@Example.COM  \n"),
+            "admin@example.com"
+        );
     }
 
     #[test]
@@ -236,5 +266,56 @@ mod tests {
         assert!(ensure_supported_backend(DbBackend::Postgres).is_ok());
         assert!(ensure_supported_backend(DbBackend::Sqlite).is_ok());
         assert!(ensure_supported_backend(DbBackend::MySql).is_err());
+    }
+
+    #[tokio::test]
+    async fn bootstrap_user_on_rejects_nil_tenant_and_empty_fields() {
+        use super::{AuthUserBootstrapDbWriter, AuthUserBootstrapRequest};
+        use sea_orm::Database;
+        use uuid::Uuid;
+
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+
+        let req_nil_tenant = AuthUserBootstrapRequest {
+            tenant_id: Uuid::nil(),
+            email: "admin@example.com".to_string(),
+            name: "Admin".to_string(),
+            password: "password123".to_string(),
+        };
+        assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_nil_tenant).await.is_err());
+
+        let req_empty_email = AuthUserBootstrapRequest {
+            tenant_id: Uuid::new_v4(),
+            email: "   ".to_string(),
+            name: "Admin".to_string(),
+            password: "password123".to_string(),
+        };
+        assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_email).await.is_err());
+
+        let req_empty_password = AuthUserBootstrapRequest {
+            tenant_id: Uuid::new_v4(),
+            email: "admin@example.com".to_string(),
+            name: "Admin".to_string(),
+            password: "".to_string(),
+        };
+        assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_password).await.is_err());
+
+        let req_empty_name = AuthUserBootstrapRequest {
+            tenant_id: Uuid::new_v4(),
+            email: "admin@example.com".to_string(),
+            name: "   ".to_string(),
+            password: "password123".to_string(),
+        };
+        assert!(AuthUserBootstrapDbWriter::ensure_user_on(&db, req_empty_name).await.is_err());
+
+        // find_user_on with nil tenant or empty email returns Ok(None)
+        assert_eq!(
+            AuthUserBootstrapDbWriter::find_user_on(&db, Uuid::nil(), "admin@example.com").await.unwrap(),
+            None
+        );
+        assert_eq!(
+            AuthUserBootstrapDbWriter::find_user_on(&db, Uuid::new_v4(), "   ").await.unwrap(),
+            None
+        );
     }
 }

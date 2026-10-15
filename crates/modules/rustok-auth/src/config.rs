@@ -252,6 +252,12 @@ where
 
 /// Validate auth config invariants owned by `rustok-auth`.
 pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
+    tracing::debug!(
+        issuer = %config.issuer,
+        audience = %config.audience,
+        algorithm = ?config.algorithm,
+        "Validating auth configuration"
+    );
     if config.issuer.trim().is_empty() {
         return Err(AuthError::Internal(
             "JWT issuer must not be empty".to_string(),
@@ -284,9 +290,9 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
 
     match config.algorithm {
         JwtAlgorithm::HS256 => {
-            if config.secret.len() < MIN_HS256_SECRET_BYTES {
+            if config.secret.trim().len() < MIN_HS256_SECRET_BYTES {
                 return Err(AuthError::Internal(format!(
-                    "HS256 secret must contain at least {MIN_HS256_SECRET_BYTES} bytes"
+                    "HS256 secret must contain at least {MIN_HS256_SECRET_BYTES} non-whitespace bytes"
                 )));
             }
             if config.rsa_private_key_pem.is_some() || config.rsa_public_key_pem.is_some() {
