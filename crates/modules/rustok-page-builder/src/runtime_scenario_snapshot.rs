@@ -112,7 +112,7 @@ pub fn diff_page_builder_runtime_scenario_project(
 #[cfg(test)]
 mod tests {
     use super::*;
-use crate::RuntimeScenarioRegressionStatus;
+    use crate::RuntimeScenarioRegressionStatus;
     use serde_json::json;
 
     fn project_data() -> Value {

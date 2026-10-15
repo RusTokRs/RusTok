@@ -403,7 +403,7 @@ fn snapshot_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
-use fly::GrapesJsCodec;
+    use fly::GrapesJsCodec;
     use serde_json::json;
 
     fn document() -> ProjectDocument {

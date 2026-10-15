@@ -140,7 +140,7 @@ fn browser_storage_error(value: wasm_bindgen::JsValue) -> PublishScenarioSelecti
 #[cfg(test)]
 mod tests {
     use super::*;
-use fly::{PageSelection, ProjectDocument, RenderPolicy};
+    use fly::{PageSelection, ProjectDocument, RenderPolicy};
     use rustok_page_builder::RuntimeContextScenario;
     use serde_json::json;
 

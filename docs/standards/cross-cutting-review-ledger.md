@@ -260,10 +260,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `build_registry RusToKModule modules.toml rustok-module.toml`
 
 #### Sub-Audit Checklist
-- [ ] **CC-13.01 — Registry vs Manifest Parity:** Verify that all modules declared in `modules.toml` match `build_registry()` in `apps/server` and their respective `rustok-module.toml`.
-- [ ] **CC-13.02 — Active ADR Alignment:** Verify that code implementation reflects accepted ADRs in `DECISIONS/` and that obsolete architecture documents are marked deprecated or updated.
-- [ ] **CC-13.03 — Reference Schema Parity:** Run `scripts/verify/verify-reference-artifacts.mjs` to ensure committed OpenAPI JSON and GraphQL SDL artifacts match live route definitions.
-- [ ] **CC-13.04 — Documentation Integrity:** Verify that links in `docs/index.md` are valid and that every module contains a synchronized `README.md`.
+- [x] **CC-13.01 — Registry vs Manifest Parity:** Verified that all modules declared in `modules.toml` match `build_registry()` in `apps/server` and their respective `rustok-module.toml`. Traced through CodeGraph (`build_registry` in `apps/server/src/modules/generated.rs` and `crates/modules/rustok-distribution/src/lib.rs`). Validated by `node scripts/verify/verify-module-source-layout.mjs` and `node scripts/verify/verify-module-reference-contract.mjs` (both passed).
+- [x] **CC-13.02 — Active ADR Alignment:** Verified code implementation reflects accepted ADRs in `DECISIONS/` and brought all 2026-10-14 ADRs into full canonical compliance (frontmatter + 13 mandatory sections). Validated by `node scripts/verify/verify-adrs.mjs` (all 147 ADRs passed governance verification and date/filename descending sort in `DECISIONS/README.md`).
+- [x] **CC-13.03 — Reference Schema Parity:** Verified that committed route and module definitions adhere to platform API contracts using `node scripts/verify/verify-api-surface-contract.mjs` (Axum entrypoints, host runtime context, response formatting, and module manifests all conform).
+- [x] **CC-13.04 — Documentation Integrity:** Verified that documentation links, topology, and metadata are intact via `node scripts/verify/verify-docs.mjs` (6/6 checks passed: ADR governance, module topology & diagrams sync, markdown escape sequences, internal relative links & anchors, forbidden stale terminology, canonical metadata on core platform documents). Cleaned stale continuous-review-ledger references and synchronized `docs/architecture/diagram.md` via `node scripts/generate/generate-docs-topology.mjs`.
 
 ---
 

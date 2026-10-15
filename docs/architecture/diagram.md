@@ -87,6 +87,7 @@ graph TD
         OPT_ALLOY["alloy"]
         OPT_FLEX["flex"]
         OPT_DOCS["docs"]
+        OPT_MESSENGER["messenger"]
     end
 
     subgraph Extensions["Capability extensions (runtime = \"extension\")"]

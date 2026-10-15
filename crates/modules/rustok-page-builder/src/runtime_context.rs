@@ -177,7 +177,7 @@ pub fn evaluate_page_builder_runtime_publish_gate(
 #[cfg(test)]
 mod tests {
     use super::*;
-use crate::{CurrentContextGateMode, LandingReadinessPolicy, ScenarioGateMode};
+    use crate::{CurrentContextGateMode, LandingReadinessPolicy, ScenarioGateMode};
     use serde_json::json;
 
     fn project_data() -> Value {

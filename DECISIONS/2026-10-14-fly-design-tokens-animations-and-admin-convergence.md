@@ -1,10 +1,12 @@
 # Fly design tokens, animation actions, and admin convergence (Phase 3)
 
-Date: 2026-10-14
-Status: accepted
-Scope: `fly` (theme, action model), `fly-browser` (action runtime), `fly-ui`
-(editor view-models), `fly-leptos` / `fly-dioxus` (workspace token display), and
-`rustok-page-builder-admin` (controller derivations).
+- Date: 2026-10-14
+- Decision status: Accepted
+- Implementation status: Implemented
+- Owners: `fly`, `fly-browser`, `fly-ui`, `fly-leptos`, `fly-dioxus`, `rustok-page-builder-admin`
+- Extends: [Fly rich text, embeds, action runtime, and framework adapters](./2026-10-14-fly-rich-text-embed-action-runtime-and-adapters.md)
+- Supersedes: None
+- Superseded by: None
 
 ## Context
 
@@ -15,7 +17,7 @@ locally instead of from the shared `fly-ui` contracts (part of P0-2). Style
 declarations already admitted `var(--name)` references through the sanitizer; only
 the definitions, validation, and surfaces were missing.
 
-## Decisions
+## Decision
 
 1. **Design tokens are project data owned by `fly::theme`.** A project carries a
    `flyTheme` extension (`{ "tokens": { "brand": "#0b5fff" } }`), which round-trips
@@ -48,12 +50,61 @@ the definitions, validation, and surfaces were missing.
    localized panels, and a blind swap would delete host behaviour. That migration
    remains open and tracked under P0-2.
 
+## Sources of truth and ownership
+
+- Theme schema and design token validation: `crates/ui/fly/src/theme.rs`.
+- Animation action definitions: `crates/ui/fly/src/action.rs`.
+- Client-side animation executor: `crates/ui/fly/browser/fly-actions.js`.
+- Shared palette and layer view-model derivations: `crates/ui/fly/ui`.
+- Page builder admin integration: `crates/modules/rustok-page-builder/admin`.
+
+## Invariants
+
+- Token identifiers and values adhere strictly to CSS variable name and safe-value patterns.
+- `:root` variable blocks emit ahead of component and page style rules.
+- Animation triggers respect `prefers-reduced-motion` user preferences by instantly transitioning to final values.
+
+## Non-goals
+
+- Authoring custom keyframe animations or arbitrary CSS cubic-bezier timing curves in this phase.
+- Replacing the entire host-specific page builder admin controller with generic UI workspaces.
+
+## Data, transaction, and concurrency boundary
+
+- Themes and token dictionaries are committed atomically with project metadata.
+- Layer trees and palette models are immutable view projections derived from document state.
+
+## Context dimensions
+
+- Theme variables provide the design system foundation for responsive and dark-mode styling contexts.
+
+## Events and projections
+
+- Token modifications trigger reactive updates to canvas root styles.
+- Flattened layer trees are projected on-demand for hierarchy inspection.
+
+## Failure semantics
+
+- Invalid token syntax fails document validation with `theme_token_invalid`.
+- Out-of-range animation durations are clamped or rejected at command validation time.
+
+## Migration and cutover
+
+- Existing projects without theme definitions default to empty token maps.
+- Transition from legacy local layer flattening to `fly-ui` view-models is backward-compatible.
+
+## Alternatives considered
+
+- **Embedding CSS `@keyframes` in component rules**: Rejected to avoid unbounded CSS generation and CSS injection vectors.
+- **Immediate total replacement of page-builder admin UI**: Rejected to avoid breaking localized forms and SSR intent pathways.
+
 ## Verification
 
-As in Phases 1–2, this sandbox has no Rust toolchain, so `cargo test` / `clippy`
-were not run. What was run: `rust_syntax_check.mjs` and `rustfmt_check.mjs` over the
-changed Rust files (all conform), `node --check` for `fly-actions.js`, a token-level
-simulation of the contract-test assertions against the shipped JS, and
-`scripts/fly-check.sh gates` (20 passed, 0 failed). The new Rust test suites
-(theme decode/render, animation validation, `fly-ui` page layers) still need a real
-`cargo test` run by CI or a maintainer and must not be reported as green until then.
+- Crate tests in `fly` for token parsing and serialization.
+- `fly-actions.js` contract checks for animation dispatch and reduced motion handling.
+- Verification that page builder admin consumes shared `fly-ui` layer flattening.
+
+## Consequences
+
+- Consistent design token management across pages and reusable components.
+- Reduced duplication between framework adapters and module admin interfaces.

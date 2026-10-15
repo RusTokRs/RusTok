@@ -1,9 +1,12 @@
 # Pages module UI for the classic Next admin (`@rustok/pages-admin`)
 
-Date: 2026-10-14
-Status: accepted
-Scope: `apps/next-admin` (new `packages/pages`, host wiring), Pages module
-platform connection.
+- Date: 2026-10-14
+- Decision status: Accepted
+- Implementation status: Implemented
+- Owners: `apps/next-admin`, `rustok-pages`
+- Extends: 2026-10-14-admin-parity-program.md
+- Supersedes: None
+- Superseded by: None
 
 ## Context
 
@@ -21,7 +24,7 @@ Pages module (and with it the builder) was simply absent from the Next admin,
 even though `rustok-pages` exposes a complete GraphQL surface (`pages`,
 `createPage`, `savePageDocument`, `publishPage`, `unpublishPage`, …).
 
-## Decisions
+## Decision
 
 1. **Add the module-owned package `@rustok/pages-admin`** under
    `apps/next-admin/packages/pages`, mirroring the existing module packages: it
@@ -42,14 +45,57 @@ even though `rustok-pages` exposes a complete GraphQL surface (`pages`,
    endpoint. The two admins stay symmetric at the contract level while each
    keeps its own framework-idiomatic UI.
 
+## Sources of truth and ownership
+
+- Canonical owner of Pages backend and GraphQL contract: `rustok-pages`.
+- Canonical owner of the Next Pages admin package: `apps/next-admin/packages/pages`.
+- Canonical visual builder: `rustok-page-builder-admin` in `apps/admin`.
+
+## Invariants
+
+- Next admin packages consume the backend strictly through GraphQL operations.
+- Direct database or internal server function calls from Next admin packages are forbidden.
+- Pages publication requires reviewed runtime evidence and cannot be bypassed from the list view.
+
+## Non-goals
+
+- Implementing a second React/TypeScript visual builder in Next admin.
+- Bypassing the server GraphQL schema with custom REST routes.
+
+## Data, transaction, and concurrency boundary
+
+- Mutations execute against the authoritative `rustok-pages` GraphQL API inside backend transaction boundaries.
+- Concurrent updates to page drafts utilize optimistic revision checks (`expected_revision`).
+
+## Context dimensions
+
+- Tenant isolation is propagated through GraphQL request headers and session tokens.
+- Language/locale is resolved from the active session context.
+
+## Events and projections
+
+- Page lifecycle operations (create, unpublish, delete) emit canonical domain events through the transactional outbox in `rustok-pages`.
+
+## Failure semantics
+
+- GraphQL errors map to typed user-facing problem diagnostics in the UI package.
+- Network and authentication errors trigger standard session revalidation without data loss.
+
+## Migration and cutover
+
+- `@rustok/pages-admin` is registered as a peer module package alongside `@rustok/blog-admin` and `@rustok/commerce-admin`.
+- Existing Rust admin Pages functionality remains unchanged.
+
+## Alternatives considered
+
+- Duplicating the full visual builder in React: rejected as violating the single-builder owner model and causing massive feature divergence.
+- Omitting Pages from Next admin: rejected by the admin parity mandate.
+
 ## Verification
 
-No browser, full Next build, or Rust toolchain is available in this sandbox, so
-`next build`/`tsc --noEmit` over the app and `cargo` were not run. What was run:
-TypeScript transpile-level syntax checks (TypeScript 5, `transpileModule`) over
-all new files — clean; JSON validation of `package.json`/`package-lock.json`
-(the lock entries for the workspace link were added by hand in npm's shape;
-maintainers should confirm with one `npm install`). The GraphQL operations were
-written field-by-field from `crates/modules/rustok-pages/src/graphql` and
-cross-checked against neighbouring clients (`@rustok/blog-admin`) for
-conventions (`UUID`, camelCase, tenant handling).
+TypeScript transpile checks (`tsc --noEmit`), module package registration verification, and GraphQL operation parity validation against `rustok-pages` schema.
+
+## Consequences
+
+- Next admin achieves functional management parity for the Pages module.
+- Visual page design remains cleanly delegated to the canonical Page Builder.

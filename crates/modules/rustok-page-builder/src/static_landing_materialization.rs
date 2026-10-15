@@ -276,7 +276,7 @@ fn is_sha256(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::render::PageBuilderRenderer;
-use fly::{PageSelection, RenderPolicy};
+    use fly::{PageSelection, RenderPolicy};
     use serde_json::json;
 
     fn project() -> Value {

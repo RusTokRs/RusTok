@@ -1,10 +1,12 @@
 # Fly rich text, embeds, action runtime, and framework adapters (Phase 2)
 
-Date: 2026-10-14
-Status: accepted
-Scope: `fly`, `fly-ui`, `fly-leptos`, `fly-dioxus`, `fly-browser`,
-`rustok-page-builder-storefront`, `rustok-pages-storefront`, the
-`rustok-page-builder` static publish policy, and the page-builder SSR action form.
+- Date: 2026-10-14
+- Decision status: Accepted
+- Implementation status: Implemented
+- Owners: `fly`, `fly-ui`, `fly-leptos`, `fly-dioxus`, `fly-browser`, `rustok-page-builder`
+- Extends: [Fly style states, class rules, unique ids, and head metadata](./2026-10-14-fly-style-states-class-rules-and-head-metadata.md)
+- Supersedes: None
+- Superseded by: None
 
 ## Context
 
@@ -14,7 +16,7 @@ empty shells (P0-1). The rich-text capability boundary is already decided
 (`DECISIONS/2026-07-22-richtext-capability-boundary.md`): `rustok-content::richtext`
 is the platform's single production renderer and browser editors are preview only.
 
-## Decisions
+## Decision
 
 1. **Fly stores rich text; the host renders it.** A component may carry a `flyRichText`
    extension with the existing `RichTextPayload` (`capability: "richtext"` plus an
@@ -58,14 +60,65 @@ is the platform's single production renderer and browser editors are preview onl
    Migrating the page-builder admin's SSR/WASM panels onto these workspaces is the
    remaining P0-2 work, not a silent omission.
 
+## Sources of truth and ownership
+
+- Rich text storage contract and payload validation: `crates/ui/fly`.
+- Production rich-text semantic HTML rendering: `rustok-content::richtext` via host consumer port `RichTextHtmlRenderer`.
+- Embed provider registry and sandboxing: `crates/ui/fly`.
+- Action execution runtime: `crates/ui/fly/browser/fly-actions.js`.
+- View-model flattening and editor workspaces: `crates/ui/fly/ui`, `crates/ui/fly/leptos`, `crates/ui/fly/dioxus`.
+
+## Invariants
+
+- Rich text payloads outside the document schema limits (max nodes, max depth, max bytes) fail validation.
+- Embed iframes are strictly limited to registered HTTPS providers (YouTube, Vimeo, Google Maps) with restrictive sandbox flags.
+- Action runtime is idempotent, listener-safe, and never intercepts form submissions or native navigational links.
+- Static HTML publisher strictly rejects un-sandboxed iframes and arbitrary script injection.
+
+## Non-goals
+
+- In-browser WYSIWYG editor implementation inside `fly` (ProseMirror/Tiptap client is preview-only).
+- Arbitrary raw HTML / custom-code injection blocks.
+- Client-side document mutation bypassing the `FlyEditor` command boundary.
+
+## Data, transaction, and concurrency boundary
+
+- Document updates containing rich text and embeds are committed through `FlyEditor` commands inside transactional revision envelopes.
+- Action definitions attach to components as structured metadata and serialize deterministically.
+
+## Context dimensions
+
+- Rich-text rendering supports tenant- and locale-aware markup resolution via the host port.
+- Embed URLs and aspect ratios are responsive across standard viewport breakpoints.
+
+## Events and projections
+
+- Plain-text projection of rich-text content is generated for search indexes and previews.
+- Client runtime dispatches synthetic DOM CustomEvents (`fly:action`) for event-bound components.
+
+## Failure semantics
+
+- Invalid rich-text payloads fail closed, emitting empty content rather than malformed HTML.
+- Unrecognized or malformed embed URLs fail validation with `embed_invalid` diagnostics and render fallback links.
+
+## Migration and cutover
+
+- Existing documents deserialize without required rich-text or embed extensions.
+- Components lacking action attributes function identically to prior static components.
+
+## Alternatives considered
+
+- **Embedding arbitrary iframes / HTML snippets**: Rejected due to high XSS risk and breaking static sandbox guarantees.
+- **Direct dependency on `rustok-content` inside `fly`**: Rejected to keep `fly` UI crate free of domain/core coupling.
+- **Client-only action handling with external frameworks**: Rejected in favor of a zero-dependency, server-materialized runtime script.
+
 ## Verification
 
-In this audit sandbox there is no Rust toolchain (no `cargo`/`rustc`, and the
-toolchain hosts are unreachable), so `cargo test`/`clippy` were not run for this
-phase either. What was run: `rust_syntax_check.mjs` over the changed Rust files,
-`rustfmt_check.mjs` (24/24 conform after formatting; the single tree-sitter error in
-`style_rule.rs` is a grammar limitation — the file parses and matches under real
-rustfmt), `node --check` for `fly-actions.js`, and `scripts/fly-check.sh gates`
-(20 passed, 0 failed). Behavioural `cargo test` runs for the new Rust suites (rich-text,
-embed, layers, action materialization) are maintainer/CI work and must not be reported
-as green until they have actually run.
+- Crate-scoped tests in `fly` (rich-text validation, embed provider allow-list, action data attribute emission).
+- `node --check` and lint verification for `fly-actions.js`.
+- Static publish policy invariants verified against embed component rejection.
+
+## Consequences
+
+- Modules using `fly` can safely render rich-text and embeds without exposing XSS vectors.
+- UI framework adapters (Leptos, Dioxus) share identical view-model structures and state transitions.

@@ -41,7 +41,7 @@ mod ssr_translations;
 mod toolbar;
 mod trait_panel;
 
-pub use adapter_workspace::{adapter_editor_messages, AdapterWorkspacePanel};
+pub use adapter_workspace::{AdapterWorkspacePanel, adapter_editor_messages};
 pub use admin_shell::AdminShell;
 pub(crate) use audit_panel::AuditPanel;
 pub use authoring::{
@@ -50,9 +50,9 @@ pub use authoring::{
 pub(crate) use binding_panel::BindingPanel;
 pub(crate) use canvas_document::render_canvas_srcdoc_with_context;
 #[cfg(target_arch = "wasm32")]
-pub(crate) use canvas_protocol::decode_canvas_message;
-#[cfg(target_arch = "wasm32")]
 pub(crate) use canvas_protocol::CanvasBridgeMessage;
+#[cfg(target_arch = "wasm32")]
+pub(crate) use canvas_protocol::decode_canvas_message;
 pub(crate) use capability_controls::{CapabilityFieldset, CapabilityPolicyPanel};
 pub use consumer_properties::ConsumerPropertiesPanel;
 pub(crate) use context_contract_tools::ContextContractToolsPanel;

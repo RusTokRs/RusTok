@@ -9,7 +9,7 @@
 
 use fly::{
     ComponentPatch, EditorCommand, FlyEditor, GrapesJsCodec, PageSelection, RegistrySet,
-    RenderPolicy, render_page,
+    RenderPolicy, ValidationLimits, render_page,
 };
 use serde_json::{Map, Value, json};
 use std::time::Instant;
@@ -70,7 +70,11 @@ fn main() {
         );
 
         bench(&format!("validate[{nodes} nodes]"), iterations, || {
-            let editor = FlyEditor::new(document.clone(), RegistrySet::with_builtins());
+            let editor = FlyEditor::new(document.clone(), RegistrySet::with_builtins())
+                .with_validation_limits(ValidationLimits {
+                    maximum_nodes: nodes + 100,
+                    ..ValidationLimits::default()
+                });
             std::hint::black_box(editor.validate());
         });
 
@@ -82,7 +86,11 @@ fn main() {
 
         // The authoring hot path: one property patch against the last node, including the full
         // clone + validation + revision hash `FlyEditor::apply` performs per command.
-        let mut editor = FlyEditor::new(document.clone(), RegistrySet::with_builtins());
+        let mut editor = FlyEditor::new(document.clone(), RegistrySet::with_builtins())
+            .with_validation_limits(ValidationLimits {
+                maximum_nodes: nodes + 100,
+                ..ValidationLimits::default()
+            });
         let target = format!("node-{}", nodes - 1);
         bench(&format!("apply_patch[{nodes} nodes]"), iterations, || {
             let mut style = Map::new();

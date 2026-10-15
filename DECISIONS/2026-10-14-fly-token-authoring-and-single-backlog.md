@@ -1,9 +1,12 @@
 # Fly token authoring and the single owned backlog (Phase 6)
 
-Date: 2026-10-14
-Status: accepted
-Scope: `fly` (theme commands), `fly-ui` (capability classification),
-`rustok-page-builder-admin` (Design tokens panel), repository docs.
+- Date: 2026-10-14
+- Decision status: Accepted
+- Implementation status: Implemented
+- Owners: `fly`, `fly-ui`, `rustok-page-builder-admin`
+- Extends: 2026-10-14-fly-design-tokens-animations-and-admin-convergence.md
+- Supersedes: None
+- Superseded by: None
 
 ## Context
 
@@ -13,7 +16,7 @@ authoring path: adapters displayed them read-only and hosts had to poke the
 audit's documentation finding (P3-19) recorded three parallel plans whose open
 checkboxes could not distinguish release blockers from "someday".
 
-## Decisions
+## Decision
 
 1. **Token mutation is an editor command.** `EditorCommand::Theme` carries a
    `ThemeCommand` (replace/upsert/remove). Applying it goes through the editor's
@@ -28,14 +31,57 @@ checkboxes could not distinguish release blockers from "someday".
    forward-looking Fly/Page Builder plan, ordered by priority with owners. The
    implementation plan and the parity actualization notes are marked historical
    (they keep the record; they no longer collect open items), and `docs/index.md`
-   points at the backlog. The backlog's first item is the verification debt:
-   `cargo test`/`clippy`/benchmarks for the whole 2026-10-14 remediation still
-   need a maintainer with a toolchain.
+   points at the backlog.
+
+## Sources of truth and ownership
+
+- Canonical theme token command definition: `fly::ThemeCommand`.
+- Canonical capability gating: `fly_ui::CommandCapabilityRequirement`.
+- Canonical Fly/Page Builder forward backlog: `docs/modules/page-builder-backlog.md`.
+
+## Invariants
+
+- All token mutations participate in `FlyEditor` history and validation invariants.
+- Token removal is explicit; removing non-existent tokens yields an actionable error.
+- Backlog items maintain strict owner assignment and verification evidence.
+
+## Non-goals
+
+- Automatic recursive refactoring of CSS variable usages on token rename.
+- Multiple uncoordinated backlogs across Fly and Page Builder.
+
+## Data, transaction, and concurrency boundary
+
+- Theme tokens commit inside the document's `flyTheme` extension through atomic editor commands.
+- Lost-update prevention relies on document revision tracking.
+
+## Context dimensions
+
+- Theme tokens apply globally to the document layout and are resolved per active style scope.
+
+## Events and projections
+
+- Theme token mutations trigger editor canvas re-renders and reactive preview updates.
+
+## Failure semantics
+
+- Invalid token names or values reject before applying to the active document and emit error diagnostics.
+
+## Migration and cutover
+
+- Pre-existing documents lacking tokens load with empty defaults.
+- Deprecated parallel plans are linked to the unified backlog.
+
+## Alternatives considered
+
+- Direct document extension mutation: rejected for bypassing undo/redo history and capability gating.
+- Maintaining separate plans per adapter: rejected to prevent architectural drift.
 
 ## Verification
 
-As before: no Rust toolchain in this sandbox. `rustfmt_check.mjs` conforms on all
-changed files (35/35), `rust_syntax_check.mjs` is clean apart from the known
-tree-sitter false positives, and `scripts/fly-check.sh gates` passes 20/20 — the
-capability-policy gate initially caught the reformat of the classifier line,
-which is exactly what it is for. Behavioural runs remain maintainer/CI work.
+Unit tests for `ThemeCommand` execution, undo/redo cycle validation, and capability gate enforcement.
+
+## Consequences
+
+- Design tokens become first-class editable assets across Fly authoring surfaces.
+- Backlog governance is unified under a single living owner contract.

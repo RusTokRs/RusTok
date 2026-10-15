@@ -54,10 +54,10 @@ fn deduplicate_capability_gate_diagnostics(diagnostics: &mut Vec<ValidationDiagn
 #[cfg(test)]
 mod tests {
     use super::*;
-use fly::{
-    ContextValueKind, GrapesJsCodec, InteractionCapabilityDefinition, InteractionCapabilityKind,
-    InteractionRuntimeTarget, MissingInteractionCapabilityPolicy,
-};
+    use fly::{
+        ContextValueKind, GrapesJsCodec, InteractionCapabilityDefinition,
+        InteractionCapabilityKind, InteractionRuntimeTarget, MissingInteractionCapabilityPolicy,
+    };
     use serde_json::json;
 
     fn document() -> ProjectDocument {

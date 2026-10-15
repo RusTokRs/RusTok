@@ -1,9 +1,9 @@
-use fly::ProjectDocument;
 use crate::{
     LandingReadinessPolicy, LandingReadinessReport, RuntimeContextScenario,
     RuntimeContextScenarioSuiteResult, evaluate_landing_readiness_with_context,
     preflight_runtime_context_scenarios,
 };
+use fly::ProjectDocument;
 use fly::{
     RuntimeContextPreflight, RuntimeContextPreflightPolicy, ValidationDiagnostic,
     ValidationSeverity, extract_runtime_context_contract, preflight_runtime_context,
@@ -260,7 +260,7 @@ fn gate_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-use crate::RuntimeContextScenario;
+    use crate::RuntimeContextScenario;
     use fly::GrapesJsCodec;
     use serde_json::json;
 

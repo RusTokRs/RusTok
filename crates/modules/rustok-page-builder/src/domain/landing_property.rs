@@ -803,7 +803,7 @@ fn property(
 #[cfg(test)]
 mod tests {
     use super::*;
-use fly::{FlyEditor, GrapesJsCodec, RegistrySet};
+    use fly::{FlyEditor, GrapesJsCodec, RegistrySet};
     use serde_json::json;
 
     fn section(kind: LandingSectionKind) -> Value {

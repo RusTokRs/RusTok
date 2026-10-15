@@ -1,8 +1,8 @@
 use crate::RuntimeContextScenario;
 use fly::{
     FormProviderEndpointResolver, PageSelection, ProjectDocument, ProjectHash, RenderPolicy,
-    RuntimeRenderResult, ValidationDiagnostic, ValidationSeverity, render_page_with_runtime_context,
-    render_page_with_runtime_context_with_providers,
+    RuntimeRenderResult, ValidationDiagnostic, ValidationSeverity,
+    render_page_with_runtime_context, render_page_with_runtime_context_with_providers,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -229,7 +229,7 @@ fn matrix_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-use fly::GrapesJsCodec;
+    use fly::GrapesJsCodec;
     use serde_json::json;
 
     fn document() -> ProjectDocument {

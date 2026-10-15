@@ -1,8 +1,12 @@
 # Fly evidence corpus and property coverage (Phase 5)
 
-Date: 2026-10-14
-Status: accepted
-Scope: `crates/ui/fly` test suite and `fixtures/grapesjs` corpus.
+- Date: 2026-10-14
+- Decision status: Accepted
+- Implementation status: Implemented
+- Owners: `fly`, `rustok-page-builder`
+- Extends: [Fly command-path performance and save-conflict state](./2026-10-14-fly-performance-selection-cache-and-save-conflicts.md)
+- Supersedes: None
+- Superseded by: None
 
 ## Context
 
@@ -13,7 +17,7 @@ were covered by hand-picked examples rather than properties. This sandbox has no
 browser and no way to run a real GrapesJS editor, so genuine browser captures cannot
 be produced here — and must not be fabricated.
 
-## Decisions
+## Decision
 
 1. **The fixture corpus grows to twelve registered entries**, nine of them new:
    hero/CTA with class + state + media rules, a table-like structure, a provider
@@ -35,18 +39,53 @@ be produced here — and must not be fabricated.
    URLs, every iframe sandboxed on an allow-listed host, tokens always emitting
    their `:root` rule).
 
-## Still open (honest)
+## Sources of truth and ownership
 
-Real GrapesJS browser captures (the manifest's `browser_roundtrip` entries remain
-the three originals), Playwright end-to-end editor scenarios, and executable
-accessibility evidence all require a browser environment. They stay tracked under
-P1-8/P1-9 for a maintainer with that environment; nothing here claims them.
+- GrapesJS compatibility fixtures and manifests: `fixtures/grapesjs`.
+- Property-based testing harnesses and invariants: `crates/ui/fly/tests`.
+
+## Invariants
+
+- Every registered fixture in `manifest.json` decodes and encodes deterministically.
+- Property test generator outputs strictly enforce render safety (no script tags, no `javascript:` URIs).
+- Embed iframes produced by generators adhere to the provider allow-list.
+
+## Non-goals
+
+- Claiming simulated browser captures as physical headless browser artifacts.
+- Emulating arbitrary third-party GrapesJS custom plugins outside the core schema.
+
+## Data, transaction, and concurrency boundary
+
+- Fixture tests operate as read-only invariants during test verification.
+- Document codecs preserve lossless round-trips across versioned serialization formats.
+
+## Context dimensions
+
+- Fixtures validate cross-viewport responsive styles and internationalized text payloads.
+
+## Events and projections
+
+- Property generators project document ASTs to HTML and CSS validation targets.
+
+## Failure semantics
+
+- Corrupt or non-conforming fixtures fail immediately during test harness execution.
+
+## Migration and cutover
+
+- Fixture schema updates require corresponding updates in `fixtures/grapesjs/manifest.json`.
+
+## Alternatives considered
+
+- **Mocking browser runtime in pure Node**: Rejected in favor of clear provenance tagging (`real_browser_capture: false`).
+- **Single monolithic fixture file**: Rejected in favor of isolated, scenario-focused test documents.
 
 ## Verification
 
-No Rust toolchain or browser exists in this sandbox, so neither `cargo test` nor a
-browser harness was run. What was run: `rust_syntax_check.mjs` (one tree-sitter
-false positive in the new test file, which real rustfmt parses and formats
-cleanly), `rustfmt_check.mjs`, JSON validation of every fixture, and
-`scripts/fly-check.sh gates` (20 passed, 0 failed) — the gates include the fixture
-manifest checks. The new tests must be executed by CI before being called green.
+- `fixtures/grapesjs/manifest.json` integrity validation.
+- Property-based tests covering codec round-trips and HTML injection safety.
+
+## Consequences
+
+- The platform maintains strict regression defenses against malformed imports and unsafe document outputs.

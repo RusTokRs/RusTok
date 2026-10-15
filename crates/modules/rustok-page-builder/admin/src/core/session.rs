@@ -1,14 +1,14 @@
 use crate::model::{AdminCanvasController, AdminCanvasEffect};
 use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry, ValidationSeverity};
-use rustok_page_builder::{
-    RuntimeContextScenario, RuntimePublishGateEvaluation, RuntimePublishGatePolicy,
-};
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderPreviewRuntime, PreviewPageBuilderInput,
     PreviewPageBuilderResult,
 };
 use rustok_page_builder::evaluate_host_runtime_publish_gate;
+use rustok_page_builder::{
+    RuntimeContextScenario, RuntimePublishGateEvaluation, RuntimePublishGatePolicy,
+};
 use serde_json::{Map, Value};
 use std::sync::Arc;
 
@@ -475,7 +475,7 @@ pub fn gate_error_message(evaluation: &RuntimePublishGateEvaluation) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-use rustok_page_builder::RuntimeContextScenario;
+    use rustok_page_builder::RuntimeContextScenario;
     use serde_json::json;
 
     fn sample_controller() -> AdminCanvasController {

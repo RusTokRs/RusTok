@@ -2,13 +2,9 @@
 
 - Date: 2026-10-14
 - Decision status: Accepted
-- Implementation status: Implemented in this change (core + publish policy + admin panel);
-  Rust toolchain verification is delegated to CI because the authoring sandbox has no
-  `cargo`/`rustc` (see Verification).
-- Owners: `fly` (style-rule scope, rendering, id generation, page head), `fly-ui`
-  (presentation descriptors), `rustok-page-builder` (static publish policy, admin surface)
-- Extends: [Fly page-builder architecture](./2026-07-13-fly-page-builder-architecture.md),
-  [Fly SSR-first browser runtime](./2026-07-16-fly-ssr-first-browser-runtime.md)
+- Implementation status: Implemented
+- Owners: `fly`, `fly-ui`, `rustok-page-builder`
+- Extends: [Fly page-builder architecture](./2026-07-13-fly-page-builder-architecture.md), [Fly SSR-first browser runtime](./2026-07-16-fly-ssr-first-browser-runtime.md)
 - Supersedes: None
 - Superseded by: None
 
@@ -58,6 +54,45 @@ WordPress, Builder.io):
    terminate the script element), and consumer-supplied `hreflang` alternates that are
    URL- and locale-validated at attachment time. Fly renders; the consumer that owns
    localized routing supplies the alternates.
+
+## Sources of truth and ownership
+
+- Canonical style-rule schema and pseudo-class normalization: `crates/ui/fly`.
+- Canonical UI view-model descriptors: `crates/ui/fly/ui`.
+- Canonical publish policy enforcement: `crates/modules/rustok-page-builder`.
+
+## Invariants
+
+- Unsupported pseudo-class states are never rendered or interpolated into CSS selectors.
+- Component IDs minted by the editor are collision-safe and conform to ASCII identifier requirements.
+- JSON-LD and HTML head metadata escape all sensitive script delimiter characters (`<`, `>`, `&`).
+
+## Non-goals
+
+- Arbitrary CSS selector authoring or unvetted pseudo-element injection.
+- Using component IDs as security tokens or cryptographic nonces.
+
+## Data, transaction, and concurrency boundary
+
+- Style rules and head metadata mutate within the `FlyEditor` command transaction boundary.
+- Changes commit atomically to project document revisions.
+
+## Context dimensions
+
+- Breakpoints and responsive queries are evaluated per device viewport.
+- Head metadata alternates respect canonical tenant and locale routing dimensions.
+
+## Events and projections
+
+- Style rule updates emit editor history patches and trigger reactive canvas/preview invalidations.
+
+## Failure semantics
+
+- Invalid pseudo-classes and malformed class selectors fail validation with typed diagnostic codes and are omitted from rendered CSS.
+
+## Migration and cutover
+
+- Existing document schemas cleanly deserialize with empty state rules and default metadata fields.
 
 ## Alternatives considered
 

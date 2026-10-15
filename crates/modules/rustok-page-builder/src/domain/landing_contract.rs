@@ -673,7 +673,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-use fly::GrapesJsCodec;
+    use fly::GrapesJsCodec;
     use serde_json::json;
 
     fn ready_project() -> ProjectDocument {

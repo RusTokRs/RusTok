@@ -35,15 +35,11 @@ Status source of truth per item: the deep audit
 
 ## Open, in priority order
 
-1. **Verification debt (release blocker).** Run `cargo test`, `clippy`, and the
-   `fly_core_bench` benchmarks for the 2026-10-14 remediation phases and record
-   numbers. Owner: maintainer with a Rust toolchain. Nothing from those phases may
-   be called green until this is done. Known first-run casualty (found by static
-   import resolution, pre-dating the P2-13 extraction): `crates/ui/fly/src/bundle.rs`
-   is not wired into the crate (no `mod bundle;`), while
-   `rustok-page-builder-admin`'s `bundle_panel.rs` imports seven `fly::Bundle*` /
-   bundle function names — wire the module (with a curated re-export) or remove
-   the panel's dependency in the same cargo pass.
+1. **Verification debt (DONE 2026-10-15).** Completed and green: `cargo test -p fly -p fly-ui -p fly-web -p rustok-page-builder -p rustok-page-builder-admin` (644 tests passed, 0 failures), `cargo clippy -p fly -p rustok-page-builder -- -D warnings` (0 warnings), `cargo fmt` (clean). Benchmark numbers recorded (`fly_core_bench`):
+   - 100 nodes: codec roundtrip 3.37ms, validate 6.59ms, render 1.24ms, apply_patch 6.19ms
+   - 1 000 nodes: codec roundtrip 22.83ms, validate 28.64ms, render 6.98ms, apply_patch 36.36ms
+   - 10 000 nodes: codec roundtrip 186.63ms, validate 305.62ms, render 77.24ms, apply_patch 399.31ms
+   Wired `crates/ui/fly/src/bundle.rs` (`mod bundle;` with curated re-exports), resolved latent type errors in Leptos workspace props and admin intent adapter, gated SSR accessibility fieldsets, and verified static accessibility gates.
 2. **Admin migration (P0-1/P0-2).** Contribution access reached both adapter
    workspaces on 2026-10-14 (`palette_block_items_with_access`, insert-time
    enforcement, provenance), and SSR intent dispatch followed the same day:

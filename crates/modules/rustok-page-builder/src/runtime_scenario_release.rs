@@ -1,10 +1,10 @@
 use crate::evaluate_runtime_scenario_release;
-use fly::{FlyResult, GrapesJsCodec};
 pub use crate::{
     RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleaseMode,
     RuntimeScenarioReleasePolicy, RuntimeScenarioReleaseStatus, RuntimeScenarioRenderChange,
     RuntimeScenarioRenderChangeImpact,
 };
+use fly::{FlyResult, GrapesJsCodec};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -149,7 +149,7 @@ pub use server::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-use crate::RuntimeContextScenario;
+    use crate::RuntimeContextScenario;
     use fly::{PageSelection, RenderPolicy};
     use serde_json::json;
 
