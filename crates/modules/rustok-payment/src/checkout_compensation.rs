@@ -506,6 +506,35 @@ impl CheckoutPaymentCompensationPort for InProcessCheckoutPaymentCompensationPor
         context.require_write_semantics()?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
         require_operation_context(&context, owner_operation, request.checkout_operation_id)?;
+
+        tracing::debug!(
+            boundary = PAYMENT_COMPENSATION_BOUNDARY,
+            operation = owner_operation,
+            correlation_id = %context.correlation_id,
+            checkout_operation_id = %request.checkout_operation_id,
+            cart_id = %request.cart_id,
+            collection_id = ?request.collection_id,
+            "payment compensate_checkout_payment entered"
+        );
+
+        if request.checkout_operation_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.checkout_operation_id_nil",
+                "checkout_operation_id must not be a nil UUID",
+            ));
+        }
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        if matches!(request.collection_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "payment.collection_id_nil",
+                "collection_id must not be a nil UUID",
+            ));
+        }
         // A park can land between the collection being created and `checkpoint`
         // writing the binding into the checkout journal, and then the request
         // carries no collection id while the collection is already open. The
@@ -1065,6 +1094,12 @@ fn require_operation_context(
     owner_operation: &'static str,
     checkout_operation_id: Uuid,
 ) -> Result<(), PortError> {
+    if checkout_operation_id.is_nil() {
+        return Err(PortError::validation(
+            "payment.checkout_operation_id_nil",
+            "checkout_operation_id must not be a nil UUID",
+        ));
+    }
     let context_operation = context
         .causation_id
         .as_deref()
@@ -1090,7 +1125,7 @@ fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         log_checkout_payment_compensation_owner_warning(
             context,
             owner_operation,
@@ -1102,7 +1137,21 @@ fn parse_tenant_id(
             "payment.tenant_id_invalid",
             "payment request context is invalid",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        log_checkout_payment_compensation_owner_warning(
+            context,
+            owner_operation,
+            "parse_tenant_context",
+            "payment.tenant_id_nil",
+            "payment checkout compensation tenant context must not be a nil UUID",
+        );
+        return Err(PortError::validation(
+            "payment.tenant_id_nil",
+            "PortContext.tenant_id must not be a nil UUID",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn manual_reconciliation(
@@ -1222,5 +1271,52 @@ fn payment_error_to_port_error(
             "payment.provider_not_configured",
             "payment provider is not configured",
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::{PortActor, PortContext};
+
+    #[test]
+    fn parse_tenant_id_accepts_valid_and_rejects_nil_or_invalid() {
+        let valid_tenant = Uuid::new_v4();
+        let ctx = PortContext::new(
+            valid_tenant.to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        assert_eq!(parse_tenant_id(&ctx, "test_op").unwrap(), valid_tenant);
+
+        let nil_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        let err = parse_tenant_id(&nil_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "payment.tenant_id_nil");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+
+        let invalid_ctx =
+            PortContext::new("not-a-uuid", PortActor::system(), "en-US", Uuid::new_v4());
+        let err = parse_tenant_id(&invalid_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "payment.tenant_id_invalid");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+    }
+
+    #[test]
+    fn require_operation_context_rejects_nil_checkout_operation_id() {
+        let ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        let err = require_operation_context(&ctx, "test_op", Uuid::nil()).unwrap_err();
+        assert_eq!(err.code, "payment.checkout_operation_id_nil");
+        assert_eq!(err.kind, PortErrorKind::Validation);
     }
 }

@@ -130,6 +130,20 @@ impl PaymentAdminRefundCommandPort for InProcessPaymentAdminRefundCommandPort {
         require_refund_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
 
+        tracing::debug!(
+            boundary = ADMIN_REFUND_COMMAND_BOUNDARY,
+            operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            collection_id = %request.collection_id,
+            "payment create_refund entered"
+        );
+        if request.collection_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.collection_id_nil",
+                "collection_id must not be a nil UUID",
+            ));
+        }
+
         let collection = self
             .payment_service
             .get_collection(tenant_id, request.collection_id)
@@ -202,6 +216,19 @@ impl PaymentAdminRefundCommandPort for InProcessPaymentAdminRefundCommandPort {
         const OPERATION: &str = "complete_admin_refund";
         require_refund_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ADMIN_REFUND_COMMAND_BOUNDARY,
+            operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            refund_id = %request.refund_id,
+            "payment complete_refund entered"
+        );
+        if request.refund_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.refund_id_nil",
+                "refund_id must not be a nil UUID",
+            ));
+        }
         self.payment_service
             .complete_refund(tenant_id, request.refund_id, request.input)
             .await
@@ -216,6 +243,19 @@ impl PaymentAdminRefundCommandPort for InProcessPaymentAdminRefundCommandPort {
         const OPERATION: &str = "cancel_admin_refund";
         require_refund_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        tracing::debug!(
+            boundary = ADMIN_REFUND_COMMAND_BOUNDARY,
+            operation = OPERATION,
+            correlation_id = %context.correlation_id,
+            refund_id = %request.refund_id,
+            "payment cancel_refund entered"
+        );
+        if request.refund_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.refund_id_nil",
+                "refund_id must not be a nil UUID",
+            ));
+        }
         self.payment_service
             .cancel_refund(tenant_id, request.refund_id, request.input)
             .await
@@ -543,14 +583,23 @@ fn require_refund_write_admission(
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let error = PortError::validation(
             "payment.tenant_id_invalid",
             "payment refund command tenant context is invalid",
         );
         log_port_error(context, operation, "tenant_id", &error);
         error
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let error = PortError::validation(
+            "payment.tenant_id_nil",
+            "PortContext.tenant_id must not be a nil UUID",
+        );
+        log_port_error(context, operation, "tenant_id", &error);
+        return Err(error);
+    }
+    Ok(tenant_id)
 }
 
 fn map_reserved_refund_error(
@@ -792,5 +841,39 @@ fn merge_provider_context(current: Value, patch: Value) -> Value {
             Value::Object(current)
         }
         (_, patch) => patch,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::{PortActor, PortContext};
+
+    #[test]
+    fn parse_tenant_id_accepts_valid_and_rejects_nil_or_invalid() {
+        let valid_tenant = Uuid::new_v4();
+        let ctx = PortContext::new(
+            valid_tenant.to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        assert_eq!(parse_tenant_id(&ctx, "test_op").unwrap(), valid_tenant);
+
+        let nil_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        let err = parse_tenant_id(&nil_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "payment.tenant_id_nil");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+
+        let invalid_ctx =
+            PortContext::new("not-a-uuid", PortActor::system(), "en-US", Uuid::new_v4());
+        let err = parse_tenant_id(&invalid_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "payment.tenant_id_invalid");
+        assert_eq!(err.kind, PortErrorKind::Validation);
     }
 }

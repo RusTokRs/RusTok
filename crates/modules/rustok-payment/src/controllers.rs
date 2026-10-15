@@ -166,6 +166,20 @@ pub async fn ingest_provider_webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<(StatusCode, Json<PaymentWebhookIngressResponse>), (StatusCode, Json<Value>)> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        provider_id = %provider_id,
+        "payment webhook ingest entered"
+    );
+    if tenant.id.is_nil() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "code": "payment.tenant_id_nil",
+                "message": "tenant_id must not be a nil UUID"
+            })),
+        ));
+    }
     let provider_id = normalize_required(provider_id, "provider_id", 100)?;
     let delivery_id = optional_normalized_header(
         &headers,
@@ -219,6 +233,20 @@ pub async fn get_provider_event(
     auth: AuthContext,
     Path(event_id): Path<Uuid>,
 ) -> Result<Json<PaymentProviderEventAdminResponse>, (StatusCode, Json<Value>)> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        event_id = %event_id,
+        "payment get_provider_event entered"
+    );
+    if tenant.id.is_nil() || event_id.is_nil() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "code": "payment.invalid_identity",
+                "message": "tenant_id and event_id must not be nil UUIDs"
+            })),
+        ));
+    }
     ensure_payment_permission(
         &auth,
         &[Permission::PAYMENTS_READ, Permission::PAYMENTS_MANAGE],
@@ -249,6 +277,20 @@ pub async fn list_dead_letters(
     auth: AuthContext,
     Query(query): Query<DeadLetterQuery>,
 ) -> Result<Json<Vec<PaymentProviderEventAdminResponse>>, (StatusCode, Json<Value>)> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        limit = ?query.limit,
+        "payment list_dead_letters entered"
+    );
+    if tenant.id.is_nil() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "code": "payment.tenant_id_nil",
+                "message": "tenant_id must not be a nil UUID"
+            })),
+        ));
+    }
     ensure_payment_permission(
         &auth,
         &[Permission::PAYMENTS_READ, Permission::PAYMENTS_MANAGE],
@@ -281,6 +323,20 @@ pub async fn replay_dead_letter(
     auth: AuthContext,
     Path(event_id): Path<Uuid>,
 ) -> Result<Json<PaymentWebhookIngressResponse>, (StatusCode, Json<Value>)> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        event_id = %event_id,
+        "payment replay_dead_letter entered"
+    );
+    if tenant.id.is_nil() || event_id.is_nil() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "code": "payment.invalid_identity",
+                "message": "tenant_id and event_id must not be nil UUIDs"
+            })),
+        ));
+    }
     ensure_payment_permission(
         &auth,
         &[Permission::PAYMENTS_MANAGE],

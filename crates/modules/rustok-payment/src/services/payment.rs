@@ -46,6 +46,16 @@ struct CartCollectionRecovery {
     conflict: sea_orm::DbErr,
 }
 
+fn validate_non_nil(id: Uuid, field: &'static str) -> PaymentResult<()> {
+    if id.is_nil() {
+        Err(PaymentError::Validation(format!(
+            "{field} must not be a nil UUID"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
 impl PaymentService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
@@ -57,6 +67,22 @@ impl PaymentService {
         tenant_id: Uuid,
         input: CreatePaymentCollectionInput,
     ) -> PaymentResult<PaymentCollectionResponse> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        if matches!(input.cart_id, Some(id) if id.is_nil()) {
+            return Err(PaymentError::Validation(
+                "cart_id must not be a nil UUID".to_string(),
+            ));
+        }
+        if matches!(input.order_id, Some(id) if id.is_nil()) {
+            return Err(PaymentError::Validation(
+                "order_id must not be a nil UUID".to_string(),
+            ));
+        }
+        if matches!(input.customer_id, Some(id) if id.is_nil()) {
+            return Err(PaymentError::Validation(
+                "customer_id must not be a nil UUID".to_string(),
+            ));
+        }
         input
             .validate()
             .map_err(|error| PaymentError::Validation(error.to_string()))?;
@@ -161,6 +187,8 @@ impl PaymentService {
         tenant_id: Uuid,
         collection_id: Uuid,
     ) -> PaymentResult<PaymentCollectionResponse> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        validate_non_nil(collection_id, "collection_id")?;
         let collection = self.load_collection(tenant_id, collection_id).await?;
         self.build_response(collection).await
     }
@@ -170,6 +198,8 @@ impl PaymentService {
         tenant_id: Uuid,
         cart_id: Uuid,
     ) -> PaymentResult<Option<PaymentCollectionResponse>> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        validate_non_nil(cart_id, "cart_id")?;
         let collection = entities::payment_collection::Entity::find()
             .filter(entities::payment_collection::Column::TenantId.eq(tenant_id))
             .filter(entities::payment_collection::Column::CartId.eq(cart_id))
@@ -188,6 +218,8 @@ impl PaymentService {
         tenant_id: Uuid,
         cart_id: Uuid,
     ) -> PaymentResult<Option<PaymentCollectionResponse>> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        validate_non_nil(cart_id, "cart_id")?;
         let collection = entities::payment_collection::Entity::find()
             .filter(entities::payment_collection::Column::TenantId.eq(tenant_id))
             .filter(entities::payment_collection::Column::CartId.eq(cart_id))
@@ -227,6 +259,9 @@ impl PaymentService {
         cart_id: Uuid,
         checkout_operation_id: Uuid,
     ) -> PaymentResult<Option<PaymentCollectionResponse>> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        validate_non_nil(cart_id, "cart_id")?;
+        validate_non_nil(checkout_operation_id, "checkout_operation_id")?;
         let collections = entities::payment_collection::Entity::find()
             .filter(entities::payment_collection::Column::TenantId.eq(tenant_id))
             .filter(entities::payment_collection::Column::CartId.eq(cart_id))
@@ -249,6 +284,8 @@ impl PaymentService {
         tenant_id: Uuid,
         order_id: Uuid,
     ) -> PaymentResult<Option<PaymentCollectionResponse>> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        validate_non_nil(order_id, "order_id")?;
         let collection = entities::payment_collection::Entity::find()
             .filter(entities::payment_collection::Column::TenantId.eq(tenant_id))
             .filter(entities::payment_collection::Column::OrderId.eq(order_id))
@@ -267,6 +304,22 @@ impl PaymentService {
         tenant_id: Uuid,
         input: ListPaymentCollectionsInput,
     ) -> PaymentResult<(Vec<PaymentCollectionResponse>, u64)> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        if matches!(input.order_id, Some(id) if id.is_nil()) {
+            return Err(PaymentError::Validation(
+                "order_id must not be a nil UUID".to_string(),
+            ));
+        }
+        if matches!(input.cart_id, Some(id) if id.is_nil()) {
+            return Err(PaymentError::Validation(
+                "cart_id must not be a nil UUID".to_string(),
+            ));
+        }
+        if matches!(input.customer_id, Some(id) if id.is_nil()) {
+            return Err(PaymentError::Validation(
+                "customer_id must not be a nil UUID".to_string(),
+            ));
+        }
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
         let offset = (page.saturating_sub(1)) * per_page;
@@ -312,6 +365,9 @@ impl PaymentService {
         order_id: Uuid,
         metadata: serde_json::Value,
     ) -> PaymentResult<PaymentCollectionResponse> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        validate_non_nil(collection_id, "collection_id")?;
+        validate_non_nil(order_id, "order_id")?;
         validate_payment_metadata(&metadata, "attach order")?;
         let txn = self.db.begin().await?;
         let collection = self
@@ -353,6 +409,8 @@ impl PaymentService {
         tenant_id: Uuid,
         refund_id: Uuid,
     ) -> PaymentResult<RefundResponse> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        validate_non_nil(refund_id, "refund_id")?;
         let refund = self
             .load_refund_in_tx(&self.db, tenant_id, refund_id)
             .await?;
@@ -364,6 +422,17 @@ impl PaymentService {
         tenant_id: Uuid,
         input: ListRefundsInput,
     ) -> PaymentResult<(Vec<RefundResponse>, u64)> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        if matches!(input.payment_collection_id, Some(id) if id.is_nil()) {
+            return Err(PaymentError::Validation(
+                "payment_collection_id must not be a nil UUID".to_string(),
+            ));
+        }
+        if matches!(input.order_id, Some(id) if id.is_nil()) {
+            return Err(PaymentError::Validation(
+                "order_id must not be a nil UUID".to_string(),
+            ));
+        }
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
         let offset = (page.saturating_sub(1)) * per_page;
@@ -468,6 +537,8 @@ impl PaymentService {
         refund_id: Uuid,
         input: CompleteRefundInput,
     ) -> PaymentResult<RefundResponse> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        validate_non_nil(refund_id, "refund_id")?;
         validate_payment_metadata(&input.metadata, "complete refund")?;
         let txn = self.db.begin().await?;
         let refund = self
@@ -501,6 +572,8 @@ impl PaymentService {
         refund_id: Uuid,
         input: CancelRefundInput,
     ) -> PaymentResult<RefundResponse> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        validate_non_nil(refund_id, "refund_id")?;
         validate_payment_metadata(&input.metadata, "cancel refund")?;
         let txn = self.db.begin().await?;
         let refund = self
@@ -536,6 +609,8 @@ impl PaymentService {
         collection_id: Uuid,
         input: AuthorizePaymentInput,
     ) -> PaymentResult<PaymentCollectionResponse> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        validate_non_nil(collection_id, "collection_id")?;
         input
             .validate()
             .map_err(|error| PaymentError::Validation(error.to_string()))?;
@@ -600,6 +675,8 @@ impl PaymentService {
         collection_id: Uuid,
         input: CapturePaymentInput,
     ) -> PaymentResult<PaymentCollectionResponse> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        validate_non_nil(collection_id, "collection_id")?;
         let txn = self.db.begin().await?;
         let collection = self
             .load_collection_for_update_in_tx(&txn, tenant_id, collection_id)
@@ -658,6 +735,8 @@ impl PaymentService {
         collection_id: Uuid,
         input: CancelPaymentInput,
     ) -> PaymentResult<PaymentCollectionResponse> {
+        validate_non_nil(tenant_id, "tenant_id")?;
+        validate_non_nil(collection_id, "collection_id")?;
         let txn = self.db.begin().await?;
         let collection = self
             .load_collection_for_update_in_tx(&txn, tenant_id, collection_id)
@@ -1161,6 +1240,15 @@ mod tests {
         assert!(
             matches!(error, PaymentError::Validation(ref message) if message.contains("invalid refund status filter")),
             "expected validation error for unknown refund status, got: {error:?}"
+        );
+    }
+
+    #[test]
+    fn validate_non_nil_rejects_nil_uuid() {
+        assert!(validate_non_nil(Uuid::new_v4(), "field").is_ok());
+        let err = validate_non_nil(Uuid::nil(), "field").unwrap_err();
+        assert!(
+            matches!(err, PaymentError::Validation(msg) if msg.contains("field must not be a nil UUID"))
         );
     }
 }

@@ -37,6 +37,16 @@ impl PaymentRefundCreationService {
         creation_key: impl Into<String>,
         input: CreateRefundInput,
     ) -> PaymentResult<RefundResponse> {
+        if tenant_id.is_nil() {
+            return Err(PaymentError::Validation(
+                "tenant_id must not be a nil UUID".to_string(),
+            ));
+        }
+        if collection_id.is_nil() {
+            return Err(PaymentError::Validation(
+                "collection_id must not be a nil UUID".to_string(),
+            ));
+        }
         let creation_key = normalize_creation_key(creation_key.into())?;
         validate_payment_metadata(&input.metadata, "create refund")?;
         let reason = normalize_reason(input.reason);
@@ -154,6 +164,16 @@ impl PaymentRefundCreationService {
         collection_id: Uuid,
         creation_key: &str,
     ) -> PaymentResult<Option<refund_creation::Model>> {
+        if tenant_id.is_nil() {
+            return Err(PaymentError::Validation(
+                "tenant_id must not be a nil UUID".to_string(),
+            ));
+        }
+        if collection_id.is_nil() {
+            return Err(PaymentError::Validation(
+                "collection_id must not be a nil UUID".to_string(),
+            ));
+        }
         refund_creation::Entity::find()
             .filter(refund_creation::Column::TenantId.eq(tenant_id))
             .filter(refund_creation::Column::PaymentCollectionId.eq(collection_id))

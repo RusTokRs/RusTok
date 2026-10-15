@@ -84,6 +84,37 @@ impl PaymentCollectionPort for crate::PaymentService {
         require_payment_collection_write_admission(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
 
+        tracing::debug!(
+            boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
+            operation = owner_operation,
+            correlation_id = %context.correlation_id,
+            cart_id = ?request.cart_id,
+            order_id = ?request.order_id,
+            customer_id = ?request.customer_id,
+            currency_code = %request.currency_code,
+            amount = %request.amount,
+            "payment create_or_reuse_collection entered"
+        );
+
+        if matches!(request.cart_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "payment.cart_id_nil",
+                "request cart_id must not be a nil UUID",
+            ));
+        }
+        if matches!(request.order_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "payment.order_id_nil",
+                "request order_id must not be a nil UUID",
+            ));
+        }
+        if matches!(request.customer_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "payment.customer_id_nil",
+                "request customer_id must not be a nil UUID",
+            ));
+        }
+
         if let Some(cart_id) = request.cart_id
             && let Some(collection) = self
                 .find_reusable_collection_by_cart(tenant_id, cart_id)
@@ -149,6 +180,17 @@ impl PaymentCollectionPort for crate::PaymentService {
         context.require_policy(PortCallPolicy::read())?;
         require_payment_collection_read_admission(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+
+        tracing::debug!(
+            boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
+            operation = owner_operation,
+            correlation_id = %context.correlation_id,
+            collection_id = %request.collection_id,
+            "payment read_collection_status entered"
+        );
+
+        validate_non_nil_uuid(request.collection_id, "collection_id")?;
+
         let response = self
             .get_collection(tenant_id, request.collection_id)
             .await
@@ -297,11 +339,22 @@ fn log_payment_collection_admission_rejection(
     }
 }
 
+fn validate_non_nil_uuid(id: Uuid, field: &'static str) -> Result<(), PortError> {
+    if id.is_nil() {
+        Err(PortError::validation(
+            format!("payment.{field}_nil"),
+            format!("{field} must not be a nil UUID"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 fn parse_port_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|parse_error| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|parse_error| {
         let error = PortError::validation(
             "payment.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for payment ports",
@@ -369,7 +422,25 @@ fn parse_port_tenant_id(
             "payment collection tenant context was rejected"
         );
         error
-    })
+    })?;
+
+    if tenant_id.is_nil() {
+        let error = PortError::validation(
+            "payment.tenant_id_nil",
+            "PortContext.tenant_id must not be a nil UUID",
+        );
+        tracing::warn!(
+            tenant_id_nil = true,
+            owner = PAYMENT_COLLECTION_OWNER,
+            correlation_id = %context.correlation_id,
+            operation = owner_operation,
+            boundary = PAYMENT_COLLECTION_PORT_BOUNDARY,
+            "payment collection tenant context was nil"
+        );
+        return Err(error);
+    }
+
+    Ok(tenant_id)
 }
 
 #[derive(Debug)]
@@ -666,5 +737,50 @@ fn payment_error_to_port_error(
             "payment.database_unavailable",
             "payment storage is temporarily unavailable",
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::{PortActor, PortContext};
+
+    #[test]
+    fn validate_non_nil_uuid_accepts_valid_and_rejects_nil() {
+        let valid_id = Uuid::new_v4();
+        assert!(validate_non_nil_uuid(valid_id, "cart_id").is_ok());
+
+        let nil_id = Uuid::nil();
+        let err = validate_non_nil_uuid(nil_id, "cart_id").unwrap_err();
+        assert_eq!(err.code, "payment.cart_id_nil");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+    }
+
+    #[test]
+    fn parse_port_tenant_id_accepts_valid_and_rejects_nil_or_invalid() {
+        let valid_tenant = Uuid::new_v4();
+        let ctx = PortContext::new(
+            valid_tenant.to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        assert_eq!(parse_port_tenant_id(&ctx, "test_op").unwrap(), valid_tenant);
+
+        let nil_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        let err = parse_port_tenant_id(&nil_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "payment.tenant_id_nil");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+
+        let invalid_ctx =
+            PortContext::new("not-a-uuid", PortActor::system(), "en-US", Uuid::new_v4());
+        let err = parse_port_tenant_id(&invalid_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "payment.tenant_id_invalid");
+        assert_eq!(err.kind, PortErrorKind::Validation);
     }
 }

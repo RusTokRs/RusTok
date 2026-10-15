@@ -79,6 +79,14 @@ impl PaymentProviderOperationJournal {
     ) -> PaymentResult<provider_operation::Model> {
         let input = normalize_begin_input(input)?;
         validate_begin_identity(&self.db, &input).await?;
+        tracing::debug!(
+            tenant_id = %input.tenant_id,
+            payment_collection_id = %input.payment_collection_id,
+            refund_id = ?input.refund_id,
+            operation = %input.operation,
+            provider_id = %input.provider_id,
+            "provider_operation begin entered"
+        );
         if let Some(existing) = self
             .find_by_key(input.tenant_id, &input.provider_id, &input.idempotency_key)
             .await?
@@ -139,6 +147,11 @@ impl PaymentProviderOperationJournal {
 
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> PaymentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %id,
+            "provider_operation get entered"
+        );
         provider_operation::Entity::find_by_id(id)
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -156,6 +169,17 @@ impl PaymentProviderOperationJournal {
         provider_id: &str,
         idempotency_key: &str,
     ) -> PaymentResult<Option<provider_operation::Model>> {
+        if tenant_id.is_nil() {
+            return Err(PaymentError::Validation(
+                "payment provider operation requires non-nil tenant_id".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            provider_id,
+            idempotency_key,
+            "provider_operation find_by_key entered"
+        );
         provider_operation::Entity::find()
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::ProviderId.eq(provider_id))
@@ -170,6 +194,12 @@ impl PaymentProviderOperationJournal {
         tenant_id: Uuid,
         payment_collection_id: Uuid,
     ) -> PaymentResult<Vec<provider_operation::Model>> {
+        validate_operation_identity(tenant_id, payment_collection_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            payment_collection_id = %payment_collection_id,
+            "provider_operation list_by_collection entered"
+        );
         provider_operation::Entity::find()
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::PaymentCollectionId.eq(payment_collection_id))
@@ -211,6 +241,11 @@ impl PaymentProviderOperationJournal {
         id: Uuid,
     ) -> PaymentResult<Option<provider_operation::Model>> {
         validate_operation_identity(tenant_id, id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %id,
+            "provider_operation claim_execution entered"
+        );
         let Some(operation) = self.find_optional(tenant_id, id).await? else {
             return Ok(None);
         };
@@ -549,6 +584,12 @@ impl PaymentProviderOperationJournal {
         provider_result: Value,
     ) -> PaymentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %id,
+            provider_reference = ?provider_reference,
+            "provider_operation mark_provider_succeeded entered"
+        );
         let model = self.get(tenant_id, id).await?;
         let provider_reference =
             validate_provider_result_for_operation(&model, provider_reference, &provider_result)?;
@@ -617,6 +658,11 @@ impl PaymentProviderOperationJournal {
         error_message: impl Into<String>,
     ) -> PaymentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %id,
+            "provider_operation mark_provider_error entered"
+        );
         let model = self.get(tenant_id, id).await?;
         ensure_transition(&model.status, PROVIDER_OPERATION_ERROR)?;
 
@@ -663,6 +709,11 @@ impl PaymentProviderOperationJournal {
         error_message: impl Into<String>,
     ) -> PaymentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %id,
+            "provider_operation mark_reconciliation_required entered"
+        );
         let model = self.get(tenant_id, id).await?;
         if model.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
             return Ok(model);
@@ -712,6 +763,11 @@ impl PaymentProviderOperationJournal {
         id: Uuid,
     ) -> PaymentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            operation_id = %id,
+            "provider_operation mark_committed entered"
+        );
         let model = self.get(tenant_id, id).await?;
         if model.status == PROVIDER_OPERATION_COMMITTED {
             return Ok(model);
@@ -1120,5 +1176,12 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn validate_operation_identity_rejects_nil_uuid() {
+        assert!(validate_operation_identity(Uuid::nil(), Uuid::new_v4()).is_err());
+        assert!(validate_operation_identity(Uuid::new_v4(), Uuid::nil()).is_err());
+        assert!(validate_operation_identity(Uuid::new_v4(), Uuid::new_v4()).is_ok());
     }
 }

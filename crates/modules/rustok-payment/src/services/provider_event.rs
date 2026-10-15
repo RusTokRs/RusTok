@@ -236,6 +236,12 @@ impl PaymentProviderEventJournal {
         tenant_id: Uuid,
         event_id: Uuid,
     ) -> PaymentResult<provider_event::Model> {
+        validate_event_identity(tenant_id, event_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            event_id = %event_id,
+            "provider_event get entered"
+        );
         provider_event::Entity::find_by_id(event_id)
             .filter(provider_event::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -251,6 +257,17 @@ impl PaymentProviderEventJournal {
         provider_id: &str,
         delivery_id: &str,
     ) -> PaymentResult<Option<provider_event::Model>> {
+        if tenant_id.is_nil() {
+            return Err(PaymentError::Validation(
+                "tenant_id must not be a nil UUID".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            provider_id,
+            delivery_id,
+            "provider_event find_by_delivery entered"
+        );
         provider_event::Entity::find()
             .filter(provider_event::Column::TenantId.eq(tenant_id))
             .filter(provider_event::Column::ProviderId.eq(provider_id))
@@ -266,6 +283,17 @@ impl PaymentProviderEventJournal {
         provider_id: &str,
         idempotency_key: &str,
     ) -> PaymentResult<Option<provider_event::Model>> {
+        if tenant_id.is_nil() {
+            return Err(PaymentError::Validation(
+                "tenant_id must not be a nil UUID".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            provider_id,
+            idempotency_key,
+            "provider_event find_by_idempotency_key entered"
+        );
         provider_event::Entity::find()
             .filter(provider_event::Column::TenantId.eq(tenant_id))
             .filter(provider_event::Column::ProviderId.eq(provider_id))
@@ -282,6 +310,13 @@ impl PaymentProviderEventJournal {
         lease_owner: impl Into<String>,
         lease_seconds: i64,
     ) -> PaymentResult<Option<provider_event::Model>> {
+        validate_event_identity(tenant_id, event_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            event_id = %event_id,
+            lease_seconds,
+            "provider_event claim_processing entered"
+        );
         let lease_owner =
             normalize_required(lease_owner.into(), "lease_owner", MAX_LEASE_OWNER_LENGTH)?;
         let lease_seconds = lease_seconds.clamp(1, MAX_LEASE_SECONDS);
@@ -345,6 +380,13 @@ impl PaymentProviderEventJournal {
         lease_owner: impl Into<String>,
         lease_seconds: i64,
     ) -> PaymentResult<Option<provider_event::Model>> {
+        validate_event_identity(tenant_id, event_id)?;
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            event_id = %event_id,
+            lease_seconds,
+            "provider_event claim_dead_letter_replay entered"
+        );
         let lease_owner =
             normalize_required(lease_owner.into(), "lease_owner", MAX_LEASE_OWNER_LENGTH)?;
         let lease_seconds = lease_seconds.clamp(1, MAX_LEASE_SECONDS);
@@ -398,6 +440,13 @@ impl PaymentProviderEventJournal {
         &self,
         input: CheckpointProviderEvent,
     ) -> PaymentResult<provider_event::Model> {
+        validate_event_identity(input.tenant_id, input.event_id)?;
+        tracing::debug!(
+            tenant_id = %input.tenant_id,
+            event_id = %input.event_id,
+            event_type = %input.event_type,
+            "provider_event checkpoint_normalized entered"
+        );
         let lease_owner =
             normalize_required(input.lease_owner, "lease_owner", MAX_LEASE_OWNER_LENGTH)?;
         let normalized = normalize_verified_event(VerifiedProviderEvent {
@@ -439,6 +488,13 @@ impl PaymentProviderEventJournal {
         &self,
         input: CompleteProviderEvent,
     ) -> PaymentResult<provider_event::Model> {
+        validate_event_identity(input.tenant_id, input.event_id)?;
+        tracing::debug!(
+            tenant_id = %input.tenant_id,
+            event_id = %input.event_id,
+            event_type = %input.event_type,
+            "provider_event mark_processed entered"
+        );
         let lease_owner =
             normalize_required(input.lease_owner, "lease_owner", MAX_LEASE_OWNER_LENGTH)?;
         let normalized = normalize_verified_event(VerifiedProviderEvent {
@@ -503,6 +559,14 @@ impl PaymentProviderEventJournal {
         &self,
         input: FailProviderEvent,
     ) -> PaymentResult<provider_event::Model> {
+        validate_event_identity(input.tenant_id, input.event_id)?;
+        tracing::debug!(
+            tenant_id = %input.tenant_id,
+            event_id = %input.event_id,
+            error_code = %input.error_code,
+            retryable = input.retryable,
+            "provider_event mark_failed entered"
+        );
         let lease_owner =
             normalize_required(input.lease_owner, "lease_owner", MAX_LEASE_OWNER_LENGTH)?;
         let error_code = normalize_required(input.error_code, "error_code", MAX_ERROR_CODE_LENGTH)?;
@@ -567,6 +631,16 @@ impl PaymentProviderEventJournal {
         tenant_id: Uuid,
         limit: u64,
     ) -> PaymentResult<Vec<provider_event::Model>> {
+        if tenant_id.is_nil() {
+            return Err(PaymentError::Validation(
+                "tenant_id must not be a nil UUID".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            limit,
+            "provider_event list_retryable entered"
+        );
         let now = Utc::now().fixed_offset();
         provider_event::Entity::find()
             .filter(provider_event::Column::TenantId.eq(tenant_id))
@@ -592,6 +666,16 @@ impl PaymentProviderEventJournal {
         tenant_id: Uuid,
         limit: u64,
     ) -> PaymentResult<Vec<provider_event::Model>> {
+        if tenant_id.is_nil() {
+            return Err(PaymentError::Validation(
+                "tenant_id must not be a nil UUID".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            limit,
+            "provider_event list_dead_letters entered"
+        );
         provider_event::Entity::find()
             .filter(provider_event::Column::TenantId.eq(tenant_id))
             .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_DEAD_LETTER))
@@ -645,7 +729,21 @@ impl PaymentProviderEventJournal {
     }
 }
 
+fn validate_event_identity(tenant_id: Uuid, event_id: Uuid) -> PaymentResult<()> {
+    if tenant_id.is_nil() || event_id.is_nil() {
+        return Err(PaymentError::Validation(
+            "payment provider event requires non-nil tenant_id and event_id".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn normalize_receive_input(mut input: ReceiveProviderEvent) -> PaymentResult<ReceiveProviderEvent> {
+    if input.tenant_id.is_nil() {
+        return Err(PaymentError::Validation(
+            "tenant_id must not be a nil UUID".to_string(),
+        ));
+    }
     if !input.signature_verified {
         return Err(PaymentError::Validation(
             "payment provider event signature must be verified before inbox insertion".to_string(),
@@ -804,5 +902,26 @@ mod tests {
             nested = serde_json::json!({"next": nested});
         }
         assert!(normalize_event_metadata(nested).is_err());
+    }
+
+    #[test]
+    fn validate_event_identity_rejects_nil_uuid() {
+        assert!(validate_event_identity(Uuid::nil(), Uuid::new_v4()).is_err());
+        assert!(validate_event_identity(Uuid::new_v4(), Uuid::nil()).is_err());
+        assert!(validate_event_identity(Uuid::new_v4(), Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn normalize_receive_input_rejects_nil_tenant_id() {
+        let error = normalize_receive_input(ReceiveProviderEvent {
+            tenant_id: Uuid::nil(),
+            provider_id: "manual".to_string(),
+            delivery_id: "delivery-1".to_string(),
+            idempotency_key: "event-1".to_string(),
+            raw_payload: b"{}".to_vec(),
+            signature_verified: true,
+        })
+        .expect_err("nil tenant_id must fail");
+        assert!(error.to_string().contains("nil UUID"));
     }
 }

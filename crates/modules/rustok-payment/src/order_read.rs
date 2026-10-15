@@ -98,6 +98,20 @@ impl PaymentOrderReadPort for InProcessPaymentOrderReadPort {
         let operation = "find_latest_collection_by_order";
         let tenant_id = require_order_read_context(&context, operation)?;
 
+        tracing::debug!(
+            boundary = PAYMENT_ORDER_READ_BOUNDARY,
+            operation,
+            correlation_id = %context.correlation_id,
+            order_id = %request.order_id,
+            "payment find_latest_collection_by_order entered"
+        );
+        if request.order_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.order_id_nil",
+                "order_id must not be a nil UUID",
+            ));
+        }
+
         self.inner
             .find_latest_collection_by_order(tenant_id, request.order_id)
             .await
@@ -111,6 +125,29 @@ impl PaymentOrderReadPort for InProcessPaymentOrderReadPort {
     ) -> Result<PaymentOrderRefundPage, PortError> {
         let operation = "list_refunds_by_order";
         let tenant_id = require_order_read_context(&context, operation)?;
+
+        tracing::debug!(
+            boundary = PAYMENT_ORDER_READ_BOUNDARY,
+            operation,
+            correlation_id = %context.correlation_id,
+            order_id = %request.order_id,
+            page = request.page,
+            per_page = request.per_page,
+            "payment list_refunds_by_order entered"
+        );
+        if request.order_id.is_nil() {
+            return Err(PortError::validation(
+                "payment.order_id_nil",
+                "order_id must not be a nil UUID",
+            ));
+        }
+        if request.page == 0 || request.per_page == 0 {
+            return Err(PortError::validation(
+                "payment.pagination_invalid",
+                "page and per_page must be greater than zero",
+            ));
+        }
+
         let (items, total) = self
             .inner
             .list_refunds(
@@ -134,7 +171,7 @@ fn require_order_read_context(
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
     context.require_policy(PortCallPolicy::read())?;
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         tracing::warn!(
             owner = PAYMENT_ORDER_READ_OWNER,
             operation,
@@ -147,7 +184,22 @@ fn require_order_read_context(
             "payment.order_read_context_invalid",
             "payment request context is invalid",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let error = PortError::validation(
+            "payment.tenant_id_nil",
+            "PortContext.tenant_id must not be a nil UUID",
+        );
+        tracing::warn!(
+            owner = PAYMENT_ORDER_READ_OWNER,
+            operation,
+            correlation_id = %context.correlation_id,
+            boundary = PAYMENT_ORDER_READ_BOUNDARY,
+            "payment order read tenant context was nil"
+        );
+        return Err(error);
+    }
+    Ok(tenant_id)
 }
 
 fn map_payment_error(
@@ -338,5 +390,45 @@ fn log_payment_read_error(
             boundary = PAYMENT_ORDER_READ_BOUNDARY,
             "payment order read was rejected"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::{PortActor, PortContext};
+
+    #[test]
+    fn require_order_read_context_accepts_valid_and_rejects_nil_or_invalid() {
+        let valid_tenant = Uuid::new_v4();
+        let ctx = PortContext::new(
+            valid_tenant.to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        )
+        .with_deadline(std::time::Duration::from_millis(5000));
+        assert_eq!(
+            require_order_read_context(&ctx, "test_op").unwrap(),
+            valid_tenant
+        );
+
+        let nil_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        )
+        .with_deadline(std::time::Duration::from_millis(5000));
+        let err = require_order_read_context(&nil_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "payment.tenant_id_nil");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+
+        let invalid_ctx =
+            PortContext::new("not-a-uuid", PortActor::system(), "en-US", Uuid::new_v4())
+                .with_deadline(std::time::Duration::from_millis(5000));
+        let err = require_order_read_context(&invalid_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "payment.order_read_context_invalid");
+        assert_eq!(err.kind, PortErrorKind::Validation);
     }
 }
