@@ -426,7 +426,14 @@ base `1a420c8`).
   `is_pinned` without `pinned_at` or bypass the published-only rule.
   `pin_post`/`unpin_post` run in one transaction on a row-locked read, so a
   concurrently deleted post fails with `PostNotFound` instead of reporting
-  success.
+  success. The write itself is narrowed to `is_pinned`, `pinned_at` and
+  `updated_at`: it used to save the read entity back, which carries every column of
+  `blog_posts`, so `status`/`published_at`/`archived_at`/`scheduled_at`/`version` stayed
+  out of the pin's reach only because the statement happened to rewrite the values it
+  had just read. `pin_writes_leave_lifecycle_columns_and_version_untouched`
+  (`src/tests/owner_commands.rs`) holds that boundary, and it is assessed as a contract
+  test: with the row lock held for the whole command, SQLite cannot stage the
+  concurrent writer that would have made the old shape observably wrong.
 
 - **H-3, M-11, M-13 preview tokens.** The TTL is validated against `1..=720` hours,
   minting is draft-only, the token read re-checks the module gate on the token's own
@@ -508,7 +515,9 @@ base `1a420c8`).
   `BlogPostPublished` per published post, and the drain on a second iteration) and for
   the `pin_post`/`unpin_post` write path that `src/services/post/pin.rs` covered only as
   a predicate (flag and timestamp written together, archiving keeps the pin state, unpin
-  releases both). The scheduled-publish **worker** is covered in
+  releases both, the published-only rule rejects a draft without writing pin state, a
+  foreign tenant sees `PostNotFound`, and the statement leaves the lifecycle columns and
+  the revision `version` alone). The scheduled-publish **worker** is covered in
   `src/services/scheduler.rs` too: the claim hands the host the tenant with the oldest
   due schedule, never a tenant without due work, ignores a future schedule and another
   Blog worker's slug, and the item the claim produced publishes that tenant's due draft
@@ -714,6 +723,15 @@ Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit
   at the `rustok-blog` source root. The Blog tree follows the verifier and keeps the
   `runtime`-gated registrations in `src/services/scheduler.rs`.
 - **L-4 (open).** Entity re-exports versus `CRATE_API.md`.
+- **Suspected status write outside the transition command (checked, not present).** An
+  earlier note in this file tracked a `PostService::update` path that was supposed to
+  write `status` through a filtered UPDATE and bypass `apply_status_transition_in_tx`.
+  The claim does not reproduce: `UpdatePostInput` has no status field in any layer
+  (REST, GraphQL domain, admin adapters, `rustok-ai`, `rustok-content-orchestration`), and
+  `blog_post::Column::Status` is written in exactly one place in the module —
+  `apply_status_transition_in_tx`. The one remaining whole-entity write on `blog_posts`
+  was `pin.rs`, which is now narrowed to the pin columns as described under H-6, so no
+  writer can reach a lifecycle column without going through the transition command.
 - **L-6 root cause (open, platform).** `SeoTargetProvider::slug`,
   `ReactionSubjectProvider::source`/`supported_kinds` and every peer module
   (`rustok-forum`, `rustok-pages`, `rustok-product`, `rustok-taxonomy`) construct a

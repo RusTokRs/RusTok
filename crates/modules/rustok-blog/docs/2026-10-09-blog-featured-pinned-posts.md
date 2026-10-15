@@ -34,7 +34,12 @@ Implemented a pin/unpin feature with the following characteristics:
    concurrently deleted post fails with `PostNotFound` instead of reporting success.
 7. **Pin state is not part of the post revision.** `version` is not advanced and the
    Search projection is not reindexed, because pin state changes list order only and is
-   not projected into the search document payload.
+   not projected into the search document payload. The statement writes `is_pinned`,
+   `pinned_at` and `updated_at` by name, so the lifecycle columns (`status`,
+   `published_at`, `archived_at`, `scheduled_at`) and `version` are unreachable from the
+   pin command rather than merely unchanged: saving the read entity back would carry
+   every column of `blog_posts`. `pin_writes_leave_lifecycle_columns_and_version_untouched`
+   holds that boundary.
 
 ### Public Listing Sort Order
 

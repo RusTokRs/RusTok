@@ -4,7 +4,10 @@
 //! finding L-7 of 2026-10-15): the host scheduler calls it for one tenant, and nothing
 //! exercised the due-post scan, the tenant scope, the batch bound or the
 //! `BlogPostPublished` publication. The pin tests below cover the write path that
-//! `pin.rs`'s predicate-only test cannot reach.
+//! `pin.rs`'s predicate-only test cannot reach: the published-only rejection, the
+//! tenant scope, and the column boundary of the pin statement itself (pin state must
+//! not be written through `status`/`published_at`/`archived_at`/`scheduled_at`, and a
+//! pin is presentation state, not a new `version`).
 //!
 //! The harness is the crate's sqlite unit-test harness (`rustok_test_utils`), so no
 //! external database is required. A due post is written directly: the owner commands
@@ -18,9 +21,9 @@ use super::hardening::{
     admin, create_draft_post, make_post_due, outbox_event_count, post_service, set_post_schedule,
     setup_hardening_schema,
 };
-use crate::BlogPostStatus;
 use crate::entities::blog_post;
 use crate::services::{MAX_SCHEDULED_PUBLISH_BATCH, status_to_storage};
+use crate::{BlogError, BlogPostStatus};
 
 /// Reads a post row straight from the owner table, so an assertion cannot be satisfied by
 /// a cached DTO.
@@ -217,5 +220,111 @@ async fn unpin_releases_pin_state_of_an_archived_post() {
     assert!(
         released.pinned_at.is_none(),
         "unpin clears the timestamp together with the flag"
+    );
+}
+
+#[tokio::test]
+async fn pinning_a_draft_is_rejected_without_writing_pin_state() {
+    let (db, events) = setup_hardening_schema().await;
+    let tenant_id = Uuid::new_v4();
+    let service = post_service(&db, &events);
+    let post_id = create_draft_post(&db, &events, tenant_id, "pin-draft").await;
+
+    let error = service
+        .pin_post(tenant_id, post_id, admin())
+        .await
+        .expect_err("a draft must not be pinnable");
+
+    assert!(
+        matches!(error, BlogError::Validation(_)),
+        "the published-only rule is a validation failure, got {error:?}"
+    );
+    let row = post_row(&db, post_id).await;
+    assert!(!row.is_pinned, "a rejected pin leaves the flag untouched");
+    assert!(
+        row.pinned_at.is_none(),
+        "a rejected pin leaves the timestamp untouched"
+    );
+}
+
+#[tokio::test]
+async fn pin_state_is_written_only_for_the_owning_tenant() {
+    let (db, events) = setup_hardening_schema().await;
+    let tenant_id = Uuid::new_v4();
+    let foreign_tenant = Uuid::new_v4();
+    let service = post_service(&db, &events);
+    let post_id = create_draft_post(&db, &events, tenant_id, "pin-scope").await;
+    service
+        .publish_post(tenant_id, post_id, admin())
+        .await
+        .expect("the draft should publish");
+
+    let error = service
+        .pin_post(foreign_tenant, post_id, admin())
+        .await
+        .expect_err("another tenant must not reach the post");
+
+    assert!(
+        matches!(error, BlogError::PostNotFound(_)),
+        "a foreign tenant sees the post as absent, got {error:?}"
+    );
+    assert!(
+        !post_row(&db, post_id).await.is_pinned,
+        "a foreign tenant cannot write pin state"
+    );
+}
+
+#[tokio::test]
+async fn pin_writes_leave_lifecycle_columns_and_version_untouched() {
+    let (db, events) = setup_hardening_schema().await;
+    let tenant_id = Uuid::new_v4();
+    let service = post_service(&db, &events);
+    let post_id = create_draft_post(&db, &events, tenant_id, "pin-columns").await;
+    service
+        .publish_post(tenant_id, post_id, admin())
+        .await
+        .expect("the draft should publish");
+    let published = post_row(&db, post_id).await;
+
+    service
+        .pin_post(tenant_id, post_id, admin())
+        .await
+        .expect("a published post should be pinnable");
+    let pinned = post_row(&db, post_id).await;
+    assert!(pinned.is_pinned, "the pin flag is written");
+    assert_eq!(
+        pinned.status, published.status,
+        "pin state must not be written through the lifecycle column"
+    );
+    assert_eq!(
+        pinned.version, published.version,
+        "a pin is presentation state, not a new revision"
+    );
+    assert_eq!(
+        pinned.published_at, published.published_at,
+        "a pin must not rewrite the publication timestamp"
+    );
+    assert_eq!(
+        pinned.archived_at, published.archived_at,
+        "a pin must not rewrite the archive timestamp"
+    );
+    assert_eq!(
+        pinned.scheduled_at, published.scheduled_at,
+        "a pin must not rewrite the schedule"
+    );
+
+    service
+        .unpin_post(tenant_id, post_id, admin())
+        .await
+        .expect("a published post should be releasable");
+    let released = post_row(&db, post_id).await;
+    assert!(!released.is_pinned, "unpin clears the flag");
+    assert_eq!(
+        released.status, published.status,
+        "unpin must not be written through the lifecycle column either"
+    );
+    assert_eq!(
+        released.version, published.version,
+        "unpin is presentation state, not a new revision"
     );
 }

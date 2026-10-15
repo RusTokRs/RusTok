@@ -36,6 +36,14 @@ impl PostService {
     /// ordering reads `is_pinned`/`pinned_at` from the post row, and the Blog Search
     /// document payload does not project pin state. A pin therefore changes listing
     /// order only, and the module documents that boundary in `README.md`.
+    ///
+    /// The statement names the three pin columns instead of saving the read entity
+    /// back. A whole-entity write would carry every column of `blog_posts` — including
+    /// `status`, `published_at`, `archived_at`, `scheduled_at` and `version` — so pin
+    /// state could only stay out of the lifecycle by relying on the values it had just
+    /// read. Writing `is_pinned`/`pinned_at`/`updated_at` explicitly makes the
+    /// lifecycle columns out of reach for this command by construction, including for
+    /// any writer that reaches this path without the row lock.
     async fn set_pinned(
         &self,
         tenant_id: Uuid,
@@ -64,11 +72,31 @@ impl PostService {
         }
 
         let now = chrono::Utc::now();
-        let mut active: blog_post::ActiveModel = post.into();
-        active.is_pinned = Set(pinned);
-        active.pinned_at = Set(pinned.then(|| now.fixed_offset()));
-        active.updated_at = Set(now.fixed_offset());
-        active.update(&txn).await.map_err(BlogError::from)?;
+        let pinned_at: Option<chrono::DateTime<chrono::FixedOffset>> =
+            pinned.then(|| now.fixed_offset());
+        let result = blog_post::Entity::update_many()
+            .col_expr(
+                blog_post::Column::IsPinned,
+                sea_orm::sea_query::Expr::value(pinned),
+            )
+            .col_expr(
+                blog_post::Column::PinnedAt,
+                sea_orm::sea_query::Expr::value(pinned_at),
+            )
+            .col_expr(
+                blog_post::Column::UpdatedAt,
+                sea_orm::sea_query::Expr::value(now.fixed_offset()),
+            )
+            .filter(blog_post::Column::Id.eq(post_id))
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .exec(&txn)
+            .await
+            .map_err(BlogError::from)?;
+        if result.rows_affected != 1 {
+            return Err(BlogError::conflict(
+                "Blog post disappeared while its pin state was being written",
+            ));
+        }
 
         txn.commit().await.map_err(BlogError::from)?;
         Ok(())
