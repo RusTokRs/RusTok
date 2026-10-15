@@ -573,6 +573,11 @@ base `1a420c8`).
 - Still required from the maintainer: `cargo check -p rustok-blog --features
   runtime`, `cargo test -p rustok-blog`, a PostgreSQL run of the pinned-keyset
   path, and a host run in `worker` mode that publishes a due scheduled draft.
+- Build-integrity repairs found by the branch's first CI run (no cargo locally, so neither
+  could be caught here): 1) `Cargo.lock` was missing the `rustok-runtime` edge that the new
+  optional dependency of `rustok-blog` requires, which made every `--locked` cargo step fail
+  before compiling; 2) the preview-token migration added its foreign key with
+  `ALTER TABLE ... ADD CONSTRAINT`, which SQLite (the unit-test backend) rejects.
 - The unit tests added with the bulk/token documentation step
   (`bulk_failures_are_reported_through_the_public_boundary`,
   `cleanup_batch_is_clamped_into_the_bounded_range`) are **source-level only in this
