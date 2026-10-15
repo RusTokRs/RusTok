@@ -184,6 +184,39 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
 
 ## Scheduled publishing
 
+- Blog owns three durable work queues and publishes them to the host scheduler as
+  `ModuleWorkRegistrations`; there is no module-local timer. The registration is
+  `runtime`-gated in `src/module.rs`, the adapters live in `src/services/scheduler.rs`, and the
+  host owns the poll loop and the deployment stop signal: `blog_scheduled_publish`,
+  `blog_preview_token_cleanup` and `blog_route_reconciliation`. A deployment that does not
+  run the host's module-work scheduler in `full`/`worker` mode gets no scheduled publishing.
+- Every work item is tenant-scoped. Discovery is a read-only hint (the tenant with the
+  earliest due schedule) and the owner command re-checks the due predicate through the
+  post-version CAS, so one tenant's backlog cannot starve another and a stale hint cannot
+  publish the wrong post.
+- `PostService::publish_scheduled_posts(tenant_id, limit)` publishes the drafts of one
+  tenant whose `scheduled_at` has passed, oldest first, at most
+  `limit.clamp(1, MAX_SCHEDULED_PUBLISH_BATCH)` = 200 per call. Each post runs the same
+  transition command as a manual publish in its own transaction: a post edited after the scan
+  fails the CAS and is skipped with a warning instead of being overwritten, and the next
+  scheduler iteration picks it up. The `BlogPostPublished` event is published in the same
+  transaction, under the system actor — which is why this command is never reachable from an
+  end-user transport.
+- `scheduled_at` is a draft-only intent on both write paths. On create, setting it together
+  with `publish: true` is rejected; on update, a `Set` patch is refused unless the row is a
+  draft, and a past timestamp is refused on both. Publishing clears the schedule it consumed,
+  so a published post never carries one.
+- Setting a schedule announces `BlogPostScheduled` in the same transaction (on create and on a
+  `Set` patch); clearing it announces `BlogPostScheduleCancelled`. A `Keep` patch publishes
+  neither event.
+- `blog_preview_token_cleanup` deletes the expired preview tokens of one tenant, at most
+  `bounded_cleanup_batch(limit)` rows per iteration (clamped into
+  `1..=MAX_PREVIEW_TOKEN_CLEANUP_BATCH`, i.e. 500 — `0` means one row, never the whole backlog).
+- `blog_route_reconciliation` removes at most 200 stale routes per iteration whose
+  `blog_post` target no longer exists, and reports them through `UrlAliasPurged`. It is the
+  safety net for a missed `TargetDeleted` delivery, so it complements the idempotent
+  `blog_target_deletion_routes` handler rather than replacing it.
+
 ## Preview tokens
 
 - `PreviewTokenService` mints an opaque 256-bit token (`URL_SAFE_NO_PAD` base64) for one post of
@@ -209,23 +242,6 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   the `fk_blog_preview_tokens_post` cascade. Like every Blog worker it runs only in host modes
   `full`/`worker`.
 
-- `scheduled_at` is set through `create_post`/`update_post` and is announced by
-  `BlogPostScheduled`/`BlogPostScheduleCancelled`.
-- The owner command is `PostService::publish_scheduled_posts(tenant_id, limit)`:
-  it publishes due drafts of one tenant, oldest schedule first, bounded by
-  `limit` (clamped to `MAX_SCHEDULED_PUBLISH_BATCH` = 200). Each post commits in
-  its own transaction with the post version CAS, so a post edited after the scan
-  is skipped for the next iteration instead of being overwritten. Publication
-  emits `BlogPostPublished` with the system actor.
-- The command is drained by the Blog-owned `blog_scheduled_publish` module-work
-  registration (`src/services/scheduler.rs`), which the host composes through
-  `rustok_runtime::ModuleWorkRegistrations`. Claiming is a read-only discovery of
-  the tenant owning the earliest due schedule; the authoritative decision stays in
-  the owner command. No module-local timer exists.
-- The worker only runs in host modes `full` and `worker`
-  (`rustok.runtime.host_mode`); API-only and SSR surfaces do not publish scheduled
-  posts.
-
 ## Admin post listing
 
 - `posts(filter:)` exposes the tenant's posts as keyset pages: `after`/`perPage` plus
@@ -242,6 +258,28 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   `@rustok/blog-admin` post list) expose that sort as a control. Changing the column or
   the direction clears `after` and the page history, because a cursor issued for one sort
   cannot be replayed against another.
+
+## Bulk post operations
+
+- Four GraphQL mutations act on a list of post ids — `bulkPublishPosts`,
+  `bulkUnpublishPosts`, `bulkArchivePosts` (post publish permission) and `bulkDeletePosts`
+  (post delete permission). No REST endpoint exposes bulk work.
+- The request is bounded at `MAX_BULK_POST_IDS` = 100 ids. The GraphQL input mirrors the
+  bound with `#[graphql(validator(max_items = 100))]`, and
+  `PostService::ensure_bulk_batch_is_bounded` re-checks it before any work starts, because a
+  service caller is not a transport. An oversized request is refused as a validation error
+  rather than truncated.
+- A batch is **not** atomic across ids, and that is the contract: each id runs its own
+  transition command in its own transaction with its own lifecycle event, and one id's
+  failure never aborts the others. The response is per id — `succeeded`, `failed`,
+  `succeededIds` and `failures { postId, code, message }` — so a caller can retry exactly the
+  ids that failed.
+- Every failure is reported through `BlogPublicError`, the module's single redacted public
+  boundary: an `Invariant` or `Database` failure reaches the caller as the internal code and a
+  generic message, never as display text naming storage internals.
+- The fan-out is bounded from both sides: the 100-id cap and the per-root rate limit
+  (`bulk_publish_posts`, `bulk_unpublish_posts`, `bulk_archive_posts`, `bulk_delete_posts` in
+  the GraphQL rate-limit table), so one request is at most 100 transactions and 100 events.
 
 ## Known Limitations / Pending Implementation
 
@@ -261,6 +299,10 @@ The following are not implemented. Each is tracked with its audit identifier in
   [`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md));
   the token lifecycle itself is closed — a token of a post that left `draft` is revoked by the
   transition (see "Preview tokens").
+- Bulk post operations run one transaction and one lifecycle event per id inside the request, so a
+  batch is not atomic across ids and a request that dies mid-way leaves the remaining ids
+  unprocessed; a queue-based bulk command that resumes is not implemented (H-5 of the 2026-10-15
+  audit). The fan-out is bounded by the [100-id cap and the per-root rate limit](#bulk-post-operations).
 - A route row whose post disappeared stays in the database until `blog_route_reconciliation` sweeps
   it, so the window is bounded by the host scheduler rather than by a cross-module transaction
   (H-7 of the 2026-10-15 audit).

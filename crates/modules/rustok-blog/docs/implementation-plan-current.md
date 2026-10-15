@@ -427,7 +427,14 @@ base `1a420c8`).
   and skips a concurrently edited post instead of aborting the batch. The
   Blog-owned `blog_scheduled_publish` module-work registration (`src/services/scheduler.rs`)
   publishes that queue to the host scheduler, which drains it in `full`/`worker`
-  host mode. See the module README "Scheduled publishing".
+  host mode. See the module README "Scheduled publishing". The schedule **input contract**
+  is uniform across both write paths: a schedule may only be set while the post is a draft
+  (`validate_schedule_for_create` refuses it together with `publish: true`, and
+  `validate_schedule_for_update` refuses a `Set` patch on a published or archived row, which
+  the update path used to accept and store as a field the scheduler never reads), and
+  publishing clears the schedule it consumed. Pinned by
+  `schedule_patch_is_bounded_to_drafts_and_the_future` and
+  `published_posts_reject_a_schedule_patch` (`src/services/post/tests.rs`).
 - **H-6 pin atomicity and the create path.** Pin state is command-owned: the field
   is gone from `CreatePostInput`/`UpdatePostInput` (REST, GraphQL domain, admin
   GraphQL/native adapters, and the `rustok-ai`/`rustok-content-orchestration` callers
@@ -450,7 +457,9 @@ base `1a420c8`).
   `revoke_token` reports a missing or foreign token as `PREVIEW_TOKEN_NOT_FOUND`
   instead of a missing post. Retention is tenant-scoped:
   `cleanup_expired(tenant_id, limit)` (clamped to `MAX_PREVIEW_TOKEN_CLEANUP_BATCH` =
-  500) is drained by the `blog_preview_token_cleanup` module-work registration, and
+  500 through `bounded_cleanup_batch`, whose both clamp directions are pinned by
+  `cleanup_batch_is_clamped_into_the_bounded_range` in `src/services/preview_token.rs`)
+  is drained by the `blog_preview_token_cleanup` module-work registration, and
   deleting a post removes its tokens through the `fk_blog_preview_tokens_post`
   cascade.
 - **H-4 rate-limit classification coverage.** `BlogGraphqlSurface` covers all 28 Blog
@@ -463,7 +472,11 @@ base `1a420c8`).
   the bound with `#[graphql(validator(max_items = 100))]`, and
   `BulkOperationResult::record_failure` reports each failure through
   `BlogPublicError`, so internal `Invariant`/`Database` detail no longer reaches
-  consumers.
+  consumers. Both halves are pinned by unit tests in `src/services/post/bulk.rs`
+  (`bulk_batches_are_bounded_before_any_work_starts`,
+  `bulk_failures_are_reported_through_the_public_boundary`), and the transport contract
+  itself — cap, per-id transaction, per-id result, redacted failures — is documented in the
+  module README "Bulk post operations".
 - **M-12 admin sort.** The authenticated `posts` resolver no longer hard-codes
   `CreatedAt DESC`: `PostsFilter` exposes `sortBy`/`sortOrder` (GraphQL enums
   `BlogPostSortField`/`BlogPostSortOrder` mapped onto the owner `PostSortField`/
@@ -556,6 +569,12 @@ base `1a420c8`).
 - Still required from the maintainer: `cargo check -p rustok-blog --features
   runtime`, `cargo test -p rustok-blog`, a PostgreSQL run of the pinned-keyset
   path, and a host run in `worker` mode that publishes a due scheduled draft.
+- The unit tests added with the bulk/token documentation step
+  (`bulk_failures_are_reported_through_the_public_boundary`,
+  `cleanup_batch_is_clamped_into_the_bounded_range`) are **source-level only in this
+  environment**: they were written against the existing harness-free shapes and were not
+  executed, because `cargo` is absent. They belong to the maintainer's `cargo test -p
+  rustok-blog` run.
 
 - The Blog reference-module verifier `verify-blog-comments-event-projection.mjs` now
   asserts the canonical single `blog_post` target-type definition
@@ -757,9 +776,16 @@ base `1a420c8`).
 
 Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md)):
 
-- **H-5 amplification (open).** A bulk request is now bounded at 100 ids, but the
-  command still runs one transaction and one lifecycle event per id inside the request
-  instead of queueing the batch.
+- **H-5 amplification (decision recorded; the queue variant is not implemented).** A bulk
+  request is bounded at 100 ids (`MAX_BULK_POST_IDS` plus the GraphQL `max_items` mirror) and
+  rate-limited per root, so one request is at most 100 transactions and 100 events. The per-id
+  transaction and per-id lifecycle event are the **documented contract**, not an oversight:
+  the response is per id and one id's failure must not abort the others (module README
+  "Bulk post operations", `src/services/post/bulk.rs`). What remains unimplemented is the
+  audit's alternative — a queue-based bulk command that survives a request timeout and resumes;
+  no host or UI caller issues bulk work today (the four GraphQL mutations are its only callers),
+  so the boundary is recorded here and in the README "Known Limitations / Pending
+  Implementation" rather than shipped unexercised.
 - **M-13 residual (open).** Preview reads have no audit trail; it is documented in the
   module README. The token half of M-13 is closed — leaving the draft state revokes the
   post's tokens in the same lifecycle transaction (see "Fixed in this wave").
@@ -768,6 +794,13 @@ Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit
   module slot, while `verify:module-source-layout` allows only `lib.rs` and `module.rs`
   at the `rustok-blog` source root. The Blog tree follows the verifier and keeps the
   `runtime`-gated registrations in `src/services/scheduler.rs`.
+- **Next-admin post form offers the schedule field on every status (UI follow-up, M-7 family).**
+  `apps/next-admin/packages/blog/src/components/post-form.tsx` submits `scheduledAt` on every
+  save: an empty field becomes a `Clear` patch, which stays allowed on any status, but a date
+  typed while editing a published or archived post now returns the validation error from
+  `validate_schedule_for_update` and the form shows its generic "Failed to save post". The
+  backend rule is the contract; hiding or disabling the field for non-drafts is a UI change that
+  belongs to the Next-admin typecheck gate (not run here).
 - **L-4 (open).** Entity re-exports versus `CRATE_API.md`.
 - **Taxonomy module-term API takes a `SecurityContext` it never reads (open, cross-module).**
   `update_module_term_in_tx` and `delete_module_term_in_tx`

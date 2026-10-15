@@ -25,6 +25,14 @@ const MIN_TTL_HOURS: i64 = 1;
 /// on a large backlog.
 pub(crate) const MAX_PREVIEW_TOKEN_CLEANUP_BATCH: u32 = 500;
 
+/// Clamps a caller-supplied cleanup limit into `1..=MAX_PREVIEW_TOKEN_CLEANUP_BATCH`.
+///
+/// `0` means "one row", never "the whole backlog": the bound is applied to the query
+/// itself, so an out-of-range request cannot delete more than one batch.
+fn bounded_cleanup_batch(limit: u32) -> u32 {
+    limit.clamp(1, MAX_PREVIEW_TOKEN_CLEANUP_BATCH)
+}
+
 pub struct PreviewTokenService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -256,7 +264,7 @@ impl PreviewTokenService {
         let expired = blog_preview_token::Entity::find()
             .filter(blog_preview_token::Column::TenantId.eq(tenant_id))
             .filter(blog_preview_token::Column::ExpiresAt.lt(now))
-            .limit(u64::from(limit.clamp(1, MAX_PREVIEW_TOKEN_CLEANUP_BATCH)))
+            .limit(u64::from(bounded_cleanup_batch(limit)))
             .all(&self.db)
             .await
             .map_err(BlogError::from)?;
@@ -300,4 +308,30 @@ fn generate_preview_token() -> String {
 
     let bytes: [u8; 32] = rand::random();
     URL_SAFE_NO_PAD.encode(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Both directions of the cleanup bound are pinned here, because only a pure unit
+    /// test can observe the upper clamp without writing `MAX + 1` expired rows.
+    #[test]
+    fn cleanup_batch_is_clamped_into_the_bounded_range() {
+        assert_eq!(bounded_cleanup_batch(0), 1, "zero means one row");
+        assert_eq!(bounded_cleanup_batch(1), 1);
+        assert_eq!(
+            bounded_cleanup_batch(MAX_PREVIEW_TOKEN_CLEANUP_BATCH),
+            MAX_PREVIEW_TOKEN_CLEANUP_BATCH
+        );
+        assert_eq!(
+            bounded_cleanup_batch(MAX_PREVIEW_TOKEN_CLEANUP_BATCH + 1),
+            MAX_PREVIEW_TOKEN_CLEANUP_BATCH,
+            "a larger request is clamped, not honoured"
+        );
+        assert_eq!(
+            bounded_cleanup_batch(u32::MAX),
+            MAX_PREVIEW_TOKEN_CLEANUP_BATCH
+        );
+    }
 }

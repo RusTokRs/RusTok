@@ -208,15 +208,24 @@ fn validate_schedule_for_create(
 /// Validates the schedule patch of `update_post` and normalizes it for storage.
 ///
 /// Called before the command opens its transaction, so a rejected schedule leaves no
-/// transaction to roll back.
+/// transaction to roll back. A schedule is a draft-only intent, exactly as on the create
+/// path: `publish_scheduled_posts` scans drafts, so a schedule stored on a published or
+/// archived post would be persisted but never honoured. Clearing a schedule stays available
+/// on every status, so a stale one can still be removed.
 fn validate_schedule_for_update(
     scheduled_at: &Patch<chrono::DateTime<chrono::Utc>>,
+    status: BlogPostStatus,
     now: chrono::DateTime<chrono::Utc>,
 ) -> BlogResult<Patch<chrono::DateTime<chrono::FixedOffset>>> {
     match scheduled_at {
         Patch::Keep => Ok(Patch::Keep),
         Patch::Clear => Ok(Patch::Clear),
         Patch::Set(scheduled) => {
+            if status != BlogPostStatus::Draft {
+                return Err(BlogError::validation(
+                    "scheduled_at can only be set while the post is a draft",
+                ));
+            }
             if *scheduled <= now {
                 return Err(BlogError::validation("scheduled_at must be in the future"));
             }

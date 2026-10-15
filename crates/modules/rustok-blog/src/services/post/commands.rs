@@ -311,7 +311,8 @@ impl PostService {
         // Validated before the transaction opens: an invalid schedule must not hold a
         // pooled connection while it is rejected.
         let now = chrono::Utc::now();
-        let next_schedule = validate_schedule_for_update(&scheduled_at, now)?;
+        let next_schedule =
+            validate_schedule_for_update(&scheduled_at, storage_to_status(&post.status)?, now)?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
         if let Some(ref slug) = normalized_slug {

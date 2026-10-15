@@ -100,4 +100,73 @@ mod tests {
         assert!(matches!(error, BlogError::Validation(_)));
         PostService::ensure_bulk_batch_is_bounded(&[]).expect("an empty batch is accepted");
     }
+
+    /// A bulk response is a public transport: every failure it carries has to be the
+    /// redacted public error, never `BlogError` display text. The invariant and database
+    /// arms are the interesting ones — their display text names storage internals.
+    #[test]
+    fn bulk_failures_are_reported_through_the_public_boundary() {
+        let post_id = Uuid::new_v4();
+        let mut result = BulkOperationResult::new();
+
+        result.record_failure(
+            post_id,
+            BlogError::invariant("Blog tag usage projection underflow for Taxonomy term 3f1c"),
+        );
+        result.record_failure(
+            post_id,
+            BlogError::Database(sea_orm::DbErr::Custom(
+                "postgresql://secret-host/private".to_string(),
+            )),
+        );
+        result.record_failure(post_id, BlogError::PostNotFound(post_id));
+
+        assert_eq!(result.failed, 3);
+        assert_eq!(result.succeeded, 0);
+        assert!(result.succeeded_ids.is_empty());
+        assert_eq!(result.failures.len(), 3);
+
+        let invariant = &result.failures[0];
+        assert_eq!(
+            invariant.code,
+            rustok_core::error::ErrorKind::Internal.error_code(),
+            "internal failures collapse onto the single internal code"
+        );
+        assert!(
+            !invariant.code.contains("BLOG_INVARIANT_VIOLATION"),
+            "the internal error code is not a public code: {}",
+            invariant.code
+        );
+        assert!(
+            !invariant.message.contains("projection") && !invariant.message.contains("Taxonomy"),
+            "invariant detail leaked: {}",
+            invariant.message
+        );
+
+        let database = &result.failures[1];
+        assert_eq!(
+            database.code,
+            rustok_core::error::ErrorKind::Internal.error_code()
+        );
+        assert!(
+            !database.message.contains("postgresql") && !database.message.contains("secret-host"),
+            "database detail leaked: {}",
+            database.message
+        );
+
+        let not_found = &result.failures[2];
+        assert_eq!(not_found.code, "POST_NOT_FOUND");
+        assert!(
+            !not_found.message.contains(&post_id.to_string()),
+            "the failing id belongs in the structured field, not in the message: {}",
+            not_found.message
+        );
+        assert!(
+            result
+                .failures
+                .iter()
+                .all(|failure| failure.post_id == post_id),
+            "every failure stays addressable by its post id"
+        );
+    }
 }
