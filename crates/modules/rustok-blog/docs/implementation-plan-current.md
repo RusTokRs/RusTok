@@ -31,7 +31,8 @@ The hardened contract now requires:
 - public-comment snapshot keys include the latest committed monotonic Blog comment projection revision per tenant/post; invalidation survives cross-comment out-of-order delivery and requires no cache-key enumeration or second invalidation index;
 - current-tenant authority on GraphQL reads and writes;
 - one redacted Blog public-error mapping boundary;
-- private persistence entities and integrations that consume owner service state;
+- private persistence entities and integrations that consume owner service state (the single
+  documented exception is the orchestration bridge surface in `src/ports/`, see L-4 below);
 - deterministic typed list ordering and fail-closed missing-translation reads;
 - stable Comments write `command_id` across retries while FBA remains honestly
   `boundary_ready`;
@@ -789,11 +790,12 @@ Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit
 - **M-13 residual (open).** Preview reads have no audit trail; it is documented in the
   module README. The token half of M-13 is closed — leaving the draft state revokes the
   post's tokens in the same lifecycle transaction (see "Fixed in this wave").
-- **Canonical layout documentation (open, docs only).**
-  `docs/backend/module-backend-implementation.md` lists `src/runtime.rs` as an optional
-  module slot, while `verify:module-source-layout` allows only `lib.rs` and `module.rs`
-  at the `rustok-blog` source root. The Blog tree follows the verifier and keeps the
-  `runtime`-gated registrations in `src/services/scheduler.rs`.
+- **Canonical layout documentation (resolved, docs only).** The contradiction is closed in
+  the platform doc: `docs/backend/module-backend-implementation.md` now records that an
+  enrolled reference profile admits only `lib.rs` and `module.rs` at the source root, so its
+  optional `src/runtime.rs` slot does not apply to `rustok-blog`; the module README states
+  the same rule next to the verifier it follows, and the `runtime`-gated registrations stay
+  in `src/services/scheduler.rs`.
 - **Next-admin post form offers the schedule field on every status (UI follow-up, M-7 family).**
   `apps/next-admin/packages/blog/src/components/post-form.tsx` submits `scheduledAt` on every
   save: an empty field becomes a `Clear` patch, which stays allowed on any status, but a date
@@ -801,7 +803,18 @@ Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit
   `validate_schedule_for_update` and the form shows its generic "Failed to save post". The
   backend rule is the contract; hiding or disabling the field for non-drafts is a UI change that
   belongs to the Next-admin typecheck gate (not run here).
-- **L-4 (open).** Entity re-exports versus `CRATE_API.md`.
+- **L-4 (exception documented; the migration is open).** `src/ports/mod.rs` re-exports four Blog
+  entity modules (`blog_category`, `blog_post`, `blog_post_tag`, `blog_post_translation`) and
+  `lib.rs` publishes that module, so `rustok-content-orchestration` writes Blog rows directly
+  inside its own transaction (`bridge/promote.rs`, `bridge/demote.rs`, `bridge/tags.rs`) instead of
+  through owner commands. That contradicts the module's own privacy claim (`CRATE_API.md`), the
+  platform contract ("persistence entities are private") and `verify-module-reference-contract.mjs`
+  — which forbade the pattern in `src/lib.rs` and `src/integrations/` only, leaving `src/ports/`
+  uncovered. Closed in this pass: the exception is stated at its source and in `CRATE_API.md`, and
+  the exact four-module set is now pinned by that verifier so the surface cannot widen silently.
+  Open: migrating the bridge onto owner in-transaction commands and updating
+  `verify-content-orchestration-contract.mjs`, which currently asserts the direct entity writes —
+  a cross-module change, not a Blog-local one.
 - **Taxonomy module-term API takes a `SecurityContext` it never reads (open, cross-module).**
   `update_module_term_in_tx` and `delete_module_term_in_tx`
   (`crates/modules/rustok-taxonomy/src/module_term_mutation.rs`) accept `_security` and enforce

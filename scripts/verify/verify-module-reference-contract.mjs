@@ -625,6 +625,21 @@ forbid("crates/modules/rustok-blog/src/lib.rs", [
   "pub use crate::entities",
 ]);
 
+// `src/ports/mod.rs` is the one deliberate public entity surface (the orchestration bridge).
+// The exception is pinned exactly: these four entity modules, declared on one line, and nothing
+// else, so the surface cannot widen silently.
+requireAll("crates/modules/rustok-blog/src/ports/mod.rs", [
+  /^pub use crate::entities::\{blog_category, blog_post, blog_post_tag, blog_post_translation\};$/m,
+]);
+forbid("crates/modules/rustok-blog/src/ports/mod.rs", [
+  "pub mod ",
+  "blog_comment_projection_delivery",
+  "blog_post_channel_visibility",
+  "blog_post_route",
+  "blog_preview_token",
+  "blog_tag_usage",
+]);
+
 forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
   "blog-category-tree:",
 ]);

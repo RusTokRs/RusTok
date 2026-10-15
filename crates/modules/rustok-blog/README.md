@@ -33,7 +33,11 @@ Large responsibilities are nested below their owner slot. In particular,
 `PostService` is split into command, query, repository/projection, helper-policy,
 and test files instead of one shared source hotspot.
 
-The source shape is guarded by `npm run verify:module-source-layout`.
+The source shape is guarded by `npm run verify:module-source-layout`. That profile
+admits only `lib.rs` and `module.rs` at the source root, so Blog has no root
+`runtime.rs`: a runtime handle bundle belongs in `src/module.rs` or an existing
+responsibility slot, which is why the `runtime`-gated
+module-work registrations live in `src/services/scheduler.rs`.
 
 ## Canonical reference semantic contract
 
@@ -44,8 +48,10 @@ first implementation of the semantic reference contract in
 Key invariants include current-tenant authority, truthful locale provenance,
 explicit `Patch<T>` updates, mandatory edit CAS, one executable lifecycle
 policy, derived-state/business-revision separation, redacted public errors,
-private persistence entities, owner-service integration seams, deterministic
-pagination, and honest FBA readiness.
+private persistence entities (the one documented exception is the
+orchestration bridge surface re-exported by `ports`, pinned by
+`verify:module-reference-contract` and tracked as L-4), owner-service integration
+seams, deterministic pagination, and honest FBA readiness.
 
 The module-owned UI packages use a separate adapter profile:
 `core/` for commands/presentation/tests, `transport/` for GraphQL/native

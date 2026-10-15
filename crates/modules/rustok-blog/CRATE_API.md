@@ -7,7 +7,12 @@ Blog Category membership/settings, Blog-owned post/tag/channel relations and the
 Blog-side Comments integration.
 
 Persistence entities are **not** public API. Consumers use owner DTOs, services,
-transport roots, or explicit ports.
+transport roots, or explicit ports. The one documented exception is the orchestration bridge
+surface: `ports` re-exports the four entity modules (`blog_category`, `blog_post`,
+`blog_post_tag`, `blog_post_translation`) that `rustok-content-orchestration` drives inside its
+own transaction. That set is pinned by `verify-module-reference-contract.mjs`; moving the bridge
+onto owner in-transaction commands is tracked as L-4 in
+`docs/implementation-plan-current.md`.
 
 ## Public surface
 
@@ -22,7 +27,8 @@ Deliberate public modules/facades:
 - compatibility facades `richtext`, `state_machine`, and
   `public_comments_snapshot`.
 
-`entities` is crate-private. Direct cross-crate SeaORM access is not supported.
+`entities` is crate-private. Direct cross-crate SeaORM access is not supported, apart from
+the four modules re-exported through `ports` for the orchestration bridge described above.
 
 Primary entry points:
 
