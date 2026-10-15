@@ -43,13 +43,30 @@ fn validate_backfill_user_read_limit(limit: u64) -> Result<u64, AuthLifecycleMut
     Ok(limit)
 }
 
+fn validate_backfill_request(
+    request: &AuthUserBackfillReadRequest,
+) -> Result<u64, AuthLifecycleMutationError> {
+    if request.tenant_id.is_nil() {
+        return Err(AuthLifecycleMutationError::Validation(
+            "profile backfill tenant_id must not be nil".to_string(),
+        ));
+    }
+
+    validate_backfill_user_read_limit(request.limit)
+}
+
 #[async_trait]
 impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
     async fn list_users_for_profile_backfill(
         &self,
         request: AuthUserBackfillReadRequest,
     ) -> Result<Vec<AuthUserBackfillRecord>, AuthLifecycleMutationError> {
-        let limit = validate_backfill_user_read_limit(request.limit)?;
+        let limit = validate_backfill_request(&request)?;
+        tracing::debug!(
+            tenant_id = %request.tenant_id,
+            limit = limit,
+            "Listing users for profile backfill"
+        );
         let backend = self.db.get_database_backend();
         let sql = match backend {
             DbBackend::Sqlite => {
@@ -113,5 +130,20 @@ mod tests {
         assert_eq!(validate_backfill_user_read_limit(500).unwrap(), 500);
         assert!(validate_backfill_user_read_limit(501).is_err());
         assert!(validate_backfill_user_read_limit(u64::MAX).is_err());
+    }
+
+    #[test]
+    fn backfill_request_rejects_nil_tenant_id() {
+        let request = crate::AuthUserBackfillReadRequest {
+            tenant_id: uuid::Uuid::nil(),
+            limit: 50,
+        };
+        assert!(super::validate_backfill_request(&request).is_err());
+
+        let valid_request = crate::AuthUserBackfillReadRequest {
+            tenant_id: uuid::Uuid::new_v4(),
+            limit: 50,
+        };
+        assert_eq!(super::validate_backfill_request(&valid_request).unwrap(), 50);
     }
 }

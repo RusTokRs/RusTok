@@ -33,7 +33,21 @@ pub struct CreateUserCommand {
     pub custom_fields: Option<serde_json::Value>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+impl std::fmt::Debug for CreateUserCommand {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CreateUserCommand")
+            .field("email", &self.email)
+            .field("password", &"<redacted>")
+            .field("name", &self.name)
+            .field("role", &self.role)
+            .field("status", &self.status)
+            .field("custom_fields", &self.custom_fields)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct UpdateUserCommand {
     pub id: Uuid,
     pub email: Option<String>,
@@ -42,6 +56,21 @@ pub struct UpdateUserCommand {
     pub role: Option<String>,
     pub status: Option<String>,
     pub custom_fields: Option<serde_json::Value>,
+}
+
+impl std::fmt::Debug for UpdateUserCommand {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("UpdateUserCommand")
+            .field("id", &self.id)
+            .field("email", &self.email)
+            .field("password", &self.password.as_ref().map(|_| "<redacted>"))
+            .field("name", &self.name)
+            .field("role", &self.role)
+            .field("status", &self.status)
+            .field("custom_fields", &self.custom_fields)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -307,5 +336,33 @@ mod tests {
             AuthAdminMutationError::NotFound("oauth app".into()).to_string(),
             "auth admin resource not found: oauth app"
         );
+    }
+
+    #[test]
+    fn user_commands_debug_redacts_passwords() {
+        let create_cmd = CreateUserCommand {
+            email: "user@example.com".to_string(),
+            password: "super-secret-password-123".to_string(),
+            name: Some("User".to_string()),
+            role: Some("Admin".to_string()),
+            status: Some("Active".to_string()),
+            custom_fields: None,
+        };
+        let create_dbg = format!("{create_cmd:?}");
+        assert!(!create_dbg.contains("super-secret-password-123"));
+        assert!(create_dbg.contains("<redacted>"));
+
+        let update_cmd = UpdateUserCommand {
+            id: Uuid::new_v4(),
+            email: None,
+            password: Some("new-secret-password-456".to_string()),
+            name: None,
+            role: None,
+            status: None,
+            custom_fields: None,
+        };
+        let update_dbg = format!("{update_cmd:?}");
+        assert!(!update_dbg.contains("new-secret-password-456"));
+        assert!(update_dbg.contains("<redacted>"));
     }
 }

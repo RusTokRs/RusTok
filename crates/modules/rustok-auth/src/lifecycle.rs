@@ -26,12 +26,24 @@ pub struct AuthUserRecord {
     pub permissions: Vec<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AuthTokenRecord {
     pub access_token: String,
     pub refresh_token: String,
     pub expires_in: u64,
     pub user: AuthUserRecord,
+}
+
+impl std::fmt::Debug for AuthTokenRecord {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AuthTokenRecord")
+            .field("access_token", &"<redacted>")
+            .field("refresh_token", &"<redacted>")
+            .field("expires_in", &self.expires_in)
+            .field("user", &self.user)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -224,3 +236,32 @@ impl AuthLifecycleRuntime {
         self.port.as_ref()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_token_record_debug_redacts_tokens() {
+        let record = AuthTokenRecord {
+            access_token: "sensitive-access-jwt-token".to_string(),
+            refresh_token: "sensitive-refresh-secret".to_string(),
+            expires_in: 3600,
+            user: AuthUserRecord {
+                id: Uuid::new_v4(),
+                email: "test@example.com".to_string(),
+                name: Some("Test".to_string()),
+                role: UserRole::Customer,
+                status: "active".to_string(),
+                permissions: vec!["users:read".to_string()],
+            },
+        };
+
+        let formatted = format!("{record:?}");
+        assert!(!formatted.contains("sensitive-access-jwt-token"));
+        assert!(!formatted.contains("sensitive-refresh-secret"));
+        assert!(formatted.contains("<redacted>"));
+        assert!(formatted.contains("test@example.com"));
+    }
+}
+

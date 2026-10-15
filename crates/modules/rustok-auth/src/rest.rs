@@ -67,16 +67,36 @@ pub struct UpdateProfileParams {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Serialize, ToSchema)]
 pub struct ResetRequestResponse {
     pub status: &'static str,
     pub reset_token: Option<String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+impl std::fmt::Debug for ResetRequestResponse {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ResetRequestResponse")
+            .field("status", &self.status)
+            .field("reset_token", &self.reset_token.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
+}
+
+#[derive(Serialize, ToSchema)]
 pub struct VerificationRequestResponse {
     pub status: &'static str,
     pub verification_token: Option<String>,
+}
+
+impl std::fmt::Debug for VerificationRequestResponse {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("VerificationRequestResponse")
+            .field("status", &self.status)
+            .field("verification_token", &self.verification_token.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -147,7 +167,7 @@ pub struct UserInfo {
     pub status: rustok_core::UserStatus,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Serialize, ToSchema)]
 pub struct AuthResponse {
     pub access_token: String,
     pub refresh_token: String,
@@ -156,13 +176,26 @@ pub struct AuthResponse {
     pub user: UserInfo,
 }
 
+impl std::fmt::Debug for AuthResponse {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AuthResponse")
+            .field("access_token", &"<redacted>")
+            .field("refresh_token", &"<redacted>")
+            .field("token_type", &self.token_type)
+            .field("expires_in", &self.expires_in)
+            .field("user", &self.user)
+            .finish()
+    }
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LogoutResponse {
     pub status: &'static str,
 }
 
 /// OAuth2 Token Request (application/json or application/x-www-form-urlencoded).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 pub struct TokenRequest {
     pub grant_type: String,
     pub client_id: Option<String>,
@@ -172,6 +205,22 @@ pub struct TokenRequest {
     pub redirect_uri: Option<String>,
     pub code_verifier: Option<String>,
     pub refresh_token: Option<String>,
+}
+
+impl std::fmt::Debug for TokenRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("TokenRequest")
+            .field("grant_type", &self.grant_type)
+            .field("client_id", &self.client_id)
+            .field("client_secret", &self.client_secret.as_ref().map(|_| "<redacted>"))
+            .field("scope", &self.scope)
+            .field("code", &self.code.as_ref().map(|_| "<redacted>"))
+            .field("redirect_uri", &self.redirect_uri)
+            .field("code_verifier", &self.code_verifier.as_ref().map(|_| "<redacted>"))
+            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 /// OAuth2 Authorization Request.
@@ -216,7 +265,7 @@ pub struct BrowserSessionResponse {
 }
 
 /// OAuth2 Token Response (RFC 6749 section 5.1).
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Serialize, ToSchema)]
 pub struct TokenResponse {
     pub access_token: String,
     pub token_type: String,
@@ -224,6 +273,19 @@ pub struct TokenResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_token: Option<String>,
     pub scope: String,
+}
+
+impl std::fmt::Debug for TokenResponse {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("TokenResponse")
+            .field("access_token", &"<redacted>")
+            .field("token_type", &self.token_type)
+            .field("expires_in", &self.expires_in)
+            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "<redacted>"))
+            .field("scope", &self.scope)
+            .finish()
+    }
 }
 
 /// OAuth2 Error Response (RFC 6749 section 5.2).
@@ -234,10 +296,120 @@ pub struct TokenErrorResponse {
 }
 
 /// OAuth2 Token Revocation Request (RFC 7009).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 pub struct RevokeRequest {
     pub token: String,
     pub token_type_hint: Option<String>,
     pub client_id: Option<String>,
     pub client_secret: Option<String>,
+}
+
+impl std::fmt::Debug for RevokeRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RevokeRequest")
+            .field("token", &"<redacted>")
+            .field("token_type_hint", &self.token_type_hint)
+            .field("client_id", &self.client_id)
+            .field("client_secret", &self.client_secret.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reset_and_verification_responses_debug_redact_tokens() {
+        let reset = ResetRequestResponse {
+            status: "ok",
+            reset_token: Some("secret-reset-token-123".to_string()),
+        };
+        let reset_dbg = format!("{reset:?}");
+        assert!(!reset_dbg.contains("secret-reset-token-123"));
+        assert!(reset_dbg.contains("<redacted>"));
+
+        let verification = VerificationRequestResponse {
+            status: "ok",
+            verification_token: Some("secret-verification-token-456".to_string()),
+        };
+        let verification_dbg = format!("{verification:?}");
+        assert!(!verification_dbg.contains("secret-verification-token-456"));
+        assert!(verification_dbg.contains("<redacted>"));
+    }
+
+    #[test]
+    fn auth_response_debug_redacts_tokens() {
+        let auth = AuthResponse {
+            access_token: "super-secret-access-token".to_string(),
+            refresh_token: "super-secret-refresh-token".to_string(),
+            token_type: "Bearer",
+            expires_in: 3600,
+            user: UserInfo {
+                id: Uuid::new_v4(),
+                email: "admin@example.com".to_string(),
+                name: Some("Admin".to_string()),
+                role: rustok_core::UserRole::Admin,
+                status: rustok_core::UserStatus::Active,
+            },
+        };
+        let auth_dbg = format!("{auth:?}");
+        assert!(!auth_dbg.contains("super-secret-access-token"));
+        assert!(!auth_dbg.contains("super-secret-refresh-token"));
+        assert!(auth_dbg.contains("<redacted>"));
+        assert!(auth_dbg.contains("admin@example.com"));
+    }
+
+    #[test]
+    fn token_request_debug_redacts_secrets() {
+        let req = TokenRequest {
+            grant_type: "authorization_code".to_string(),
+            client_id: Some("app_client_id".to_string()),
+            client_secret: Some("confidential_client_secret".to_string()),
+            scope: Some("openid".to_string()),
+            code: Some("one_time_authorization_code".to_string()),
+            redirect_uri: Some("https://app.example.com/callback".to_string()),
+            code_verifier: Some("pkce_verifier_secret".to_string()),
+            refresh_token: Some("confidential_refresh_token".to_string()),
+        };
+        let req_dbg = format!("{req:?}");
+        assert!(!req_dbg.contains("confidential_client_secret"));
+        assert!(!req_dbg.contains("one_time_authorization_code"));
+        assert!(!req_dbg.contains("pkce_verifier_secret"));
+        assert!(!req_dbg.contains("confidential_refresh_token"));
+        assert!(req_dbg.contains("app_client_id"));
+        assert!(req_dbg.contains("<redacted>"));
+    }
+
+    #[test]
+    fn token_response_debug_redacts_tokens() {
+        let resp = TokenResponse {
+            access_token: "oauth-access-secret".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_in: 3600,
+            refresh_token: Some("oauth-refresh-secret".to_string()),
+            scope: "openid".to_string(),
+        };
+        let resp_dbg = format!("{resp:?}");
+        assert!(!resp_dbg.contains("oauth-access-secret"));
+        assert!(!resp_dbg.contains("oauth-refresh-secret"));
+        assert!(resp_dbg.contains("<redacted>"));
+        assert!(resp_dbg.contains("openid"));
+    }
+
+    #[test]
+    fn revoke_request_debug_redacts_tokens_and_secrets() {
+        let revoke = RevokeRequest {
+            token: "revocable-token-secret".to_string(),
+            token_type_hint: Some("refresh_token".to_string()),
+            client_id: Some("client123".to_string()),
+            client_secret: Some("secret123".to_string()),
+        };
+        let revoke_dbg = format!("{revoke:?}");
+        assert!(!revoke_dbg.contains("revocable-token-secret"));
+        assert!(!revoke_dbg.contains("secret123"));
+        assert!(revoke_dbg.contains("<redacted>"));
+        assert!(revoke_dbg.contains("client123"));
+    }
 }
