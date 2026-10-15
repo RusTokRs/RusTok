@@ -52,6 +52,8 @@ Non-ADR plans and research documents do not belong in this registry.
 ## Index
 
 | ADR | Title | Decision status | Implementation status | Relations |
+| [2026-10-15](./2026-10-15-rustok-manifest-foundation-library.md) | Shared Platform Manifest Foundation Library (`rustok-manifest`) | Accepted | In progress | Extends [Registry v2 clean contract without runtime compat](./2026-04-19-registry-v2-clean-contract-without-runtime-compat.md) |
+| [2026-10-15](./2026-10-15-forum-anonymous-discovery-and-category-counts.md) | Forum anonymous discovery and category aggregate policy | Accepted | Implemented | Extends [Forum remove unwired module settings](./2026-10-09-forum-remove-unwired-module-settings.md) |
 | [2026-10-14](./2026-10-14-pages-admin-package-for-next-admin.md) | Pages module UI for the classic Next admin (`@rustok/pages-admin`) | Accepted | Implemented | Extends [Both admins stay: functional parity over the shared GraphQL](./2026-10-14-admin-parity-program.md) |
 | [2026-10-14](./2026-10-14-landing-scenario-domain-leaves-fly-core.md) | Landing and runtime-scenario domain leaves the Fly core for the Page Builder module | Accepted | Implemented | Extends [Fly rich text, embeds, action runtime, and framework adapters](./2026-10-14-fly-rich-text-embed-action-runtime-and-adapters.md) |
 | [2026-10-14](./2026-10-14-fly-token-authoring-and-single-backlog.md) | Fly token authoring and the single owned backlog (Phase 6) | Accepted | Implemented | Extends [Fly design tokens, animations, and admin convergence](./2026-10-14-fly-design-tokens-animations-and-admin-convergence.md) |

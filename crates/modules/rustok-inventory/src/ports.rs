@@ -168,8 +168,23 @@ impl InventoryReservationPort for crate::InventoryService {
         request: InventoryAvailabilityRequest,
     ) -> Result<InventoryAvailabilitySnapshot, PortError> {
         let owner_operation = "check_availability";
+        tracing::debug!(
+            target: "rustok_inventory::ports",
+            operation = owner_operation,
+            variant_id = %request.variant_id,
+            requested_quantity = request.requested_quantity,
+            channel_slug = ?request.channel_slug,
+            "check_availability port request received"
+        );
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.variant_id, "variant_id")?;
+        if request.requested_quantity < 0 {
+            return Err(PortError::validation(
+                "inventory.requested_quantity_negative",
+                "requested quantity must be non-negative",
+            ));
+        }
         let result = self
             .check_variant_availability_for_channel(
                 tenant_id,
@@ -193,9 +208,37 @@ impl InventoryReservationPort for crate::InventoryService {
         request: InventoryReservationRequest,
     ) -> Result<InventoryReservationSnapshot, PortError> {
         let owner_operation = "reserve_inventory";
+        tracing::debug!(
+            target: "rustok_inventory::ports",
+            operation = owner_operation,
+            variant_id = %request.variant_id,
+            quantity = request.quantity,
+            cart_id = ?request.cart_id,
+            line_item_id = ?request.line_item_id,
+            "reserve_inventory port request received"
+        );
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.variant_id, "variant_id")?;
+        if let Some(cart_id) = request.cart_id && cart_id.is_nil() {
+            return Err(PortError::validation(
+                "inventory.cart_id_nil",
+                "cart_id cannot be nil",
+            ));
+        }
+        if let Some(line_item_id) = request.line_item_id && line_item_id.is_nil() {
+            return Err(PortError::validation(
+                "inventory.line_item_id_nil",
+                "line_item_id cannot be nil",
+            ));
+        }
+        if request.quantity < 0 {
+            return Err(PortError::validation(
+                "inventory.reservation_quantity_invalid",
+                "reservation quantity must be non-negative",
+            ));
+        }
         let result = self
             .reserve(tenant_id, request.variant_id, request.quantity)
             .await
@@ -215,9 +258,37 @@ impl InventoryReservationPort for crate::InventoryService {
         request: InventoryReservationReleaseRequest,
     ) -> Result<InventoryReservationReleaseSnapshot, PortError> {
         let owner_operation = "release_inventory_reservation";
+        tracing::debug!(
+            target: "rustok_inventory::ports",
+            operation = owner_operation,
+            variant_id = %request.variant_id,
+            quantity = request.quantity,
+            order_id = ?request.order_id,
+            line_item_id = ?request.line_item_id,
+            "release_inventory_reservation port request received"
+        );
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.variant_id, "variant_id")?;
+        if let Some(order_id) = request.order_id && order_id.is_nil() {
+            return Err(PortError::validation(
+                "inventory.order_id_nil",
+                "order_id cannot be nil",
+            ));
+        }
+        if let Some(line_item_id) = request.line_item_id && line_item_id.is_nil() {
+            return Err(PortError::validation(
+                "inventory.line_item_id_nil",
+                "line_item_id cannot be nil",
+            ));
+        }
+        if request.quantity < 0 {
+            return Err(PortError::validation(
+                "inventory.reservation_release_quantity_invalid",
+                "reservation release quantity must be non-negative",
+            ));
+        }
         let result = self
             .release_reservation_quantity(tenant_id, request.variant_id, request.quantity)
             .await
@@ -240,9 +311,27 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         mut request: InventoryIdentityReservationRequest,
     ) -> Result<InventoryIdentityReservationSnapshot, PortError> {
         let owner_operation = "reserve_inventory_by_identity";
+        tracing::debug!(
+            target: "rustok_inventory::ports",
+            operation = owner_operation,
+            reservation_id = %request.reservation_id,
+            external_id = %request.external_id,
+            variant_id = %request.variant_id,
+            quantity = request.quantity,
+            line_item_id = ?request.line_item_id,
+            "reserve_inventory_by_identity port request received"
+        );
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.reservation_id, "reservation_id")?;
+        validate_non_nil_uuid(request.variant_id, "variant_id")?;
+        if let Some(line_item_id) = request.line_item_id && line_item_id.is_nil() {
+            return Err(PortError::validation(
+                "inventory.line_item_id_nil",
+                "line_item_id cannot be nil",
+            ));
+        }
         request.external_id = normalize_external_id(request.external_id)?;
         if request.quantity <= 0 {
             return Err(PortError::validation(
@@ -470,9 +559,17 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         mut request: InventoryIdentityReservationReleaseRequest,
     ) -> Result<InventoryIdentityReservationReleaseSnapshot, PortError> {
         let owner_operation = "release_inventory_by_identity";
+        tracing::debug!(
+            target: "rustok_inventory::ports",
+            operation = owner_operation,
+            reservation_id = %request.reservation_id,
+            external_id = %request.external_id,
+            "release_inventory_by_identity port request received"
+        );
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.reservation_id, "reservation_id")?;
         request.external_id = normalize_external_id(request.external_id)?;
 
         let txn =
@@ -1064,17 +1161,35 @@ fn log_inventory_tenant_parse_rejection(context: &PortContext, owner_operation: 
     );
 }
 
+fn validate_non_nil_uuid(id: Uuid, field_name: &'static str) -> Result<(), PortError> {
+    if id.is_nil() {
+        return Err(PortError::validation(
+            format!("inventory.{field_name}_nil"),
+            format!("{field_name} cannot be nil"),
+        ));
+    }
+    Ok(())
+}
+
 fn parse_port_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+    let tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
         log_inventory_tenant_parse_rejection(context, owner_operation);
         PortError::validation(
             "inventory.context_invalid",
             "inventory request context is invalid",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        log_inventory_tenant_parse_rejection(context, owner_operation);
+        return Err(PortError::validation(
+            "inventory.tenant_id_nil",
+            "inventory tenant id cannot be nil",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn storage_unavailable_with_context(
@@ -1199,5 +1314,32 @@ mod tests {
         assert_eq!(metadata["source"], "inventory_identity_port");
         assert_eq!(metadata["reservation_id"], reservation_id.to_string());
         assert_eq!(metadata["variant_id"], variant_id.to_string());
+    }
+
+    #[test]
+    fn parse_port_tenant_id_rejects_empty_and_nil_uuid() {
+        let empty_context = PortContext::builder().tenant_id("").build();
+        let err = parse_port_tenant_id(&empty_context, "test").unwrap_err();
+        assert_eq!(err.code, "inventory.context_invalid");
+
+        let nil_context = PortContext::builder()
+            .tenant_id(Uuid::nil().to_string())
+            .build();
+        let err = parse_port_tenant_id(&nil_context, "test").unwrap_err();
+        assert_eq!(err.code, "inventory.tenant_id_nil");
+
+        let valid_id = Uuid::new_v4();
+        let valid_context = PortContext::builder()
+            .tenant_id(valid_id.to_string())
+            .build();
+        assert_eq!(parse_port_tenant_id(&valid_context, "test").unwrap(), valid_id);
+    }
+
+    #[test]
+    fn validate_non_nil_uuid_rejects_nil() {
+        let err = validate_non_nil_uuid(Uuid::nil(), "variant_id").unwrap_err();
+        assert_eq!(err.code, "inventory.variant_id_nil");
+
+        assert!(validate_non_nil_uuid(Uuid::new_v4(), "variant_id").is_ok());
     }
 }

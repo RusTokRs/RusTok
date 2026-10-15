@@ -36,7 +36,7 @@ const runner = read(runnerPath);
 const packet = read(packetPath);
 const browserWorkflow = read(".github/workflows/browser-e2e.yml");
 const packageJson = JSON.parse(read("apps/next-admin/package.json"));
-const pageManager = read("crates/modules/rustok-page-builder/admin/src/editor/page_manager.rs");
+const pageManager = read("crates/ui/fly/leptos/src/editor.rs");
 const capabilityControls = read(
   "crates/modules/rustok-page-builder/admin/src/editor/capability_controls.rs",
 );

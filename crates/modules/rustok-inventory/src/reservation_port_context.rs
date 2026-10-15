@@ -45,6 +45,14 @@ impl InventoryReservationPort for InProcessInventoryReservationPort {
         context: PortContext,
         request: InventoryAvailabilityRequest,
     ) -> Result<InventoryAvailabilitySnapshot, PortError> {
+        tracing::debug!(
+            target: "rustok_inventory::reservation_port_context",
+            operation = AVAILABILITY_OPERATION,
+            variant_id = %request.variant_id,
+            requested_quantity = request.requested_quantity,
+            channel_slug = ?request.channel_slug,
+            "in-process check availability request received"
+        );
         require_inventory_reservation_read_admission(&context, AVAILABILITY_OPERATION)?;
         parse_inventory_reservation_tenant_id(&context, AVAILABILITY_OPERATION)?;
         let diagnostic_context = context.clone();
@@ -67,6 +75,15 @@ impl InventoryReservationPort for InProcessInventoryReservationPort {
         context: PortContext,
         request: InventoryReservationRequest,
     ) -> Result<InventoryReservationSnapshot, PortError> {
+        tracing::debug!(
+            target: "rustok_inventory::reservation_port_context",
+            operation = RESERVE_OPERATION,
+            variant_id = %request.variant_id,
+            quantity = request.quantity,
+            cart_id = ?request.cart_id,
+            line_item_id = ?request.line_item_id,
+            "in-process reserve inventory request received"
+        );
         require_inventory_reservation_write_admission(&context, RESERVE_OPERATION)?;
         parse_inventory_reservation_tenant_id(&context, RESERVE_OPERATION)?;
         let diagnostic_context = context.clone();
@@ -89,6 +106,15 @@ impl InventoryReservationPort for InProcessInventoryReservationPort {
         context: PortContext,
         request: InventoryReservationReleaseRequest,
     ) -> Result<InventoryReservationReleaseSnapshot, PortError> {
+        tracing::debug!(
+            target: "rustok_inventory::reservation_port_context",
+            operation = RELEASE_OPERATION,
+            variant_id = %request.variant_id,
+            quantity = request.quantity,
+            order_id = ?request.order_id,
+            line_item_id = ?request.line_item_id,
+            "in-process release inventory reservation request received"
+        );
         require_inventory_reservation_write_admission(&context, RELEASE_OPERATION)?;
         parse_inventory_reservation_tenant_id(&context, RELEASE_OPERATION)?;
         let diagnostic_context = context.clone();
@@ -435,12 +461,50 @@ fn parse_inventory_reservation_tenant_id(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+    let tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
         let error = PortError::validation(
             "inventory.context_invalid",
             "inventory request context is invalid",
         );
         log_inventory_reservation_tenant_parse_rejection(context, operation, &error);
         error
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let error = PortError::validation(
+            "inventory.tenant_id_nil",
+            "inventory tenant id cannot be nil",
+        );
+        log_inventory_reservation_tenant_parse_rejection(context, operation, &error);
+        return Err(error);
+    }
+    Ok(tenant_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_reservation_port_tenant_id_rejects_empty_and_nil() {
+        let empty_context = PortContext::builder().tenant_id("").build();
+        let err = parse_inventory_reservation_tenant_id(&empty_context, AVAILABILITY_OPERATION)
+            .unwrap_err();
+        assert_eq!(err.code, "inventory.context_invalid");
+
+        let nil_context = PortContext::builder()
+            .tenant_id(Uuid::nil().to_string())
+            .build();
+        let err = parse_inventory_reservation_tenant_id(&nil_context, AVAILABILITY_OPERATION)
+            .unwrap_err();
+        assert_eq!(err.code, "inventory.tenant_id_nil");
+
+        let valid_id = Uuid::new_v4();
+        let valid_context = PortContext::builder()
+            .tenant_id(valid_id.to_string())
+            .build();
+        assert_eq!(
+            parse_inventory_reservation_tenant_id(&valid_context, AVAILABILITY_OPERATION).unwrap(),
+            valid_id
+        );
+    }
 }
