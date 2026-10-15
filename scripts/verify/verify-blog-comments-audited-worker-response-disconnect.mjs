@@ -92,8 +92,7 @@ hasAll(source, [
   'drop(response);',
   'response_receiver.recv().unwrap_or(Err(',
   'CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable',
-  'CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable) =>',
-  'abort_on_indeterminate_audited_store_response()',
+  'fn abort_on_indeterminate_audited_store_response() -> ! {',
   'fn audited_worker_response_disconnect_aborts()',
   'fn audited_worker_response_disconnect_child()',
   'std::env::current_exe()',
@@ -107,6 +106,19 @@ hasAll(source, [
   'SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger::from_response_disconnect_harness',
   'audited.replace_host_schedule(',
 ], 'audited worker-response disconnect source');
+
+// The abort helper must stay wired to the two fail-stop paths, not merely be defined: the
+// indeterminate-store match arm and the response-completion drop guard. A bare
+// `abort_on_indeterminate_audited_store_response()` marker would also be satisfied by the
+// function definition alone, which would let a stranded call site pass unnoticed.
+requireCondition(
+  /Unavailable\) => \{\s*abort_on_indeterminate_audited_store_response\(\)/.test(source),
+  'indeterminate audited store arm must abort',
+);
+requireCondition(
+  /if !self\.completed \{\s*abort_on_indeterminate_audited_store_response\(\);/.test(source),
+  'dropped audited response completion guard must abort',
+);
 
 requireCondition(
   (

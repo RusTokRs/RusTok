@@ -77,7 +77,7 @@
       "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json",
       "category_identity_source": "blog_posts.category_id",
       "category_name_source": "taxonomy_owner_category.name",
-      "typed_binding_source": "blog_category_taxonomy_bindings",
+      "category_identity_path": "blog_posts.category_id -> taxonomy_owner_category.id",
       "taxonomy_scope": "module/blog",
       "detail_projection_present": true,
       "authenticated_list_projection_present": true,

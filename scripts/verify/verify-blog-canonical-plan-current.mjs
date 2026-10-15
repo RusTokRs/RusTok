@@ -176,7 +176,8 @@ if (evidence) {
     tracks.post_category_name_projection?.evidence !== files.postCategoryName ||
     tracks.post_category_name_projection?.category_identity_source !== 'blog_posts.category_id' ||
     tracks.post_category_name_projection?.category_name_source !== 'taxonomy_owner_category.name' ||
-    tracks.post_category_name_projection?.typed_binding_source !== 'blog_category_taxonomy_bindings' ||
+    tracks.post_category_name_projection?.category_identity_path !==
+      'blog_posts.category_id -> taxonomy_owner_category.id' ||
     tracks.post_category_name_projection?.taxonomy_scope !== 'module/blog' ||
     tracks.post_category_name_projection?.detail_projection_present !== true ||
     tracks.post_category_name_projection?.authenticated_list_projection_present !== true ||
@@ -277,9 +278,10 @@ if (
   postCategoryName?.runtime_status !== 'not_run' ||
   postCategoryName?.source_contract?.category_identity_source !== 'blog_posts.category_id' ||
   postCategoryName?.source_contract?.category_name_source !== 'taxonomy_owner_category.name' ||
-  postCategoryName?.source_contract?.typed_binding_source !== 'blog_category_taxonomy_bindings' ||
+  postCategoryName?.source_contract?.category_identity_path !==
+    'blog_posts.category_id -> taxonomy_owner_category.id' ||
   postCategoryName?.source_contract?.taxonomy_scope !== 'module/blog' ||
-  postCategoryName?.source_contract?.tenant_bound_binding_query !== true ||
+  postCategoryName?.source_contract?.tenant_bound_category_read !== true ||
   postCategoryName?.source_contract?.detail_projection_present !== true ||
   postCategoryName?.source_contract?.authenticated_list_projection_present !== true ||
   postCategoryName?.source_contract?.public_list_projection_present !== true ||

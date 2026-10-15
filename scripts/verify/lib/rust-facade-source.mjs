@@ -1,4 +1,4 @@
-// Composes a Rust module facade with the files it textually includes.
+// Composes a Rust module facade with the files it declares.
 //
 // `apps/server/src/services/comments_provider_runtime.rs` used to `include!("<file>.rs")` its
 // modules, so a verifier that read that one file saw the code of every part it composes. The
@@ -7,6 +7,10 @@
 // This helper restores the view the verifiers were written against: it reads the entry file
 // and, recursively, every file the entry declares with a `#[path = "..."]` attribute or an
 // `include!("...")` macro, resolving each target relative to the file that declares it.
+//
+// A `read` callback that throws for an unknown path (the verifiers pass one built on
+// `fs.readFileSync`) keeps the composition fail-loud: a declaration pointing at a file that no
+// longer exists must break the guard instead of silently shrinking the composed view.
 
 const DIRECTIVE = /#\[path = "([^"]+)"\]|include!\("([^"]+)"\)/g;
 
@@ -33,10 +37,7 @@ const resolveRelative = (fromFile, target) => {
   return normalize(base === '' ? target : `${base}/${target}`);
 };
 
-// `extraPaths` are owners a verifier asserts through the same composed view even though the
-// facade no longer reaches them (for example a file that a sibling module now holds). They are
-// appended after the transitive closure so the entry file keeps its place in the composition.
-export const readComposedRustSource = (read, entryPath, ...extraPaths) => {
+export const readComposedRustSource = (read, entryPath) => {
   const seen = new Set();
   const parts = [];
   const visit = (file) => {
@@ -49,10 +50,5 @@ export const readComposedRustSource = (read, entryPath, ...extraPaths) => {
     }
   };
   visit(entryPath);
-  for (const extra of extraPaths) {
-    if (seen.has(extra)) continue;
-    seen.add(extra);
-    parts.push(read(extra));
-  }
   return parts.join('\n');
 };

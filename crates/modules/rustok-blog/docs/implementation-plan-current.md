@@ -638,11 +638,15 @@ base `1a420c8`).
   pagination (the list now paginates in the database through `blog_tag_usage`). Blob pins,
   `#[path]`/`mod` expectations, plan-cursor tokens and renamed call-site markers were resynced
   with the tree.
-  Blog verifier set: 45 -> 24 failures, and every one of the 24 also fails at the base commit
-  `1a420c8`, so the wave introduced no regression. Green again: the whole Category guard family
+  Measured against a clean base worktree: 46 of the 90 `*blog*.mjs` invocations fail at
+  `1a420c8` and 24 fail at the branch tip, so 22 are repaired and none of the remaining 24
+  regressed. (The earlier count in this file said 45 because
+  `verify-blog-category-hierarchy-command.mjs` was already repaired by `92f6a13` before the
+  baseline was taken; at base that script dies with a `SyntaxError` and is part of the 22.)
+  Green again: the whole Category guard family
   (`taxonomy-category-{binding,dual-write,planning-cursor,read-cutover,structure-sync}`), the
   post category-name projection and its self-test, the tag pagination guard and its self-test,
-  and `comments-audit-{canonical-writer,event-contract,canonical-handoff-contract,restart-ambiguity-evidence,recovery-postgres-evidence}`,
+  and `comments-audit-{canonical-writer,event-contract,canonical-handoff-contract}`,
   `comments-tcp-delegation-schedule-audit-{postgres-faults,postgres-harness}` and
   `comments-audited-worker-response-disconnect`. Unchanged green:
   `verify-docs`, `verify-module-reference-contract`, `verify-module-source-layout`,
@@ -652,7 +656,8 @@ base `1a420c8`).
   (`comments-tcp-delegation-schedule-{audit-outbox,persistence,postgres,trigger}`,
   `comments-audit-{canonical-handoff-postgres,handoff-runner,operator-requeue,outbox-relay-postgres-source,source-retry-policy,source-retry-runner}`,
   `comments-{host-provider-selection,tcp-channel-seam,tcp-host-channel-selection,tcp-transport,tcp-user-delegation}`,
-  plus `comments-audit-recovery/restart-ambiguity` residual markers), the plan-cursor pair
+  and `comments-audit-{recovery-postgres-evidence,restart-ambiguity-evidence}`, which still
+  assert the pre-split `mod keyring_schedule_audit_operator {` / slice-96 prose markers), the plan-cursor pair
   (`canonical-plan-current` and its self-test, which require the provider-era
   `blog-category-translation-postgres-source.json` that
   `verify-blog-taxonomy-category-planning-cursor.mjs` requires to stay absent), the reaction
@@ -660,6 +665,38 @@ base `1a420c8`).
   (`tag-canonical-projection-source`, `tag-mutation-reindex-source`). Each needs the same
   treatment: read the marker against the code or document that actually owns it, keep the
   assertion, and never soften it to green. No Rust was compiled in this wave either.
+
+- Mutation re-verification of the repaired guards (same session, still without `cargo`). Each
+  guard was re-run against a mutated copy of the tree to prove it still bites: the binding
+  retirement guard against a removed `drop_table`, a resurrected binding entity and a
+  resurrected `blog_categories.parent_id`; the read-cutover guard against a non-strict Taxonomy
+  read and a resurrected `pub use category::CategoryService;`; the dual-write guard against a
+  re-registered donor entity; the structure-sync guard against a removed Taxonomy reorder hook;
+  the cursor guard against a wrong status token; the category-name projection guard against an
+  unbounded membership read and a retired translation-table reference; the tag pagination guard
+  against an unbounded page size, a removed owner clamp and unsaturating last-page arithmetic;
+  and the prose guard against changed `CRATE_API.md` wording. One real hole was found and fixed:
+  the audited worker-response disconnect guard accepted a bare
+  `abort_on_indeterminate_audited_store_response()` marker, which the *definition* alone
+  satisfies, so a stranded call site could have passed unnoticed; it now asserts the
+  indeterminate-store match arm and the response-completion drop guard separately, and both
+  new checks were shown to fail when their call site is removed. Two of the first mutation
+  attempts were themselves no-ops (a `sed` that matched nothing and one that hit only one of
+  two call sites); they were redone until the mutation actually changed the source.
+
+- Contract-record resync (same session). The aggregate plan-cursor record
+  (`contracts/evidence/blog-canonical-plan-current-source.json`) and
+  `verify-blog-canonical-plan-current.mjs` still named the retired typed binding table
+  (`blog_category_taxonomy_bindings`, `tenant_bound_binding_query`) as the Category name
+  projection's identity source, which is the same CAT-6 retirement the per-surface evidence and
+  the Category guard family were already repaired for; both now read
+  `category_identity_path: blog_posts.category_id -> taxonomy_owner_category.id` and
+  `tenant_bound_category_read: true`, matching
+  `contracts/evidence/blog-post-category-name-projection-source.json`. This removes the one
+  failure line the repair wave had added to `verify-blog-canonical-plan-current.mjs`. Both
+  assertions were mutation-checked: reverting either record back to the retired vocabulary
+  reproduces its drift line, and the guard stays red for its 28 remaining pre-existing reasons
+  (the plan-cursor pair, per the list above).
 
 ### Open items from this audit
 
