@@ -198,6 +198,11 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   module-disabled token reads as "not found" rather than as an error.
 - `revoke_token` reports a missing or foreign token as `PreviewTokenNotFound`
   (`PREVIEW_TOKEN_NOT_FOUND`), never as a missing post.
+- A token authorizes a read of a draft only, so leaving the draft state revokes the post's
+  tokens inside the same lifecycle transaction: publishing (manually or through
+  `blog_scheduled_publish`) and archiving both delete them. The accessor already refuses to
+  serve a non-draft post, and revoking on the transition keeps a token row from coming back
+  to life if the post returns to draft through `unpublish` or `restore`.
 - Retention is tenant-scoped: `cleanup_expired(tenant_id, limit)` (limit clamped to
   `MAX_PREVIEW_TOKEN_CLEANUP_BATCH` = 500) is drained by the `blog_preview_token_cleanup`
   module-work registration of `src/services/scheduler.rs`, and deleting a post removes its tokens through
@@ -252,9 +257,10 @@ The following are not implemented. Each is tracked with its audit identifier in
 - Anonymous REST read access is not available (M-8).
 - Newsletter, membership, and paid content are not available (M-9).
 - Reactions are limited to `like` on posts (M-10).
-- Preview reads have no audit trail, and a post that leaves `draft` keeps its already-minted
-  tokens until they expire or are explicitly revoked — archiving does not revoke them (M-13 of
-  [`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md)).
+- Preview reads have no audit trail (M-13 of
+  [`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md));
+  the token lifecycle itself is closed — a token of a post that left `draft` is revoked by the
+  transition (see "Preview tokens").
 - A route row whose post disappeared stays in the database until `blog_route_reconciliation` sweeps
   it, so the window is bounded by the host scheduler rather than by a cross-module transaction
   (H-7 of the 2026-10-15 audit).

@@ -19,9 +19,12 @@ Author creates draft → generates preview token → shares URL with reviewer
                                                     ↓
                                               Reviewer opens URL
                                                     ↓
-                                              Token validated (exists + not expired)
+                     Token validated (exists, unexpired, tenant still has Blog enabled)
                                                     ↓
-                                              Post returned (even if Draft)
+                        Post returned only while the post is still a Draft
+                                                    ↓
+        Post leaves draft (publish, scheduled publish, archive) → its tokens are revoked in the
+        same lifecycle transaction; unpublish/restore does not revive them
 ```
 
 ### Security Model
@@ -29,6 +32,9 @@ Author creates draft → generates preview token → shares URL with reviewer
 - **Token creation**: Requires `blog_posts:update` permission + ownership (author or admin)
 - **Token access**: Unauthenticated — anyone with the token can view the post
 - **Token revocation**: Requires `blog_posts:update` permission + ownership
+- **Token invalidation on status change**: A token authorizes a draft read only, so the lifecycle
+  transition that takes the post out of `draft` (manual publish, `blog_scheduled_publish`, archive)
+  revokes the post's tokens inside the same transaction
 - **Token expiry**: Configurable TTL (default 7 days, max 30 days)
 - **Token format**: 32 bytes of cryptographic randomness, base64url-encoded (43 chars)
 
@@ -97,3 +103,7 @@ post additionally removes its tokens in the same transaction and through the tab
   and only while the token's own tenant still has Blog enabled; an expired, revoked or
   module-disabled token answers "not found" without leaking whether the post exists
 - Deleting a post cascades to delete all its preview tokens
+- A post that leaves `draft` loses its tokens in the same lifecycle transition (publish by the
+  owner command or the scheduler, archive), so a token row never outlives the state it
+  authorizes; `unpublish` and `restore` return the post to draft without reviving a token that
+  the earlier transition revoked

@@ -149,6 +149,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignores a future schedule and another worker's slug, and the claimed item publishes that
   tenant's due draft. The harness's direct schedule write lives in `src/tests/hardening.rs`
   (`set_post_schedule`/`make_post_due`), shared by both test modules.
+- A preview token now authorizes a draft read for exactly as long as the post is a draft:
+  the lifecycle transition deletes the post's tokens in the same transaction when the post
+  leaves `draft`, so publishing (manually or through `blog_scheduled_publish`) and archiving
+  both revoke them. The accessor already refused to serve a non-draft post, but a surviving
+  row became a live authorization again as soon as `unpublish` or `restore` returned the post
+  to draft, and that path is closed. Deleting a post keeps removing its tokens through the
+  cascade, and the retention worker is unchanged.
 
 ### Added (continued)
 - Blog post slug redirects use the shared canonical URL registry of `rustok-content`

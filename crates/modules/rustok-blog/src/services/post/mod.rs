@@ -68,6 +68,7 @@ mod pin;
 mod queries;
 mod repository;
 mod routes;
+mod scheduled;
 
 pub use routes::{BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner};
 

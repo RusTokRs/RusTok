@@ -277,3 +277,113 @@ async fn preview_token_cleanup_is_tenant_scoped_and_bounded() {
         "each tenant drains its own backlog"
     );
 }
+
+/// A token authorizes a read of a draft only. Leaving the draft state revokes the row, so
+/// the authorization cannot come back to life when the post returns to draft, and the row
+/// does not linger as a credential for a post that is published or archived.
+#[tokio::test]
+async fn leaving_draft_revokes_the_post_preview_tokens() {
+    let (db, event_bus) = setup_hardening_schema().await;
+    let tenant_id = Uuid::new_v4();
+    let other_tenant = Uuid::new_v4();
+    set_blog_module_enabled(&db, tenant_id, true).await;
+    set_blog_module_enabled(&db, other_tenant, true).await;
+    let service = token_service(&db, &event_bus);
+    let posts = post_service(&db, &event_bus);
+    let post_id = create_draft_post(&db, &event_bus, tenant_id, "leave-draft").await;
+    let other_post_id = create_draft_post(&db, &event_bus, other_tenant, "leave-draft-other").await;
+
+    let token = service
+        .create_token(tenant_id, post_id, admin(), None)
+        .await
+        .expect("a draft may be previewed");
+    let other_token = service
+        .create_token(other_tenant, other_post_id, admin(), None)
+        .await
+        .expect("a draft may be previewed");
+    assert!(
+        service
+            .get_post_by_token(&token.token, "en", None)
+            .await
+            .expect("token read should not fail")
+            .is_some(),
+        "a live token resolves its draft"
+    );
+
+    posts
+        .publish_post(tenant_id, post_id, admin())
+        .await
+        .expect("the draft should publish");
+    assert_eq!(
+        token_rows(&db, tenant_id).await,
+        0,
+        "publishing revokes the post's preview tokens"
+    );
+    assert!(
+        service
+            .get_post_by_token(&token.token, "en", None)
+            .await
+            .expect("token read should not fail")
+            .is_none(),
+        "a token of a published post must not resolve"
+    );
+    assert_eq!(
+        token_rows(&db, other_tenant).await,
+        1,
+        "another tenant's tokens stay untouched"
+    );
+
+    // The post returns to draft, but the authorization revoked by leaving the draft state
+    // must not be resurrected by `unpublish`.
+    posts
+        .unpublish_post(tenant_id, post_id, admin())
+        .await
+        .expect("the post should unpublish");
+    assert!(
+        service
+            .get_post_by_token(&token.token, "en", None)
+            .await
+            .expect("token read should not fail")
+            .is_none(),
+        "an unpublished draft does not revive a revoked preview token"
+    );
+
+    // The same rule holds for the archive transition: a token minted for a fresh draft is
+    // revoked when the post is published and again when it is archived.
+    let archived_token = service
+        .create_token(tenant_id, post_id, admin(), None)
+        .await
+        .expect("a draft may be previewed");
+    assert_eq!(token_rows(&db, tenant_id).await, 1);
+    posts
+        .publish_post(tenant_id, post_id, admin())
+        .await
+        .expect("the post should publish again");
+    assert_eq!(
+        token_rows(&db, tenant_id).await,
+        0,
+        "the second publication revokes the new token as well"
+    );
+    posts
+        .archive_post(tenant_id, post_id, admin(), None)
+        .await
+        .expect("the post should archive");
+    assert_eq!(
+        token_rows(&db, tenant_id).await,
+        0,
+        "an archived post keeps no preview tokens"
+    );
+    assert!(
+        service
+            .get_post_by_token(&archived_token.token, "en", None)
+            .await
+            .expect("token read should not fail")
+            .is_none(),
+        "a token of an archived post must not resolve"
+    );
+    assert_eq!(
+        token_rows(&db, other_tenant).await,
+        1,
+        "the other tenant's live token survives the whole lifecycle"
+    );
+}

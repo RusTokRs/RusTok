@@ -789,92 +789,6 @@ impl PostService {
         txn.commit().await.map_err(BlogError::from)?;
         Ok(())
     }
-
-    /// Publish the scheduled drafts of **one tenant** whose `scheduled_at` has passed.
-    ///
-    /// This repository contains no scheduler worker: `rustok-blog` exposes the
-    /// owner command, and the unwired host boundary is recorded in
-    /// `README.md` under "Known limitations". The command is therefore shaped so
-    /// a host scheduler can call it repeatedly and safely:
-    ///
-    /// - the tenant is an explicit argument, so a scheduler iteration can never
-    ///   reach another tenant's rows;
-    /// - the batch is bounded by `limit` (`MAX_SCHEDULED_PUBLISH_BATCH`), oldest
-    ///   schedule first, so a backlog drains across bounded iterations;
-    /// - each post is published in its own transaction, and a concurrent edit
-    ///   conflict skips that post instead of aborting the whole batch;
-    /// - the actor is the system actor, so it must not be reachable from a
-    ///   request path or an end-user transport.
-    pub async fn publish_scheduled_posts(
-        &self,
-        tenant_id: Uuid,
-        limit: u32,
-    ) -> BlogResult<Vec<Uuid>> {
-        let limit = limit.clamp(1, MAX_SCHEDULED_PUBLISH_BATCH);
-        let now = chrono::Utc::now();
-
-        let due = blog_post::Entity::find()
-            .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
-            .filter(blog_post::Column::ScheduledAt.is_not_null())
-            .filter(blog_post::Column::ScheduledAt.lte(now))
-            .order_by_asc(blog_post::Column::ScheduledAt)
-            .order_by_asc(blog_post::Column::Id)
-            .limit(u64::from(limit))
-            .all(&self.db)
-            .await
-            .map_err(BlogError::from)?;
-
-        let mut published = Vec::new();
-
-        for post in due {
-            let txn = self.db.begin().await.map_err(BlogError::from)?;
-
-            // Same transition logic as a manual publish: it carries the version CAS,
-            // so a post edited after the scan is skipped rather than overwritten.
-            match apply_status_transition_in_tx(
-                &txn,
-                post.tenant_id,
-                post.id,
-                post.version,
-                BlogPostStatus::Published,
-                Some(post.published_at.map(Into::into).unwrap_or(now)),
-                None,
-            )
-            .await
-            {
-                Ok(()) => {}
-                Err(BlogError::Conflict(_)) => {
-                    tracing::warn!(
-                        tenant_id = %post.tenant_id,
-                        post_id = %post.id,
-                        "Scheduled Blog post changed concurrently; leaving it for the next scheduler iteration"
-                    );
-                    drop(txn);
-                    continue;
-                }
-                Err(error) => return Err(error),
-            }
-
-            self.event_bus
-                .publish_in_tx(
-                    &txn,
-                    post.tenant_id,
-                    None, // System actor: this command is operational, never user-facing.
-                    DomainEvent::BlogPostPublished {
-                        post_id: post.id,
-                        author_id: Some(post.author_id),
-                    },
-                )
-                .await
-                .map_err(BlogError::from)?;
-
-            txn.commit().await.map_err(BlogError::from)?;
-            published.push(post.id);
-        }
-
-        Ok(published)
-    }
 }
 
 fn ensure_transition(current: BlogPostStatus, next: BlogPostStatus) -> BlogResult<()> {
@@ -888,7 +802,7 @@ fn ensure_transition(current: BlogPostStatus, next: BlogPostStatus) -> BlogResul
 /// Applies a lifecycle transition. `published_at` is the first-publication
 /// timestamp to persist; callers carry it over from the stored post unless the
 /// post is being published for the first time.
-async fn apply_status_transition_in_tx(
+pub(super) async fn apply_status_transition_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     post_id: Uuid,
@@ -940,6 +854,16 @@ async fn apply_status_transition_in_tx(
         return Err(BlogError::conflict(
             "Blog post changed concurrently before lifecycle transition",
         ));
+    }
+
+    // A preview token authorizes a read of a *draft* only: `get_draft_preview` refuses to
+    // serve any other status. A token row that outlived the draft state would still be a
+    // live authorization the moment the post returned to draft (`unpublish`, `restore`),
+    // so leaving the draft state revokes the post's tokens in the same transaction. The
+    // delete is tenant- and post-scoped, and it is a no-op for a post that had no tokens.
+    if next != BlogPostStatus::Draft {
+        crate::services::preview_token::delete_post_preview_tokens_in_tx(txn, tenant_id, post_id)
+            .await?;
     }
 
     Ok(())

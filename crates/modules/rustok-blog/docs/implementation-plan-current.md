@@ -515,6 +515,18 @@ base `1a420c8`).
   `src/tests/hardening.rs` (`set_post_schedule`/`make_post_due`) so the owner tests and
   the worker tests share one way to reach a due state. `bulk_*` keeps its in-module bound
   test and preview tokens were already covered by the H-1 tests.
+- **M-13 residual, token half.** A preview token now authorizes a draft read for exactly as
+  long as the post is a draft. `apply_status_transition_in_tx`
+  (`src/services/post/commands.rs`) deletes the post's tokens inside the transition
+  transaction whenever the post leaves the draft state, so manual publish, scheduled publish
+  (`blog_scheduled_publish`) and archive all revoke them together with the status change.
+  The delete is tenant- and post-scoped and a no-op without tokens. This closes the silent
+  resurrection path the audit described: the accessor refuses to serve a non-draft post, but
+  a surviving row became a live authorization again once `unpublish` or `restore` returned the
+  post to draft. Covered by `leaving_draft_revokes_the_post_preview_tokens`
+  (`src/tests/preview_token.rs`), which walks draft → publish → unpublish → publish → archive
+  and asserts both the row count and that a revoked token never resolves again, with another
+  tenant's live token untouched.
 
 ### Verification status
 
@@ -618,8 +630,9 @@ Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit
 - **H-5 amplification (open).** A bulk request is now bounded at 100 ids, but the
   command still runs one transaction and one lifecycle event per id inside the request
   instead of queueing the batch.
-- **M-13 residuals (open).** Preview reads have no audit trail, and archiving a post
-  does not revoke its already-minted tokens; both are documented in the module README.
+- **M-13 residual (open).** Preview reads have no audit trail; it is documented in the
+  module README. The token half of M-13 is closed — leaving the draft state revokes the
+  post's tokens in the same lifecycle transaction (see "Fixed in this wave").
 - **Canonical layout documentation (open, docs only).**
   `docs/backend/module-backend-implementation.md` lists `src/runtime.rs` as an optional
   module slot, while `verify:module-source-layout` allows only `lib.rs` and `module.rs`
