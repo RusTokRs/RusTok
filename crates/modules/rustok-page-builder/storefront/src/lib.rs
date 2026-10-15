@@ -12,8 +12,7 @@ use fly::{
 };
 use leptos::prelude::*;
 use rustok_page_builder::render::{
-    PageBuilderRenderRequest, PageBuilderRenderResponse, PageBuilderRuntimeRenderRequest,
-    PageBuilderRuntimeRenderResponse, render_page_builder_project, render_page_builder_runtime,
+    PageBuilderRuntimeRenderRequest, PageBuilderRuntimeRenderResponse, render_page_builder_runtime,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -135,7 +134,9 @@ pub fn PageBuilderStorefront(
             project_data,
             selection,
             policy,
-            rich_text_renderer.as_deref().map(|r| r as &dyn RichTextHtmlRenderer),
+            rich_text_renderer
+                .as_deref()
+                .map(|r| r as &dyn RichTextHtmlRenderer),
         )
         .map(|output| (output.page, 0, 0)),
     };
@@ -291,8 +292,12 @@ mod tests {
         )
         .expect("storefront output");
         assert!(output.page.html.contains("data-fly-action"));
-        assert!(output.page.html.contains("data-fly-action-kind=\"toggle_visibility\""));
+        assert!(
+            output
+                .page
+                .html
+                .contains("data-fly-action-kind=\"toggle_visibility\"")
+        );
         assert!(!fly_browser::FLY_ACTIONS_JS.is_empty());
     }
 }
-
