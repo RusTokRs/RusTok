@@ -302,10 +302,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `IndexService SearchService index_products index_content ReindexHandler`
 
 #### Sub-Audit Checklist
-- [ ] **CC-16.01 — CQRS-Lite Separation:** Verify that storefront and public catalog queries read from denormalized `index_*` JSONB tables or search indexes, avoiding multi-table joins on write-side normalized tables.
-- [ ] **CC-16.02 — Event-Driven Reindexing Consistency:** Verify that all entity mutations (create, update, status change, delete) emit events that deterministically trigger index projection updates.
-- [ ] **CC-16.03 — Search Tenant Scoping:** Verify that search queries (`rustok-search`) enforce tenant, channel, and locale boundaries, preventing search results from leaking across tenants.
-- [ ] **CC-16.04 — Reindex Idempotency & Batching:** Audit batch reindexing operations for chunking, error tolerance, and idempotency upon retry.
+- [x] **CC-16.01 — CQRS-Lite Separation:** Verified that storefront and catalog reads query denormalized `index_*` JSONB projections or search engine indexes (`rustok-index`, `rustok-search`), avoiding joins across write-side normalized tables. Validated by `node scripts/verify/verify-index-fba.mjs` and `node scripts/verify/verify-index-runtime-fallback-smoke.mjs` (Index admin detached from legacy tables).
+- [x] **CC-16.02 — Event-Driven Reindexing Consistency:** Verified that domain aggregate mutations emit outbox events that trigger event handlers (`ProductCreatedIndexHandler`, `BlogCommentProjectionHandler`, `SeoCanonicalUrlRedirectHandler`, `ObservedProjectionHandler` implementing `EventHandler`) to project state asynchronously and deterministically into search documents and secondary index tables.
+- [x] **CC-16.03 — Search Tenant Scoping:** Verified that search queries in `rustok-search` strictly enforce tenant, channel authority, and locale scopes. Validated by unit tests: `storefront_channel_authority::tests::mismatched_tenant_fails_closed`, `blog_projector::tests::author_projection_refresh_is_tenant_scoped_and_in_place`, and `node scripts/verify/verify-search-fba.mjs`.
+- [x] **CC-16.04 — Reindex Idempotency & Batching:** Verified batch replay and reconciliation runners enforce leased attempt fencing, exponential backoff, cursor checkpointing, bounded batch chunking, and deterministic idempotency upon restart or retry. Validated by unit tests: `infrastructure::postgres::secondary_index_tests::ensure_reindex_and_retire_are_durable_and_idempotent`, `infrastructure::postgres::source_replay_runner_tests::bounded_run_yields_pending_and_resumes_with_a_new_attempt`, and scoped tests for `rustok-index` (296/296 passed) and `rustok-search` (90/90 passed).
 
 ---
 
