@@ -585,6 +585,17 @@ base `1a420c8`).
   now re-exports the constant, and `verify-module-reference-contract.mjs` resolves every
   `src/services/mod.rs` re-export against the module it names, so a re-export of a symbol that
   does not exist fails the guard instead of reaching `rustc`.
+- Still open after those three repairs: the Blog cargo workflows (`delete lifecycle`,
+  `mirror write retirement`, `category hierarchy contract`, `legacy storage retirement`) fail on
+  this branch at their first `cargo test --locked -p rustok-blog` step. The environment cannot
+  retrieve the job logs (`EOF` from the Actions log receiver) and has no cargo, so the failure
+  text is unknown. The only clearly branch-attributable red is `delete lifecycle`, which
+  succeeds on `main` (3b54e18, d543e9d) and failed on every branch push; the other three already
+  fail on `main` at an earlier step (touched-file formatting or a node guard), so their cargo
+  steps had never run there and may be pre-existing. Workspace-wide `Cargo Check`, `Clippy`,
+  `Documentation` and `Unused Dependencies` are red on `main` as well. `cargo test -p
+  rustok-blog` and `cargo test -p rustok-blog --features runtime` remain the gate that
+  separates a remaining compile error from a test-level difference.
 - The unit tests added with the bulk/token documentation step
   (`bulk_failures_are_reported_through_the_public_boundary`,
   `cleanup_batch_is_clamped_into_the_bounded_range`) are **source-level only in this
