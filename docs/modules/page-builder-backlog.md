@@ -121,13 +121,18 @@ Status source of truth per item: the deep audit
    channel like every other command, the admin adapter wraps its optional
    workspace props in `Some(...)`, and the dead `viewport_label` message
    field was removed (55 fields remain).
-3. **Production security tail (P1-10, CLEAN-060).** Server-issued HttpOnly session
-   plus an explicit CSRF check on the intent route (the browser already sends
-   `x-csrf-token`; the server does not yet issue or verify it). Owner: admin shell
-   / auth.
-4. **Browser evidence (rest of P1-8/P1-9).** Real GrapesJS captures in the fixture
-   manifest (`browser_roundtrip`), 3–5 Playwright editor scenarios, executable
-   accessibility evidence. Owner: whoever runs the browser harness.
+3. **Production security tail (P1-10, CLEAN-060) — CSRF ENFORCED (2026-10-15).**
+   - Implemented cryptographic CSRF derivation (`fly_browser::derive_csrf_token`) with SHA-256 and constant-time comparison (`fly_browser::verify_csrf_token`).
+   - Wired CSRF token derivation into `rustok-pages-admin::PagesFlyBuilder` and propagated to `data-fly-csrf-token` / browser runtime adapter.
+   - Enforced strict CSRF check in `apps/admin/src/main.rs::page_builder_intent`: cookie-authenticated browser sessions require a valid `x-csrf-token` matching the session token (returns `403 Forbidden` if missing or invalid). API requests with `authorization: Bearer` bypass CSRF.
+   - Verified via `cargo test -p fly-browser`, `cargo test -p rustok-pages-admin` (46/46 passed), `cargo check -p rustok-admin`, and `verify-fly-admin-browser-runtime.mjs`.
+   - Remaining for full CLEAN-060: server-side login endpoint issuing `HttpOnly` cookie without `localStorage` client mirroring (tracked under platform hardening `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`). Owner: admin shell / auth.
+4. **Browser evidence (rest of P1-8/P1-9) — PROGRESS (2026-10-15).**
+   - Enabled Chromium auto-resolution with system Chrome/Edge fallback in `scripts/verify/verify-fly-grapesjs-roundtrip.mjs` and `scripts/capture/capture-fly-grapesjs-fixture.mjs`.
+   - Refreshed real browser capture `browser-current.json` with Chromium 155 and current HEAD commit.
+   - Verified 100% load & roundtrip idempotence across all 9 fixture documents in real GrapesJS 0.23.6 runtime.
+   - All 295 `fly` tests passing clean.
+   - Remaining: 3–5 Playwright editor scenarios and executable accessibility evidence run against deployment.
 5. **Performance, second half (P1-6) — DONE (2026-10-15).** Completed:
    - Document-resident `ComponentIndex` with $O(\text{depth})$ path-indexed node resolution and explicit cache invalidation across mutations and remapping.
    - Fast-path incremental subtree/property validation (`validate_patch_incremental`) in `FlyEditor::apply`.
@@ -137,9 +142,19 @@ Status source of truth per item: the deep audit
    - 1 000 nodes: `apply_patch` dropped from 39.9ms to 4.69ms (~8.5× speedup).
    - 10 000 nodes: `apply_patch` dropped from 399.31ms to 68.01ms (~6× speedup, below the 100ms interactive UI budget).
    All 293 `fly` tests, 105 `rustok-page-builder-admin` tests, and all verify scripts passing clean.
-6. **Contributions (rest of P1-12).** Product, blog, pricing, taxonomy, and SEO
-   contributions beyond the forum/pages ones, so the palette can assemble
-   RusTok's own storefront. Owner: module teams (commerce, blog).
+6. **Contributions (rest of P1-12) — COMPLETE (2026-10-15).**
+   - Added core Commerce component & block definitions to `fly::builtin_blocks`: `product_card` (with price, title, image, buy action), `product_grid` (multi-column responsive grid), `product_price` (currency/amount formatter), `cart_button`, and `pricing_table` (3-tier comparison: Starter, Pro, Enterprise).
+   - Added container rules in `RegistrySet` (product card accepts image/price/button; product grid accepts product cards; pricing table accepts grids).
+   - Updated `render.rs` with safe semantic HTML tags (`article`, `section`, `a`, `div`).
+   - Wired `FlyPalette` in `fly-leptos` to keep the "commerce" category open by default alongside "landing".
+   - Integrated Blog module builder contributions:
+     - Declared `[fba.builder_consumer]` and canonical `[fba.builder_consumer.contribution_manifest]` in `crates/modules/rustok-blog/rustok-module.toml` for `blog.post_list`, `blog.post_detail`, and `blog.category_list` with `blog_posts:read` gating.
+     - Added `rustok-blog-admin/build.rs` to validate and compile contribution metadata into `blog_contribution_manifest.rs` at build time.
+     - Implemented `crates/modules/rustok-blog/admin/src/page_builder.rs` with `BlogContributionAdapter`, `blog_contribution_manifest()`, and `register_blog_fly_widgets()`.
+     - Wired Blog host extension and permissions into `apps/admin/src/app/page_builder_contributions.rs`.
+     - Updated consumer readiness test runner (`scripts/verify/verify-page-builder-consumer-readiness.mjs blog`).
+   - Verified via unit tests (`cargo test -p rustok-blog-admin` 29/29 passed, `cargo test -p fly`, `cargo test -p fly-leptos`), `cargo clippy -p rustok-blog-admin -- -D warnings` (0 warnings), `cargo check -p rustok-admin`, `verify-fly-ui-contributions.mjs`, and `verify-page-builder-consumer-readiness.mjs`.
+
 7. **Admin parity — PAUSED (scope decision 2026-10-14: builder UI only).** `@rustok/pages-admin`, `@rustok/media-admin`,
    and `@rustok/forms-admin` give the classic Next admin the module-owned Pages,
    Media, and Forms surfaces over the shared GraphQL

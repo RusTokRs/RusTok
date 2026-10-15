@@ -20,6 +20,8 @@ ssr = [
 ]
 
 [dependencies]
+fly = { path = "../../../ui/fly" }
+fly-ui = { path = "../../../ui/fly/ui" }
 rustok-ui-core.workspace = true
 rustok-ui-transport.workspace = true
 rustok-grid.workspace = true
@@ -43,5 +45,11 @@ rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = fal
 rustok-seo-panel.workspace = true
 uuid.workspace = true
 
+[build-dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+toml.workspace = true
+
 [package.metadata.cargo-udeps.ignore]
 normal = ["leptos-ui"]
+

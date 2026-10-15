@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +20,24 @@ const manifest = JSON.parse(await readFile(path.join(fixtureRoot, 'manifest.json
 const allowedNormalizationIds = new Set(['drop_empty_frame_head']);
 
 validateManifest(manifest);
-const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined;
+function resolveChromiumExecutable() {
+  if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE) {
+    return process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
+  }
+  if (process.platform === 'win32') {
+    const candidates = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    ];
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
+
+const executablePath = resolveChromiumExecutable();
 const browser = await chromium.launch({ headless: true, executablePath });
 
 try {

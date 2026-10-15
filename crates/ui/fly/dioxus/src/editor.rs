@@ -71,6 +71,8 @@ pub fn FlyEditorWorkspace(
     let selected = editor.read().selection().map(ToString::to_string);
     let token_error_message = token_error.read().clone();
     let current_document = editor.read().document().clone();
+    let can_undo = intent_mode || editor.read().history().can_undo();
+    let can_redo = intent_mode || editor.read().history().can_redo();
 
     rsx! {
         section {
@@ -80,6 +82,7 @@ pub fn FlyEditorWorkspace(
             div { class: "fly-editor__toolbar", role: "toolbar", aria_label: "{toolbar_label}",
                 button {
                     r#type: "button",
+                    disabled: !can_undo,
                     onclick: {
                         let instance = intent_instance.clone();
                         move |_| {
@@ -97,6 +100,7 @@ pub fn FlyEditorWorkspace(
                 }
                 button {
                     r#type: "button",
+                    disabled: !can_redo,
                     onclick: {
                         let instance = intent_instance.clone();
                         move |_| {

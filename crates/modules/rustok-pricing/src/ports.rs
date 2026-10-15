@@ -241,6 +241,28 @@ impl PricingReadPort for crate::PricingService {
         let owner_operation = "resolve_product_price";
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.variant_id, "variant_id")?;
+        if let Some(product_id) = request.product_id {
+            validate_non_nil_uuid(product_id, "product_id")?;
+        }
+        if let Some(region_id) = request.region_id {
+            validate_non_nil_uuid(region_id, "region_id")?;
+        }
+        if let Some(channel_id) = request.channel_id {
+            validate_non_nil_uuid(channel_id, "channel_id")?;
+        }
+        if let Some(price_list_id) = request.price_list_id {
+            validate_non_nil_uuid(price_list_id, "price_list_id")?;
+        }
+        tracing::debug!(
+            owner = PRICING_OWNER,
+            tenant_id = %tenant_id,
+            variant_id = %request.variant_id,
+            product_id = ?request.product_id,
+            currency = %request.currency_code,
+            operation = owner_operation,
+            "pricing port resolve_product_price entered"
+        );
         let variant_id = request.variant_id;
 
         // Resolve the tenant-owned product projection first and verify that the
@@ -345,6 +367,14 @@ impl PricingReadPort for crate::PricingService {
         let owner_operation = "read_price_list_projection";
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.price_list_id, "price_list_id")?;
+        tracing::debug!(
+            owner = PRICING_OWNER,
+            tenant_id = %tenant_id,
+            price_list_id = %request.price_list_id,
+            operation = owner_operation,
+            "pricing port read_price_list_projection entered"
+        );
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
         let lists = self
             .list_active_price_lists(tenant_id, Some(locale), Some(locale))
@@ -388,6 +418,16 @@ impl PricingReadPort for crate::PricingService {
         let owner_operation = "list_active_price_list_projections";
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        if let Some(channel_id) = request.channel_id {
+            validate_non_nil_uuid(channel_id, "channel_id")?;
+        }
+        tracing::debug!(
+            owner = PRICING_OWNER,
+            tenant_id = %tenant_id,
+            channel_id = ?request.channel_id,
+            operation = owner_operation,
+            "pricing port list_active_price_list_projections entered"
+        );
         let lists = self
             .list_active_price_lists_for_channel(
                 tenant_id,
@@ -421,6 +461,17 @@ impl PricingReadPort for crate::PricingService {
         let owner_operation = "read_admin_product_pricing_projection";
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.product_id, "product_id")?;
+        if let Some(price_list_id) = request.selected_price_list_id {
+            validate_non_nil_uuid(price_list_id, "selected_price_list_id")?;
+        }
+        tracing::debug!(
+            owner = PRICING_OWNER,
+            tenant_id = %tenant_id,
+            product_id = %request.product_id,
+            operation = owner_operation,
+            "pricing port read_admin_product_pricing_projection entered"
+        );
         self.get_admin_product_pricing_with_locale_fallback(
             tenant_id,
             request.product_id,
@@ -440,6 +491,13 @@ impl PricingReadPort for crate::PricingService {
         let owner_operation = "read_storefront_product_pricing_projection";
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        tracing::debug!(
+            owner = PRICING_OWNER,
+            tenant_id = %tenant_id,
+            handle = %request.handle,
+            operation = owner_operation,
+            "pricing port read_storefront_product_pricing_projection entered"
+        );
         self.get_published_product_pricing_by_handle_with_locale_fallback(
             tenant_id,
             request.handle.trim(),
@@ -459,6 +517,22 @@ impl PricingReadPort for crate::PricingService {
         let owner_operation = "preview_variant_discount";
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.variant_id, "variant_id")?;
+        if let Some(price_list_id) = request.price_list_id {
+            validate_non_nil_uuid(price_list_id, "price_list_id")?;
+        }
+        if let Some(channel_id) = request.channel_id {
+            validate_non_nil_uuid(channel_id, "channel_id")?;
+        }
+        tracing::debug!(
+            owner = PRICING_OWNER,
+            tenant_id = %tenant_id,
+            variant_id = %request.variant_id,
+            price_list_id = ?request.price_list_id,
+            discount_percent = %request.discount_percent,
+            operation = owner_operation,
+            "pricing port preview_variant_discount entered"
+        );
         let preview = if let Some(price_list_id) = request.price_list_id {
             self.preview_price_list_percentage_discount_with_channel(
                 tenant_id,
@@ -496,6 +570,22 @@ impl PricingWritePort for crate::PricingService {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let actor_id = parse_port_actor_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.variant_id, "variant_id")?;
+        if let Some(price_list_id) = request.price_list_id {
+            validate_non_nil_uuid(price_list_id, "price_list_id")?;
+        }
+        if let Some(channel_id) = request.channel_id {
+            validate_non_nil_uuid(channel_id, "channel_id")?;
+        }
+        tracing::debug!(
+            owner = PRICING_OWNER,
+            tenant_id = %tenant_id,
+            variant_id = %request.variant_id,
+            price_list_id = ?request.price_list_id,
+            amount = %request.amount,
+            operation = owner_operation,
+            "pricing port upsert_variant_price entered"
+        );
         self.upsert_admin_variant_price_with_channel(
             tenant_id,
             actor_id,
@@ -523,6 +613,18 @@ impl PricingWritePort for crate::PricingService {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let actor_id = parse_port_actor_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.price_list_id, "price_list_id")?;
+        if let Some(channel_id) = request.channel_id {
+            validate_non_nil_uuid(channel_id, "channel_id")?;
+        }
+        tracing::debug!(
+            owner = PRICING_OWNER,
+            tenant_id = %tenant_id,
+            price_list_id = %request.price_list_id,
+            channel_id = ?request.channel_id,
+            operation = owner_operation,
+            "pricing port set_price_list_scope entered"
+        );
         self.set_price_list_scope(
             tenant_id,
             actor_id,
@@ -544,6 +646,22 @@ impl PricingWritePort for crate::PricingService {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let actor_id = parse_port_actor_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.variant_id, "variant_id")?;
+        if let Some(price_list_id) = request.price_list_id {
+            validate_non_nil_uuid(price_list_id, "price_list_id")?;
+        }
+        if let Some(channel_id) = request.channel_id {
+            validate_non_nil_uuid(channel_id, "channel_id")?;
+        }
+        tracing::debug!(
+            owner = PRICING_OWNER,
+            tenant_id = %tenant_id,
+            variant_id = %request.variant_id,
+            price_list_id = ?request.price_list_id,
+            discount_percent = %request.discount_percent,
+            operation = owner_operation,
+            "pricing port apply_variant_discount entered"
+        );
         let result = if let Some(price_list_id) = request.price_list_id {
             self.apply_price_list_percentage_discount_with_channel(
                 tenant_id,
@@ -581,6 +699,14 @@ impl PricingWritePort for crate::PricingService {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let actor_id = parse_port_actor_id(&context, owner_operation)?;
+        validate_non_nil_uuid(request.price_list_id, "price_list_id")?;
+        tracing::debug!(
+            owner = PRICING_OWNER,
+            tenant_id = %tenant_id,
+            price_list_id = %request.price_list_id,
+            operation = owner_operation,
+            "pricing port set_price_list_percentage_rule entered"
+        );
         self.set_price_list_percentage_rule_projection(
             tenant_id,
             actor_id,
@@ -860,21 +986,47 @@ fn log_pricing_context_rejection(
     );
 }
 
+fn validate_non_nil_uuid(id: Uuid, field: &'static str) -> Result<(), PortError> {
+    if id.is_nil() {
+        return Err(PortError::validation(
+            format!("pricing.{field}_nil"),
+            format!("{field} must not be a nil UUID"),
+        ));
+    }
+    Ok(())
+}
+
 fn parse_port_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         log_pricing_context_rejection(context, operation, "pricing.tenant_id_invalid", "tenant_id");
         PortError::validation(
             "pricing.tenant_id_invalid",
             "pricing request context is invalid",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        log_pricing_context_rejection(context, operation, "pricing.tenant_id_nil", "tenant_id");
+        return Err(PortError::validation(
+            "pricing.tenant_id_nil",
+            "tenant_id must not be a nil UUID",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn parse_port_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
+    let actor_id = Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
         log_pricing_context_rejection(context, operation, "pricing.actor_id_invalid", "actor_id");
         PortError::validation("pricing.actor_id_invalid", "pricing write actor is invalid")
-    })
+    })?;
+    if actor_id.is_nil() {
+        log_pricing_context_rejection(context, operation, "pricing.actor_id_nil", "actor_id");
+        return Err(PortError::validation(
+            "pricing.actor_id_nil",
+            "actor_id must not be a nil UUID",
+        ));
+    }
+    Ok(actor_id)
 }
 
 fn pricing_error_to_port_error(
@@ -1077,5 +1229,81 @@ fn pricing_error_to_port_error(
                 "pricing operation failed an internal invariant",
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::PortActor;
+
+    #[test]
+    fn validate_non_nil_uuid_accepts_valid_and_rejects_nil() {
+        let valid = Uuid::new_v4();
+        assert!(validate_non_nil_uuid(valid, "test_field").is_ok());
+
+        let err = validate_non_nil_uuid(Uuid::nil(), "test_field").unwrap_err();
+        assert_eq!(err.code, "pricing.test_field_nil");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+    }
+
+    #[test]
+    fn parse_port_tenant_id_accepts_valid_and_rejects_nil_or_invalid() {
+        let valid_tenant = Uuid::new_v4();
+        let ctx = PortContext::new(
+            valid_tenant.to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        assert_eq!(parse_port_tenant_id(&ctx, "test_op").unwrap(), valid_tenant);
+
+        let nil_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        let err = parse_port_tenant_id(&nil_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "pricing.tenant_id_nil");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+
+        let invalid_ctx =
+            PortContext::new("not-a-uuid", PortActor::system(), "en-US", Uuid::new_v4());
+        let err = parse_port_tenant_id(&invalid_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "pricing.tenant_id_invalid");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+    }
+
+    #[test]
+    fn parse_port_actor_id_accepts_valid_and_rejects_nil_or_invalid() {
+        let valid_actor = Uuid::new_v4();
+        let ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(valid_actor.to_string()),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        assert_eq!(parse_port_actor_id(&ctx, "test_op").unwrap(), valid_actor);
+
+        let nil_ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(Uuid::nil().to_string()),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        let err = parse_port_actor_id(&nil_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "pricing.actor_id_nil");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+
+        let invalid_ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user("not-a-uuid"),
+            "en-US",
+            Uuid::new_v4(),
+        );
+        let err = parse_port_actor_id(&invalid_ctx, "test_op").unwrap_err();
+        assert_eq!(err.code, "pricing.actor_id_invalid");
+        assert_eq!(err.kind, PortErrorKind::Validation);
     }
 }

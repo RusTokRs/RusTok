@@ -805,13 +805,14 @@ fn safe_tag(component: &ComponentObject) -> &'static str {
         .tag_name
         .as_deref()
         .unwrap_or_else(|| match component.component_type() {
-            "wrapper" | "container" | "row" | "column" | "grid" | "spacer" | "symbol" => "div",
-            "section" => "section",
+            "wrapper" | "container" | "row" | "column" | "grid" | "spacer" | "symbol"
+            | "product_price" => "div",
+            "section" | "product_grid" | "pricing_table" => "section",
             "heading" => "h2",
             "text" => "p",
             "list" => "ul",
             "list_item" => "li",
-            "link" => "a",
+            "link" | "cart_button" => "a",
             "image" => "img",
             "video" => "video",
             "media" => "figure",
@@ -824,6 +825,7 @@ fn safe_tag(component: &ComponentObject) -> &'static str {
             "select" => "select",
             "option" => "option",
             "submit" => "button",
+            "product_card" => "article",
             _ => "div",
         })
         .to_ascii_lowercase();

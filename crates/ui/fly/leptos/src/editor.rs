@@ -107,7 +107,7 @@ pub fn FlyPalette(
             {groups
                 .into_iter()
                 .map(|(category, blocks)| {
-                    let start_open = category == "landing";
+                    let start_open = category == "landing" || category == "commerce";
                     view! {
                         <details class="fly-palette__category" open=start_open>
                             <summary>{category}</summary>

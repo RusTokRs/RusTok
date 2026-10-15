@@ -161,7 +161,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-03.11 — `crates/modules/rustok-payment`** — payment providers, transaction lifecycle, idempotency receipts, webhook verification. (Done: enforced non-nil UUID validation across ports, admin commands/reads, checkout execution/compensation, provider operation/event journals, controllers, and services; added structured entry debug tracing; bounded pagination parameters; added unit tests for non-nil UUID guards and port context validation; verified all 47 unit tests pass, clippy and fmt clean).
 
 #### 6. rustok-pricing
-- [ ] **FS-03.12 — `crates/modules/rustok-pricing` & `rustok-pricing-persistence`** — price resolution rules, currency arithmetic, discount evaluation.
+- [x] **FS-03.12 — `crates/modules/rustok-pricing` & `rustok-pricing-persistence`** — price resolution rules, currency arithmetic, discount evaluation. (Done: enforced non-nil UUID validation across PricingReadPort, PricingWritePort, PriceListOwnerPort, and PricingService; added structured entry debug tracing; verified currency rounding discipline via money::round_to_currency; added unit tests for port context parsing, non-nil UUID guards, and pricing math; verified 10 lib tests, 7 integration tests in rustok-pricing, and 5 lib tests in rustok-pricing-persistence pass, clippy and fmt clean).
 
 #### 7. rustok-inventory
 - [ ] **FS-03.13 — `crates/modules/rustok-inventory`** — stock allocation, reservation leases, concurrency guards, backorder policies.
@@ -178,7 +178,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-10-13T20:15:00Z`
-- **Progress:** `11 / 254` components audited (**4.3%**)
+- **Progress:** `12 / 254` components audited (**4.7%**)
 - **Total Workspace Codebase:** ~350,000 LOC across 254 modules/apps
 
 ---

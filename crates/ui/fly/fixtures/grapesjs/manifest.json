@@ -20,23 +20,6 @@
       "purpose": "Fly codec preservation for unknown providers, plugin metadata and future fields"
     },
     {
-      "file": "browser-current.json",
-      "seed": "baseline.json",
-      "source": "playwright-chromium-getProjectData",
-      "real_browser_capture": true,
-      "browser_roundtrip": true,
-      "current_runtime": true,
-      "purpose": "Real GrapesJS browser normalization and bidirectional reload baseline",
-      "grapesjs_version": "0.23.6",
-      "grapesjs_preset_webpage_version": "1.0.3",
-      "browser": "chromium 149.0.7827.55",
-      "capture_commit": "31b1c27a0ce5f2650341cfee742dd4986216881f",
-      "plugins": [
-        "grapesjs-preset-webpage@1.0.3"
-      ],
-      "captured_at": "2026-07-20T07:45:32.930Z"
-    },
-    {
       "file": "01-hero-cta.json",
       "source": "repository-structural-baseline",
       "real_browser_capture": false,
@@ -107,6 +90,23 @@
       "browser_roundtrip": false,
       "browser_skip_reason": "Covered by the Rust codec/render fixture harness in fly tests; not run through the browser harness.",
       "purpose": "Large document (660+ components) for render/validation scale behaviour"
+    },
+    {
+      "file": "browser-current.json",
+      "seed": "baseline.json",
+      "source": "playwright-chromium-getProjectData",
+      "real_browser_capture": true,
+      "browser_roundtrip": true,
+      "current_runtime": true,
+      "purpose": "Real GrapesJS browser normalization and bidirectional reload baseline",
+      "grapesjs_version": "0.23.6",
+      "grapesjs_preset_webpage_version": "1.0.3",
+      "browser": "chromium 155.0.8059.41",
+      "capture_commit": "4a6387a1409ad1e565064047706a5694f14dd667",
+      "plugins": [
+        "grapesjs-preset-webpage@1.0.3"
+      ],
+      "captured_at": "2026-10-15T14:01:05.917Z"
     }
   ],
   "required_real_capture_metadata": [

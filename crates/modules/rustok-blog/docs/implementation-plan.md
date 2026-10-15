@@ -1294,6 +1294,14 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
     the Content-owned frame router is generated from the canonical richtext asset
     manifest so Leptos does not duplicate Next route logic or Blog asset ownership.
 
+## Immediate next action
+
+For Page Builder integration, retain build and contribution manifest metadata from
+`rustok-module.toml` through `rustok-blog-admin/build.rs`. The Blog module provides
+canonical Fly widget contribution descriptors (`blog.post_list`, `blog.post_detail`,
+`blog.category_list`) under owner provider `rustok.blog` with `blog_posts:read`
+permission gating. Source composition and Fly registry installation are complete.
+
 ## Next results
 
 1. **Execute category runtime evidence.** Exercise HTTP CRUD using

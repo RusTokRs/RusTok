@@ -7,8 +7,7 @@ use serde_json::json;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-use rustok_api::normalize_locale_tag;
-use rustok_api::{Action, Permission};
+use rustok_api::{normalize_locale_tag, Permission};
 
 use crate::entities::{
     ai_approval_requests, ai_chat_messages, ai_chat_runs, ai_chat_sessions, ai_provider_profiles,

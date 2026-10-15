@@ -75,3 +75,166 @@ context = "rustok_api::ports::PortContext"
 error = "rustok_api::ports::PortError"
 fallback_profiles = []
 degraded_modes = ["hide_comment_form", "show_cached_thread_snapshot"]
+
+[fba.builder_consumer]
+provider_module = "page-builder"
+contract = "grapesjs"
+contract_version = "1.0"
+builder_contract_version = "1.0"
+consumer_min_version = "1.0"
+catalog_version = "v1"
+capabilities = ["preview", "tree", "properties", "publish"]
+
+# Canonical Fly contracts for the Blog Page Builder consumer. Block ids intentionally equal
+# widget component types, so the module manifest remains the only identity mapping authority.
+[fba.builder_consumer.contribution_manifest]
+owner_provider = "rustok.blog"
+target_providers = {}
+dependencies = []
+required_permissions = ["blog_posts:read"]
+
+[[fba.builder_consumer.contribution_manifest.admin]]
+role = "widget_catalog"
+id = "rustok.blog.widget-catalog"
+provider = "rustok.blog"
+required_capabilities = ["tree", "properties"]
+blocks = [
+  "blog.post_list",
+  "blog.post_detail",
+  "blog.category_list",
+]
+
+[[fba.builder_consumer.contribution_manifest.admin.property_editors]]
+id = "rustok.blog.post-list.properties"
+component_type = "blog.post_list"
+provider = "rustok.blog"
+
+[fba.builder_consumer.contribution_manifest.admin.property_editors.accessibility]
+label_message_id = "blog.builder.widget.postList.label"
+description_message_id = "blog.builder.widget.postList.description"
+keyboard_hint_message_id = ""
+
+[fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema]
+format = "blog_widget_owner_schema_ref_v1"
+schema_id = "blog.post_list.v1"
+catalog_endpoint = "/api/blog/widgets/catalog"
+validate_endpoint = "/api/blog/widgets/validate"
+owner_data_state = "owner_property_editor_ready"
+
+[[fba.builder_consumer.contribution_manifest.admin.property_editors]]
+id = "rustok.blog.post-detail.properties"
+component_type = "blog.post_detail"
+provider = "rustok.blog"
+
+[fba.builder_consumer.contribution_manifest.admin.property_editors.accessibility]
+label_message_id = "blog.builder.widget.postDetail.label"
+description_message_id = "blog.builder.widget.postDetail.description"
+keyboard_hint_message_id = ""
+
+[fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema]
+format = "blog_widget_owner_schema_ref_v1"
+schema_id = "blog.post_detail.v1"
+catalog_endpoint = "/api/blog/widgets/catalog"
+validate_endpoint = "/api/blog/widgets/validate"
+owner_data_state = "owner_property_editor_ready"
+
+[[fba.builder_consumer.contribution_manifest.admin.property_editors]]
+id = "rustok.blog.category-list.properties"
+component_type = "blog.category_list"
+provider = "rustok.blog"
+
+[fba.builder_consumer.contribution_manifest.admin.property_editors.accessibility]
+label_message_id = "blog.builder.widget.categoryList.label"
+description_message_id = "blog.builder.widget.categoryList.description"
+keyboard_hint_message_id = ""
+
+[fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema]
+format = "blog_widget_owner_schema_ref_v1"
+schema_id = "blog.category_list.v1"
+catalog_endpoint = "/api/blog/widgets/catalog"
+validate_endpoint = "/api/blog/widgets/validate"
+owner_data_state = "owner_property_editor_ready"
+
+[fba.builder_consumer.contribution_manifest.admin.messages]
+"blog.builder.contributions.widgetCatalog" = "Blog widgets"
+"blog.builder.widget.postList.label" = "Blog post list"
+"blog.builder.widget.postList.description" = "Configure a Blog-owned post list widget."
+"blog.builder.widget.postDetail.label" = "Blog post detail"
+"blog.builder.widget.postDetail.description" = "Configure a Blog-owned post detail widget."
+"blog.builder.widget.categoryList.label" = "Blog category list"
+"blog.builder.widget.categoryList.description" = "Configure a Blog-owned category list widget."
+
+[fba.builder_consumer.contribution_manifest.admin.metadata]
+format = "blog_widget_catalog_v1"
+surface = "admin"
+catalog_version = "v1"
+contract_version = "1.0"
+catalog_endpoint = "/api/blog/widgets/catalog"
+validate_endpoint = "/api/blog/widgets/validate"
+preview_endpoint = "/api/blog/widgets/preview"
+catalog_source = "fba.builder_consumer.widgets"
+adapter_state = "fly_contract_ready"
+preview_data_state = "owner_preview_transport_ready"
+property_data_state = "owner_property_editor_ready"
+persistence_owner = "blog"
+authorization_owner = "blog"
+
+[[fba.builder_consumer.contribution_manifest.admin]]
+role = "widget_preview"
+id = "rustok.blog.widget-preview"
+provider = "rustok.blog"
+required_capabilities = ["preview"]
+blocks = []
+
+[[fba.builder_consumer.contribution_manifest.admin.renderers]]
+id = "rustok.blog.post-list.renderer"
+component_type = "blog.post_list"
+provider = "rustok.blog"
+presentations = ["full", "inline", "preview", "read_only"]
+
+[fba.builder_consumer.contribution_manifest.admin.renderers.accessibility]
+label_message_id = "blog.builder.widget.postList.label"
+description_message_id = "blog.builder.widget.postList.description"
+keyboard_hint_message_id = ""
+
+[[fba.builder_consumer.contribution_manifest.admin.renderers]]
+id = "rustok.blog.post-detail.renderer"
+component_type = "blog.post_detail"
+provider = "rustok.blog"
+presentations = ["full", "inline", "preview", "read_only"]
+
+[fba.builder_consumer.contribution_manifest.admin.renderers.accessibility]
+label_message_id = "blog.builder.widget.postDetail.label"
+description_message_id = "blog.builder.widget.postDetail.description"
+keyboard_hint_message_id = ""
+
+[[fba.builder_consumer.contribution_manifest.admin.renderers]]
+id = "rustok.blog.category-list.renderer"
+component_type = "blog.category_list"
+provider = "rustok.blog"
+presentations = ["full", "inline", "preview", "read_only"]
+
+[fba.builder_consumer.contribution_manifest.admin.renderers.accessibility]
+label_message_id = "blog.builder.widget.categoryList.label"
+description_message_id = "blog.builder.widget.categoryList.description"
+keyboard_hint_message_id = ""
+
+[fba.builder_consumer.contribution_manifest.admin.messages]
+"blog.builder.widget.postList.label" = "Blog post list"
+"blog.builder.widget.postList.description" = "Preview a Blog-owned post list widget."
+"blog.builder.widget.postDetail.label" = "Blog post detail"
+"blog.builder.widget.postDetail.description" = "Preview a Blog-owned post detail widget."
+"blog.builder.widget.categoryList.label" = "Blog category list"
+"blog.builder.widget.categoryList.description" = "Preview a Blog-owned category list widget."
+
+[fba.builder_consumer.contribution_manifest.admin.metadata]
+format = "blog_widget_preview_v1"
+surface = "admin"
+catalog_endpoint = "/api/blog/widgets/catalog"
+validate_endpoint = "/api/blog/widgets/validate"
+preview_endpoint = "/api/blog/widgets/preview"
+adapter_state = "fly_contract_ready"
+preview_data_state = "owner_preview_transport_ready"
+persistence_owner = "blog"
+authorization_owner = "blog"
+
