@@ -126,14 +126,13 @@ impl CartStorefrontPort for GuardedCartPort {
         context: PortContext,
         mut request: CartStorefrontCreateRequest,
     ) -> Result<CartResponse, PortError> {
-        if let Some(channel_id) = request.channel_id {
-            if channel_id.is_nil() {
-                return Err(PortError::validation(
-                    "cart.channel_id_nil",
-                    "channel_id must not be a nil UUID",
-                ));
-            }
+        if matches!(request.channel_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "cart.channel_id_nil",
+                "channel_id must not be a nil UUID",
+            ));
         }
+
         tracing::debug!(
             boundary = "guarded_cart_storefront_port",
             operation = "create_storefront_cart",

@@ -405,14 +405,13 @@ fn validate_cart_promotion_request(
             "cart_id must not be a nil UUID",
         ));
     }
-    if let Some(line_item_id) = request.line_item_id {
-        if line_item_id.is_nil() {
-            return Err(PortError::validation(
-                "cart.line_item_id_nil",
-                "line_item_id must not be a nil UUID",
-            ));
-        }
+    if matches!(request.line_item_id, Some(id) if id.is_nil()) {
+        return Err(PortError::validation(
+            "cart.line_item_id_nil",
+            "line_item_id must not be a nil UUID",
+        ));
     }
+
     let code = match &request.scope {
         CartPromotionScopeRequest::LineItem if request.line_item_id.is_none() => {
             Some("cart.promotion_line_item_required")

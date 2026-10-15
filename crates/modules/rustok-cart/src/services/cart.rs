@@ -89,25 +89,17 @@ impl CartService {
         if tenant_id.is_nil() {
             return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
         }
-        if let Some(channel_id) = channel_id {
-            if channel_id.is_nil() {
-                return Err(CartError::Validation("channel_id must not be a nil UUID".to_string()));
-            }
+        if matches!(channel_id, Some(id) if id.is_nil()) {
+            return Err(CartError::Validation("channel_id must not be a nil UUID".to_string()));
         }
-        if let Some(customer_id) = input.customer_id {
-            if customer_id.is_nil() {
-                return Err(CartError::Validation("customer_id must not be a nil UUID".to_string()));
-            }
+        if matches!(input.customer_id, Some(id) if id.is_nil()) {
+            return Err(CartError::Validation("customer_id must not be a nil UUID".to_string()));
         }
-        if let Some(region_id) = input.region_id {
-            if region_id.is_nil() {
-                return Err(CartError::Validation("region_id must not be a nil UUID".to_string()));
-            }
+        if matches!(input.region_id, Some(id) if id.is_nil()) {
+            return Err(CartError::Validation("region_id must not be a nil UUID".to_string()));
         }
-        if let Some(shipping_option_id) = input.selected_shipping_option_id {
-            if shipping_option_id.is_nil() {
-                return Err(CartError::Validation("selected_shipping_option_id must not be a nil UUID".to_string()));
-            }
+        if matches!(input.selected_shipping_option_id, Some(id) if id.is_nil()) {
+            return Err(CartError::Validation("selected_shipping_option_id must not be a nil UUID".to_string()));
         }
         input
             .validate()
@@ -189,15 +181,11 @@ impl CartService {
         input
             .validate()
             .map_err(|error| CartError::Validation(error.to_string()))?;
-        if let Some(product_id) = input.product_id {
-            if product_id.is_nil() {
-                return Err(CartError::Validation("product_id must not be a nil UUID".to_string()));
-            }
+        if matches!(input.product_id, Some(id) if id.is_nil()) {
+            return Err(CartError::Validation("product_id must not be a nil UUID".to_string()));
         }
-        if let Some(variant_id) = input.variant_id {
-            if variant_id.is_nil() {
-                return Err(CartError::Validation("variant_id must not be a nil UUID".to_string()));
-            }
+        if matches!(input.variant_id, Some(id) if id.is_nil()) {
+            return Err(CartError::Validation("variant_id must not be a nil UUID".to_string()));
         }
         if input.unit_price < Decimal::ZERO {
             return Err(CartError::Validation(
@@ -340,15 +328,11 @@ impl CartService {
         input
             .validate()
             .map_err(|error| CartError::Validation(error.to_string()))?;
-        if let Some(region_id) = input.region_id {
-            if region_id.is_nil() {
-                return Err(CartError::Validation("region_id must not be a nil UUID".to_string()));
-            }
+        if matches!(input.region_id, Some(id) if id.is_nil()) {
+            return Err(CartError::Validation("region_id must not be a nil UUID".to_string()));
         }
-        if let Some(shipping_option_id) = input.selected_shipping_option_id {
-            if shipping_option_id.is_nil() {
-                return Err(CartError::Validation("selected_shipping_option_id must not be a nil UUID".to_string()));
-            }
+        if matches!(input.selected_shipping_option_id, Some(id) if id.is_nil()) {
+            return Err(CartError::Validation("selected_shipping_option_id must not be a nil UUID".to_string()));
         }
 
         let txn = self.db.begin().await?;
@@ -396,10 +380,8 @@ impl CartService {
             adjustment
                 .validate()
                 .map_err(|error| CartError::Validation(error.to_string()))?;
-            if let Some(line_item_id) = adjustment.line_item_id {
-                if line_item_id.is_nil() {
-                    return Err(CartError::Validation("line_item_id must not be a nil UUID".to_string()));
-                }
+            if matches!(adjustment.line_item_id, Some(id) if id.is_nil()) {
+                return Err(CartError::Validation("line_item_id must not be a nil UUID".to_string()));
             }
             if adjustment.amount <= Decimal::ZERO {
                 return Err(CartError::Validation(

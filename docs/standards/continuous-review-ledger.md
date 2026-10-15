@@ -152,7 +152,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-03.08 — `crates/modules/rustok-commerce/src/controllers/*` & `graphql*`** — commerce REST/GraphQL transport adapters, input validation, permissions. (Done: enforced non-nil UUID validation for tenant, actor, and resource IDs across all commerce admin and storefront REST controllers and GraphQL helper scopes; added structured entry debug tracing across admin checkout operations, orders owner ports, returns, changes, fulfillments, payments, post-order commands and reads, products, shipping, and storefront checkout, carts, orders, and products; hardened GraphQL current_tenant_scope, require_commerce_permission, product_mutation_actor, and product_query_tenant against nil IDs; added unit tests in common and GraphQL; verified all 202 default and 214 marketplace-financial tests pass and gatekeeper approval).
 
 #### 3. rustok-cart
-- [ ] **FS-03.09 — `crates/modules/rustok-cart`** — cart lifecycle, item mutation validation, pricing integration, currency/tenant scoping.
+- [x] **FS-03.09 — `crates/modules/rustok-cart`** — cart lifecycle, item mutation validation, pricing integration, currency/tenant scoping. (Done: enforced non-nil UUID validation for tenant_id, cart_id, line_item_id, channel_id, customer_id, region_id, and shipping_option_id across ports, checkout_snapshot, marketplace_snapshot, atomic_checkout_guard, atomic_checkout_port, owner_ports, promotion_guard, guarded_ports, helpers, and cart service; added structured entry debug tracing across all cart port boundaries and mutation services; added unit tests for UUID validations in ports and checkout_snapshot; verified all 32 lib tests pass).
 
 #### 4. rustok-order
 - [ ] **FS-03.10 — `crates/modules/rustok-order`** — order state machine, transitions, items validation, event outbox emission.
@@ -178,7 +178,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-10-13T20:15:00Z`
-- **Progress:** `6 / 254` components audited (**2.4%**)
+- **Progress:** `8 / 254` components audited (**3.1%**)
 - **Total Workspace Codebase:** ~350,000 LOC across 254 modules/apps
 
 ---
@@ -250,7 +250,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 9 | 2,081 | None |  |
 | [x] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 45 | 15,736 | 2026-10-15 | Completed all 2 audit tracks in Phase FS-02 (cache service/error taxonomy, invalidation/stampede protection) |
 | [ ] | [admin](../../crates/modules/rustok-cache/admin) | `modules` | 7 | 926 | None |  |
-| [ ] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 73 | 18,625 | None |  |
+| [x] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 73 | 18,625 | 2026-10-15 | Completed cart lifecycle, port boundaries nil UUID guards, entry tracing & validation tests in Phase FS-03.09 |
 | [ ] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 18 | 4,545 | None |  |
 | [ ] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 47 | 11,368 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 14 | 5,173 | None |  |
@@ -258,7 +258,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-comments-api](../../crates/modules/rustok-comments-api) | `modules` | 3 | 154 | None |  |
 | [ ] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 8 | 1,382 | None |  |
-| [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 297 | 129,394 | None |  |
+| [x] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 297 | 129,394 | 2026-10-15 | Completed audit tracks FS-03.02 - FS-03.08 (checkout pipeline, stage pipeline, inventory/payment, compensation, marketplace, fulfillment, controllers/graphql) |
 | [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 19 | 929 | 2026-10-15 | Completed audit track FS-03.01 (error taxonomy, DTO invariant validation, search condition trimming) |
 | [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 21 | 5,889 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 16 | 2,022 | None |  |

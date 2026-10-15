@@ -224,14 +224,13 @@ impl CartStorefrontPort for OwnerCartPort {
         let owner_operation = CREATE_STOREFRONT_CART_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
-        if let Some(channel_id) = request.channel_id {
-            if channel_id.is_nil() {
-                return Err(PortError::validation(
-                    "cart.channel_id_nil",
-                    "channel_id must not be a nil UUID",
-                ));
-            }
+        if matches!(request.channel_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "cart.channel_id_nil",
+                "channel_id must not be a nil UUID",
+            ));
         }
+
         tracing::debug!(
             boundary = "owner_cart_port",
             operation = owner_operation,
