@@ -674,6 +674,12 @@ pub async fn load_cart_in_tx<C>(
 where
     C: ConnectionTrait,
 {
+    if tenant_id.is_nil() {
+        return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
+    }
+    if cart_id.is_nil() {
+        return Err(CartError::Validation("cart_id must not be a nil UUID".to_string()));
+    }
     let cart = entities::cart::Entity::find_by_id(cart_id)
         .filter(entities::cart::Column::TenantId.eq(tenant_id))
         .one(conn)
@@ -690,6 +696,12 @@ pub async fn load_cart_for_update_in_tx<C>(
 where
     C: ConnectionTrait,
 {
+    if tenant_id.is_nil() {
+        return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
+    }
+    if cart_id.is_nil() {
+        return Err(CartError::Validation("cart_id must not be a nil UUID".to_string()));
+    }
     let query = entities::cart::Entity::find_by_id(cart_id)
         .filter(entities::cart::Column::TenantId.eq(tenant_id));
     let cart = match conn.get_database_backend() {

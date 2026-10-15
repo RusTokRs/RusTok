@@ -50,6 +50,12 @@ impl GuardedCartPort {
         context: &PortContext,
         cart_id: uuid::Uuid,
     ) -> Result<(), PortError> {
+        if cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
         let cart = self
             .storefront
             .read_storefront_cart(context.clone(), CartStorefrontReadRequest { cart_id })
@@ -94,6 +100,19 @@ impl CartStorefrontPort for GuardedCartPort {
         context: PortContext,
         request: CartStorefrontReadRequest,
     ) -> Result<CartResponse, PortError> {
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "guarded_cart_storefront_port",
+            operation = "read_storefront_cart",
+            tenant_id = %context.tenant_id,
+            cart_id = %request.cart_id,
+            "reading guarded storefront cart"
+        );
         let cart = self
             .storefront
             .read_storefront_cart(context.clone(), request)
@@ -107,6 +126,22 @@ impl CartStorefrontPort for GuardedCartPort {
         context: PortContext,
         mut request: CartStorefrontCreateRequest,
     ) -> Result<CartResponse, PortError> {
+        if let Some(channel_id) = request.channel_id {
+            if channel_id.is_nil() {
+                return Err(PortError::validation(
+                    "cart.channel_id_nil",
+                    "channel_id must not be a nil UUID",
+                ));
+            }
+        }
+        tracing::debug!(
+            boundary = "guarded_cart_storefront_port",
+            operation = "create_storefront_cart",
+            tenant_id = %context.tenant_id,
+            channel_id = ?request.channel_id,
+            channel_slug = ?request.channel_slug,
+            "creating guarded storefront cart"
+        );
         let (metadata, token) = prepare_guest_cart_metadata(
             request.input.customer_id,
             std::mem::take(&mut request.input.metadata),

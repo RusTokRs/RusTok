@@ -445,6 +445,21 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
         require_cart_checkout_write_admission(&context, PREPARE_CHECKOUT_OPERATION)?;
         let tenant_id = parse_tenant_id(&context, PREPARE_CHECKOUT_OPERATION)?;
+        if request.cart_id.is_nil() {
+            return Err(map_cart_checkout_local_port_error(
+                &context,
+                PREPARE_CHECKOUT_OPERATION,
+                "validate_cart_id",
+                PortError::validation("cart.cart_id_nil", "cart_id must not be a nil UUID"),
+            ));
+        }
+        tracing::debug!(
+            boundary = CART_CHECKOUT_BOUNDARY,
+            operation = PREPARE_CHECKOUT_OPERATION,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "preparing cart checkout snapshot"
+        );
         let prepare_input_result = (|| {
             validate_prepare_input(&request.input).map_err(cart_error_to_port_error)?;
             Ok::<(), PortError>(())
@@ -539,6 +554,21 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
         require_cart_checkout_read_admission(&context, READ_CHECKOUT_SNAPSHOT_OPERATION)?;
         let tenant_id = parse_tenant_id(&context, READ_CHECKOUT_SNAPSHOT_OPERATION)?;
+        if cart_id.is_nil() {
+            return Err(map_cart_checkout_local_port_error(
+                &context,
+                READ_CHECKOUT_SNAPSHOT_OPERATION,
+                "validate_cart_id",
+                PortError::validation("cart.cart_id_nil", "cart_id must not be a nil UUID"),
+            ));
+        }
+        tracing::debug!(
+            boundary = CART_CHECKOUT_BOUNDARY,
+            operation = READ_CHECKOUT_SNAPSHOT_OPERATION,
+            tenant_id = %tenant_id,
+            cart_id = %cart_id,
+            "reading cart checkout snapshot"
+        );
         let snapshot_result = self
             .service
             .get_cart(tenant_id, cart_id)
@@ -569,6 +599,30 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
         require_cart_checkout_write_admission(&context, COMPLETE_CHECKOUT_OPERATION)?;
         let tenant_id = parse_tenant_id(&context, COMPLETE_CHECKOUT_OPERATION)?;
+        if request.cart_id.is_nil() {
+            return Err(map_cart_checkout_local_port_error(
+                &context,
+                COMPLETE_CHECKOUT_OPERATION,
+                "validate_cart_id",
+                PortError::validation("cart.cart_id_nil", "cart_id must not be a nil UUID"),
+            ));
+        }
+        if request.order_id.is_nil() {
+            return Err(map_cart_checkout_local_port_error(
+                &context,
+                COMPLETE_CHECKOUT_OPERATION,
+                "validate_order_id",
+                PortError::validation("cart.order_id_nil", "order_id must not be a nil UUID"),
+            ));
+        }
+        tracing::debug!(
+            boundary = CART_CHECKOUT_BOUNDARY,
+            operation = COMPLETE_CHECKOUT_OPERATION,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            order_id = %request.order_id,
+            "completing cart checkout"
+        );
         let cart = self
             .service
             .complete_cart(tenant_id, request.cart_id)
@@ -600,6 +654,21 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
         require_cart_checkout_write_admission(&context, RELEASE_CHECKOUT_OPERATION)?;
         let tenant_id = parse_tenant_id(&context, RELEASE_CHECKOUT_OPERATION)?;
+        if cart_id.is_nil() {
+            return Err(map_cart_checkout_local_port_error(
+                &context,
+                RELEASE_CHECKOUT_OPERATION,
+                "validate_cart_id",
+                PortError::validation("cart.cart_id_nil", "cart_id must not be a nil UUID"),
+            ));
+        }
+        tracing::debug!(
+            boundary = CART_CHECKOUT_BOUNDARY,
+            operation = RELEASE_CHECKOUT_OPERATION,
+            tenant_id = %tenant_id,
+            cart_id = %cart_id,
+            "releasing cart checkout"
+        );
         let cart = self
             .service
             .abandon_cart(tenant_id, cart_id)
@@ -691,7 +760,7 @@ fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
+    let tenant_id = Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
         let error = PortError::validation(
             "cart.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for cart checkout",
@@ -727,7 +796,45 @@ fn parse_tenant_id(
             "cart checkout owner tenant context was rejected with bounded diagnostics"
         );
         error
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let error = PortError::validation(
+            "cart.tenant_id_nil",
+            "PortContext.tenant_id must not be a nil UUID for cart checkout",
+        );
+        let facts = cart_checkout_context_facts(context);
+        tracing::warn!(
+            owner = CART_CHECKOUT_OWNER,
+            owner_operation,
+            validation_phase = "tenant_id_nil",
+            correlation_id_length = facts.correlation_id_length,
+            tenant_id_length = facts.tenant_id_length,
+            actor_kind = facts.actor_kind,
+            actor_id_length = facts.actor_id_length,
+            claim_count = facts.claim_count,
+            role_count = facts.role_count,
+            channel_present = facts.channel_present,
+            channel_length = ?facts.channel_length,
+            locale_length = facts.locale_length,
+            causation_id_present = facts.causation_id_present,
+            causation_id_length = ?facts.causation_id_length,
+            traceparent_present = facts.traceparent_present,
+            traceparent_length = ?facts.traceparent_length,
+            idempotency_key_present = facts.idempotency_key_present,
+            idempotency_key_length = ?facts.idempotency_key_length,
+            deadline_ms = ?facts.deadline_ms,
+            parse_failed = true,
+            error_kind = "validation",
+            error_code_length = error.code.chars().count(),
+            error_message_present = !error.message.is_empty(),
+            error_message_length = error.message.chars().count(),
+            retryable = error.retryable,
+            boundary = CART_CHECKOUT_BOUNDARY,
+            "cart checkout owner tenant context was rejected with bounded diagnostics"
+        );
+        return Err(error);
+    }
+    Ok(tenant_id)
 }
 
 fn snapshot_from_cart(cart: CartResponse) -> Result<PreparedCartCheckoutSnapshot, PortError> {

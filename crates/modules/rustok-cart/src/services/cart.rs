@@ -86,6 +86,29 @@ impl CartService {
         channel_id: Option<Uuid>,
         channel_slug: Option<String>,
     ) -> CartResult<CartResponse> {
+        if tenant_id.is_nil() {
+            return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
+        }
+        if let Some(channel_id) = channel_id {
+            if channel_id.is_nil() {
+                return Err(CartError::Validation("channel_id must not be a nil UUID".to_string()));
+            }
+        }
+        if let Some(customer_id) = input.customer_id {
+            if customer_id.is_nil() {
+                return Err(CartError::Validation("customer_id must not be a nil UUID".to_string()));
+            }
+        }
+        if let Some(region_id) = input.region_id {
+            if region_id.is_nil() {
+                return Err(CartError::Validation("region_id must not be a nil UUID".to_string()));
+            }
+        }
+        if let Some(shipping_option_id) = input.selected_shipping_option_id {
+            if shipping_option_id.is_nil() {
+                return Err(CartError::Validation("selected_shipping_option_id must not be a nil UUID".to_string()));
+            }
+        }
         input
             .validate()
             .map_err(|error| CartError::Validation(error.to_string()))?;
@@ -166,6 +189,16 @@ impl CartService {
         input
             .validate()
             .map_err(|error| CartError::Validation(error.to_string()))?;
+        if let Some(product_id) = input.product_id {
+            if product_id.is_nil() {
+                return Err(CartError::Validation("product_id must not be a nil UUID".to_string()));
+            }
+        }
+        if let Some(variant_id) = input.variant_id {
+            if variant_id.is_nil() {
+                return Err(CartError::Validation("variant_id must not be a nil UUID".to_string()));
+            }
+        }
         if input.unit_price < Decimal::ZERO {
             return Err(CartError::Validation(
                 "unit_price cannot be negative".to_string(),
@@ -307,6 +340,16 @@ impl CartService {
         input
             .validate()
             .map_err(|error| CartError::Validation(error.to_string()))?;
+        if let Some(region_id) = input.region_id {
+            if region_id.is_nil() {
+                return Err(CartError::Validation("region_id must not be a nil UUID".to_string()));
+            }
+        }
+        if let Some(shipping_option_id) = input.selected_shipping_option_id {
+            if shipping_option_id.is_nil() {
+                return Err(CartError::Validation("selected_shipping_option_id must not be a nil UUID".to_string()));
+            }
+        }
 
         let txn = self.db.begin().await?;
         let cart = load_cart_for_update_in_tx(&txn, tenant_id, cart_id).await?;
@@ -353,6 +396,11 @@ impl CartService {
             adjustment
                 .validate()
                 .map_err(|error| CartError::Validation(error.to_string()))?;
+            if let Some(line_item_id) = adjustment.line_item_id {
+                if line_item_id.is_nil() {
+                    return Err(CartError::Validation("line_item_id must not be a nil UUID".to_string()));
+                }
+            }
             if adjustment.amount <= Decimal::ZERO {
                 return Err(CartError::Validation(
                     "adjustment amount must be greater than zero".to_string(),
@@ -435,6 +483,11 @@ impl CartService {
         line_item_id: Uuid,
         quantity: i32,
     ) -> CartResult<CartResponse> {
+        if line_item_id.is_nil() {
+            return Err(CartError::Validation(
+                "line_item_id must not be a nil UUID".to_string(),
+            ));
+        }
         if quantity < 1 {
             return Err(CartError::Validation(
                 "quantity must be at least 1".to_string(),
@@ -484,6 +537,11 @@ impl CartService {
         unit_price: Decimal,
         pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
     ) -> CartResult<CartResponse> {
+        if line_item_id.is_nil() {
+            return Err(CartError::Validation(
+                "line_item_id must not be a nil UUID".to_string(),
+            ));
+        }
         if quantity < 1 {
             return Err(CartError::Validation(
                 "quantity must be at least 1".to_string(),
@@ -543,6 +601,14 @@ impl CartService {
     ) -> CartResult<CartResponse> {
         if updates.is_empty() {
             return self.get_cart(tenant_id, cart_id).await;
+        }
+
+        for update in &updates {
+            if update.line_item_id.is_nil() {
+                return Err(CartError::Validation(
+                    "line_item_id must not be a nil UUID".to_string(),
+                ));
+            }
         }
 
         let updates_map: HashMap<Uuid, CartLineItemPricingUpdate> = updates
@@ -606,6 +672,12 @@ impl CartService {
         cart_id: Uuid,
         line_item_id: Uuid,
     ) -> CartResult<CartResponse> {
+        if line_item_id.is_nil() {
+            return Err(CartError::Validation(
+                "line_item_id must not be a nil UUID".to_string(),
+            ));
+        }
+
         let txn = self.db.begin().await?;
         let cart = load_cart_for_update_in_tx(&txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "remove_line_item")?;

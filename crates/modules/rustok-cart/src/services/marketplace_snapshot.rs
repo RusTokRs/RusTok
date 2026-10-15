@@ -66,6 +66,12 @@ impl CartMarketplaceSnapshotService {
         cart_id: Uuid,
         input: AddMarketplaceCartLineItemInput,
     ) -> CartResult<AddMarketplaceCartLineItemResponse> {
+        if tenant_id.is_nil() {
+            return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
+        }
+        if cart_id.is_nil() {
+            return Err(CartError::Validation("cart_id must not be a nil UUID".to_string()));
+        }
         input
             .validate()
             .map_err(|error| CartError::Validation(error.to_string()))?;
@@ -169,6 +175,15 @@ impl CartMarketplaceSnapshotService {
         cart_line_item_id: Uuid,
         input: MarketplaceCartLineSnapshotInput,
     ) -> CartResult<CartMarketplaceLineSnapshot> {
+        if tenant_id.is_nil() {
+            return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
+        }
+        if cart_id.is_nil() {
+            return Err(CartError::Validation("cart_id must not be a nil UUID".to_string()));
+        }
+        if cart_line_item_id.is_nil() {
+            return Err(CartError::Validation("cart_line_item_id must not be a nil UUID".to_string()));
+        }
         let mut input = normalize_snapshot_input(input)?;
 
         if let Some(existing) =
@@ -229,6 +244,12 @@ impl CartMarketplaceSnapshotService {
         tenant_id: Uuid,
         cart_id: Uuid,
     ) -> CartResult<Vec<CartMarketplaceLineSnapshot>> {
+        if tenant_id.is_nil() {
+            return Err(CartError::Validation("tenant_id must not be a nil UUID".to_string()));
+        }
+        if cart_id.is_nil() {
+            return Err(CartError::Validation("cart_id must not be a nil UUID".to_string()));
+        }
         let transaction = self.db.begin().await?;
         load_cart_in_tx(&transaction, tenant_id, cart_id).await?;
         let line_ids = cart_line_item::Entity::find()

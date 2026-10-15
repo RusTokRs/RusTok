@@ -59,6 +59,19 @@ impl CartCheckoutPort for OwnerCartPort {
         let owner_operation = READ_CART_CHECKOUT_SNAPSHOT_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::read())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "reading cart checkout snapshot"
+        );
         self.service
             .get_cart(tenant_id, request.cart_id)
             .await
@@ -73,6 +86,19 @@ impl CartCheckoutPort for OwnerCartPort {
         let owner_operation = UPDATE_CART_CHECKOUT_CONTEXT_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "updating cart checkout context"
+        );
         self.service
             .update_context(tenant_id, request.cart_id, request.input)
             .await
@@ -87,6 +113,19 @@ impl CartCheckoutPort for OwnerCartPort {
         let owner_operation = BEGIN_CART_CHECKOUT_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "beginning cart checkout"
+        );
         self.service
             .begin_checkout(tenant_id, request.cart_id)
             .await
@@ -101,6 +140,19 @@ impl CartCheckoutPort for OwnerCartPort {
         let owner_operation = RELEASE_CART_CHECKOUT_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "releasing cart checkout"
+        );
         self.service
             .release_checkout(tenant_id, request.cart_id)
             .await
@@ -115,6 +167,19 @@ impl CartCheckoutPort for OwnerCartPort {
         let owner_operation = COMPLETE_CART_CHECKOUT_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "completing cart checkout"
+        );
         self.service
             .complete_cart(tenant_id, request.cart_id)
             .await
@@ -132,6 +197,19 @@ impl CartStorefrontPort for OwnerCartPort {
         let owner_operation = READ_STOREFRONT_CART_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::read())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "reading storefront cart"
+        );
         self.service
             .get_cart(tenant_id, request.cart_id)
             .await
@@ -146,6 +224,22 @@ impl CartStorefrontPort for OwnerCartPort {
         let owner_operation = CREATE_STOREFRONT_CART_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if let Some(channel_id) = request.channel_id {
+            if channel_id.is_nil() {
+                return Err(PortError::validation(
+                    "cart.channel_id_nil",
+                    "channel_id must not be a nil UUID",
+                ));
+            }
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            channel_id = ?request.channel_id,
+            channel_slug = ?request.channel_slug,
+            "creating storefront cart"
+        );
         self.service
             .create_cart_with_channel(
                 tenant_id,
@@ -165,6 +259,22 @@ impl CartStorefrontPort for OwnerCartPort {
         let owner_operation = ADD_STOREFRONT_LINE_ITEM_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            product_id = ?request.input.product_id,
+            variant_id = ?request.input.variant_id,
+            quantity = request.input.quantity,
+            "adding storefront line item"
+        );
         self.service
             .add_line_item_with_pricing_adjustment(
                 tenant_id,
@@ -184,6 +294,19 @@ impl CartStorefrontPort for OwnerCartPort {
         let owner_operation = UPDATE_STOREFRONT_CONTEXT_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "updating storefront context"
+        );
         self.service
             .update_context(tenant_id, request.cart_id, request.input)
             .await
@@ -198,6 +321,27 @@ impl CartStorefrontPort for OwnerCartPort {
         let owner_operation = UPDATE_STOREFRONT_LINE_ITEM_QUANTITY_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        if request.line_item_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.line_item_id_nil",
+                "line_item_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            line_item_id = %request.line_item_id,
+            quantity = request.quantity,
+            "updating storefront line item quantity"
+        );
         self.service
             .update_line_item_quantity(
                 tenant_id,
@@ -217,6 +361,28 @@ impl CartStorefrontPort for OwnerCartPort {
         let owner_operation = UPDATE_STOREFRONT_LINE_ITEM_PRICING_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        if request.line_item_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.line_item_id_nil",
+                "line_item_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            line_item_id = %request.line_item_id,
+            quantity = request.quantity,
+            unit_price = %request.unit_price,
+            "updating storefront line item pricing"
+        );
         self.service
             .update_line_item_pricing(
                 tenant_id,
@@ -238,6 +404,26 @@ impl CartStorefrontPort for OwnerCartPort {
         let owner_operation = REMOVE_STOREFRONT_LINE_ITEM_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        if request.line_item_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.line_item_id_nil",
+                "line_item_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            line_item_id = %request.line_item_id,
+            "removing storefront line item"
+        );
         self.service
             .remove_line_item(tenant_id, request.cart_id, request.line_item_id)
             .await
@@ -252,6 +438,28 @@ impl CartStorefrontPort for OwnerCartPort {
         let owner_operation = REPRICE_STOREFRONT_LINE_ITEMS_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        for update in &request.updates {
+            if update.line_item_id.is_nil() {
+                return Err(PortError::validation(
+                    "cart.line_item_id_nil",
+                    "line_item_id must not be a nil UUID",
+                ));
+            }
+        }
+        tracing::debug!(
+            boundary = "owner_cart_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            updates_count = request.updates.len(),
+            "repricing storefront line items"
+        );
         self.service
             .reprice_line_items(tenant_id, request.cart_id, request.updates)
             .await
@@ -273,7 +481,7 @@ fn parse_cart_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|error| {
         tracing::warn!(
             error = ?error,
             internal_tenant_id = %context.tenant_id,
@@ -284,7 +492,22 @@ fn parse_cart_tenant_id(
             "cart owner tenant context is invalid"
         );
         PortError::validation("cart.tenant_id_invalid", "cart request context is invalid")
-    })
+    })?;
+    if tenant_id.is_nil() {
+        tracing::warn!(
+            internal_tenant_id = %context.tenant_id,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "cart.tenant_id_nil",
+            "cart owner tenant context cannot be nil UUID"
+        );
+        return Err(PortError::validation(
+            "cart.tenant_id_nil",
+            "cart request context cannot have nil UUID tenant_id",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn cart_context_error(

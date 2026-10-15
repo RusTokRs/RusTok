@@ -126,6 +126,20 @@ impl AtomicCartCheckoutHandle {
         tenant_id: Uuid,
         allow_existing_lock: bool,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
+        if tenant_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.invalid_tenant_id",
+                "cart checkout requires a non-nil UUID tenant_id",
+            ));
+        }
+        tracing::debug!(
+            boundary = "atomic_cart_checkout_handle",
+            operation = "prepare",
+            tenant_id = %tenant_id,
+            cart_id = %self.prepare_request.cart_id,
+            allow_existing_lock,
+            "preparing atomic cart checkout"
+        );
         if let Some(snapshot) = stored_snapshot(&self.prepared_state)? {
             return Ok(snapshot);
         }
@@ -175,6 +189,19 @@ impl AtomicCartCheckoutHandle {
         &self,
         tenant_id: Uuid,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
+        if tenant_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.invalid_tenant_id",
+                "cart checkout requires a non-nil UUID tenant_id",
+            ));
+        }
+        tracing::debug!(
+            boundary = "atomic_cart_checkout_handle",
+            operation = "read_snapshot",
+            tenant_id = %tenant_id,
+            cart_id = %self.prepare_request.cart_id,
+            "reading atomic cart checkout snapshot"
+        );
         if let Some(snapshot) = stored_snapshot(&self.prepared_state)? {
             return Ok(snapshot);
         }
@@ -244,11 +271,19 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
     ) -> Result<CartResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         self.ensure_cart_id(request.cart_id)?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "atomic_cart_checkout_port",
+            operation = "read_cart_checkout_snapshot",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "reading atomic cart checkout snapshot"
+        );
         if let Some(cart) = self.prepared_for_orchestration()? {
             return Ok(cart);
         }
         self.service
-            .get_cart(parse_port_tenant_id(&context)?, request.cart_id)
+            .get_cart(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)
     }
@@ -260,6 +295,14 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
         self.ensure_cart_id(request.cart_id)?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "atomic_cart_checkout_port",
+            operation = "update_cart_checkout_context",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "updating atomic cart checkout context"
+        );
         if let Some(cart) = self.prepared_for_orchestration()? {
             return Ok(cart);
         }
@@ -276,6 +319,14 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
         self.ensure_cart_id(request.cart_id)?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "atomic_cart_checkout_port",
+            operation = "begin_cart_checkout",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "beginning atomic cart checkout"
+        );
         if let Some(snapshot) = stored_snapshot(&self.prepared_state)? {
             return Ok(snapshot.cart);
         }
@@ -283,7 +334,7 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
             self.service.as_ref(),
             self.pricing_resolver.as_ref(),
             &self.prepare_request,
-            parse_port_tenant_id(&context)?,
+            tenant_id,
             false,
         )
         .await
@@ -296,8 +347,16 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
         self.ensure_cart_id(request.cart_id)?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "atomic_cart_checkout_port",
+            operation = "release_cart_checkout",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "releasing atomic cart checkout"
+        );
         self.service
-            .release_checkout(parse_port_tenant_id(&context)?, request.cart_id)
+            .release_checkout(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)
     }
@@ -309,8 +368,16 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
         self.ensure_cart_id(request.cart_id)?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "atomic_cart_checkout_port",
+            operation = "complete_cart_checkout",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "completing atomic cart checkout"
+        );
         self.service
-            .complete_cart(parse_port_tenant_id(&context)?, request.cart_id)
+            .complete_cart(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)
     }
@@ -398,6 +465,12 @@ fn snapshot_port_context(
 }
 
 fn ensure_bound_cart_id(bound_cart_id: Uuid, cart_id: Uuid) -> Result<(), PortError> {
+    if cart_id.is_nil() {
+        return Err(PortError::validation(
+            "cart.nil_cart_id",
+            "cart_id must not be a nil UUID",
+        ));
+    }
     if cart_id == bound_cart_id {
         Ok(())
     } else {
@@ -434,12 +507,19 @@ fn store_snapshot(
 }
 
 fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+    let tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
         PortError::validation(
             "cart.invalid_tenant_id",
             "cart checkout requires a UUID tenant_id",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        return Err(PortError::validation(
+            "cart.invalid_tenant_id",
+            "cart checkout requires a non-nil UUID tenant_id",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn cart_error_to_port_error(error: CartError) -> PortError {

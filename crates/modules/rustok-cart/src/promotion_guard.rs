@@ -85,6 +85,16 @@ impl CartPromotionPort for GuardedCartPromotionPort {
             .map_err(|error| cart_promotion_context_error(&context, owner_operation, error))?;
         validate_cart_promotion_request(&context, owner_operation, &request, &request_facts)?;
         let tenant_id = parse_cart_promotion_tenant_id(&context, owner_operation)?;
+        tracing::debug!(
+            boundary = CART_PROMOTION_OWNER_BOUNDARY,
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            line_item_id = ?request.line_item_id,
+            scope = ?request.scope,
+            kind = ?request.kind,
+            "reading cart promotion preview"
+        );
 
         match (request.scope, request.kind) {
             (CartPromotionScopeRequest::Shipping, CartPromotionKindRequest::PercentageDiscount) => {
@@ -145,6 +155,16 @@ impl CartPromotionPort for GuardedCartPromotionPort {
             .map_err(|error| cart_promotion_context_error(&context, owner_operation, error))?;
         validate_cart_promotion_request(&context, owner_operation, &request, &request_facts)?;
         let tenant_id = parse_cart_promotion_tenant_id(&context, owner_operation)?;
+        tracing::debug!(
+            boundary = CART_PROMOTION_OWNER_BOUNDARY,
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            line_item_id = ?request.line_item_id,
+            scope = ?request.scope,
+            kind = ?request.kind,
+            "applying cart promotion"
+        );
 
         match (request.scope, request.kind) {
             (CartPromotionScopeRequest::Shipping, CartPromotionKindRequest::PercentageDiscount) => {
@@ -379,6 +399,20 @@ fn validate_cart_promotion_request(
     request: &CartPromotionRequest,
     request_facts: &CartPromotionRequestFacts,
 ) -> Result<(), PortError> {
+    if request.cart_id.is_nil() {
+        return Err(PortError::validation(
+            "cart.cart_id_nil",
+            "cart_id must not be a nil UUID",
+        ));
+    }
+    if let Some(line_item_id) = request.line_item_id {
+        if line_item_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.line_item_id_nil",
+                "line_item_id must not be a nil UUID",
+            ));
+        }
+    }
     let code = match &request.scope {
         CartPromotionScopeRequest::LineItem if request.line_item_id.is_none() => {
             Some("cart.promotion_line_item_required")
@@ -437,7 +471,7 @@ fn parse_cart_promotion_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let facts = cart_promotion_context_facts(context);
         tracing::warn!(
             owner = CART_PROMOTION_OWNER,
@@ -467,7 +501,24 @@ fn parse_cart_promotion_tenant_id(
             "cart.tenant_id_invalid",
             "cart promotion request context is invalid",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        let facts = cart_promotion_context_facts(context);
+        tracing::warn!(
+            owner = CART_PROMOTION_OWNER,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = facts.tenant_id_length,
+            operation = owner_operation,
+            code = "cart.tenant_id_nil",
+            boundary = CART_PROMOTION_CONTEXT_BOUNDARY,
+            "cart promotion tenant context cannot be nil UUID"
+        );
+        return Err(PortError::validation(
+            "cart.tenant_id_nil",
+            "cart promotion request context cannot have nil UUID tenant_id",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn cart_promotion_context_error(

@@ -223,6 +223,17 @@ pub struct CartCheckoutLifecycleRequest {
     pub cart_id: Uuid,
 }
 
+fn validate_non_nil_uuid(id: Uuid, field_name: &'static str) -> Result<(), PortError> {
+    if id.is_nil() {
+        Err(PortError::validation(
+            format!("cart.{field_name}_nil"),
+            format!("{field_name} must not be a nil UUID"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl CartCheckoutPort for crate::CartService {
     async fn read_cart_checkout_snapshot(
@@ -231,7 +242,15 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutSnapshotRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
         let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_checkout_port",
+            operation = "read_cart_checkout_snapshot",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "reading cart checkout snapshot"
+        );
         self.get_cart(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)
@@ -243,7 +262,15 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
         let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_checkout_port",
+            operation = "update_cart_checkout_context",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "updating cart checkout context"
+        );
         self.update_context(tenant_id, request.cart_id, request.input)
             .await
             .map_err(cart_error_to_port_error)
@@ -255,7 +282,15 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutLifecycleRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
         let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_checkout_port",
+            operation = "begin_cart_checkout",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "beginning cart checkout"
+        );
         self.begin_checkout(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)
@@ -267,7 +302,15 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutLifecycleRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
         let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_checkout_port",
+            operation = "release_cart_checkout",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "releasing cart checkout"
+        );
         self.release_checkout(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)
@@ -279,7 +322,15 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutLifecycleRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
         let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_checkout_port",
+            operation = "complete_cart_checkout",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "completing cart checkout"
+        );
         self.complete_cart(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)
@@ -287,6 +338,10 @@ impl CartCheckoutPort for crate::CartService {
 }
 
 fn validate_cart_promotion_request(request: &CartPromotionRequest) -> Result<(), PortError> {
+    validate_non_nil_uuid(request.cart_id, "cart_id")?;
+    if let Some(line_item_id) = request.line_item_id {
+        validate_non_nil_uuid(line_item_id, "line_item_id")?;
+    }
     match request.scope {
         CartPromotionScopeRequest::LineItem if request.line_item_id.is_none() => {
             Err(PortError::validation(
@@ -312,7 +367,16 @@ impl CartStorefrontPort for crate::CartService {
         request: CartStorefrontReadRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        self.get_cart(parse_port_tenant_id(&context)?, request.cart_id)
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_storefront_port",
+            operation = "read_storefront_cart",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "reading storefront cart"
+        );
+        self.get_cart(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)
     }
@@ -323,8 +387,20 @@ impl CartStorefrontPort for crate::CartService {
         request: CartStorefrontCreateRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        if let Some(channel_id) = request.channel_id {
+            validate_non_nil_uuid(channel_id, "channel_id")?;
+        }
+        tracing::debug!(
+            boundary = "cart_storefront_port",
+            operation = "create_storefront_cart",
+            tenant_id = %tenant_id,
+            channel_id = ?request.channel_id,
+            channel_slug = ?request.channel_slug,
+            "creating storefront cart"
+        );
         self.create_cart_with_channel(
-            parse_port_tenant_id(&context)?,
+            tenant_id,
             request.input,
             request.channel_id,
             request.channel_slug,
@@ -339,8 +415,20 @@ impl CartStorefrontPort for crate::CartService {
         request: CartStorefrontAddLineItemRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_storefront_port",
+            operation = "add_storefront_line_item",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            product_id = ?request.input.product_id,
+            variant_id = ?request.input.variant_id,
+            quantity = request.input.quantity,
+            "adding storefront line item"
+        );
         self.add_line_item_with_pricing_adjustment(
-            parse_port_tenant_id(&context)?,
+            tenant_id,
             request.cart_id,
             request.input,
             request.pricing_adjustment,
@@ -355,8 +443,17 @@ impl CartStorefrontPort for crate::CartService {
         request: CartStorefrontContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_storefront_port",
+            operation = "update_storefront_context",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "updating storefront context"
+        );
         self.update_context(
-            parse_port_tenant_id(&context)?,
+            tenant_id,
             request.cart_id,
             request.input,
         )
@@ -370,8 +467,20 @@ impl CartStorefrontPort for crate::CartService {
         request: CartStorefrontLineItemQuantityRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
+        validate_non_nil_uuid(request.line_item_id, "line_item_id")?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_storefront_port",
+            operation = "update_storefront_line_item_quantity",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            line_item_id = %request.line_item_id,
+            quantity = request.quantity,
+            "updating storefront line item quantity"
+        );
         self.update_line_item_quantity(
-            parse_port_tenant_id(&context)?,
+            tenant_id,
             request.cart_id,
             request.line_item_id,
             request.quantity,
@@ -386,8 +495,21 @@ impl CartStorefrontPort for crate::CartService {
         request: CartStorefrontLineItemPricingRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
+        validate_non_nil_uuid(request.line_item_id, "line_item_id")?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_storefront_port",
+            operation = "update_storefront_line_item_pricing",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            line_item_id = %request.line_item_id,
+            quantity = request.quantity,
+            unit_price = %request.unit_price,
+            "updating storefront line item pricing"
+        );
         self.update_line_item_pricing(
-            parse_port_tenant_id(&context)?,
+            tenant_id,
             request.cart_id,
             request.line_item_id,
             request.quantity,
@@ -404,8 +526,19 @@ impl CartStorefrontPort for crate::CartService {
         request: CartStorefrontRemoveLineItemRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
+        validate_non_nil_uuid(request.line_item_id, "line_item_id")?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_storefront_port",
+            operation = "remove_storefront_line_item",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            line_item_id = %request.line_item_id,
+            "removing storefront line item"
+        );
         self.remove_line_item(
-            parse_port_tenant_id(&context)?,
+            tenant_id,
             request.cart_id,
             request.line_item_id,
         )
@@ -419,8 +552,21 @@ impl CartStorefrontPort for crate::CartService {
         request: CartStorefrontRepriceRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
+        validate_non_nil_uuid(request.cart_id, "cart_id")?;
+        for update in &request.updates {
+            validate_non_nil_uuid(update.line_item_id, "line_item_id")?;
+        }
+        let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_storefront_port",
+            operation = "reprice_storefront_line_items",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            updates_count = request.updates.len(),
+            "repricing storefront line items"
+        );
         self.reprice_line_items(
-            parse_port_tenant_id(&context)?,
+            tenant_id,
             request.cart_id,
             request.updates,
         )
@@ -439,6 +585,16 @@ impl CartPromotionPort for crate::CartService {
         context.require_policy(PortCallPolicy::read())?;
         validate_cart_promotion_request(&request)?;
         let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_promotion_port",
+            operation = "read_cart_promotion_preview",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            line_item_id = ?request.line_item_id,
+            scope = ?request.scope,
+            kind = ?request.kind,
+            "reading cart promotion preview"
+        );
         match (request.scope, request.kind) {
             (CartPromotionScopeRequest::Shipping, CartPromotionKindRequest::PercentageDiscount) => {
                 self.preview_percentage_shipping_promotion(
@@ -490,6 +646,16 @@ impl CartPromotionPort for crate::CartService {
         context.require_write_semantics()?;
         validate_cart_promotion_request(&request)?;
         let tenant_id = parse_port_tenant_id(&context)?;
+        tracing::debug!(
+            boundary = "cart_promotion_port",
+            operation = "apply_cart_promotion",
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            line_item_id = ?request.line_item_id,
+            scope = ?request.scope,
+            kind = ?request.kind,
+            "applying cart promotion"
+        );
         match (request.scope, request.kind) {
             (CartPromotionScopeRequest::Shipping, CartPromotionKindRequest::PercentageDiscount) => {
                 self.apply_percentage_shipping_promotion(
@@ -539,12 +705,19 @@ impl CartPromotionPort for crate::CartService {
 }
 
 fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         PortError::validation(
             "cart.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for cart ports",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "cart.tenant_id_nil",
+            "PortContext.tenant_id must not be a nil UUID for cart ports",
+        ));
+    }
+    Ok(id)
 }
 
 fn cart_error_to_port_error(error: CartError) -> PortError {

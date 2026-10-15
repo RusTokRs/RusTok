@@ -89,7 +89,7 @@ pub fn prepare_guest_cart_metadata(
     customer_id: Option<Uuid>,
     metadata: Value,
 ) -> (Value, Option<String>) {
-    if customer_id.is_some() {
+    if matches!(customer_id, Some(id) if !id.is_nil()) {
         return (sanitize_guest_cart_metadata(metadata), None);
     }
 

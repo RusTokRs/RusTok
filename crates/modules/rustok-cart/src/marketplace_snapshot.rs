@@ -79,6 +79,19 @@ impl MarketplaceCartSnapshotReadPort for CartMarketplaceSnapshotService {
         let owner_operation = LIST_MARKETPLACE_LINE_SNAPSHOTS_OPERATION;
         require_marketplace_snapshot_policy(&context, owner_operation, PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "marketplace_cart_snapshot_read_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "listing marketplace line snapshots"
+        );
         self.list_cart_snapshots(tenant_id, request.cart_id)
             .await
             .map_err(|error| map_cart_error(&context, owner_operation, error))
@@ -95,6 +108,19 @@ impl MarketplaceCartSnapshotCommandPort for CartMarketplaceSnapshotService {
         let owner_operation = ADD_MARKETPLACE_LINE_ITEM_OPERATION;
         require_marketplace_snapshot_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "marketplace_cart_snapshot_command_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            "adding marketplace line item"
+        );
         self.add_marketplace_line_item(tenant_id, request.cart_id, request.input)
             .await
             .map_err(|error| map_cart_error(&context, owner_operation, error))
@@ -108,6 +134,26 @@ impl MarketplaceCartSnapshotCommandPort for CartMarketplaceSnapshotService {
         let owner_operation = BIND_MARKETPLACE_LINE_SNAPSHOT_OPERATION;
         require_marketplace_snapshot_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
+        if request.cart_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.cart_id_nil",
+                "cart_id must not be a nil UUID",
+            ));
+        }
+        if request.cart_line_item_id.is_nil() {
+            return Err(PortError::validation(
+                "cart.line_item_id_nil",
+                "cart_line_item_id must not be a nil UUID",
+            ));
+        }
+        tracing::debug!(
+            boundary = "marketplace_cart_snapshot_command_port",
+            operation = owner_operation,
+            tenant_id = %tenant_id,
+            cart_id = %request.cart_id,
+            cart_line_item_id = %request.cart_line_item_id,
+            "binding marketplace line snapshot"
+        );
         self.bind_line_snapshot(
             tenant_id,
             request.cart_id,
@@ -133,7 +179,7 @@ fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|error| {
+    let tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|error| {
         tracing::warn!(
             error = ?error,
             internal_tenant_id = %context.tenant_id,
@@ -147,7 +193,22 @@ fn parse_tenant_id(
             "cart.marketplace_snapshot_tenant_invalid",
             "marketplace cart snapshot request context is invalid",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        tracing::warn!(
+            internal_tenant_id = %context.tenant_id,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "cart.marketplace_snapshot_tenant_nil",
+            "marketplace cart snapshot tenant context cannot be nil UUID"
+        );
+        return Err(PortError::validation(
+            "cart.marketplace_snapshot_tenant_nil",
+            "marketplace cart snapshot tenant context cannot be nil UUID",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn map_context_error(
