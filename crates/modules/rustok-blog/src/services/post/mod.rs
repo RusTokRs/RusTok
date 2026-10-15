@@ -70,7 +70,7 @@ mod repository;
 mod routes;
 mod scheduled;
 
-pub use routes::{BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner};
+pub use routes::{BLOG_POST_TARGET_TYPE, BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner};
 
 pub(crate) use repository::load_post_subject_snapshot;
 

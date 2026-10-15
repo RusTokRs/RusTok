@@ -657,6 +657,88 @@ for (const path of rustFiles("crates/modules/rustok-blog/src/migrations")) {
   });
 }
 
+// A re-export that names a symbol the target module does not expose is a compile error only
+// `rustc` reports, so the Blog module surface is resolved here instead: every name re-exported
+// out of `src/services/mod.rs` must be declared in the module it names or re-exported from one
+// of that module's own children. Without this rule `pub(crate) use post::BLOG_POST_TARGET_TYPE;`
+// passed every source guard while the crate no longer compiled.
+const blogServicesIndex = "crates/modules/rustok-blog/src/services/mod.rs";
+function blogModuleFile(moduleName) {
+  for (const candidate of [
+    `crates/modules/rustok-blog/src/services/${moduleName}/mod.rs`,
+    `crates/modules/rustok-blog/src/services/${moduleName}.rs`,
+  ]) {
+    if (existsSync(join(repoRoot, candidate))) return candidate;
+  }
+  return undefined;
+}
+function reexportedNames(source) {
+  const names = new Set();
+  for (const statement of source.matchAll(
+    /pub(?:\(crate\))?\s+use\s+[^;{]*::\s*\{([^}]*)\}/gs,
+  )) {
+    for (const part of statement[1].split(",")) {
+      const name = part.trim().split(/\s+as\s+/).pop().trim();
+      if (name && name !== "self" && name !== "*") names.add(name);
+    }
+  }
+  for (const statement of source.matchAll(
+    /pub(?:\(crate\))?\s+use\s+[^;{]*::\s*([A-Za-z_][A-Za-z0-9_]*)\s*;/g,
+  )) {
+    names.add(statement[1]);
+  }
+  return names;
+}
+const blogServicesSource = read(blogServicesIndex);
+const blogServiceReexports = [
+  ...blogServicesSource.matchAll(
+    /pub(?:\(crate\))?\s+use\s+([A-Za-z_][A-Za-z0-9_]*)\s*::\s*([A-Za-z_][A-Za-z0-9_]*)\s*;/g,
+  ),
+].map((statement) => [statement[1], statement[2]]);
+for (const statement of blogServicesSource.matchAll(
+  /pub(?:\(crate\))?\s+use\s+([A-Za-z_][A-Za-z0-9_]*)\s*::\s*\{([^}]*)\}/gs,
+)) {
+  if (["crate", "super", "self"].includes(statement[1])) continue;
+  const target = blogModuleFile(statement[1]);
+  if (!target) {
+    fail(`${blogServicesIndex}: re-export names unknown Blog module '${statement[1]}'`);
+    continue;
+  }
+  const targetSource = read(target);
+  const exposed = reexportedNames(targetSource);
+  for (const part of statement[2].split(",")) {
+    const name = part.trim().split(/\s+as\s+/)[0].trim();
+    if (!name || name === "self" || name === "*") continue;
+    const declared = new RegExp(
+      `^\\s*(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+|unsafe\\s+)?(?:fn|const|static|struct|enum|trait|type|mod)\\s+${name}\\b`,
+      "m",
+    ).test(targetSource);
+    if (!declared && !exposed.has(name)) {
+      fail(
+        `${blogServicesIndex}: re-export '${name}' from '${statement[1]}' is not exposed by ${target} (rustc reports an unresolved or private import)`,
+      );
+    }
+  }
+}
+for (const [moduleName, name] of blogServiceReexports) {
+  if (moduleName === "crate" || moduleName === "super" || moduleName === "self") continue;
+  const target = blogModuleFile(moduleName);
+  if (!target) {
+    fail(`${blogServicesIndex}: re-export names unknown Blog module '${moduleName}'`);
+    continue;
+  }
+  const targetSource = read(target);
+  const declared = new RegExp(
+    `^\\s*(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+|unsafe\\s+)?(?:fn|const|static|struct|enum|trait|type|mod)\\s+${name}\\b`,
+    "m",
+  ).test(targetSource);
+  if (!declared && !reexportedNames(targetSource).has(name)) {
+    fail(
+      `${blogServicesIndex}: re-export '${name}' from '${moduleName}' is not exposed by ${target} (rustc reports an unresolved or private import)`,
+    );
+  }
+}
+
 forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
   "blog-category-tree:",
 ]);

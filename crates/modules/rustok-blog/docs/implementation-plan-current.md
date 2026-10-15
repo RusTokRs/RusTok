@@ -573,11 +573,18 @@ base `1a420c8`).
 - Still required from the maintainer: `cargo check -p rustok-blog --features
   runtime`, `cargo test -p rustok-blog`, a PostgreSQL run of the pinned-keyset
   path, and a host run in `worker` mode that publishes a due scheduled draft.
-- Build-integrity repairs found by the branch's first CI run (no cargo locally, so neither
-  could be caught here): 1) `Cargo.lock` was missing the `rustok-runtime` edge that the new
-  optional dependency of `rustok-blog` requires, which made every `--locked` cargo step fail
+- Build-integrity repairs found by the branch's first CI run (no cargo locally, so none of the
+  three could be caught here): 1) `Cargo.lock` was missing the `rustok-runtime` edge that the
+  new optional dependency of `rustok-blog` requires, which made every `--locked` cargo step fail
   before compiling; 2) the preview-token migration added its foreign key with
-  `ALTER TABLE ... ADD CONSTRAINT`, which SQLite (the unit-test backend) rejects.
+  `ALTER TABLE ... ADD CONSTRAINT`, which SQLite (the unit-test backend) rejects; 3) the crate
+  did not compile at all: `src/services/mod.rs` re-exported `post::BLOG_POST_TARGET_TYPE` while
+  `src/services/post/mod.rs` never exposed that name (its `routes` module is private), and
+  `src/services/comment_projection.rs` dropped its local copy of the constant in the same
+  refactor while relying on the `services` re-export the missing name starved. `services/post/mod.rs`
+  now re-exports the constant, and `verify-module-reference-contract.mjs` resolves every
+  `src/services/mod.rs` re-export against the module it names, so a re-export of a symbol that
+  does not exist fails the guard instead of reaching `rustc`.
 - The unit tests added with the bulk/token documentation step
   (`bulk_failures_are_reported_through_the_public_boundary`,
   `cleanup_batch_is_clamped_into_the_bounded_range`) are **source-level only in this
