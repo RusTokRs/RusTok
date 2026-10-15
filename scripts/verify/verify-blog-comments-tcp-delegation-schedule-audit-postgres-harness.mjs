@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { flattenWhitespace } from './lib/verify-text.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (relativePath) => readFileSync(path.join(root, relativePath), 'utf8');
@@ -23,6 +24,18 @@ function requireCondition(condition, message) {
 function hasAll(source, markers, label) {
   for (const marker of markers) {
     requireCondition(source.includes(marker), `${label} missing marker: ${marker}`);
+  }
+}
+
+function hasAllProse(content, markers, label) {
+  // See scripts/verify/lib/verify-text.mjs: prose markers are wording contracts, so they
+  // are compared against a whitespace-flattened view of the source.
+  const flattened = flattenWhitespace(content);
+  for (const marker of markers) {
+    requireCondition(
+      flattened.includes(flattenWhitespace(marker)),
+      `${label} missing marker: ${marker}`,
+    );
   }
 }
 
@@ -107,7 +120,7 @@ requireCondition(
   'harness must enter audited CAS through the public trigger',
 );
 
-hasAll(plan, [
+hasAllProse(plan, [
   'public audited trigger and the full workspace migrator',
   'Request identity conflict rollback',
   'Candidate generation conflict rollback',

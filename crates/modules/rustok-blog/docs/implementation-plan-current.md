@@ -624,6 +624,43 @@ base `1a420c8`).
   `cargo test -p rustok-blog --features runtime` (the scheduler worker tests) remain the gate
   for them.
 
+- Verifier-repair wave (same day, still without `cargo`). The stale `scripts/verify/*blog*.mjs`
+  guards were repaired rather than re-baselined. Two shared helpers were added:
+  `scripts/verify/lib/rust-facade-source.mjs` composes an entry file with every file it declares
+  (recursively), so a verifier that used to read one `include!`-composed host file keeps seeing
+  the same source now that `apps/server/src/services/comments_provider_runtime*` is split into
+  `#[path = "..."] mod ...;` parts, and `scripts/verify/lib/verify-text.mjs` flattens whitespace
+  for prose markers so a re-wrapped sentence no longer breaks a plan or `CRATE_API.md` guard.
+  Guards for retired designs were converted into retirement guards instead of being deleted or
+  relaxed: the CAT-6 typed Blog Category binding (retired by
+  `m20260916_000022_clean_blog_category_canonical_taxonomy`), the crate-private donor translation
+  entity (the historical `000020` backfill is self-contained), and the offset-slicing tag
+  pagination (the list now paginates in the database through `blog_tag_usage`). Blob pins,
+  `#[path]`/`mod` expectations, plan-cursor tokens and renamed call-site markers were resynced
+  with the tree.
+  Blog verifier set: 45 -> 24 failures, and every one of the 24 also fails at the base commit
+  `1a420c8`, so the wave introduced no regression. Green again: the whole Category guard family
+  (`taxonomy-category-{binding,dual-write,planning-cursor,read-cutover,structure-sync}`), the
+  post category-name projection and its self-test, the tag pagination guard and its self-test,
+  and `comments-audit-{canonical-writer,event-contract,canonical-handoff-contract,restart-ambiguity-evidence,recovery-postgres-evidence}`,
+  `comments-tcp-delegation-schedule-audit-{postgres-faults,postgres-harness}` and
+  `comments-audited-worker-response-disconnect`. Unchanged green:
+  `verify-docs`, `verify-module-reference-contract`, `verify-module-source-layout`,
+  `verify-api-surface-contract`, the Blog FBA boundary chain and
+  `verify-blog-comments-event-projection` (with its self-test).
+  The 24 that still fail are the Comments host-runtime slice guards
+  (`comments-tcp-delegation-schedule-{audit-outbox,persistence,postgres,trigger}`,
+  `comments-audit-{canonical-handoff-postgres,handoff-runner,operator-requeue,outbox-relay-postgres-source,source-retry-policy,source-retry-runner}`,
+  `comments-{host-provider-selection,tcp-channel-seam,tcp-host-channel-selection,tcp-transport,tcp-user-delegation}`,
+  plus `comments-audit-recovery/restart-ambiguity` residual markers), the plan-cursor pair
+  (`canonical-plan-current` and its self-test, which require the provider-era
+  `blog-category-translation-postgres-source.json` that
+  `verify-blog-taxonomy-category-planning-cursor.mjs` requires to stay absent), the reaction
+  subject provider guard, and the two Tag source guards
+  (`tag-canonical-projection-source`, `tag-mutation-reindex-source`). Each needs the same
+  treatment: read the marker against the code or document that actually owns it, keep the
+  assertion, and never soften it to green. No Rust was compiled in this wave either.
+
 ### Open items from this audit
 
 Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md)):

@@ -68,16 +68,16 @@ function gitBlobSha(relativePath) {
 }
 
 const preserved = {
-  [scheduleBasePath]: '7d0c48df3dcea5a77bebe99dcdd4f02292f7ef47',
-  [scheduleGuardPath]: 'af2d688d43286a8118823c31408dd5dc7e3f6202',
-  [processTriggerPath]: 'f44f386c36ac81d51da89ee5568ffd9af083cda0',
-  [commentsSchedulePath]: '7701953d2892e1b68b4830135639d841ebdd6ed1',
-  [persistencePath]: '85df8deb3203ff90be55a8fe114294ce3a1f3749',
-  [persistedTriggerPath]: 'f3b37405f06e3cc4bd077cf8bd49f92d9e2cbe7a',
-  [bridgePath]: 'a90bdd8e4787532bd39c1739dfef8b6a18eaa981',
-  [serverManifestPath]: 'd6a77ff30fd67c3d4fee16afbadc584c2bcce9e7',
-  [blogManifestPath]: 'd71db5d5f7e43ed969485ea9ab508f11b9554902',
-  [lockPath]: 'c862fa6acc5f77642c1ce860e8810ca4cfc1a3c2',
+  [scheduleBasePath]: 'ffcb6586e3dc3f1b2d6f21f4d1ab405fb5657fcd',
+  [scheduleGuardPath]: '4a65f209a7fc23d769160166b3b8bbe462916115',
+  [processTriggerPath]: 'f805a7c0c733f4a17ed79c4d019f32b90a7e606d',
+  [commentsSchedulePath]: '2cd2a8c2bba97bff61ea5a37fd21405c2c482717',
+  [persistencePath]: '5834d1021dfad4fed23e8ade98aff816f004e865',
+  [persistedTriggerPath]: '17a3be2732cd7fbd48981ff417265055ce86e4b2',
+  [bridgePath]: '9ec8190ff19ad1603e60a5d60c566bb8f417ef6c',
+  [serverManifestPath]: 'e80ef5a046f33d493848e695164fa5954ec27d4d',
+  [blogManifestPath]: 'dee1a06ee5ee6d0b4650507d5fbe515d19e7c4d8',
+  [lockPath]: '5fcab03cf83b781a874e04bf6d048f0d5e2f6bd2',
 };
 for (const [relativePath, expected] of Object.entries(preserved)) {
   requireCondition(

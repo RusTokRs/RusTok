@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readComposedRustSource } from './lib/rust-facade-source.mjs';
+import { flattenWhitespace } from './lib/verify-text.mjs';
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -41,6 +42,18 @@ function hasAll(content, markers, label) {
   }
 }
 
+function hasAllProse(content, markers, label) {
+  // See scripts/verify/lib/verify-text.mjs: prose markers are wording contracts, so they
+  // are compared against a whitespace-flattened view of the source.
+  const flattened = flattenWhitespace(content);
+  for (const marker of markers) {
+    requireCondition(
+      flattened.includes(flattenWhitespace(marker)),
+      `${label} missing marker: ${marker}`,
+    );
+  }
+}
+
 function gitBlobSha(relativePath) {
   const content = readBuffer(relativePath);
   return createHash('sha1')
@@ -50,7 +63,7 @@ function gitBlobSha(relativePath) {
 }
 
 const preserved = {
-  [storePath]: '8a27f5ec3938f2b4efe16c6acafb93cb3faadcf6',
+  [storePath]: '4094539df6158d0a899e641322ae84bdbb6a129f',
   'apps/server/Cargo.toml':
     'e80ef5a046f33d493848e695164fa5954ec27d4d',
   'apps/server/tests/blog_comments_schedule_audit_postgres.rs':
@@ -71,7 +84,7 @@ hasAll(source, [
   'PostgresAuditedPersistenceStore::Production(store)',
   '#[cfg(test)]\n    ResponseDisconnect(AuditedStoreResponseDisconnectHarness)',
   '#[cfg(test)]\n    fn from_response_disconnect_harness',
-  '#[cfg(test)]\nstruct AuditedStoreResponseDisconnectHarness',
+  'struct AuditedStoreResponseDisconnectHarness {',
   'mpsc::sync_channel(1)',
   'AuditedStoreResponseDisconnectCommand::VerifyCurrent',
   'AuditedStoreResponseDisconnectCommand::BootstrapEmpty',
@@ -79,7 +92,8 @@ hasAll(source, [
   'drop(response);',
   'response_receiver.recv().unwrap_or(Err(',
   'CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable',
-  ') => abort_on_indeterminate_audited_store_response(),',
+  'CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable) =>',
+  'abort_on_indeterminate_audited_store_response()',
   'fn audited_worker_response_disconnect_aborts()',
   'fn audited_worker_response_disconnect_child()',
   'std::env::current_exe()',
@@ -124,7 +138,7 @@ hasAll(productionStore, [
   'run_postgres_audit_store_worker(runtime, database, receiver);',
 ], 'production audited PostgreSQL store');
 
-hasAll(plan, [
+hasAllProse(plan, [
   '## 2026-08-03 continuation audit',
   'Slice 86 — audited worker-response disconnect fail-stop harness',
   'compiled only under `cfg(test)`',

@@ -58,7 +58,7 @@ const preserved = {
     '2f6473d7889a242ef86621b8615834e8bffe1013',
   'crates/modules/rustok-blog/docs/implementation-plan-slice-86.md':
     'c969aed84350f2ec7af4c60846f429debc47dfbe',
-  [relayPath]: '4e77aa064a1425668787eabb9ed63b76499d1e5b',
+  [relayPath]: '47f98da024744f5d61c9faeca7492a4a6456c75d',
   'crates/modules/rustok-outbox/docs/implementation-plan.md':
     'b198630b31bff569503c45428c639ec4507259f7',
   'crates/libs/rustok-events/src/lib.rs':
@@ -111,7 +111,7 @@ hasAll(source, [
 
 hasAll(runtime, [
   'mod keyring_schedule_audit_publication',
-  'include!("comments_provider_runtime_keyring_schedule_audit_publication.rs")',
+  '#[path = "comments_provider_runtime_keyring_schedule_audit_publication.rs"]',
   'CommentsTcpDelegationScheduleAuditCanonicalPublication',
   'CommentsTcpDelegationScheduleAuditCanonicalWriter',
   'SharedCommentsTcpDelegationScheduleAuditCanonicalWriter',

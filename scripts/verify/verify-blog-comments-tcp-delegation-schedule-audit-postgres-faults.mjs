@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { flattenWhitespace } from './lib/verify-text.mjs';
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -32,6 +33,18 @@ function hasAll(source, markers, label) {
   for (const marker of markers) {
     requireCondition(
       source.includes(marker),
+      `${label} missing marker: ${marker}`,
+    );
+  }
+}
+
+function hasAllProse(content, markers, label) {
+  // See scripts/verify/lib/verify-text.mjs: prose markers are wording contracts, so they
+  // are compared against a whitespace-flattened view of the source.
+  const flattened = flattenWhitespace(content);
+  for (const marker of markers) {
+    requireCondition(
+      flattened.includes(flattenWhitespace(marker)),
       `${label} missing marker: ${marker}`,
     );
   }
@@ -140,7 +153,7 @@ requireCondition(
   'harness must not replace the production store with a mock',
 );
 
-hasAll(plan, [
+hasAllProse(plan, [
   'drops the first audited replacement commit response',
   'PostgreSQL emits `ReadyForQuery`',
   'production store execute its real bounded reconciliation path',

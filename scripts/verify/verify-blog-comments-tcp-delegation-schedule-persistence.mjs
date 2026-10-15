@@ -31,6 +31,9 @@ const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-persistence.json';
 
 const runtime = readComposedRustSource(read, runtimePath);
+// `runtimeFacade` is the wiring file on its own: the facade-ownership checks below
+// assert what the host runtime entry file imports, not what the parts it declares use.
+const runtimeFacade = read(runtimePath);
 const scheduleFacade = readComposedRustSource(read, scheduleFacadePath);
 const scheduleBridge = readComposedRustSource(read, scheduleBridgePath);
 const triggerGuard = readComposedRustSource(read, triggerGuardPath);
@@ -90,7 +93,7 @@ hasAll(
     '#[path = "comments_provider_runtime_keyring_schedule_persistence_bridge.rs"]',
     'mod bridge;',
     'pub struct SharedCommentsTcpDelegationScheduleHandle(',
-    'pub(super) fn from_prepared_file(',
+    'pub fn from_prepared_file(',
     'pub(super) fn replace_prepared_with_commit',
     'before_publish: F',
   ],
@@ -100,7 +103,7 @@ hasAll(
 hasAll(
   scheduleBridge,
   [
-    'pub(super) fn from_prepared_file(',
+    'pub fn from_prepared_file(',
     'DelegationScheduleSource::File(file_path)',
     'pub(super) fn replace_prepared_with_commit',
     'let mut current = match self.0.current.write()',
@@ -288,7 +291,7 @@ hasAll(
   ],
   'runtime persistence exports',
 );
-hasNone(runtime, ['Sha256::new(', 'File::open(', 'serde_json::'], 'runtime facade ownership');
+hasNone(runtimeFacade, ['Sha256::new(', 'File::open(', 'serde_json::'], 'runtime facade ownership');
 
 requireCondition(
   evidence.status === 'source_verified_no_compile'

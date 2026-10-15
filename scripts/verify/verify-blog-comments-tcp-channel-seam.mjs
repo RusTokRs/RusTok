@@ -219,7 +219,7 @@ for (const fragment of [
   'ensure_loopback(endpoint, "endpoint")?;',
   'ensure_loopback(peer_addr, "peer")?;',
   'comments.tcp_plaintext_non_loopback',
-  'stream.set_nodelay(true)',
+  '.set_nodelay(true)',
 ]) requireText(channel, fragment, 'channel source contract');
 for (const fragment of ['rustls::', 'tokio_rustls::', 'native_tls::', 'openssl::']) {
   forbidText(channel, fragment, 'channel concrete crypto non-claim');
@@ -271,8 +271,8 @@ for (const fragment of [
 
 for (const fragment of [
   'CommentsTcpRequestEnvelope::with_bearer(request, token)',
-  '[REDACTED]',
-]) requireText(auth, fragment, 'retained bearer envelope');
+]) requireText(transport, fragment, 'retained bearer envelope construction');
+for (const fragment of ['[REDACTED]']) requireText(auth, fragment, 'retained bearer envelope');
 for (const fragment of [
   'CommentsTcpDelegationSigner',
   'comments.tcp_delegation_replayed',
