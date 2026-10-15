@@ -80,6 +80,16 @@ impl ReturnDecisionOwnerOrchestrationService {
         order_id: Uuid,
         input: CreateReturnDecisionInput,
     ) -> ReturnDecisionOwnerOrchestrationResult<ReturnDecisionResponse> {
+        if tenant_id.is_nil() {
+            return Err(ReturnDecisionOwnerOrchestrationError::PostOrder(
+                PostOrderOrchestrationError::Validation("tenant_id must not be nil".to_string()),
+            ));
+        }
+        if order_id.is_nil() {
+            return Err(ReturnDecisionOwnerOrchestrationError::PostOrder(
+                PostOrderOrchestrationError::Validation("order_id must not be nil".to_string()),
+            ));
+        }
         if base_context.tenant_id != tenant_id.to_string() {
             return Err(ReturnDecisionOwnerOrchestrationError::OrderCommand(
                 PortError::validation(
@@ -88,6 +98,13 @@ impl ReturnDecisionOwnerOrchestrationService {
                 ),
             ));
         }
+        tracing::debug!(
+            boundary = "commerce_return_decision_owner_orchestration",
+            %tenant_id,
+            %order_id,
+            action = %input.decision.action,
+            "creating return decision"
+        );
 
         input
             .validate()
@@ -410,6 +427,15 @@ fn validate_decision_shape(
     action: &str,
     decision: &ReturnDecisionInput,
 ) -> PostOrderOrchestrationResult<()> {
+    if let Some(refund) = &decision.refund {
+        if let Some(payment_collection_id) = refund.payment_collection_id {
+            if payment_collection_id.is_nil() {
+                return Err(PostOrderOrchestrationError::Validation(
+                    "payment_collection_id must not be nil".to_string(),
+                ));
+            }
+        }
+    }
     if action != "refund" && decision.refund.is_some() {
         return Err(PostOrderOrchestrationError::Validation(
             "refund details are only allowed for refund decisions".to_string(),
@@ -543,5 +569,23 @@ mod tests {
                 .unwrap(),
             collection_id
         );
+    }
+
+    #[test]
+    fn validate_decision_shape_rejects_nil_payment_collection_id() {
+        let decision = ReturnDecisionInput {
+            action: "refund".to_string(),
+            refund: Some(ReturnRefundDecisionInput {
+                payment_collection_id: Some(Uuid::nil()),
+                amount: None,
+                reason: None,
+                metadata: serde_json::json!({}),
+            }),
+            exchange: None,
+            claim: None,
+            metadata: serde_json::json!({}),
+        };
+        let err = validate_decision_shape("refund", &decision).unwrap_err();
+        assert!(matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("payment_collection_id")));
     }
 }

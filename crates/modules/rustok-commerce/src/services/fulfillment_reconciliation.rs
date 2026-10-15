@@ -38,6 +38,22 @@ impl FulfillmentReconciliationService {
         tenant_id: Uuid,
         operation_id: Uuid,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        if tenant_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if operation_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "operation_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_fulfillment_reconciliation",
+            %tenant_id,
+            %operation_id,
+            "retrying local fulfillment persistence"
+        );
         let journal = FulfillmentProviderOperationJournal::new(self.db.clone());
         let operation = journal.get(tenant_id, operation_id).await?;
         if operation.tenant_id != tenant_id {
@@ -275,5 +291,24 @@ mod tests {
             optional_field(object.as_object().expect("object"), "items", operation_id)
                 .expect("items");
         assert_eq!(parsed.expect("some items").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn retry_local_persistence_rejects_nil_uuids() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("memory db");
+        let service = FulfillmentReconciliationService::new(db);
+        let err = service
+            .retry_local_persistence(Uuid::nil(), Uuid::new_v4())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id")));
+
+        let err = service
+            .retry_local_persistence(Uuid::new_v4(), Uuid::nil())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("operation_id")));
     }
 }

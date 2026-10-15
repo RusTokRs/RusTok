@@ -39,6 +39,11 @@ impl PaidOrderCreateLabelSweepService {
         &self,
         limit: u64,
     ) -> Result<PaidOrderCreateLabelSweepReport, sea_orm::DbErr> {
+        tracing::debug!(
+            boundary = "commerce_paid_order_create_label_sweep",
+            limit,
+            "processing pending paid order create label operations"
+        );
         let paid_order_ids = rustok_order::entities::order::Entity::find()
             .select_only()
             .column(rustok_order::entities::order::Column::Id)

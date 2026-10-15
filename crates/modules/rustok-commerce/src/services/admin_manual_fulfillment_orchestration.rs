@@ -45,6 +45,20 @@ impl AdminManualFulfillmentOrchestrationService {
         write_context: PortContext,
         input: CreateFulfillmentInput,
     ) -> Result<FulfillmentResponse, PortError> {
+        if input.order_id.is_nil() {
+            return Err(invalid_request());
+        }
+        if let Some(shipping_option_id) = input.shipping_option_id {
+            if shipping_option_id.is_nil() {
+                return Err(invalid_request());
+            }
+        }
+        tracing::debug!(
+            boundary = "commerce_admin_manual_fulfillment_orchestration",
+            order_id = %input.order_id,
+            shipping_option_id = ?input.shipping_option_id,
+            "creating manual admin fulfillment"
+        );
         input.validate().map_err(|_| invalid_request())?;
         let order_id = input.order_id;
         let order = self
@@ -61,6 +75,11 @@ impl AdminManualFulfillmentOrchestrationService {
         let requested_items = input.items.clone().ok_or_else(invalid_request)?;
         if requested_items.is_empty() {
             return Err(invalid_request());
+        }
+        for item in &requested_items {
+            if item.order_line_item_id.is_nil() {
+                return Err(invalid_request());
+            }
         }
         if input.customer_id.is_some() && input.customer_id != order.customer_id {
             return Err(invalid_request());
@@ -315,4 +334,15 @@ fn invalid_request() -> PortError {
         "commerce.fulfillment_create_invalid",
         "manual fulfillment request is invalid",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_request_has_expected_code() {
+        let err = invalid_request();
+        assert_eq!(err.code, "commerce.fulfillment_create_invalid");
+    }
 }

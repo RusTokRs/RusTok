@@ -56,6 +56,17 @@ impl FulfillmentOrchestrationService {
         tenant_id: Uuid,
         input: CreateFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        if tenant_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_fulfillment_orchestration_facade",
+            %tenant_id,
+            order_id = %input.order_id,
+            "facade create_manual_fulfillment"
+        );
         if let Some(error) = &self.create_label_registry_error {
             return Err(FulfillmentOrchestrationError::Validation(format!(
                 "failed to compose journaled create-label providers: {error}"
@@ -72,6 +83,22 @@ impl FulfillmentOrchestrationService {
         fulfillment_id: Uuid,
         input: ShipFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        if tenant_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if fulfillment_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "fulfillment_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_fulfillment_orchestration_facade",
+            %tenant_id,
+            %fulfillment_id,
+            "facade ship_fulfillment"
+        );
         self.journaled
             .ship_fulfillment(tenant_id, fulfillment_id, input)
             .await
@@ -83,6 +110,22 @@ impl FulfillmentOrchestrationService {
         fulfillment_id: Uuid,
         input: DeliverFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        if tenant_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if fulfillment_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "fulfillment_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_fulfillment_orchestration_facade",
+            %tenant_id,
+            %fulfillment_id,
+            "facade deliver_fulfillment"
+        );
         FulfillmentService::new(self.db.clone())
             .deliver_fulfillment(tenant_id, fulfillment_id, input)
             .await
@@ -95,6 +138,22 @@ impl FulfillmentOrchestrationService {
         fulfillment_id: Uuid,
         input: ReopenFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        if tenant_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if fulfillment_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "fulfillment_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_fulfillment_orchestration_facade",
+            %tenant_id,
+            %fulfillment_id,
+            "facade reopen_fulfillment"
+        );
         FulfillmentService::new(self.db.clone())
             .reopen_fulfillment(tenant_id, fulfillment_id, input)
             .await
@@ -107,6 +166,22 @@ impl FulfillmentOrchestrationService {
         fulfillment_id: Uuid,
         input: ReshipFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        if tenant_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if fulfillment_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "fulfillment_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_fulfillment_orchestration_facade",
+            %tenant_id,
+            %fulfillment_id,
+            "facade reship_fulfillment"
+        );
         let current = FulfillmentService::new(self.db.clone())
             .get_fulfillment(tenant_id, fulfillment_id)
             .await?;
@@ -131,6 +206,22 @@ impl FulfillmentOrchestrationService {
         fulfillment_id: Uuid,
         input: CancelFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        if tenant_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if fulfillment_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "fulfillment_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_fulfillment_orchestration_facade",
+            %tenant_id,
+            %fulfillment_id,
+            "facade cancel_fulfillment"
+        );
         self.journaled
             .cancel_fulfillment(tenant_id, fulfillment_id, input)
             .await
@@ -150,5 +241,65 @@ fn legacy_with_journaled_labels(
             LegacyFulfillmentOrchestrationService::new(db).with_provider_registry(registry),
             Some(error.to_string()),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn facade_rejects_nil_uuids() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("memory db");
+        let service = FulfillmentOrchestrationService::new(db);
+
+        let err = service
+            .create_manual_fulfillment(
+                Uuid::nil(),
+                CreateFulfillmentInput {
+                    order_id: Uuid::new_v4(),
+                    shipping_option_id: None,
+                    customer_id: None,
+                    carrier: None,
+                    tracking_number: None,
+                    items: None,
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id")));
+
+        let err = service
+            .ship_fulfillment(
+                Uuid::nil(),
+                Uuid::new_v4(),
+                ShipFulfillmentInput {
+                    carrier: "carrier".to_string(),
+                    tracking_number: "track".to_string(),
+                    items: None,
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id")));
+
+        let err = service
+            .ship_fulfillment(
+                Uuid::new_v4(),
+                Uuid::nil(),
+                ShipFulfillmentInput {
+                    carrier: "carrier".to_string(),
+                    tracking_number: "track".to_string(),
+                    items: None,
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("fulfillment_id")));
     }
 }

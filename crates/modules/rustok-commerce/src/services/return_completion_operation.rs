@@ -126,6 +126,22 @@ impl ReturnCompletionOperationJournal {
         &self,
         input: BeginReturnCompletionOperation,
     ) -> ReturnCompletionOperationResult<return_completion_operation::Model> {
+        if input.tenant_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if input.return_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "return_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_return_completion_operation",
+            tenant_id = %input.tenant_id,
+            return_id = %input.return_id,
+            "beginning return completion operation"
+        );
         let request_hash = normalize_hash(input.request_hash)?;
         if let Some(existing) = self
             .find_by_return(input.tenant_id, input.return_id)
@@ -178,6 +194,16 @@ impl ReturnCompletionOperationJournal {
         tenant_id: Uuid,
         operation_id: Uuid,
     ) -> ReturnCompletionOperationResult<return_completion_operation::Model> {
+        if tenant_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if operation_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "operation_id must not be nil".to_string(),
+            ));
+        }
         return_completion_operation::Entity::find_by_id(operation_id)
             .filter(return_completion_operation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -190,6 +216,16 @@ impl ReturnCompletionOperationJournal {
         tenant_id: Uuid,
         return_id: Uuid,
     ) -> ReturnCompletionOperationResult<Option<return_completion_operation::Model>> {
+        if tenant_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if return_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "return_id must not be nil".to_string(),
+            ));
+        }
         return_completion_operation::Entity::find()
             .filter(return_completion_operation::Column::TenantId.eq(tenant_id))
             .filter(return_completion_operation::Column::ReturnId.eq(return_id))
@@ -205,6 +241,22 @@ impl ReturnCompletionOperationJournal {
         lease_owner: impl Into<String>,
         lease_seconds: i64,
     ) -> ReturnCompletionOperationResult<Option<return_completion_operation::Model>> {
+        if tenant_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if operation_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "operation_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_return_completion_operation",
+            %tenant_id,
+            %operation_id,
+            "claiming return completion execution"
+        );
         let lease_owner = normalize_lease_owner(lease_owner.into())?;
         let lease_seconds = normalize_lease_seconds(lease_seconds)?;
         let now = Utc::now().fixed_offset();
@@ -271,6 +323,38 @@ impl ReturnCompletionOperationJournal {
         &self,
         input: ReturnCompletionOperationCheckpoint,
     ) -> ReturnCompletionOperationResult<return_completion_operation::Model> {
+        if input.tenant_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if input.operation_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "operation_id must not be nil".to_string(),
+            ));
+        }
+        if let Some(refund_id) = input.refund_id {
+            if refund_id.is_nil() {
+                return Err(ReturnCompletionOperationError::Validation(
+                    "refund_id must not be nil".to_string(),
+                ));
+            }
+        }
+        if let Some(order_change_id) = input.order_change_id {
+            if order_change_id.is_nil() {
+                return Err(ReturnCompletionOperationError::Validation(
+                    "order_change_id must not be nil".to_string(),
+                ));
+            }
+        }
+        tracing::debug!(
+            boundary = "commerce_return_completion_operation",
+            tenant_id = %input.tenant_id,
+            operation_id = %input.operation_id,
+            expected_stage = input.expected_stage.as_str(),
+            next_stage = input.next_stage.as_str(),
+            "checkpointing return completion operation"
+        );
         let lease_owner = normalize_lease_owner(input.lease_owner)?;
         let lease_seconds = normalize_lease_seconds(input.lease_seconds)?;
         let now = Utc::now().fixed_offset();
@@ -387,6 +471,22 @@ impl ReturnCompletionOperationJournal {
         operation_id: Uuid,
         lease_owner: impl Into<String>,
     ) -> ReturnCompletionOperationResult<return_completion_operation::Model> {
+        if tenant_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if operation_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "operation_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_return_completion_operation",
+            %tenant_id,
+            %operation_id,
+            "marking return completion operation completed"
+        );
         let lease_owner = normalize_lease_owner(lease_owner.into())?;
         let now = Utc::now().fixed_offset();
         let result = return_completion_operation::Entity::update_many()
@@ -442,6 +542,23 @@ impl ReturnCompletionOperationJournal {
         error_message: String,
         terminal: bool,
     ) -> ReturnCompletionOperationResult<return_completion_operation::Model> {
+        if tenant_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if operation_id.is_nil() {
+            return Err(ReturnCompletionOperationError::Validation(
+                "operation_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_return_completion_operation",
+            %tenant_id,
+            %operation_id,
+            status = next_status.as_str(),
+            "finishing return completion operation execution"
+        );
         let lease_owner = normalize_lease_owner(lease_owner)?;
         let now = Utc::now().fixed_offset();
         let mut update = return_completion_operation::Entity::update_many()
@@ -610,5 +727,81 @@ mod tests {
         assert!(normalize_lease_owner("   ".to_string()).is_err());
         assert!(normalize_lease_owner("owner".to_string()).is_ok());
         assert!(normalize_lease_owner("x".repeat(192)).is_err());
+    }
+
+    #[tokio::test]
+    async fn return_completion_journal_rejects_nil_uuids() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("memory db");
+        let journal = ReturnCompletionOperationJournal::new(db);
+
+        let err = journal
+            .begin(BeginReturnCompletionOperation {
+                tenant_id: Uuid::nil(),
+                return_id: Uuid::new_v4(),
+                request_hash: "a".repeat(64),
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("tenant_id")));
+
+        let err = journal
+            .begin(BeginReturnCompletionOperation {
+                tenant_id: Uuid::new_v4(),
+                return_id: Uuid::nil(),
+                request_hash: "a".repeat(64),
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("return_id")));
+
+        let err = journal.get(Uuid::nil(), Uuid::new_v4()).await.unwrap_err();
+        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("tenant_id")));
+
+        let err = journal.get(Uuid::new_v4(), Uuid::nil()).await.unwrap_err();
+        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("operation_id")));
+
+        let err = journal
+            .claim_execution(Uuid::nil(), Uuid::new_v4(), "owner", 60)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("tenant_id")));
+
+        let err = journal
+            .claim_execution(Uuid::new_v4(), Uuid::nil(), "owner", 60)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("operation_id")));
+
+        let err = journal
+            .checkpoint(ReturnCompletionOperationCheckpoint {
+                tenant_id: Uuid::nil(),
+                operation_id: Uuid::new_v4(),
+                lease_owner: "owner".to_string(),
+                expected_stage: ReturnCompletionOperationStage::Created,
+                next_stage: ReturnCompletionOperationStage::ResolutionCreated,
+                refund_id: None,
+                order_change_id: None,
+                lease_seconds: 60,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("tenant_id")));
+
+        let err = journal
+            .checkpoint(ReturnCompletionOperationCheckpoint {
+                tenant_id: Uuid::new_v4(),
+                operation_id: Uuid::nil(),
+                lease_owner: "owner".to_string(),
+                expected_stage: ReturnCompletionOperationStage::Created,
+                next_stage: ReturnCompletionOperationStage::ResolutionCreated,
+                refund_id: None,
+                order_change_id: None,
+                lease_seconds: 60,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ReturnCompletionOperationError::Validation(msg) if msg.contains("operation_id")));
     }
 }

@@ -95,6 +95,23 @@ impl ReturnCompletionOrchestrationService {
         return_id: Uuid,
         input: core::CompleteReturnResolutionInput,
     ) -> PostOrderOrchestrationResult<OrderReturnResponse> {
+        if tenant_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if return_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "return_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_return_completion_recovery",
+            %tenant_id,
+            %actor_id,
+            %return_id,
+            "recovering return completion"
+        );
         validate_completion_shape(&input)?;
         self.read_return_for_admission(tenant_id, actor_id, return_id)
             .await?;
@@ -120,6 +137,23 @@ impl ReturnCompletionOrchestrationService {
         retry_actor_id: Uuid,
         operation_id: Uuid,
     ) -> PostOrderOrchestrationResult<OrderReturnResponse> {
+        if tenant_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if operation_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "operation_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_return_completion_recovery",
+            %tenant_id,
+            %retry_actor_id,
+            %operation_id,
+            "retrying return completion operation"
+        );
         let operation = return_completion_operation::Entity::find_by_id(operation_id)
             .filter(return_completion_operation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -176,6 +210,22 @@ impl ReturnCompletionOrchestrationService {
         tenant_id: Uuid,
         operation_id: Uuid,
     ) -> PostOrderOrchestrationResult<ReturnCompletionOperationResponse> {
+        if tenant_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if operation_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "operation_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_return_completion_recovery",
+            %tenant_id,
+            %operation_id,
+            "getting return completion operation"
+        );
         let operation = return_completion_operation::Entity::find_by_id(operation_id)
             .filter(return_completion_operation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -200,6 +250,19 @@ impl ReturnCompletionOrchestrationService {
         tenant_id: Uuid,
         input: ListReturnCompletionOperationsInput,
     ) -> PostOrderOrchestrationResult<(Vec<ReturnCompletionOperationResponse>, u64)> {
+        if tenant_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_return_completion_recovery",
+            %tenant_id,
+            page = input.page,
+            per_page = input.per_page,
+            status = ?input.status,
+            "listing return completion operations"
+        );
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
         let mut query = return_completion_operation::Entity::find()

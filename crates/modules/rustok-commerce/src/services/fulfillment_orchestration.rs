@@ -81,6 +81,30 @@ impl FulfillmentOrchestrationService {
         tenant_id: Uuid,
         input: CreateFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
+        if tenant_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if input.order_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "order_id must not be nil".to_string(),
+            ));
+        }
+        if let Some(shipping_option_id) = input.shipping_option_id {
+            if shipping_option_id.is_nil() {
+                return Err(FulfillmentOrchestrationError::Validation(
+                    "shipping_option_id must not be nil".to_string(),
+                ));
+            }
+        }
+        tracing::debug!(
+            boundary = "commerce_fulfillment_orchestration",
+            %tenant_id,
+            order_id = %input.order_id,
+            shipping_option_id = ?input.shipping_option_id,
+            "creating manual fulfillment"
+        );
         input
             .validate()
             .map_err(|error| FulfillmentOrchestrationError::Validation(error.to_string()))?;
@@ -100,6 +124,13 @@ impl FulfillmentOrchestrationService {
             return Err(FulfillmentOrchestrationError::Validation(
                 "manual fulfillments require at least one item".to_string(),
             ));
+        }
+        for item in &requested_items {
+            if item.order_line_item_id.is_nil() {
+                return Err(FulfillmentOrchestrationError::Validation(
+                    "order_line_item_id must not be nil".to_string(),
+                ));
+            }
         }
 
         if input.customer_id != order.customer_id && input.customer_id.is_some() {
@@ -391,4 +422,68 @@ fn seller_id_from_metadata(metadata: &Value) -> Option<String> {
                 .and_then(Value::as_str)
                 .and_then(|value| normalize_seller_id(Some(value)))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn create_manual_fulfillment_rejects_nil_uuids() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("memory db");
+        let service = FulfillmentOrchestrationService::new(db);
+
+        let err = service
+            .create_manual_fulfillment(
+                Uuid::nil(),
+                CreateFulfillmentInput {
+                    order_id: Uuid::new_v4(),
+                    shipping_option_id: None,
+                    customer_id: None,
+                    carrier: None,
+                    tracking_number: None,
+                    items: None,
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id")));
+
+        let err = service
+            .create_manual_fulfillment(
+                Uuid::new_v4(),
+                CreateFulfillmentInput {
+                    order_id: Uuid::nil(),
+                    shipping_option_id: None,
+                    customer_id: None,
+                    carrier: None,
+                    tracking_number: None,
+                    items: None,
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("order_id")));
+
+        let err = service
+            .create_manual_fulfillment(
+                Uuid::new_v4(),
+                CreateFulfillmentInput {
+                    order_id: Uuid::new_v4(),
+                    shipping_option_id: Some(Uuid::nil()),
+                    customer_id: None,
+                    carrier: None,
+                    tracking_number: None,
+                    items: None,
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("shipping_option_id")));
+    }
 }

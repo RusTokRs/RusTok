@@ -103,6 +103,23 @@ impl ReturnCompletionOrchestrationService {
         return_id: Uuid,
         input: CompleteReturnResolutionInput,
     ) -> PostOrderOrchestrationResult<OrderReturnResponse> {
+        if tenant_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if return_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "return_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_return_completion_orchestration",
+            %tenant_id,
+            %actor_id,
+            %return_id,
+            "completing return resolution"
+        );
         validate_completion_shape(&input)?;
         let request_hash = completion_request_hash(&input)?;
         let journal = ReturnCompletionOperationJournal::new(self.db.clone());
@@ -901,6 +918,29 @@ fn port_failure_disposition(error: &PortError) -> FailureDisposition {
 fn validate_completion_shape(
     input: &CompleteReturnResolutionInput,
 ) -> PostOrderOrchestrationResult<()> {
+    if let Some(refund_id) = input.refund_id {
+        if refund_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "refund_id must not be nil".to_string(),
+            ));
+        }
+    }
+    if let Some(order_change_id) = input.order_change_id {
+        if order_change_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "order_change_id must not be nil".to_string(),
+            ));
+        }
+    }
+    if let Some(refund) = &input.refund {
+        if let Some(payment_collection_id) = refund.payment_collection_id {
+            if payment_collection_id.is_nil() {
+                return Err(PostOrderOrchestrationError::Validation(
+                    "payment_collection_id must not be nil".to_string(),
+                ));
+            }
+        }
+    }
     let helpers = usize::from(input.refund.is_some())
         + usize::from(input.exchange.is_some())
         + usize::from(input.claim.is_some());
@@ -1198,5 +1238,50 @@ mod tests {
         assert_eq!(request.per_page, 1);
         assert_eq!(request.status.as_deref(), Some("captured"));
         assert_eq!(request.order_id, Some(order_id));
+    }
+
+    #[test]
+    fn validate_completion_shape_rejects_nil_uuids() {
+        let input = CompleteReturnResolutionInput {
+            resolution_type: None,
+            refund_id: Some(Uuid::nil()),
+            order_change_id: None,
+            refund: None,
+            exchange: None,
+            claim: None,
+            metadata: serde_json::json!({}),
+        };
+        let err = validate_completion_shape(&input).unwrap_err();
+        assert!(matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("refund_id")));
+
+        let input = CompleteReturnResolutionInput {
+            resolution_type: None,
+            refund_id: None,
+            order_change_id: Some(Uuid::nil()),
+            refund: None,
+            exchange: None,
+            claim: None,
+            metadata: serde_json::json!({}),
+        };
+        let err = validate_completion_shape(&input).unwrap_err();
+        assert!(matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("order_change_id")));
+
+        let input = CompleteReturnResolutionInput {
+            resolution_type: None,
+            refund_id: None,
+            order_change_id: None,
+            refund: Some(CompleteReturnRefundInput {
+                payment_collection_id: Some(Uuid::nil()),
+                amount: Decimal::ONE,
+                reason: None,
+                metadata: serde_json::json!({}),
+                complete: false,
+            }),
+            exchange: None,
+            claim: None,
+            metadata: serde_json::json!({}),
+        };
+        let err = validate_completion_shape(&input).unwrap_err();
+        assert!(matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("payment_collection_id")));
     }
 }

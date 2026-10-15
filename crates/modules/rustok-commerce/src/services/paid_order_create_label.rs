@@ -31,6 +31,15 @@ impl PaidOrderCreateLabelHandler {
     }
 
     async fn dispatch_order(&self, tenant_id: Uuid, order_id: Uuid) -> HandlerResult {
+        if tenant_id.is_nil() || order_id.is_nil() {
+            return Ok(());
+        }
+        tracing::debug!(
+            boundary = "commerce_paid_order_create_label",
+            %tenant_id,
+            %order_id,
+            "dispatching paid order create label operations"
+        );
         let fulfillments = fulfillment::Entity::find()
             .filter(fulfillment::Column::TenantId.eq(tenant_id))
             .filter(fulfillment::Column::OrderId.eq(order_id))

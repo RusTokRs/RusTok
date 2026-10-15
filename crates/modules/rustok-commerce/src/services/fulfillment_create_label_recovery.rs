@@ -43,6 +43,22 @@ impl FulfillmentCreateLabelRecoveryService {
         tenant_id: Uuid,
         operation_id: Uuid,
     ) -> FulfillmentOrchestrationResult<crate::dto::FulfillmentResponse> {
+        if tenant_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if operation_id.is_nil() {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "operation_id must not be nil".to_string(),
+            ));
+        }
+        tracing::debug!(
+            boundary = "commerce_fulfillment_create_label_recovery",
+            %tenant_id,
+            %operation_id,
+            "retrying create_label fulfillment recovery"
+        );
         let journal = FulfillmentProviderOperationJournal::new(self.db.clone());
         let operation = journal.get(tenant_id, operation_id).await?;
         if operation.tenant_id != tenant_id || operation.operation != "create_label" {
@@ -311,5 +327,18 @@ mod tests {
             committed_at: None,
         };
         assert!(validate_result(&operation).is_err());
+    }
+
+    #[tokio::test]
+    async fn retry_rejects_nil_uuids() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("memory db");
+        let service = FulfillmentCreateLabelRecoveryService::new(db);
+        let err = service.retry(Uuid::nil(), Uuid::new_v4()).await.unwrap_err();
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id")));
+
+        let err = service.retry(Uuid::new_v4(), Uuid::nil()).await.unwrap_err();
+        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("operation_id")));
     }
 }
