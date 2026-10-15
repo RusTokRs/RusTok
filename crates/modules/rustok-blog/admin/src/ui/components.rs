@@ -2,6 +2,8 @@ use leptos::prelude::*;
 use rustok_api::RichTextDocument;
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
+use rustok_seo_panel::SeoEntityPanel;
+use rustok_seo_targets::SeoTargetSlug;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core;
@@ -106,6 +108,11 @@ pub(super) fn BlogPostsTable(
     items: Vec<BlogPostListItem>,
     next_cursor: Option<String>,
     on_load_more: Callback<String>,
+    /// The sort the loaded page was requested with. Part of the request, not a
+    /// client-side reorder: changing it restarts the list at page one.
+    sort_field: crate::model::BlogPostSortField,
+    sort_order: crate::model::BlogPostSortOrder,
+    on_sort_change: Callback<core::BlogPostAdminSort>,
     editing_post_id: Option<String>,
     busy_key: Option<String>,
     on_edit: Callback<(String, String)>,
@@ -153,6 +160,33 @@ pub(super) fn BlogPostsTable(
         .as_deref()
         .map(|l| l.starts_with("ru"))
         .unwrap_or(false);
+    let sort_label = t(locale.as_deref(), "blog.table.sort", "Sort");
+    let sort_field_options = core::BLOG_POST_ADMIN_SORT_FIELDS
+        .into_iter()
+        .map(|field| {
+            (
+                field,
+                t(
+                    locale.as_deref(),
+                    core::blog_post_admin_sort_field_label_key(field),
+                    core::blog_post_admin_sort_field_default_label(field),
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let sort_order_options = [core::BlogPostSortOrder::Desc, core::BlogPostSortOrder::Asc]
+        .into_iter()
+        .map(|order| {
+            (
+                order,
+                t(
+                    locale.as_deref(),
+                    core::blog_post_admin_sort_order_label_key(order),
+                    core::blog_post_admin_sort_order_default_label(order),
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
 
     let rows_store = StoredValue::new(table.rows);
 
@@ -297,16 +331,69 @@ pub(super) fn BlogPostsTable(
         )
     };
 
+    let select_class = "text-xs rounded-lg border border-border bg-background px-2.5 py-1 text-foreground outline-none focus:border-primary font-normal";
+
     view! {
         <div class="space-y-4">
             <div class="flex flex-col sm:flex-row gap-3 items-center justify-between">
-                <input
-                    type="text"
-                    placeholder=if is_ru { "Поиск по статьям блога..." } else { "Search blog posts..." }
-                    prop:value=move || search.get()
-                    on:input=move |ev| search.set(event_target_value(&ev))
-                    class="text-xs rounded-lg border border-border bg-background px-2.5 py-1 text-foreground outline-none focus:border-primary w-64 font-normal"
-                />
+                <div class="flex flex-col sm:flex-row gap-3 items-center">
+                    <input
+                        type="text"
+                        placeholder=if is_ru { "Поиск по статьям блога..." } else { "Search blog posts..." }
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                        class="text-xs rounded-lg border border-border bg-background px-2.5 py-1 text-foreground outline-none focus:border-primary w-64 font-normal"
+                    />
+                    // The sort is a request, not a view filter: it reloads the list
+                    // from the server instead of reordering the loaded rows.
+                    <label class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span>{sort_label.clone()}</span>
+                        <select
+                            class=select_class
+                            aria-label=sort_label.clone()
+                            prop:value=move || sort_field.as_graphql()
+                            on:change=move |ev| {
+                                let token = event_target_value(&ev);
+                                if let Some(field) = crate::model::BlogPostSortField::from_graphql(token.as_str()) {
+                                    on_sort_change.run(core::BlogPostAdminSort::default().with_field(field).with_order(sort_order));
+                                }
+                            }
+                        >
+                            {sort_field_options
+                                .into_iter()
+                                .map(|(field, label)| {
+                                    view! {
+                                        <option value=field.as_graphql()>
+                                            {label}
+                                        </option>
+                                    }
+                                })
+                                .collect_view()}
+                        </select>
+                        <select
+                            class=select_class
+                            aria-label=sort_label.clone()
+                            prop:value=move || sort_order.as_graphql()
+                            on:change=move |ev| {
+                                let token = event_target_value(&ev);
+                                if let Some(order) = crate::model::BlogPostSortOrder::from_graphql(token.as_str()) {
+                                    on_sort_change.run(core::BlogPostAdminSort::default().with_field(sort_field).with_order(order));
+                                }
+                            }
+                        >
+                            {sort_order_options
+                                .into_iter()
+                                .map(|(order, label)| {
+                                    view! {
+                                        <option value=order.as_graphql()>
+                                            {label}
+                                        </option>
+                                    }
+                                })
+                                .collect_view()}
+                        </select>
+                    </label>
+                </div>
                 <div class=table_classes.total_label>
                     {table.total_label}
                 </div>
@@ -387,4 +474,141 @@ fn apply_form_state(setters: BlogPostFormSetters, state: core::BlogPostEditorFor
     setters.locale.set(state.locale);
     setters.tags_input.set(state.tags_input);
     setters.publish_now.set(state.publish_now);
+}
+
+/// The cursor-paged post list region: one table plus the load-more failure banner.
+///
+/// Owned here rather than in `leptos.rs` so the page component keeps the request wiring
+/// (resource, signals, callbacks) and the list keeps its rendering.
+#[component]
+pub(super) fn BlogPostsList(
+    items: Vec<BlogPostListItem>,
+    next_cursor: Option<String>,
+    load_more_error: Option<String>,
+    sort: core::BlogPostAdminSort,
+    editing_post_id: Option<String>,
+    busy_key: Option<String>,
+    on_load_more: Callback<String>,
+    on_sort_change: Callback<core::BlogPostAdminSort>,
+    on_edit: Callback<(String, String)>,
+    on_toggle_publish: Callback<(String, bool, String)>,
+    on_archive: Callback<(String, String)>,
+    on_restore: Callback<(String, String)>,
+    on_delete: Callback<String>,
+) -> impl IntoView {
+    let shell_classes = core::blog_post_admin_shell_classes_view();
+    view! {
+        {load_more_error.map(|message| view! {
+            <div class=shell_classes.load_error>{message}</div>
+        })}
+        <BlogPostsTable
+            items=items
+            next_cursor=next_cursor
+            on_load_more=on_load_more
+            sort_field=sort.field
+            sort_order=sort.order
+            on_sort_change=on_sort_change
+            editing_post_id=editing_post_id
+            busy_key=busy_key
+            on_edit=on_edit
+            on_toggle_publish=on_toggle_publish
+            on_archive=on_archive
+            on_restore=on_restore
+            on_delete=on_delete
+        />
+    }
+}
+
+/// The SEO sidebar panel for the post currently open in the editor.
+///
+/// The panel is data-driven by `target_kind`/`target_id`, so the editor only supplies the
+/// selected post and the tenant locale; the SEO crate owns the fetches and the widgets.
+#[component]
+pub(super) fn BlogPostSeoPanel(
+    target_kind: SeoTargetSlug,
+    target_id: Signal<Option<String>>,
+    host_locale: Signal<String>,
+) -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    view! {
+        <SeoEntityPanel
+            target_kind=target_kind
+            target_id=target_id
+            locale=host_locale
+            show_control_plane_widgets=true
+            panel_title=t(locale.as_deref(), "blog.seo.title", "Post SEO")
+            panel_subtitle=t(
+                locale.as_deref(),
+                "blog.seo.subtitle",
+                "Explicit metadata, social tags and diagnostics for the selected blog post.",
+            )
+            empty_message=t(
+                locale.as_deref(),
+                "blog.seo.empty",
+                "Create or open a post first. SEO stays inside the blog editor rather than a global SEO hub.",
+            )
+        />
+    }
+}
+
+/// The page header block: badge, title and subtitle copy for the blog admin surface.
+#[component]
+pub(super) fn BlogPostsPageHeader() -> impl IntoView {
+    let shell_classes = core::blog_post_admin_shell_classes_view();
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    view! {
+        <header class=shell_classes.header>
+            <div class=shell_classes.header_content>
+                <span class=shell_classes.badge>
+                    {t(ui_locale.as_deref(), "blog.badge", "blog")}
+                </span>
+                <h1 class=shell_classes.title>
+                    {t(ui_locale.as_deref(), "blog.title", "Blog Publishing")}
+                </h1>
+                <p class=shell_classes.subtitle>
+                    {t(
+                        ui_locale.as_deref(),
+                        "blog.subtitle",
+                        "Canonical module-owned CRUD flow for blog posts through the blog GraphQL contract.",
+                    )}
+                </p>
+            </div>
+        </header>
+    }
+}
+
+/// The posts list card header: list copy plus the locale filter that drives the query.
+#[component]
+pub(super) fn BlogPostsListHeader(
+    locale: RwSignal<String>,
+    set_locale: WriteSignal<String>,
+    locale_filter_label: String,
+) -> impl IntoView {
+    let shell_classes = core::blog_post_admin_shell_classes_view();
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    view! {
+        <div class=shell_classes.list_header>
+            <div>
+                <h2 class=shell_classes.list_title>
+                    {t(ui_locale.as_deref(), "blog.posts.title", "Posts")}
+                </h2>
+                <p class=shell_classes.list_subtitle>
+                    {t(
+                        ui_locale.as_deref(),
+                        "blog.posts.subtitle",
+                        "Loaded from rustok-blog-admin via GraphQL, not wired manually in apps/admin.",
+                    )}
+                </p>
+            </div>
+            <label class=shell_classes.locale_filter_label>
+                <span class=shell_classes.locale_filter_text>{locale_filter_label}</span>
+                <input
+                    type="text"
+                    class=shell_classes.locale_filter_input
+                    prop:value=locale
+                    on:input=move |ev| set_locale.set(event_target_value(&ev))
+                />
+            </label>
+        </div>
+    }
 }

@@ -193,9 +193,8 @@ mod tests {
     fn public_list_cursor_rejects_legacy_and_malformed_tokens() {
         // Legacy `(published_at, id)` tokens cannot express the pinned ordering and
         // must be rejected so a client cannot silently resume with a lossy position.
-        let legacy = URL_SAFE_NO_PAD.encode(
-            "2026-10-08T08:00:00Z|00000000-0000-0000-0000-000000000007",
-        );
+        let legacy =
+            URL_SAFE_NO_PAD.encode("2026-10-08T08:00:00Z|00000000-0000-0000-0000-000000000007");
         assert!(PublishedPostCursor::decode(&legacy).is_err());
 
         assert!(PublishedPostCursor::decode("not-a-token").is_err());

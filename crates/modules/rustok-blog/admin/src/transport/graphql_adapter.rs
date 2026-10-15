@@ -63,6 +63,12 @@ struct PostsFilter {
     after: Option<String>,
     #[serde(rename = "perPage")]
     per_page: u64,
+    /// Optional in the schema, always sent by the admin: the sort is part of the
+    /// request, not a client-side reorder of the loaded rows.
+    #[serde(rename = "sortBy")]
+    sort_by: crate::model::BlogPostSortField,
+    #[serde(rename = "sortOrder")]
+    sort_order: crate::model::BlogPostSortOrder,
 }
 
 #[derive(Debug, Serialize)]
@@ -158,6 +164,7 @@ pub async fn fetch_posts(
     tenant_slug: Option<String>,
     locale: Option<String>,
     after: Option<String>,
+    sort: crate::core::BlogPostAdminSort,
 ) -> Result<BlogPostList, ApiError> {
     let response: BlogPostsResponse = request(
         BLOG_POSTS_QUERY,
@@ -166,6 +173,8 @@ pub async fn fetch_posts(
                 locale,
                 after,
                 per_page: 20,
+                sort_by: sort.field,
+                sort_order: sort.order,
             },
         },
         token,

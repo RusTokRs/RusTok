@@ -14,8 +14,6 @@ use uuid::Uuid;
 
 use crate::entities::{blog_comment_projection_delivery, blog_post};
 
-
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct CommentProjectionChange {
     comment_id: Uuid,

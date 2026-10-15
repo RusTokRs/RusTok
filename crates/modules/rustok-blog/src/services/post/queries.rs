@@ -719,11 +719,7 @@ pub(crate) fn order_public_post_list(
 ) -> Select<blog_post::Entity> {
     select
         .order_by_desc(blog_post::Column::IsPinned)
-        .order_by_with_nulls(
-            blog_post::Column::PinnedAt,
-            Order::Desc,
-            NullOrdering::Last,
-        )
+        .order_by_with_nulls(blog_post::Column::PinnedAt, Order::Desc, NullOrdering::Last)
         .order_by_desc(blog_post::Column::PublishedAt)
         .order_by_desc(blog_post::Column::Id)
 }

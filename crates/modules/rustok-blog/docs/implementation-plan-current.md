@@ -452,6 +452,13 @@ base `1a420c8`).
   `PostSortOrder`), and the defaults stay `CreatedAt`/`Desc`, so existing clients are
   unaffected. Each sort column keeps its own index from `m20260328_000001`, and the
   keyset cursor stays bound to the sort it was issued for.
+  Both admin lists request it: the Leptos admin table gained a sort column/direction
+  toolbar (`BlogPostSortField`/`BlogPostSortOrder` in `admin/src/model.rs` as the single
+  owner of the wire spelling, `BlogPostAdminSort` in `admin/src/core/presentation.rs`,
+  threaded through both transports), and the Next admin post list gained the same two
+  controls over `sortBy`/`sortOrder` route params. Either control clears `after` and the
+  page history, so the list restarts at page one instead of replaying a cursor against a
+  different sort.
 - **L-1 validation before the transaction.** `create_post` and `update_post` validate
   inputs before `db.begin()`; the schedule validators moved into
   `validate_schedule_for_create`/`validate_schedule_for_update` in
@@ -509,6 +516,25 @@ base `1a420c8`).
   because of three malformed string literals — now parses and passes after two marker
   strings were aligned with the wording the tree actually uses.
 
+- UI follow-up evidence (admin sort controls; still no `cargo`, so nothing was compiled
+  or executed as a Rust test): every Rust file this branch touches was parsed with
+  tree-sitter and checked with `rustfmt` (the formatter built to WebAssembly,
+  `@scalar/rust-fmt`). 15 files had drifted from rustfmt — the earlier waves' wrapping
+  and import order plus this wave's additions — and were reformatted; the whole set is
+  clean under the same options (`edition 2024`, `styleEdition 2024`). The tool was
+  calibrated before it was trusted: the base revision's copies of the same files and 116
+  of 120 random untouched crate files were already clean under it.
+- The six changed TypeScript files are prettier-clean (`prettier` 3.9.9 with the values
+  from `apps/next-admin/.prettierrc`, minus the Tailwind class-sorting plugin), and the
+  sort control plus the API module type-check under `tsc` 7.0.2 with `strict` against
+  `nuqs` 2.10.1's published types; the host modules were stubbed for that check, so
+  `apps/next-admin`'s own `npm run typecheck` still has to run on a machine with its
+  `node_modules`.
+- Re-run after the reformat with no change in outcome: the Blog verifier set (40
+  pre-existing failures), the 51 unrelated verifiers that read Next-admin or Blog paths
+  (12 pre-existing failures, identical to the base worktree), and the 22 Blog verifier
+  self-tests (5 pre-existing failures).
+
 ### Open items from this audit
 
 Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md)):
@@ -516,9 +542,6 @@ Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit
 - **H-5 amplification (open).** A bulk request is now bounded at 100 ids, but the
   command still runs one transaction and one lifecycle event per id inside the request
   instead of queueing the batch.
-- **M-12 follow-up (open, UI).** The GraphQL surface supports the sort, but the Next
-  admin and the Leptos admin list still request the default order: neither UI has a
-  sort control yet.
 - **M-13 residuals (open).** Preview reads have no audit trail, and archiving a post
   does not revoke its already-minted tokens; both are documented in the module README.
 - **Canonical layout documentation (open, docs only).**
@@ -648,8 +671,9 @@ owner decision or a larger implementation.
 - **M-12 duplicated storefronts.** Blog is implemented in both the Next
   storefront and the Leptos `BlogView`. The Leptos storefront resolves retired
   slugs but does not redirect them. The canonical storefront decision is open.
-- **M-13 sorting.** The authenticated GraphQL `posts` path hard-codes
-  `CreatedAt DESC`, and the filter exposes no sort field.
+- **M-13 sorting (closed 2026-10-15).** The authenticated GraphQL `posts` path takes
+  `sortBy`/`sortOrder` and both admin lists expose them; see the 2026-10-15 section
+  above. The only remaining list gap here is search/facets (H-7).
 - **L-1** Counter types are `i32` in storage and `i64` in DTOs
   (`comment_count`); overflow semantics are undocumented.
 - **L-2** Reading time is computed on the frontend from plain text, so it can

@@ -233,6 +233,10 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   wrong position.
 - The list never counts rows; `nextCursor` is present only while another page
   exists. NULL sort values come last in both directions.
+- Both admin surfaces (the Leptos `rustok-blog-admin` table and the Next
+  `@rustok/blog-admin` post list) expose that sort as a control. Changing the column or
+  the direction clears `after` and the page history, because a cursor issued for one sort
+  cannot be replayed against another.
 
 ## Known Limitations / Pending Implementation
 

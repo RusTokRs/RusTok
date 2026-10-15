@@ -596,13 +596,20 @@ async fn public_visible_keyset_keeps_pinned_post_via_cursor_rank() {
         }
     }
 
-    assert_eq!(seen.first(), Some(&pinned), "pinned post leads the first page");
+    assert_eq!(
+        seen.first(),
+        Some(&pinned),
+        "pinned post leads the first page"
+    );
     assert_eq!(seen.len(), created.len(), "no post may be repeated");
     let mut expected = created.clone();
     expected.sort();
     let mut actual = seen.clone();
     actual.sort();
-    assert_eq!(actual, expected, "every published post must be reached once");
+    assert_eq!(
+        actual, expected,
+        "every published post must be reached once"
+    );
 }
 
 #[test]

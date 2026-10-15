@@ -13,6 +13,53 @@ export interface GqlOpts {
 
 export type BlogPostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 
+/**
+ * Sort columns the owner keyset query indexes. The GraphQL enum (`BlogPostSortField`) and the
+ * owner query use exactly these spellings, so the wire contract has a single owner here.
+ */
+export const BLOG_POST_SORT_FIELDS = [
+  'CREATED_AT',
+  'UPDATED_AT',
+  'PUBLISHED_AT'
+] as const;
+
+export type BlogPostSortField = (typeof BLOG_POST_SORT_FIELDS)[number];
+
+/** Sort direction of the owner keyset order (`BlogPostSortOrder`). */
+export const BLOG_POST_SORT_ORDERS = ['DESC', 'ASC'] as const;
+
+export type BlogPostSortOrder = (typeof BLOG_POST_SORT_ORDERS)[number];
+
+/** Owner defaults, mirrored so the UI shows the order the list is actually returned in. */
+export const DEFAULT_POST_SORT_FIELD: BlogPostSortField = 'CREATED_AT';
+export const DEFAULT_POST_SORT_ORDER: BlogPostSortOrder = 'DESC';
+
+/**
+ * Narrows an untrusted route value to a sort column the owner accepts.
+ *
+ * The GraphQL enum rejects an unknown column, and the owner refuses a page whose cursor was
+ * issued for a different sort, so a bad query parameter falls back to the default instead of
+ * turning into a failed list request.
+ */
+export function parsePostSortField(
+  value: string | undefined
+): BlogPostSortField {
+  return (
+    BLOG_POST_SORT_FIELDS.find((field) => field === value) ??
+    DEFAULT_POST_SORT_FIELD
+  );
+}
+
+/** Narrows an untrusted route value to a sort direction the owner accepts. */
+export function parsePostSortOrder(
+  value: string | undefined
+): BlogPostSortOrder {
+  return (
+    BLOG_POST_SORT_ORDERS.find((order) => order === value) ??
+    DEFAULT_POST_SORT_ORDER
+  );
+}
+
 export interface PostSummary {
   id: string;
   title: string;
@@ -62,6 +109,10 @@ export interface PostListQuery {
   /** Opaque cursor: `nextCursor` of the previous page. */
   after?: string;
   perPage?: number;
+  /** Column of the keyset order. Defaults to `CREATED_AT` on the owner side. */
+  sortBy?: BlogPostSortField;
+  /** Direction of the keyset order. Defaults to `DESC` on the owner side. */
+  sortOrder?: BlogPostSortOrder;
 }
 
 export interface CreatePostInput {
@@ -221,6 +272,10 @@ export async function listPosts(
   if (query.locale) filter.locale = query.locale;
   if (query.after) filter.after = query.after;
   if (query.perPage) filter.perPage = query.perPage;
+  // A cursor is bound to the sort it was issued for; the owner rejects a mismatch, so the
+  // caller must drop `after` when it changes either half of the sort.
+  if (query.sortBy) filter.sortBy = query.sortBy;
+  if (query.sortOrder) filter.sortOrder = query.sortOrder;
 
   const data = await graphqlRequest<
     { tenantId: string; filter?: Record<string, unknown> },

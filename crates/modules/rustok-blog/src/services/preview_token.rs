@@ -263,7 +263,10 @@ impl PreviewTokenService {
         if expired.is_empty() {
             return Ok(0);
         }
-        let ids = expired.into_iter().map(|token| token.id).collect::<Vec<_>>();
+        let ids = expired
+            .into_iter()
+            .map(|token| token.id)
+            .collect::<Vec<_>>();
         let result = blog_preview_token::Entity::delete_many()
             .filter(blog_preview_token::Column::Id.is_in(ids))
             .exec(&self.db)

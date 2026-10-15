@@ -101,6 +101,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`BlogPostSortField`/`BlogPostSortOrder`) instead of ignoring the owner sort keys: each
   sort column reads its own keyset index, a cursor is rejected when it is replayed with a
   different sort, and the defaults stay `CREATED_AT DESC`.
+- Both Blog admin lists request that sort: the Leptos admin table and the Next admin post
+  list expose a sort column and a sort direction control, and changing either restarts the
+  list at page one because the keyset cursor is bound to the sort that issued it.
 - Blog input validation no longer runs inside a transaction: `create_post` and
   `update_post` validate the post fields and the schedule before `db.begin()`, so a
   rejected request cannot hold a pooled connection.

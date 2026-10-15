@@ -124,12 +124,13 @@ impl From<BlogError> for RichError {
                     .with_field("tag_id", id.to_string())
                     .with_error_code("TAG_NOT_FOUND")
             }
-            BlogError::PreviewTokenNotFound(id) => {
-                RichError::new(ErrorKind::NotFound, format!("Preview token {} not found", id))
-                    .with_user_message("The preview token does not exist for this tenant")
-                    .with_field("token_id", id.to_string())
-                    .with_error_code("PREVIEW_TOKEN_NOT_FOUND")
-            }
+            BlogError::PreviewTokenNotFound(id) => RichError::new(
+                ErrorKind::NotFound,
+                format!("Preview token {} not found", id),
+            )
+            .with_user_message("The preview token does not exist for this tenant")
+            .with_field("token_id", id.to_string())
+            .with_error_code("PREVIEW_TOKEN_NOT_FOUND"),
             BlogError::TaxonomyTermNotFound(id) => RichError::new(
                 ErrorKind::NotFound,
                 format!("Taxonomy term {} not found", id),

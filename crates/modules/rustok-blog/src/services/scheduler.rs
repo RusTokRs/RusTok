@@ -62,10 +62,7 @@ fn tenant_scoped_work_item(worker_slug: &str, tenant_id: Uuid) -> ModuleWorkItem
 }
 
 /// Reads and validates the tenant carried by an envelope of `expected_slug`.
-fn work_item_tenant(
-    item: &ModuleWorkItem,
-    expected_slug: &str,
-) -> Result<Uuid, ModuleWorkError> {
+fn work_item_tenant(item: &ModuleWorkItem, expected_slug: &str) -> Result<Uuid, ModuleWorkError> {
     if item.worker_slug != expected_slug {
         return Err(ModuleWorkError::Handler(format!(
             "blog scheduled work item belongs to worker `{}` but `{expected_slug}` was executed",
@@ -76,12 +73,9 @@ fn work_item_tenant(
         .payload
         .get("tenant_id")
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            ModuleWorkError::Handler("blog work item has no tenant_id".to_string())
-        })?;
-    let tenant_id = Uuid::parse_str(value).map_err(|_| {
-        ModuleWorkError::Handler("blog work item tenant_id is invalid".to_string())
-    })?;
+        .ok_or_else(|| ModuleWorkError::Handler("blog work item has no tenant_id".to_string()))?;
+    let tenant_id = Uuid::parse_str(value)
+        .map_err(|_| ModuleWorkError::Handler("blog work item tenant_id is invalid".to_string()))?;
     if tenant_id != item.id || tenant_id != item.tenant_id {
         return Err(ModuleWorkError::Handler(
             "blog work item identity mismatch".to_string(),
@@ -265,9 +259,10 @@ impl ModuleWorkSource for BlogPreviewTokenCleanupWorkAdapter {
         if worker_slug != BLOG_PREVIEW_TOKEN_CLEANUP_WORKER {
             return Ok(None);
         }
-        Ok(self.next_due_tenant().await?.map(|tenant_id| {
-            tenant_scoped_work_item(BLOG_PREVIEW_TOKEN_CLEANUP_WORKER, tenant_id)
-        }))
+        Ok(self
+            .next_due_tenant()
+            .await?
+            .map(|tenant_id| tenant_scoped_work_item(BLOG_PREVIEW_TOKEN_CLEANUP_WORKER, tenant_id)))
     }
 
     async fn complete(
@@ -403,9 +398,10 @@ impl ModuleWorkSource for BlogRouteReconciliationWorkAdapter {
         if worker_slug != BLOG_ROUTE_RECONCILIATION_WORKER {
             return Ok(None);
         }
-        Ok(self.next_due_tenant().await?.map(|tenant_id| {
-            tenant_scoped_work_item(BLOG_ROUTE_RECONCILIATION_WORKER, tenant_id)
-        }))
+        Ok(self
+            .next_due_tenant()
+            .await?
+            .map(|tenant_id| tenant_scoped_work_item(BLOG_ROUTE_RECONCILIATION_WORKER, tenant_id)))
     }
 
     async fn complete(

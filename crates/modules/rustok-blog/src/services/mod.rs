@@ -10,9 +10,9 @@ mod comment;
 mod comment_projection;
 mod post;
 pub(crate) mod preview_token;
+mod rbac;
 #[cfg(feature = "runtime")]
 pub(crate) mod scheduler;
-mod rbac;
 mod tag;
 mod taxonomy_translation_owner;
 
@@ -20,11 +20,11 @@ pub use category_command::CategoryCommandService;
 pub use category_owner::CategoryService;
 pub use comment::CommentService;
 pub use comment_projection::BlogCommentProjectionHandler;
+pub(crate) use post::BLOG_POST_TARGET_TYPE;
 pub use post::{
     BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner, CANONICAL_POST_ROUTE_LOCALE,
     PostService, canonical_post_route,
 };
-pub(crate) use post::BLOG_POST_TARGET_TYPE;
 pub(crate) use post::{
     MAX_SCHEDULED_PUBLISH_BATCH, is_post_visible_for_channel, load_post_subject_snapshot,
     status_to_storage,

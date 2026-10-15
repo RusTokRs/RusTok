@@ -471,13 +471,12 @@ mod tests {
     /// root field fail this test until it is given a surface.
     #[tokio::test]
     async fn blog_schema_root_fields_are_fully_classified() {
-        let schema =
-            async_graphql::Schema::build(
-                crate::graphql::BlogQuery,
-                crate::graphql::BlogMutation,
-                async_graphql::EmptySubscription,
-            )
-            .finish();
+        let schema = async_graphql::Schema::build(
+            crate::graphql::BlogQuery,
+            crate::graphql::BlogMutation,
+            async_graphql::EmptySubscription,
+        )
+        .finish();
         let response = schema
             .execute(
                 "{ __schema { queryType { fields { name } } mutationType { fields { name } } } }",

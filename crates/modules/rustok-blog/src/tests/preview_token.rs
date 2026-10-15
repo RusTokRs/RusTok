@@ -4,7 +4,8 @@
 use chrono::{Duration, Utc};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    Set,
 };
 use uuid::Uuid;
 
@@ -19,7 +20,10 @@ use crate::services::preview_token::MAX_PREVIEW_TOKEN_CLEANUP_BATCH;
 /// The length bound the service enforces; the constant lives in the service module.
 const MAX_TTL_HOURS: i64 = 720;
 
-fn token_service(db: &DatabaseConnection, event_bus: &TransactionalEventBus) -> PreviewTokenService {
+fn token_service(
+    db: &DatabaseConnection,
+    event_bus: &TransactionalEventBus,
+) -> PreviewTokenService {
     PreviewTokenService::new(db.clone(), event_bus.clone())
 }
 

@@ -91,10 +91,8 @@ impl RusToKModule for BlogModule {
             })?;
         #[cfg(feature = "runtime")]
         {
-            let registrations = extensions.get_or_insert_with::<
-                rustok_runtime::ModuleWorkRegistrations,
-                _,
-            >(Default::default);
+            let registrations = extensions
+                .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default);
             registrations.register(std::sync::Arc::new(
                 crate::services::scheduler::BlogScheduledPublishWorkRegistration,
             ));

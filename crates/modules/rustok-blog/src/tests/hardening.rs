@@ -20,7 +20,9 @@ use uuid::Uuid;
 
 use crate::dto::CreatePostInput;
 use crate::integrations::target_lifecycle::BlogTargetDeletionRouteHandler;
-use crate::services::{BLOG_POST_TARGET_TYPE, BlogPostRouteOwner, PostService, canonical_post_route};
+use crate::services::{
+    BLOG_POST_TARGET_TYPE, BlogPostRouteOwner, PostService, canonical_post_route,
+};
 
 /// The platform records enabled tenant modules outside the module migrations, so the
 /// harness creates the table the host owns.
@@ -186,8 +188,14 @@ async fn dangling_blog_route_does_not_resolve_to_a_redirect() {
     let (db, event_bus) = setup_hardening_schema().await;
     let tenant_id = Uuid::new_v4();
     let deleted_target = Uuid::new_v4();
-    let source_route =
-        insert_route(&db, tenant_id, "ghost-post", BLOG_POST_TARGET_TYPE, deleted_target).await;
+    let source_route = insert_route(
+        &db,
+        tenant_id,
+        "ghost-post",
+        BLOG_POST_TARGET_TYPE,
+        deleted_target,
+    )
+    .await;
 
     let resolved = post_service(&db, &event_bus)
         .get_post_by_slug(tenant_id, admin(), "en", "ghost-post")
@@ -219,8 +227,14 @@ async fn target_deleted_listener_purges_blog_routes_once() {
     let (db, event_bus) = setup_hardening_schema().await;
     let tenant_id = Uuid::new_v4();
     let post_id = create_draft_post(&db, &event_bus, tenant_id, "live-post").await;
-    let retired_route =
-        insert_route(&db, tenant_id, "retired-slug", BLOG_POST_TARGET_TYPE, post_id).await;
+    let retired_route = insert_route(
+        &db,
+        tenant_id,
+        "retired-slug",
+        BLOG_POST_TARGET_TYPE,
+        post_id,
+    )
+    .await;
 
     let handler = BlogTargetDeletionRouteHandler::new(db.clone());
     let envelope = EventEnvelope::new(

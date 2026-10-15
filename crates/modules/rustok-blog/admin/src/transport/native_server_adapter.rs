@@ -12,8 +12,9 @@ use crate::model::{
 pub(super) async fn fetch_posts(
     locale: Option<String>,
     after: Option<String>,
+    sort: crate::core::BlogPostAdminSort,
 ) -> Result<BlogPostList, ServerFnError> {
-    blog_admin_posts_native(locale, after).await
+    blog_admin_posts_native(locale, after, sort).await
 }
 
 pub(super) async fn fetch_post(
@@ -196,6 +197,7 @@ fn requested_locale(locale: Option<String>, fallback: &str) -> String {
 async fn blog_admin_posts_native(
     locale: Option<String>,
     after: Option<String>,
+    sort: crate::core::BlogPostAdminSort,
 ) -> Result<BlogPostList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -203,6 +205,17 @@ async fn blog_admin_posts_native(
 
         let context = native_context().await?;
         let locale = requested_locale(locale, context.tenant.default_locale.as_str());
+        // The owner query is reached through the same typed sort the GraphQL adapter
+        // sends, so both transports read the same keyset index.
+        let sort_by = match sort.field {
+            crate::model::BlogPostSortField::CreatedAt => PostSortField::CreatedAt,
+            crate::model::BlogPostSortField::UpdatedAt => PostSortField::UpdatedAt,
+            crate::model::BlogPostSortField::PublishedAt => PostSortField::PublishedAt,
+        };
+        let sort_order = match sort.order {
+            crate::model::BlogPostSortOrder::Asc => PostSortOrder::Asc,
+            crate::model::BlogPostSortOrder::Desc => PostSortOrder::Desc,
+        };
         let result = PostService::new(context.db, context.event_bus)
             .list_posts_with_locale_fallback(
                 context.tenant.id,
@@ -211,8 +224,8 @@ async fn blog_admin_posts_native(
                     locale: Some(locale),
                     after,
                     per_page: Some(20),
-                    sort_by: Some(PostSortField::CreatedAt),
-                    sort_order: Some(PostSortOrder::Desc),
+                    sort_by: Some(sort_by),
+                    sort_order: Some(sort_order),
                     ..Default::default()
                 },
                 Some(context.tenant.default_locale.as_str()),
@@ -229,6 +242,7 @@ async fn blog_admin_posts_native(
     {
         let _ = locale;
         let _ = after;
+        let _ = sort;
         Err(ServerFnError::new(
             "blog/admin/posts requires the `ssr` feature",
         ))

@@ -24,7 +24,10 @@ const BULK_FETCH_SIZE: u32 = 48;
 /// on the request path that needed it — never as a panic.
 fn blog_target_slug() -> AnyResult<SeoTargetSlug> {
     SeoTargetSlug::new(builtin_slug::BLOG_POST).map_err(|error| {
-        anyhow::anyhow!("Blog SEO target slug `{}` is invalid: {error}", builtin_slug::BLOG_POST)
+        anyhow::anyhow!(
+            "Blog SEO target slug `{}` is invalid: {error}",
+            builtin_slug::BLOG_POST
+        )
     })
 }
 
