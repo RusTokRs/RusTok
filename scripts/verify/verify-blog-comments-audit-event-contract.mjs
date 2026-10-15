@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { flattenWhitespace } from './lib/verify-text.mjs';
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -35,6 +36,18 @@ function hasAll(content, markers, label) {
   for (const marker of markers) {
     requireCondition(
       content.includes(marker),
+      `${label} missing marker: ${marker}`,
+    );
+  }
+}
+
+function hasAllProse(content, markers, label) {
+  // See scripts/verify/lib/verify-text.mjs: prose markers are wording contracts, so they
+  // are compared against a whitespace-flattened view of the source.
+  const flattened = flattenWhitespace(content);
+  for (const marker of markers) {
+    requireCondition(
+      flattened.includes(flattenWhitespace(marker)),
       `${label} missing marker: ${marker}`,
     );
   }
@@ -134,18 +147,18 @@ const historicalDigests = {
   contract_envelope:
     'sha256:59a4348d04ce4aa140a974929dbfc28888d0c5784dd0c057e5b6e17b2106d540',
 };
-hasAll(api, [
+hasAllProse(api, [
   'BlogCommentsDelegationScheduleAuditEvent',
   'blog.comments_delegation_schedule.replacement_succeeded',
   'request_id',
   'canonical handoff idempotency',
   'Control-plane tenant and actor remain',
   'envelope metadata.',
-  'This crate defines exact envelope identity construction but does not perform',
+  'This crate defines exact envelope identity and causation construction but does not perform',
   'source-row',
 ], 'rustok-events public API documentation');
 
-hasAll(plan, [
+hasAllProse(plan, [
   '## Slice 88 — sealed Blog Comments schedule-audit event contract',
   'Request identity exception',
   'Control-plane tenant and actor identity remain `ContractEventEnvelope` metadata',

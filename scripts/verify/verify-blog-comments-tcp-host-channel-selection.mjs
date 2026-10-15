@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-host-channel-selection.json';
@@ -58,7 +59,7 @@ for (const path of [
 
 const evidence = JSON.parse(read(evidencePath));
 const plan = read(planPath);
-const runtime = read(runtimePath);
+const runtime = readComposedRustSource(read, runtimePath);
 const channel = read(channelPath);
 const transport = read(transportPath);
 const server = read(serverPath);

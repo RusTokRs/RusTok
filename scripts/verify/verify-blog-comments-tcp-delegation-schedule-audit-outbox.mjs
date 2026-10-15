@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
+import { flattenWhitespace } from './lib/verify-text.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (relativePath) => readFileSync(path.join(root, relativePath), 'utf8');
@@ -21,10 +23,10 @@ const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-83.m
 const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-audit-outbox.json';
 
-const runtime = read(runtimePath);
-const guard = read(guardPath);
-const auditedStore = read(auditedStorePath);
-const auditedTrigger = read(auditedTriggerPath);
+const runtime = readComposedRustSource(read, runtimePath);
+const guard = readComposedRustSource(read, guardPath);
+const auditedStore = readComposedRustSource(read, auditedStorePath);
+const auditedTrigger = readComposedRustSource(read, auditedTriggerPath);
 const migrationRegistry = read(migrationRegistryPath);
 const migration = read(migrationPath);
 const plan = read(planPath);
@@ -40,6 +42,18 @@ function hasAll(source, markers, label) {
   }
 }
 
+function hasAllProse(content, markers, label) {
+  // See scripts/verify/lib/verify-text.mjs: prose markers are wording contracts, so they
+  // are compared against a whitespace-flattened view of the source.
+  const flattened = flattenWhitespace(content);
+  for (const marker of markers) {
+    requireCondition(
+      flattened.includes(flattenWhitespace(marker)),
+      `${label} missing marker: ${marker}`,
+    );
+  }
+}
+
 function gitBlobSha(relativePath) {
   const content = readBuffer(relativePath);
   return createHash('sha1')
@@ -50,21 +64,21 @@ function gitBlobSha(relativePath) {
 
 const preserved = {
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_base.rs':
-    '7d0c48df3dcea5a77bebe99dcdd4f02292f7ef47',
+    'ffcb6586e3dc3f1b2d6f21f4d1ab405fb5657fcd',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_guard.rs':
-    'af2d688d43286a8118823c31408dd5dc7e3f6202',
+    '4a65f209a7fc23d769160166b3b8bbe462916115',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_trigger.rs':
-    'f44f386c36ac81d51da89ee5568ffd9af083cda0',
+    'f805a7c0c733f4a17ed79c4d019f32b90a7e606d',
   'crates/modules/rustok-comments/src/tcp_delegation_schedule.rs':
-    '7701953d2892e1b68b4830135639d841ebdd6ed1',
+    '2cd2a8c2bba97bff61ea5a37fd21405c2c482717',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence.rs':
-    '85df8deb3203ff90be55a8fe114294ce3a1f3749',
+    '5834d1021dfad4fed23e8ade98aff816f004e865',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persisted_trigger.rs':
-    'f3b37405f06e3cc4bd077cf8bd49f92d9e2cbe7a',
+    '17a3be2732cd7fbd48981ff417265055ce86e4b2',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_bridge.rs':
-    'a90bdd8e4787532bd39c1739dfef8b6a18eaa981',
+    '9ec8190ff19ad1603e60a5d60c566bb8f417ef6c',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_postgres.rs':
-    '0a6399cbf0a2dcbd5390475111e25a88a8d03361',
+    '8f3a5d8b988ad278ebbe33d00f7c663448f6f62f',
 };
 for (const [relativePath, expectedSha] of Object.entries(preserved)) {
   requireCondition(
@@ -102,8 +116,8 @@ hasAll(auditedStore, [
   'blog_comments_tcp_delegation_schedule_audit_outbox',
   'comments_tcp_delegation_schedule_replaced',
   'CompareAndStoreWithAudit',
-  'execute(update_state_statement(&expected, &candidate))',
-  'execute(insert_audit_statement(&audit))',
+  'execute_raw(update_state_statement(&expected, &candidate))',
+  'execute_raw(insert_audit_statement(&audit))',
   'if state_rows != 1',
   'if audit_rows != 1',
   'transaction.commit().await',
@@ -144,7 +158,7 @@ hasAll(migration, [
   'intentionally irreversible',
 ], 'audit outbox migration');
 
-hasAll(plan, [
+hasAllProse(plan, [
   'same PostgreSQL transaction as the exact state CAS',
   'Only exact candidate state plus exact audit row is accepted as success',
   'does not claim durable completeness',

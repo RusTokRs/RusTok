@@ -98,8 +98,9 @@ Blog Category localization no longer uses a live Blog translation mirror:
 - migration `000021` fails closed unless that ownership is present, then
   irreversibly drops `blog_category_translations` and
   `blog_translation_changes`;
-- the donor Category translation entity remains crate-private only for the
-  historical `000020` upgrade path. It is not a runtime source.
+- the historical `000020` upgrade path reads the donor Category copy through a
+  migration-local entity; no donor translation entity remains on the Blog crate
+  entity surface, and it is not a runtime source.
 
 Changing the canonical post route key remains a language-agnostic identity
 operation. Localized alternative URLs must be explicit aliases/projections.

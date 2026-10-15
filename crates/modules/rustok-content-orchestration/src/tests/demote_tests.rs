@@ -70,7 +70,6 @@ async fn demote_post_to_topic_moves_comments_and_registers_redirects() {
                 channel_slugs: None,
                 metadata: None,
                 scheduled_at: None,
-                is_pinned: None,
             },
         )
         .await

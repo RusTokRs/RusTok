@@ -49,7 +49,9 @@ export default async function Page(props: PageProps) {
             history: searchParams.history as string | undefined,
             perPage: searchParams.perPage as string | undefined,
             title: searchParams.title as string | undefined,
-            status: searchParams.status as string | undefined
+            status: searchParams.status as string | undefined,
+            sortBy: searchParams.sortBy as string | undefined,
+            sortOrder: searchParams.sortOrder as string | undefined
           }}
           token={token}
           tenantSlug={tenantSlug}

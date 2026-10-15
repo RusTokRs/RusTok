@@ -4,13 +4,13 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{RichTextDocument, WritePathIssue};
-use rustok_seo_panel::SeoEntityPanel;
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use super::components::{
-    BlogEditBanner, BlogPostFormSetters, BlogPostsTable, BlogSeoConfigError, apply_post_to_form,
-    blog_form_copy_view_model, blog_form_view_model, local_resource, reset_form,
+    BlogEditBanner, BlogPostFormSetters, BlogPostSeoPanel, BlogPostsList, BlogPostsListHeader,
+    BlogPostsPageHeader, BlogSeoConfigError, apply_post_to_form, blog_form_copy_view_model,
+    blog_form_view_model, local_resource, reset_form,
 };
 use super::richtext::BlogRichTextEditor;
 use crate::i18n::t;
@@ -20,7 +20,6 @@ use crate::{core, transport};
 pub fn BlogAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
-    let seo_locale = ui_locale.clone();
     let host_locale_for_seo = ui_locale.clone().unwrap_or_default();
     let seo_target_kind = match SeoTargetSlug::new(seo_builtin_slug::BLOG_POST) {
         Ok(target_kind) => target_kind,
@@ -115,14 +114,26 @@ pub fn BlogAdmin() -> impl IntoView {
     let posts_rows = RwSignal::new(Vec::<crate::model::BlogPostListItem>::new());
     let posts_next_cursor = RwSignal::new(None::<String>);
     let posts_load_more_error = RwSignal::new(None::<String>);
+    // The sort is part of the request source, so changing it reloads page one instead of
+    // reordering the rows already on screen.
+    let posts_sort = RwSignal::new(core::BlogPostAdminSort::default());
     let posts_resource = local_resource(
-        move || (token.get(), tenant.get(), refresh_nonce.get(), locale.get()),
-        move |(token_value, tenant_value, _, locale_value)| async move {
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                refresh_nonce.get(),
+                locale.get(),
+                posts_sort.get(),
+            )
+        },
+        move |(token_value, tenant_value, _, locale_value, sort_value)| async move {
             transport::fetch_posts(
                 token_value,
                 tenant_value,
                 core::locale_arg(locale_value.as_str()),
                 None,
+                sort_value,
             )
             .await
         },
@@ -139,6 +150,7 @@ pub fn BlogAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let locale_value = locale.get_untracked();
+        let sort_value = posts_sort.get_untracked();
         let error_label = load_more_error_label.clone();
         posts_load_more_error.set(None);
         spawn_local(async move {
@@ -147,6 +159,7 @@ pub fn BlogAdmin() -> impl IntoView {
                 tenant_value,
                 core::locale_arg(locale_value.as_str()),
                 Some(cursor),
+                sort_value,
             )
             .await
             {
@@ -159,6 +172,13 @@ pub fn BlogAdmin() -> impl IntoView {
                 }
             }
         });
+    });
+
+    // A sort change drops the loaded pages: the cursor of the previous sort cannot be
+    // replayed against the new one.
+    let change_posts_sort = Callback::new(move |sort: core::BlogPostAdminSort| {
+        posts_sort.set(sort);
+        posts_load_more_error.set(None);
     });
 
     let edit_post_locale = ui_locale.clone();
@@ -607,51 +627,15 @@ pub fn BlogAdmin() -> impl IntoView {
 
     view! {
             <div class=shell_classes.page>
-                <header class=shell_classes.header>
-                    <div class=shell_classes.header_content>
-                        <span class=shell_classes.badge>
-                            {t(ui_locale.as_deref(), "blog.badge", "blog")}
-                        </span>
-                        <h1 class=shell_classes.title>
-                            {t(ui_locale.as_deref(), "blog.title", "Blog Publishing")}
-                        </h1>
-                        <p class=shell_classes.subtitle>
-                            {t(
-                                ui_locale.as_deref(),
-                                "blog.subtitle",
-                                "Canonical module-owned CRUD flow for blog posts through the blog GraphQL contract.",
-                            )}
-                        </p>
-                    </div>
-                </header>
+                <BlogPostsPageHeader />
 
                 <section class=shell_classes.layout>
                     <div class=shell_classes.list_card>
-                        <div class=shell_classes.list_header>
-                            <div>
-                                <h2 class=shell_classes.list_title>
-                                    {t(ui_locale.as_deref(), "blog.posts.title", "Posts")}
-                                </h2>
-                                <p class=shell_classes.list_subtitle>
-                                    {t(
-                                        ui_locale.as_deref(),
-                                        "blog.posts.subtitle",
-                                        "Loaded from rustok-blog-admin via GraphQL, not wired manually in apps/admin.",
-                                    )}
-                                </p>
-                            </div>
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=shell_classes.locale_filter_text>
-                                    {form_copy_view.locale_label.clone()}
-                                </span>
-                                <input
-                                    type="text"
-                                    class=shell_classes.locale_filter_input
-                                    prop:value=locale
-                                    on:input=move |ev| set_locale.set(event_target_value(&ev))
-                                />
-                            </label>
-                        </div>
+                        <BlogPostsListHeader
+                            locale=locale
+                            set_locale=set_locale
+                            locale_filter_label=form_copy_view.locale_label.clone()
+                        />
 
                         <Suspense
                             fallback=move || view! {
@@ -676,44 +660,49 @@ pub fn BlogAdmin() -> impl IntoView {
                                     );
 
                                     match posts_view {
-                                        core::BlogPostAdminPostsLoadViewModel::Loaded { .. } => view! {
-                                            {move || posts_load_more_error.get().map(|message| view! {
-                                                <div class=shell_classes.load_error>
-                                                    {message}
-                                                </div>
-                                            })}
-                                            <BlogPostsTable
-                                                items=posts_rows.get()
-                                                next_cursor=posts_next_cursor.get()
-                                                on_load_more=load_more_posts
-                                                editing_post_id=editing_post_id.get()
-                                                busy_key=busy_key.get()
-                                                on_edit=open_post
-                                                on_toggle_publish=toggle_publish
-                                                on_archive=archive_post
-                                                on_restore=restore_post
-                                                on_delete=delete_post
-                                            />
-                                        }.into_any(),
-                                        core::BlogPostAdminPostsLoadViewModel::EmptyContractUnavailable => view! {
-                                            <BlogPostsTable
-                                                items=Vec::new()
-                                                next_cursor=None
-                                                on_load_more=load_more_posts
-                                                editing_post_id=editing_post_id.get()
-                                                busy_key=busy_key.get()
-                                                on_edit=open_post
-                                                on_toggle_publish=toggle_publish
-                                                on_archive=archive_post
-                                                on_restore=restore_post
-                                                on_delete=delete_post
-                                            />
-                                        }.into_any(),
+                                        // The error branch owns its own banner; every other
+                                        // state renders the list region.
                                         core::BlogPostAdminPostsLoadViewModel::Error { message } => view! {
                                             <div class=shell_classes.load_error>
                                                 {message}
                                             </div>
                                         }.into_any(),
+                                        loaded => {
+                                            // The resource carries the first page; later pages are
+                                            // appended to `posts_rows`, so the signals win over the
+                                            // view-model payload. A contract-unavailable load shows
+                                            // an empty list regardless of what is still buffered.
+                                            let rows = posts_rows.get();
+                                            let cursor = posts_next_cursor.get();
+                                            let load_more_error = posts_load_more_error.get();
+                                            let empty_contract = matches!(
+                                                loaded,
+                                                core::BlogPostAdminPostsLoadViewModel::EmptyContractUnavailable,
+                                            );
+                                            let (rows, cursor, load_more_error) = if empty_contract {
+                                                (Vec::new(), None, None)
+                                            } else {
+                                                (rows, cursor, load_more_error)
+                                            };
+
+                                            view! {
+                                                <BlogPostsList
+                                                    items=rows
+                                                    next_cursor=cursor
+                                                    load_more_error=load_more_error
+                                                    sort=posts_sort.get()
+                                                    editing_post_id=editing_post_id.get()
+                                                    busy_key=busy_key.get()
+                                                    on_load_more=load_more_posts
+                                                    on_sort_change=change_posts_sort
+                                                    on_edit=open_post
+                                                    on_toggle_publish=toggle_publish
+                                                    on_archive=archive_post
+                                                    on_restore=restore_post
+                                                    on_delete=delete_post
+                                                />
+                                            }.into_any()
+                                        }
                                     }
                                 })
                             }}
@@ -855,25 +844,13 @@ pub fn BlogAdmin() -> impl IntoView {
                         </form>
                     </section>
 
-                    <SeoEntityPanel
+                    <BlogPostSeoPanel
                         target_kind=seo_target_kind
                         target_id=Signal::derive(move || editing_post_id.get())
-                        locale=Signal::derive({
+                        host_locale=Signal::derive({
                             let host_locale_for_seo = host_locale_for_seo.clone();
                             move || host_locale_for_seo.clone()
                         })
-                        show_control_plane_widgets=true
-                        panel_title=t(seo_locale.as_deref(), "blog.seo.title", "Post SEO")
-                        panel_subtitle=t(
-                            seo_locale.as_deref(),
-                            "blog.seo.subtitle",
-                            "Explicit metadata, social tags and diagnostics for the selected blog post.",
-                        )
-                        empty_message=t(
-                            seo_locale.as_deref(),
-                            "blog.seo.empty",
-                            "Create or open a post first. SEO stays inside the blog editor rather than a global SEO hub.",
-                        )
                     />
                     </div>
                 </section>

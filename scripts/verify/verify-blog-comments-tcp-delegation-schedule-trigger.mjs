@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (relativePath) => readFileSync(path.join(root, relativePath), 'utf8');
@@ -23,12 +24,15 @@ const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-80.m
 const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-trigger.json';
 
-const runtime = read(runtimePath);
-const scheduleFacade = read(scheduleFacadePath);
-const scheduleBase = read(scheduleBasePath);
-const scheduleGuard = read(scheduleGuardPath);
-const trigger = read(triggerPath);
-const triggerGuard = read(triggerGuardPath);
+const runtime = readComposedRustSource(read, runtimePath);
+// `runtimeFacade` is the wiring file on its own: the facade-ownership checks below
+// assert what the host runtime entry file imports, not what the parts it declares use.
+const runtimeFacade = read(runtimePath);
+const scheduleFacade = readComposedRustSource(read, scheduleFacadePath);
+const scheduleBase = readComposedRustSource(read, scheduleBasePath);
+const scheduleGuard = readComposedRustSource(read, scheduleGuardPath);
+const trigger = readComposedRustSource(read, triggerPath);
+const triggerGuard = readComposedRustSource(read, triggerGuardPath);
 const commentsSchedule = read(commentsSchedulePath);
 const plan = read(planPath);
 const evidence = JSON.parse(read(evidencePath));
@@ -64,23 +68,24 @@ function stripRustLineComments(source) {
 }
 
 requireCondition(
-  gitBlobSha(scheduleBasePath) === '7d0c48df3dcea5a77bebe99dcdd4f02292f7ef47',
+  gitBlobSha(scheduleBasePath) === 'ffcb6586e3dc3f1b2d6f21f4d1ab405fb5657fcd',
   'slice-79 host schedule base drift',
 );
 requireCondition(
-  gitBlobSha(scheduleGuardPath) === 'af2d688d43286a8118823c31408dd5dc7e3f6202',
+  gitBlobSha(scheduleGuardPath) === '4a65f209a7fc23d769160166b3b8bbe462916115',
   'slice-79 schedule guard drift',
 );
 requireCondition(
-  gitBlobSha(commentsSchedulePath) === '7701953d2892e1b68b4830135639d841ebdd6ed1',
+  gitBlobSha(commentsSchedulePath) === '2cd2a8c2bba97bff61ea5a37fd21405c2c482717',
   'Comments schedule owner drift',
 );
 
 hasAll(
   scheduleFacade,
   [
-    'mod historical {',
-    'include!("comments_provider_runtime_keyring_schedule_base.rs");',
+    'mod historical;',
+    '#[path = "comments_provider_runtime_keyring_schedule_base.rs"]',
+    'mod historical;',
     'pub struct SharedCommentsTcpDelegationScheduleHandle(',
     'pub fn from_host_schedule(',
     'pub fn from_file(',
@@ -94,13 +99,16 @@ hasAll(
   ],
   'read-only schedule facade',
 );
+// The raw replacement/reload entry points live in the historical implementation part; the
+// facade ownership rule is about what the facade file itself exposes publicly.
+const scheduleFacadeOnly = stripRustLineComments(read(scheduleFacadePath));
 const uncommentedScheduleFacade = stripRustLineComments(scheduleFacade);
 requireCondition(
-  !uncommentedScheduleFacade.includes('pub fn replace_host_schedule('),
+  !scheduleFacadeOnly.includes('pub fn replace_host_schedule('),
   'raw host replacement remains publicly exported',
 );
 requireCondition(
-  !uncommentedScheduleFacade.includes('pub fn reload_file('),
+  !scheduleFacadeOnly.includes('pub fn reload_file('),
   'raw file reload remains publicly exported',
 );
 
@@ -134,7 +142,9 @@ hasAll(
   trigger,
   [
     'context.principal_kind == AuthPrincipalKind::DelegatedUser',
-    'self.0.authorizer.authorize(',
+    'self.0',
+  '.authorizer',
+  '.authorize(',
     'CommentsTcpDelegationScheduleTriggerAuthorizationError::Denied',
     'CommentsTcpDelegationScheduleTriggerAuthorizationError::Unavailable',
     'CommentsTcpDelegationScheduleTriggerAuditOutcome::PrincipalIneligible',
@@ -225,8 +235,10 @@ hasAll(
 hasAll(
   runtime,
   [
-    'include!("comments_provider_runtime_keyring_schedule_trigger.rs");',
-    'include!("comments_provider_runtime_keyring_schedule_trigger_guard.rs");',
+    '#[path = "comments_provider_runtime_keyring_schedule_trigger.rs"]',
+    'mod keyring_schedule_trigger;',
+    '#[path = "comments_provider_runtime_keyring_schedule_trigger_guard.rs"]',
+    'mod keyring_schedule_trigger_guard;',
     'CommentsTcpDelegationScheduleTriggerAuthorizer',
     'SharedCommentsTcpDelegationScheduleTrigger',
     'keyring_schedule_trigger_guard::register_comments_provider_runtime(extensions)',
@@ -234,7 +246,7 @@ hasAll(
   ],
   'runtime trigger exports and routing',
 );
-hasNone(runtime, ['File::open(', 'serde_json::', 'AuthPrincipalKind::'], 'runtime facade ownership');
+hasNone(runtimeFacade, ['File::open(', 'serde_json::', 'AuthPrincipalKind::'], 'runtime facade ownership');
 
 requireCondition(
   evidence.status === 'source_verified_no_compile'

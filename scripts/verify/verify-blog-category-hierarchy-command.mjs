@@ -85,7 +85,7 @@ if (updateBody.includes("input.position") || updateBody.includes("Category posit
 }
 rejectMarkers("crates/modules/rustok-blog/src/services/category.rs", [
   "lock_category_tree_in_tx",
-  "format!("blog-category-tree:{tenant_id}")",
+  'format!("blog-category-tree:{tenant_id}")',
   "pub async fn delete(",
 ]);
 
@@ -175,7 +175,7 @@ if (settingsContract.includes("pg_column_size(settings)")) {
 
 requireMarkers("crates/modules/rustok-blog/src/controllers/categories.rs", [
   "CategoryCommandService::new(runtime.db_clone(), runtime.event_bus())",
-  "path = "/api/blog/categories/{id}/move"",
+  'path = "/api/blog/categories/{id}/move"',
   "request_body = MoveCategoryInput",
   "ensure_category_permission(&tenant, &auth, Action::Manage)?;",
   ".move_category(tenant.id, id, security_context(&auth), input)",
@@ -197,7 +197,7 @@ const hierarchyTests = requireMarkers("crates/modules/rustok-blog/tests/category
   "CategoryCommandService::new(db.clone(), event_bus)",
   "create_inserts_at_dense_sibling_index_and_rejects_out_of_range_position",
   "move_reparents_subtree_and_failed_moves_leave_tree_unchanged",
-  "localized update must not be a second hierarchy placement write path",
+  "localized update should not be a hierarchy placement write path",
   "child should move under the second root",
   "child should move to the root level",
   "a category cannot become its own parent",
@@ -224,7 +224,7 @@ if (responseCutover.includes("position: None")) {
 
 requireMarkers("crates/modules/rustok-blog/docs/category-hierarchy-contract.md", [
   "Taxonomy owns canonical Blog Category hierarchy placement",
-  "UpdateCategoryInput contains no hierarchy fields",
+  "`UpdateCategoryInput` contains no hierarchy fields",
   "POST /api/blog/categories/{id}/move",
   "zero-based insertion index",
   "maximum of 512 nodes",

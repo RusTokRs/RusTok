@@ -1,159 +1,133 @@
 #!/usr/bin/env node
 
+// Successor contract for `verify-blog-taxonomy-category-binding.mjs`.
+//
+// CAT-6 introduced the typed Blog -> Taxonomy Category binding table
+// (`m20260824_000019_add_blog_taxonomy_category_binding`) as an intermediate cutover step.
+// `m20260916_000022_clean_blog_category_canonical_taxonomy` then retired that table and the
+// Blog-owned hierarchy columns: `rustok-taxonomy` owns canonical Blog Category identity,
+// localized copy, route history and hierarchy, while `blog_categories` keeps module
+// membership and Blog-owned settings. The binding relation, its entity and its runtime
+// harness are gone, so the guard now proves the retirement instead of the intermediate
+// design: the typed binding must stay absent, the cleanup migration must stay registered,
+// the canonical Taxonomy identity path must be the only remaining join, and the crate's
+// retirement harness must keep executing those claims.
+
 import fs from 'node:fs';
 
-const read = (path) => fs.readFileSync(path, 'utf8');
 const failures = [];
+const read = (path) => fs.readFileSync(path, 'utf8');
+const requireFile = (path, label = path) => {
+  if (!fs.existsSync(path)) failures.push(`${path}: required ${label}`);
+};
+const requireAbsent = (path, label = path) => {
+  if (fs.existsSync(path)) failures.push(`${path}: retired ${label} must remain absent`);
+};
 const requireMarker = (path, marker, label = marker) => {
-  const source = read(path);
-  if (!source.includes(marker)) failures.push(`${path}: missing ${label}`);
+  if (!read(path).includes(marker)) failures.push(`${path}: missing ${label}`);
 };
 const rejectMarker = (path, marker, label = marker) => {
-  const source = read(path);
-  if (source.includes(marker)) failures.push(`${path}: must not contain ${label}`);
+  if (read(path).includes(marker)) failures.push(`${path}: must not contain ${label}`);
 };
 
-const migration =
+const bindingMigration =
   'crates/modules/rustok-blog/src/migrations/m20260824_000019_add_blog_taxonomy_category_binding.rs';
+const cleanupMigration =
+  'crates/modules/rustok-blog/src/migrations/m20260916_000022_clean_blog_category_canonical_taxonomy.rs';
 const migrationRegistry = 'crates/modules/rustok-blog/src/migrations/mod.rs';
 const backfillContracts = 'docs/migrations/backfill-contracts.json';
-const relation = 'crates/modules/rustok-blog/src/entities/blog_category_taxonomy_binding.rs';
-const runtimeTest = 'crates/modules/rustok-blog/tests/category_taxonomy_binding.rs';
 const entities = 'crates/modules/rustok-blog/src/entities/mod.rs';
 const legacyCategory = 'crates/modules/rustok-blog/src/entities/blog_category.rs';
-const legacyTranslation = 'crates/modules/rustok-blog/src/entities/blog_category_translation.rs';
+const owner = 'crates/modules/rustok-blog/src/services/category_owner.rs';
+const sync = 'crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs';
+const retirementTest = 'crates/modules/rustok-blog/tests/category_taxonomy_legacy_storage_retirement.rs';
 
 for (const path of [
-  migration,
+  bindingMigration,
+  cleanupMigration,
   migrationRegistry,
   backfillContracts,
-  relation,
-  runtimeTest,
   entities,
   legacyCategory,
-  legacyTranslation,
+  owner,
+  sync,
+  retirementTest,
 ]) {
-  if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
+  requireFile(path);
 }
+requireAbsent(
+  'crates/modules/rustok-blog/src/entities/blog_category_taxonomy_binding.rs',
+  'typed Blog -> Taxonomy binding entity',
+);
+requireAbsent(
+  'crates/modules/rustok-blog/tests/category_taxonomy_binding.rs',
+  'typed binding runtime harness',
+);
+requireAbsent(
+  'crates/modules/rustok-blog/src/entities/blog_category_translation.rs',
+  'donor Blog Category translation entity',
+);
 
 if (failures.length === 0) {
-  requireMarker(migration, 'blog_category_taxonomy_bindings', 'typed Blog→Taxonomy binding table');
-  requireMarker(migration, 'fk_blog_category_taxonomy_binding_blog', 'Blog composite foreign key');
   requireMarker(
-    migration,
-    'fk_blog_category_taxonomy_binding_taxonomy',
-    'Taxonomy composite foreign key',
-  );
-  requireMarker(
-    migration,
-    'uq_blog_category_taxonomy_binding_taxonomy',
-    'one-to-one tenant binding index',
-  );
-  requireMarker(
-    migration,
-    '(TaxonomyTerms::TenantId, TaxonomyTerms::Id)',
-    'tenant-safe Taxonomy identity target',
+    bindingMigration,
+    'BlogCategoryTaxonomyBindings::Table',
+    'historical CAT-6 binding table creator',
   );
   requireMarker(
     migrationRegistry,
     'm20260824_000019_add_blog_taxonomy_category_binding',
-    'registered CAT-6 migration',
-  );
-  requireMarker(
-    migrationRegistry,
-    'm20260711_000001_add_tenant_identity_key',
-    'Taxonomy tenant identity dependency',
-  );
-  requireMarker(
-    migrationRegistry,
-    'm20260812_000017_enforce_blog_category_hierarchy',
-    'Blog tenant identity dependency',
-  );
-  requireMarker(
-    backfillContracts,
-    'blog-taxonomy-category-binding-bootstrap',
-    'CAT-6 backfill declaration',
+    'registered historical CAT-6 migration',
   );
   requireMarker(
     backfillContracts,
     '"migration": "m20260824_000019_add_blog_taxonomy_category_binding"',
-    'CAT-6 migration backfill registration',
+    'CAT-6 backfill declaration',
   );
   requireMarker(backfillContracts, '"mode": "none"', 'empty binding-table backfill mode');
 
-  requireMarker(relation, 'BlogCategoryTaxonomyBindingService', 'bounded binding service');
-  requireMarker(relation, 'taxonomy_term_identity_exists', 'Taxonomy owner identity validation');
-  requireMarker(relation, 'TaxonomyTermKind::Category', 'Category-only owner validation');
-  requireMarker(relation, 'same-tenant Taxonomy Category', 'cross-tenant fail-closed contract');
   requireMarker(
-    relation,
-    'already bound to a different Taxonomy Category',
-    'no implicit rebind contract',
+    cleanupMigration,
+    'BlogCategoryTaxonomyBindings::Table',
+    'retired binding table target',
   );
+  requireMarker(cleanupMigration, 'drop_table(', 'binding table drop');
   requireMarker(
-    relation,
-    'already bound to another Blog category',
-    'one-to-one duplicate guard',
+    migrationRegistry,
+    'm20260916_000022_clean_blog_category_canonical_taxonomy',
+    'registered canonical cleanup migration',
   );
-  requireMarker(entities, 'pub mod blog_category_taxonomy_binding;', 'binding entity registration');
+  for (const column of ['BlogCategories::ParentId', 'BlogCategories::Position', 'BlogCategories::Depth']) {
+    requireMarker(cleanupMigration, column, `retired Blog-owned hierarchy column ${column}`);
+  }
 
-  requireMarker(
-    runtimeTest,
-    'blog_category_binding_is_category_only_tenant_bounded_and_one_to_one',
-    'runtime binding contract',
-  );
-  requireMarker(
-    runtimeTest,
-    'repeating the same binding should be idempotent',
-    'idempotent bind proof',
-  );
-  requireMarker(
-    runtimeTest,
-    'Taxonomy Tags must not masquerade as Categories',
-    'wrong-kind runtime proof',
-  );
-  requireMarker(
-    runtimeTest,
-    'foreign-tenant Taxonomy Categories must fail closed',
-    'foreign-tenant runtime proof',
-  );
-  requireMarker(
-    runtimeTest,
-    'stale Taxonomy Category identities must fail closed',
-    'stale identity runtime proof',
-  );
+  requireMarker(legacyCategory, 'pub settings: Json', 'Blog-owned settings retained');
+  for (const retired of ['pub parent_id', 'pub position', 'pub post_count']) {
+    rejectMarker(legacyCategory, retired, `retired Blog-owned ${retired}`);
+  }
+  rejectMarker(entities, 'blog_category_taxonomy_binding', 'retired binding entity registration');
 
-  rejectMarker(
-    legacyCategory,
-    'taxonomy_category_id',
-    'binding state embedded in legacy Blog category row',
-  );
-  requireMarker(
-    legacyCategory,
-    'pub parent_id: Option<Uuid>',
-    'legacy hierarchy retained during staged cutover',
-  );
-  requireMarker(
-    legacyCategory,
-    'pub settings: Json',
-    'Blog-specific settings retained during staged cutover',
-  );
-  requireMarker(
-    legacyCategory,
-    'pub post_count: i32',
-    'Blog-specific counters retained during staged cutover',
-  );
-  requireMarker(
-    legacyTranslation,
-    'blog_category_translations',
-    'legacy localized copy retained until deterministic backfill',
-  );
+  requireMarker(sync, 'sync_module_category_with_owned_aliases_in_tx', 'canonical Taxonomy sync delegate');
+  requireMarker(sync, 'canonical_key_for_blog_category', 'deterministic canonical Category key');
+  requireMarker(owner, 'TaxonomyOwnerCategoryReader', 'canonical Taxonomy owner read');
+  requireMarker(owner, 'delete_module_category_with_cleanup(', 'Taxonomy-owned delete lifecycle');
+
+  for (const marker of [
+    'legacy_category_storage_retires_only_after_taxonomy_identity_cutover',
+    'blog_category_taxonomy_binding::Entity::find()',
+    'Intentionally irreversible',
+    'retired donor storage must not remain on the Blog entity surface',
+  ]) {
+    requireMarker(retirementTest, marker, `retirement proof ${marker}`);
+  }
 }
 
 if (failures.length > 0) {
-  console.error('[blog-taxonomy-category-binding] boundary verification failed');
+  console.error('[blog-taxonomy-category-binding] retirement boundary verification failed');
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log('[blog-taxonomy-category-binding] typed staged binding boundary verified');
+console.log(
+  '[blog-taxonomy-category-binding] typed binding retired; canonical Taxonomy Category identity verified',
+);

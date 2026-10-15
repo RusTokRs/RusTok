@@ -82,11 +82,10 @@ test('rejects restoring permanent None category projection', () => {
 test('rejects restoring legacy Blog category translation reads', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/modules/rustok-blog/src/services/post/queries.rs', (source) =>
-      source.replace(
-        'use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};',
-        'use crate::entities::{blog_category_translation, blog_post, blog_post_channel_visibility, blog_post_translation};',
-      ),
+    mutate(
+      root,
+      'crates/modules/rustok-blog/src/services/post/queries.rs',
+      (source) => `use crate::entities::blog_category_translation;\n${source}`,
     );
     expectFailure(root, 'legacy Blog category translation reads must fail');
   } finally {
@@ -94,31 +93,25 @@ test('rejects restoring legacy Blog category translation reads', () => {
   }
 });
 
-test('rejects dropping tenant binding from typed Category lookup', () => {
+test('rejects dropping the bounded membership Category read', () => {
   const root = fixture();
   try {
     mutate(root, 'crates/modules/rustok-blog/src/services/category_name_projection.rs', (source) =>
-      source.replace(
-        '.filter(blog_category_taxonomy_binding::Column::TenantId.eq(tenant_id))',
-        '',
-      ),
+      source.replace('Some(&category_ids)', 'None'),
     );
-    expectFailure(root, 'cross-tenant Category binding projection must fail');
+    expectFailure(root, 'bounded Tenant/membership Category read must fail');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('rejects replacing batch binding lookup with one Category', () => {
+test('rejects dropping the strict Taxonomy coverage read', () => {
   const root = fixture();
   try {
     mutate(root, 'crates/modules/rustok-blog/src/services/category_name_projection.rs', (source) =>
-      source.replace(
-        'BlogCategoryId.is_in(category_ids.clone())',
-        'BlogCategoryId.eq(category_ids[0])',
-      ),
+      source.replace('load_scoped_categories_strict', 'load_scoped_categories'),
     );
-    expectFailure(root, 'non-batch Category binding lookup must fail');
+    expectFailure(root, 'strict Taxonomy Category coverage read must fail');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -136,13 +129,13 @@ test('rejects dropping caller fallback locale from Taxonomy projection', () => {
   }
 });
 
-test('rejects removing legacy-row deletion from ownership harness', () => {
+test('rejects dropping the donor-storage retirement precondition', () => {
   const root = fixture();
   try {
     mutate(root, 'crates/modules/rustok-blog/tests/post_category_name_projection.rs', (source) =>
-      source.replace('blog_category_translation::Entity::delete_many()', 'blog_category_translation::Entity::find()'),
+      source.replace('has_table("blog_category_translations")', 'has_table("blog_posts")'),
     );
-    expectFailure(root, 'ownership proof must delete legacy category translations');
+    expectFailure(root, 'projection harness must prove donor storage retirement first');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

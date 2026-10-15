@@ -1,6 +1,68 @@
 use rustok_api::{RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
 
+/// Sort column of the admin post list, spelled as the Blog GraphQL enum.
+///
+/// The admin list is keyset-paged, so the sort is part of the transport request and
+/// the cursor is bound to it: changing either value restarts the list at page one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum BlogPostSortField {
+    PublishedAt,
+    UpdatedAt,
+    #[default]
+    CreatedAt,
+}
+
+impl BlogPostSortField {
+    /// The GraphQL enum value. Kept next to the serde attribute so the wire spelling
+    /// has one owner; `blog_post_admin_sort_tokens_match_the_wire_spelling` asserts the
+    /// two agree.
+    pub fn as_graphql(self) -> &'static str {
+        match self {
+            Self::PublishedAt => "PUBLISHED_AT",
+            Self::UpdatedAt => "UPDATED_AT",
+            Self::CreatedAt => "CREATED_AT",
+        }
+    }
+
+    pub fn from_graphql(value: &str) -> Option<Self> {
+        match value {
+            "PUBLISHED_AT" => Some(Self::PublishedAt),
+            "UPDATED_AT" => Some(Self::UpdatedAt),
+            "CREATED_AT" => Some(Self::CreatedAt),
+            _ => None,
+        }
+    }
+}
+
+/// Sort direction of the admin post list, spelled as the Blog GraphQL enum.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum BlogPostSortOrder {
+    Asc,
+    #[default]
+    Desc,
+}
+
+impl BlogPostSortOrder {
+    /// The GraphQL enum value; see [`BlogPostSortField::as_graphql`].
+    pub fn as_graphql(self) -> &'static str {
+        match self {
+            Self::Asc => "ASC",
+            Self::Desc => "DESC",
+        }
+    }
+
+    pub fn from_graphql(value: &str) -> Option<Self> {
+        match value {
+            "ASC" => Some(Self::Asc),
+            "DESC" => Some(Self::Desc),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostList {
     pub items: Vec<BlogPostListItem>,

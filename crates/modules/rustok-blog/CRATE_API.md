@@ -7,7 +7,12 @@ Blog Category membership/settings, Blog-owned post/tag/channel relations and the
 Blog-side Comments integration.
 
 Persistence entities are **not** public API. Consumers use owner DTOs, services,
-transport roots, or explicit ports.
+transport roots, or explicit ports. The one documented exception is the orchestration bridge
+surface: `ports` re-exports the four entity modules (`blog_category`, `blog_post`,
+`blog_post_tag`, `blog_post_translation`) that `rustok-content-orchestration` drives inside its
+own transaction. That set is pinned by `verify-module-reference-contract.mjs`; moving the bridge
+onto owner in-transaction commands is tracked as L-4 in
+`docs/implementation-plan-current.md`.
 
 ## Public surface
 
@@ -22,7 +27,8 @@ Deliberate public modules/facades:
 - compatibility facades `richtext`, `state_machine`, and
   `public_comments_snapshot`.
 
-`entities` is crate-private. Direct cross-crate SeaORM access is not supported.
+`entities` is crate-private. Direct cross-crate SeaORM access is not supported, apart from
+the four modules re-exported through `ports` for the orchestration bridge described above.
 
 Primary entry points:
 
@@ -140,7 +146,11 @@ input validation.
 
 `PostListQuery` is an owner list/filter API, not full-text search. Sort fields
 and order are typed through `PostSortField` / `PostSortOrder`, and owner
-queries use a stable post-id tie-breaker.
+queries use a stable post-id tie-breaker. The authenticated GraphQL list exposes
+the same choice as `BlogPostSortField` / `BlogPostSortOrder` on `PostsFilter`;
+its keyset cursor is bound to the sort it was issued for, so a cursor replayed
+with another sort is rejected instead of resuming at a wrong position. Both
+admin lists expose that choice as a control and drop the cursor when it changes.
 
 Full-text search remains the Search capability's responsibility.
 

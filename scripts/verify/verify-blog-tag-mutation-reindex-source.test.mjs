@@ -48,6 +48,20 @@ function rejects(mutator) {
   try { return run(root); }
   finally { rmSync(root, { recursive: true, force: true }); }
 }
+/// Rewrites one function body: `startMarker`/`endMarker` bracket the section and the
+/// mutator has to change it, so a fixture can never pass by editing a lookalike elsewhere.
+function mutateSection(root, relativePath, startMarker, endMarker, mutator) {
+  const target = absolute(root, relativePath);
+  const source = readFileSync(target, 'utf8');
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  assert.ok(start >= 0 && end > start, `fixture anchors must exist in ${relativePath}`);
+  const section = source.slice(start, end);
+  const mutated = mutator(section);
+  assert.notEqual(mutated, section, `fixture mutation must change ${relativePath}`);
+  write(root, relativePath, source.slice(0, start) + mutated + source.slice(end));
+}
+
 function mutateJson(root, relativePath, mutator) {
   const target = absolute(root, relativePath);
   const value = JSON.parse(readFileSync(target, 'utf8'));
@@ -66,12 +80,16 @@ test('accepts atomic Blog tag mutation/reindex source', () => {
 
 test('rejects restoring manual relation pre-delete', () => {
   const result = rejects((root) => {
-    const file = 'crates/modules/rustok-blog/src/services/tag.rs';
-    const source = readFileSync(absolute(root, file), 'utf8');
-    write(root, file, source.replace(
-      'let txn = self.db.begin().await.map_err(BlogError::from)?;\n        delete_module_term_in_tx(',
-      'blog_post_tag::Entity::delete_many();\n        let txn = self.db.begin().await.map_err(BlogError::from)?;\n        delete_module_term_in_tx(',
-    ));
+    mutateSection(
+      root,
+      'crates/modules/rustok-blog/src/services/tag.rs',
+      'pub async fn delete_tag(',
+      'pub async fn list_tags(',
+      (section) => section.replace(
+        'enforce_scope(&security, Resource::Tags, Action::Delete)?;',
+        'enforce_scope(&security, Resource::Tags, Action::Delete)?;\n        blog_post_tag::Entity::delete_many();',
+      ),
+    );
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /delete_tag.*forbidden|pre-delete|delete_many/s);
@@ -79,12 +97,16 @@ test('rejects restoring manual relation pre-delete', () => {
 
 test('rejects moving reindex outside update transaction', () => {
   const result = rejects((root) => {
-    const file = 'crates/modules/rustok-blog/src/services/tag.rs';
-    const source = readFileSync(absolute(root, file), 'utf8');
-    write(root, file, source.replace(
-      'publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;',
-      '/* reindex omitted */',
-    ));
+    mutateSection(
+      root,
+      'crates/modules/rustok-blog/src/services/tag.rs',
+      'pub async fn update_tag(',
+      'pub async fn delete_tag(',
+      (section) => section.replace(
+        'publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;',
+        '/* reindex omitted */',
+      ),
+    );
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /update_tag.*publish_blog_reindex/s);

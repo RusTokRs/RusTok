@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readComposedRustSource } from './lib/rust-facade-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const runtimePath =
@@ -39,19 +40,21 @@ function forbidAll(label, text, markers) {
   }
 }
 
-const runtime = read(runtimePath);
-const harness = read(harnessPath);
-const operator = read(operatorPath);
-const recovery = read(recoveryPath);
-const worker = read(workerPath);
+const runtime = readComposedRustSource(read, runtimePath);
+const harness = readComposedRustSource(read, harnessPath);
+const operator = readComposedRustSource(read, operatorPath);
+const recovery = readComposedRustSource(read, recoveryPath);
+const worker = readComposedRustSource(read, workerPath);
 const plan = read(planPath);
 const evidenceText = read(evidencePath);
 const evidence = JSON.parse(evidenceText);
 
 requireAll('runtime mount', runtime, [
   'mod keyring_schedule_audit_operator {',
-  'include!("comments_provider_runtime_keyring_schedule_audit_operator.rs");',
-  'include!("comments_provider_runtime_keyring_schedule_audit_operator_postgres_evidence.rs");',
+  '#[path = "comments_provider_runtime_keyring_schedule_audit_operator.rs"]',
+  'mod keyring_schedule_audit_operator;',
+  '#[path = "comments_provider_runtime_keyring_schedule_audit_operator_postgres_evidence.rs"]',
+  'mod operator_postgres_evidence;',
 ]);
 
 requireAll('PostgreSQL evidence harness', harness, [

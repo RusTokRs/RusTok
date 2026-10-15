@@ -56,9 +56,15 @@ if (evidence) {
   for (const [key, expected] of Object.entries({
     update_uses_supplied_transaction: true,
     delete_uses_supplied_transaction: true,
-    taxonomy_update_permission_preserved: true,
-    taxonomy_read_permission_preserved_for_update_response: true,
-    taxonomy_delete_permission_preserved: true,
+    // Authorization lives with the caller: the Taxonomy module-term API does not check
+    // permissions itself (`_security` is unused there, at the base commit too), so Blog
+    // enforces `Tags:Update`/`Tags:Delete` before the call and forwards its principal.
+    // `taxonomy_owner_permission_check_present: false` records the peer state as observed;
+    // it is tracked as a cross-module item in the implementation cursor, and this marker
+    // flips to `true` when the Taxonomy owner starts enforcing its own resource.
+    blog_caller_permission_enforced: true,
+    security_context_forwarded_to_taxonomy_owner: true,
+    taxonomy_owner_permission_check_present: false,
     module_scope_rechecked_by_taxonomy_owner: true,
     term_kind_rechecked_by_taxonomy_owner: true,
     translation_revision_cas_preserved: true,
@@ -92,9 +98,9 @@ if (evidence) {
 for (const marker of [
   'pub async fn update_module_term_in_tx(',
   'pub async fn delete_module_term_in_tx(',
-  'enforce_scope(security, Resource::Taxonomy, Action::Update)?;',
-  'enforce_scope(security, Resource::Taxonomy, Action::Read)?;',
-  'enforce_scope(security, Resource::Taxonomy, Action::Delete)?;',
+  // The owner rechecks the module scope and the term kind even though it does not check
+  // permissions: a caller cannot address another module's term or another kind.
+  'lock_module_term_in_tx(',
   'TaxonomyScopeType::Module',
   'taxonomy_term::Column::ScopeValue.eq(&module_scope)',
   'taxonomy_term::Column::Kind.eq(kind)',
@@ -150,6 +156,11 @@ for (const marker of [
 ]) need(harness, marker, files.harness);
 
 for (const marker of [
+  'enforce_scope(&security, Resource::Tags, Action::Update)?;',
+  'enforce_scope(&security, Resource::Tags, Action::Delete)?;',
+]) need(tagService, marker, files.tagService);
+
+for (const marker of [
   'Status: `tag_mutation_atomic_reindex_source_ready_maintainer_execution_pending`.',
   '`taxonomy_module_term_mutation = owner_supplied_transaction_source_ready`',
   '`tag_mutation_atomic_reindex = source_ready_maintainer_execution_pending`',
@@ -157,10 +168,20 @@ for (const marker of [
   'These cases are source evidence only. They were not executed',
   'Do not add another tag mutation scaffolding slice without new evidence.',
 ]) need(slice, marker, files.slice);
-for (const marker of [
-  '`tag_mutation_atomic_reindex = source_ready_maintainer_execution_pending`',
-  'source-complete through slice 104',
-]) need(current, marker, files.current);
+// The cursor's retained-track token must agree with the evidence's planning result, and it
+// must state how far the tag source line is complete.
+const retainedTrackToken = /`tag_mutation_atomic_reindex = ([a-z_]+)`/u.exec(current);
+if (retainedTrackToken === null) {
+  failures.push(`${files.current}: missing the tag_mutation_atomic_reindex track token`);
+} else if (
+  evidence?.planning_result?.tag_mutation_source_complete === true &&
+  retainedTrackToken[1] !== 'source_complete_maintainer_execution_pending'
+) {
+  failures.push(
+    `${files.current}: tag_mutation_atomic_reindex = ${retainedTrackToken[1]} disagrees with the evidence's source-complete planning result`,
+  );
+}
+need(current, 'source-complete through slice 104', files.current);
 
 if (failures.length) {
   console.error('[verify-blog-tag-mutation-reindex-source] FAIL');

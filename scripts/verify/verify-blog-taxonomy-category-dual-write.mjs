@@ -55,10 +55,10 @@ if (failures.length === 0) {
   rejectMarker(lib, 'mod translation_evidence;', 'retired Category Translation bridge module registration');
   rejectMarker(entities, 'mod translation_change;', 'retired Blog Translation journal entity registration');
   rejectMarker(entities, 'BlogTranslationChange', 'retired Blog Translation journal entity export');
-  requireMarker(
+  rejectMarker(
     entities,
-    'pub(crate) mod blog_category_translation;',
-    'crate-private donor translation entity retained only for historical backfill',
+    'blog_category_translation',
+    'retired donor translation entity must stay off the Blog entity surface',
   );
 
   requireMarker(sync, 'load_module_category_locale_copy_in_tx', 'Taxonomy owner locale read seam');

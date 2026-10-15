@@ -20,7 +20,7 @@
   "cases": [
     {
       "name": "module_registered_handler_routed_twice",
-      "expected": "BlogModule registers one blog_comment_projection handler and the same envelope is published twice through EventBus and EventDispatcher"
+      "expected": "BlogModule registers the blog_comment_projection handler alongside its TargetDeleted route purge, selects the projection by name, and publishes the same envelope twice through EventBus and EventDispatcher"
     },
     {
       "name": "two_completed_dispatch_calls",

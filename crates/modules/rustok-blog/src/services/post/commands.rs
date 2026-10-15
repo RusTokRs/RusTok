@@ -23,7 +23,6 @@ impl PostService {
             channel_slugs,
             metadata,
             scheduled_at,
-            is_pinned,
         } = input;
 
         validate_title(&title)?;
@@ -63,6 +62,10 @@ impl PostService {
         let metadata = normalize_custom_metadata(metadata)?;
         let channel_slugs = normalize_channel_slugs(channel_slugs.as_deref().unwrap_or(&[]))?;
 
+        // Validated before the transaction opens: an invalid schedule must not hold a
+        // pooled connection while it is rejected.
+        let scheduled_at_db = validate_schedule_for_create(scheduled_at, publish, now)?;
+
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         self.ensure_slug_unique_in_tx(&txn, tenant_id, &slug, None)
             .await?;
@@ -75,22 +78,6 @@ impl PostService {
             BlogPostStatus::Published
         } else {
             BlogPostStatus::Draft
-        };
-
-        // Validate scheduled_at: must be in the future and cannot be set with publish=true
-        let scheduled_at_db = if let Some(scheduled) = scheduled_at {
-            if publish {
-                return Err(BlogError::validation(
-                    "Cannot set scheduled_at when publish is true",
-                ));
-            }
-            let scheduled_utc = scheduled.with_timezone(&chrono::Utc);
-            if scheduled_utc <= now {
-                return Err(BlogError::validation("scheduled_at must be in the future"));
-            }
-            Some(scheduled.fixed_offset())
-        } else {
-            None
         };
 
         let slug_for_error = slug.clone();
@@ -108,7 +95,7 @@ impl PostService {
             updated_at: Set(now.into()),
             archived_at: Set(None),
             scheduled_at: Set(scheduled_at_db),
-            is_pinned: Set(is_pinned.unwrap_or(false)),
+            is_pinned: Set(false),
             pinned_at: Set(None),
             comment_count: Set(0),
             version: Set(1),
@@ -226,7 +213,6 @@ impl PostService {
             metadata,
             version,
             scheduled_at,
-            is_pinned,
         } = input;
 
         if post.version != version {
@@ -314,8 +300,7 @@ impl PostService {
             || featured_image_url.is_changed()
             || normalized_channels.is_some()
             || metadata_changed
-            || scheduled_at.is_changed()
-            || is_pinned.is_some();
+            || scheduled_at.is_changed();
         let has_relation_change = tags.is_some();
         if !has_owner_change && !has_translation_change && !has_relation_change {
             return Err(BlogError::validation("No Blog post changes were supplied"));
@@ -323,8 +308,12 @@ impl PostService {
 
         let full_reindex = has_owner_change || has_relation_change;
         let next_version = Self::next_persisted_version(post.version)?;
-        let txn = self.db.begin().await.map_err(BlogError::from)?;
+        // Validated before the transaction opens: an invalid schedule must not hold a
+        // pooled connection while it is rejected.
         let now = chrono::Utc::now();
+        let next_schedule =
+            validate_schedule_for_update(&scheduled_at, storage_to_status(&post.status)?, now)?;
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
 
         if let Some(ref slug) = normalized_slug {
             self.ensure_slug_unique_in_tx(&txn, tenant_id, slug, Some(post_id))
@@ -389,16 +378,12 @@ impl PostService {
                 sea_orm::sea_query::Expr::value(next_metadata),
             );
         }
-        match scheduled_at {
+        match next_schedule {
             Patch::Keep => {}
             Patch::Set(scheduled) => {
-                let scheduled_utc = scheduled.with_timezone(&chrono::Utc);
-                if scheduled_utc <= now {
-                    return Err(BlogError::validation("scheduled_at must be in the future"));
-                }
                 update = update.col_expr(
                     blog_post::Column::ScheduledAt,
-                    sea_orm::sea_query::Expr::value(Some(scheduled.fixed_offset())),
+                    sea_orm::sea_query::Expr::value(Some(scheduled)),
                 );
             }
             Patch::Clear => {
@@ -410,19 +395,6 @@ impl PostService {
                 );
             }
         }
-        if let Some(pinned) = is_pinned {
-            let pinned_at = if pinned { Some(now) } else { None };
-            update = update
-                .col_expr(
-                    blog_post::Column::IsPinned,
-                    sea_orm::sea_query::Expr::value(pinned),
-                )
-                .col_expr(
-                    blog_post::Column::PinnedAt,
-                    sea_orm::sea_query::Expr::value(pinned_at.map(|t| t.fixed_offset())),
-                );
-        }
-
         let normalized_slug_for_error = normalized_slug.clone();
         let result = update.exec(&txn).await.map_err(|error| {
             if normalized_slug_for_error.is_some() && PostService::is_unique_constraint(&error) {
@@ -771,6 +743,11 @@ impl PostService {
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         remove_post_tag_usage_in_tx(&txn, tenant_id, post_id).await?;
+        // Preview tokens are the deleted post's authorization; they must not survive
+        // it in the same transaction (the FK cascade is the second, database-level
+        // guarantee).
+        crate::services::preview_token::delete_post_preview_tokens_in_tx(&txn, tenant_id, post_id)
+            .await?;
         let deleted = blog_post::Entity::delete_many()
             .filter(blog_post::Column::Id.eq(post_id))
             .filter(blog_post::Column::TenantId.eq(tenant_id))
@@ -803,7 +780,7 @@ impl PostService {
                 tenant_id,
                 security.user_id,
                 DomainEvent::TargetDeleted {
-                    target_type: "blog_post".to_string(),
+                    target_type: BLOG_POST_TARGET_TYPE.to_string(),
                     target_id: post_id,
                 },
             )
@@ -812,58 +789,6 @@ impl PostService {
 
         txn.commit().await.map_err(BlogError::from)?;
         Ok(())
-    }
-
-    /// Publish all scheduled posts whose scheduled_at time has passed.
-    /// This method is called by the scheduler worker.
-    pub async fn publish_scheduled_posts(&self) -> BlogResult<Vec<(Uuid, Uuid)>> {
-        let now = chrono::Utc::now();
-
-        // Find all draft posts with scheduled_at in the past
-        let posts = blog_post::Entity::find()
-            .filter(blog_post::Column::Status.eq("draft"))
-            .filter(blog_post::Column::ScheduledAt.is_not_null())
-            .filter(blog_post::Column::ScheduledAt.lte(now))
-            .all(&self.db)
-            .await
-            .map_err(BlogError::from)?;
-
-        let mut published = Vec::new();
-
-        for post in posts {
-            let txn = self.db.begin().await.map_err(BlogError::from)?;
-
-            // Use the same transition logic as manual publish
-            apply_status_transition_in_tx(
-                &txn,
-                post.tenant_id,
-                post.id,
-                post.version,
-                BlogPostStatus::Published,
-                Some(now),
-                None,
-            )
-            .await?;
-
-            // Publish the BlogPostPublished event
-            self.event_bus
-                .publish_in_tx(
-                    &txn,
-                    post.tenant_id,
-                    None, // System actor
-                    DomainEvent::BlogPostPublished {
-                        post_id: post.id,
-                        author_id: Some(post.author_id),
-                    },
-                )
-                .await
-                .map_err(BlogError::from)?;
-
-            txn.commit().await.map_err(BlogError::from)?;
-            published.push((post.tenant_id, post.id));
-        }
-
-        Ok(published)
     }
 }
 
@@ -878,7 +803,7 @@ fn ensure_transition(current: BlogPostStatus, next: BlogPostStatus) -> BlogResul
 /// Applies a lifecycle transition. `published_at` is the first-publication
 /// timestamp to persist; callers carry it over from the stored post unless the
 /// post is being published for the first time.
-async fn apply_status_transition_in_tx(
+pub(super) async fn apply_status_transition_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     post_id: Uuid,
@@ -930,6 +855,16 @@ async fn apply_status_transition_in_tx(
         return Err(BlogError::conflict(
             "Blog post changed concurrently before lifecycle transition",
         ));
+    }
+
+    // A preview token authorizes a read of a *draft* only: `get_draft_preview` refuses to
+    // serve any other status. A token row that outlived the draft state would still be a
+    // live authorization the moment the post returned to draft (`unpublish`, `restore`),
+    // so leaving the draft state revokes the post's tokens in the same transaction. The
+    // delete is tenant- and post-scoped, and it is a no-op for a post that had no tokens.
+    if next != BlogPostStatus::Draft {
+        crate::services::preview_token::delete_post_preview_tokens_in_tx(txn, tenant_id, post_id)
+            .await?;
     }
 
     Ok(())

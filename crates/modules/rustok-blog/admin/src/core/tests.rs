@@ -719,3 +719,75 @@ fn label_count_and_status_helpers_work() {
     assert_eq!(create_form.submit_label, "Create post");
     assert!(!create_form.submit_disabled);
 }
+
+#[test]
+fn admin_sort_options_cover_every_variant_and_keep_core_owned_copy() {
+    // Every sort field the transport can send is offered by the UI, in a stable order.
+    assert_eq!(
+        BLOG_POST_ADMIN_SORT_FIELDS,
+        [
+            BlogPostSortField::CreatedAt,
+            BlogPostSortField::UpdatedAt,
+            BlogPostSortField::PublishedAt,
+        ]
+    );
+    for field in BLOG_POST_ADMIN_SORT_FIELDS {
+        assert!(blog_post_admin_sort_field_label_key(field).starts_with("blog.table."));
+        assert!(!blog_post_admin_sort_field_default_label(field).is_empty());
+    }
+    for order in [BlogPostSortOrder::Asc, BlogPostSortOrder::Desc] {
+        assert!(blog_post_admin_sort_order_label_key(order).starts_with("blog.table."));
+        assert!(!blog_post_admin_sort_order_default_label(order).is_empty());
+    }
+}
+
+#[test]
+fn admin_sort_default_matches_the_owner_default() {
+    let sort = BlogPostAdminSort::default();
+    assert_eq!(sort.field, BlogPostSortField::CreatedAt);
+    assert_eq!(sort.order, BlogPostSortOrder::Desc);
+
+    let by_update = sort
+        .with_field(BlogPostSortField::UpdatedAt)
+        .with_order(BlogPostSortOrder::Asc);
+    assert_eq!(by_update.field, BlogPostSortField::UpdatedAt);
+    assert_eq!(by_update.order, BlogPostSortOrder::Asc);
+    // Changing one half never resets the other: the UI sends both on every reload.
+    assert_eq!(
+        by_update.with_order(BlogPostSortOrder::Desc).field,
+        BlogPostSortField::UpdatedAt
+    );
+}
+
+#[test]
+fn admin_sort_tokens_match_the_wire_spelling() {
+    // The `<option value>` spelling and the serde spelling are the same wire contract:
+    // the GraphQL adapter serializes the enum and the native transport carries it as a
+    // server-function argument, so a drift here would silently sort by the wrong column.
+    for field in BLOG_POST_ADMIN_SORT_FIELDS {
+        let serialized = serde_json::to_value(field).expect("sort field serializes");
+        assert_eq!(serialized.as_str(), Some(field.as_graphql()));
+        assert_eq!(
+            BlogPostSortField::from_graphql(field.as_graphql()),
+            Some(field)
+        );
+    }
+    for order in [BlogPostSortOrder::Asc, BlogPostSortOrder::Desc] {
+        let serialized = serde_json::to_value(order).expect("sort order serializes");
+        assert_eq!(serialized.as_str(), Some(order.as_graphql()));
+        assert_eq!(
+            BlogPostSortOrder::from_graphql(order.as_graphql()),
+            Some(order)
+        );
+    }
+    assert_eq!(BlogPostSortField::from_graphql("SIDEWAYS"), None);
+    assert_eq!(BlogPostSortOrder::from_graphql("sideways"), None);
+
+    // The sort travels to the native transport as a server-function argument, so it
+    // must survive that boundary unchanged.
+    let sort = BlogPostAdminSort::default().with_field(BlogPostSortField::PublishedAt);
+    let round_tripped: BlogPostAdminSort =
+        serde_json::from_value(serde_json::to_value(sort).expect("sort serializes"))
+            .expect("sort deserializes");
+    assert_eq!(round_tripped, sort);
+}

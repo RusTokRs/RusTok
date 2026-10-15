@@ -156,6 +156,8 @@ impl BlogQuery {
             locale: None,
             after: None,
             per_page: Some(20),
+            sort_by: None,
+            sort_order: None,
         });
 
         if is_public_request(ctx) {
@@ -182,8 +184,8 @@ impl BlogQuery {
                     locale: Some(locale.clone()),
                     after: filter.after.clone(),
                     per_page: Some(filter.per_page.unwrap_or(20) as u32),
-                    sort_by: Some(crate::PostSortField::CreatedAt),
-                    sort_order: Some(crate::PostSortOrder::Desc),
+                    sort_by: Some(filter.sort_by.map(Into::into).unwrap_or_default()),
+                    sort_order: Some(filter.sort_order.map(Into::into).unwrap_or_default()),
                 },
                 Some(tenant.default_locale.as_str()),
             )
@@ -405,11 +407,12 @@ impl BlogQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = crate::services::PreviewTokenService::new(db.clone(), event_bus.clone());
         let post = service
-            .get_post_by_token(&token, &locale)
+            .get_post_by_token(&token, &locale, Some(tenant.default_locale.as_str()))
             .await
             .map_err(crate::error::public::to_graphql_error)?;
 

@@ -26,6 +26,9 @@ pub enum BlogError {
     #[error("Tag not found: {0}")]
     TagNotFound(Uuid),
 
+    #[error("Preview token not found: {0}")]
+    PreviewTokenNotFound(Uuid),
+
     #[error("Taxonomy term not found: {0}")]
     TaxonomyTermNotFound(Uuid),
 
@@ -121,6 +124,13 @@ impl From<BlogError> for RichError {
                     .with_field("tag_id", id.to_string())
                     .with_error_code("TAG_NOT_FOUND")
             }
+            BlogError::PreviewTokenNotFound(id) => RichError::new(
+                ErrorKind::NotFound,
+                format!("Preview token {} not found", id),
+            )
+            .with_user_message("The preview token does not exist for this tenant")
+            .with_field("token_id", id.to_string())
+            .with_error_code("PREVIEW_TOKEN_NOT_FOUND"),
             BlogError::TaxonomyTermNotFound(id) => RichError::new(
                 ErrorKind::NotFound,
                 format!("Taxonomy term {} not found", id),
@@ -226,6 +236,11 @@ impl BlogError {
     /// Create a tag not found error
     pub fn tag_not_found(tag_id: Uuid) -> Self {
         BlogError::TagNotFound(tag_id)
+    }
+
+    /// Create a preview token not found error
+    pub fn preview_token_not_found(token_id: Uuid) -> Self {
+        BlogError::PreviewTokenNotFound(token_id)
     }
 
     /// Create a duplicate slug error

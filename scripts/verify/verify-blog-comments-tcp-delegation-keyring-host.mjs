@@ -50,15 +50,17 @@ function gitBlobSha(relativePath) {
 }
 
 requireCondition(
-  gitBlobSha(basePath) === '3b204ceaed5996aa1dd2db2eaf695820bf4ba55b',
+  gitBlobSha(basePath) === '3f7a04899f8a31717f365d6dd69f7b4785d10203',
   'historical Comments runtime blob drift',
 );
 
 hasAll(
   wrapper,
   [
-    'include!("comments_provider_runtime_base.rs");',
-    'include!("comments_provider_runtime_keyring.rs");',
+    '#[path = "comments_provider_runtime_base.rs"]',
+    'mod base;',
+    '#[path = "comments_provider_runtime_keyring.rs"]',
+    'mod keyring;',
     'pub fn register_comments_provider_runtime(',
     'keyring::register_comments_provider_runtime(extensions)',
     'pub async fn start_comments_tcp_listener_if_enabled(',

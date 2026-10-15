@@ -426,11 +426,16 @@ pub async fn preview_post(
     Path(token): Path<String>,
     Query(params): Query<PreviewQueryParams>,
 ) -> HttpResult<Json<PostResponse>> {
-    let locale = params.locale.unwrap_or_else(|| "en".to_string());
+    // The token is the authorization of this read, so the request carries no tenant
+    // context. The token's own tenant is resolved inside the service, which also
+    // enforces the Blog module gate for that tenant and serves drafts only.
+    let locale = params
+        .locale
+        .unwrap_or_else(|| rustok_api::PLATFORM_FALLBACK_LOCALE.to_string());
     let service =
         crate::services::PreviewTokenService::new(runtime.db_clone(), runtime.event_bus());
     let post = service
-        .get_post_by_token(&token, &locale)
+        .get_post_by_token(&token, &locale, Some(rustok_api::PLATFORM_FALLBACK_LOCALE))
         .await
         .map_err(crate::error::public::to_http_error)?;
 

@@ -30,20 +30,20 @@ if (failures.length === 0) {
   rejectMarker(services, 'pub use category::CategoryService;', 'legacy CategoryService public re-export');
 
   requireMarker(owner, 'TaxonomyOwnerCategoryReader', 'Taxonomy owner projection');
-  requireMarker(owner, 'blog_category_taxonomy_binding::Entity', 'typed Blog Category binding');
+  requireMarker(owner, 'load_scoped_categories_strict', 'canonical Taxonomy Category read');
   requireMarker(owner, 'Some(BLOG_TAXONOMY_SCOPE)', 'module/blog scope');
   requireMarker(owner, 'position: canonical.position', 'Taxonomy-owned sibling position');
   requireMarker(owner, 'parent_id,', 'Taxonomy-owned parent mapping');
   requireMarker(owner, 'settings: category.settings', 'Blog-owned settings composition');
   requireMarker(owner, '.limit(MAX_BLOG_CATEGORY_TREE_NODES + 1)', 'bounded Blog membership read');
-  requireMarker(owner, 'self.legacy.create', 'mutation create remains delegated');
-  requireMarker(owner, 'self.legacy.delete', 'delete lifecycle remains delegated');
+  requireMarker(owner, 'self.commands.create(tenant_id, security, input).await', 'mutation create remains delegated');
+  requireMarker(owner, 'delete_module_category_with_cleanup(', 'delete lifecycle remains delegated to Taxonomy');
   rejectMarker(owner, 'blog_category_translation', 'legacy localized copy read in public owner facade');
 
-  requireMarker(legacy, 'blog_category_translation::Entity::find()', 'legacy storage retained for staged Translation/delete cutover');
+  requireMarker(legacy, 'is not a command source or sink', 'retired donor storage boundary');
 
-  requireMarker(runtime, 'POISON LEGACY NAME', 'poisoned legacy copy proof');
-  requireMarker(runtime, 'poisoned_category.parent_id = Set(Some(other_root))', 'poisoned legacy hierarchy proof');
+  requireMarker(runtime, 'has_table("blog_category_translations")', 'physical donor translation retirement proof');
+  requireMarker(runtime, 'child_item.parent_id, Some(root)', 'Taxonomy-owned list placement proof');
   requireMarker(runtime, 'assert_eq!(read.effective_locale, "en")', 'requested/effective locale fallback proof');
   requireMarker(runtime, 'assert_eq!(read.parent_id, Some(root))', 'Taxonomy parent proof');
   requireMarker(runtime, '"layout": "blog-owned"', 'Blog settings preservation proof');

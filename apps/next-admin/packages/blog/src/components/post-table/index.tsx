@@ -8,6 +8,7 @@ import type {
 } from '@tanstack/react-table';
 import Link from 'next/link';
 import { DataTableShell } from '@/widgets/data-table/data-table-shell';
+import { PostSortSelect } from './sort-select';
 
 export interface PostTablePager {
   previousHref: string | null;
@@ -32,7 +33,9 @@ export function PostTable<
       data={data}
       columns={columns}
       pagination={<CursorPagination pager={pager} />}
-    />
+    >
+      <PostSortSelect />
+    </DataTableShell>
   );
 }
 

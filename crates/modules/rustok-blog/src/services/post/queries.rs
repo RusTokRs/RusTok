@@ -45,6 +45,49 @@ impl PostService {
         .await
     }
 
+    /// Draft-only preview read used by token-authenticated preview requests.
+    ///
+    /// A preview token is the entire authorization of this read: the request has no
+    /// principal, so the accessor is deliberately narrow instead of running the read
+    /// under system authority. It resolves exactly one post of one tenant and returns
+    /// `None` unless that post is currently a `Draft`, so a token stops resolving the
+    /// moment the post is published, archived, or deleted.
+    #[instrument(skip(self))]
+    pub async fn get_draft_preview(
+        &self,
+        tenant_id: Uuid,
+        post_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> BlogResult<Option<PostResponse>> {
+        let locale = normalize_locale(locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        let Some(post) = blog_post::Entity::find_by_id(post_id)
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(BlogError::from)?
+        else {
+            return Ok(None);
+        };
+        if storage_to_status(&post.status)? != BlogPostStatus::Draft {
+            return Ok(None);
+        }
+
+        let translations = self.load_translations(tenant_id, post_id).await?;
+        let channel_slugs = self.load_channel_slugs(tenant_id, post_id).await?;
+        let response = self
+            .build_post_response(
+                post,
+                translations,
+                channel_slugs,
+                &locale,
+                fallback_locale.as_deref(),
+            )
+            .await?;
+        Ok(Some(response))
+    }
+
     #[instrument(skip(self))]
     pub async fn get_post_by_slug(
         &self,
@@ -386,9 +429,11 @@ impl PostService {
         Ok(items)
     }
 
-    /// Public keyset page of published posts, ordered `(published_at DESC, id DESC)`.
-    /// Fetches one extra row to learn whether another page exists, so the list
-    /// never counts rows.
+    /// Public keyset page of published posts, ordered `(is_pinned DESC, pinned_at DESC
+    /// NULLS LAST, published_at DESC, id DESC)` — see [`order_public_post_list`]. Fetches
+    /// one extra row to learn whether another page exists, so the list never counts rows.
+    /// The returned cursor carries the full sort key, so pinned rows cannot make the
+    /// listing skip or repeat entries between pages.
     #[instrument(skip(self))]
     pub async fn list_public_visible_keyset(
         &self,
@@ -445,23 +490,11 @@ impl PostService {
             select = select.filter(blog_post::Column::CategoryId.eq(category_id));
         }
         if let Some(after) = query.after {
-            select = select.filter(
-                Condition::any()
-                    .add(blog_post::Column::PublishedAt.lt(after.published_at))
-                    .add(
-                        Condition::all()
-                            .add(blog_post::Column::PublishedAt.eq(after.published_at))
-                            .add(blog_post::Column::Id.lt(after.id)),
-                    ),
-            );
+            select = select.filter(public_post_after_condition(&after));
         }
 
         select = apply_public_post_channel_filter(select, tenant_id, channel_slug);
-        let mut posts = select
-            .order_by_desc(blog_post::Column::IsPinned)
-            .order_by_desc(blog_post::Column::PinnedAt)
-            .order_by_desc(blog_post::Column::PublishedAt)
-            .order_by_desc(blog_post::Column::Id)
+        let mut posts = order_public_post_list(select)
             .limit(per_page + 1)
             .all(&self.db)
             .await
@@ -473,16 +506,7 @@ impl PostService {
             let last = posts.last().ok_or_else(|| {
                 BlogError::invariant("Keyset page reported a next page without rows")
             })?;
-            let published_at = last.published_at.ok_or_else(|| {
-                BlogError::invariant(format!(
-                    "Published blog post {} has no published_at",
-                    last.id
-                ))
-            })?;
-            Some(PublishedPostCursor {
-                published_at,
-                id: last.id,
-            })
+            Some(public_post_cursor(last)?)
         } else {
             None
         };
@@ -681,4 +705,79 @@ impl PostService {
             version: post.version,
         })
     }
+}
+
+/// The one ordering of every public Blog post list:
+/// `is_pinned DESC, pinned_at DESC NULLS LAST, published_at DESC, id DESC`.
+///
+/// It is expressed as a column order with explicit NULL placement, not as an
+/// `IS NULL` expression, so `idx_blog_posts_public_keyset` can serve it. The
+/// public keyset cursor resumes through [`public_post_after_condition`], which
+/// expands the same keys lexicographically.
+pub(crate) fn order_public_post_list(
+    select: Select<blog_post::Entity>,
+) -> Select<blog_post::Entity> {
+    select
+        .order_by_desc(blog_post::Column::IsPinned)
+        .order_by_with_nulls(blog_post::Column::PinnedAt, Order::Desc, NullOrdering::Last)
+        .order_by_desc(blog_post::Column::PublishedAt)
+        .order_by_desc(blog_post::Column::Id)
+}
+
+/// Cursor that resumes the public list directly after `post` in
+/// [`order_public_post_list`].
+pub(crate) fn public_post_cursor(post: &blog_post::Model) -> BlogResult<PublishedPostCursor> {
+    let published_at = post.published_at.ok_or_else(|| {
+        BlogError::invariant(format!(
+            "Published blog post {} has no published_at",
+            post.id
+        ))
+    })?;
+    Ok(PublishedPostCursor {
+        is_pinned: post.is_pinned,
+        pinned_at: post.pinned_at,
+        published_at,
+        id: post.id,
+    })
+}
+
+/// Rows strictly after `after` in [`order_public_post_list`], expanded
+/// lexicographically over the four sort keys.
+///
+/// The pinned rank is boolean, so it is compared as `is_pinned DESC`: a cursor
+/// on a pinned row also matches every unpinned row, and a cursor on an unpinned
+/// row matches none. Within the same rank, `pinned_at` sorts `NULLS LAST`, so a
+/// non-NULL cursor value is followed by smaller values and every NULL.
+pub(crate) fn public_post_after_condition(after: &PublishedPostCursor) -> Condition {
+    let pinned_eq = blog_post::Column::IsPinned.eq(after.is_pinned);
+    let pinned_at_eq = match after.pinned_at {
+        Some(value) => blog_post::Column::PinnedAt.eq(value),
+        None => blog_post::Column::PinnedAt.is_null(),
+    };
+
+    let mut condition = Condition::any().add(blog_post::Column::IsPinned.lt(after.is_pinned));
+    if let Some(pinned_at) = after.pinned_at {
+        condition = condition.add(
+            Condition::all().add(pinned_eq.clone()).add(
+                Condition::any()
+                    .add(blog_post::Column::PinnedAt.lt(pinned_at))
+                    .add(blog_post::Column::PinnedAt.is_null()),
+            ),
+        );
+    }
+    // Within the same pinned rank and the same pin timestamp, earlier publication
+    // order wins. A NULL cursor timestamp only matches the NULL group.
+    condition = condition.add(
+        Condition::all()
+            .add(pinned_eq.clone())
+            .add(pinned_at_eq.clone())
+            .add(blog_post::Column::PublishedAt.lt(after.published_at)),
+    );
+    condition.add(
+        Condition::all()
+            .add(pinned_eq)
+            .add(pinned_at_eq)
+            .add(blog_post::Column::PublishedAt.eq(after.published_at))
+            .add(blog_post::Column::Id.lt(after.id)),
+    )
 }

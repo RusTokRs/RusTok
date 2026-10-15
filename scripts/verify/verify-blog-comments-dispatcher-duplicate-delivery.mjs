@@ -59,7 +59,7 @@ for (const marker of [
   'async fn event_dispatcher_replays_duplicate_envelope_without_double_commit()',
   'BlogModule.register_event_listeners(&mut registry, &context);',
   'let mut handlers = registry.into_handlers();',
-  'assert_eq!(handlers.len(), 1);',
+  'position(|handler| handler.name() == "blog_comment_projection")',
   'assert_eq!(projection.name(), "blog_comment_projection");',
   'let failed = Arc::new(AtomicUsize::new(0));',
   'Arc::clone(&failed)',
