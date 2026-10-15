@@ -37,9 +37,8 @@
     "ReactionSubjectProvider",
     "BLOG_POST_REACTION_KIND",
     "BLOG_REACTION_V1_KEY",
-    "blog_post::Entity::find()",
-    "blog_post_channel_visibility::Entity::find()",
-    "is_post_visible_for_channel",
+    "load_post_subject_snapshot(",
+    "is_post_visible_for_channel(",
     "blog_post_revision",
     "ReactionProviderError::Conflict",
     "ReactionSubjectAuthorization::Unavailable"
@@ -81,5 +80,18 @@
     "cargo check -p rustok-blog --all-targets",
     "node scripts/verify/verify-blog-reaction-subject-provider.mjs",
     "git diff --check"
-  ]
+  ],
+  "owner_read": {
+    "loader": "load_post_subject_snapshot",
+    "file": "crates/modules/rustok-blog/src/services/post/repository.rs",
+    "required_fragments": [
+      "blog_post::Entity::find_by_id(post_id)",
+      "blog_post::Column::TenantId.eq(tenant_id)",
+      "PostService::validate_persisted_version(&post)?",
+      "blog_post_channel_visibility::Entity::find()",
+      "blog_post_channel_visibility::Column::TenantId.eq(tenant_id)",
+      "blog_post_channel_visibility::Column::PostId.eq(post_id)",
+      "storage_to_status(&post.status)?"
+    ]
+  }
 }

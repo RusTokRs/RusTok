@@ -763,6 +763,36 @@ its tokens) and no audit of preview reads. Documented behaviour should at minimu
 - Two "canonical" descriptions of the same Blog URL mechanism (owner routes vs. canonical URL registry) still
   coexist in the repository; only the former exists in source.
 
+### 4.5 Cross-module finding recorded during remediation
+
+Not a Blog defect, and not part of the remediation diff, but it invalidated a Blog-owned contract claim and is
+therefore recorded here rather than silently dropped:
+
+- **The Taxonomy module-term mutation API accepts a `SecurityContext` it does not read.**
+  `update_module_term_in_tx` and `delete_module_term_in_tx`
+  (`crates/modules/rustok-taxonomy/src/module_term_mutation.rs:47,258`) take `_security` and perform no
+  permission check; `TagService::create_module_term_in_tx` (`services.rs:177`) takes no context at all. The
+  parameter is already unused at base `1a420c8`, so no commit on this branch introduced it.
+- **Consequence for Blog.** `TagService::update_tag`/`delete_tag` enforce `Tags:Update`/`Tags:Delete` before
+  calling into the owner and forward the same context, so end-to-end authorization for Blog tag mutations is
+  the caller-side check. The slice-104 evidence file
+  (`crates/modules/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json`) claimed
+  `taxonomy_update_permission_preserved`, `taxonomy_read_permission_preserved_for_update_response` and
+  `taxonomy_delete_permission_preserved` — three peer-side guarantees that do not exist. The evidence now
+  records `blog_caller_permission_enforced: true`, `security_context_forwarded_to_taxonomy_owner: true` and the
+  observed `taxonomy_owner_permission_check_present: false`, and
+  `verify-blog-tag-mutation-reindex-source.mjs` asserts the caller-side checks instead of a peer contract it
+  cannot hold.
+- **Same file, second false claim.** `database_schema_changed: true` contradicted slice 104's own non-scope
+  list ("Slice 104 does not … add a database migration"); the evidence now says `false`, and the guard asserts
+  it.
+- **Owner-side fix is a policy decision, not a Blog patch.** Adding `Resource::Taxonomy` enforcement to the
+  owner changes behaviour for every caller: a role holding `Tags:Update` without `Taxonomy:Update` would stop
+  being able to edit Blog tags. Only SuperAdmin/Admin carry `Taxonomy` in the built-in role sets
+  (`crates/libs/rustok-core/src/rbac.rs`), so the change belongs to the Taxonomy owner together with the RBAC
+  catalogue. It is tracked as an open cross-module item in the Blog implementation cursor and in the module
+  README.
+
 ---
 
 ## 5. Explicitly unverified areas (no evidence produced by this audit)

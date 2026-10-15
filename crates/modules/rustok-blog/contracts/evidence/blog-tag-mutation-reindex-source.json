@@ -20,9 +20,6 @@
     "canonical_outbox_api": "rustok_outbox::TransactionalEventBus::publish_root_in_tx",
     "update_uses_supplied_transaction": true,
     "delete_uses_supplied_transaction": true,
-    "taxonomy_update_permission_preserved": true,
-    "taxonomy_read_permission_preserved_for_update_response": true,
-    "taxonomy_delete_permission_preserved": true,
     "module_scope_rechecked_by_taxonomy_owner": true,
     "term_kind_rechecked_by_taxonomy_owner": true,
     "translation_revision_cas_preserved": true,
@@ -37,13 +34,16 @@
     "tag_usage_projection_is_updated_with_post_tag_mutation": true,
     "tag_usage_projection_delete_uses_taxonomy_fk_cascade": true,
     "tag_service_constructor_changed": false,
-    "database_schema_changed": true,
+    "database_schema_changed": false,
     "search_projection_source_changed": false,
     "production_behavior_changed": true,
     "ffa_promoted": false,
     "fba_promoted": false,
     "blog_global_terms_are_readable": true,
-    "blog_global_terms_are_not_mutable": true
+    "blog_global_terms_are_not_mutable": true,
+    "blog_caller_permission_enforced": true,
+    "security_context_forwarded_to_taxonomy_owner": true,
+    "taxonomy_owner_permission_check_present": false
   },
   "source_harness": {
     "path": "crates/modules/rustok-blog/tests/taxonomy_tags.rs",

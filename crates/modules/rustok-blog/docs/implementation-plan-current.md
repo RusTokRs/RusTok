@@ -192,7 +192,11 @@ previous cursor. Their latest retained source states remain:
 - `comment_form_policy = source_verified_hide_on_provider_absence`; the active storefront writes only when Comments is available, while unavailable/timeout states preserve explicit read availability and may render the cached approved snapshot.
 - `tag_list_pagination = source_complete_maintainer_execution_pending`;
 - `tag_canonical_projection = source_complete_maintainer_execution_pending`;
-- `tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending`;
+- `tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending`; the tag source line is
+  source-complete through slice 104 (bounded list pagination in slice 102, canonical
+  relation/Taxonomy read and Search source in slice 103, atomic dictionary mutation with the
+  Blog reindex in slice 104). What remains is maintainer execution: running the retained
+  harness, and the cross-module permission item recorded below.
 - `global_tag_search_invalidation = source_complete_maintainer_execution_pending`;
 - `post_category_name_projection = source_complete_canonical_taxonomy_read`.
 - `comment_target_lifecycle_guard = source_complete`; comment reads and mutations that begin from a Comments record revalidate canonical Blog post existence, so asynchronously stale Comments threads cannot remain operable after terminal post deletion.
@@ -675,6 +679,34 @@ base `1a420c8`).
   treatment: read the marker against the code or document that actually owns it, keep the
   assertion, and never soften it to green. No Rust was compiled in this wave either.
 
+  Follow-up repair pass over the same set (still no `cargo`): the reaction subject provider
+  guard and the two Tag source guards were resynced the same way, taking the set from 24 to
+  19 failures, again with no new reds anywhere in the repository's 1325 verifier scripts.
+  - `verify-blog-reaction-subject-provider.mjs`: the provider resolves its subject through
+    `load_post_subject_snapshot` instead of holding its own copy of the two owner queries, and
+    the module dependency set it registers under is now `content, taxonomy, outbox, channel`
+    (Comments is reached through the host port, not as a module dependency). The guard asserts
+    the provider's lifecycle/channel/revision rules, then the two queries **in the loader that
+    owns them** (`services/post/repository.rs`), and cross-checks the declared dependency set
+    against `rustok-module.toml`. Ten mutations were used to confirm it still bites.
+  - `verify-blog-tag-canonical-projection-source.mjs`: the tag names are resolved in one batch
+    through `TaxonomyOwnerReader::load_term_names_strict_for_module`; the guard now asserts that
+    call, the per-post `resolve_name_for_locale_chain` projection, the fail-closed "references
+    missing Taxonomy tag" invariant, the real Taxonomy reindex test name, and the persistence-
+    boundary detach the Blog harness uses.
+  - `verify-blog-tag-mutation-reindex-source.mjs`: the retained-track token is now checked
+    against the evidence's own planning result instead of a hand-written string, and the
+    slice-104 scope is enforced as the slice states it (no database migration).
+  - `verify-blog-tag-mutation-reindex-source.test.mjs`: two fixtures mutated the wrong
+    function — one anchor no longer existed and the other edited `create_tag`'s reindex call,
+    so both cases silently asserted nothing while the guard stayed green. Both now mutate their
+    section (bracketed by the function boundaries) and fail if the mutation does not apply.
+  - Evidence corrections: `blog-tag-mutation-reindex-source.json` claimed
+    `taxonomy_*_permission_preserved` (three peer-side guarantees the Taxonomy owner never
+    provided — its `_security` parameter is unused at base too) and
+    `database_schema_changed: true` against slice 104's explicit "no database migration". Both
+    are corrected and the cross-module permission item is tracked under open items below.
+
 - Mutation re-verification of the repaired guards (same session, still without `cargo`). Each
   guard was re-run against a mutated copy of the tree to prove it still bites: the binding
   retirement guard against a removed `drop_table`, a resurrected binding entity and a
@@ -723,6 +755,24 @@ Qualified with the 2026-10-15 audit ([`docs/audits/rustok-blog-engineering-audit
   at the `rustok-blog` source root. The Blog tree follows the verifier and keeps the
   `runtime`-gated registrations in `src/services/scheduler.rs`.
 - **L-4 (open).** Entity re-exports versus `CRATE_API.md`.
+- **Taxonomy module-term API takes a `SecurityContext` it never reads (open, cross-module).**
+  `update_module_term_in_tx` and `delete_module_term_in_tx`
+  (`crates/modules/rustok-taxonomy/src/module_term_mutation.rs`) accept `_security` and enforce
+  nothing with it; `TagService::create_module_term_in_tx` takes no context at all. The unused
+  parameter is present at the base commit `1a420c8`, so it is not a consequence of this branch,
+  but it makes the peer-API convention explicit: **authorization belongs to the caller**. Blog
+  acts on that — `TagService::update_tag`/`delete_tag` enforce `Tags:Update`/`Tags:Delete` before
+  the call and forward the same context, so Blog tag mutations are authorized and the principal
+  is already plumbed through for the day the owner starts checking. Two consequences are
+  recorded rather than papered over: the slice-104 evidence no longer claims
+  `taxonomy_*_permission_preserved` (it now records `blog_caller_permission_enforced`,
+  `security_context_forwarded_to_taxonomy_owner` and the observed
+  `taxonomy_owner_permission_check_present: false`), and the owner-side check is an open item for
+  the Taxonomy owner. It is deliberately **not** added here: enabling `Resource::Taxonomy`
+  enforcement changes peer behaviour for every caller, and a Blog editor whose role holds
+  `Tags:Update` without `Taxonomy:Update` would start failing tag edits. Only
+  SuperAdmin/Admin carry `Taxonomy` in the built-in role sets (`rustok-core/src/rbac.rs`), so the
+  change is a policy decision for the Taxonomy owner and the RBAC catalogue, not a Blog fix.
 - **Suspected status write outside the transition command (checked, not present).** An
   earlier note in this file tracked a `PostService::update` path that was supposed to
   write `status` through a filtered UPDATE and bypass `apply_status_transition_in_tx`.

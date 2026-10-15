@@ -265,6 +265,14 @@ The following are not implemented. Each is tracked with its audit identifier in
   it, so the window is bounded by the host scheduler rather than by a cross-module transaction
   (H-7 of the 2026-10-15 audit).
 - The Leptos storefront does not redirect retired slugs (M-12).
+- Blog Tag mutations are authorized by this module, not by the Taxonomy owner: the owner's
+  `update_module_term_in_tx`/`delete_module_term_in_tx` accept a `SecurityContext` they do not
+  read (`crates/modules/rustok-taxonomy/src/module_term_mutation.rs`), so
+  `TagService::update_tag`/`delete_tag` enforce `Tags:Update`/`Tags:Delete` before the call and
+  forward the same context. Adding `Resource::Taxonomy` enforcement to the owner is a
+  cross-module policy decision (a role holding `Tags:Update` without `Taxonomy:Update` would
+  stop being able to edit tags), tracked in
+  [the current implementation cursor](./docs/implementation-plan-current.md#open-backlog-known-limitations).
 
 ## Entry points
 
