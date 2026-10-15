@@ -52,7 +52,7 @@
     "apps/next-admin/tests/page-builder-accessibility/global-setup.ts",
     "apps/next-admin/tests/page-builder-accessibility/browser-evidence.spec.ts",
     "crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs",
-    "crates/modules/rustok-page-builder/admin/src/editor/page_manager.rs",
+    "crates/ui/fly/leptos/src/editor.rs",
     "crates/modules/rustok-page-builder/admin/src/editor/capability_controls.rs",
     "crates/modules/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs"
   ],
