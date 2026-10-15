@@ -5,7 +5,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{
         Response as HttpResponse, StatusCode,
-        header::{CONTENT_DISPOSITION, CONTENT_TYPE},
+        header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE},
     },
     response::{IntoResponse, Response},
 };
@@ -236,14 +236,17 @@ pub async fn sitemap_index(
     // through the explicitly authorized GraphQL or native admin entry point.
     let file = service
         .sitemaps()
-        .latest_sitemap_index(tenant.id)
+        .public_sitemap_index(&tenant)
         .await
         .map_err(map_seo_http_error)?
         .ok_or_else(|| SeoHttpError::not_found("SEO sitemap index not found"))?;
 
     Ok((
-        [(CONTENT_TYPE, "application/xml; charset=utf-8")],
-        file.content,
+        [
+            (CONTENT_TYPE, "application/xml; charset=utf-8"),
+            (CACHE_CONTROL, "no-store"),
+        ],
+        file,
     )
         .into_response())
 }
@@ -257,14 +260,17 @@ pub async fn sitemap_file(
     ensure_public_seo_enabled(&service, tenant.id).await?;
     let file = service
         .sitemaps()
-        .sitemap_file(tenant.id, name.as_str())
+        .public_sitemap_file(&tenant, name.as_str())
         .await
         .map_err(map_seo_http_error)?
         .ok_or_else(|| SeoHttpError::not_found("SEO sitemap file not found"))?;
 
     Ok((
-        [(CONTENT_TYPE, "application/xml; charset=utf-8")],
-        file.content,
+        [
+            (CONTENT_TYPE, "application/xml; charset=utf-8"),
+            (CACHE_CONTROL, "no-store"),
+        ],
+        file,
     )
         .into_response())
 }

@@ -1,5 +1,8 @@
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
+import { ADMIN_TENANT_KEY, ADMIN_TOKEN_KEY } from '@/shared/lib/auth';
+
 import {
   TopicDetailView,
   fetchStorefrontTopic,
@@ -7,6 +10,10 @@ import {
   resolveStorefrontTopicRoute,
 } from '@rustok/forum-frontend';
 import { getStorefrontTenantId, getStorefrontTenantSlug } from '@/shared/api/modules';
+
+// This route reads per-request audience data. Never put personalized topic
+// bodies into the public prerender cache or pass credentials to client props.
+export const dynamic = 'force-dynamic';
 
 interface TopicPageProps {
   params: Promise<{ locale: string; slug: string[] }>;
@@ -17,7 +24,8 @@ async function resolveTopicId(
   locale: string,
   slugParts: string[],
   tenantId?: string | null,
-  tenantSlug?: string | null
+  tenantSlug?: string | null,
+  token?: string
 ): Promise<{ topicId: string | null; shouldRedirectTo?: string }> {
   // Case 1: [shortId, slug] e.g. /t/123456789abc/welcome-to-the-community
   if (slugParts.length >= 2) {
@@ -25,6 +33,7 @@ async function resolveTopicId(
     const decision = await resolveStorefrontTopicRoute({
       tenantId: tenantId ?? undefined,
       tenantSlug: tenantSlug ?? undefined,
+      token,
       locale,
       shortId,
       slug,
@@ -51,6 +60,7 @@ async function resolveTopicId(
     const decision = await resolveStorefrontTopicRoute({
       tenantId: tenantId ?? undefined,
       tenantSlug: tenantSlug ?? undefined,
+      token,
       locale,
       shortId: singlePart,
       slug: '',
@@ -116,12 +126,18 @@ export default async function ForumTopicPage({ params, searchParams }: TopicPage
   const replyParam = typeof query.reply === 'string' ? query.reply : null;
   const tenantSlug = getStorefrontTenantSlug();
   const tenantId = getStorefrontTenantId();
+  const cookieStore = await cookies();
+  const cookieTenant = cookieStore.get(ADMIN_TENANT_KEY)?.value ?? 'demo';
+  const token = !tenantSlug || cookieTenant === tenantSlug
+    ? cookieStore.get(ADMIN_TOKEN_KEY)?.value
+    : undefined;
 
   const { topicId, shouldRedirectTo } = await resolveTopicId(
     locale,
     slug,
     tenantId,
-    tenantSlug
+    tenantSlug,
+    token
   );
 
   if (shouldRedirectTo) {
@@ -142,12 +158,14 @@ export default async function ForumTopicPage({ params, searchParams }: TopicPage
     fetchStorefrontTopic({
       tenantId: tenantId ?? undefined,
       tenantSlug: tenantSlug ?? undefined,
+      token,
       topicId,
       locale,
     }),
     fetchStorefrontReplies({
       tenantId: tenantId ?? undefined,
       tenantSlug: tenantSlug ?? undefined,
+      token,
       topicId,
       locale,
     }),

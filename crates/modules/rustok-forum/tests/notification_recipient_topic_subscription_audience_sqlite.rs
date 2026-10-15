@@ -1,3 +1,6 @@
+#[path = "support/forum_public_settings.rs"]
+mod forum_public_settings;
+
 #[path = "support/posting_cooldown.rs"]
 mod posting_cooldown;
 
@@ -120,6 +123,12 @@ async fn topic_subscription_audience_filters_exact_recipients_before_cursor_prog
                 tenant_id,
                 category.id,
                 SecurityContext::new(UserRole::Customer, Some(recipient_id)),
+                PortContext::new(
+                    tenant_id.to_string(),
+                    PortActor::user(recipient_id.to_string()),
+                    "en",
+                    "test-category-subscription",
+                ),
             )
             .await
             .expect("category subscription should persist");
@@ -175,7 +184,7 @@ async fn topic_subscription_audience_filters_exact_recipients_before_cursor_prog
         .build_runtime_extensions()
         .expect("Notifications and Forum runtime extensions should initialize");
     extensions.insert(recipient_port);
-    let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()));
+    let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()).with_shared_value(forum_public_settings::default_settings_reader()));
     let providers = materialize_notification_source_registry(&mut extensions, &host)
         .expect("Forum source factory should consume the recipient capability");
     let provider = providers

@@ -12,6 +12,7 @@ pub const MAX_FORUM_SEARCH_RESULT_CANDIDATES: usize = 100;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StorefrontSearchResultCandidateKind {
+    ForumCategory,
     ForumTopic,
     ForumReply,
 }
@@ -19,6 +20,7 @@ pub enum StorefrontSearchResultCandidateKind {
 impl StorefrontSearchResultCandidateKind {
     pub fn from_entity_type(value: &str) -> Option<Self> {
         match value {
+            "forum_category" => Some(Self::ForumCategory),
             "forum_topic" => Some(Self::ForumTopic),
             "forum_reply" => Some(Self::ForumReply),
             _ => None,
@@ -44,6 +46,17 @@ pub struct StorefrontSearchResultEligibilityRequest {
 
 #[async_trait]
 pub trait StorefrontSearchResultEligibilityPort: Send + Sync {
+    /// Owner gate before raw candidate collection. A private tenant with more
+    /// than 100 stale indexed hits should return an empty public page, not a
+    /// candidate-limit error (and must not execute query rules on raw hits).
+    /// No implicit allow: ports that do not support this preflight fail closed.
+    async fn public_forum_discovery_allowed(&self, _tenant_id: Uuid) -> Result<bool, PortError> {
+        Err(PortError::unavailable(
+            "forum.search_result_eligibility.public_discovery_unavailable",
+            "Forum public discovery is temporarily unavailable",
+        ))
+    }
+
     async fn filter_forum_result_candidates(
         &self,
         request: StorefrontSearchResultEligibilityRequest,

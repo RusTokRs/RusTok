@@ -10,6 +10,10 @@ use crate::entities::forum_reply;
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::ReplyStatus;
 
+use super::category_audience_visibility::{
+    ForumCategoryAudienceViewer, ForumCategoryAudienceVisibilityService,
+};
+use super::engagement_mode::ForumSettingsProviders;
 use super::topic_audience_visibility::{
     ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
 };
@@ -18,6 +22,7 @@ pub const MAX_FORUM_SEARCH_RESULT_ELIGIBILITY_CANDIDATES: usize = 100;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ForumSearchResultCandidateKind {
+    Category,
     Topic,
     Reply,
 }
@@ -37,6 +42,7 @@ pub struct ForumSearchResultCandidate {
 pub struct ForumSearchResultEligibilityService {
     db: DatabaseConnection,
     visibility: ForumTopicAudienceVisibilityService,
+    category_visibility: ForumCategoryAudienceVisibilityService,
 }
 
 impl ForumSearchResultEligibilityService {
@@ -56,9 +62,20 @@ impl ForumSearchResultEligibilityService {
         facts_port: Option<SharedForumAudienceFactsPort>,
     ) -> Self {
         Self {
-            visibility: ForumTopicAudienceVisibilityService::new(db.clone(), facts_port),
+            visibility: ForumTopicAudienceVisibilityService::new(db.clone(), facts_port.clone()),
+            category_visibility: ForumCategoryAudienceVisibilityService::new(db.clone(), facts_port),
             db,
         }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.visibility = self.visibility.with_settings_providers(settings.clone());
+        self.category_visibility = self.category_visibility.with_settings_providers(settings);
+        self
+    }
+
+    pub async fn public_discovery_allowed(&self, tenant_id: Uuid) -> ForumResult<bool> {
+        self.visibility.anonymous_reading_allowed(tenant_id).await
     }
 
     pub async fn filter_public_storefront_visible(
@@ -67,9 +84,13 @@ impl ForumSearchResultEligibilityService {
         channel_slug: Option<&str>,
         candidates: &[ForumSearchResultCandidate],
     ) -> ForumResult<Vec<ForumSearchResultCandidate>> {
+        if !self.public_discovery_allowed(tenant_id).await? {
+            return Ok(Vec::new());
+        }
         self.filter_visible(
             tenant_id,
             ForumTopicAudienceViewer::public(),
+            ForumCategoryAudienceViewer::public(),
             channel_slug,
             candidates,
         )
@@ -84,8 +105,9 @@ impl ForumSearchResultEligibilityService {
         candidates: &[ForumSearchResultCandidate],
     ) -> ForumResult<Vec<ForumSearchResultCandidate>> {
         let channel_slug = context.channel.clone();
+        let category_viewer = ForumCategoryAudienceViewer::authenticated(security.clone(), context.clone())?;
         let viewer = ForumTopicAudienceViewer::authenticated(security, context)?;
-        self.filter_visible(tenant_id, viewer, channel_slug.as_deref(), candidates)
+        self.filter_visible(tenant_id, viewer, category_viewer, channel_slug.as_deref(), candidates)
             .await
     }
 
@@ -93,6 +115,7 @@ impl ForumSearchResultEligibilityService {
         &self,
         tenant_id: Uuid,
         viewer: ForumTopicAudienceViewer,
+        category_viewer: ForumCategoryAudienceViewer,
         channel_slug: Option<&str>,
         candidates: &[ForumSearchResultCandidate],
     ) -> ForumResult<Vec<ForumSearchResultCandidate>> {
@@ -105,7 +128,7 @@ impl ForumSearchResultEligibilityService {
             .iter()
             .filter_map(|candidate| match candidate.kind {
                 ForumSearchResultCandidateKind::Reply => Some(candidate.document_id),
-                ForumSearchResultCandidateKind::Topic => None,
+                ForumSearchResultCandidateKind::Topic | ForumSearchResultCandidateKind::Category => None,
             })
             .collect::<HashSet<_>>();
         let reply_topics = self
@@ -119,6 +142,7 @@ impl ForumSearchResultEligibilityService {
                 ForumSearchResultCandidateKind::Reply => {
                     reply_topics.get(&candidate.document_id).copied()
                 }
+                ForumSearchResultCandidateKind::Category => None,
             })
             .collect::<HashSet<_>>()
             .into_iter()
@@ -136,10 +160,26 @@ impl ForumSearchResultEligibilityService {
             }
         }
 
+        // Search may still hold a category document materialized before a
+        // settings/audience change. Recheck it alongside topic/reply rows before
+        // counts and facets are derived from the eligible sequence.
+        let mut visible_categories = HashSet::new();
+        for category_id in candidates.iter().filter_map(|candidate| match candidate.kind {
+            ForumSearchResultCandidateKind::Category => Some(candidate.document_id),
+            _ => None,
+        }) {
+            if self.category_visibility.is_category_visible(tenant_id, category_id, &category_viewer).await? {
+                visible_categories.insert(category_id);
+            }
+        }
+
         let mut allowed = Vec::new();
         let mut seen = HashSet::new();
         for candidate in candidates {
             let is_allowed = match candidate.kind {
+                ForumSearchResultCandidateKind::Category => {
+                    visible_categories.contains(&candidate.document_id)
+                }
                 ForumSearchResultCandidateKind::Topic => {
                     visible_topics.contains(&candidate.document_id)
                 }

@@ -9,6 +9,7 @@ use crate::audience::SharedForumAudienceFactsPort;
 use crate::dto::TopicResponse;
 use crate::error::{ForumError, ForumResult};
 
+use super::engagement_mode::ForumSettingsProviders;
 use super::rbac::enforce_scope;
 use super::topic_audience_visibility::{
     ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
@@ -38,6 +39,11 @@ impl ForumTopicAudienceReadService {
         facts_port: SharedForumAudienceFactsPort,
     ) -> Self {
         Self::with_optional_audience_facts(db, event_bus, Some(facts_port))
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.visibility = self.visibility.with_settings_providers(settings);
+        self
     }
 
     fn with_optional_audience_facts(

@@ -25,7 +25,7 @@ use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
 use crate::services::{
-    ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService, RevisionService,
+    ForumSettingsProviders, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService, RevisionService,
 };
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
@@ -86,6 +86,15 @@ impl ForumReactionSubjectProvider {
         }
     }
 
+    fn visibility_service(&self) -> ForumTopicAudienceVisibilityService {
+        let settings = match self.settings_reader.clone() {
+            Some(reader) => ForumSettingsProviders::default().with_static_reader(reader),
+            None => ForumSettingsProviders::default(),
+        };
+        ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())
+            .with_settings_providers(settings)
+    }
+
     async fn reactions_enabled(&self, tenant_id: Uuid) -> ReactionProviderResult<bool> {
         let Some(settings_reader) = self.settings_reader.as_ref() else {
             return Err(ReactionProviderError::CapabilityUnavailable { retryable: false });
@@ -126,7 +135,7 @@ impl ForumReactionSubjectProvider {
         let viewer = self
             .resolve_viewer(context, subject.tenant_id(), actor_id)
             .await?;
-        if !ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())
+        if !self.visibility_service()
             .is_topic_visible(
                 subject.tenant_id(),
                 subject.subject_id(),
@@ -179,7 +188,7 @@ impl ForumReactionSubjectProvider {
         let viewer = self
             .resolve_viewer(context, subject.tenant_id(), actor_id)
             .await?;
-        if !ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())
+        if !self.visibility_service()
             .is_topic_visible(
                 subject.tenant_id(),
                 initial_reply.topic_id,
@@ -446,9 +455,71 @@ fn map_forum_error(error: ForumError) -> ReactionProviderError {
 
 #[cfg(test)]
 mod tests {
-    use rustok_reactions_api::ReactionSelectionPolicy;
+    use rustok_api::{PortActor, StaticModuleSettingsReader, StaticModuleSettingsSnapshot};
+    use rustok_reactions_api::{ReactionSelectionPolicy, ReactionSubjectRef};
+    use sea_orm::Database;
 
     use super::*;
+
+    struct PrivateForumWithReactions;
+
+    #[async_trait]
+    impl StaticModuleSettingsReader for PrivateForumWithReactions {
+        async fn settings(
+            &self,
+            _tenant_id: Uuid,
+            module_slug: &str,
+        ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+            assert_eq!(module_slug, "forum");
+            Ok(Some(StaticModuleSettingsSnapshot {
+                enabled: true,
+                settings: serde_json::json!({
+                    "use_reactions": true,
+                    "allow_anonymous_reading": false
+                }),
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn anonymous_reaction_on_private_topic_is_unavailable_before_row_lookup() {
+        // No Forum tables: a public reaction read must deny from current owner
+        // settings, rather than probing the topic or returning a stale count.
+        let db = Database::connect("sqlite::memory:").await.expect("sqlite");
+        let tenant_id = Uuid::new_v4();
+        let subject = ReactionSubjectRef::new(
+            tenant_id,
+            forum_reaction_source(),
+            forum_topic_reaction_kind(),
+            Uuid::new_v4(),
+            1,
+        )
+        .expect("topic subject");
+        let provider = ForumReactionSubjectProvider::new(
+            db,
+            None,
+            None,
+            Some(SharedStaticModuleSettingsReader(Arc::new(
+                PrivateForumWithReactions,
+            ))),
+        );
+        let result = provider
+            .authorize(
+                PortContext::new(
+                    tenant_id.to_string(),
+                    PortActor::service("anonymous-reaction-check"),
+                    "en",
+                    "anonymous-reaction-check",
+                ),
+                ReactionSubjectRequest {
+                    subject,
+                    access: ReactionSubjectAccess::Read { actor_id: None },
+                },
+            )
+            .await
+            .expect("private reaction eligibility");
+        assert_eq!(result, ReactionSubjectAuthorization::Unavailable);
+    }
 
     #[test]
     fn forum_catalog_is_single_like_without_vote_reinterpretation() {

@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  fetchStorefrontCategories,
+  fetchAllStorefrontCategories,
   fetchStorefrontTopics,
+  fetchStorefrontUnreadTopics,
   fetchStorefrontTopic,
   fetchStorefrontReplies,
   fetchForumMemberCards,
@@ -17,10 +18,12 @@ import {
 import { ComposerProvider } from '../context/composer-context';
 import { MemberCardProvider } from './member-card';
 import { CategoryRail } from './category-rail';
-import { TopicFeed } from './topic-feed';
+import { TopicFeed, type TopicFilterTab } from './topic-feed';
+import { useForumAuth } from './use-forum-auth';
 import { ThreadPanel } from './thread-panel';
 import { Composer } from './composer';
 import { QuoteTooltip } from './quote-tooltip';
+import { canReplyToTopic } from './topic-reply-availability';
 import { CategoryOverview } from './category-overview';
 import { isForumReplyId, MAX_ANCHOR_REPLY_PAGES } from './reply-anchor';
 import { useTranslations } from '@rustok/next-fluent';
@@ -46,29 +49,65 @@ export function ForumSection({
   initialView = 'topics',
 }: ForumSectionProps) {
   const forum = useTranslations('Forum');
+  const auth = useForumAuth();
+  const token = auth && (!tenantSlug || auth.tenant === tenantSlug) ? auth.token : '';
+  // The key is kept in component memory only. It never becomes an HTML attribute or cache key.
+  const viewerKey = `${tenantId ?? ''}:${tenantSlug ?? ''}:${locale}:${token}`;
   const [activeView, setActiveView] = useState<'topics' | 'categories'>(initialView);
+  const [activeTab, setActiveTab] = useState<TopicFilterTab>('latest');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(initialCategoryId);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(initialTopicId);
+  const feedKey = `${viewerKey}:${selectedCategoryId ?? ''}:${activeTab === 'unread' ? 'unread' : 'all'}`;
+  const detailKey = `${viewerKey}:${selectedTopicId ?? ''}`;
 
-  const [categories, setCategories] = useState<ForumCategoryListItem[]>([]);
-  const [categoriesTotal, setCategoriesTotal] = useState(0);
+  const [categoryPage, setCategoryPage] = useState<{
+    key: string; items: ForumCategoryListItem[]; total: number;
+  } | null>(null);
+  const categories = categoryPage?.key === viewerKey ? categoryPage.items : [];
+  const categoriesTotal = categoryPage?.key === viewerKey ? categoryPage.total : 0;
+  const [topicPage, setTopicPage] = useState<{
+    key: string; items: ForumTopicListItem[]; nextCursor: string | null;
+  } | null>(null);
+  const topics = topicPage?.key === feedKey ? topicPage.items : [];
+  const topicsCursor = topicPage?.key === feedKey ? topicPage.nextCursor : null;
+  const [detailPage, setDetailPage] = useState<{
+    key: string; topic: ForumTopicDetail | null; replies: ForumReplyDetail[];
+    nextCursor: string | null;
+  } | null>(null);
+  const selectedTopic = detailPage?.key === detailKey ? detailPage.topic : null;
+  const replies = detailPage?.key === detailKey ? detailPage.replies : [];
+  const repliesTotal = selectedTopic?.replyCount ?? 0;
+  const repliesCursor = detailPage?.key === detailKey ? detailPage.nextCursor : null;
+  const [cardsPage, setCardsPage] = useState<{
+    key: string; cards: ForumMemberCard[];
+  } | null>(null);
+  const memberCards = cardsPage?.key === viewerKey ? cardsPage.cards : [];
 
-  const [topics, setTopics] = useState<ForumTopicListItem[]>([]);
-
-  const [selectedTopic, setSelectedTopic] = useState<ForumTopicDetail | null>(null);
-  const [replies, setReplies] = useState<ForumReplyDetail[]>([]);
-  const [repliesTotal, setRepliesTotal] = useState(0);
-
-  const [memberCards, setMemberCards] = useState<ForumMemberCard[]>([]);
   const [isMarkingRead, setIsMarkingRead] = useState(false);
-  const [loading, setLoading] = useState(true);
-  // A failed read is reported instead of being rendered as an empty forum.
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadingTopics, setLoadingTopics] = useState(true);
+  const [loadingReplies, setLoadingReplies] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [topicsError, setTopicsError] = useState<string | null>(null);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [cardsError, setCardsError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const loadError = categoriesError ?? topicsError ?? detailsError ?? cardsError ?? actionError;
+  const categoriesRequest = useRef(0);
+  const topicsRequest = useRef(0);
+  const detailsRequest = useRef(0);
+  const repliesRequest = useRef(0);
+  // Refs are updated during render, not in an effect: a response that finishes
+  // between a viewer/tab change and the next effect must never mutate its UI.
+  const viewerKeyRef = useRef(viewerKey);
+  const feedKeyRef = useRef(feedKey);
+  const detailKeyRef = useRef(detailKey);
+  viewerKeyRef.current = viewerKey;
+  feedKeyRef.current = feedKey;
+  detailKeyRef.current = detailKey;
+
   // One-shot deep-link anchor: `?reply=<uuid>` addresses one post inside the opened topic.
   const [replyAnchor, setReplyAnchor] = useState<{
-    topicId: string;
-    replyId: string;
-    visible: boolean;
+    topicId: string; replyId: string; visible: boolean;
   } | null>(null);
   const pendingAnchorRef = useRef<{ topicId: string; replyId: string } | null>(
     initialTopicId && isForumReplyId(initialReplyId)
@@ -76,202 +115,217 @@ export function ForumSection({
       : null
   );
 
-  // Load Categories
   const loadCategories = useCallback(async () => {
+    const request = ++categoriesRequest.current;
     try {
-      const data = await fetchStorefrontCategories({
+      const data = await fetchAllStorefrontCategories({
         tenantId: tenantId ?? undefined,
         tenantSlug: tenantSlug ?? undefined,
+        token: token || undefined,
         locale,
       });
-      setCategories(data.items);
-      setCategoriesTotal(data.total);
-      setLoadError(null);
+      if (request !== categoriesRequest.current || viewerKeyRef.current !== viewerKey) return;
+      setCategoryPage({ key: viewerKey, items: data.items, total: data.total });
+      setCategoriesError(null);
     } catch {
-      setLoadError(forum('errorLoad'));
+      if (request === categoriesRequest.current && viewerKeyRef.current === viewerKey) setCategoriesError(forum('errorLoad'));
     }
-  }, [tenantId, tenantSlug, locale, forum]);
+  }, [tenantId, tenantSlug, token, locale, viewerKey, forum]);
 
-  // Topics are paged by cursor and never counted; the feed count comes from the owner-provided
-  // topicCount of the selected category (all categories when none is selected).
-  const topicsTotal = selectedCategoryId
-    ? (categories.find((category) => category.id === selectedCategoryId)?.topicCount ?? 0)
-    : categories.reduce((sum, category) => sum + category.topicCount, 0);
-
-  // Load Topics
-  const loadTopics = useCallback(async () => {
-    setLoading(true);
+  // Profile cards require a signed-in reader and must not turn a successful
+  // anonymous or personalized topic read into a failed forum page.
+  const loadMemberCards = useCallback(async (items: Array<{ authorId: string | null }>) => {
+    if (!token) return;
+    const userIds = Array.from(new Set(items.map((item) => item.authorId).filter(
+      (id): id is string => Boolean(id)
+    )));
+    if (!userIds.length) return;
     try {
-      const data = await fetchStorefrontTopics({
+      const cards = await fetchForumMemberCards({
+        userIds, token, locale, tenantSlug: tenantSlug ?? undefined,
+      });
+      if (viewerKeyRef.current !== viewerKey) return;
+      setCardsPage((previous) => {
+        const merged = new Map(
+          (previous?.key === viewerKey ? previous.cards : []).map((card) => [card.userId, card])
+        );
+        for (const card of cards) merged.set(card.userId, card);
+        return { key: viewerKey, cards: Array.from(merged.values()) };
+      });
+      setCardsError(null);
+    } catch {
+      if (viewerKeyRef.current === viewerKey) setCardsError(forum('errorMemberCards'));
+    }
+  }, [token, locale, tenantSlug, viewerKey, forum]);
+
+  const loadTopics = useCallback(async (after?: string) => {
+    if (auth === null) return;
+    const request = ++topicsRequest.current;
+    if (activeTab === 'unread' && !token) {
+      setTopicPage({ key: feedKey, items: [], nextCursor: null });
+      setTopicsError(null);
+      setLoadingTopics(false);
+      return;
+    }
+    setLoadingTopics(true);
+    setTopicsError(null);
+    try {
+      const options = {
         tenantId: tenantId ?? undefined,
         tenantSlug: tenantSlug ?? undefined,
         categoryId: selectedCategoryId ?? undefined,
         locale,
+        after,
+      };
+      const data = activeTab === 'unread' && token
+        ? await fetchStorefrontUnreadTopics({ ...options, token })
+        : await fetchStorefrontTopics({ ...options, token: token || undefined });
+      if (request !== topicsRequest.current || feedKeyRef.current !== feedKey) return;
+      setTopicPage((previous) => {
+        const prior = after && previous?.key === feedKey ? previous.items : [];
+        const items = new Map([...prior, ...data.items].map((item) => [item.id, item]));
+        return { key: feedKey, items: Array.from(items.values()), nextCursor: data.nextCursor };
       });
-      setTopics(data.items);
-
-      // Collect author IDs for member cards
-      const userIds = Array.from(
-        new Set(
-          data.items
-            .map((t) => t.authorId)
-            .filter((id): id is string => Boolean(id))
-        )
-      );
-      if (userIds.length > 0) {
-        const cards = await fetchForumMemberCards({
-          userIds,
-          locale,
-          tenantSlug: tenantSlug ?? undefined,
-        });
-        setMemberCards((prev) => {
-          const map = new Map(prev.map((c) => [c.userId, c]));
-          for (const c of cards) map.set(c.userId, c);
-          return Array.from(map.values());
-        });
-      }
-      setLoadError(null);
+      setTopicsError(null);
+      void loadMemberCards(data.items);
     } catch {
-      setLoadError(forum('errorLoad'));
+      if (request === topicsRequest.current && feedKeyRef.current === feedKey) setTopicsError(forum('errorLoad'));
     } finally {
-      setLoading(false);
+      if (request === topicsRequest.current && feedKeyRef.current === feedKey) setLoadingTopics(false);
     }
-  }, [tenantId, tenantSlug, selectedCategoryId, locale, forum]);
+  }, [auth, tenantId, tenantSlug, selectedCategoryId, locale, activeTab, token, feedKey, loadMemberCards, forum]);
 
-  // Load Selected Topic & Replies
   const loadTopicDetails = useCallback(async (topicId: string) => {
+    if (auth === null) return;
+    const request = ++detailsRequest.current;
+    // A late "load more" from the old snapshot must not overwrite this
+    // refresh's replies or cursor (notably after posting a new reply).
+    ++repliesRequest.current;
+    setLoadingReplies(false);
+    const expectedKey = `${viewerKey}:${topicId}`;
+    setDetailsError(null);
     try {
       const [topicData, repliesData] = await Promise.all([
         fetchStorefrontTopic({
-          tenantId: tenantId ?? undefined,
-          tenantSlug: tenantSlug ?? undefined,
-          topicId,
-          locale,
+          tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
+          token: token || undefined, topicId, locale,
         }),
         fetchStorefrontReplies({
-          tenantId: tenantId ?? undefined,
-          tenantSlug: tenantSlug ?? undefined,
-          topicId,
-          locale,
+          tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
+          token: token || undefined, topicId, locale,
         }),
       ]);
-
-      setSelectedTopic(topicData);
-      setReplies(repliesData.items);
-
+      if (request !== detailsRequest.current || detailKeyRef.current !== expectedKey) return;
       const pending = pendingAnchorRef.current;
-      if (pending && pending.topicId === topicId) {
-        pendingAnchorRef.current = null;
-        // The thread is cursor-paged, so the linked post can sit past the first page: walk the
-        // same owner read forward until it is rendered, bounded by MAX_ANCHOR_REPLY_PAGES.
-        let items = repliesData.items;
-        let cursor = repliesData.nextCursor;
+      let items = repliesData.items;
+      let cursor = repliesData.nextCursor;
+      if (pending?.topicId === topicId) {
         let pages = 1;
-        while (
-          cursor &&
-          pages < MAX_ANCHOR_REPLY_PAGES &&
-          !items.some((reply) => reply.id === pending.replyId)
-        ) {
+        while (cursor && pages < MAX_ANCHOR_REPLY_PAGES &&
+               !items.some((reply) => reply.id === pending.replyId)) {
           const next = await fetchStorefrontReplies({
-            tenantId: tenantId ?? undefined,
-            tenantSlug: tenantSlug ?? undefined,
-            topicId,
-            locale,
-            after: cursor,
+            tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
+            token: token || undefined, topicId, locale, after: cursor,
           });
           items = items.concat(next.items);
           cursor = next.nextCursor;
           pages += 1;
         }
-        setReplies(items);
+        if (request !== detailsRequest.current || detailKeyRef.current !== expectedKey) return;
+        pendingAnchorRef.current = null;
         setReplyAnchor({
-          topicId,
-          replyId: pending.replyId,
+          topicId, replyId: pending.replyId,
           visible: items.some((reply) => reply.id === pending.replyId),
         });
       }
-      // Reply count comes from the topic counter; the reply list is cursor-paged and uncounted.
-      setRepliesTotal(topicData?.replyCount ?? 0);
-
-      // Collect author IDs
-      const userIds = Array.from(
-        new Set(
-          [topicData?.authorId, ...repliesData.items.map((r) => r.authorId)].filter(
-            (id): id is string => Boolean(id)
-          )
-        )
-      );
-      if (userIds.length > 0) {
-        const cards = await fetchForumMemberCards({
-          userIds,
-          locale,
-          tenantSlug: tenantSlug ?? undefined,
-        });
-        setMemberCards((prev) => {
-          const map = new Map(prev.map((c) => [c.userId, c]));
-          for (const c of cards) map.set(c.userId, c);
-          return Array.from(map.values());
-        });
-      }
-      setLoadError(null);
+      setDetailPage({ key: expectedKey, topic: topicData, replies: items, nextCursor: cursor });
+      setDetailsError(null);
+      void loadMemberCards([...(topicData ? [topicData] : []), ...items]);
     } catch {
-      setLoadError(forum('errorLoad'));
+      if (request === detailsRequest.current && detailKeyRef.current === expectedKey) setDetailsError(forum('errorLoad'));
     }
-  }, [tenantId, tenantSlug, locale, forum]);
+  }, [auth, tenantId, tenantSlug, token, locale, viewerKey, loadMemberCards, forum]);
 
-  useEffect(() => {
-    loadCategories();
-  }, [loadCategories]);
-
-  useEffect(() => {
-    loadTopics();
-  }, [loadTopics]);
-
-  useEffect(() => {
-    if (selectedTopicId) {
-      loadTopicDetails(selectedTopicId);
-    } else {
-      setSelectedTopic(null);
-      setReplies([]);
-      setRepliesTotal(0);
+  const loadMoreReplies = useCallback(async () => {
+    if (!selectedTopicId || !repliesCursor || loadingReplies) return;
+    const request = ++repliesRequest.current;
+    const after = repliesCursor;
+    setLoadingReplies(true);
+    try {
+      const data = await fetchStorefrontReplies({
+        tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
+        token: token || undefined, topicId: selectedTopicId, locale, after,
+      });
+      if (request !== repliesRequest.current || detailKeyRef.current !== detailKey) return;
+      setDetailPage((previous) => {
+        if (previous?.key !== detailKey) return previous;
+        const items = new Map([...previous.replies, ...data.items].map((item) => [item.id, item]));
+        return { ...previous, replies: Array.from(items.values()), nextCursor: data.nextCursor };
+      });
+      setDetailsError(null);
+      void loadMemberCards(data.items);
+    } catch {
+      if (request === repliesRequest.current && detailKeyRef.current === detailKey) setDetailsError(forum('errorLoad'));
+    } finally {
+      if (request === repliesRequest.current && detailKeyRef.current === detailKey) setLoadingReplies(false);
     }
-  }, [selectedTopicId, loadTopicDetails]);
+  }, [selectedTopicId, repliesCursor, loadingReplies, tenantId, tenantSlug, token, locale, detailKey, loadMemberCards, forum]);
 
-  // Mark Topic Read
+  useEffect(() => {
+    setCategoriesError(null);
+    setTopicsError(null);
+    setDetailsError(null);
+    setCardsError(null);
+    setActionError(null);
+    setIsMarkingRead(false);
+    setLoadingReplies(false);
+  }, [viewerKey]);
+
+  useEffect(() => { if (auth) void loadCategories(); }, [auth, loadCategories]);
+  // A category from another account, a removed category or a now-hidden link
+  // must not leave this visitor trapped in a stale empty/forbidden feed.
+  useEffect(() => {
+    if (!selectedCategoryId || categoryPage?.key !== viewerKey) return;
+    if (categoryPage.items.some((category) => category.id === selectedCategoryId)) return;
+    setSelectedCategoryId(null);
+  }, [categoryPage, viewerKey, selectedCategoryId]);
+  useEffect(() => { if (auth) void loadTopics(); }, [auth, loadTopics]);
+  useEffect(() => {
+    if (auth && selectedTopicId) void loadTopicDetails(selectedTopicId);
+  }, [auth, selectedTopicId, loadTopicDetails]);
+
   const handleMarkTopicRead = useCallback(async (topicId: string) => {
+    if (!token) return;
     setIsMarkingRead(true);
     try {
       await markForumTopicRead({
-        tenantId: tenantId ?? undefined,
-        tenantSlug: tenantSlug ?? undefined,
-        topicId,
-        locale,
+        tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
+        token, topicId, locale,
       });
-      loadTopics();
+      if (viewerKeyRef.current !== viewerKey) return;
+      void loadTopics();
+      setActionError(null);
     } catch {
-      setLoadError(forum('errorMarkRead'));
+      if (viewerKeyRef.current === viewerKey) setActionError(forum('errorMarkRead'));
     } finally {
-      setIsMarkingRead(false);
+      if (viewerKeyRef.current === viewerKey) setIsMarkingRead(false);
     }
-  }, [tenantId, tenantSlug, locale, loadTopics]);
+  }, [tenantId, tenantSlug, token, locale, viewerKey, loadTopics, forum]);
 
   const retryLoad = useCallback(() => {
     void loadCategories();
     void loadTopics();
-    if (selectedTopicId) {
-      void loadTopicDetails(selectedTopicId);
-    }
+    if (selectedTopicId) void loadTopicDetails(selectedTopicId);
   }, [loadCategories, loadTopics, loadTopicDetails, selectedTopicId]);
 
-  // On Topic or Reply Submitted
   const handleSubmitted = useCallback((targetTopicId: string) => {
-    setSelectedTopicId(targetTopicId);
-    loadTopics();
-    loadTopicDetails(targetTopicId);
-  }, [loadTopics, loadTopicDetails]);
+    void loadTopics();
+    if (selectedTopicId === targetTopicId) void loadTopicDetails(targetTopicId);
+    else setSelectedTopicId(targetTopicId);
+  }, [selectedTopicId, loadTopics, loadTopicDetails]);
 
   return (
-    <ComposerProvider>
+    <ComposerProvider tenantId={tenantId} tenantSlug={tenantSlug}>
       <MemberCardProvider cards={memberCards}>
         <section className="overflow-hidden rounded-[2rem] border border-border bg-gradient-to-br from-card via-card to-muted/35 p-6 sm:p-8 shadow-sm">
           {/* Header & View Switcher */}
@@ -359,9 +413,15 @@ export function ForumSection({
               />
 
               <TopicFeed
-                isLoading={loading}
+                isLoading={loadingTopics || (auth !== null && topicPage?.key !== feedKey && !topicsError)}
+                hasError={Boolean(topicsError)}
                 topics={topics}
-                total={topicsTotal}
+                total={topics.length}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                isAuthenticated={Boolean(token)}
+                hasMore={Boolean(topicsCursor)}
+                onLoadMore={() => { if (topicsCursor) void loadTopics(topicsCursor); }}
                 selectedTopicId={selectedTopicId}
                 onSelectTopic={(tId) => {
                   setSelectedTopicId(tId);
@@ -375,8 +435,11 @@ export function ForumSection({
                 topic={selectedTopic}
                 replies={replies}
                 repliesTotal={repliesTotal}
-                onMarkRead={handleMarkTopicRead}
+                onMarkRead={token ? handleMarkTopicRead : undefined}
                 isMarkingRead={isMarkingRead}
+                hasMoreReplies={Boolean(repliesCursor)}
+                isLoadingReplies={loadingReplies}
+                onLoadMoreReplies={() => void loadMoreReplies()}
                 focusReplyId={
                   replyAnchor && replyAnchor.topicId === selectedTopicId && replyAnchor.visible
                     ? replyAnchor.replyId
@@ -400,7 +463,9 @@ export function ForumSection({
             categories={categories}
             onSubmitted={handleSubmitted}
           />
-          <QuoteTooltip />
+          <QuoteTooltip tenantId={tenantId ?? undefined} tenantSlug={tenantSlug ?? undefined} locale={locale}
+            replyTopic={selectedTopic && canReplyToTopic(selectedTopic)
+              ? { id: selectedTopic.id, title: selectedTopic.title } : null} />
         </section>
       </MemberCardProvider>
     </ComposerProvider>

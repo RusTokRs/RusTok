@@ -10,6 +10,7 @@ default = ["server"]
 server = [
   "dep:anyhow",
   "dep:async-trait",
+  "dep:rustok-api",
   "dep:rustok-core",
   "dep:rustok-outbox",
   "dep:sea-orm",
@@ -26,5 +27,6 @@ serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 
+rustok-api = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }

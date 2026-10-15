@@ -164,7 +164,7 @@ for (const marker of [
   "recipient_operation_context(",
   "if self.recipient_context_port.is_none()",
   "ForumNotificationRecipientContextResolver::new(Some(port))",
-  "recipient.into_topic_viewer()",
+  ".into_topic_viewer()",
   "Err(ForumError::CapabilityFailure {",
   "retryable: false, ..",
   "ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())",
@@ -214,7 +214,7 @@ const targetOpenBlock = between(
   "forum notification authorize_target_open",
 );
 for (const [block, marker, label] of [
-  [describeBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public description"],
+  [describeBlock, "load_topic_for_description(event.tenant_id, event.aggregate_id)", "topic-created audience-safe description"],
   [audienceBlock, "load_public_topic(event.tenant_id, event.aggregate_id)", "topic-created public source recheck"],
   [audienceBlock, "topic_subscription_recipient_visible(", "topic-created exact subscription audience"],
   [describeBlock, "load_mention_target_for_recipient(&event, &payload, MENTION_DESCRIBE_ACTOR)", "exact mention description"],
@@ -260,7 +260,7 @@ for (const marker of [
 for (const marker of [
   "topic_subscription_audience_filters_exact_recipients_before_cursor_progress",
   "first_page.recipients().is_empty()",
-  "recorded_calls(&calls), vec![denied_first, unavailable_second]",
+  "vec![denied_first, unavailable_second]",
   "second_page.recipients()[0].recipient_id, allowed_third",
   "third_page.recipients()[0].recipient_id, allowed_fifth",
 ]) {

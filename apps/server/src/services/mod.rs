@@ -182,6 +182,7 @@ pub mod module_event_dispatcher {
                 forum_search_category_scope::ServerForumSearchCategoryScopePort::shared(
                     db.clone(),
                     audience_facts.clone(),
+                    extensions.get::<rustok_api::SharedStaticModuleSettingsReader>().cloned(),
                 );
             let owner_revision =
                 forum_search_owner_revision::ServerForumProjectionOwnerRevisionSourcePort::shared(
@@ -191,6 +192,7 @@ pub mod module_event_dispatcher {
                 forum_search_result_eligibility::ServerForumSearchResultEligibilityPort::shared(
                     db.clone(),
                     audience_facts,
+                    extensions.get::<rustok_api::SharedStaticModuleSettingsReader>().cloned(),
                 );
             extensions.insert(category_scope);
             extensions.insert(owner_revision);

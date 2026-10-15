@@ -229,10 +229,15 @@ Forum-clearFilters = Сбросить фильтры
 Forum-clear = Очистить
 Forum-close = Закрыть
 Forum-communityMap = Карта сообществ
+Forum-copiedLink = Ссылка скопирована!
 Forum-createTopic = Создать тему
 Forum-discussions = Обсуждения
+Forum-draftRestoredForCategory = Восстановлен черновик этой категории. Предыдущие правки остались в прежней категории.
 Forum-draftSavedLocally = Черновик сохранён локально
+Forum-draftSaveFailed = Не удалось сохранить черновик в этом браузере. Не закрывайте редактор или скопируйте текст.
+Forum-draftSaving = Сохранение черновика…
 Forum-draftTitle = Черновик: { $title }
+Forum-errorDraftStorage = Не удалось безопасно сменить категорию. Текущий черновик остался здесь; проверьте доступность хранилища браузера.
 Forum-errorEmptyMessage = Введите сообщение перед публикацией.
 Forum-errorGeneric = При публикации произошла ошибка.
 Forum-errorLoad = Не удалось загрузить форум прямо сейчас.
@@ -256,6 +261,8 @@ Forum-linkedPostUnavailable = Ссылка ведёт на сообщение, �
 Forum-livePreview = Предпросмотр публикации:
 Forum-loading = Загрузка…
 Forum-locked = Закрыта
+Forum-markRead = Отметить как прочитанное
+Forum-markingRead = Отмечаем как прочитанное…
 Forum-minimize = Свернуть
 Forum-newReply = Ответ
 Forum-newTopic = Новая тема
@@ -268,6 +275,8 @@ Forum-noSectionDescription = Для этого раздела не указан�
 Forum-nothingToPreview = Пока нечего показывать.
 Forum-noTopicsYet = Тем пока нет
 Forum-noTopicsYetHint = Будьте первым, кто начнёт обсуждение в этом разделе!
+Forum-noUnreadTopics = Всё прочитано
+Forum-noUnreadTopicsHint = В этой ленте нет непрочитанных обсуждений.
 Forum-openAThread = Открыть обсуждение
 Forum-openAThreadHint = Выберите тему в ленте, чтобы прочитать первое сообщение и последние ответы.
 Forum-openCategoryMatrix = Открыть матрицу категорий с подкатегориями
@@ -280,6 +289,7 @@ Forum-posting = Публикация…
 Forum-quote = Цитировать
 Forum-quotedFrom = Цитата от { $author }
 Forum-replies = Ответы
+Forum-repliesClosed = В этом обсуждении нельзя оставлять новые ответы.
 Forum-repliesCount = ответов
 Forum-replyContent = Текст ответа
 Forum-reply = Ответить
@@ -287,6 +297,7 @@ Forum-replyToMessage = Ответить на это сообщение
 Forum-replyToTopic = Ответить в этой теме
 Forum-retry = Повторить
 Forum-searchPlaceholder = Поиск обсуждений...
+Forum-share = Поделиться
 Forum-sectionDescription = Витрина в духе NodeBB, которая читает категории, ленту тем и ответы через публичный GraphQL-контракт модуля форума.
 Forum-sectionSubtitle = Обсуждения сообщества из пакета модуля
 Forum-sectionsPublished = разделов опубликовано из модуля форума.
@@ -307,5 +318,25 @@ Forum-topicTitlePlaceholder = Заголовок темы...
 Forum-total = всего
 Forum-write = Режим текста
 Forum-totalTopics = Всего тем
+Forum-categoryTotalsHint = Общие числа тем и ответов в категориях могут включать недоступные вам обсуждения.
+Forum-categoryTopicsLabel = тем
+Forum-categoryTopicsTotal = Всего тем в категории (включая скрытые)
+Forum-categoryRepliesTotal = Всего ответов в категории (включая скрытые)
 Forum-unknownAuthor = автор
 Forum-unread = новых
+
+Forum-errorMemberCards = Не удалось загрузить профили участников. Обсуждения остаются доступны.
+Forum-filtersLoadedOnly = Поиск и сортировка работают по уже загруженным темам. Загрузите ещё, чтобы увидеть старые обсуждения.
+Forum-loadMoreReplies = Загрузить ещё ответы
+Forum-loadMoreTopics = Загрузить ещё темы
+Forum-loadedThreads =
+    { $count ->
+        [one] Загружена { $count } тема
+        [few] Загружены { $count } темы
+       *[other] Загружено { $count } тем
+    }
+Forum-quoteTextOnly = Цитата добавлена как текст: не удалось закрепить исходную ревизию.
+Forum-signInForUnread = Войдите, чтобы увидеть непрочитанные обсуждения.
+Forum-signInRequired = Войдите, чтобы публиковать сообщения на форуме.
+
+Forum-draftNotSaved = Черновики не сохраняются, пока не определена ваша учётная запись.

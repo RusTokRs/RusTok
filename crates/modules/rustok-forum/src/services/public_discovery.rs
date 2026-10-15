@@ -7,7 +7,8 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::ReplyStatus;
 
 use super::{
-    ForumCategoryAudienceReadService, ForumReplyAudienceReadService, ForumTopicAudienceReadService,
+    ForumCategoryAudienceReadService, ForumReplyAudienceReadService, ForumSettingsProviders,
+    ForumTopicAudienceReadService,
 };
 
 /// Canonical public discovery owner for cross-consumer surfaces such as SEO,
@@ -21,6 +22,7 @@ pub struct ForumPublicDiscoveryService {
     categories: ForumCategoryAudienceReadService,
     topics: ForumTopicAudienceReadService,
     replies: ForumReplyAudienceReadService,
+    settings: ForumSettingsProviders,
 }
 
 impl ForumPublicDiscoveryService {
@@ -29,7 +31,22 @@ impl ForumPublicDiscoveryService {
             categories: ForumCategoryAudienceReadService::new(db.clone()),
             topics: ForumTopicAudienceReadService::new(db.clone(), event_bus.clone()),
             replies: ForumReplyAudienceReadService::new(db, event_bus),
+            settings: ForumSettingsProviders::default(),
         }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.categories = self.categories.with_settings_providers(settings.clone());
+        self.topics = self.topics.with_settings_providers(settings.clone());
+        self.replies = self.replies.with_settings_providers(settings.clone());
+        self.settings = settings;
+        self
+    }
+
+    /// Call before public candidate enumeration (SEO bulk and Search ingestion)
+    /// so a disabled tenant cannot leak raw identifiers through a cursor.
+    pub async fn anonymous_reading_allowed(&self, tenant_id: Uuid) -> ForumResult<bool> {
+        self.settings.anonymous_reading_allowed(tenant_id).await
     }
 
     /// Returns a category only when it is visible to an anonymous public

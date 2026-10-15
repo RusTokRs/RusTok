@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_api::{HostRuntimeContext, PortActor, PortContext};
+use rustok_api::{HostRuntimeContext, PortActor, PortContext, SharedStaticModuleSettingsReader};
 use rustok_notifications_api::{
     AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationAudienceCandidate,
     NotificationAudienceCursor, NotificationAudiencePage, NotificationOpenAuthorization,
@@ -29,7 +29,7 @@ use crate::error::ForumError;
 use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
-use crate::services::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
+use crate::services::{ForumSettingsProviders, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 use crate::subscription::ForumSubscriptionLevel;
 
@@ -65,6 +65,7 @@ impl NotificationSourceProviderFactory for ForumNotificationSourceProviderFactor
             host.db_clone(),
             host.shared_get::<SharedForumNotificationRecipientContextPort>(),
             host.shared_get::<SharedForumAudienceFactsPort>(),
+            host.shared_get::<SharedStaticModuleSettingsReader>(),
         )))
     }
 }
@@ -74,6 +75,7 @@ struct ForumNotificationSourceProvider {
     db: DatabaseConnection,
     recipient_context_port: Option<SharedForumNotificationRecipientContextPort>,
     facts_port: Option<SharedForumAudienceFactsPort>,
+    settings_reader: Option<SharedStaticModuleSettingsReader>,
 }
 
 #[derive(Clone, Debug)]
@@ -111,12 +113,23 @@ impl ForumNotificationSourceProvider {
         db: DatabaseConnection,
         recipient_context_port: Option<SharedForumNotificationRecipientContextPort>,
         facts_port: Option<SharedForumAudienceFactsPort>,
+        settings_reader: Option<SharedStaticModuleSettingsReader>,
     ) -> Self {
         Self {
             db,
             recipient_context_port,
             facts_port,
+            settings_reader,
         }
+    }
+
+    fn visibility_service(&self) -> ForumTopicAudienceVisibilityService {
+        let settings = match self.settings_reader.clone() {
+            Some(reader) => ForumSettingsProviders::default().with_static_reader(reader),
+            None => ForumSettingsProviders::default(),
+        };
+        ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())
+            .with_settings_providers(settings)
     }
 
     async fn load_event(
@@ -208,7 +221,7 @@ impl ForumNotificationSourceProvider {
         topic_id: Uuid,
         viewer: &ForumTopicAudienceViewer,
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
-        if !ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())
+        if !self.visibility_service()
             .is_topic_visible(tenant_id, topic_id, None, viewer)
             .await
             .map_err(forum_owner_error)?

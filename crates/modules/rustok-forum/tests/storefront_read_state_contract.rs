@@ -31,6 +31,15 @@ fn graphql_schema_exposes_storefront_visible_unread_contract() {
         );
     }
 
+    let unread_args = sdl
+        .split("forumStorefrontUnreadTopics(")
+        .nth(1)
+        .expect("storefront unread field arguments")
+        .split(')')
+        .next()
+        .expect("storefront unread argument list");
+    assert!(unread_args.contains("unreadOnly: Boolean"));
+
     for contract_type in [
         "GqlForumStorefrontUnreadTopic",
         "GqlForumStorefrontUnreadTopicPage",

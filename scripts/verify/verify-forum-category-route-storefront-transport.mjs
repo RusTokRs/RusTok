@@ -21,6 +21,8 @@ const paths = {
     "crates/modules/rustok-forum/storefront/src/transport/category_route_graphql_adapter.rs",
   nativeAdapter:
     "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
+  nativeShared:
+    "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs",
   transportMod: "crates/modules/rustok-forum/storefront/src/transport/mod.rs",
   storefrontLib: "crates/modules/rustok-forum/storefront/src/lib.rs",
   contract:
@@ -91,7 +93,7 @@ for (const marker of [
   "pub struct ForumCategoryRouteService",
   "pub async fn resolve(",
   "pub alias_id: Option<Uuid>",
-  "Exact-locale aliases therefore precede fallback-locale current",
+  ".resolve_term_route_for_module(",
 ]) {
   requireText(source.routeOwner, marker, paths.routeOwner);
 }
@@ -134,7 +136,7 @@ for (const marker of [
   "extract::<TenantContext>()",
   "extract::<OptionalAuthContext>()",
   "extract::<RequestContext>()",
-  "is_module_enabled(channel_id, \"forum\")",
+  "super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request).await?",
   "ForumCategoryRouteService::new(db.clone())",
   "ForumCategoryAudienceReadService::with_audience_facts",
   "ForumCategoryReadTransport::NativeServer",
@@ -145,6 +147,11 @@ for (const marker of [
 ]) {
   requireText(source.nativeAdapter, marker, paths.nativeAdapter);
 }
+requireText(
+  source.nativeShared,
+  '.is_module_enabled_for_tenant(tenant_id, channel_id, "forum")',
+  paths.nativeShared,
+);
 
 for (const marker of [
   "include!(\"category_route_graphql_adapter.rs\")",

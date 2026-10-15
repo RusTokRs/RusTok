@@ -232,6 +232,14 @@ export type AppMessageKey =
   | 'Forum.cancel'
   | 'Forum-categories'
   | 'Forum.categories'
+  | 'Forum-categoryRepliesTotal'
+  | 'Forum.categoryRepliesTotal'
+  | 'Forum-categoryTopicsLabel'
+  | 'Forum.categoryTopicsLabel'
+  | 'Forum-categoryTopicsTotal'
+  | 'Forum.categoryTopicsTotal'
+  | 'Forum-categoryTotalsHint'
+  | 'Forum.categoryTotalsHint'
   | 'Forum-clear'
   | 'Forum.clear'
   | 'Forum-clearFilters'
@@ -240,14 +248,26 @@ export type AppMessageKey =
   | 'Forum.close'
   | 'Forum-communityMap'
   | 'Forum.communityMap'
+  | 'Forum-copiedLink'
+  | 'Forum.copiedLink'
   | 'Forum-createTopic'
   | 'Forum.createTopic'
   | 'Forum-discussions'
   | 'Forum.discussions'
+  | 'Forum-draftNotSaved'
+  | 'Forum.draftNotSaved'
+  | 'Forum-draftRestoredForCategory'
+  | 'Forum.draftRestoredForCategory'
   | 'Forum-draftSavedLocally'
   | 'Forum.draftSavedLocally'
+  | 'Forum-draftSaveFailed'
+  | 'Forum.draftSaveFailed'
+  | 'Forum-draftSaving'
+  | 'Forum.draftSaving'
   | 'Forum-draftTitle'
   | 'Forum.draftTitle'
+  | 'Forum-errorDraftStorage'
+  | 'Forum.errorDraftStorage'
   | 'Forum-errorEmptyMessage'
   | 'Forum.errorEmptyMessage'
   | 'Forum-errorGeneric'
@@ -256,6 +276,8 @@ export type AppMessageKey =
   | 'Forum.errorLoad'
   | 'Forum-errorMarkRead'
   | 'Forum.errorMarkRead'
+  | 'Forum-errorMemberCards'
+  | 'Forum.errorMemberCards'
   | 'Forum-errorMissingCategory'
   | 'Forum.errorMissingCategory'
   | 'Forum-errorMissingTitle'
@@ -268,6 +290,8 @@ export type AppMessageKey =
   | 'Forum.expand'
   | 'Forum-filterPlaceholder'
   | 'Forum.filterPlaceholder'
+  | 'Forum-filtersLoadedOnly'
+  | 'Forum.filtersLoadedOnly'
   | 'Forum-forumIndex'
   | 'Forum.forumIndex'
   | 'Forum-fresh'
@@ -290,10 +314,20 @@ export type AppMessageKey =
   | 'Forum.linkedPostUnavailable'
   | 'Forum-livePreview'
   | 'Forum.livePreview'
+  | 'Forum-loadedThreads'
+  | 'Forum.loadedThreads'
   | 'Forum-loading'
   | 'Forum.loading'
+  | 'Forum-loadMoreReplies'
+  | 'Forum.loadMoreReplies'
+  | 'Forum-loadMoreTopics'
+  | 'Forum.loadMoreTopics'
   | 'Forum-locked'
   | 'Forum.locked'
+  | 'Forum-markingRead'
+  | 'Forum.markingRead'
+  | 'Forum-markRead'
+  | 'Forum.markRead'
   | 'Forum-minimize'
   | 'Forum.minimize'
   | 'Forum-newReply'
@@ -318,6 +352,10 @@ export type AppMessageKey =
   | 'Forum.noTopicsYet'
   | 'Forum-noTopicsYetHint'
   | 'Forum.noTopicsYetHint'
+  | 'Forum-noUnreadTopics'
+  | 'Forum.noUnreadTopics'
+  | 'Forum-noUnreadTopicsHint'
+  | 'Forum.noUnreadTopicsHint'
   | 'Forum-openAThread'
   | 'Forum.openAThread'
   | 'Forum-openAThreadHint'
@@ -340,8 +378,12 @@ export type AppMessageKey =
   | 'Forum.quote'
   | 'Forum-quotedFrom'
   | 'Forum.quotedFrom'
+  | 'Forum-quoteTextOnly'
+  | 'Forum.quoteTextOnly'
   | 'Forum-replies'
   | 'Forum.replies'
+  | 'Forum-repliesClosed'
+  | 'Forum.repliesClosed'
   | 'Forum-repliesCount'
   | 'Forum.repliesCount'
   | 'Forum-reply'
@@ -362,6 +404,12 @@ export type AppMessageKey =
   | 'Forum.sectionsPublished'
   | 'Forum-sectionSubtitle'
   | 'Forum.sectionSubtitle'
+  | 'Forum-share'
+  | 'Forum.share'
+  | 'Forum-signInForUnread'
+  | 'Forum.signInForUnread'
+  | 'Forum-signInRequired'
+  | 'Forum.signInRequired'
   | 'Forum-solved'
   | 'Forum.solved'
   | 'Forum-startDiscussion'
@@ -816,6 +864,14 @@ export interface AppMessageArgs {
   'Forum.cancel'?: Record<string, never>;
   'Forum-categories'?: Record<string, never>;
   'Forum.categories'?: Record<string, never>;
+  'Forum-categoryRepliesTotal'?: Record<string, never>;
+  'Forum.categoryRepliesTotal'?: Record<string, never>;
+  'Forum-categoryTopicsLabel'?: Record<string, never>;
+  'Forum.categoryTopicsLabel'?: Record<string, never>;
+  'Forum-categoryTopicsTotal'?: Record<string, never>;
+  'Forum.categoryTopicsTotal'?: Record<string, never>;
+  'Forum-categoryTotalsHint'?: Record<string, never>;
+  'Forum.categoryTotalsHint'?: Record<string, never>;
   'Forum-clear'?: Record<string, never>;
   'Forum.clear'?: Record<string, never>;
   'Forum-clearFilters'?: Record<string, never>;
@@ -824,14 +880,26 @@ export interface AppMessageArgs {
   'Forum.close'?: Record<string, never>;
   'Forum-communityMap'?: Record<string, never>;
   'Forum.communityMap'?: Record<string, never>;
+  'Forum-copiedLink'?: Record<string, never>;
+  'Forum.copiedLink'?: Record<string, never>;
   'Forum-createTopic'?: Record<string, never>;
   'Forum.createTopic'?: Record<string, never>;
   'Forum-discussions'?: Record<string, never>;
   'Forum.discussions'?: Record<string, never>;
+  'Forum-draftNotSaved'?: Record<string, never>;
+  'Forum.draftNotSaved'?: Record<string, never>;
+  'Forum-draftRestoredForCategory'?: Record<string, never>;
+  'Forum.draftRestoredForCategory'?: Record<string, never>;
   'Forum-draftSavedLocally'?: Record<string, never>;
   'Forum.draftSavedLocally'?: Record<string, never>;
+  'Forum-draftSaveFailed'?: Record<string, never>;
+  'Forum.draftSaveFailed'?: Record<string, never>;
+  'Forum-draftSaving'?: Record<string, never>;
+  'Forum.draftSaving'?: Record<string, never>;
   'Forum-draftTitle': { 'title': string | number | Date };
   'Forum.draftTitle': { 'title': string | number | Date };
+  'Forum-errorDraftStorage'?: Record<string, never>;
+  'Forum.errorDraftStorage'?: Record<string, never>;
   'Forum-errorEmptyMessage'?: Record<string, never>;
   'Forum.errorEmptyMessage'?: Record<string, never>;
   'Forum-errorGeneric'?: Record<string, never>;
@@ -840,6 +908,8 @@ export interface AppMessageArgs {
   'Forum.errorLoad'?: Record<string, never>;
   'Forum-errorMarkRead'?: Record<string, never>;
   'Forum.errorMarkRead'?: Record<string, never>;
+  'Forum-errorMemberCards'?: Record<string, never>;
+  'Forum.errorMemberCards'?: Record<string, never>;
   'Forum-errorMissingCategory'?: Record<string, never>;
   'Forum.errorMissingCategory'?: Record<string, never>;
   'Forum-errorMissingTitle'?: Record<string, never>;
@@ -852,6 +922,8 @@ export interface AppMessageArgs {
   'Forum.expand'?: Record<string, never>;
   'Forum-filterPlaceholder'?: Record<string, never>;
   'Forum.filterPlaceholder'?: Record<string, never>;
+  'Forum-filtersLoadedOnly'?: Record<string, never>;
+  'Forum.filtersLoadedOnly'?: Record<string, never>;
   'Forum-forumIndex'?: Record<string, never>;
   'Forum.forumIndex'?: Record<string, never>;
   'Forum-fresh'?: Record<string, never>;
@@ -874,10 +946,20 @@ export interface AppMessageArgs {
   'Forum.linkedPostUnavailable'?: Record<string, never>;
   'Forum-livePreview'?: Record<string, never>;
   'Forum.livePreview'?: Record<string, never>;
+  'Forum-loadedThreads': { 'count': string | number | Date };
+  'Forum.loadedThreads': { 'count': string | number | Date };
   'Forum-loading'?: Record<string, never>;
   'Forum.loading'?: Record<string, never>;
+  'Forum-loadMoreReplies'?: Record<string, never>;
+  'Forum.loadMoreReplies'?: Record<string, never>;
+  'Forum-loadMoreTopics'?: Record<string, never>;
+  'Forum.loadMoreTopics'?: Record<string, never>;
   'Forum-locked'?: Record<string, never>;
   'Forum.locked'?: Record<string, never>;
+  'Forum-markingRead'?: Record<string, never>;
+  'Forum.markingRead'?: Record<string, never>;
+  'Forum-markRead'?: Record<string, never>;
+  'Forum.markRead'?: Record<string, never>;
   'Forum-minimize'?: Record<string, never>;
   'Forum.minimize'?: Record<string, never>;
   'Forum-newReply'?: Record<string, never>;
@@ -902,6 +984,10 @@ export interface AppMessageArgs {
   'Forum.noTopicsYet'?: Record<string, never>;
   'Forum-noTopicsYetHint'?: Record<string, never>;
   'Forum.noTopicsYetHint'?: Record<string, never>;
+  'Forum-noUnreadTopics'?: Record<string, never>;
+  'Forum.noUnreadTopics'?: Record<string, never>;
+  'Forum-noUnreadTopicsHint'?: Record<string, never>;
+  'Forum.noUnreadTopicsHint'?: Record<string, never>;
   'Forum-openAThread'?: Record<string, never>;
   'Forum.openAThread'?: Record<string, never>;
   'Forum-openAThreadHint'?: Record<string, never>;
@@ -924,8 +1010,12 @@ export interface AppMessageArgs {
   'Forum.quote'?: Record<string, never>;
   'Forum-quotedFrom': { 'author': string | number | Date };
   'Forum.quotedFrom': { 'author': string | number | Date };
+  'Forum-quoteTextOnly'?: Record<string, never>;
+  'Forum.quoteTextOnly'?: Record<string, never>;
   'Forum-replies'?: Record<string, never>;
   'Forum.replies'?: Record<string, never>;
+  'Forum-repliesClosed'?: Record<string, never>;
+  'Forum.repliesClosed'?: Record<string, never>;
   'Forum-repliesCount'?: Record<string, never>;
   'Forum.repliesCount'?: Record<string, never>;
   'Forum-reply'?: Record<string, never>;
@@ -946,6 +1036,12 @@ export interface AppMessageArgs {
   'Forum.sectionsPublished'?: Record<string, never>;
   'Forum-sectionSubtitle'?: Record<string, never>;
   'Forum.sectionSubtitle'?: Record<string, never>;
+  'Forum-share'?: Record<string, never>;
+  'Forum.share'?: Record<string, never>;
+  'Forum-signInForUnread'?: Record<string, never>;
+  'Forum.signInForUnread'?: Record<string, never>;
+  'Forum-signInRequired'?: Record<string, never>;
+  'Forum.signInRequired'?: Record<string, never>;
   'Forum-solved'?: Record<string, never>;
   'Forum.solved'?: Record<string, never>;
   'Forum-startDiscussion'?: Record<string, never>;
@@ -1401,6 +1497,14 @@ export interface AppMessages {
   'Forum.cancel': Record<string, never>;
   'Forum-categories': Record<string, never>;
   'Forum.categories': Record<string, never>;
+  'Forum-categoryRepliesTotal': Record<string, never>;
+  'Forum.categoryRepliesTotal': Record<string, never>;
+  'Forum-categoryTopicsLabel': Record<string, never>;
+  'Forum.categoryTopicsLabel': Record<string, never>;
+  'Forum-categoryTopicsTotal': Record<string, never>;
+  'Forum.categoryTopicsTotal': Record<string, never>;
+  'Forum-categoryTotalsHint': Record<string, never>;
+  'Forum.categoryTotalsHint': Record<string, never>;
   'Forum-clear': Record<string, never>;
   'Forum.clear': Record<string, never>;
   'Forum-clearFilters': Record<string, never>;
@@ -1409,14 +1513,26 @@ export interface AppMessages {
   'Forum.close': Record<string, never>;
   'Forum-communityMap': Record<string, never>;
   'Forum.communityMap': Record<string, never>;
+  'Forum-copiedLink': Record<string, never>;
+  'Forum.copiedLink': Record<string, never>;
   'Forum-createTopic': Record<string, never>;
   'Forum.createTopic': Record<string, never>;
   'Forum-discussions': Record<string, never>;
   'Forum.discussions': Record<string, never>;
+  'Forum-draftNotSaved': Record<string, never>;
+  'Forum.draftNotSaved': Record<string, never>;
+  'Forum-draftRestoredForCategory': Record<string, never>;
+  'Forum.draftRestoredForCategory': Record<string, never>;
   'Forum-draftSavedLocally': Record<string, never>;
   'Forum.draftSavedLocally': Record<string, never>;
+  'Forum-draftSaveFailed': Record<string, never>;
+  'Forum.draftSaveFailed': Record<string, never>;
+  'Forum-draftSaving': Record<string, never>;
+  'Forum.draftSaving': Record<string, never>;
   'Forum-draftTitle': { 'title': string | number | Date };
   'Forum.draftTitle': { 'title': string | number | Date };
+  'Forum-errorDraftStorage': Record<string, never>;
+  'Forum.errorDraftStorage': Record<string, never>;
   'Forum-errorEmptyMessage': Record<string, never>;
   'Forum.errorEmptyMessage': Record<string, never>;
   'Forum-errorGeneric': Record<string, never>;
@@ -1425,6 +1541,8 @@ export interface AppMessages {
   'Forum.errorLoad': Record<string, never>;
   'Forum-errorMarkRead': Record<string, never>;
   'Forum.errorMarkRead': Record<string, never>;
+  'Forum-errorMemberCards': Record<string, never>;
+  'Forum.errorMemberCards': Record<string, never>;
   'Forum-errorMissingCategory': Record<string, never>;
   'Forum.errorMissingCategory': Record<string, never>;
   'Forum-errorMissingTitle': Record<string, never>;
@@ -1437,6 +1555,8 @@ export interface AppMessages {
   'Forum.expand': Record<string, never>;
   'Forum-filterPlaceholder': Record<string, never>;
   'Forum.filterPlaceholder': Record<string, never>;
+  'Forum-filtersLoadedOnly': Record<string, never>;
+  'Forum.filtersLoadedOnly': Record<string, never>;
   'Forum-forumIndex': Record<string, never>;
   'Forum.forumIndex': Record<string, never>;
   'Forum-fresh': Record<string, never>;
@@ -1459,10 +1579,20 @@ export interface AppMessages {
   'Forum.linkedPostUnavailable': Record<string, never>;
   'Forum-livePreview': Record<string, never>;
   'Forum.livePreview': Record<string, never>;
+  'Forum-loadedThreads': { 'count': string | number | Date };
+  'Forum.loadedThreads': { 'count': string | number | Date };
   'Forum-loading': Record<string, never>;
   'Forum.loading': Record<string, never>;
+  'Forum-loadMoreReplies': Record<string, never>;
+  'Forum.loadMoreReplies': Record<string, never>;
+  'Forum-loadMoreTopics': Record<string, never>;
+  'Forum.loadMoreTopics': Record<string, never>;
   'Forum-locked': Record<string, never>;
   'Forum.locked': Record<string, never>;
+  'Forum-markingRead': Record<string, never>;
+  'Forum.markingRead': Record<string, never>;
+  'Forum-markRead': Record<string, never>;
+  'Forum.markRead': Record<string, never>;
   'Forum-minimize': Record<string, never>;
   'Forum.minimize': Record<string, never>;
   'Forum-newReply': Record<string, never>;
@@ -1487,6 +1617,10 @@ export interface AppMessages {
   'Forum.noTopicsYet': Record<string, never>;
   'Forum-noTopicsYetHint': Record<string, never>;
   'Forum.noTopicsYetHint': Record<string, never>;
+  'Forum-noUnreadTopics': Record<string, never>;
+  'Forum.noUnreadTopics': Record<string, never>;
+  'Forum-noUnreadTopicsHint': Record<string, never>;
+  'Forum.noUnreadTopicsHint': Record<string, never>;
   'Forum-openAThread': Record<string, never>;
   'Forum.openAThread': Record<string, never>;
   'Forum-openAThreadHint': Record<string, never>;
@@ -1509,8 +1643,12 @@ export interface AppMessages {
   'Forum.quote': Record<string, never>;
   'Forum-quotedFrom': { 'author': string | number | Date };
   'Forum.quotedFrom': { 'author': string | number | Date };
+  'Forum-quoteTextOnly': Record<string, never>;
+  'Forum.quoteTextOnly': Record<string, never>;
   'Forum-replies': Record<string, never>;
   'Forum.replies': Record<string, never>;
+  'Forum-repliesClosed': Record<string, never>;
+  'Forum.repliesClosed': Record<string, never>;
   'Forum-repliesCount': Record<string, never>;
   'Forum.repliesCount': Record<string, never>;
   'Forum-reply': Record<string, never>;
@@ -1531,6 +1669,12 @@ export interface AppMessages {
   'Forum.sectionsPublished': Record<string, never>;
   'Forum-sectionSubtitle': Record<string, never>;
   'Forum.sectionSubtitle': Record<string, never>;
+  'Forum-share': Record<string, never>;
+  'Forum.share': Record<string, never>;
+  'Forum-signInForUnread': Record<string, never>;
+  'Forum.signInForUnread': Record<string, never>;
+  'Forum-signInRequired': Record<string, never>;
+  'Forum.signInRequired': Record<string, never>;
   'Forum-solved': Record<string, never>;
   'Forum.solved': Record<string, never>;
   'Forum-startDiscussion': Record<string, never>;

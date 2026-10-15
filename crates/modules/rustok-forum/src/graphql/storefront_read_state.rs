@@ -68,8 +68,10 @@ impl ForumStorefrontReadStateQuery {
         locale: Option<String>,
         after: Option<String>,
         limit: Option<i32>,
+        #[graphql(default)] unread_only: bool,
     ) -> Result<GqlForumStorefrontUnreadTopicPage> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_public_forum_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = super::require_forum_permission(
@@ -117,6 +119,7 @@ impl ForumStorefrontReadStateQuery {
                     per_page: limit,
                 },
                 Some(tenant.default_locale.as_str()),
+                unread_only,
             )
             .await?;
 
@@ -140,6 +143,7 @@ impl ForumStorefrontReadStateMutation {
         locale: Option<String>,
     ) -> Result<GqlForumStorefrontTopicReadState> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_public_forum_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = super::require_forum_permission(
@@ -194,6 +198,7 @@ impl ForumStorefrontReadStateMutation {
         locale: Option<String>,
     ) -> Result<GqlForumTopicsReadBatchResult> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_public_forum_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = super::require_forum_permission(
@@ -247,6 +252,7 @@ impl ForumStorefrontReadStateMutation {
         locale: Option<String>,
     ) -> Result<GqlForumTopicsReadBatchResult> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_public_forum_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = super::require_forum_permission(

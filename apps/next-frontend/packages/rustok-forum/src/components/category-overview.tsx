@@ -3,19 +3,13 @@
 import React, { useState, useMemo } from 'react';
 import type { ForumCategoryListItem } from '../api/forum';
 import { useTranslations } from '@rustok/next-fluent';
+import { buildCategoryOverviewHierarchy, filterCategoryOverviewHierarchy } from './category-overview-hierarchy';
 
 interface CategoryOverviewProps {
   categories: ForumCategoryListItem[];
   total: number;
   onSelectCategory: (categoryId: string) => void;
   className?: string;
-}
-
-interface CategoryWithChildren {
-  category: ForumCategoryListItem;
-  subcategories: ForumCategoryListItem[];
-  totalTopicCount: number;
-  totalReplyCount: number;
 }
 
 export function CategoryOverview({
@@ -27,73 +21,12 @@ export function CategoryOverview({
   const forum = useTranslations('Forum');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Group into hierarchy: roots and subcategories
-  const hierarchy = useMemo(() => {
-    const byId = new Map<string, ForumCategoryListItem>();
-    for (const cat of categories) {
-      byId.set(cat.id, cat);
-    }
+  const hierarchy = useMemo(() => buildCategoryOverviewHierarchy(categories), [categories]);
 
-    const roots: ForumCategoryListItem[] = [];
-    const childrenMap = new Map<string, ForumCategoryListItem[]>();
-
-    for (const cat of categories) {
-      if (cat.parentId && byId.has(cat.parentId)) {
-        const list = childrenMap.get(cat.parentId) || [];
-        list.push(cat);
-        childrenMap.set(cat.parentId, list);
-      } else {
-        roots.push(cat);
-      }
-    }
-
-    return roots.map((root): CategoryWithChildren => {
-      const subcategories = childrenMap.get(root.id) || [];
-      const totalTopicCount =
-        root.topicCount +
-        subcategories.reduce((acc, sub) => acc + sub.topicCount, 0);
-      const totalReplyCount =
-        root.replyCount +
-        subcategories.reduce((acc, sub) => acc + sub.replyCount, 0);
-
-      return {
-        category: root,
-        subcategories,
-        totalTopicCount,
-        totalReplyCount,
-      };
-    });
-  }, [categories]);
-
-  // Filter hierarchy based on search query
-  const filteredHierarchy = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return hierarchy;
-
-    return hierarchy
-      .map((item) => {
-        const matchesRoot =
-          item.category.name.toLowerCase().includes(q) ||
-          item.category.slug.toLowerCase().includes(q) ||
-          (item.category.description?.toLowerCase().includes(q) ?? false);
-
-        const matchingSubs = item.subcategories.filter(
-          (sub) =>
-            sub.name.toLowerCase().includes(q) ||
-            sub.slug.toLowerCase().includes(q) ||
-            (sub.description?.toLowerCase().includes(q) ?? false)
-        );
-
-        if (matchesRoot || matchingSubs.length > 0) {
-          return {
-            ...item,
-            subcategories: matchingSubs.length > 0 ? matchingSubs : item.subcategories,
-          };
-        }
-        return null;
-      })
-      .filter((item): item is CategoryWithChildren => Boolean(item));
-  }, [hierarchy, searchQuery]);
+  const filteredHierarchy = useMemo(
+    () => filterCategoryOverviewHierarchy(hierarchy, searchQuery),
+    [hierarchy, searchQuery]
+  );
 
   // Aggregate metrics
   const totalSubcategories = useMemo(
@@ -119,9 +52,10 @@ export function CategoryOverview({
               {totalSubcategories} Subcategories
             </span>
           )}
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-muted-foreground" title={forum('categoryTotalsHint')}>
             {aggregateTopics} {forum('totalTopics')}
           </span>
+          <span className="text-xs text-muted-foreground">{forum('categoryTotalsHint')}</span>
         </div>
 
         {/* Realtime Search Input */}
@@ -256,8 +190,8 @@ function colorToTextClass(color?: string | null): string {
                               <span
                                 className={`h-2 w-2 rounded-full transition-transform group-hover/sub:scale-125 ${colorToBgClass(subColor)}`}
                               />
-                              <span>{sub.name}</span>
-                              <span className="text-[10px] text-muted-foreground">
+                              <span>{sub.displayName}</span>
+                              <span className="text-[10px] text-muted-foreground" title={forum('categoryTopicsTotal')} aria-label={`${sub.topicCount} ${forum('categoryTopicsTotal')}`}>
                                 {sub.topicCount}
                               </span>
                             </button>
@@ -272,10 +206,10 @@ function colorToTextClass(color?: string | null): string {
                 <div className="mt-6 flex items-center justify-between border-t border-border/40 pl-3 pt-4 text-xs font-medium text-muted-foreground">
                   <div className="flex items-center gap-4">
                     <span className="flex items-center gap-1">
-                      <span className="font-semibold text-foreground">{totalTopicCount}</span> topics
+                      <span className="font-semibold text-foreground">{totalTopicCount}</span> <span title={forum('categoryTopicsTotal')}>{forum('categoryTopicsLabel')}</span>
                     </span>
                     <span className="flex items-center gap-1">
-                      <span className="font-semibold text-foreground">{totalReplyCount}</span> replies
+                      <span className="font-semibold text-foreground">{totalReplyCount}</span> <span title={forum('categoryRepliesTotal')}>{forum('repliesCount')}</span>
                     </span>
                   </div>
                   <span className="text-[11px] text-muted-foreground">

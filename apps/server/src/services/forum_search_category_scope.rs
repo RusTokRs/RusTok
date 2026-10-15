@@ -1,11 +1,9 @@
 use async_trait::async_trait;
-use rustok_api::{
-    Permission, PortError, PortErrorKind, has_any_effective_permission, is_tenant_module_enabled,
-};
+use rustok_api::{PortError, PortErrorKind, SharedStaticModuleSettingsReader, is_tenant_module_enabled};
 use rustok_core::SecurityContext;
 use rustok_forum::{
     ForumCategoryReadOperation, ForumCategoryReadTransport, ForumError,
-    ForumSearchCategoryAudienceScopeService, SharedForumAudienceFactsPort,
+    ForumSearchCategoryAudienceScopeService, ForumSettingsProviders, SharedForumAudienceFactsPort,
     category_read_audience_port_context,
 };
 use rustok_search::{
@@ -18,22 +16,30 @@ use sea_orm::DatabaseConnection;
 pub(crate) struct ServerForumSearchCategoryScopePort {
     db: DatabaseConnection,
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    settings_reader: Option<SharedStaticModuleSettingsReader>,
 }
 
 impl ServerForumSearchCategoryScopePort {
     pub(crate) fn shared(
         db: DatabaseConnection,
         audience_facts: Option<SharedForumAudienceFactsPort>,
+        settings_reader: Option<SharedStaticModuleSettingsReader>,
     ) -> SharedStorefrontSearchCategoryScopePort {
-        std::sync::Arc::new(Self { db, audience_facts })
+        std::sync::Arc::new(Self { db, audience_facts, settings_reader })
     }
 
     fn service(&self) -> ForumSearchCategoryAudienceScopeService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => {
                 ForumSearchCategoryAudienceScopeService::with_audience_facts(self.db.clone(), facts)
             }
             None => ForumSearchCategoryAudienceScopeService::new(self.db.clone()),
+        };
+        match self.settings_reader.clone() {
+            Some(reader) => service.with_settings_providers(
+                ForumSettingsProviders::default().with_static_reader(reader),
+            ),
+            None => service,
         }
     }
 }
@@ -90,9 +96,9 @@ impl StorefrontSearchCategoryScopePort for ServerForumSearchCategoryScopePort {
 
         let service = self.service();
         let fallback_locale = request.fallback_locale.as_deref();
-        let result = if let Some(auth) = request.auth.as_ref().filter(|auth| {
-            has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_LIST])
-        }) {
+        // A signed-in principal must never silently become a public viewer when
+        // its Forum permissions are absent; the authenticated owner decides.
+        let result = if let Some(auth) = request.auth.as_ref() {
             let transport = match request.transport {
                 StorefrontSearchTransport::Graphql => ForumCategoryReadTransport::Graphql,
                 StorefrontSearchTransport::NativeServer => ForumCategoryReadTransport::NativeServer,

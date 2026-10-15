@@ -6,21 +6,34 @@
 
 - `ForumTopicAudienceListService` scans the canonical base storefront candidate set in bounded pages of `MAX_FORUM_READ_LIMIT`.
 - Every candidate is evaluated through `ForumTopicAudienceVisibilityService` before output pagination.
-- The requested page items and `total` are derived from the same ordered allowed sequence, so hidden richer-audience topics cannot create sparse pages or leak through a pre-audience count.
+- The requested page items and `next_cursor` are derived from the same ordered allowed sequence, so hidden richer-audience topics cannot create sparse pages or leak through a pre-audience count. There is no topic-list `total` field; category counters are separate global aggregates.
 - Authenticated reads accept one validated `PortContext`; tenant, actor, locale, channel, claims, deadline, and correlation identity remain transport-derived.
 - `ForumStorefrontReadStateService::list_topics_with_unread_audience_visible` enriches only exact allowed topic IDs through the canonical unread aggregate.
 - `forumStorefrontUnreadTopics` now constructs a `TopicList` read context and uses the host-published optional Forum audience facts capability through `ForumGraphqlRuntimeData`.
+- Current `unreadOnly: true` storefront mode pages over *unread* results after exact audience selection and unread summarization. A bounded owner batch containing only read topics is skipped; lookahead for the next unread result determines `nextCursor`, which is encoded from the last returned unread topic. The omitted/default-false mode remains the full personalized feed with badges for Leptos. This scans further batches on sparse feeds; indexed filtering composed with exact audience and PostgreSQL cost evidence are still FORUM-20 work.
 - Missing trust, Channel, or Groups facts fail closed only when a configured selector still requires them. Locally decidable role and explicit-user layers do not require the optional provider.
 
 ## Compatibility and degraded mode
 
 The legacy `ForumStorefrontReadStateService::list_topics_with_unread` method remains available for consumers not yet migrated to exact audience context. No request or response DTO field, GraphQL field name, migration, dependency, or UI model changed.
 
-The owner uses bounded database scan pages but computes an exact allowed total for the resolved candidate sequence. This slice does not claim snapshot isolation across concurrent topic mutations; PostgreSQL concurrency evidence remains part of the parent `FORUM-20` completion scope.
+The owner uses bounded database scan pages and pages over the allowed sequence without exposing a pre-audience count or a topic-list total. This slice does not claim snapshot isolation across concurrent topic mutations; PostgreSQL concurrency evidence remains part of the parent `FORUM-20` completion scope.
 
 ## Explicitly not delivered
 
 `FORUM-20BD` does not yet compose the native storefront topic/unread paths or the public GraphQL `forumStorefrontTopics` path through the new owner. Exact reply/reply-list reads, category reads, search/index, SEO, deep links, visibility-scoped category/all-read commands, and canonical plan/`CRATE_API.md` synchronization remain follow-up work beginning with `FORUM-20BE`.
+
+## Current boundary (2026-10-15)
+
+The paragraph above records the original FORUM-20BD handoff, not the current
+storefront state. Native storefront pagination and the public GraphQL topic list
+have since moved to the exact audience owner. The legacy `forumStorefrontTopics`
+field has been removed; `forumStorefrontAudienceTopics` now uses authenticated
+viewer context where present and otherwise the public owner. Both paths respect
+the current channel and `allow_anonymous_reading` policy. The topic list has
+`next_cursor` but no `total`; the category's persisted totals are explicitly
+global and must not stand in for a viewer-scoped list total. See the current
+module README and the 2026-10-15 Forum anonymous-discovery decision.
 
 ## Validation handoff
 

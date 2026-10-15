@@ -8,6 +8,7 @@ use crate::audience::{
     ForumAudienceFactsResolver, SharedForumAudienceFactsPort,
 };
 use crate::error::{ForumError, ForumResult};
+use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::pending_visibility::can_see_pending;
 use crate::services::topic_audience::{find_topic, load_policy_for_topic};
 use crate::services::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
@@ -84,6 +85,7 @@ impl ForumTopicAudienceViewer {
 pub struct ForumTopicAudienceVisibilityService {
     db: DatabaseConnection,
     facts_resolver: ForumAudienceFactsResolver,
+    settings: ForumSettingsProviders,
 }
 
 impl ForumTopicAudienceVisibilityService {
@@ -91,11 +93,21 @@ impl ForumTopicAudienceVisibilityService {
         Self {
             db,
             facts_resolver: ForumAudienceFactsResolver::new(facts_port),
+            settings: ForumSettingsProviders::default(),
         }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.settings = settings;
+        self
     }
 
     pub fn without_facts_provider(db: DatabaseConnection) -> Self {
         Self::new(db, None)
+    }
+
+    pub async fn anonymous_reading_allowed(&self, tenant_id: Uuid) -> ForumResult<bool> {
+        self.settings.anonymous_reading_allowed(tenant_id).await
     }
 
     /// Missing, foreign, closed, category-denied, route-channel-denied or
@@ -109,6 +121,9 @@ impl ForumTopicAudienceVisibilityService {
         viewer: &ForumTopicAudienceViewer,
     ) -> ForumResult<bool> {
         self.validate_viewer_context(tenant_id, viewer)?;
+        if !viewer.is_authenticated() && !self.settings.anonymous_reading_allowed(tenant_id).await? {
+            return Ok(false);
+        }
 
         let scope = ForumTopicVisibilityScope::storefront_for_viewer(
             channel_slug,

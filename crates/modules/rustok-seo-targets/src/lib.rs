@@ -544,6 +544,8 @@ pub enum SeoTargetCapabilityKind {
 pub struct SeoTargetRuntimeContext {
     pub db: DatabaseConnection,
     pub event_bus: TransactionalEventBus,
+    /// Owner port for public target policy; absent reader must fail closed.
+    pub static_settings_reader: Option<rustok_api::SharedStaticModuleSettingsReader>,
 }
 
 #[cfg(feature = "server")]
@@ -583,8 +585,10 @@ pub struct SeoTargetBulkListRequest<'a> {
 }
 
 /// One keyset page of bulk summaries. `after` is the opaque cursor returned by the
-/// previous page (`None` starts the scan); `limit` bounds the rows scanned, not the
-/// summaries returned, because providers may skip rows that have no translation.
+/// previous page (`None` starts the scan); `limit` bounds the page size. Providers
+/// may return fewer summaries (for example, missing translations), or scan more
+/// raw candidates to fill an audience-safe page. Public cursors must be derived
+/// from authorized rows, never from hidden raw candidates.
 #[cfg(feature = "server")]
 #[derive(Debug, Clone, Copy)]
 pub struct SeoTargetBulkPageRequest<'a> {
@@ -996,6 +1000,18 @@ pub trait SeoTargetProvider: Send + Sync {
         _request: SeoTargetSitemapRequest<'_>,
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
         Ok(Vec::new())
+    }
+
+    /// Whether stored public sitemap URLs may become unsafe between operator
+    /// jobs (for example, when a Forum audience policy narrows). SEO renders
+    /// current owner candidates instead of stored XML for such providers.
+    /// Providers without mutable public visibility keep the persisted path.
+    async fn public_sitemap_requires_refresh(
+        &self,
+        _runtime: &SeoTargetRuntimeContext,
+        _tenant_id: Uuid,
+    ) -> AnyResult<bool> {
+        Ok(false)
     }
 }
 

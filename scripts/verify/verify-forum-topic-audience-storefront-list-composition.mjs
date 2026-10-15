@@ -30,7 +30,7 @@ const replyContract = JSON.parse(
 
 requireText(
   graphqlQuery,
-  'ForumTopicAudienceListService::new',
+  '.topic_audience_list_service(db.clone(), event_bus.clone())',
   'public GraphQL exact pagination owner',
 );
 requireText(
@@ -40,7 +40,7 @@ requireText(
 );
 requireText(
   graphqlQuery,
-  'Permission denied: tenant scope mismatch',
+  'super::resolve_tenant_scope(tenant, tenant_id)?',
   'public GraphQL tenant validation',
 );
 requireText(

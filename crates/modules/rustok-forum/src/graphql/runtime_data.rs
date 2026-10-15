@@ -46,7 +46,8 @@ pub fn attach_schema_data(
         (Some(reader), Some(transactional_reader)) => {
             ForumSettingsProviders::default().with_static_readers(reader, transactional_reader)
         }
-        _ => ForumSettingsProviders::default(),
+        (Some(reader), None) => ForumSettingsProviders::default().with_static_reader(reader),
+        (None, _) => ForumSettingsProviders::default(),
     };
 
     let attachment_hold_media = inputs.shared_get::<Arc<dyn MediaAssetReadPort>>();
@@ -64,6 +65,13 @@ pub fn attach_schema_data(
 }
 
 impl ForumGraphqlRuntimeData {
+    pub(crate) async fn anonymous_reading_allowed(
+        &self,
+        tenant_id: Uuid,
+    ) -> crate::error::ForumResult<bool> {
+        self.settings_providers.anonymous_reading_allowed(tenant_id).await
+    }
+
     pub(crate) fn attachment_hold_reconciliation_media(
         &self,
     ) -> Option<Arc<dyn MediaAssetReadPort>> {
@@ -84,10 +92,11 @@ impl ForumGraphqlRuntimeData {
         &self,
         db: DatabaseConnection,
     ) -> ForumCategoryAudienceReadService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db, facts),
             None => ForumCategoryAudienceReadService::new(db),
-        }
+        };
+        service.with_settings_providers(self.settings_providers.clone())
     }
 
     pub(crate) fn topic_service(
@@ -146,10 +155,11 @@ impl ForumGraphqlRuntimeData {
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
     ) -> ForumReplyAudienceReadService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => ForumReplyAudienceReadService::with_audience_facts(db, event_bus, facts),
             None => ForumReplyAudienceReadService::new(db, event_bus),
-        }
+        };
+        service.with_settings_providers(self.settings_providers.clone())
     }
 
     pub(crate) fn moderation_service(
@@ -168,10 +178,11 @@ impl ForumGraphqlRuntimeData {
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
     ) -> ForumTopicAudienceReadService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => ForumTopicAudienceReadService::with_audience_facts(db, event_bus, facts),
             None => ForumTopicAudienceReadService::new(db, event_bus),
-        }
+        };
+        service.with_settings_providers(self.settings_providers.clone())
     }
 
     /// Tenant default page size for topic lists when a request omits `perPage`.

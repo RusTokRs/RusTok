@@ -150,7 +150,7 @@ for (const marker of [
   ".resolve_for_constraints(",
   "ForumAudienceEvaluator::decide(",
   "facts.tenant_id = tenant_id",
-  "facts.user_id = viewer.security.user_id",
+  "facts.user_id = user_id",
 ]) {
   requireText(owner, marker, `exact richer topic visibility owner is missing ${marker}`);
 }
@@ -208,7 +208,7 @@ for (const marker of [
   requireText(evaluator, marker, `audience evaluator contract is missing ${marker}`);
 }
 for (const marker of [
-  "include!(\"topic_audience_visibility.rs\")",
+  "mod topic_audience_visibility;",
   "ForumTopicAudienceViewer",
   "ForumTopicAudienceVisibilityService",
 ]) {
@@ -219,7 +219,7 @@ for (const marker of ["ForumTopicAudienceViewer", "ForumTopicAudienceVisibilityS
 }
 
 for (const marker of [
-  "use crate::services::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};",
+  "use crate::services::{ForumSettingsProviders, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};",
   "async fn load_topic_for_viewer(",
   "ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())",
   ".is_topic_visible(tenant_id, topic_id, None, viewer)",

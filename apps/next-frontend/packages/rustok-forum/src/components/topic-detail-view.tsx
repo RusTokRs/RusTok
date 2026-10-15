@@ -20,7 +20,7 @@ import type {
 } from '../api/forum';
 import {
   fetchForumMemberCards,
-  fetchStorefrontCategories,
+  fetchAllStorefrontCategories,
   fetchStorefrontReplies,
   fetchStorefrontTopic,
   markForumTopicRead,
@@ -31,6 +31,8 @@ import { Composer } from './composer';
 import { QuoteTooltip } from './quote-tooltip';
 import { ComposerProvider, useComposer } from '../context/composer-context';
 import { TopicStatusLabel } from './topic-status-label';
+import { canReplyToTopic } from './topic-reply-availability';
+import { useForumAuth } from './use-forum-auth';
 import {
   focusForumReplyPost,
   isForumReplyId,
@@ -65,117 +67,192 @@ function TopicDetailContent({
 }: TopicDetailViewProps) {
   const forum = useTranslations('Forum');
   const { openReply } = useComposer();
+  const auth = useForumAuth();
+  const token = auth && (!tenantSlug || auth.tenant === tenantSlug) ? auth.token : '';
+  const contentKey = `${tenantId ?? ''}:${tenantSlug ?? ''}:${locale}:${topicId}:${token}`;
+  const categoryKey = `${tenantId ?? ''}:${tenantSlug ?? ''}:${locale}:${token}`;
 
   const [currentPost, setCurrentPost] = useState(1);
-  const [topic, setTopic] = useState<ForumTopicDetail | null>(initialTopic ?? null);
-  const [replies, setReplies] = useState<ForumReplyDetail[]>(initialReplies);
-  const [repliesTotal, setRepliesTotal] = useState(initialRepliesTotal);
-  const [categories, setCategories] = useState<ForumCategoryListItem[]>([]);
-  const [memberCards, setMemberCards] = useState<ForumMemberCard[]>([]);
-  const [isMarkingRead, setIsMarkingRead] = useState(false);
+  const [content, setContent] = useState<{
+    key: string; topic: ForumTopicDetail | null; replies: ForumReplyDetail[];
+    nextCursor: string | null;
+  } | null>(null);
+  // Server-provided content is rendered only until the browser auth state is known.
+  // It is request-bound and never cached across viewers by the route.
+  const topic = content?.key === contentKey ? content.topic : auth === null ? initialTopic ?? null : null;
+  const replies = content?.key === contentKey ? content.replies : auth === null ? initialReplies : [];
+  const repliesCursor = content?.key === contentKey ? content.nextCursor : auth === null ? initialRepliesCursor : null;
+  const repliesTotal = topic?.replyCount ?? initialRepliesTotal;
+  const [categoryPage, setCategoryPage] = useState<{
+    key: string; items: ForumCategoryListItem[];
+  } | null>(null);
+  // A previous viewer's private category names must disappear in the same
+  // render as an account/tenant change, not after the next request resolves.
+  const categories = categoryPage?.key === categoryKey ? categoryPage.items : [];
+  const categoryKeyRef = useRef(categoryKey);
+  categoryKeyRef.current = categoryKey;
+  const [cards, setCards] = useState<{ key: string; items: ForumMemberCard[] } | null>(null);
+  const memberCards = cards?.key === contentKey ? cards.items : [];
   const [copiedLink, setCopiedLink] = useState(false);
-  // A failed read is reported instead of being rendered as "topic not found".
-  const [loadError, setLoadError] = useState<string | null>(null);
-  // True when `?reply=` addressed a post that stayed outside the loaded pages.
+  const [loading, setLoading] = useState(true);
+  const [loadingReplies, setLoadingReplies] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [cardsError, setCardsError] = useState<string | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
+  const loadError = contentError ?? categoriesError ?? cardsError ?? readError;
   const [anchorMissing, setAnchorMissing] = useState(false);
   const anchorAppliedRef = useRef(false);
+  const attemptedReadRef = useRef<string | null>(null);
+  const contentRequest = useRef(0);
+  const replyRequest = useRef(0);
+  const contentKeyRef = useRef(contentKey);
+  contentKeyRef.current = contentKey;
 
-  // Load Categories & Topic Data if not provided initially
   const loadData = useCallback(async () => {
+    if (!auth) return;
+    const request = ++contentRequest.current;
+    // The first page of a new snapshot supersedes any in-flight older page.
+    ++replyRequest.current;
+    setLoadingReplies(false);
+    setLoading(true);
+    setContentError(null);
     try {
-      const [catsData, topicData, repliesData] = await Promise.all([
-        fetchStorefrontCategories({
-          tenantId: tenantId ?? undefined,
-          tenantSlug: tenantSlug ?? undefined,
-          locale,
-        }),
-        !initialTopic
-          ? fetchStorefrontTopic({
-              tenantId: tenantId ?? undefined,
-              tenantSlug: tenantSlug ?? undefined,
-              topicId,
-              locale,
-            })
-          : Promise.resolve(initialTopic),
-        initialReplies.length === 0
-          ? fetchStorefrontReplies({
-              tenantId: tenantId ?? undefined,
-              tenantSlug: tenantSlug ?? undefined,
-              topicId,
-              locale,
-            })
-          : Promise.resolve({ items: initialReplies, nextCursor: initialRepliesCursor }),
-      ]);
-
-      setCategories(catsData.items);
-      if (topicData) setTopic(topicData);
-
+      const options = {
+        tenantId: tenantId ?? undefined,
+        tenantSlug: tenantSlug ?? undefined,
+        token: token || undefined,
+        topicId,
+        locale,
+      };
+      const topicData = await fetchStorefrontTopic(options);
+      if (request !== contentRequest.current || contentKeyRef.current !== contentKey) return;
+      if (!topicData) {
+        setContent({ key: contentKey, topic: null, replies: [], nextCursor: null });
+        return;
+      }
+      const first = await fetchStorefrontReplies(options);
+      if (request !== contentRequest.current || contentKeyRef.current !== contentKey) return;
+      let items = first.items;
+      let cursor = first.nextCursor;
       const anchorId = isForumReplyId(focusReplyId) ? focusReplyId : null;
-      let items = repliesData.items;
       if (anchorId) {
-        // The thread is cursor-paged, so the linked post can sit past the page this view has:
-        // walk the same owner read forward until it is rendered, bounded so one view cannot loop.
-        let cursor = repliesData.nextCursor;
         let pages = 1;
-        while (
-          cursor &&
-          pages < MAX_ANCHOR_REPLY_PAGES &&
-          !items.some((reply) => reply.id === anchorId)
-        ) {
-          const next = await fetchStorefrontReplies({
-            tenantId: tenantId ?? undefined,
-            tenantSlug: tenantSlug ?? undefined,
-            topicId,
-            locale,
-            after: cursor,
-          });
+        while (cursor && pages < MAX_ANCHOR_REPLY_PAGES &&
+               !items.some((reply) => reply.id === anchorId)) {
+          const next = await fetchStorefrontReplies({ ...options, after: cursor });
           items = items.concat(next.items);
           cursor = next.nextCursor;
           pages += 1;
         }
+        if (request !== contentRequest.current || contentKeyRef.current !== contentKey) return;
         const anchoredIndex = items.findIndex((reply) => reply.id === anchorId);
         setAnchorMissing(anchoredIndex < 0);
-        if (anchoredIndex >= 0) {
-          // The timeline marker follows the anchor so the reported post number stays truthful.
-          setCurrentPost(anchoredIndex + 2);
+        if (anchoredIndex >= 0) setCurrentPost(anchoredIndex + 2);
+      }
+      setContent({ key: contentKey, topic: topicData, replies: items, nextCursor: cursor });
+      const userIds = Array.from(new Set(
+        [topicData.authorId, ...items.map((reply) => reply.authorId)].filter(
+          (id): id is string => Boolean(id)
+        )
+      ));
+      // Member cards are private supplementary data; a card error must not
+      // discard an otherwise successfully loaded topic and its replies.
+      if (token && userIds.length) {
+        // Do not delay the thread (or its one-shot read receipt) for profiles.
+        void fetchForumMemberCards({
+          userIds, token, locale, tenantSlug: tenantSlug ?? undefined,
+        }).then((loaded) => {
+          if (request === contentRequest.current && contentKeyRef.current === contentKey) {
+            setCards((previous) => {
+              const prior = previous?.key === contentKey ? previous.items : [];
+              const merged = new Map([...prior, ...loaded].map((card) => [card.userId, card]));
+              return { key: contentKey, items: Array.from(merged.values()) };
+            });
+            setCardsError(null);
+          }
+        }).catch(() => {
+          if (request === contentRequest.current && contentKeyRef.current === contentKey) {
+            setCardsError(forum('errorMemberCards'));
+          }
+        });
+      }
+    } catch {
+      if (request === contentRequest.current && contentKeyRef.current === contentKey) setContentError(forum('errorLoad'));
+    } finally {
+      if (request === contentRequest.current && contentKeyRef.current === contentKey) setLoading(false);
+    }
+  }, [auth, tenantId, tenantSlug, token, topicId, locale, contentKey, focusReplyId, forum]);
+
+  useEffect(() => {
+    if (!auth) return;
+    let active = true;
+    fetchAllStorefrontCategories({
+      tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
+      token: token || undefined, locale,
+    }).then((page) => {
+      if (!active || categoryKeyRef.current !== categoryKey) return;
+      setCategoryPage({ key: categoryKey, items: page.items });
+      setCategoriesError(null);
+    }).catch(() => {
+      if (active && categoryKeyRef.current === categoryKey) setCategoriesError(forum('errorLoad'));
+    });
+    return () => { active = false; };
+  }, [auth, tenantId, tenantSlug, token, locale, categoryKey, forum]);
+
+  const loadMoreReplies = useCallback(async () => {
+    if (!auth || !repliesCursor || loadingReplies) return;
+    const request = ++replyRequest.current;
+    setLoadingReplies(true);
+    try {
+      const next = await fetchStorefrontReplies({
+        tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
+        token: token || undefined, topicId, locale, after: repliesCursor,
+      });
+      if (request !== replyRequest.current || contentKeyRef.current !== contentKey) return;
+      setContent((previous) => {
+        if (previous?.key !== contentKey) return previous;
+        const items = new Map([...previous.replies, ...next.items].map((reply) => [reply.id, reply]));
+        return { ...previous, replies: Array.from(items.values()), nextCursor: next.nextCursor };
+      });
+      if (isForumReplyId(focusReplyId) && next.items.some((reply) => reply.id === focusReplyId)) {
+        setAnchorMissing(false);
+      }
+      setContentError(null);
+      if (token) {
+        const known = new Set(memberCards.map((card) => card.userId));
+        const userIds = Array.from(new Set(next.items.map((reply) => reply.authorId).filter(
+          (id): id is string => typeof id === 'string' && !known.has(id)
+        )));
+        if (userIds.length) {
+          void fetchForumMemberCards({
+            userIds, token, locale, tenantSlug: tenantSlug ?? undefined,
+          }).then((loaded) => {
+            if (request !== replyRequest.current || contentKeyRef.current !== contentKey) return;
+            setCards((previous) => {
+              const prior = previous?.key === contentKey ? previous.items : [];
+              const merged = new Map([...prior, ...loaded].map((card) => [card.userId, card]));
+              return { key: contentKey, items: Array.from(merged.values()) };
+            });
+            setCardsError(null);
+          }).catch(() => {
+            if (request === replyRequest.current && contentKeyRef.current === contentKey) {
+              setCardsError(forum('errorMemberCards'));
+            }
+          });
         }
       }
-      setReplies(items);
-      // Reply count comes from the topic counter; the reply list is cursor-paged and uncounted.
-      setRepliesTotal(topicData?.replyCount ?? initialRepliesTotal);
-
-      // Collect author IDs for member cards
-      const userIds = Array.from(
-        new Set(
-          [topicData?.authorId, ...repliesData.items.map((r) => r.authorId)].filter(
-            (id): id is string => Boolean(id)
-          )
-        )
-      );
-      if (userIds.length > 0) {
-        const cards = await fetchForumMemberCards({
-          userIds,
-          locale,
-          tenantSlug: tenantSlug ?? undefined,
-        });
-        setMemberCards(cards);
-      }
-      setLoadError(null);
     } catch {
-      setLoadError(forum('errorLoad'));
+      if (request === replyRequest.current && contentKeyRef.current === contentKey) setContentError(forum('errorLoad'));
+    } finally {
+      if (request === replyRequest.current && contentKeyRef.current === contentKey) setLoadingReplies(false);
     }
-  }, [
-    tenantId,
-    tenantSlug,
-    locale,
-    topicId,
-    initialTopic,
-    initialReplies,
-    initialRepliesTotal,
-    initialRepliesCursor,
-    focusReplyId,
-    forum,
-  ]);
+  }, [auth, repliesCursor, loadingReplies, tenantId, tenantSlug, token, topicId, locale, contentKey, focusReplyId, memberCards, forum]);
+
+  useEffect(() => {
+    anchorAppliedRef.current = false;
+    setAnchorMissing(false);
+  }, [focusReplyId, contentKey]);
 
   // Scroll to the linked post once, after it exists in the document.
   useEffect(() => {
@@ -191,31 +268,36 @@ function TopicDetailContent({
   }, [focusReplyId, replies]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const handleMarkRead = useCallback(async () => {
-    if (!topic || isMarkingRead) return;
-    setIsMarkingRead(true);
-    try {
-      await markForumTopicRead({
-        tenantId: tenantId ?? undefined,
-        tenantSlug: tenantSlug ?? undefined,
-        topicId: topic.id,
-        locale,
-      });
-    } catch {
-      setLoadError(forum('errorMarkRead'));
-    } finally {
-      setIsMarkingRead(false);
-    }
-  }, [topic, isMarkingRead, tenantId, tenantSlug, locale]);
+    setCardsError(null);
+    setCategoriesError(null);
+    setReadError(null);
+    setContentError(null);
+    setLoadingReplies(false);
+  }, [contentKey]);
 
   useEffect(() => {
-    if (topic?.id) {
-      handleMarkRead();
-    }
-  }, [topic?.id, handleMarkRead]);
+    if (auth) void loadData();
+  }, [auth, loadData]);
+
+  // Mark exactly once per viewer and topic on opening, including after errors.
+  // A ref is set before the network call; request completion cannot retrigger it.
+  useEffect(() => {
+    if (!token || !topic?.id || loading) return;
+    const key = JSON.stringify([token, tenantId, tenantSlug, topic.id]);
+    if (attemptedReadRef.current === key) return;
+    attemptedReadRef.current = key;
+    void markForumTopicRead({
+      tenantId: tenantId ?? undefined,
+      tenantSlug: tenantSlug ?? undefined,
+      token,
+      topicId: topic.id,
+      locale,
+    }).then(() => {
+      if (contentKeyRef.current === contentKey) setReadError(null);
+    }).catch(() => {
+      if (contentKeyRef.current === contentKey) setReadError(forum('errorMarkRead'));
+    });
+  }, [token, topic?.id, loading, tenantId, tenantSlug, locale, contentKey, forum]);
 
   // Track active post position as user scrolls
   useEffect(() => {
@@ -256,7 +338,7 @@ function TopicDetailContent({
   const getAuthorHandle = (authorId: string | null | undefined): string | undefined => {
     if (!authorId) return undefined;
     const card = memberCards.find((c) => c.userId === authorId);
-    return card?.profile.handle || card?.profile.displayName || undefined;
+    return card?.profile.handle;
   };
 
   const handleShare = async () => {
@@ -279,6 +361,14 @@ function TopicDetailContent({
   };
 
   const category = categories.find((c) => c.id === topic?.categoryId);
+
+  if (!topic && (auth === null || loading)) {
+    return (
+      <div className="rounded-[1.75rem] border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
+        {forum('loading')}
+      </div>
+    );
+  }
 
   if (!topic && loadError) {
     return (
@@ -313,6 +403,8 @@ function TopicDetailContent({
       </div>
     );
   }
+
+  const canReply = canReplyToTopic(topic);
 
   return (
     <MemberCardProvider cards={memberCards}>
@@ -363,16 +455,18 @@ function TopicDetailContent({
               className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground shadow-xs transition hover:bg-muted hover:text-foreground"
             >
               <Share2 className="h-3.5 w-3.5" />
-              {copiedLink ? 'Copied link!' : 'Share'}
+              {copiedLink ? forum('copiedLink') : forum('share')}
             </button>
-            <button
-              type="button"
-              onClick={() => openReply({ topicId: topic.id, topicTitle: topic.title })}
-              className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-              {forum('reply')}
-            </button>
+            {canReply && (
+              <button
+                type="button"
+                onClick={() => openReply({ topicId: topic.id, topicTitle: topic.title })}
+                className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                {forum('reply')}
+              </button>
+            )}
           </div>
         </div>
 
@@ -429,8 +523,7 @@ function TopicDetailContent({
               data-target-kind="TOPIC"
               data-target-id={topic.id}
               data-author-handle={getAuthorHandle(topic.authorId)}
-              data-revision-id="1"
-              className="rounded-[1.75rem] border border-border bg-card p-6 shadow-sm"
+                className="rounded-[1.75rem] border border-border bg-card p-6 shadow-sm"
             >
               <div className="prose prose-sm max-w-none text-foreground dark:prose-invert">
                 <RichTextHtml view={topic.body} contentLocale={topic.effectiveLocale} />
@@ -442,14 +535,16 @@ function TopicDetailContent({
                     #1 OP
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => openReply({ topicId: topic.id, topicTitle: topic.title })}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground shadow-xs transition hover:bg-muted"
-                >
-                  <ReplyIcon className="h-3.5 w-3.5" />
-                  Quote & Reply
-                </button>
+                {canReply && (
+                  <button
+                    type="button"
+                    onClick={() => openReply({ topicId: topic.id, topicTitle: topic.title })}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground shadow-xs transition hover:bg-muted"
+                  >
+                    <ReplyIcon className="h-3.5 w-3.5" />
+                    {forum('replyToTopic')}
+                  </button>
+                )}
               </div>
             </article>
 
@@ -463,7 +558,7 @@ function TopicDetailContent({
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-foreground">
-                    Replies ({repliesTotal})
+                    {forum('replies')} ({repliesTotal})
                   </h3>
                 </div>
 
@@ -475,8 +570,7 @@ function TopicDetailContent({
                     data-target-kind="REPLY"
                     data-target-id={reply.id}
                     data-author-handle={getAuthorHandle(reply.authorId)}
-                    data-revision-id="1"
-                    className="rounded-[1.75rem] border border-border bg-card p-6 shadow-sm data-[focused=true]:border-primary/60 data-[focused=true]:ring-2 data-[focused=true]:ring-primary/40"
+                            className="rounded-[1.75rem] border border-border bg-card p-6 shadow-sm data-[focused=true]:border-primary/60 data-[focused=true]:ring-2 data-[focused=true]:ring-primary/40"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
                       <div className="flex items-center gap-3">
@@ -494,36 +588,57 @@ function TopicDetailContent({
                       <RichTextHtml view={reply.content} contentLocale={reply.effectiveLocale} />
                     </div>
 
-                    <div className="mt-4 flex items-center justify-end border-t border-border/40 pt-3">
-                      <button
-                        type="button"
-                        onClick={() => openReply({ topicId: topic.id, topicTitle: topic.title })}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                      >
-                        <ReplyIcon className="h-3 w-3" />
-                        {forum('reply')}
-                      </button>
-                    </div>
+                    {canReply && (
+                      <div className="mt-4 flex items-center justify-end border-t border-border/40 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => openReply({
+                            topicId: topic.id, topicTitle: topic.title, parentReplyId: reply.id,
+                          })}
+                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                        >
+                          <ReplyIcon className="h-3 w-3" />
+                          {forum('reply')}
+                        </button>
+                      </div>
+                    )}
                   </article>
                 ))}
               </div>
             )}
 
-            {/* Quick Reply Trigger Bar */}
-            <div className="rounded-[1.75rem] border border-dashed border-border bg-muted/20 p-6 text-center">
-              <h4 className="text-base font-semibold text-foreground">{forum('joinTheConversation')}</h4>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {forum('joinTheConversationHint')}
-              </p>
+            {repliesCursor && (
               <button
                 type="button"
-                onClick={() => openReply({ topicId: topic.id, topicTitle: topic.title })}
-                className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
+                onClick={() => void loadMoreReplies()}
+                disabled={loadingReplies}
+                className="w-full rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground transition hover:bg-muted disabled:opacity-50"
               >
-                <MessageSquare className="h-4 w-4" />
-                {forum('replyToTopic')}
+                {loadingReplies ? forum('loading') : forum('loadMoreReplies')}
               </button>
-            </div>
+            )}
+
+            {/* Quick Reply Trigger Bar */}
+            {canReply ? (
+              <div className="rounded-[1.75rem] border border-dashed border-border bg-muted/20 p-6 text-center">
+                <h4 className="text-base font-semibold text-foreground">{forum('joinTheConversation')}</h4>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {forum('joinTheConversationHint')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openReply({ topicId: topic.id, topicTitle: topic.title })}
+                  className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  {forum('replyToTopic')}
+                </button>
+              </div>
+            ) : (
+              <p className="rounded-[1.75rem] border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                {forum('repliesClosed')}
+              </p>
+            )}
           </div>
 
           {/* Timeline Scroller */}
@@ -548,16 +663,25 @@ function TopicDetailContent({
           categories={categories}
           onSubmitted={loadData}
         />
-        <QuoteTooltip />
+        <QuoteTooltip tenantId={tenantId ?? undefined} tenantSlug={tenantSlug ?? undefined} locale={locale}
+          replyTopic={canReply ? { id: topic.id, title: topic.title } : null} />
       </div>
     </MemberCardProvider>
   );
 }
 
 export function TopicDetailView(props: TopicDetailViewProps) {
+  const auth = useForumAuth();
   return (
-    <ComposerProvider>
-      <TopicDetailContent {...props} />
+    <ComposerProvider tenantId={props.tenantId} tenantSlug={props.tenantSlug}>
+      <TopicDetailContent
+        {...props}
+        // Initial HTML belongs to the server request viewer only. After mount
+        // never reuse it when a different browser account reopens this tree.
+        initialTopic={auth === null ? props.initialTopic : null}
+        initialReplies={auth === null ? props.initialReplies : []}
+        initialRepliesCursor={auth === null ? props.initialRepliesCursor : null}
+      />
     </ComposerProvider>
   );
 }

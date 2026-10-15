@@ -11,6 +11,7 @@ use crate::error::{ForumError, ForumResult};
 use crate::services::pending_visibility::can_see_pending;
 use crate::state_machine::ReplyStatus;
 
+use super::engagement_mode::ForumSettingsProviders;
 use super::rbac::enforce_scope;
 use super::reply_facade::ReplyService;
 use super::topic_audience_visibility::{
@@ -35,6 +36,11 @@ impl ForumReplyAudienceReadService {
         facts_port: SharedForumAudienceFactsPort,
     ) -> Self {
         Self::with_optional_audience_facts(db, event_bus, Some(facts_port))
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.visibility = self.visibility.with_settings_providers(settings);
+        self
     }
 
     fn with_optional_audience_facts(
@@ -95,6 +101,9 @@ impl ForumReplyAudienceReadService {
     ) -> ForumResult<Option<ReplyResponse>> {
         let security = SecurityContext::public_read();
         enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
+        if !self.visibility.anonymous_reading_allowed(tenant_id).await? {
+            return Ok(None);
+        }
         let reply = match self.reply_service.find_reply(tenant_id, reply_id).await {
             Ok(reply) => reply,
             Err(ForumError::ReplyNotFound(_)) => return Ok(None),

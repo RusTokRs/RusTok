@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useContext, useEffect, useRef } from 'react';
 import { RichTextHtml } from '@rustok/richtext/view';
 import { CheckCheck, MessageSquare, Reply as ReplyIcon, Pin, Lock } from 'lucide-react';
 import type { ForumTopicDetail, ForumReplyDetail } from '../api/forum';
-import { AuthorBadge } from './member-card';
+import { AuthorBadge, MemberCardContext } from './member-card';
 import { TimelineScroller } from './timeline-scroller';
 import { useComposer } from '../context/composer-context';
 import { TopicStatusLabel } from './topic-status-label';
+import { canReplyToTopic } from './topic-reply-availability';
 import { focusForumReplyPost } from './reply-anchor';
 import { useTranslations } from '@rustok/next-fluent';
 
@@ -17,6 +18,9 @@ interface ThreadPanelProps {
   repliesTotal: number;
   onMarkRead?: (topicId: string) => void;
   isMarkingRead?: boolean;
+  hasMoreReplies?: boolean;
+  isLoadingReplies?: boolean;
+  onLoadMoreReplies?: () => void;
   /** Reply id the incoming link addressed; scrolled to and marked once posts render. */
   focusReplyId?: string | null;
   /** The linked reply stayed outside the loaded pages. */
@@ -31,12 +35,16 @@ export function ThreadPanel({
   repliesTotal,
   onMarkRead,
   isMarkingRead = false,
+  hasMoreReplies = false,
+  isLoadingReplies = false,
+  onLoadMoreReplies,
   focusReplyId = null,
   focusReplyMissing = false,
   onFocusHandled,
 }: ThreadPanelProps) {
   const forum = useTranslations('Forum');
   const { openReply } = useComposer();
+  const memberCards = useContext(MemberCardContext);
   const repliesContainerRef = useRef<HTMLDivElement>(null);
 
   // A deep link addressed one reply: scroll to it once the posts are rendered. A reply outside
@@ -62,6 +70,8 @@ export function ThreadPanel({
       </aside>
     );
   }
+
+  const canReply = canReplyToTopic(topic);
 
   function handleJumpToPost(postNumber: number) {
     if (postNumber === 1) {
@@ -120,18 +130,20 @@ export function ThreadPanel({
                   className="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/10 disabled:opacity-50"
                 >
                   <CheckCheck className="h-3.5 w-3.5" />
-                  {isMarkingRead ? 'Marking read…' : 'Mark read'}
+                  {isMarkingRead ? forum('markingRead') : forum('markRead')}
                 </button>
               )}
 
-              <button
-                type="button"
-                onClick={() => openReply({ topicId: topic.id, topicTitle: topic.title })}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
-              >
-                <MessageSquare className="h-3.5 w-3.5" />
-                {forum('reply')}
-              </button>
+              {canReply ? (
+                <button
+                  type="button"
+                  onClick={() => openReply({ topicId: topic.id, topicTitle: topic.title })}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  {forum('reply')}
+                </button>
+              ) : <span className="text-xs text-muted-foreground">{forum('repliesClosed')}</span>}
             </div>
           </div>
 
@@ -140,8 +152,7 @@ export function ThreadPanel({
             data-forum-post
             data-target-kind="TOPIC"
             data-target-id={topic.id}
-            data-author-handle={topic.authorId ?? undefined}
-            data-revision-id="1"
+            data-author-handle={topic.authorId ? memberCards.get(topic.authorId)?.profile.handle : undefined}
             className="rounded-2xl border border-border/80 bg-background/60 p-4"
           >
             <RichTextHtml
@@ -182,7 +193,7 @@ export function ThreadPanel({
 
           {replies.length === 0 ? (
             <p className="rounded-xl border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
-              {forum('noRepliesYet')}
+              {canReply ? forum('noRepliesYet') : forum('repliesClosed')}
             </p>
           ) : (
             <div className="space-y-3">
@@ -193,9 +204,8 @@ export function ThreadPanel({
                   data-forum-post
                   data-target-kind="REPLY"
                   data-target-id={reply.id}
-                  data-author-handle={reply.authorId ?? undefined}
-                  data-revision-id="1"
-                  className="rounded-[1.25rem] border border-border bg-card p-4 transition hover:border-border/80 data-[focused=true]:border-primary/60 data-[focused=true]:ring-2 data-[focused=true]:ring-primary/40"
+                  data-author-handle={reply.authorId ? memberCards.get(reply.authorId)?.profile.handle : undefined}
+                        className="rounded-[1.25rem] border border-border bg-card p-4 transition hover:border-border/80 data-[focused=true]:border-primary/60 data-[focused=true]:ring-2 data-[focused=true]:ring-primary/40"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <AuthorBadge authorId={reply.authorId} />
@@ -204,20 +214,20 @@ export function ThreadPanel({
                       <span className="text-[10px] text-muted-foreground">
                         #{index + 2}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openReply({
+                      {canReply && (
+                        <button
+                          type="button"
+                          onClick={() => openReply({
                             topicId: topic.id,
                             topicTitle: topic.title,
                             parentReplyId: reply.id,
-                          })
-                        }
-                        className="rounded-lg p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                        title={forum('replyToMessage')}
-                      >
-                        <ReplyIcon className="h-3.5 w-3.5" />
-                      </button>
+                          })}
+                          className="rounded-lg p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                          title={forum('replyToMessage')}
+                        >
+                          <ReplyIcon className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -231,6 +241,16 @@ export function ThreadPanel({
                 </article>
               ))}
             </div>
+          )}
+          {hasMoreReplies && onLoadMoreReplies && (
+            <button
+              type="button"
+              onClick={onLoadMoreReplies}
+              disabled={isLoadingReplies}
+              className="w-full rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground transition hover:bg-muted disabled:opacity-50"
+            >
+              {isLoadingReplies ? forum('loading') : forum('loadMoreReplies')}
+            </button>
           )}
         </div>
       </div>

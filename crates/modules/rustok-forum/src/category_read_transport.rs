@@ -28,6 +28,7 @@ impl ForumCategoryReadTransport {
 pub enum ForumCategoryReadOperation {
     CategoryList,
     SelectedCategory,
+    Subscription,
     CategoryTree,
     SearchResultEligibility,
 }
@@ -37,6 +38,7 @@ impl ForumCategoryReadOperation {
         match self {
             Self::CategoryList => "category-list",
             Self::SelectedCategory => "selected-category",
+            Self::Subscription => "subscription",
             Self::CategoryTree => "category-tree",
             Self::SearchResultEligibility => "search-result-eligibility",
         }

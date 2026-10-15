@@ -19,9 +19,11 @@ use crate::topic_create_transport::{
     ForumTopicCreateTransport, topic_create_audience_port_context,
 };
 use crate::{
-    CategoryResponse, CategoryService, ForumReplyReadOperation, ForumReplyReadTransport,
-    ForumTopicReadOperation, ForumTopicReadTransport, SubscriptionService,
-    reply_read_audience_port_context, topic_read_audience_port_context,
+    CategoryResponse, CategoryService, ForumCategoryReadOperation, ForumCategoryReadTransport,
+    ForumReplyReadOperation, ForumReplyReadTransport, ForumTopicReadOperation,
+    ForumTopicReadTransport,
+    category_read_audience_port_context, reply_read_audience_port_context,
+    topic_read_audience_port_context,
 };
 
 use super::{ForumGraphqlRuntimeData, require_forum_permission, resolve_tenant_scope, types::*};
@@ -533,31 +535,44 @@ impl ForumContentMutation {
             "Permission denied: forum_categories:read required",
         )?;
 
-        SubscriptionService::new(db.clone())
-            .set_category_subscription(
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
+        let context = category_read_audience_port_context(
+            ForumCategoryReadTransport::Graphql,
+            ForumCategoryReadOperation::Subscription,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            tenant.default_locale.as_str(),
+        )?;
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
+        // Materialize the authorized response before the write. A post-commit
+        // read failure must never turn a committed subscription into an error.
+        let mut category = super::forum_graphql_runtime(ctx)
+            .category_audience_read_service(db.clone())
+            .get_authenticated_owner_visible_with_audience_context(
                 tenant_id,
+                security.clone(),
+                context.clone(),
                 category_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-            )
-            .await?;
-
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        let category = CategoryService::new(db.clone())
-            .get_with_locale_fallback(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                category_id,
-                tenant.default_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
             )
             .await?;
-
+        super::forum_graphql_runtime(ctx)
+            .subscription_service(db.clone())
+            .set_category_subscription(
+                tenant_id,
+                category_id,
+                security,
+                context,
+            )
+            .await?;
+        // The subscription itself is the only field intentionally changed
+        // since the authorized pre-read; do not return its old flag.
+        category.is_subscribed = true;
         Ok(map_category(category))
     }
 
@@ -575,31 +590,42 @@ impl ForumContentMutation {
             "Permission denied: forum_categories:read required",
         )?;
 
-        SubscriptionService::new(db.clone())
-            .clear_category_subscription(
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
+        let context = category_read_audience_port_context(
+            ForumCategoryReadTransport::Graphql,
+            ForumCategoryReadOperation::Subscription,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            tenant.default_locale.as_str(),
+        )?;
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
+        // Materialize the authorized response before the write. A post-commit
+        // read failure must never turn a committed subscription into an error.
+        let mut category = super::forum_graphql_runtime(ctx)
+            .category_audience_read_service(db.clone())
+            .get_authenticated_owner_visible_with_audience_context(
                 tenant_id,
+                security.clone(),
+                context.clone(),
                 category_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-            )
-            .await?;
-
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        let category = CategoryService::new(db.clone())
-            .get_with_locale_fallback(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                category_id,
-                tenant.default_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
             )
             .await?;
-
+        super::forum_graphql_runtime(ctx)
+            .subscription_service(db.clone())
+            .clear_category_subscription(
+                tenant_id,
+                category_id,
+                security,
+                context,
+            )
+            .await?;
+        category.is_subscribed = false;
         Ok(map_category(category))
     }
 
@@ -618,9 +644,14 @@ impl ForumContentMutation {
             &[Permission::FORUM_TOPICS_READ],
             "Permission denied: forum_topics:read required",
         )?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
-
+        let mut response = subscription_topic_response(
+            ctx, db, event_bus, tenant_id, topic_id,
+            resolved_locale.as_str(), tenant.default_locale.as_str(), auth,
+        )
+        .await?;
         let write_context = topic_read_audience_port_context(
             ForumTopicReadTransport::Graphql,
             ForumTopicReadOperation::Subscription,
@@ -629,73 +660,41 @@ impl ForumContentMutation {
             ctx.data_opt::<RequestContext>(),
             resolved_locale.as_str(),
         )?;
-        ctx.data_opt::<ForumGraphqlRuntimeData>()
-            .cloned()
-            .unwrap_or_default()
+        super::forum_graphql_runtime(ctx)
             .subscription_service(db.clone())
             .set_topic_subscription(
                 tenant_id,
                 topic_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
+                    Some(auth.user_id), &auth.permissions,
                 ),
                 write_context,
             )
             .await?;
 
-        let read_context = topic_read_audience_port_context(
-            ForumTopicReadTransport::Graphql,
-            ForumTopicReadOperation::SelectedTopic,
-            tenant_id,
-            auth,
-            ctx.data_opt::<RequestContext>(),
-            resolved_locale.as_str(),
-        )?;
-        let topic = super::forum_graphql_runtime(ctx)
-            .topic_audience_read_service(db.clone(), event_bus.clone())
-            .get_authenticated_owner_visible_with_audience_context(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                read_context,
-                topic_id,
-                Some(tenant.default_locale.as_str()),
-            )
-            .await?;
-        let author_profile = load_author_profile(
-            ctx,
-            db,
-            tenant_id,
-            topic.author_id,
-            topic.effective_locale.as_str(),
-        )
-        .await?;
-
-        Ok(map_topic(topic, author_profile))
+        response.is_subscribed = true;
+        Ok(response)
     }
 
+    /// Clearing a caller-owned subscription must work even after the topic becomes hidden.
+    /// Only acknowledge the write; never load an inaccessible topic for the response.
     async fn clear_forum_topic_subscription(
         &self,
         ctx: &Context<'_>,
         tenant_id: Uuid,
         topic_id: Uuid,
-        locale: Option<String>,
-    ) -> Result<GqlForumTopic> {
+    ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_forum_permission(
             ctx,
             &[Permission::FORUM_TOPICS_READ],
             "Permission denied: forum_topics:read required",
         )?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
-        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
-
-        SubscriptionService::new(db.clone())
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
+        super::forum_graphql_runtime(ctx)
+            .subscription_service(db.clone())
             .clear_topic_subscription(
                 tenant_id,
                 topic_id,
@@ -705,38 +704,7 @@ impl ForumContentMutation {
                 ),
             )
             .await?;
-
-        let read_context = topic_read_audience_port_context(
-            ForumTopicReadTransport::Graphql,
-            ForumTopicReadOperation::SelectedTopic,
-            tenant_id,
-            auth,
-            ctx.data_opt::<RequestContext>(),
-            resolved_locale.as_str(),
-        )?;
-        let topic = super::forum_graphql_runtime(ctx)
-            .topic_audience_read_service(db.clone(), event_bus.clone())
-            .get_authenticated_owner_visible_with_audience_context(
-                tenant_id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-                read_context,
-                topic_id,
-                Some(tenant.default_locale.as_str()),
-            )
-            .await?;
-        let author_profile = load_author_profile(
-            ctx,
-            db,
-            tenant_id,
-            topic.author_id,
-            topic.effective_locale.as_str(),
-        )
-        .await?;
-
-        Ok(map_topic(topic, author_profile))
+        Ok(true)
     }
 
     async fn create_forum_reply(
@@ -1004,6 +972,9 @@ impl ForumContentMutation {
             "Permission denied: forum_topics:read required",
         )?;
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        // Check the request tenant BEFORE deleting a vote, not only when
+        // materializing the post-write topic response.
+        let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         ctx.data_opt::<ForumGraphqlRuntimeData>()
@@ -1164,6 +1135,8 @@ impl ForumContentMutation {
             "Permission denied: forum_replies:read required",
         )?;
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        // A response-time audience check cannot undo a foreign-tenant delete.
+        let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         ctx.data_opt::<ForumGraphqlRuntimeData>()
@@ -1495,6 +1468,46 @@ impl ForumContentMutation {
 
         Ok(true)
     }
+}
+
+/// Prepare the full authorized mutation response before writing the subscription.
+/// Profile lookup and audience reads can fail, and must not turn a committed
+/// change into an error or disclose an inaccessible topic after the write.
+async fn subscription_topic_response(
+    ctx: &Context<'_>,
+    db: &DatabaseConnection,
+    event_bus: &TransactionalEventBus,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+    locale: &str,
+    tenant_default_locale: &str,
+    auth: &AuthContext,
+) -> Result<GqlForumTopic> {
+    let context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Graphql,
+        ForumTopicReadOperation::SelectedTopic,
+        tenant_id,
+        auth,
+        ctx.data_opt::<RequestContext>(),
+        locale,
+    )?;
+    let topic = super::forum_graphql_runtime(ctx)
+        .topic_audience_read_service(db.clone(), event_bus.clone())
+        .get_authenticated_owner_visible_with_audience_context(
+            tenant_id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id), &auth.permissions,
+            ),
+            context,
+            topic_id,
+            Some(tenant_default_locale),
+        )
+        .await?;
+    let author_profile = load_author_profile(
+        ctx, db, tenant_id, topic.author_id, topic.effective_locale.as_str(),
+    )
+    .await?;
+    Ok(map_topic(topic, author_profile))
 }
 
 async fn load_author_profile(

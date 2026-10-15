@@ -33,6 +33,25 @@ impl ForumSettingsProviders {
         self
     }
 
+    /// Read-only consumers (SEO, Search) do not need a transactional settings port.
+    pub fn with_static_reader(mut self, reader: SharedStaticModuleSettingsReader) -> Self {
+        self.static_reader = Some(reader);
+        self
+    }
+
+    /// One tenant-wide public discovery gate. An absent *reader* is not an absent
+    /// settings row: without the owner capability we cannot safely decide whether
+    /// a saved `false` exists. Do not apply the normal soft-default fallback here.
+    pub async fn anonymous_reading_allowed(&self, tenant_id: Uuid) -> ForumResult<bool> {
+        if self.static_reader.is_none() {
+            return Err(ForumError::capability_unavailable(
+                "static_module_settings",
+                "FORUM_PUBLIC_SETTINGS_UNAVAILABLE",
+            ));
+        }
+        Ok(self.module_settings(tenant_id).await?.allow_anonymous_reading)
+    }
+
     /// Reads the Forum module settings inside the caller's transaction. A disabled module or
     /// a missing reader yields the default settings, so every flag takes its default value.
     pub(crate) async fn module_settings_in_tx(
@@ -331,6 +350,41 @@ mod tests {
             .expect("mode");
 
         assert_eq!(mode, ForumEngagementMode::InternalVotes);
+    }
+
+    struct AnonymousSettingsReader { closed_tenant: Uuid }
+
+    #[async_trait]
+    impl StaticModuleSettingsReader for AnonymousSettingsReader {
+        async fn settings(
+            &self,
+            tenant_id: Uuid,
+            module_slug: &str,
+        ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+            assert_eq!(module_slug, "forum");
+            Ok(Some(StaticModuleSettingsSnapshot {
+                enabled: true,
+                settings: serde_json::json!({ "allow_anonymous_reading": tenant_id != self.closed_tenant }),
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn anonymous_discovery_uses_saved_tenant_flag_and_requires_owner_reader() {
+        let closed_tenant = Uuid::new_v4();
+        let open_tenant = Uuid::new_v4();
+        assert!(ForumSettingsProviders::default()
+            .anonymous_reading_allowed(closed_tenant)
+            .await
+            .is_err(), "a missing settings reader cannot grant public access");
+        assert!(providers().anonymous_reading_allowed(open_tenant).await.unwrap(),
+            "a functioning reader with no saved row uses the soft default");
+
+        let settings = ForumSettingsProviders::default().with_static_reader(
+            SharedStaticModuleSettingsReader(Arc::new(AnonymousSettingsReader { closed_tenant })),
+        );
+        assert!(!settings.anonymous_reading_allowed(closed_tenant).await.unwrap());
+        assert!(settings.anonymous_reading_allowed(open_tenant).await.unwrap());
     }
 
     #[test]

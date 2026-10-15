@@ -174,12 +174,12 @@ requireText(ui, "let load_more_topics = Callback::new(move |_: ()| {", "topic pa
 requireText(ui, "let load_more_replies = Callback::new(move |_: ()| {", "reply page loader");
 requireText(
   ui,
-  "set_topics_page.update(|state| state.append_page(page))",
+  "topics_page.update(|state| state.append_page(page))",
   "topic pages append through the model"
 );
 requireText(
   ui,
-  "set_replies_page.update(|state| state.append_page(page))",
+  "replies_page.update(|state| state.append_page(page))",
   "reply pages append through the model"
 );
 requireText(

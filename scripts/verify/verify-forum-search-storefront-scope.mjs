@@ -116,7 +116,7 @@ requireAll(
     "SearchDictionaryService::transform_query",
     "SearchFilterPresetService::resolve",
     "SearchRankingProfile::resolve",
-    "SearchDictionaryService::apply_storefront_query_rules",
+    "SearchDictionaryService::apply_authorized_storefront_query_rules",
     "SearchAnalyticsService::record_query",
     "category_ids,",
   ],
@@ -142,7 +142,7 @@ requireAll(
   [
     "impl StorefrontSearchCategoryScopePort for ServerForumSearchCategoryScopePort",
     "is_tenant_module_enabled",
-    "Permission::FORUM_CATEGORIES_LIST",
+    "if let Some(auth) = request.auth.as_ref()",
     "category_read_audience_port_context",
     "ForumSearchCategoryAudienceScopeService",
     "expand_authenticated_visible_subtrees",
