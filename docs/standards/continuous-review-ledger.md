@@ -330,8 +330,8 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 17 | 4,732 | None |  |
 | [x] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 88 | 23,137 | 2026-10-15 | Enforced non-nil UUID validation, structured entry debug tracing, bounded pagination, added unit tests |
 | [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 11 | 1,315 | None |  |
-| [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 48 | 19,082 | None |  |
-| [ ] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 204 | None |  |
+| [x] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 48 | 19,082 | 2026-10-15 | Enforced non-nil UUID validation, structured entry debug tracing, price resolution rules, added unit tests |
+| [x] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 204 | 2026-10-15 | Verified bootstrap price invariants, nil UUID guards, negative amount guards, fmt and clippy clean |
 | [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 14 | 7,971 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 10 | 2,487 | None |  |
 | [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 190 | 81,078 | None |  |

@@ -16398,6 +16398,7 @@ name = "rustok-page-builder-storefront"
 version = "0.1.0"
 dependencies = [
  "fly",
+ "fly-browser",
  "fly-leptos",
  "leptos",
  "rustok-page-builder",

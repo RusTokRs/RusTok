@@ -2,7 +2,8 @@ use crate::HostFormProviderEndpoints;
 use crate::locale::PageBuilderLocaleContext;
 use fly::{
     FlyResult, GrapesJsCodec, PageSelection, RenderPolicy, RenderedPage, RuntimeRenderResult,
-    render_page, render_page_with_runtime_context_with_providers,
+    materialize_component_actions_with_providers, materialize_internal_page_links, render_page,
+    render_page_with_runtime_context_with_providers,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -67,7 +68,13 @@ impl PageBuilderRenderer {
         request: PageBuilderRenderRequest,
     ) -> FlyResult<PageBuilderRenderResponse> {
         let document = GrapesJsCodec::decode_value(request.project_data)?;
-        let page = render_page(&document, &request.selection, &request.policy)?;
+        let linked = materialize_internal_page_links(&document, &Value::Null);
+        let action = materialize_component_actions_with_providers(
+            &linked.document,
+            &Value::Null,
+            Some(&HostFormProviderEndpoints),
+        );
+        let page = render_page(&action.document, &request.selection, &request.policy)?;
         Ok(PageBuilderRenderResponse { page })
     }
 

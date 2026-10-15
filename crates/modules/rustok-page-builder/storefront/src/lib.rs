@@ -58,16 +58,9 @@ impl StorefrontRuntimePageOutput {
 pub fn render_storefront_page(
     project_data: Value,
     selection: PageSelection,
-    mut policy: RenderPolicy,
+    policy: RenderPolicy,
 ) -> fly::FlyResult<StorefrontPageOutput> {
-    policy.instrument_components = false;
-    let PageBuilderRenderResponse { page } =
-        render_page_builder_project(PageBuilderRenderRequest {
-            project_data,
-            selection,
-            policy,
-        })?;
-    Ok(StorefrontPageOutput { page })
+    render_storefront_page_with_rich_text(project_data, selection, policy, None)
 }
 
 /// Render a storefront page with the host rich-text renderer bound, so `flyRichText`
@@ -84,7 +77,13 @@ pub fn render_storefront_page_with_rich_text(
 ) -> fly::FlyResult<StorefrontPageOutput> {
     policy.instrument_components = false;
     let document = GrapesJsCodec::decode_value(project_data)?;
-    let page = fly::render_page_with_rich_text(&document, &selection, &policy, rich_text)?;
+    let linked = fly::materialize_internal_page_links(&document, &Value::Null);
+    let action = fly::materialize_component_actions_with_providers(
+        &linked.document,
+        &Value::Null,
+        Some(&rustok_page_builder::HostFormProviderEndpoints),
+    );
+    let page = fly::render_page_with_rich_text(&action.document, &selection, &policy, rich_text)?;
     Ok(StorefrontPageOutput { page })
 }
 
@@ -146,6 +145,7 @@ pub fn PageBuilderStorefront(
             let css = page.css;
             let html = page.html;
             let page_id = page.page_id.unwrap_or_default();
+            let has_actions = html.contains("data-fly-action");
             view! {
                 <section
                     class=class
@@ -156,6 +156,9 @@ pub fn PageBuilderStorefront(
                 >
                     <style data-fly-project-styles="true">{css}</style>
                     <div data-fly-page-body="true" inner_html=html></div>
+                    {has_actions.then(|| view! {
+                        <script data-fly-actions="true" inner_html=fly_browser::FLY_ACTIONS_JS></script>
+                    })}
                 </section>
             }
             .into_any()
@@ -257,4 +260,39 @@ mod tests {
         assert_eq!(output.head().title.as_deref(), Some("Home"));
         assert!(output.document_html().contains("<title>Home</title>"));
     }
+
+    #[test]
+    fn storefront_helper_renders_action_runtime_attributes() {
+        let output = render_storefront_page(
+            json!({
+                "pages": [{
+                    "id": "home",
+                    "component": {
+                        "id": "root",
+                        "type": "wrapper",
+                        "components": [{
+                            "id": "btn",
+                            "type": "button",
+                            "content": "Toggle",
+                            "flyAction": {
+                                "kind": "toggle_visibility",
+                                "target_id": "panel"
+                            }
+                        }, {
+                            "id": "panel",
+                            "type": "section",
+                            "content": "Panel"
+                        }]
+                    }
+                }]
+            }),
+            PageSelection::First,
+            RenderPolicy::default(),
+        )
+        .expect("storefront output");
+        assert!(output.page.html.contains("data-fly-action"));
+        assert!(output.page.html.contains("data-fly-action-kind=\"toggle_visibility\""));
+        assert!(!fly_browser::FLY_ACTIONS_JS.is_empty());
+    }
 }
+
