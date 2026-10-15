@@ -13,14 +13,15 @@
 //! invalidated by any mutation, so it is deliberately not cached on the document — a stale index
 //! would be far worse than a slow lookup.
 
-use crate::{ComponentLocation, ComponentNode, ProjectDocument};
+use crate::{ComponentLocation, ComponentNode, ComponentObject, ProjectDocument};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Snapshot of where every identified component sits in a document.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ComponentIndex {
-    locations: BTreeMap<String, ComponentLocation>,
-    duplicates: BTreeSet<String>,
+    pub(crate) locations: BTreeMap<String, ComponentLocation>,
+    pub(crate) paths: BTreeMap<String, (usize, Vec<usize>)>,
+    pub(crate) duplicates: BTreeSet<String>,
 }
 
 impl ComponentIndex {
@@ -45,19 +46,22 @@ impl ComponentIndex {
                         index: 0,
                         depth: 0,
                     },
+                    (page_index, Vec::new()),
                 );
             }
-            index.visit(root, page_index, root.id().map(ToString::to_string), 1);
+            let mut path = Vec::new();
+            index.visit(root, page_index, root.id().map(ToString::to_string), 1, &mut path);
         }
         index
     }
 
-    fn insert(&mut self, id: &str, location: ComponentLocation) {
+    fn insert(&mut self, id: &str, location: ComponentLocation, path: (usize, Vec<usize>)) {
         if self.locations.contains_key(id) {
             self.duplicates.insert(id.to_string());
             return;
         }
         self.locations.insert(id.to_string(), location);
+        self.paths.insert(id.to_string(), path);
     }
 
     fn visit(
@@ -66,11 +70,13 @@ impl ComponentIndex {
         page_index: usize,
         parent_component_id: Option<String>,
         depth: usize,
+        path: &mut Vec<usize>,
     ) {
         let Some(object) = parent.as_object() else {
             return;
         };
         for (index, child) in object.children().iter().enumerate() {
+            path.push(index);
             if let Some(id) = child.id() {
                 self.insert(
                     id,
@@ -80,6 +86,7 @@ impl ComponentIndex {
                         index,
                         depth,
                     },
+                    (page_index, path.clone()),
                 );
             }
             self.visit(
@@ -87,7 +94,9 @@ impl ComponentIndex {
                 page_index,
                 child.id().map(ToString::to_string),
                 depth + 1,
+                path,
             );
+            path.pop();
         }
     }
 
@@ -99,6 +108,79 @@ impl ComponentIndex {
     /// Where the component sits, or `None` if it does not exist.
     pub fn location(&self, component_id: &str) -> Option<&ComponentLocation> {
         self.locations.get(component_id)
+    }
+
+    /// Retrieve the component directly via its indexed path in O(depth) steps.
+    pub fn get_component<'a>(
+        &self,
+        document: &'a ProjectDocument,
+        id: &str,
+    ) -> Option<&'a ComponentObject> {
+        let indexed = self.paths.get(id).and_then(|(page_index, path)| {
+            let page = document.project.pages.get(*page_index)?;
+            let root = page.component.as_ref()?.as_object()?;
+            Some((root, path))
+        });
+
+        if let Some((root, path)) = indexed {
+            let mut current = root;
+            let mut ok = true;
+            for &idx in path {
+                if let Some(child) = current.children().get(idx).and_then(ComponentNode::as_object) {
+                    current = child;
+                } else {
+                    ok = false;
+                    break;
+                }
+            }
+            if ok && current.id() == Some(id) {
+                return Some(current);
+            }
+        }
+        document.project.component(id)
+    }
+
+    /// Retrieve a mutable reference to the component via its indexed path in O(depth) steps.
+    pub fn get_component_mut<'a>(
+        &self,
+        document: &'a mut ProjectDocument,
+        id: &str,
+    ) -> Option<&'a mut ComponentObject> {
+        let (page_index, path) = self.paths.get(id)?;
+        let page = document.project.pages.get_mut(*page_index)?;
+        let root = page.component.as_mut()?.as_object_mut()?;
+        let target = navigate_mut(root, path)?;
+        if target.id() == Some(id) {
+            Some(target)
+        } else {
+            None
+        }
+    }
+}
+
+pub(crate) fn navigate_mut<'a>(
+    root: &'a mut ComponentObject,
+    path: &[usize],
+) -> Option<&'a mut ComponentObject> {
+    let mut current = root;
+    for &idx in path {
+        let children = current.children_mut()?;
+        let child = children.get_mut(idx)?;
+        current = child.as_object_mut()?;
+    }
+    Some(current)
+}
+
+impl ComponentIndex {
+
+    /// Canonical diagnostic path string for the component, e.g. `pages[0].component.components[2]`.
+    pub fn diagnostic_path(&self, id: &str) -> Option<String> {
+        let (page_index, path) = self.paths.get(id)?;
+        let mut result = format!("pages[{page_index}].component");
+        for idx in path {
+            result.push_str(&format!(".components[{idx}]"));
+        }
+        Some(result)
     }
 
     /// Ids that appear more than once, in sorted order.
@@ -227,6 +309,38 @@ mod tests {
                 "root",
                 "title"
             ]
+        );
+    }
+
+    #[test]
+    fn component_and_diagnostic_path_resolution() {
+        let mut document = document();
+        let index = ComponentIndex::build(&document);
+
+        assert_eq!(
+            index.diagnostic_path("title"),
+            Some("pages[0].component.components[0].components[0]".to_string())
+        );
+        assert_eq!(
+            index.diagnostic_path("about-hero"),
+            Some("pages[1].component.components[0]".to_string())
+        );
+        assert_eq!(
+            index.diagnostic_path("root"),
+            Some("pages[0].component".to_string())
+        );
+
+        let title = index.get_component(&document, "title").expect("title");
+        assert_eq!(title.id(), Some("title"));
+        assert_eq!(title.component_type(), "heading");
+
+        let title_mut = index
+            .get_component_mut(&mut document, "title")
+            .expect("title mut");
+        title_mut.component_type = Some("custom_heading".to_string());
+        assert_eq!(
+            document.project.component("title").and_then(|c| c.component_type.as_deref()),
+            Some("custom_heading")
         );
     }
 }

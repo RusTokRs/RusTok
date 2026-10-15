@@ -126,6 +126,45 @@ impl FlyEditor {
             return Ok(report);
         }
 
+        let inverse = invert_command(&self.document, &command);
+
+        // Fast path: incremental validation for non-structural patch commands when last_report is valid.
+        if let EditorCommand::Patch { component_id, .. } = &command
+            && let Some(prev_report) = &self.last_report
+            && prev_report.is_valid()
+        {
+            let mut after = (*self.document).clone();
+            self.apply_to_document(&mut after, &command)?;
+            if let Some(inc_report) = crate::validate_patch_incremental(
+                &after,
+                component_id,
+                prev_report,
+                &self.registries,
+                self.validation_limits,
+            ) {
+                let errors = inc_report.errors().cloned().collect::<Vec<_>>();
+                if !errors.is_empty() {
+                    return Err(FlyError::Validation(errors));
+                }
+                let after = Arc::new(after);
+                let history_after = Arc::clone(&after);
+                let before = std::mem::replace(&mut self.document, after);
+                self.selection = self
+                    .selection
+                    .take()
+                    .filter(|id| self.document.contains_component(id));
+                self.history.push(HistoryEntry {
+                    command,
+                    before,
+                    after: history_after,
+                    inverse,
+                });
+                self.revision.mark_changed(&self.document);
+                self.last_report = Some(inc_report.clone());
+                return Ok(inc_report);
+            }
+        }
+
         // One speculative copy to mutate. A command must not leave a partially applied document
         // behind when validation rejects it, so the working copy is unavoidable — but it is now
         // the only deep copy on this path.
@@ -155,6 +194,7 @@ impl FlyEditor {
             command,
             before,
             after: history_after,
+            inverse,
         });
         self.revision.mark_changed(&self.document);
         self.last_report = Some(report.clone());
@@ -307,3 +347,188 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
         }
     }
 }
+
+/// Compute the exact inverse of an editor command against the current document state.
+///
+/// Enables lightweight delta-based history tracking and inverse-command undo operations.
+pub fn invert_command(document: &ProjectDocument, command: &EditorCommand) -> Option<EditorCommand> {
+    match command {
+        EditorCommand::Select { .. } => None,
+        EditorCommand::Insert { component, .. } => {
+            let id = component.id()?.to_string();
+            Some(EditorCommand::Remove { component_id: id })
+        }
+        EditorCommand::Remove { component_id } => {
+            let location = document.component_location(component_id)?;
+            let component = document.component(component_id)?;
+            Some(EditorCommand::Insert {
+                parent_id: location.parent_component_id,
+                index: location.index,
+                component: crate::ComponentNode::Object(Box::new(component.clone())),
+            })
+        }
+        EditorCommand::Move { component_id, .. } => {
+            let location = document.component_location(component_id)?;
+            Some(EditorCommand::Move {
+                component_id: component_id.clone(),
+                new_parent_id: location.parent_component_id,
+                index: location.index,
+            })
+        }
+        EditorCommand::Patch { component_id, patch } => {
+            let component = document.component(component_id)?;
+            let mut inverse_patch = crate::ComponentPatch::default();
+
+            for (key, _) in &patch.attributes {
+                if let Some(old_val) = component.attributes.get(key) {
+                    inverse_patch.attributes.insert(key.clone(), old_val.clone());
+                } else {
+                    inverse_patch.remove_attributes.push(key.clone());
+                }
+            }
+            for key in &patch.remove_attributes {
+                if let Some(old_val) = component.attributes.get(key) {
+                    inverse_patch.attributes.insert(key.clone(), old_val.clone());
+                }
+            }
+
+            if patch.clear_style || patch.replace_style {
+                inverse_patch.replace_style = true;
+                inverse_patch.style = component.style.clone();
+            } else if patch.style.is_some() || !patch.remove_style_properties.is_empty() {
+                if let Some(serde_json::Value::Object(orig_style)) = &component.style {
+                    let mut restore_style = serde_json::Map::new();
+                    if let Some(serde_json::Value::Object(patch_style)) = &patch.style {
+                        for prop in patch_style.keys() {
+                            if let Some(old_val) = orig_style.get(prop) {
+                                restore_style.insert(prop.clone(), old_val.clone());
+                            } else {
+                                inverse_patch.remove_style_properties.push(prop.clone());
+                            }
+                        }
+                    }
+                    for prop in &patch.remove_style_properties {
+                        if let Some(old_val) = orig_style.get(prop) {
+                            restore_style.insert(prop.clone(), old_val.clone());
+                        }
+                    }
+                    if !restore_style.is_empty() {
+                        inverse_patch.style = Some(serde_json::Value::Object(restore_style));
+                    }
+                } else {
+                    inverse_patch.replace_style = true;
+                    inverse_patch.style = component.style.clone();
+                }
+            }
+
+            for (key, _) in &patch.fields {
+                match key.as_str() {
+                    "type" => {
+                        if let Some(old_type) = &component.component_type {
+                            inverse_patch
+                                .fields
+                                .insert("type".to_string(), serde_json::Value::String(old_type.clone()));
+                        } else {
+                            inverse_patch.remove_fields.push("type".to_string());
+                        }
+                    }
+                    "tagName" => {
+                        if let Some(old_tag) = &component.tag_name {
+                            inverse_patch
+                                .fields
+                                .insert("tagName".to_string(), serde_json::Value::String(old_tag.clone()));
+                        } else {
+                            inverse_patch.remove_fields.push("tagName".to_string());
+                        }
+                    }
+                    "provider" => {
+                        if let Some(old_provider) = &component.provider {
+                            inverse_patch
+                                .fields
+                                .insert("provider".to_string(), serde_json::Value::String(old_provider.clone()));
+                        } else {
+                            inverse_patch.remove_fields.push("provider".to_string());
+                        }
+                    }
+                    _ => {
+                        if let Some(old_val) = component.extensions.get(key) {
+                            inverse_patch.fields.insert(key.clone(), old_val.clone());
+                        } else {
+                            inverse_patch.remove_fields.push(key.clone());
+                        }
+                    }
+                }
+            }
+            for key in &patch.remove_fields {
+                match key.as_str() {
+                    "type" => {
+                        if let Some(old_type) = &component.component_type {
+                            inverse_patch
+                                .fields
+                                .insert("type".to_string(), serde_json::Value::String(old_type.clone()));
+                        }
+                    }
+                    "tagName" => {
+                        if let Some(old_tag) = &component.tag_name {
+                            inverse_patch
+                                .fields
+                                .insert("tagName".to_string(), serde_json::Value::String(old_tag.clone()));
+                        }
+                    }
+                    "provider" => {
+                        if let Some(old_provider) = &component.provider {
+                            inverse_patch
+                                .fields
+                                .insert("provider".to_string(), serde_json::Value::String(old_provider.clone()));
+                        }
+                    }
+                    _ => {
+                        if let Some(old_val) = component.extensions.get(key) {
+                            inverse_patch.fields.insert(key.clone(), old_val.clone());
+                        }
+                    }
+                }
+            }
+
+            Some(EditorCommand::Patch {
+                component_id: component_id.clone(),
+                patch: inverse_patch,
+            })
+        }
+        EditorCommand::Asset { command } => match command {
+            AssetCommand::Upsert { asset } => {
+                let descriptor = AssetDescriptor::from_value(asset.clone())?;
+                if let Some(existing) = document.project.assets.iter().find(|candidate| {
+                    AssetDescriptor::from_value((*candidate).clone())
+                        .is_some_and(|candidate| candidate.id == descriptor.id)
+                }) {
+                    Some(EditorCommand::Asset {
+                        command: AssetCommand::Upsert { asset: existing.clone() },
+                    })
+                } else {
+                    Some(EditorCommand::Asset {
+                        command: AssetCommand::Remove { asset_id: descriptor.id },
+                    })
+                }
+            }
+            AssetCommand::Remove { asset_id } => {
+                let existing = document.project.assets.iter().find(|candidate| {
+                    AssetDescriptor::from_value((*candidate).clone())
+                        .is_some_and(|candidate| candidate.id == *asset_id)
+                })?;
+                Some(EditorCommand::Asset {
+                    command: AssetCommand::Upsert { asset: existing.clone() },
+                })
+            }
+        },
+        EditorCommand::Batch { commands } => {
+            let mut inverted = Vec::with_capacity(commands.len());
+            for cmd in commands.iter().rev() {
+                inverted.push(invert_command(document, cmd)?);
+            }
+            Some(EditorCommand::Batch { commands: inverted })
+        }
+        _ => None,
+    }
+}
+

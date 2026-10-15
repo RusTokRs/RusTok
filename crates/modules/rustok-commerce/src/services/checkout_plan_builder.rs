@@ -106,6 +106,23 @@ impl CheckoutPlanBuilder {
         input: &CompleteCheckoutInput,
         snapshot: &PreparedCartCheckoutSnapshot,
     ) -> CheckoutResult<CheckoutOrderPlanPayload> {
+        if tenant_id.is_nil() {
+            return Err(CheckoutError::Validation(
+                "tenant_id must not be nil UUID".to_string(),
+            ));
+        }
+        if operation_id.is_nil() {
+            return Err(CheckoutError::Validation(
+                "operation_id must not be nil UUID".to_string(),
+            ));
+        }
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            operation_id = %operation_id,
+            cart_id = %input.cart_id,
+            "CheckoutPlanBuilder::build entry"
+        );
         input
             .validate()
             .map_err(|error| CheckoutError::Validation(error.to_string()))?;

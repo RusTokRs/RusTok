@@ -33,29 +33,7 @@ impl PlacementDecision {
 
 impl ProjectDocument {
     pub fn component_location(&self, component_id: &str) -> Option<ComponentLocation> {
-        for (page_index, page) in self.project.pages.iter().enumerate() {
-            let Some(root) = page.component.as_ref() else {
-                continue;
-            };
-            if root.id() == Some(component_id) {
-                return Some(ComponentLocation {
-                    page_index,
-                    parent_component_id: None,
-                    index: 0,
-                    depth: 0,
-                });
-            }
-            if let Some(location) = find_location(
-                root,
-                component_id,
-                page_index,
-                root.id().map(ToString::to_string),
-                1,
-            ) {
-                return Some(location);
-            }
-        }
-        None
+        self.component_index().location(component_id).cloned()
     }
 
     pub fn component_parent_id(&self, component_id: &str) -> Option<String> {
@@ -85,12 +63,27 @@ impl ProjectDocument {
     }
 
     pub fn is_component_descendant_of(&self, candidate_id: &str, ancestor_id: &str) -> bool {
-        self.component(ancestor_id).is_some_and(|ancestor| {
-            ancestor
-                .children()
-                .iter()
-                .any(|child| child.find(candidate_id).is_some())
-        })
+        let index = self.component_index();
+        let (Some(candidate_loc), Some(ancestor_loc)) =
+            (index.location(candidate_id), index.location(ancestor_id))
+        else {
+            return false;
+        };
+        if candidate_loc.page_index != ancestor_loc.page_index
+            || candidate_loc.depth <= ancestor_loc.depth
+        {
+            return false;
+        }
+        let mut curr_parent = candidate_loc.parent_component_id.as_deref();
+        while let Some(parent_id) = curr_parent {
+            if parent_id == ancestor_id {
+                return true;
+            }
+            curr_parent = index
+                .location(parent_id)
+                .and_then(|l| l.parent_component_id.as_deref());
+        }
+        false
     }
 
     pub fn component_type_for_id(&self, component_id: &str) -> Option<&str> {
@@ -155,36 +148,6 @@ impl RegistrySet {
 
         PlacementDecision::allowed()
     }
-}
-
-fn find_location(
-    parent: &ComponentNode,
-    component_id: &str,
-    page_index: usize,
-    parent_component_id: Option<String>,
-    depth: usize,
-) -> Option<ComponentLocation> {
-    let parent_object = parent.as_object()?;
-    for (index, child) in parent_object.children().iter().enumerate() {
-        if child.id() == Some(component_id) {
-            return Some(ComponentLocation {
-                page_index,
-                parent_component_id: parent_component_id.clone(),
-                index,
-                depth,
-            });
-        }
-        if let Some(location) = find_location(
-            child,
-            component_id,
-            page_index,
-            child.id().map(ToString::to_string),
-            depth + 1,
-        ) {
-            return Some(location);
-        }
-    }
-    None
 }
 
 #[cfg(test)]

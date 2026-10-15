@@ -67,6 +67,7 @@ members = [
     "crates/modules/rustok-pages/storefront",
     "crates/modules/rustok-navigation/storefront",
     "crates/modules/rustok-page-builder/admin",
+    "crates/modules/rustok-page-builder/storefront",
     "crates/modules/rustok-search/admin",
     "crates/modules/rustok-search/storefront",
     "crates/modules/rustok-tenant/admin",

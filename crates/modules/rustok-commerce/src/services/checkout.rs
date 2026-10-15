@@ -129,9 +129,6 @@ impl CheckoutService {
         if tenant_id.is_nil() {
             return Err(CheckoutError::Validation("tenant_id must not be nil UUID".to_string()));
         }
-        if actor_id.is_nil() {
-            return Err(CheckoutError::Validation("actor_id must not be nil UUID".to_string()));
-        }
         if input.cart_id.is_nil() {
             return Err(CheckoutError::Validation("cart_id must not be nil UUID".to_string()));
         }

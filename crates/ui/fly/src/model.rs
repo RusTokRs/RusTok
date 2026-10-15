@@ -1,28 +1,63 @@
 use crate::id_reference::{remap_attribute_ids, remap_map_ids, remap_value_ids};
-use crate::{FlyError, FlyResult, IdGenerator, ProjectHash, validate_identifier};
+use crate::{ComponentIndex, FlyError, FlyResult, IdGenerator, ProjectHash, validate_identifier};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectDocument {
     pub project: GrapesProject,
+    #[serde(skip)]
+    pub(crate) component_index: std::sync::OnceLock<ComponentIndex>,
+    #[serde(skip)]
+    pub(crate) cached_hash: std::sync::OnceLock<ProjectHash>,
 }
+
+impl Clone for ProjectDocument {
+    fn clone(&self) -> Self {
+        Self {
+            project: self.project.clone(),
+            component_index: std::sync::OnceLock::new(),
+            cached_hash: std::sync::OnceLock::new(),
+        }
+    }
+}
+
+impl PartialEq for ProjectDocument {
+    fn eq(&self, other: &Self) -> bool {
+        self.project == other.project
+    }
+}
+
+impl Eq for ProjectDocument {}
 
 impl ProjectDocument {
     pub fn new(project: GrapesProject) -> Self {
-        Self { project }
+        Self {
+            project,
+            component_index: std::sync::OnceLock::new(),
+            cached_hash: std::sync::OnceLock::new(),
+        }
+    }
+
+    pub fn component_index(&self) -> &ComponentIndex {
+        self.component_index
+            .get_or_init(|| ComponentIndex::build(self))
     }
 
     pub fn hash(&self) -> ProjectHash {
-        ProjectHash::from_document(self)
+        *self
+            .cached_hash
+            .get_or_init(|| ProjectHash::from_document(self))
     }
 
     pub fn component(&self, id: &str) -> Option<&ComponentObject> {
-        self.project.component(id)
+        self.component_index().get_component(self, id)
     }
 
     pub fn component_mut(&mut self, id: &str) -> Option<&mut ComponentObject> {
+        self.cached_hash.take();
+        self.component_index.take();
         self.project.component_mut(id)
     }
 

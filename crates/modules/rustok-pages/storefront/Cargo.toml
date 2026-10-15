@@ -44,7 +44,7 @@ tracing.workspace = true
 rustok-api = { workspace = true, default-features = false }
 rustok-ui-i18n.workspace = true
 rustok-page-builder = { path = "../../rustok-page-builder", default-features = false }
-rustok-page-builder-storefront = { path = "../../rustok-page-builder-storefront" }
+rustok-page-builder-storefront = { path = "../../rustok-page-builder/storefront" }
 rustok-channel = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }

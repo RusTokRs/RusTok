@@ -81,7 +81,7 @@ pub use bundle::{
 pub use codec::{GrapesJsCodec, MAXIMUM_DECODE_DEPTH};
 pub use command::{
     AssetCommand, ComponentPatch, DEFAULT_HISTORY_MEMORY_BUDGET_BYTES, EditorCommand, FlyEditor,
-    History, HistoryEntry, ProjectHash, RevisionState, SymbolCommand,
+    History, HistoryEntry, ProjectHash, RevisionState, SymbolCommand, invert_command,
 };
 pub use component_index::ComponentIndex;
 pub use component_visit::{ComponentVisit, visit_project_components};
@@ -224,7 +224,7 @@ pub use translation::{
 pub use validation::{
     DEFAULT_MAXIMUM_DEPTH, DEFAULT_MAXIMUM_NODES, MAXIMUM_IDENTIFIER_LENGTH, ValidationDiagnostic,
     ValidationLimits, ValidationReport, ValidationSeverity, validate_component_public_urls,
-    validate_identifier, validate_project,
+    validate_identifier, validate_patch_incremental, validate_project,
 };
 
 pub const GRAPESJS_FORMAT: &str = "grapesjs";

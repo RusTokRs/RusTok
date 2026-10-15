@@ -104,22 +104,29 @@ pub struct HistoryEntry {
     pub command: EditorCommand,
     pub before: Arc<ProjectDocument>,
     pub after: Arc<ProjectDocument>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inverse: Option<EditorCommand>,
 }
 
 impl HistoryEntry {
-    /// Approximate retained size, measured as the serialized JSON length of both documents.
+    pub fn inverse(&self) -> Option<&EditorCommand> {
+        self.inverse.as_ref()
+    }
+
+    /// Approximate retained size.
     ///
-    /// Deliberately counts both halves even though consecutive entries now share an allocation
-    /// (`entry[i].after` and `entry[i + 1].before` are the same `Arc`). The measure therefore
-    /// over-estimates real memory by roughly 2x, which keeps the budget conservative: the same
-    /// number of entries is retained as before, at about half the actual memory. Teaching it to
-    /// count distinct allocations would need bookkeeping across the whole deque.
-    ///
-    /// Serializing to measure is not free, which is itself an argument for moving history to
-    /// inverse commands; it is still far cheaper than the clones the entry already paid for.
+    /// When an inverse command is present, history tracks the compact delta (command + inverse)
+    /// without paying the cost of serializing multi-megabyte document trees. When no inverse
+    /// is available, it conservatively measures serialized document size.
     pub fn approximate_bytes(&self) -> usize {
-        serde_json::to_vec(&self.before).map_or(0, |bytes| bytes.len())
-            + serde_json::to_vec(&self.after).map_or(0, |bytes| bytes.len())
+        if let Some(inverse) = &self.inverse {
+            let cmd_size = serde_json::to_vec(&self.command).map_or(64, |bytes| bytes.len());
+            let inv_size = serde_json::to_vec(inverse).map_or(64, |bytes| bytes.len());
+            cmd_size + inv_size + 128
+        } else {
+            serde_json::to_vec(&self.before).map_or(0, |bytes| bytes.len())
+                + serde_json::to_vec(&self.after).map_or(0, |bytes| bytes.len())
+        }
     }
 }
 

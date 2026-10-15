@@ -1,10 +1,10 @@
 use super::*;
 use crate::{
-    BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ConditionOperator,
-    ContextCommand, ContextFieldDefinition, ContextSchemaCatalog, ContextValueKind, DynamicCatalog,
-    DynamicCommand, FLY_RUNTIME_CONDITIONS_FIELD, FlyError, GrapesJsCodec, RegistrySet,
-    RuntimeBinding, RuntimeCondition, SnapshotCatalog, TranslationCatalog, TranslationCommand,
-    TranslationEntry,
+    BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ComponentNode,
+    ConditionOperator, ContextCommand, ContextFieldDefinition, ContextSchemaCatalog,
+    ContextValueKind, DynamicCatalog, DynamicCommand, FLY_RUNTIME_CONDITIONS_FIELD, FlyError,
+    GrapesJsCodec, RegistrySet, RuntimeBinding, RuntimeCondition, SnapshotCatalog,
+    TranslationCatalog, TranslationCommand, TranslationEntry,
 };
 use serde_json::{Map, Value, json};
 use std::sync::Arc;
@@ -576,4 +576,111 @@ fn stable_ids_fast_path_leaves_valid_documents_untouched() {
     let root = editor.document().component("root").expect("root");
     assert_eq!(root.id(), Some("root"));
     assert!(before.is_object());
+}
+
+#[test]
+fn history_entry_records_exact_inverse_command() {
+    let mut editor = editor();
+    editor
+        .apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default()
+                .merge_style(json!({ "width": "500px" }))
+                .set_attribute("data-custom", json!("test-val")),
+        })
+        .expect("patch applied");
+
+    let entry = editor
+        .history()
+        .undo_entries()
+        .next()
+        .expect("history entry");
+    let inverse = entry.inverse().expect("inverse command must be recorded");
+
+    match inverse {
+        EditorCommand::Patch {
+            component_id,
+            patch,
+        } => {
+            assert_eq!(component_id, "hero");
+            assert!(patch.remove_attributes.contains(&"data-custom".to_string()));
+            if let Some(style) = &patch.style {
+                assert!(style.get("width").is_none());
+            }
+        }
+        _ => panic!("expected Patch inverse command"),
+    }
+}
+
+#[test]
+fn invert_insert_and_remove_are_reciprocal() {
+    let mut editor = editor();
+    let mut new_node = ComponentNode::object("section");
+    new_node.as_object_mut().unwrap().id = Some("section-new".to_string());
+    let insert_cmd = EditorCommand::Insert {
+        parent_id: Some("root".to_string()),
+        index: 1,
+        component: new_node,
+    };
+    let inverse_insert =
+        invert_command(editor.document(), &insert_cmd).expect("inverse of insert");
+    assert_eq!(
+        inverse_insert,
+        EditorCommand::Remove {
+            component_id: "section-new".to_string()
+        }
+    );
+
+    editor.apply(insert_cmd).expect("insert");
+    let inserted_id = editor
+        .document()
+        .component("root")
+        .unwrap()
+        .children()[1]
+        .id()
+        .unwrap()
+        .to_string();
+
+    let remove_cmd = EditorCommand::Remove {
+        component_id: inserted_id.clone(),
+    };
+    let inverse_remove =
+        invert_command(editor.document(), &remove_cmd).expect("inverse of remove");
+    match inverse_remove {
+        EditorCommand::Insert {
+            parent_id,
+            index,
+            component,
+        } => {
+            assert_eq!(parent_id.as_deref(), Some("root"));
+            assert_eq!(index, 1);
+            assert_eq!(component.id(), Some(inserted_id.as_str()));
+        }
+        _ => panic!("expected Insert inverse"),
+    }
+}
+
+#[test]
+fn incremental_patch_validation_produces_identical_diagnostics_to_full_validation() {
+    let mut editor = editor();
+    let incremental_report = editor
+        .apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(json!({ "margin": "16px" })),
+        })
+        .expect("patch");
+    let full_report = editor.validate();
+
+    assert_eq!(
+        incremental_report.is_valid(),
+        full_report.is_valid()
+    );
+    assert_eq!(
+        incremental_report.node_count,
+        full_report.node_count
+    );
+    assert_eq!(
+        incremental_report.diagnostics,
+        full_report.diagnostics
+    );
 }

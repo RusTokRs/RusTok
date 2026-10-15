@@ -96,15 +96,14 @@ pub fn validate_project(
     limits: ValidationLimits,
 ) -> ValidationReport {
     let mut report = ValidationReport::default();
-    // Built once and shared by the passes that need id lookups, instead of each of them walking
-    // the whole document per query.
-    let index = ComponentIndex::build(document);
+    // Reuses the document-resident index if already built, avoiding a redundant tree walk.
+    let index = document.component_index();
     validate_pages(document, &mut report);
     validate_theme_tokens(document, &mut report);
     // Typed checks, opaque checks and URL-attribute checks all happen in this one traversal.
     validate_components(document, registries, limits, &mut report);
     validate_assets(document, &mut report);
-    validate_style_rules(document, &index, &mut report);
+    validate_style_rules(document, index, &mut report);
     validate_symbols(document, &mut report);
 
     if report.node_count > limits.maximum_nodes {
@@ -124,6 +123,136 @@ pub fn validate_project(
         .extend(validate_runtime_extensions(document));
     deduplicate_diagnostics(&mut report.diagnostics);
     report
+}
+
+/// Incrementally validate a patched component against an existing baseline report.
+///
+/// Avoids re-walking the entire document tree for single-component property or style patches.
+/// Returns `None` if the component cannot be resolved via the index or if full validation
+/// is required.
+pub fn validate_patch_incremental(
+    document: &ProjectDocument,
+    component_id: &str,
+    previous_report: &ValidationReport,
+    registries: &RegistrySet,
+    limits: ValidationLimits,
+) -> Option<ValidationReport> {
+    let index = document.component_index();
+    let location = index.location(component_id)?;
+    let component = index.get_component(document, component_id)?;
+    let path = index.diagnostic_path(component_id)?;
+
+    let mut diagnostics = Vec::new();
+
+    if let Err(reason) = validate_identifier(component_id) {
+        diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "invalid_component_id",
+            format!("{path}.id"),
+            format!("component id `{component_id}` is not a valid identifier: {reason}"),
+        ));
+    }
+    if location.depth > limits.maximum_depth {
+        diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "maximum_depth_exceeded",
+            &path,
+            format!(
+                "component depth {} exceeds configured maximum {}",
+                location.depth, limits.maximum_depth
+            ),
+        ));
+    }
+
+    let component_type = component.component_type();
+    let component_type_registered = registries.components.contains(component_type);
+    if !component_type_registered {
+        diagnostics.push(diagnostic(
+            ValidationSeverity::Warning,
+            "missing_component_provider",
+            &path,
+            format!("component type `{component_type}` has no registered provider; node is preserved"),
+        ));
+        if let Some(parent) = location
+            .parent_component_id
+            .as_deref()
+            .and_then(|parent_id| index.get_component(document, parent_id))
+        {
+            let parent_type = parent.component_type();
+            if !registries.accepts_child_type(Some(parent_type), component_type) {
+                diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "invalid_component_child",
+                    &path,
+                    format!("component type `{parent_type}` does not accept `{component_type}` children"),
+                ));
+            }
+        }
+        for (child_index, child) in component.children().iter().enumerate() {
+            if let Some(child_obj) = child.as_object() {
+                let child_type = child_obj.component_type();
+                if !registries.accepts_child_type(Some(component_type), child_type) {
+                    diagnostics.push(diagnostic(
+                        ValidationSeverity::Error,
+                        "invalid_component_child",
+                        format!("{path}.components[{child_index}]"),
+                        format!("component type `{component_type}` does not accept `{child_type}` children"),
+                    ));
+                }
+            }
+        }
+    }
+
+    check_component_public_urls(component, &path, &mut diagnostics);
+    check_raw_html_content(component, &path, &mut diagnostics);
+    if let Some(raw) = component.extensions.get(crate::FLY_RICH_TEXT_FIELD)
+        && let Err(reason) = crate::decode_rich_text_payload(raw)
+    {
+        diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "rich_text_payload_invalid",
+            format!("{path}.{}", crate::FLY_RICH_TEXT_FIELD),
+            reason,
+        ));
+    }
+    if let Some(raw) = component.extensions.get(crate::FLY_EMBED_FIELD)
+        && let Err(reason) = crate::decode_embed_spec(raw)
+    {
+        diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "embed_invalid",
+            format!("{path}.{}", crate::FLY_EMBED_FIELD),
+            reason,
+        ));
+    }
+
+    let has_page_link = component.extensions.contains_key(crate::FLY_PAGE_LINK_FIELD);
+    let has_action = component.extensions.contains_key(crate::FLY_ACTION_FIELD);
+    let has_form = component.extensions.contains_key(crate::FLY_FORM_FIELD);
+    if has_page_link && has_action {
+        diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "component_navigation_contract_conflict",
+            &path,
+            format!("component cannot define both `{}` and `{}`", crate::FLY_PAGE_LINK_FIELD, crate::FLY_ACTION_FIELD),
+        ));
+    }
+    if has_form && (has_page_link || has_action) {
+        diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "component_form_interaction_contract_conflict",
+            &path,
+            format!("component cannot combine `{}` with `{}` or `{}`", crate::FLY_FORM_FIELD, crate::FLY_PAGE_LINK_FIELD, crate::FLY_ACTION_FIELD),
+        ));
+    }
+
+    let mut new_report = previous_report.clone();
+    let prefix = format!("{path}.");
+    new_report.diagnostics.retain(|d| d.path != path && !d.path.starts_with(&prefix));
+    new_report.diagnostics.extend(diagnostics);
+    deduplicate_diagnostics(&mut new_report.diagnostics);
+
+    Some(new_report)
 }
 
 /// Design tokens are project-level data: one malformed token fails the whole theme
@@ -1458,5 +1587,33 @@ mod tests {
 
         assert!(!standalone.is_empty(), "test document triggered nothing");
         assert_eq!(standalone, unified);
+    }
+
+    #[test]
+    fn test_validate_patch_incremental() {
+        let document = crate::GrapesJsCodec::decode_value(serde_json::json!({
+            "pages": [{
+                "id": "page-1",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        { "id": "btn", "type": "button", "content": "Click" }
+                    ]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let registries = RegistrySet::with_builtins();
+        let full_report = validate_project(&document, &registries, ValidationLimits::default());
+        let incremental = validate_patch_incremental(
+            &document,
+            "btn",
+            &full_report,
+            &registries,
+            ValidationLimits::default(),
+        );
+        assert!(incremental.is_some());
     }
 }

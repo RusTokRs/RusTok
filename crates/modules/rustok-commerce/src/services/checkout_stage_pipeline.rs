@@ -173,7 +173,26 @@ impl CheckoutStagePipeline {
         snapshot: &PreparedCartCheckoutSnapshot,
         initial_plan: Option<CheckoutOrderPlanPayload>,
     ) -> CheckoutStagePipelineResult<CheckoutCompletedState> {
+        if tenant_id.is_nil() {
+            return Err(CheckoutOperationError::Validation(
+                "tenant_id must not be nil UUID".to_string(),
+            )
+            .into());
+        }
+        if operation_id.is_nil() {
+            return Err(CheckoutOperationError::Validation(
+                "operation_id must not be nil UUID".to_string(),
+            )
+            .into());
+        }
         let lease_owner = lease_owner.into();
+        tracing::debug!(
+            tenant_id = %tenant_id,
+            actor_id = %actor_id,
+            operation_id = %operation_id,
+            lease_owner = %lease_owner,
+            "advance_to_completed entry"
+        );
         let payment_ready_rank = stage_rank(CheckoutOperationStage::PaymentReady.as_str())?;
         let payment_captured_rank = stage_rank(CheckoutOperationStage::PaymentCaptured.as_str())?;
         let fulfillment_created_rank =

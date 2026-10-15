@@ -17,4 +17,4 @@ The crate consumes `rustok-page-builder`, `fly`, and optionally `fly-leptos`. St
 - `src/lib.rs` — renderer exports.
 - `src/inline_edit.rs` — feature-gated editor integration.
 
-See the [Page Builder documentation](../rustok-page-builder/docs/README.md) and the [module UI guide](../../../docs/UI/module-package-implementation.md).
+See the [Page Builder documentation](../docs/README.md) and the [module UI guide](../../../../docs/UI/module-package-implementation.md).
