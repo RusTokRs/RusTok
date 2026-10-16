@@ -225,6 +225,11 @@ impl NotificationOutboxIntakeWorker {
         &self,
         outbox_event_id: Uuid,
     ) -> NotificationResult<NotificationOutboxIntakeOutcome> {
+        if outbox_event_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "outbox event id cannot be nil".to_string(),
+            ));
+        }
         let row = outbox_event::Entity::find_by_id(outbox_event_id)
             .one(&self.db)
             .await?

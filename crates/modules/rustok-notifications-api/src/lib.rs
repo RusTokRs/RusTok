@@ -231,5 +231,20 @@ mod tests {
                 .expect("factory registry should be available");
             assert_eq!(registry.len(), 1);
         }
+
+        #[test]
+        fn provider_error_converts_to_core_error() {
+            let invalid = NotificationProviderError::InvalidEvent;
+            let core_err: rustok_core::Error = invalid.into();
+            assert!(matches!(core_err, rustok_core::Error::Validation(_)));
+
+            let rejected = NotificationProviderError::Rejected;
+            let core_err: rustok_core::Error = rejected.into();
+            assert!(matches!(core_err, rustok_core::Error::Validation(_)));
+
+            let unavail = NotificationProviderError::CapabilityUnavailable { retryable: true };
+            let core_err: rustok_core::Error = unavail.into();
+            assert!(matches!(core_err, rustok_core::Error::Internal(_)));
+        }
     }
 }

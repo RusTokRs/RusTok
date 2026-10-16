@@ -119,6 +119,11 @@ impl NotificationFanoutService {
         inbox_id: Uuid,
         worker_id: &str,
     ) -> NotificationResult<NotificationSourceInboxReceipt> {
+        if inbox_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "source inbox id cannot be nil".to_string(),
+            ));
+        }
         validate_worker_id(worker_id)?;
         let initial = source_inbox::Entity::find_by_id(inbox_id)
             .one(&self.db)
@@ -224,6 +229,11 @@ impl NotificationFanoutService {
         worker_id: &str,
         limit: u16,
     ) -> NotificationResult<NotificationFanoutPageResult> {
+        if job_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "fan-out job id cannot be nil".to_string(),
+            ));
+        }
         validate_worker_id(worker_id)?;
         if limit == 0 || limit > MAX_FANOUT_PAGE_SIZE {
             return Err(NotificationError::Validation(format!(

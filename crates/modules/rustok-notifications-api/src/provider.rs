@@ -38,6 +38,21 @@ impl NotificationProviderError {
     }
 }
 
+impl From<NotificationProviderError> for rustok_core::Error {
+    fn from(err: NotificationProviderError) -> Self {
+        match err {
+            NotificationProviderError::InvalidEvent | NotificationProviderError::Rejected => {
+                rustok_core::Error::Validation(err.to_string())
+            }
+            NotificationProviderError::CapabilityUnavailable { .. }
+            | NotificationProviderError::Internal { .. } => {
+                rustok_core::Error::Internal(err.to_string())
+            }
+        }
+    }
+}
+
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DescribeNotificationRequest {
     pub event: NotificationSourceEventRef,

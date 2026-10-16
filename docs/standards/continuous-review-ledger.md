@@ -183,7 +183,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-04.03 — `crates/modules/rustok-content` & `rustok-content-orchestration`** — CMS content tree, layout schema, block persistence, translation slots, dynamic rendering. (Done: enforced non-nil UUID guards across ContentOrchestrationService (promote_topic_to_post, demote_post_to_topic, split_topic, merge_topics) and GraphQL query entrypoints; implemented canonical From<ContentError> for rustok_core::Error with unit tests; eliminated panic potential in rich text rendering in favor of unwrap_or_default; corrected proptest to assert created_at preservation across lifecycle transitions; hardened content orchestration bridge with non-nil UUID guards and fail-closed tenant-scoped queries/deletions across demote, promote, merge, split, and route resolution; fixed route resolver to check recorded redirects before live topics and exclude Archived soft-deleted topics; added zero_cooldown_providers test support; verified all 64 content and 4 content-orchestration tests pass, clippy clean, architecture dependency guard passed, and gatekeeper approved).
 
 #### 4. rustok-notifications
-- [ ] **FS-04.04 — `crates/modules/rustok-notifications` & `rustok-notifications-api`** — notification templates, delivery channels (email/push/in-app), preference policies, batching/throttling.
+- [x] **FS-04.04 — `crates/modules/rustok-notifications` & `rustok-notifications-api`** — notification templates, delivery channels (email/push/in-app), preference policies, batching/throttling. (Done: implemented canonical From<NotificationProviderError> for rustok_core::Error in rustok-notifications-api; implemented canonical From<NotificationError> for rustok_core::Error in rustok-notifications with unit tests; enforced non-nil UUID guards across GraphQL authenticated_scope (tenant_id and user_id), outbox intake process_outbox_event (outbox_event_id), candidate processing process_candidate_inner (item_id), fan-out service materialize_source_event (inbox_id) and process_fanout_page (job_id), and fanout worker defer_source_inbox, defer_fanout_job, materialize_source_inbox, and process_fanout_job; verified all 7 api tests, 2 notifications lib tests, and 3 sqlite integration tests pass, clippy clean, architecture dependency guard passed, and gatekeeper approved).
 
 #### 5. rustok-comments
 - [ ] **FS-04.05 — `crates/modules/rustok-comments`, `rustok-comments-api` & `rustok-comments-storefront-support`** — comment trees, thread hierarchy, author verification, moderation hooks.
@@ -200,7 +200,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-10-13T20:15:00Z`
-- **Progress:** `16 / 254` components audited (**6.3%**)
+- **Progress:** `18 / 254` components audited (**7.1%**)
 - **Total Workspace Codebase:** ~350,000 LOC across 254 modules/apps
 
 ---
@@ -335,8 +335,8 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [storefront](../../crates/modules/rustok-navigation/storefront) | `modules` | 9 | 495 | None |  |
 | [ ] | [rustok-newsletter](../../crates/modules/rustok-newsletter) | `modules` | 23 | 2,474 | None |  |
 | [ ] | [rustok-newsletter-api](../../crates/modules/rustok-newsletter-api) | `modules` | 4 | 445 | None |  |
-| [ ] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 75 | 22,126 | None |  |
-| [ ] | [rustok-notifications-api](../../crates/modules/rustok-notifications-api) | `modules` | 5 | 1,166 | None |  |
+| [x] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 75 | 22,126 | 2026-10-16 | Completed Phase FS-04.04 (non-nil UUID guards, outbox intake, candidate processing, fan-out workers, and From<NotificationError> for rustok_core::Error) |
+| [x] | [rustok-notifications-api](../../crates/modules/rustok-notifications-api) | `modules` | 5 | 1,166 | 2026-10-16 | Completed Phase FS-04.04 (canonical From<NotificationProviderError> for rustok_core::Error and unit test) |
 | [ ] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 6 | 127 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 16 | 3,152 | None |  |
 | [x] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 85 | 21,547 | 2026-10-15 | Completed Phase FS-03.10 (state machine transitions, ports, checkout identity, post-order commands & nil UUID guards) |

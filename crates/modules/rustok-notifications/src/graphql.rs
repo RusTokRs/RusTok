@@ -321,7 +321,7 @@ fn authenticated_scope(ctx: &Context<'_>) -> Result<AuthenticatedInboxScope> {
             false,
         )
     })?;
-    if !auth.is_human_user_principal() {
+    if !auth.is_human_user_principal() || auth.user_id.is_nil() {
         return Err(public_error(
             "NOTIFICATION_INBOX_USER_REQUIRED",
             "notification inbox access requires an authenticated user",
@@ -331,7 +331,7 @@ fn authenticated_scope(ctx: &Context<'_>) -> Result<AuthenticatedInboxScope> {
     let tenant = ctx
         .data_opt::<TenantContext>()
         .ok_or_else(capability_unavailable)?;
-    if auth.tenant_id != tenant.id {
+    if auth.tenant_id.is_nil() || tenant.id.is_nil() || auth.tenant_id != tenant.id {
         return Err(public_error(
             "NOTIFICATION_INBOX_TENANT_MISMATCH",
             "notification inbox tenant context is invalid",

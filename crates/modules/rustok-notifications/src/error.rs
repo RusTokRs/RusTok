@@ -95,3 +95,39 @@ impl From<NotificationProviderError> for NotificationError {
         }
     }
 }
+
+impl From<NotificationError> for rustok_core::Error {
+    fn from(error: NotificationError) -> Self {
+        match error {
+            NotificationError::Validation(msg) => rustok_core::Error::Validation(msg),
+            NotificationError::Database(err) => rustok_core::Error::Database(err),
+            NotificationError::Serialization(err) => {
+                rustok_core::Error::Serialization(err)
+            }
+            other => rustok_core::Error::Internal(other.to_string()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn notification_error_converts_to_core_error() {
+        let validation = NotificationError::Validation("invalid payload".to_string());
+        let core_err: rustok_core::Error = validation.into();
+        assert!(matches!(core_err, rustok_core::Error::Validation(_)));
+
+        let source_unavail = NotificationError::SourceUnavailable;
+        let core_err: rustok_core::Error = source_unavail.into();
+        assert!(matches!(core_err, rustok_core::Error::Internal(_)));
+
+        let serialization = serde_json::from_str::<serde_json::Value>("{invalid")
+            .unwrap_err();
+        let ser_err = NotificationError::Serialization(serialization);
+        let core_err: rustok_core::Error = ser_err.into();
+        assert!(matches!(core_err, rustok_core::Error::Serialization(_)));
+    }
+}
+

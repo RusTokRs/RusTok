@@ -256,6 +256,11 @@ impl NotificationCandidateService {
         observed_policy_revision: Option<&str>,
         observed_default_enabled_modules: Option<&[String]>,
     ) -> NotificationResult<NotificationCandidateProcessResult> {
+        if item_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "candidate item id cannot be nil".to_string(),
+            ));
+        }
         validate_worker_id(worker_id)?;
         let initial = candidate_item::Entity::find_by_id(item_id)
             .one(&self.db)

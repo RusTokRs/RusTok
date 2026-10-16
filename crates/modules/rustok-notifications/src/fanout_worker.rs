@@ -203,6 +203,11 @@ impl NotificationFanoutWorker {
         work: NotificationFanoutSourceWorkItem,
         reason: NotificationFanoutPolicyDeferral,
     ) -> NotificationResult<()> {
+        if work.inbox_id.is_nil() || work.tenant_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "source inbox id and tenant id cannot be nil".to_string(),
+            ));
+        }
         let current = source_inbox::Entity::find_by_id(work.inbox_id)
             .one(&self.db)
             .await?
@@ -241,6 +246,11 @@ impl NotificationFanoutWorker {
         work: NotificationFanoutJobWorkItem,
         reason: NotificationFanoutPolicyDeferral,
     ) -> NotificationResult<()> {
+        if work.job_id.is_nil() || work.tenant_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "fan-out job id and tenant id cannot be nil".to_string(),
+            ));
+        }
         let current = fanout_job::Entity::find_by_id(work.job_id)
             .one(&self.db)
             .await?
@@ -278,6 +288,11 @@ impl NotificationFanoutWorker {
         &self,
         inbox_id: Uuid,
     ) -> NotificationResult<NotificationSourceInboxReceipt> {
+        if inbox_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "source inbox id cannot be nil".to_string(),
+            ));
+        }
         self.service
             .materialize_source_event(inbox_id, self.worker_id.as_str())
             .await
@@ -287,6 +302,11 @@ impl NotificationFanoutWorker {
         &self,
         job_id: Uuid,
     ) -> NotificationResult<NotificationFanoutPageResult> {
+        if job_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "fan-out job id cannot be nil".to_string(),
+            ));
+        }
         self.service
             .process_fanout_page(job_id, self.worker_id.as_str(), self.page_size)
             .await
