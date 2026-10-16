@@ -34,3 +34,44 @@ pub enum ModerationError {
 }
 
 pub type ModerationResult<T> = Result<T, ModerationError>;
+
+impl From<ModerationError> for rustok_core::Error {
+    fn from(err: ModerationError) -> Self {
+        match err {
+            ModerationError::ReportNotFound(_)
+            | ModerationError::CaseNotFound(_)
+            | ModerationError::DecisionNotFound(_)
+            | ModerationError::ApplicationOperationNotFound(_) => Self::NotFound(err.to_string()),
+            ModerationError::Validation(_)
+            | ModerationError::ApplicationLeaseConflict(_)
+            | ModerationError::ApplicationRecoveryConflict(_)
+            | ModerationError::ApplicationEvidenceMismatch(_)
+            | ModerationError::RevisionConflict
+            | ModerationError::LifecycleConflict { .. }
+            | ModerationError::IdempotencyConflict
+            | ModerationError::CommandReceiptCorrupt => Self::Validation(err.to_string()),
+            ModerationError::Invariant(_) => Self::Internal(err.to_string()),
+            ModerationError::Database(db_err) => Self::Database(db_err),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn moderation_error_conversions() {
+        let err = ModerationError::ReportNotFound(Uuid::nil());
+        let core_err: rustok_core::Error = err.into();
+        assert!(matches!(core_err, rustok_core::Error::NotFound(_)));
+
+        let err = ModerationError::Validation("invalid".to_string());
+        let core_err: rustok_core::Error = err.into();
+        assert!(matches!(core_err, rustok_core::Error::Validation(_)));
+
+        let err = ModerationError::Invariant("broken".to_string());
+        let core_err: rustok_core::Error = err.into();
+        assert!(matches!(core_err, rustok_core::Error::Internal(_)));
+    }
+}

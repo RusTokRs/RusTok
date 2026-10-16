@@ -32,6 +32,11 @@ impl ModerationService {
             .map_err(|error| ModerationError::Validation(error.message))?;
         let tenant_id = parse_tenant_id(&context)?;
         let operator_id = require_human_operator(&context)?;
+        if command.decision_id.is_nil() {
+            return Err(ModerationError::Validation(
+                "decision_id must not be nil".to_string(),
+            ));
+        }
         validate_expected_case_revision(command.expected_case_revision)?;
         command.reason = normalize_recovery_reason(command.reason)?;
 
@@ -80,6 +85,11 @@ impl ModerationService {
             .map_err(|error| ModerationError::Validation(error.message))?;
         let tenant_id = parse_tenant_id(&context)?;
         let operator_id = require_human_operator(&context)?;
+        if command.decision_id.is_nil() {
+            return Err(ModerationError::Validation(
+                "decision_id must not be nil".to_string(),
+            ));
+        }
         validate_expected_case_revision(command.expected_case_revision)?;
         command.reason = normalize_recovery_reason(command.reason)?;
 

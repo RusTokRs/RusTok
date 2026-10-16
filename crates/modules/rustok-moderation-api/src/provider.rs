@@ -83,6 +83,20 @@ impl ModerationSubjectAdapterBuildError {
     }
 }
 
+impl From<ModerationSubjectAdapterBuildError> for rustok_core::Error {
+    fn from(err: ModerationSubjectAdapterBuildError) -> Self {
+        match err {
+            ModerationSubjectAdapterBuildError::InvalidConfiguration => {
+                Self::Validation(err.to_string())
+            }
+            ModerationSubjectAdapterBuildError::CapabilityUnavailable { .. }
+            | ModerationSubjectAdapterBuildError::Internal { .. } => {
+                Self::Internal(err.to_string())
+            }
+        }
+    }
+}
+
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
 pub enum ModerationSubjectAdapterRegistryError {
     #[error("moderation subject adapter module is invalid")]
@@ -106,6 +120,20 @@ pub enum ModerationSubjectAdapterRegistryError {
         kind: &'static str,
         error: ModerationSubjectAdapterBuildError,
     },
+}
+
+impl From<ModerationSubjectAdapterRegistryError> for rustok_core::Error {
+    fn from(err: ModerationSubjectAdapterRegistryError) -> Self {
+        match err {
+            ModerationSubjectAdapterRegistryError::InvalidModule
+            | ModerationSubjectAdapterRegistryError::DuplicateAdapter { .. }
+            | ModerationSubjectAdapterRegistryError::DuplicateFactory { .. }
+            | ModerationSubjectAdapterRegistryError::FactoryKeyMismatch { .. } => {
+                Self::Validation(err.to_string())
+            }
+            ModerationSubjectAdapterRegistryError::FactoryBuild { error, .. } => error.into(),
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -262,4 +290,31 @@ pub fn moderation_subject_adapter_registry_from_extensions(
     extensions
         .get::<Arc<ModerationSubjectAdapterRegistry>>()
         .cloned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_conversions_to_core_error() {
+        let err1: rustok_core::Error =
+            ModerationSubjectAdapterBuildError::InvalidConfiguration.into();
+        assert!(matches!(err1, rustok_core::Error::Validation(_)));
+
+        let err2: rustok_core::Error =
+            ModerationSubjectAdapterBuildError::Internal { retryable: false }.into();
+        assert!(matches!(err2, rustok_core::Error::Internal(_)));
+
+        let err3: rustok_core::Error = ModerationSubjectAdapterRegistryError::InvalidModule.into();
+        assert!(matches!(err3, rustok_core::Error::Validation(_)));
+
+        let err4: rustok_core::Error = ModerationSubjectAdapterRegistryError::FactoryBuild {
+            module: "forum".into(),
+            kind: "topic",
+            error: ModerationSubjectAdapterBuildError::Internal { retryable: true },
+        }
+        .into();
+        assert!(matches!(err4, rustok_core::Error::Internal(_)));
+    }
 }

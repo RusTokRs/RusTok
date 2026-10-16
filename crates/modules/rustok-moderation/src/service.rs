@@ -49,6 +49,9 @@ impl ModerationService {
         tenant_id: Uuid,
         report_id: Uuid,
     ) -> ModerationResult<Option<ModerationReportRecord>> {
+        if tenant_id.is_nil() || report_id.is_nil() {
+            return Ok(None);
+        }
         moderation_report::Entity::find_by_id(report_id)
             .filter(moderation_report::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -62,6 +65,9 @@ impl ModerationService {
         tenant_id: Uuid,
         case_id: Uuid,
     ) -> ModerationResult<Option<ModerationCaseRecord>> {
+        if tenant_id.is_nil() || case_id.is_nil() {
+            return Ok(None);
+        }
         moderation_case::Entity::find_by_id(case_id)
             .filter(moderation_case::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -75,6 +81,9 @@ impl ModerationService {
         tenant_id: Uuid,
         decision_id: Uuid,
     ) -> ModerationResult<Option<ModerationDecisionRecord>> {
+        if tenant_id.is_nil() || decision_id.is_nil() {
+            return Ok(None);
+        }
         let Some(decision) = moderation_decision::Entity::find_by_id(decision_id)
             .filter(moderation_decision::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -96,10 +105,16 @@ impl ModerationService {
         tenant_id: Uuid,
         filter: ModerationQueueFilter,
     ) -> ModerationResult<Vec<ModerationCaseRecord>> {
+        if tenant_id.is_nil() {
+            return Ok(Vec::new());
+        }
         if filter.cursor.is_some() {
             return Err(ModerationError::Validation(
                 "moderation queue cursors are not supported by this owner slice".to_string(),
             ));
+        }
+        if filter.assigned_moderator_id == Some(Uuid::nil()) {
+            return Ok(Vec::new());
         }
         let mut query =
             moderation_case::Entity::find().filter(moderation_case::Column::TenantId.eq(tenant_id));
@@ -135,6 +150,11 @@ pub(crate) fn normalize_report_command(
 ) -> ModerationResult<SubmitModerationReportCommand> {
     validate_scope(&command.scope)?;
     command.subject = normalize_subject(command.subject)?;
+    if command.reporter_id == Some(Uuid::nil()) {
+        return Err(ModerationError::Validation(
+            "reporter_id must not be nil".to_string(),
+        ));
+    }
     command.description_reference = normalize_optional_text(
         command.description_reference,
         "description_reference",
@@ -149,6 +169,11 @@ pub(crate) fn normalize_case_command(
 ) -> ModerationResult<OpenModerationCaseCommand> {
     validate_scope(&command.scope)?;
     command.subject = normalize_subject(command.subject)?;
+    if command.policy_id == Some(Uuid::nil()) {
+        return Err(ModerationError::Validation(
+            "policy_id must not be nil".to_string(),
+        ));
+    }
     command.queue_key = normalize_identifier(command.queue_key, "queue_key", MAX_QUEUE_KEY_BYTES)?;
     if command.policy_version < 1 {
         return Err(ModerationError::Validation(
@@ -162,6 +187,11 @@ pub(crate) fn normalize_case_command(
         return Err(ModerationError::Validation(format!(
             "report_ids must contain 1 to {MAX_REPORTS_PER_CASE} unique reports"
         )));
+    }
+    if command.report_ids.iter().any(|id| id.is_nil()) {
+        return Err(ModerationError::Validation(
+            "report_ids must not contain nil UUIDs".to_string(),
+        ));
     }
     Ok(command)
 }
@@ -204,19 +234,31 @@ pub(crate) fn validate_reporter(
 }
 
 pub(crate) fn actor_uuid(context: &PortContext) -> ModerationResult<Uuid> {
-    Uuid::parse_str(context.actor.id.trim()).map_err(|_| {
+    let id = Uuid::parse_str(context.actor.id.trim()).map_err(|_| {
         ModerationError::Validation(
             "PortContext.actor.id must be a UUID for this moderation command".to_string(),
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(ModerationError::Validation(
+            "PortContext.actor.id must not be nil".to_string(),
+        ));
+    }
+    Ok(id)
 }
 
 pub(crate) fn parse_tenant_id(context: &PortContext) -> ModerationResult<Uuid> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+    let id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
         ModerationError::Validation(
             "PortContext.tenant_id must be a UUID for moderation ports".to_string(),
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(ModerationError::Validation(
+            "PortContext.tenant_id must not be nil".to_string(),
+        ));
+    }
+    Ok(id)
 }
 
 pub(crate) fn validate_policy_snapshot(value: Value) -> ModerationResult<Value> {
@@ -251,6 +293,11 @@ pub(crate) async fn append_event(
     event_type: &str,
     payload: Value,
 ) -> ModerationResult<()> {
+    if tenant_id.is_nil() || aggregate_id.is_nil() {
+        return Err(ModerationError::Validation(
+            "tenant_id and aggregate_id must not be nil for events".to_string(),
+        ));
+    }
     let now = Utc::now();
     moderation_event::ActiveModel {
         id: Set(generate_id()),
@@ -275,6 +322,9 @@ pub(crate) async fn find_case<C>(
 where
     C: ConnectionTrait,
 {
+    if tenant_id.is_nil() || case_id.is_nil() {
+        return Err(ModerationError::CaseNotFound(case_id));
+    }
     moderation_case::Entity::find_by_id(case_id)
         .filter(moderation_case::Column::TenantId.eq(tenant_id))
         .one(connection)
@@ -290,6 +340,9 @@ pub(crate) async fn find_active_case_by_key<C>(
 where
     C: ConnectionTrait,
 {
+    if tenant_id.is_nil() {
+        return Ok(None);
+    }
     moderation_case::Entity::find()
         .filter(moderation_case::Column::TenantId.eq(tenant_id))
         .filter(moderation_case::Column::ActiveDeduplicationKey.eq(key))
@@ -431,6 +484,11 @@ fn parse_stored_effect(
 }
 
 fn normalize_subject(mut subject: ModerationSubjectRef) -> ModerationResult<ModerationSubjectRef> {
+    if subject.id.is_nil() {
+        return Err(ModerationError::Validation(
+            "subject.id must not be nil".to_string(),
+        ));
+    }
     subject.module = normalize_identifier(subject.module, "subject.module", MAX_MODULE_BYTES)?;
     if subject.revision < 0 {
         return Err(ModerationError::Validation(
@@ -446,7 +504,10 @@ fn validate_scope(scope: &ModerationScopeRef) -> ModerationResult<()> {
         (ModerationScopeKind::Platform, Some(_)) => Err(ModerationError::Validation(
             "platform moderation scope must not provide an id".to_string(),
         )),
-        (_, Some(_)) => Ok(()),
+        (_, Some(id)) if !id.is_nil() => Ok(()),
+        (_, Some(_)) => Err(ModerationError::Validation(
+            "moderation scope id must not be nil".to_string(),
+        )),
         (_, None) => Err(ModerationError::Validation(
             "non-platform moderation scope requires an id".to_string(),
         )),
@@ -548,13 +609,37 @@ mod tests {
     }
 
     #[test]
+    fn non_platform_scope_rejects_nil_id() {
+        assert!(
+            validate_scope(&ModerationScopeRef {
+                kind: ModerationScopeKind::Group,
+                id: Some(Uuid::nil()),
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn subject_rejects_nil_id() {
+        assert!(
+            normalize_subject(ModerationSubjectRef {
+                module: "forum".to_string(),
+                kind: ModerationSubjectKind::ForumPost,
+                id: Uuid::nil(),
+                revision: 1,
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
     fn active_case_key_changes_with_source_revision() {
         let base = OpenModerationCaseCommand {
             scope: ModerationScopeRef::platform(),
             subject: ModerationSubjectRef {
                 module: "forum".to_string(),
                 kind: ModerationSubjectKind::ForumPost,
-                id: Uuid::nil(),
+                id: Uuid::new_v4(),
                 revision: 1,
             },
             queue_key: "content".to_string(),

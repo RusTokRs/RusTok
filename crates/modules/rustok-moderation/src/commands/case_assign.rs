@@ -25,6 +25,16 @@ impl ModerationService {
             .require_write_semantics()
             .map_err(|error| ModerationError::Validation(error.message))?;
         let tenant_id = parse_tenant_id(&context)?;
+        if command.case_id.is_nil() {
+            return Err(ModerationError::Validation(
+                "case_id must not be nil".to_string(),
+            ));
+        }
+        if command.moderator_id.is_nil() {
+            return Err(ModerationError::Validation(
+                "moderator_id must not be nil".to_string(),
+            ));
+        }
         if command.expected_revision < 1 {
             return Err(ModerationError::Validation(
                 "expected_revision must be at least 1".to_string(),

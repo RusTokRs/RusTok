@@ -97,6 +97,13 @@ pub enum ModerationScopeClaimError {
     InvalidClaim,
 }
 
+#[cfg(feature = "server")]
+impl From<ModerationScopeClaimError> for rustok_core::Error {
+    fn from(err: ModerationScopeClaimError) -> Self {
+        Self::Validation(err.to_string())
+    }
+}
+
 pub fn moderation_scope_claim(
     scope: &ModerationScopeRef,
 ) -> Result<String, ModerationScopeClaimError> {
@@ -391,6 +398,13 @@ pub enum ModerationEffectValidationError {
     DuplicateCapability,
     #[error("moderation capabilities are not in canonical order")]
     CapabilitiesNotCanonical,
+}
+
+#[cfg(feature = "server")]
+impl From<ModerationEffectValidationError> for rustok_core::Error {
+    fn from(err: ModerationEffectValidationError) -> Self {
+        Self::Validation(err.to_string())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

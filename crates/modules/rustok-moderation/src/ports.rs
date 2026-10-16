@@ -167,6 +167,9 @@ impl ModerationReadPort for ModerationService {
         report_id: Uuid,
     ) -> Result<Option<ModerationReportRecord>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if report_id.is_nil() {
+            return Ok(None);
+        }
         self.get_report(
             parse_tenant_id(&context).map_err(map_owner_error)?,
             report_id,
@@ -181,6 +184,9 @@ impl ModerationReadPort for ModerationService {
         case_id: Uuid,
     ) -> Result<Option<ModerationCaseRecord>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if case_id.is_nil() {
+            return Ok(None);
+        }
         self.get_case(parse_tenant_id(&context).map_err(map_owner_error)?, case_id)
             .await
             .map_err(map_owner_error)
@@ -192,6 +198,9 @@ impl ModerationReadPort for ModerationService {
         decision_id: Uuid,
     ) -> Result<Option<ModerationDecisionRecord>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if decision_id.is_nil() {
+            return Ok(None);
+        }
         self.get_decision(
             parse_tenant_id(&context).map_err(map_owner_error)?,
             decision_id,

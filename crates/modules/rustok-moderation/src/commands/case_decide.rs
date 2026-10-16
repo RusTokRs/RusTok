@@ -33,6 +33,11 @@ impl ModerationService {
             .map_err(|error| ModerationError::Validation(error.message))?;
         let tenant_id = parse_tenant_id(&context)?;
         let decided_by = actor_uuid(&context)?;
+        if command.case_id.is_nil() {
+            return Err(ModerationError::Validation(
+                "case_id must not be nil".to_string(),
+            ));
+        }
         if command.expected_revision < 1 {
             return Err(ModerationError::Validation(
                 "expected_revision must be at least 1".to_string(),
