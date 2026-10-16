@@ -313,21 +313,20 @@ pub fn extract_page_plain_text(
         return String::new();
     };
 
-    if format == "fly_artifact_payload" {
-        if let Ok(val) = serde_json::from_str::<Value>(content)
-            && let Some(html) = val.get("html").and_then(Value::as_str)
-        {
-            return strip_html_tags(html);
-        }
+    if format == "fly_artifact_payload"
+        && let Ok(val) = serde_json::from_str::<Value>(content)
+        && let Some(html) = val.get("html").and_then(Value::as_str)
+    {
+        return strip_html_tags(html);
     }
 
-    if format == "page_builder" || format == "grapesjs" {
-        if let Ok(val) = serde_json::from_str::<Value>(content) {
-            let mut strings = Vec::new();
-            collect_text_from_json(&val, &mut strings, 0);
-            if !strings.is_empty() {
-                return strings.join(" ");
-            }
+    if (format == "page_builder" || format == "grapesjs")
+        && let Ok(val) = serde_json::from_str::<Value>(content)
+    {
+        let mut strings = Vec::new();
+        collect_text_from_json(&val, &mut strings, 0);
+        if !strings.is_empty() {
+            return strings.join(" ");
         }
     }
 

@@ -483,9 +483,10 @@ fn walk_opaque_value(
         return;
     };
 
-    if let Some(component_type) = object.get("type").and_then(Value::as_str) {
-        if component_type == "page_content_slot" {
-            *slot_count += 1;
+    if let Some(component_type) = object.get("type").and_then(Value::as_str)
+        && component_type == "page_content_slot"
+    {
+        *slot_count += 1;
             if document_kind != crate::DocumentKind::LayoutTemplate {
                 report.diagnostics.push(diagnostic(
                     ValidationSeverity::Error,
@@ -505,7 +506,6 @@ fn walk_opaque_value(
                 ));
             }
         }
-    }
 
     if let Some(id) = object.get("id").and_then(Value::as_str) {
         if !ids.insert(id.to_string()) {
@@ -573,27 +573,24 @@ fn validate_components(
         );
     }
 
-    match document_kind {
-        crate::DocumentKind::LayoutTemplate => {
-            if slot_count == 0 {
-                report.diagnostics.push(diagnostic(
-                    ValidationSeverity::Error,
-                    "layout_template_missing_content_slot",
-                    "project",
-                    "layout template must contain exactly one page_content_slot",
-                ));
-            } else if slot_count > 1 {
-                report.diagnostics.push(diagnostic(
-                    ValidationSeverity::Error,
-                    "layout_template_multiple_content_slots",
-                    "project",
-                    format!(
-                        "layout template cannot contain more than one page_content_slot, found {slot_count}"
-                    ),
-                ));
-            }
+    if document_kind == crate::DocumentKind::LayoutTemplate {
+        if slot_count == 0 {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "layout_template_missing_content_slot",
+                "project",
+                "layout template must contain exactly one page_content_slot",
+            ));
+        } else if slot_count > 1 {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "layout_template_multiple_content_slots",
+                "project",
+                format!(
+                    "layout template cannot contain more than one page_content_slot, found {slot_count}"
+                ),
+            ));
         }
-        _ => {}
     }
 }
 

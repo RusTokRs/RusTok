@@ -988,7 +988,7 @@
       "path": "crates/modules/rustok-pages",
       "category": "modules",
       "files": 191,
-      "loc": 54667,
+      "loc": 54666,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1478,7 +1478,7 @@
       "path": "crates/ui/fly",
       "category": "ui",
       "files": 111,
-      "loc": 42930,
+      "loc": 42927,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2418,7 +2418,7 @@
       "path": "crates/utils/rustok-starter",
       "category": "utils",
       "files": 11,
-      "loc": 1273,
+      "loc": 1271,
       "completed": false,
       "completed_at": null,
       "notes": ""
