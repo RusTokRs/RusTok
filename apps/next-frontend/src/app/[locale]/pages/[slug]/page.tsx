@@ -9,6 +9,7 @@
  */
 
 import type { Metadata } from "next";
+import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
 import {
   getStorefrontTenantId,
@@ -20,6 +21,7 @@ import {
   fetchPublishedPage,
   fetchPageArtifact,
   PageBuilderContent,
+  DraftPreviewBanner,
 } from "@rustok/pages-frontend";
 
 interface StorefrontPageProps {
@@ -65,6 +67,8 @@ export default async function StorefrontCustomPage({
   const { locale, slug } = await params;
   const tenantSlug = getStorefrontTenantSlug();
   const tenantId = getStorefrontTenantId();
+  const draft = await draftMode();
+  const isDraft = draft.isEnabled;
 
   let page = null;
   try {
@@ -80,7 +84,11 @@ export default async function StorefrontCustomPage({
 
   let artifact = { html: "", css: "" };
   try {
-    artifact = await fetchPageArtifact(page.body.content, page.body.format);
+    artifact = await fetchPageArtifact(page.body.content, page.body.format, {
+      slug,
+      revalidate: isDraft ? false : 60,
+      cache: isDraft ? "no-store" : undefined,
+    });
   } catch (error) {
     console.error(`[StorefrontPage] Failed to fetch artifact for "${slug}":`, error);
     notFound();
@@ -88,6 +96,7 @@ export default async function StorefrontCustomPage({
 
   return (
     <main className="rustok-page-wrapper min-h-screen">
+      {isDraft && <DraftPreviewBanner slug={slug} locale={locale} />}
       <PageBuilderContent html={artifact.html} css={artifact.css} />
     </main>
   );

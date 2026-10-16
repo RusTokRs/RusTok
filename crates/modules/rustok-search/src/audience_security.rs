@@ -17,14 +17,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::storefront_category_scope::StorefrontSearchTransport;
-#[allow(deprecated)]
-use crate::storefront_result_eligibility::{
-    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
-    StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
-};
 
 pub const MAX_SEARCH_AUDIENCE_CANDIDATES: usize = 100;
-
 /// Neutral candidate descriptor representing one document returned by search engine.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SearchCandidateDescriptor {
@@ -111,6 +105,18 @@ impl SearchAudienceRegistry {
         Ok(())
     }
 
+    pub fn register_shared(&mut self, policy: SharedSearchAudiencePolicyPort) -> Result<(), PortError> {
+        let source_module = normalize_source_module(policy.source_module())?;
+        if self.policies.contains_key(&source_module) {
+            return Err(PortError::validation(
+                "search.audience_registry.duplicate_source_module",
+                format!("Search audience policy `{source_module}` is already registered"),
+            ));
+        }
+        self.policies.insert(source_module, policy);
+        Ok(())
+    }
+
     pub fn with_policy<P>(mut self, policy: P) -> Self
     where
         P: SearchAudiencePolicyPort + 'static,
@@ -137,6 +143,7 @@ impl SearchAudienceRegistry {
     pub fn len(&self) -> usize {
         self.policies.len()
     }
+
     pub async fn public_discovery_allowed(
         &self,
         source_module: &str,
@@ -147,64 +154,6 @@ impl SearchAudienceRegistry {
         } else {
             Ok(true)
         }
-    }
-}
-
-/// Backward-compatibility adapter that adapts the legacy `StorefrontSearchResultEligibilityPort`
-/// into the generic `SearchAudiencePolicyPort`.
-#[allow(deprecated)]
-pub struct LegacyForumAudienceAdapter {
-    port: Arc<dyn StorefrontSearchResultEligibilityPort>,
-}
-
-#[allow(deprecated)]
-impl LegacyForumAudienceAdapter {
-    pub fn new(port: Arc<dyn StorefrontSearchResultEligibilityPort>) -> Self {
-        Self { port }
-    }
-}
-
-#[allow(deprecated)]
-#[async_trait]
-impl SearchAudiencePolicyPort for LegacyForumAudienceAdapter {
-    fn source_module(&self) -> &'static str {
-        "forum"
-    }
-
-    async fn public_discovery_allowed(&self, tenant_id: Uuid) -> Result<bool, PortError> {
-        self.port.public_forum_discovery_allowed(tenant_id).await
-    }
-
-    async fn filter_eligible_candidates(
-        &self,
-        request: SearchAudienceRequest,
-    ) -> Result<Vec<Uuid>, PortError> {
-        let forum_candidates = request
-            .candidates
-            .into_iter()
-            .filter_map(|candidate| {
-                let kind =
-                    StorefrontSearchResultCandidateKind::from_entity_type(&candidate.entity_type)?;
-                Some(StorefrontSearchResultCandidate {
-                    document_id: candidate.document_id,
-                    kind,
-                })
-            })
-            .collect();
-
-        let allowed = self
-            .port
-            .filter_forum_result_candidates(StorefrontSearchResultEligibilityRequest {
-                tenant_id: request.tenant_id,
-                locale: request.locale,
-                candidates: forum_candidates,
-                auth: request.auth,
-                request_context: request.request_context,
-                transport: request.transport,
-            })
-            .await?;
-
-        Ok(allowed.into_iter().map(|item| item.document_id).collect())
     }
 }
 
@@ -428,43 +377,44 @@ mod tests {
         assert!(result.is_err());
     }
 
-    struct MockLegacyForumPort {
+    struct MockDirectForumPolicy {
         allowed_topic_id: Uuid,
     }
 
     #[async_trait]
-    impl StorefrontSearchResultEligibilityPort for MockLegacyForumPort {
-        async fn public_forum_discovery_allowed(
-            &self,
-            _tenant_id: Uuid,
-        ) -> Result<bool, PortError> {
+    impl SearchAudiencePolicyPort for MockDirectForumPolicy {
+        fn source_module(&self) -> &'static str {
+            "forum"
+        }
+
+        async fn public_discovery_allowed(&self, _tenant_id: Uuid) -> Result<bool, PortError> {
             Ok(true)
         }
 
-        async fn filter_forum_result_candidates(
+        async fn filter_eligible_candidates(
             &self,
-            request: StorefrontSearchResultEligibilityRequest,
-        ) -> Result<Vec<StorefrontSearchResultCandidate>, PortError> {
+            request: SearchAudienceRequest,
+        ) -> Result<Vec<Uuid>, PortError> {
             Ok(request
                 .candidates
                 .into_iter()
                 .filter(|c| c.document_id == self.allowed_topic_id)
+                .map(|c| c.document_id)
                 .collect())
         }
     }
 
     #[tokio::test]
-    async fn legacy_forum_adapter_bridges_contracts() {
+    async fn direct_forum_policy_registration_and_evaluation() {
         let allowed_topic = Uuid::new_v4();
         let denied_topic = Uuid::new_v4();
 
-        let legacy_port = Arc::new(MockLegacyForumPort {
+        let policy: SharedSearchAudiencePolicyPort = Arc::new(MockDirectForumPolicy {
             allowed_topic_id: allowed_topic,
         });
-        let adapter = LegacyForumAudienceAdapter::new(legacy_port);
 
         let mut registry = SearchAudienceRegistry::new();
-        registry.register(adapter).unwrap();
+        registry.register_shared(policy).unwrap();
 
         assert!(
             registry

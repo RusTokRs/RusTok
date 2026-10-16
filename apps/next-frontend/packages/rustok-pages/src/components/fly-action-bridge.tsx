@@ -57,6 +57,12 @@ export function FlyActionBridge() {
             }
           });
         }
+      } else if (eventName === "cart:open" || eventName === "open_cart") {
+        cart.openCart();
+      } else if (eventName === "cart:close" || eventName === "close_cart") {
+        cart.closeCart();
+      } else if (eventName === "cart:toggle" || eventName === "toggle_cart") {
+        cart.toggleCart();
       } else if (eventName === "navigate") {
         const href = (data.href || data.url) as string | undefined;
         if (href && typeof href === "string") {
@@ -65,10 +71,24 @@ export function FlyActionBridge() {
       }
     };
 
-    // 3. Progressive enhancement: intercept internal <a> clicks for client-side navigation
+    // 3. Sync cart count islands with live cart state
+    const counters = document.querySelectorAll("[data-fly-island='cart_count']");
+    for (const counter of counters) {
+      counter.textContent = String(cart.itemCount);
+    }
+
+    // 4. Progressive enhancement: intercept internal <a> clicks for client-side navigation
     const handleLinkClick = (e: MouseEvent) => {
       const target = e.target as Element | null;
-      if (!target) return;
+      if (!target || typeof target.closest !== "function") return;
+
+      // Handle cart trigger islands
+      if (target.closest("[data-fly-island='cart_trigger']")) {
+        e.preventDefault();
+        cart.toggleCart();
+        return;
+      }
+
       const anchor = target.closest("a");
       if (!anchor) return;
 
@@ -83,6 +103,16 @@ export function FlyActionBridge() {
 
       const href = anchor.getAttribute("href");
       if (!href) return;
+
+      // Intercept in-page hash links for smooth scrolling
+      if (href.startsWith("#")) {
+        const el = document.querySelector(href);
+        if (el) {
+          e.preventDefault();
+          el.scrollIntoView({ behavior: "smooth" });
+        }
+        return;
+      }
 
       // Only intercept same-origin relative URLs
       if (href.startsWith("/") && !href.startsWith("//")) {

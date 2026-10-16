@@ -10,7 +10,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseArtifactHtml } from "./api/artifact.ts";
+import { parseArtifactHtml, pageCacheTags } from "./api/artifact.ts";
+import { scopeLandingCss } from "./components/css-scope.ts";
 
 test("parseArtifactHtml separates style and body tags correctly", () => {
   const sampleDocument = `<!doctype html>
@@ -70,4 +71,38 @@ test("parseArtifactHtml handles multiple style blocks across document", () => {
   assert.ok(parsed.css.includes(".second { color: green; }"));
   assert.ok(parsed.html.includes('<div class="first second">Content</div>'));
 });
+
+test("scopeLandingCss wraps and remaps root body/html selectors to :scope", () => {
+  const raw = `body { margin: 0; background: #fff; }
+html, body { height: 100%; }
+.hero { color: red; }
+tbody { display: table-row-group; }
+.some-body { color: blue; }`;
+
+  const scoped = scopeLandingCss(raw, ".fly-page-container");
+
+  assert.ok(scoped.startsWith("@scope (.fly-page-container) {"));
+  assert.ok(scoped.includes(":scope {\n    isolation: isolate;"));
+  assert.ok(scoped.includes(":scope { margin: 0; background: #fff; }"));
+  assert.ok(scoped.includes(":scope, :scope { height: 100%; }"));
+  assert.ok(scoped.includes(".hero { color: red; }"));
+  // Ensure tbody and .some-body are NOT accidentally remapped
+  assert.ok(scoped.includes("tbody { display: table-row-group; }"));
+  assert.ok(scoped.includes(".some-body { color: blue; }"));
+});
+
+test("scopeLandingCss handles empty inputs and already scoped CSS gracefully", () => {
+  assert.equal(scopeLandingCss(""), "");
+  assert.equal(scopeLandingCss("   "), "");
+
+  const alreadyScoped = "@scope (.test) { :scope { color: green; } }";
+  assert.equal(scopeLandingCss(alreadyScoped, ".other"), alreadyScoped);
+});
+
+test("pageCacheTags generates canonical cache tags for ISR", () => {
+  assert.deepEqual(pageCacheTags("about-us"), ["page-about-us", "pages"]);
+  assert.deepEqual(pageCacheTags(""), ["pages"]);
+  assert.deepEqual(pageCacheTags(), ["pages"]);
+});
+
 

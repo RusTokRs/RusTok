@@ -34,3 +34,11 @@ export function parseArtifactHtml(documentHtml: string): ArtifactContent {
     html: bodyMatch ? bodyMatch[1].trim() : documentHtml,
   };
 }
+
+/**
+ * Generates canonical cache tags for page ISR invalidation.
+ */
+export function pageCacheTags(slug?: string): string[] {
+  return slug && slug.trim().length > 0 ? [`page-${slug.trim()}`, "pages"] : ["pages"];
+}
+

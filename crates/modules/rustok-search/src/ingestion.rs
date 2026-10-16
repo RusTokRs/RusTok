@@ -25,6 +25,7 @@ const FORUM_INBOX_OPPORTUNISTIC_BATCH: usize = 8;
 pub struct SearchIngestionHandler {
     projector: SearchProjector,
     blog_projector: BlogSearchProjector,
+    blog_source: Option<Arc<dyn SearchProjectionSource>>,
     forum_projector: Option<ForumSearchProjector>,
     forum_inbox: Option<ForumProjectionInbox>,
 }
@@ -38,6 +39,14 @@ impl SearchIngestionHandler {
         db: DatabaseConnection,
         forum_source: Option<Arc<dyn SearchProjectionSource>>,
     ) -> Self {
+        Self::with_projection_sources(db, None, forum_source)
+    }
+
+    pub fn with_projection_sources(
+        db: DatabaseConnection,
+        blog_source: Option<Arc<dyn SearchProjectionSource>>,
+        forum_source: Option<Arc<dyn SearchProjectionSource>>,
+    ) -> Self {
         let forum_projector =
             forum_source.map(|source| ForumSearchProjector::new(db.clone(), source));
         let forum_inbox = forum_projector
@@ -46,9 +55,14 @@ impl SearchIngestionHandler {
         Self {
             projector: SearchProjector::new(db.clone()),
             blog_projector: BlogSearchProjector::new(db),
+            blog_source,
             forum_projector,
             forum_inbox,
         }
+    }
+
+    pub fn blog_source(&self) -> Option<&Arc<dyn SearchProjectionSource>> {
+        self.blog_source.as_ref()
     }
 
     async fn rebuild_tenant(&self, tenant_id: Uuid) -> HandlerResult {

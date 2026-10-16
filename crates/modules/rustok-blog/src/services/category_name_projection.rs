@@ -8,13 +8,19 @@ use crate::error::{BlogError, BlogResult};
 
 const BLOG_TAXONOMY_SCOPE: &str = "blog";
 
-pub(in crate::services) async fn load_category_names_map(
+#[derive(Clone, Debug)]
+pub(crate) struct BlogCategoryProjectionInfo {
+    pub name: String,
+    pub slug: String,
+}
+
+pub(crate) async fn load_category_projections_map(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     category_ids: &[Uuid],
     locale: &str,
     fallback_locale: Option<&str>,
-) -> BlogResult<HashMap<Uuid, String>> {
+) -> BlogResult<HashMap<Uuid, BlogCategoryProjectionInfo>> {
     if category_ids.is_empty() {
         return Ok(HashMap::new());
     }
@@ -66,7 +72,34 @@ pub(in crate::services) async fn load_category_names_map(
                     "Blog category {category_id} Taxonomy projection is missing"
                 ))
             })?;
-            Ok((category_id, canonical.name.clone()))
+            Ok((
+                category_id,
+                BlogCategoryProjectionInfo {
+                    name: canonical.name.clone(),
+                    slug: canonical.slug.clone(),
+                },
+            ))
         })
         .collect()
+}
+
+pub(crate) async fn load_category_names_map(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    category_ids: &[Uuid],
+    locale: &str,
+    fallback_locale: Option<&str>,
+) -> BlogResult<HashMap<Uuid, String>> {
+    let projections = load_category_projections_map(
+        db,
+        tenant_id,
+        category_ids,
+        locale,
+        fallback_locale,
+    )
+    .await?;
+    Ok(projections
+        .into_iter()
+        .map(|(id, info)| (id, info.name))
+        .collect())
 }

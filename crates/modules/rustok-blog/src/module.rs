@@ -89,6 +89,15 @@ impl RusToKModule for BlogModule {
                     "blog Taxonomy translation owner registration failed: {error}"
                 ))
             })?;
+        rustok_core::search_projection::register_search_projection_source(
+            extensions,
+            crate::search_projection::BlogSearchProjectionSourceFactory,
+        )
+        .map_err(|error| {
+            rustok_core::Error::Internal(format!(
+                "blog search projection source registration failed: {error}"
+            ))
+        })?;
         #[cfg(feature = "runtime")]
         {
             let registrations = extensions

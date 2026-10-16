@@ -16,7 +16,10 @@ pub mod error;
 pub mod graphql;
 pub mod migrations;
 pub mod ports;
+pub mod search_projection;
 pub mod services;
+
+pub use search_projection::{BlogSearchProjectionSource, BlogSearchProjectionSourceFactory};
 
 pub use controllers::openapi;
 pub use domain::{richtext, state_machine};

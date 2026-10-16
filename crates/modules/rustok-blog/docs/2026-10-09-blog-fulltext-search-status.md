@@ -85,6 +85,17 @@ via `canonical_search_result_url()` in `rustok-search::engine`.
 - ✅ Published-only filtering
 - ✅ Ranking with configurable profiles
 - ✅ Faceted search (by category, tags, channels)
+- ✅ Owner-side `SearchProjectionSource` SPI: `BlogSearchProjectionSourceFactory` registered in `BlogModule::register_runtime_extensions` providing domain-owned `SearchProjectionDocument` emission, decoupled from search internals.
+
+## Projection Architecture Evolution
+
+1. **Owner SPI (`rustok-blog::search_projection`):**
+   - Implements `SearchProjectionSourceFactory` and `SearchProjectionSource`.
+   - `list_public_documents()` uses keyset cursor pagination (`PublishedPostCursor`), taxonomy category projection (`TaxonomyOwnerCategoryReader`), canonical tags (`blog_post_tags` + taxonomy dictionary), and profile summary resolution.
+   - Decoupled from `rustok-search` database schemas; registered in module runtime extensions.
+2. **Ingestion Runner (`rustok-search`):**
+   - `SearchIngestionHandler::with_projection_sources` accepts both `blog_source` and `forum_source`.
+   - `BlogSearchProjector` retained as backward-compatible fallback and schema validation harness.
 
 ## What Could Be Improved (Follow-up)
 

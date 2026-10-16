@@ -134,7 +134,7 @@ pub async fn resolve_storefront_search_result_candidates(
         .map(|c| (c.document_id, *c))
         .collect();
 
-    let adapter = crate::audience_security::LegacyForumAudienceAdapter::new(port);
+    let adapter = StorefrontEligibilityAudiencePolicyAdapter { port };
     let mut registry = crate::audience_security::SearchAudienceRegistry::new();
     registry.register(adapter).map_err(|e| {
         PortError::invariant_violation(
@@ -203,6 +203,53 @@ pub async fn resolve_storefront_search_result_candidates(
         }
     }
     Ok(allowed)
+}
+
+struct StorefrontEligibilityAudiencePolicyAdapter {
+    port: SharedStorefrontSearchResultEligibilityPort,
+}
+
+#[allow(deprecated)]
+#[async_trait]
+impl crate::audience_security::SearchAudiencePolicyPort for StorefrontEligibilityAudiencePolicyAdapter {
+    fn source_module(&self) -> &'static str {
+        crate::storefront_category_scope::FORUM_SEARCH_SOURCE_MODULE
+    }
+
+    async fn public_discovery_allowed(&self, tenant_id: Uuid) -> Result<bool, PortError> {
+        self.port.public_forum_discovery_allowed(tenant_id).await
+    }
+
+    async fn filter_eligible_candidates(
+        &self,
+        request: crate::audience_security::SearchAudienceRequest,
+    ) -> Result<Vec<Uuid>, PortError> {
+        let forum_candidates = request
+            .candidates
+            .into_iter()
+            .filter_map(|candidate| {
+                let kind = StorefrontSearchResultCandidateKind::from_entity_type(&candidate.entity_type)?;
+                Some(StorefrontSearchResultCandidate {
+                    document_id: candidate.document_id,
+                    kind,
+                })
+            })
+            .collect();
+
+        let allowed = self
+            .port
+            .filter_forum_result_candidates(StorefrontSearchResultEligibilityRequest {
+                tenant_id: request.tenant_id,
+                locale: request.locale,
+                candidates: forum_candidates,
+                auth: request.auth,
+                request_context: request.request_context,
+                transport: request.transport,
+            })
+            .await?;
+
+        Ok(allowed.into_iter().map(|item| item.document_id).collect())
+    }
 }
 
 #[cfg(test)]

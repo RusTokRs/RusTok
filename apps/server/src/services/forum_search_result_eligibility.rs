@@ -7,13 +7,14 @@ use rustok_forum::{
     SharedForumAudienceFactsPort, category_read_audience_port_context,
 };
 use rustok_search::{
-    FORUM_SEARCH_SOURCE_MODULE, SharedStorefrontSearchResultEligibilityPort,
-    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
-    StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
-    StorefrontSearchTransport,
+    FORUM_SEARCH_SOURCE_MODULE, SearchAudiencePolicyPort, SearchAudienceRequest,
+    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchResultCandidate,
+    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityPort,
+    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
 };
 use sea_orm::DatabaseConnection;
 
+#[derive(Clone)]
 pub(crate) struct ServerForumSearchResultEligibilityPort {
     db: DatabaseConnection,
     audience_facts: Option<SharedForumAudienceFactsPort>,
@@ -21,12 +22,20 @@ pub(crate) struct ServerForumSearchResultEligibilityPort {
 }
 
 impl ServerForumSearchResultEligibilityPort {
+    pub(crate) fn new(
+        db: DatabaseConnection,
+        audience_facts: Option<SharedForumAudienceFactsPort>,
+        settings_reader: Option<SharedStaticModuleSettingsReader>,
+    ) -> Self {
+        Self { db, audience_facts, settings_reader }
+    }
+
     pub(crate) fn shared(
         db: DatabaseConnection,
         audience_facts: Option<SharedForumAudienceFactsPort>,
         settings_reader: Option<SharedStaticModuleSettingsReader>,
     ) -> SharedStorefrontSearchResultEligibilityPort {
-        std::sync::Arc::new(Self { db, audience_facts, settings_reader })
+        std::sync::Arc::new(Self::new(db, audience_facts, settings_reader))
     }
 
     fn service(&self) -> ForumSearchResultEligibilityService {
@@ -45,6 +54,48 @@ impl ServerForumSearchResultEligibilityPort {
     }
 }
 
+#[async_trait]
+impl SearchAudiencePolicyPort for ServerForumSearchResultEligibilityPort {
+    fn source_module(&self) -> &'static str {
+        FORUM_SEARCH_SOURCE_MODULE
+    }
+
+    async fn public_discovery_allowed(&self, tenant_id: uuid::Uuid) -> Result<bool, PortError> {
+        StorefrontSearchResultEligibilityPort::public_forum_discovery_allowed(self, tenant_id).await
+    }
+
+    async fn filter_eligible_candidates(
+        &self,
+        request: SearchAudienceRequest,
+    ) -> Result<Vec<uuid::Uuid>, PortError> {
+        let forum_candidates = request
+            .candidates
+            .into_iter()
+            .filter_map(|candidate| {
+                let kind = StorefrontSearchResultCandidateKind::from_entity_type(&candidate.entity_type)?;
+                Some(StorefrontSearchResultCandidate {
+                    document_id: candidate.document_id,
+                    kind,
+                })
+            })
+            .collect();
+
+        let allowed = self
+            .filter_forum_result_candidates(StorefrontSearchResultEligibilityRequest {
+                tenant_id: request.tenant_id,
+                locale: request.locale,
+                candidates: forum_candidates,
+                auth: request.auth,
+                request_context: request.request_context,
+                transport: request.transport,
+            })
+            .await?;
+
+        Ok(allowed.into_iter().map(|item| item.document_id).collect())
+    }
+}
+
+#[allow(deprecated)]
 #[async_trait]
 impl StorefrontSearchResultEligibilityPort for ServerForumSearchResultEligibilityPort {
     async fn public_forum_discovery_allowed(

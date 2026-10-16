@@ -73,6 +73,9 @@ mod scheduled;
 pub use routes::{BLOG_POST_TARGET_TYPE, BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner};
 
 pub(crate) use repository::load_post_subject_snapshot;
+pub(crate) use queries::{
+    order_public_post_list, public_post_after_condition, public_post_cursor,
+};
 
 #[cfg(test)]
 mod tests;

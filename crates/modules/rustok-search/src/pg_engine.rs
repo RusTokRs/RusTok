@@ -115,8 +115,7 @@ impl SearchEngine for PgSearchEngine {
     }
 
     async fn search(&self, query: SearchQuery) -> Result<SearchResult> {
-        self.search_with_storefront_channel(query, None, false)
-            .await
+        self.search_with_storefront_channel(query, None, false).await
     }
 }
 
@@ -283,12 +282,7 @@ async fn run_fts_search(
     db: &DatabaseConnection,
     request: &RankedSearchRequest<'_>,
 ) -> Result<SearchResult> {
-    let filters = build_filter_clause(
-        request.query,
-        4,
-        request.storefront_channel,
-        request.exclude_forum,
-    );
+    let filters = build_filter_clause(request.query, 4, request.storefront_channel, request.exclude_forum);
     let cte = build_fts_cte(request.query.ranking_profile);
 
     finalize_ranked_search(
@@ -315,12 +309,7 @@ async fn run_typo_tolerant_search(
     db: &DatabaseConnection,
     request: &RankedSearchRequest<'_>,
 ) -> Result<SearchResult> {
-    let filters = build_filter_clause(
-        request.query,
-        4,
-        request.storefront_channel,
-        request.exclude_forum,
-    );
+    let filters = build_filter_clause(request.query, 4, request.storefront_channel, request.exclude_forum);
     let cte = build_typo_cte(request.query.ranking_profile);
 
     finalize_ranked_search(

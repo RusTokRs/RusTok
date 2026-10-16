@@ -1,5 +1,15 @@
 # rustok-search implementation plan
 
+## 2026-10-16 Audience Security SPI and Projection Source Decoupling
+
+The Search module generalizes cross-module authorization and ingestion boundaries:
+1. **Audience Security SPI (`audience_security.rs`):**
+   - Introduced `SearchAudiencePolicyPort` and `SearchAudienceRegistry` replacing hard-coded Forum audience couplings with a generic port-based registry.
+   - Domain modules implement `SearchAudiencePolicyPort` directly (`ServerForumSearchResultEligibilityPort`), eliminating legacy bridging wrappers.
+2. **Search Projection Sources (`SearchProjectionSourceRegistry`):**
+   - Generalizes projection ingestion from domain modules via `SearchProjectionSource` and `SearchProjectionSourceFactory`.
+   - `SearchIngestionHandler::with_projection_sources` accepts both `blog_source` and `forum_source` registered via module runtime extensions.
+
 ## 2026-09-24 Blog projection destructive-operation guard
 
 The Blog Search projector now validates the complete Blog/Taxonomy source-table contract before

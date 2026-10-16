@@ -75,7 +75,6 @@ transport-local Blog route builder, or compatibility URL implementation.
 - `SearchSuggestionPort`
 - `SearchAudiencePolicyPort` / `SearchAudienceRegistry`
 - `SearchCandidateDescriptor` / `resolve_audience_eligible_candidates`
-- `LegacyForumAudienceAdapter`
 - `canonical_search_result_url`
 - `graphql::SearchQueryRoot` / `graphql::SearchMutationRoot`
 
@@ -134,7 +133,7 @@ transport-local Blog route builder, or compatibility URL implementation.
 
 To preserve module isolation and prevent cross-module leakage, the historical specialized Forum search execution pipeline (`forum_storefront_execution.rs`, `storefront_result_eligibility.rs`) has been superseded by the generic **Audience Security SPI** (`audience_security.rs`):
 - `execute_forum_storefront_search` and `StorefrontSearchResultEligibilityPort` are marked `#[deprecated]`.
-- Legacy entry points delegate internally to `resolve_audience_eligible_candidates` via `LegacyForumAudienceAdapter`, maintaining 100% binary, signature, and verification compatibility.
+- Domain modules implement `SearchAudiencePolicyPort` directly and register in `SearchAudienceRegistry`.
 - Storefront consumers query through the unified `storefront_search` GraphQL entrypoint; candidate post-authorization is dispatched across all modules registered in `SearchAudienceRegistry`.
 - Unconstrained source modules (e.g. `blog`, `content`, `products`) pass through automatically as public candidates without requiring dedicated authorization policies.
 - Full physical removal of legacy `forum_*.rs` files from `rustok-search` is scheduled for Phase 4 after external verification scripts and contract JSONs transition to the generic SPI.

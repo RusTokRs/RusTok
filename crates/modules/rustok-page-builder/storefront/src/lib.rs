@@ -144,23 +144,25 @@ pub fn PageBuilderStorefront(
 
     match rendered {
         Ok((page, diagnostic_count, repeated_nodes)) => {
-            let css = page.css;
+            let scoped_css = scope_landing_css(&page.css, ".rustok-page-builder-storefront");
             let html = page.html;
             let page_id = page.page_id.unwrap_or_default();
             let has_actions = html.contains("data-fly-action");
             view! {
                 <section
                     class=class
+                    style="isolation: isolate; contain: style layout;"
                     data-rustok-page-builder-storefront="true"
                     data-page-id=page_id
                     data-runtime-diagnostics=diagnostic_count
                     data-repeated-nodes=repeated_nodes
                 >
-                    <style data-fly-project-styles="true">{css}</style>
+                    <style data-fly-project-styles="true">{scoped_css}</style>
                     <div data-fly-page-body="true" inner_html=html></div>
                     {has_actions.then(|| view! {
                         <script data-fly-actions="true" inner_html=fly_browser::FLY_ACTIONS_JS></script>
                     })}
+                    <script data-fly-storefront-bridge="true" inner_html=FLY_STOREFRONT_BRIDGE_JS></script>
                 </section>
             }
             .into_any()
@@ -179,6 +181,154 @@ pub fn PageBuilderStorefront(
     }
 }
 
+/// Standalone action bridge script that bridges `fly:action` CustomEvents (e.g. `add_to_cart`,
+/// `buy_now`, `navigate`) to the host storefront environment and intercepts internal in-page hash links.
+pub const FLY_STOREFRONT_BRIDGE_JS: &str = r##"
+(function () {
+  "use strict";
+  if (window.__rustok_fly_bridge_installed) return;
+  window.__rustok_fly_bridge_installed = true;
+
+  window.addEventListener("fly:action", function (e) {
+    var detail = e.detail || {};
+    var event = detail.event || detail.action || "";
+    var data = detail.payload || detail.input || {};
+
+    if (event === "add_to_cart" || event === "cart:add" || event === "buy_now") {
+      var variantId = data.variantId || data.productId || data.id;
+      var quantity = Number(data.quantity) || 1;
+      if (variantId) {
+        window.dispatchEvent(new CustomEvent("rustok:cart:add", {
+          bubbles: true,
+          detail: { variantId: String(variantId), quantity: quantity, openDrawer: true }
+        }));
+      }
+    } else if (event === "navigate") {
+      var href = data.href || data.url;
+      if (href && typeof href === "string") {
+        window.location.assign(href);
+      }
+    }
+  });
+
+  document.addEventListener("click", function (e) {
+    var target = e.target;
+    if (!target || typeof target.closest !== "function") return;
+    var anchor = target.closest("a");
+    if (!anchor) return;
+    if (anchor.target === "_blank" || anchor.hasAttribute("download") || anchor.hasAttribute("data-fly-action")) return;
+    var href = anchor.getAttribute("href");
+    if (!href) return;
+    if (href.startsWith("#")) {
+      var el = document.querySelector(href);
+      if (el) {
+        e.preventDefault();
+        el.scrollIntoView({ behavior: "smooth" });
+      }
+    }
+  });
+})();
+"##;
+
+/// Scopes landing CSS using modern CSS `@scope (<scope_selector>)` and normalizes
+/// root-level selectors (`body`, `html`) to `:scope`, ensuring styles from user-generated
+/// or GrapesJS landings cannot leak into the host application's shell, header, or footer.
+pub fn scope_landing_css(raw_css: &str, scope_selector: &str) -> String {
+    let trimmed = raw_css.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed.starts_with("@scope") {
+        return trimmed.to_string();
+    }
+
+    let remapped = normalize_landing_root_selectors(trimmed);
+    format!(
+        "@scope ({scope_selector}) {{\n  :scope {{\n    isolation: isolate;\n  }}\n{remapped}\n}}"
+    )
+}
+
+fn normalize_landing_root_selectors(css: &str) -> String {
+    let mut result = String::with_capacity(css.len());
+    let mut in_rule_block = false;
+    let mut in_quote: Option<char> = None;
+
+    let chars: Vec<char> = css.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let ch = chars[i];
+
+        if let Some(quote) = in_quote {
+            result.push(ch);
+            if ch == quote && (i == 0 || chars[i - 1] != '\\') {
+                in_quote = None;
+            }
+            i += 1;
+            continue;
+        }
+
+        if ch == '"' || ch == '\'' {
+            in_quote = Some(ch);
+            result.push(ch);
+            i += 1;
+            continue;
+        }
+
+        if ch == '{' {
+            in_rule_block = true;
+            result.push(ch);
+            i += 1;
+            continue;
+        } else if ch == '}' {
+            in_rule_block = false;
+            result.push(ch);
+            i += 1;
+            continue;
+        }
+
+        if !in_rule_block {
+            let remaining = &css[i..];
+            if remaining.starts_with("body") && is_identifier_boundary(&chars, i, 4) {
+                result.push_str(":scope");
+                i += 4;
+                continue;
+            } else if remaining.starts_with("html") && is_identifier_boundary(&chars, i, 4) {
+                result.push_str(":scope");
+                i += 4;
+                continue;
+            }
+        }
+
+        result.push(ch);
+        i += 1;
+    }
+
+    result
+}
+
+fn is_identifier_boundary(chars: &[char], start: usize, len: usize) -> bool {
+    let prev_is_ident = if start > 0 {
+        let prev = chars[start - 1];
+        prev.is_alphanumeric() || prev == '-' || prev == '_' || prev == '.' || prev == '#'
+    } else {
+        false
+    };
+    if prev_is_ident {
+        return false;
+    }
+
+    let end = start + len;
+    if end < chars.len() {
+        let next = chars[end];
+        let next_is_ident = next.is_alphanumeric() || next == '-' || next == '_';
+        if next_is_ident {
+            return false;
+        }
+    }
+
+    true
+}
+
 /// Renders a pre-compiled, verified static landing artifact (SSR HTML and scoped CSS)
 /// into a read-only storefront surface without an iframe.
 ///
@@ -195,18 +345,21 @@ pub fn StaticLandingStorefront(
     let class = class.unwrap_or_else(|| "rustok-page-builder-storefront".to_string());
     let page_id = page_id.unwrap_or_default();
     let has_actions = html.contains("data-fly-action");
+    let scoped_css = scope_landing_css(&css, ".rustok-page-builder-storefront");
     view! {
         <section
             class=class
+            style="isolation: isolate; contain: style layout;"
             data-rustok-page-builder-storefront="true"
             data-page-id=page_id
             data-page-builder-body="artifact"
         >
-            <style data-fly-project-styles="true">{css}</style>
+            <style data-fly-project-styles="true">{scoped_css}</style>
             <div data-fly-page-body="true" inner_html=html></div>
             {has_actions.then(|| view! {
                 <script data-fly-actions="true" inner_html=fly_browser::FLY_ACTIONS_JS></script>
             })}
+            <script data-fly-storefront-bridge="true" inner_html=FLY_STOREFRONT_BRIDGE_JS></script>
         </section>
     }
 }
@@ -225,6 +378,30 @@ mod tests {
                 page_id="p1".to_string()
             />
         };
+    }
+
+    #[test]
+    fn scope_landing_css_wraps_and_remaps_root_selectors() {
+        let raw = "body { margin: 0; background: #fff; }\nhtml, body { height: 100%; }\n.hero { color: red; }\ntbody { display: table-row-group; }\n.some-body { color: blue; }";
+        let scoped = scope_landing_css(raw, ".rustok-page-builder-storefront");
+
+        assert!(scoped.starts_with("@scope (.rustok-page-builder-storefront) {"));
+        assert!(scoped.contains(":scope {\n    isolation: isolate;"));
+        assert!(scoped.contains(":scope { margin: 0; background: #fff; }"));
+        assert!(scoped.contains(":scope, :scope { height: 100%; }"));
+        assert!(scoped.contains(".hero { color: red; }"));
+        // Ensure tbody and .some-body are NOT accidentally remapped
+        assert!(scoped.contains("tbody { display: table-row-group; }"));
+        assert!(scoped.contains(".some-body { color: blue; }"));
+    }
+
+    #[test]
+    fn scope_landing_css_handles_empty_and_preserves_already_scoped() {
+        assert_eq!(scope_landing_css("", ".scope"), "");
+        assert_eq!(scope_landing_css("   ", ".scope"), "");
+
+        let already_scoped = "@scope (.test) { :scope { color: green; } }";
+        assert_eq!(scope_landing_css(already_scoped, ".other"), already_scoped);
     }
 
     #[test]

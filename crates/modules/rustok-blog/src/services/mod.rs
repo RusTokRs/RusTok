@@ -3,17 +3,17 @@
 mod category;
 mod category_command;
 mod category_delete;
-mod category_name_projection;
+pub(crate) mod category_name_projection;
 mod category_owner;
 pub(crate) mod category_taxonomy_sync;
 mod comment;
 mod comment_projection;
-mod post;
+pub(crate) mod post;
 pub(crate) mod preview_token;
 mod rbac;
 #[cfg(feature = "runtime")]
 pub(crate) mod scheduler;
-mod tag;
+pub(crate) mod tag;
 mod taxonomy_translation_owner;
 
 pub use category_command::CategoryCommandService;

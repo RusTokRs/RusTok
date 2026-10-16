@@ -188,6 +188,12 @@ pub mod module_event_dispatcher {
                 forum_search_owner_revision::ServerForumProjectionOwnerRevisionSourcePort::shared(
                     db.clone(),
                 );
+            let forum_eligibility =
+                forum_search_result_eligibility::ServerForumSearchResultEligibilityPort::new(
+                    db.clone(),
+                    audience_facts.clone(),
+                    extensions.get::<rustok_api::SharedStaticModuleSettingsReader>().cloned(),
+                );
             let result_eligibility =
                 forum_search_result_eligibility::ServerForumSearchResultEligibilityPort::shared(
                     db.clone(),
@@ -198,9 +204,7 @@ pub mod module_event_dispatcher {
                 .get::<rustok_search::SearchAudienceRegistry>()
                 .cloned()
                 .unwrap_or_default();
-            let _ = audience_registry.register(
-                rustok_search::LegacyForumAudienceAdapter::new(result_eligibility.clone()),
-            );
+            let _ = audience_registry.register(forum_eligibility);
             extensions.insert(audience_registry);
             extensions.insert(category_scope);
             extensions.insert(owner_revision);

@@ -167,15 +167,8 @@ export async function deletePage(id: string, opts: GqlOpts = {}): Promise<boolea
   return data.deletePage;
 }
 
-// ---------- Builder link ----------
+// ---------- Builder & Storefront URLs ----------
 
-/**
- * Deep link into the Rust (FFA/Leptos) page-builder editor for one page. The visual
- * editor itself is module-owned UI of the Rust admin (`rustok-pages-admin`); this
- * classic Next surface manages pages and hands off to it, instead of growing a
- * second editor. `builderBaseUrl` is the Rust admin origin (no trailing slash).
- */
-export function builderUrlForPage(builderBaseUrl: string, pageId: string): string {
-  const base = builderBaseUrl.replace(/\/+$/, '');
-  return `${base}/modules/pages?pageId=${encodeURIComponent(pageId)}`;
-}
+export { builderUrlForPage, storefrontUrlForPage } from './urls';
+
+

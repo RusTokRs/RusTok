@@ -46,9 +46,9 @@ pub use analytics::{
     SearchQueryLogRecord,
 };
 pub use audience_security::{
-    LegacyForumAudienceAdapter, MAX_SEARCH_AUDIENCE_CANDIDATES, SearchAudiencePolicyPort,
-    SearchAudienceRegistry, SearchAudienceRequest, SearchCandidateDescriptor,
-    SharedSearchAudiencePolicyPort, resolve_audience_eligible_candidates,
+    MAX_SEARCH_AUDIENCE_CANDIDATES, SearchAudiencePolicyPort, SearchAudienceRegistry,
+    SearchAudienceRequest, SearchCandidateDescriptor, SharedSearchAudiencePolicyPort,
+    resolve_audience_eligible_candidates,
 };
 pub use diagnostics::{
     LaggingSearchDocument, SearchConsistencyIssue, SearchDiagnosticsService,
@@ -166,12 +166,16 @@ impl RusToKModule for SearchModule {
         registry: &mut ModuleEventListenerRegistry,
         ctx: &ModuleEventListenerContext<'_>,
     ) {
-        let forum_source = search_projection_source_registry_from_extensions(ctx.extensions)
-            .and_then(|sources| {
-                sources.build_with_extensions("forum", ctx.db.clone(), ctx.extensions)
-            });
-        registry.register(SearchIngestionHandler::with_forum_source(
+        let sources = search_projection_source_registry_from_extensions(ctx.extensions);
+        let forum_source = sources
+            .as_ref()
+            .and_then(|s| s.build_with_extensions("forum", ctx.db.clone(), ctx.extensions));
+        let blog_source = sources
+            .as_ref()
+            .and_then(|s| s.build_with_extensions("blog", ctx.db.clone(), ctx.extensions));
+        registry.register(SearchIngestionHandler::with_projection_sources(
             ctx.db.clone(),
+            blog_source,
             forum_source,
         ));
     }

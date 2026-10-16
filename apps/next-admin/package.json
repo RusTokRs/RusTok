@@ -12,6 +12,7 @@
     "lint": "eslint src",
     "typegen:i18n": "next-fluent typegen -i messages/en.ftl -o src/types/i18n.d.ts",
     "typecheck": "npm run typegen:i18n && next typegen && tsc --noEmit",
+    "test:pages": "node --experimental-strip-types --test packages/pages/src/pages-admin.test.mjs",
     "lint:fix": "eslint src --fix && bun format",
     "lint:strict": "eslint src --max-warnings=0",
     "test:e2e": "playwright test",

@@ -1,5 +1,5 @@
 import type { GqlOpts } from '../api/pages';
-import { builderUrlForPage, listPages } from '../api/pages';
+import { builderUrlForPage, listPages, storefrontUrlForPage } from '../api/pages';
 import { PageActions } from '../components/page-actions';
 
 interface PagesPageProps {
@@ -8,6 +8,10 @@ interface PagesPageProps {
   tenantId?: string | null;
   /** Origin of the Rust (FFA/Leptos) admin that owns the visual builder UI. */
   builderBaseUrl?: string | null;
+  /** Storefront base URL for live storefront preview links. */
+  storefrontBaseUrl?: string | null;
+  /** Secret token to activate Next.js storefront draft mode. */
+  previewSecret?: string | null;
   locale?: string;
 }
 
@@ -22,6 +26,8 @@ export default async function PagesPage({
   tenantSlug,
   tenantId,
   builderBaseUrl,
+  storefrontBaseUrl,
+  previewSecret,
   locale = 'en'
 }: PagesPageProps) {
   const opts: GqlOpts = { token, tenantSlug, tenantId };
@@ -52,6 +58,7 @@ export default async function PagesPage({
               <th>Template</th>
               <th>Updated</th>
               <th>Builder</th>
+              <th>Storefront</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -60,7 +67,19 @@ export default async function PagesPage({
               <tr key={page.id}>
                 <td>{page.title ?? page.slug ?? page.id}</td>
                 <td>{page.slug ?? '—'}</td>
-                <td>{page.status}</td>
+                <td>
+                  <span
+                    className={
+                      page.status === 'published'
+                        ? 'inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800'
+                        : page.status === 'draft'
+                        ? 'inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800'
+                        : 'inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-800'
+                    }
+                  >
+                    {page.status}
+                  </span>
+                </td>
                 <td>{page.template}</td>
                 <td>{page.updatedAt}</td>
                 <td>
@@ -71,6 +90,25 @@ export default async function PagesPage({
                       rel="noreferrer"
                     >
                       Open in builder
+                    </a>
+                  ) : (
+                    '—'
+                  )}
+                </td>
+                <td>
+                  {storefrontBaseUrl && page.slug ? (
+                    <a
+                      href={storefrontUrlForPage(
+                        storefrontBaseUrl,
+                        page.slug,
+                        locale,
+                        page.status,
+                        previewSecret ?? undefined
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {page.status === 'published' ? 'View live' : 'Preview draft'}
                     </a>
                   ) : (
                     '—'

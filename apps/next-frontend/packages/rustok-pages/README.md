@@ -16,7 +16,9 @@ Published Page Builder landing artifacts in RusToK are pre-compiled and sanitize
 Rather than isolating the public storefront within a sandboxed `<iframe>`, `@rustok/pages-frontend` performs direct SSR HTML and CSS injection:
 
 1. **Server Component (`PageBuilderContent`):**
-   - Injects the scoped stylesheet `<style>` into the document head/render stream.
+   - Automatically scopes the stylesheet via `scopeLandingCss` using modern CSS `@scope (.fly-page-container)` and remaps root selectors (`body`, `html`) to `:scope`.
+   - Isolates styles and layout via `style={{ isolation: "isolate", contain: "style layout" }}` so builder styles never leak into the host shell, navbar, or footer.
+   - Injects the scoped stylesheet `<style>` into the document render stream.
    - Injects the sanitized HTML into `<div className="fly-page-body" dangerouslySetInnerHTML={{ __html: html }} />`.
    - Mounts the client island `<FlyActionBridge />`.
 
@@ -28,8 +30,9 @@ Rather than isolating the public storefront within a sandboxed `<iframe>`, `@rus
 
 ## Exports
 
-- `PageBuilderContent` — React Server Component rendering HTML + CSS + client action bridge.
+- `PageBuilderContent` — React Component rendering scoped HTML + CSS + client action bridge.
 - `FlyActionBridge` — Client Component handling interactive actions and cart integration.
+- `scopeLandingCss` — Utility wrapping styles with `@scope (.fly-page-container)` and remapping root selectors.
 - `initFlyActions` — Standalone idempotent actions runtime initializer.
 - `parseArtifactHtml` — Utility extracting `<style>` and `<body>` from artifact documents.
 - `fetchPublishedPage`, `fetchPageArtifact` — GraphQL and HTTP artifact fetching helpers.

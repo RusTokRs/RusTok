@@ -9,10 +9,10 @@
  */
 
 import { defaultGraphqlBaseUrl, storefrontGraphql } from "@/shared/lib/graphql";
-import { type ArtifactContent, parseArtifactHtml } from "./artifact";
+import { type ArtifactContent, parseArtifactHtml, pageCacheTags } from "./artifact";
 
 export type { ArtifactContent };
-export { parseArtifactHtml };
+export { parseArtifactHtml, pageCacheTags };
 
 export interface PageTranslation {
   locale: string;
@@ -87,22 +87,57 @@ export async function fetchPublishedPage(
 }
 
 
+export interface FetchPageArtifactOptions {
+  baseUrl?: string;
+  slug?: string;
+  revalidate?: number | false;
+  tags?: string[];
+  cache?: RequestCache;
+}
+
 export async function fetchPageArtifact(
   artifactUrlOrContent: string,
   format: string,
-  baseUrl = defaultGraphqlBaseUrl(),
+  baseUrlOrOptions?: string | FetchPageArtifactOptions,
 ): Promise<ArtifactContent> {
+  const options: FetchPageArtifactOptions =
+    typeof baseUrlOrOptions === "string"
+      ? { baseUrl: baseUrlOrOptions }
+      : baseUrlOrOptions ?? {};
+
+  const baseUrl = options.baseUrl ?? defaultGraphqlBaseUrl();
+  const slug = options.slug;
+  const tags = options.tags ?? pageCacheTags(slug);
+  const revalidate = options.revalidate !== undefined ? options.revalidate : 60;
+
   if (format === "fly_artifact_url" || artifactUrlOrContent.startsWith("/api/pages/")) {
     const fullUrl = artifactUrlOrContent.startsWith("http")
       ? artifactUrlOrContent
       : `${baseUrl.replace(/\/$/, "")}/${artifactUrlOrContent.replace(/^\//, "")}`;
 
-    const res = await fetch(fullUrl, {
-      next: { revalidate: 60 },
+    const nextOptions: { revalidate?: number; tags?: string[] } = {};
+    if (typeof revalidate === "number") {
+      nextOptions.revalidate = revalidate;
+    }
+    if (tags.length > 0) {
+      nextOptions.tags = tags;
+    }
+
+    const fetchInit: RequestInit = {
       headers: {
         Accept: "text/html",
       },
-    });
+    };
+
+    if (options.cache) {
+      fetchInit.cache = options.cache;
+    } else if (revalidate === false) {
+      fetchInit.cache = "no-store";
+    } else {
+      fetchInit.next = nextOptions;
+    }
+
+    const res = await fetch(fullUrl, fetchInit);
 
     if (!res.ok) {
       throw new Error(`Failed to fetch page artifact: HTTP ${res.status}`);
