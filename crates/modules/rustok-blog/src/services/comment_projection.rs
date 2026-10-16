@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::entities::{blog_comment_projection_delivery, blog_post};
+use crate::services::BLOG_POST_TARGET_TYPE;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct CommentProjectionChange {

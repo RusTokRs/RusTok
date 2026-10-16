@@ -34,7 +34,7 @@ export type FrontendGraphqlOptions<V> = {
 
 const apolloClients = new Map<string, ApolloClient>();
 
-function defaultGraphqlBaseUrl(): string {
+export function defaultGraphqlBaseUrl(): string {
   const configured =
     process.env.NEXT_PUBLIC_API_URL ??
     (typeof window === "undefined" ? process.env.RUSTOK_API_URL : undefined);
