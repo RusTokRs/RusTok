@@ -186,7 +186,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-04.04 — `crates/modules/rustok-notifications` & `rustok-notifications-api`** — notification templates, delivery channels (email/push/in-app), preference policies, batching/throttling. (Done: implemented canonical From<NotificationProviderError> for rustok_core::Error in rustok-notifications-api; implemented canonical From<NotificationError> for rustok_core::Error in rustok-notifications with unit tests; enforced non-nil UUID guards across GraphQL authenticated_scope (tenant_id and user_id), outbox intake process_outbox_event (outbox_event_id), candidate processing process_candidate_inner (item_id), fan-out service materialize_source_event (inbox_id) and process_fanout_page (job_id), and fanout worker defer_source_inbox, defer_fanout_job, materialize_source_inbox, and process_fanout_job; verified all 7 api tests, 2 notifications lib tests, and 3 sqlite integration tests pass, clippy clean, architecture dependency guard passed, and gatekeeper approved).
 
 #### 5. rustok-comments
-- [ ] **FS-04.05 — `crates/modules/rustok-comments`, `rustok-comments-api` & `rustok-comments-storefront-support`** — comment trees, thread hierarchy, author verification, moderation hooks.
+- [x] **FS-04.05 — `crates/modules/rustok-comments`, `rustok-comments-api` & `rustok-comments-storefront-support`** — comment trees, thread hierarchy, author verification, moderation hooks. (Done: implemented canonical From<CommentsError> for rustok_core::Error with unit tests; enforced non-nil UUID validation across CommentsThreadPort (parse_tenant_id, create_comment, get_comment, list_comments_for_target, list_public_comments_for_target, update_comment, delete_comment, set_comment_status) and CommentsService (create_comment_in_tx, get_comment, update_comment_in_tx, delete_comment_in_tx, list_comments_for_target, set_thread_status_for_target, list_threads, get_thread_detail, set_comment_status_in_tx, set_thread_status, find_comment_inner, find_or_create_thread_in_tx); added non-nil UUID guard to list_public_comments_for_target and CommentTargetDeletionHandler; verified all 17 lib tests and 5 integration tests pass in rustok-comments, 3 tests in rustok-comments-storefront-support, clippy clean, architecture dependency guard passed, and gatekeeper approved).
 
 #### 6. rustok-reactions
 - [ ] **FS-04.06 — `crates/modules/rustok-reactions`, `rustok-reactions-api` & `rustok-reactions-storefront`** — reaction emojis, polymorphic entity binding, counter aggregation, rate guards.
@@ -200,7 +200,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-10-13T20:15:00Z`
-- **Progress:** `18 / 254` components audited (**7.1%**)
+- **Progress:** `21 / 254` components audited (**8.3%**)
 - **Total Workspace Codebase:** ~350,000 LOC across 254 modules/apps
 
 ---
@@ -276,9 +276,9 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 18 | 4,545 | None |  |
 | [ ] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 47 | 11,368 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 14 | 5,173 | None |  |
-| [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 39 | 9,622 | None |  |
-| [ ] | [rustok-comments-api](../../crates/modules/rustok-comments-api) | `modules` | 3 | 154 | None |  |
-| [ ] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | None |  |
+| [x] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 39 | 9,622 | 2026-10-16 | Completed Phase FS-04.05 (non-nil UUID guards across ports & services, public read, lifecycle handler, From<CommentsError> for rustok_core::Error) |
+| [x] | [rustok-comments-api](../../crates/modules/rustok-comments-api) | `modules` | 3 | 154 | 2026-10-16 | Completed Phase FS-04.05 (CommentsThreadPort contract, verified compilation and gatekeeper) |
+| [x] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | 2026-10-16 | Completed Phase FS-04.05 (FFA separation, verified all 3 core unit tests and gatekeeper) |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 8 | 1,382 | None |  |
 | [x] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 297 | 129,394 | 2026-10-15 | Completed audit tracks FS-03.02 - FS-03.08 (checkout pipeline, stage pipeline, inventory/payment, compensation, marketplace, fulfillment, controllers/graphql) |
 | [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 19 | 929 | 2026-10-15 | Completed audit track FS-03.01 (error taxonomy, DTO invariant validation, search condition trimming) |

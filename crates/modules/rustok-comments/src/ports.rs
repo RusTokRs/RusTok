@@ -166,6 +166,18 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         request: ApiCreateCommentInput,
     ) -> Result<ApiCommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.target_id.is_nil() {
+            return Err(PortError::validation(
+                "comments.invalid_target_id",
+                "target_id cannot be nil",
+            ));
+        }
+        if request.parent_comment_id.is_some_and(|id| id.is_nil()) {
+            return Err(PortError::validation(
+                "comments.invalid_parent_comment_id",
+                "parent_comment_id cannot be nil",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
@@ -260,6 +272,12 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         fallback_locale: Option<String>,
     ) -> Result<ApiCommentRecord, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if comment_id.is_nil() {
+            return Err(PortError::validation(
+                "comments.invalid_comment_id",
+                "comment_id cannot be nil",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         self.service
             .get_comment(
@@ -283,6 +301,12 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         fallback_locale: Option<String>,
     ) -> Result<(Vec<ApiCommentListItem>, u64), PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if target_id.is_nil() {
+            return Err(PortError::validation(
+                "comments.invalid_target_id",
+                "target_id cannot be nil",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let domain_filter: ListCommentsFilter = filter.into();
         self.service
@@ -308,6 +332,12 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         fallback_locale: Option<String>,
     ) -> Result<(Vec<ApiCommentListItem>, u64), PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if target_id.is_nil() {
+            return Err(PortError::validation(
+                "comments.invalid_target_id",
+                "target_id cannot be nil",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let domain_filter: ListCommentsFilter = filter.into();
         crate::public_read::list_public_comments_for_target(
@@ -330,6 +360,12 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         request: ApiUpdateCommentInput,
     ) -> Result<ApiCommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if comment_id.is_nil() {
+            return Err(PortError::validation(
+                "comments.invalid_comment_id",
+                "comment_id cannot be nil",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
@@ -424,6 +460,12 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         comment_id: Uuid,
     ) -> Result<(), PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if comment_id.is_nil() {
+            return Err(PortError::validation(
+                "comments.invalid_comment_id",
+                "comment_id cannot be nil",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
@@ -518,6 +560,12 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         request: ApiSetCommentStatusRequest,
     ) -> Result<ApiCommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if comment_id.is_nil() {
+            return Err(PortError::validation(
+                "comments.invalid_comment_id",
+                "comment_id cannot be nil",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
@@ -640,12 +688,19 @@ async fn persist_idempotency_failure(
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         PortError::validation(
             "comments.invalid_tenant_id",
             "comments port context must carry a UUID tenant_id",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        return Err(PortError::validation(
+            "comments.invalid_tenant_id",
+            "comments port context tenant_id cannot be nil",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn comments_error_to_port_error(error: CommentsError) -> PortError {

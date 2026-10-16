@@ -34,6 +34,10 @@ impl EventHandler for CommentTargetDeletionHandler {
             return Ok(());
         };
 
+        if envelope.tenant_id.is_nil() || target_id.is_nil() {
+            return Ok(());
+        }
+
         comment_thread::Entity::delete_many()
             .filter(comment_thread::Column::TenantId.eq(envelope.tenant_id))
             .filter(comment_thread::Column::TargetType.eq(target_type))

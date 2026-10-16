@@ -200,6 +200,15 @@ impl CommentsService {
         security: SecurityContext,
         input: CreateCommentInput,
     ) -> CommentsResult<Uuid> {
+        if tenant_id.is_nil() {
+            return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+        }
+        if input.target_id.is_nil() {
+            return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
+        }
+        if input.parent_comment_id.is_some_and(|id| id.is_nil()) {
+            return Err(CommentsError::Validation("parent_comment_id cannot be nil".to_string()));
+        }
         let author_id = self.enforce_create_scope(&security)?;
         let body = serialize_comment_body(input.body)?;
 
@@ -269,6 +278,12 @@ impl CommentsService {
         record_entrypoint("get_comment");
         let started = Instant::now();
         let result = async {
+            if tenant_id.is_nil() {
+                return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            }
+            if comment_id.is_nil() {
+                return Err(CommentsError::Validation("comment_id cannot be nil".to_string()));
+            }
             self.enforce_read_scope(&security, Action::Read)?;
             let locale = normalize_locale(locale)?;
             let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
@@ -325,6 +340,12 @@ impl CommentsService {
         comment_id: Uuid,
         input: UpdateCommentInput,
     ) -> CommentsResult<CommentRecord> {
+        if tenant_id.is_nil() {
+            return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+        }
+        if comment_id.is_nil() {
+            return Err(CommentsError::Validation("comment_id cannot be nil".to_string()));
+        }
         let locale = normalize_locale(&input.locale)?;
         if let Some(body) = input.body {
             let body = serialize_comment_body(body)?;
@@ -441,6 +462,12 @@ impl CommentsService {
         security: SecurityContext,
         comment_id: Uuid,
     ) -> CommentsResult<()> {
+        if tenant_id.is_nil() {
+            return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+        }
+        if comment_id.is_nil() {
+            return Err(CommentsError::Validation("comment_id cannot be nil".to_string()));
+        }
         let existing = comment::Entity::find_by_id(comment_id)
             .filter(comment::Column::TenantId.eq(tenant_id))
             .filter(comment::Column::DeletedAt.is_null())
@@ -586,6 +613,12 @@ impl CommentsService {
         record_entrypoint("list_comments_for_target");
         let started = Instant::now();
         let result = async {
+            if tenant_id.is_nil() {
+                return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            }
+            if target_id.is_nil() {
+                return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
+            }
             self.enforce_read_scope(&security, Action::List)?;
             let locale = normalize_locale(&filter.locale)?;
             let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
@@ -710,6 +743,12 @@ impl CommentsService {
         record_entrypoint("set_thread_status_for_target");
         let started = Instant::now();
         let result = async {
+            if tenant_id.is_nil() {
+                return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            }
+            if target_id.is_nil() {
+                return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
+            }
             self.enforce_moderation_scope(&security)?;
             let txn = self.db.begin().await?;
             let thread = comment_thread::Entity::find()
@@ -750,6 +789,9 @@ impl CommentsService {
         record_entrypoint("list_threads");
         let started = Instant::now();
         let result = async {
+            if tenant_id.is_nil() {
+                return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            }
             self.enforce_read_scope(&security, Action::List)?;
 
             let mut query = comment_thread::Entity::find()
@@ -808,6 +850,12 @@ impl CommentsService {
         record_entrypoint("get_thread_detail");
         let started = Instant::now();
         let result = async {
+            if tenant_id.is_nil() {
+                return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            }
+            if filter.thread_id.is_nil() {
+                return Err(CommentsError::Validation("thread_id cannot be nil".to_string()));
+            }
             self.enforce_read_scope(&security, Action::Read)?;
             let locale = normalize_locale(&filter.locale)?;
             let fallback_locale = filter
@@ -913,6 +961,12 @@ impl CommentsService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> CommentsResult<CommentRecord> {
+        if tenant_id.is_nil() {
+            return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+        }
+        if comment_id.is_nil() {
+            return Err(CommentsError::Validation("comment_id cannot be nil".to_string()));
+        }
         self.enforce_moderation_scope(&security)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
@@ -978,6 +1032,12 @@ impl CommentsService {
         record_entrypoint("set_thread_status");
         let started = Instant::now();
         let result = async {
+            if tenant_id.is_nil() {
+                return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            }
+            if thread_id.is_nil() {
+                return Err(CommentsError::Validation("thread_id cannot be nil".to_string()));
+            }
             self.enforce_moderation_scope(&security)?;
             let txn = self.db.begin().await?;
             let thread = comment_thread::Entity::find_by_id(thread_id)
@@ -1014,6 +1074,12 @@ impl CommentsService {
         target_type: &str,
         target_id: Uuid,
     ) -> CommentsResult<comment_thread::Model> {
+        if tenant_id.is_nil() {
+            return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+        }
+        if target_id.is_nil() {
+            return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
+        }
         if let Some(thread) = comment_thread::Entity::find()
             .filter(comment_thread::Column::TenantId.eq(tenant_id))
             .filter(comment_thread::Column::TargetType.eq(target_type))
@@ -1137,6 +1203,12 @@ impl CommentsService {
         comment_id: Uuid,
         include_deleted: bool,
     ) -> CommentsResult<comment::Model> {
+        if tenant_id.is_nil() {
+            return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+        }
+        if comment_id.is_nil() {
+            return Err(CommentsError::Validation("comment_id cannot be nil".to_string()));
+        }
         let mut query =
             comment::Entity::find_by_id(comment_id).filter(comment::Column::TenantId.eq(tenant_id));
         if !include_deleted {
