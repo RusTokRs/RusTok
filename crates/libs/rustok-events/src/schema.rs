@@ -290,6 +290,9 @@ const BLOG_POST_ARCHIVED_FIELDS: &[FieldSchema] = &[
     field!("reason", "string", optional),
 ];
 const BLOG_POST_DELETED_FIELDS: &[FieldSchema] = &[field!("post_id", "uuid")];
+const BLOG_POST_SCHEDULED_FIELDS: &[FieldSchema] =
+    &[field!("post_id", "uuid"), field!("scheduled_at", "string")];
+const BLOG_POST_SCHEDULE_CANCELLED_FIELDS: &[FieldSchema] = &[field!("post_id", "uuid")];
 const COMMENT_FIELDS: &[FieldSchema] = &[
     field!("comment_id", "uuid"),
     field!("target_type", "string"),
@@ -1030,6 +1033,18 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "Blog post deleted.",
         fields: BLOG_POST_DELETED_FIELDS,
+    },
+    EventSchema {
+        event_type: "blog.post.scheduled",
+        version: 1,
+        description: "Blog post scheduled.",
+        fields: BLOG_POST_SCHEDULED_FIELDS,
+    },
+    EventSchema {
+        event_type: "blog.post.schedule_cancelled",
+        version: 1,
+        description: "Blog post schedule cancelled.",
+        fields: BLOG_POST_SCHEDULE_CANCELLED_FIELDS,
     },
     EventSchema {
         event_type: "comment.created",
