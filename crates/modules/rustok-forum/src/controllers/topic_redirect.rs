@@ -321,8 +321,11 @@ mod tests {
         let (db, event_bus) = setup().await?;
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
+        let target_author_id = Uuid::new_v4();
         insert_user(&db, tenant_id, actor_id).await?;
+        insert_user(&db, tenant_id, target_author_id).await?;
         let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
+        let target_author = SecurityContext::new(UserRole::Admin, Some(target_author_id));
         let category_id = create_category(&db, tenant_id, admin.clone()).await?;
         let source_topic_id = create_topic(
             &db,
@@ -338,7 +341,7 @@ mod tests {
             &event_bus,
             tenant_id,
             category_id,
-            admin.clone(),
+            target_author,
             "target",
         )
         .await?;

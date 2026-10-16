@@ -46,6 +46,22 @@ pub async fn list_unread_topics(
     request_context: RequestContext,
     Query(mut query): Query<TopicUnreadCursorQuery>,
 ) -> HttpResult<Json<TopicUnreadCursorPage>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        category_id = ?query.category_id,
+        status = ?query.status,
+        unread_only = ?query.unread_only,
+        "Forum list unread topics requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if let Some(category_id) = query.category_id {
+        if category_id.is_nil() {
+            return Err(HttpError::bad_request("invalid_category_id", "Category ID must not be nil"));
+        }
+    }
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_LIST],
@@ -82,6 +98,18 @@ pub async fn get_topic_read_state(
     auth: AuthContext,
     Path(topic_id): Path<Uuid>,
 ) -> HttpResult<Json<ForumTopicReadState>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        topic_id = %topic_id,
+        "Forum topic read state requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if topic_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_topic_id", "Topic ID must not be nil"));
+    }
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -116,6 +144,25 @@ pub async fn mark_topic_read(
     Path(topic_id): Path<Uuid>,
     Json(input): Json<MarkForumTopicReadInput>,
 ) -> HttpResult<Json<ForumTopicReadState>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        topic_id = %topic_id,
+        last_read_reply_id = ?input.last_read_reply_id,
+        last_read_post_number = input.last_read_post_number,
+        "Forum mark topic read requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if topic_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_topic_id", "Topic ID must not be nil"));
+    }
+    if let Some(reply_id) = input.last_read_reply_id {
+        if reply_id.is_nil() {
+            return Err(HttpError::bad_request("invalid_reply_id", "Last read reply ID must not be nil"));
+        }
+    }
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -151,6 +198,19 @@ pub async fn mark_category_read(
     Path(category_id): Path<Uuid>,
     Json(input): Json<MarkForumTopicsReadBatchInput>,
 ) -> HttpResult<Json<MarkForumTopicsReadBatchResult>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        category_id = %category_id,
+        limit = ?input.limit,
+        "Forum mark category read requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if category_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_category_id", "Category ID must not be nil"));
+    }
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -198,6 +258,15 @@ pub async fn mark_all_topics_read(
     request_context: RequestContext,
     Json(input): Json<MarkForumTopicsReadBatchInput>,
 ) -> HttpResult<Json<MarkForumTopicsReadBatchResult>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        limit = ?input.limit,
+        "Forum mark all topics read requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -236,6 +305,12 @@ fn ensure_forum_permission(
     permissions: &[Permission],
     message: &str,
 ) -> HttpResult<()> {
+    if auth.tenant_id.is_nil() {
+        return Err(HttpError::unauthorized("invalid_auth_tenant_id", "Authenticated tenant ID must not be nil"));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::unauthorized("invalid_auth_user_id", "Authenticated user ID must not be nil"));
+    }
     if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden(
             "forum_permission_denied",

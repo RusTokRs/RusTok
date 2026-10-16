@@ -164,7 +164,7 @@ async fn open_forum_seo_loads_topics_and_pages_only_public_owner_candidates() {
                     body: rustok_api::RichTextDocument::single_paragraph("Public SEO fixture"),
                     metadata: serde_json::json!({}),
                     tags: Vec::new(),
-                    channel_slugs: Some(vec!["web".into()]),
+                    channel_slugs: None,
                 },
             )
             .await

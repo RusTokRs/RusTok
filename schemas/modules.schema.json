@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RusToK Platform Modules Composition Manifest",
+  "description": "Canonical composition contract for platform modules (modules.toml)",
+  "type": "object",
+  "required": ["schema", "modules"],
+  "properties": {
+    "schema": {
+      "type": "integer",
+      "enum": [2],
+      "description": "Composition manifest schema version (must be 2)"
+    },
+    "app": {
+      "type": "string",
+      "default": "rustok-server",
+      "description": "Application composition root identifier"
+    },
+    "build": {
+      "type": "object",
+      "description": "Build and deployment surface profile options",
+      "properties": {
+        "target": { "type": "string" },
+        "profile": { "type": "string" },
+        "deployment_profile": { "type": "string" },
+        "server": {
+          "type": "object",
+          "properties": {
+            "embed_admin": { "type": "boolean" },
+            "embed_storefront": { "type": "boolean" }
+          }
+        },
+        "admin": {
+          "type": "object",
+          "properties": {
+            "stack": { "type": "string" },
+            "public_url": { "type": "string" },
+            "redirect_uris": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "storefront": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "stack": { "type": "string" },
+              "public_url": { "type": "string" },
+              "redirect_uris": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "modules": {
+      "type": "object",
+      "description": "Declared platform modules indexed by unique slug",
+      "patternProperties": {
+        "^[a-z0-9_]{1,48}$": {
+          "type": "object",
+          "required": ["crate"],
+          "properties": {
+            "crate": {
+              "type": "string",
+              "description": "Cargo crate package name (e.g. rustok-blog)"
+            },
+            "source": {
+              "type": "string",
+              "enum": ["path", "git", "crates_io", "registry"],
+              "default": "path",
+              "description": "Module source distribution mechanism"
+            },
+            "path": {
+              "type": "string",
+              "description": "Relative filesystem path to the module directory"
+            },
+            "required": {
+              "type": "boolean",
+              "default": false,
+              "description": "If true, module is Core and cannot be disabled by tenants"
+            },
+            "version": {
+              "type": "string",
+              "description": "SemVer version requirement"
+            },
+            "git": {
+              "type": "string",
+              "description": "Git repository URL for remote modules"
+            },
+            "rev": {
+              "type": "string",
+              "description": "Git commit SHA, branch or tag"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Slugs of other modules required by this module"
+            },
+            "features": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Cargo features to enable when compiling this module"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": ["module", "extension"],
+              "default": "module",
+              "description": "Runtime classification (standard module or capability extension)"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "settings": {
+      "type": "object",
+      "description": "Global composition settings",
+      "properties": {
+        "default_enabled": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of optional module slugs enabled by default for new tenants"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

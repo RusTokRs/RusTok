@@ -19,6 +19,7 @@ use serde_json::Value;
 
 /// Page selection contract used by the public storefront renderer.
 pub use fly::PageSelection;
+pub use fly_browser;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StorefrontPageOutput {
@@ -175,6 +176,38 @@ pub fn PageBuilderStorefront(
             </section>
         }
         .into_any(),
+    }
+}
+
+/// Renders a pre-compiled, verified static landing artifact (SSR HTML and scoped CSS)
+/// into a read-only storefront surface without an iframe.
+///
+/// If `html` contains interactive Fly actions (`data-fly-action`), the lightweight
+/// `fly-actions.js` runtime script is inlined to handle toggles, smooth scroll,
+/// animations, and `fly:action` custom events.
+#[component]
+pub fn StaticLandingStorefront(
+    html: String,
+    css: String,
+    #[prop(optional)] page_id: Option<String>,
+    #[prop(optional)] class: Option<String>,
+) -> impl IntoView {
+    let class = class.unwrap_or_else(|| "rustok-page-builder-storefront".to_string());
+    let page_id = page_id.unwrap_or_default();
+    let has_actions = html.contains("data-fly-action");
+    view! {
+        <section
+            class=class
+            data-rustok-page-builder-storefront="true"
+            data-page-id=page_id
+            data-page-builder-body="artifact"
+        >
+            <style data-fly-project-styles="true">{css}</style>
+            <div data-fly-page-body="true" inner_html=html></div>
+            {has_actions.then(|| view! {
+                <script data-fly-actions="true" inner_html=fly_browser::FLY_ACTIONS_JS></script>
+            })}
+        </section>
     }
 }
 

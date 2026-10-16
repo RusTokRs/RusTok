@@ -289,11 +289,39 @@ fn published_artifact_page_body(
     published: Option<rustok_pages::PublishedLandingArtifact>,
     channel_slug: Option<&str>,
 ) -> Option<PageBody> {
-    published.map(|artifact| PageBody {
-        locale: artifact.locale.clone(),
-        content: artifact_url(page_id, &artifact.locale, channel_slug),
-        format: "fly_artifact_url".to_string(),
+    published.map(|artifact| {
+        let url = artifact_url(page_id, &artifact.locale, channel_slug);
+        let html = resolve_artifact_body_html(&artifact.body_html, &artifact.document_html);
+        let payload = crate::builder::StaticLandingBodyPayload {
+            html,
+            css: artifact.css,
+            artifact_url: Some(url),
+        };
+        PageBody {
+            locale: artifact.locale,
+            content: serde_json::to_string(&payload).unwrap_or_default(),
+            format: crate::builder::STATIC_LANDING_PAYLOAD_BODY_FORMAT.to_string(),
+        }
     })
+}
+
+#[cfg(feature = "ssr")]
+fn resolve_artifact_body_html(body_html: &str, document_html: &str) -> String {
+    let body_html = body_html.trim();
+    if !body_html.is_empty() {
+        return body_html.to_string();
+    }
+    if let Some(start) = document_html.find("<body") {
+        if let Some(open_tag_end) = document_html[start..].find('>') {
+            let content_start = start + open_tag_end + 1;
+            if let Some(end) = document_html[content_start..].rfind("</body>") {
+                return document_html[content_start..content_start + end]
+                    .trim()
+                    .to_string();
+            }
+        }
+    }
+    document_html.to_string()
 }
 
 #[cfg(feature = "ssr")]
@@ -381,6 +409,32 @@ mod tests {
     #[test]
     fn missing_published_artifact_fails_closed() {
         assert!(published_artifact_page_body(PAGE_ID, None, Some("web")).is_none());
+    }
+
+    #[test]
+    fn published_artifact_page_body_embeds_html_css_and_url() {
+        let artifact = rustok_pages::PublishedLandingArtifact {
+            page_id: uuid::Uuid::nil(),
+            locale: "en".to_string(),
+            build_hash: "build".to_string(),
+            artifact_hash: "artifact".to_string(),
+            materialization_hash: None,
+            document_html: "<html><body><h1>Hello</h1></body></html>".to_string(),
+            body_html: "<h1>Hello</h1>".to_string(),
+            css: "h1 { color: red; }".to_string(),
+            content_hash: "hash".to_string(),
+        };
+        let body = published_artifact_page_body(PAGE_ID, Some(artifact), Some("web"))
+            .expect("page body");
+        assert_eq!(body.format, crate::builder::STATIC_LANDING_PAYLOAD_BODY_FORMAT);
+        let payload = crate::builder::decode_static_landing_payload(&body)
+            .expect("decoded payload");
+        assert_eq!(payload.html, "<h1>Hello</h1>");
+        assert_eq!(payload.css, "h1 { color: red; }");
+        assert_eq!(
+            payload.artifact_url,
+            Some(format!("/api/pages/{PAGE_ID}/artifact?locale=en&channel=web"))
+        );
     }
 
     #[test]

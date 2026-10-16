@@ -32,6 +32,18 @@ pub async fn get_category_subscription_settings(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ForumSubscriptionResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        category_id = %id,
+        "Forum get category subscription requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_category_id", "Category ID must not be nil"));
+    }
     ensure_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_READ],
@@ -75,6 +87,18 @@ pub async fn update_category_subscription_settings(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateForumSubscriptionInput>,
 ) -> HttpResult<Json<ForumSubscriptionResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        category_id = %id,
+        "Forum update category subscription requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_category_id", "Category ID must not be nil"));
+    }
     ensure_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_READ],
@@ -115,6 +139,18 @@ pub async fn get_topic_subscription_settings(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ForumSubscriptionResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        topic_id = %id,
+        "Forum get topic subscription requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_topic_id", "Topic ID must not be nil"));
+    }
     ensure_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -158,6 +194,18 @@ pub async fn update_topic_subscription_settings(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateForumSubscriptionInput>,
 ) -> HttpResult<Json<ForumSubscriptionResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        topic_id = %id,
+        "Forum update topic subscription requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request("invalid_topic_id", "Topic ID must not be nil"));
+    }
     ensure_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -195,6 +243,14 @@ pub async fn get_subscription_policy(
     tenant: TenantContext,
     auth: AuthContext,
 ) -> HttpResult<Json<ForumSubscriptionPolicyResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        "Forum get subscription policy requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
     ensure_permission(
         &auth,
         &[
@@ -228,6 +284,14 @@ pub async fn update_subscription_policy(
     auth: AuthContext,
     Json(input): Json<UpdateForumSubscriptionPolicyInput>,
 ) -> HttpResult<Json<ForumSubscriptionPolicyResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        "Forum update subscription policy requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
     ensure_permission(
         &auth,
         &[
@@ -256,6 +320,12 @@ fn ensure_permission(
     permissions: &[Permission],
     message: &str,
 ) -> HttpResult<()> {
+    if auth.tenant_id.is_nil() {
+        return Err(HttpError::unauthorized("invalid_auth_tenant_id", "Authenticated tenant ID must not be nil"));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::unauthorized("invalid_auth_user_id", "Authenticated user ID must not be nil"));
+    }
     if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden(
             "forum_permission_denied",

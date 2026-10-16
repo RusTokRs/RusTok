@@ -43,6 +43,7 @@ pub struct PublishedLandingArtifact {
     pub artifact_hash: String,
     pub materialization_hash: Option<String>,
     pub document_html: String,
+    pub body_html: String,
     pub css: String,
     pub content_hash: String,
 }
@@ -433,6 +434,7 @@ fn published_record(
         artifact_hash: record.artifact_hash,
         materialization_hash: record.materialization_hash,
         document_html: record.document_html,
+        body_html: record.body_html,
         css: record.css,
         content_hash: record.content_hash,
     })

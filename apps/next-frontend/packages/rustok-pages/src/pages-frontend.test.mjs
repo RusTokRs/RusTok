@@ -52,3 +52,22 @@ test("parseArtifactHtml handles documents without separate style tag gracefully"
   assert.equal(parsed.css, "");
   assert.equal(parsed.html, plainMarkup);
 });
+
+test("parseArtifactHtml handles multiple style blocks across document", () => {
+  const docWithMultipleStyles = `<!doctype html>
+<html>
+<head>
+  <style>.first { color: blue; }</style>
+  <style>.second { color: green; }</style>
+</head>
+<body>
+  <div class="first second">Content</div>
+</body>
+</html>`;
+  const parsed = parseArtifactHtml(docWithMultipleStyles);
+
+  assert.ok(parsed.css.includes(".first { color: blue; }"));
+  assert.ok(parsed.css.includes(".second { color: green; }"));
+  assert.ok(parsed.html.includes('<div class="first second">Content</div>'));
+});
+

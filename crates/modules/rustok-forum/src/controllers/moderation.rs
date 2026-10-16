@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, State},
 };
 use rustok_api::{AuthContext, RequestContext, TenantContext};
-use rustok_web::HttpResult;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::moderation_transport::{ForumModerationTransport, moderation_audience_port_context};
@@ -39,6 +39,38 @@ pub async fn mark_topic_solution(
     request_context: RequestContext,
     Path((topic_id, reply_id)): Path<(Uuid, Uuid)>,
 ) -> HttpResult<Json<TopicResponse>> {
+    if tenant.id.is_nil() || auth.tenant_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_user_id",
+            "Auth user ID must not be nil",
+        ));
+    }
+    if topic_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
+    if reply_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_reply_id",
+            "Reply ID must not be nil",
+        ));
+    }
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        topic_id = %topic_id,
+        reply_id = %reply_id,
+        user_id = %auth.user_id,
+        "mark_topic_solution"
+    );
+
     let audience_context = moderation_audience_port_context(
         ForumModerationTransport::Rest,
         tenant.id,
@@ -100,6 +132,31 @@ pub async fn clear_topic_solution(
     request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
 ) -> HttpResult<Json<TopicResponse>> {
+    if tenant.id.is_nil() || auth.tenant_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_user_id",
+            "Auth user ID must not be nil",
+        ));
+    }
+    if topic_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        topic_id = %topic_id,
+        user_id = %auth.user_id,
+        "clear_topic_solution"
+    );
+
     let audience_context = moderation_audience_port_context(
         ForumModerationTransport::Rest,
         tenant.id,

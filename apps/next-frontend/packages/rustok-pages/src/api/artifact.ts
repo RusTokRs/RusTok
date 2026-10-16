@@ -19,10 +19,18 @@ export interface ArtifactContent {
  * static landing artifact HTML document.
  */
 export function parseArtifactHtml(documentHtml: string): ArtifactContent {
-  const styleMatch = documentHtml.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const styles: string[] = [];
+  const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = styleRegex.exec(documentHtml)) !== null) {
+    if (match[1]) {
+      styles.push(match[1].trim());
+    }
+  }
+
   const bodyMatch = documentHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   return {
-    css: styleMatch ? styleMatch[1].trim() : "",
+    css: styles.join("\n\n"),
     html: bodyMatch ? bodyMatch[1].trim() : documentHtml,
   };
 }

@@ -28,6 +28,18 @@ pub async fn archive_category_subtree(
     auth: AuthContext,
     Path(category_id): Path<Uuid>,
 ) -> HttpResult<Json<CategorySubtreeLifecycleResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        category_id = %category_id,
+        "Forum category subtree archive requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if category_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_category_id", "Category ID must not be nil"));
+    }
     ensure_manage_permission(&auth)?;
     let response = CategoryService::new(runtime.db_clone())
         .archive_subtree(tenant.id, category_id, forum_security(&auth))
@@ -55,6 +67,18 @@ pub async fn restore_category_subtree(
     auth: AuthContext,
     Path(category_id): Path<Uuid>,
 ) -> HttpResult<Json<CategorySubtreeLifecycleResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        category_id = %category_id,
+        "Forum category subtree restore requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if category_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_category_id", "Category ID must not be nil"));
+    }
     ensure_manage_permission(&auth)?;
     let response = CategoryService::new(runtime.db_clone())
         .restore_subtree(tenant.id, category_id, forum_security(&auth))
@@ -76,6 +100,12 @@ fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
 }
 
 fn ensure_manage_permission(auth: &AuthContext) -> HttpResult<()> {
+    if auth.tenant_id.is_nil() {
+        return Err(HttpError::unauthorized("invalid_auth_tenant_id", "Authenticated tenant ID must not be nil"));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::unauthorized("invalid_auth_user_id", "Authenticated user ID must not be nil"));
+    }
     if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_MANAGE]) {
         return Err(HttpError::forbidden(
             "forum_permission_denied",

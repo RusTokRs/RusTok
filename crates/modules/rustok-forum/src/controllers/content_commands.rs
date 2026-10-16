@@ -39,6 +39,26 @@ pub async fn create_topic(
     request_context: RequestContext,
     Json(input): Json<CreateTopicCommandInput>,
 ) -> HttpResult<(StatusCode, Json<TopicResponse>)> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if input.topic.category_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
+    }
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        category_id = %input.topic.category_id,
+        title = %input.topic.title,
+        "create_topic"
+    );
+
     ensure_permission(
         &auth,
         Permission::FORUM_TOPICS_CREATE,
@@ -87,6 +107,20 @@ pub async fn update_topic(
     Path(topic_id): Path<Uuid>,
     Json(input): Json<UpdateTopicCommandInput>,
 ) -> HttpResult<Json<TopicResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if topic_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, topic_id = %topic_id, user_id = %auth.user_id, "update_topic");
+
     ensure_permission(
         &auth,
         Permission::FORUM_TOPICS_UPDATE,
@@ -121,6 +155,20 @@ pub async fn create_reply(
     Path(topic_id): Path<Uuid>,
     Json(input): Json<CreateReplyCommandInput>,
 ) -> HttpResult<(StatusCode, Json<ReplyResponse>)> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if topic_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, topic_id = %topic_id, user_id = %auth.user_id, "create_reply");
+
     ensure_permission(
         &auth,
         Permission::FORUM_REPLIES_CREATE,
@@ -170,6 +218,20 @@ pub async fn update_reply(
     Path(reply_id): Path<Uuid>,
     Json(input): Json<UpdateReplyCommandInput>,
 ) -> HttpResult<Json<ReplyResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if reply_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_reply_id",
+            "Reply ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, reply_id = %reply_id, user_id = %auth.user_id, "update_reply");
+
     ensure_permission(
         &auth,
         Permission::FORUM_REPLIES_UPDATE,
@@ -188,6 +250,18 @@ fn ensure_permission(
     permission: Permission,
     message: &'static str,
 ) -> HttpResult<()> {
+    if auth.tenant_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Auth tenant ID must not be nil",
+        ));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_user_id",
+            "Auth user ID must not be nil",
+        ));
+    }
     if has_any_effective_permission(&auth.permissions, &[permission]) {
         Ok(())
     } else {

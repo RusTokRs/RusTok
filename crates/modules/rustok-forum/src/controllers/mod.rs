@@ -168,6 +168,10 @@ async fn enforce_forum_module_enabled(
     request: Request,
     next: Next,
 ) -> Response {
+    if tenant.id.is_nil() {
+        return HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil")
+            .into_response();
+    }
     match ensure_forum_module_enabled(&runtime, tenant.id).await {
         Ok(()) => next.run(request).await,
         Err(error) => error.into_response(),

@@ -34,7 +34,7 @@
     "runtime_snapshots_retained": true,
     "typed_pages_cache_runtime_used": true,
     "visible_channel_selected_reviewed_page": true,
-    "visible_channel_returned_fly_artifact_url": true,
+    "visible_channel_returned_fly_artifact_payload": true,
     "artifact_url_retained_selected_channel": true,
     "hidden_channel_did_not_select_artifact": true,
     "channel_variants_used_distinct_cache_keys": true,

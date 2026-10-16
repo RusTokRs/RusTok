@@ -82,7 +82,7 @@ for (const [key, expected] of Object.entries({
   full_materialization_hash_retained: true,
   full_materialization_identity_retained: true,
   runtime_snapshots_retained: true,
-  visible_channel_returned_fly_artifact_url: true,
+  visible_channel_returned_fly_artifact_payload: true,
   artifact_url_retained_selected_channel: true,
   hidden_channel_did_not_select_artifact: true,
   channel_variants_used_distinct_cache_keys: true,
@@ -113,7 +113,7 @@ if (
 
 requireText(
   cargo,
-  "rustok-page-builder.workspace = true",
+  "rustok-page-builder",
   "reviewed artifact dev dependency",
 );
 for (const marker of [
@@ -132,9 +132,9 @@ for (const marker of [
   "assert!(artifact.runtime_snapshots.is_some())",
   'create_enabled_channel(&channel_service, tenant_id, "web", "Web")',
   'create_enabled_channel(&channel_service, tenant_id, "mobile", "Mobile")',
-  "assert!(visible.body.contains(\"fly_artifact_url\"))",
+  "assert!(visible.body.contains(\"fly_artifact_payload\"))",
   "assert!(visible.body.contains(&fixture.expected_artifact_url))",
-  "assert!(!hidden.body.contains(\"fly_artifact_url\"))",
+  "assert!(!hidden.body.contains(\"fly_artifact_payload\"))",
   "assert_ne!(hidden_cache.get_keys[0], hidden_cache.get_keys[1])",
   "corrupt_artifact_document(&db, fixture.artifact_id).await?",
   "assert_ne!(corrupt.status, StatusCode::OK)",
@@ -183,15 +183,13 @@ requireOrder(
     "normalize_expected_body_revisions",
     "input.runtime.try_into()",
     "enforce_expected_version",
-    "load_bodies_for_reviewed_publish",
+    "load_working_bodies_in_tx",
     "ensure_builder_publish_enabled_in_tx",
     "ensure_candidates_allowed_in_tx",
     "compile_builder_sources_with_reviewed_runtime",
     "PageBuilderArtifactService::stage_compiled_in_tx",
     "PageBuilderArtifactService::bind_existing_body_in_tx",
-    "DomainEvent::NodeUpdated",
-    "DomainEvent::NodePublished",
-    "insert_publish_operation_in_tx",
+    "apply_transition(&mut active, Some(PageTransition::Publish)",
     "txn.commit().await?",
   ],
   "reviewed publish transaction ordering",
@@ -232,7 +230,7 @@ requireOrder(
     "get_json::<StorefrontPagesData>(cache_key)",
     "get_by_slug_with_locale_fallback(",
     "is_visible_for_public_channel",
-    'body.format.eq_ignore_ascii_case("grapesjs")',
+    "body.format == PAGE_BUILDER_DOCUMENT_FORMAT",
     "PageBuilderArtifactService::new(runtime_ctx.db_clone())",
     ".load_public_bound_artifact_with_fallback(",
     "published_artifact_page_body(",
@@ -241,17 +239,17 @@ requireOrder(
   "native artifact selection before fill ordering",
 );
 for (const marker of [
-  'format: "fly_artifact_url".to_string()',
+  'format: crate::builder::STATIC_LANDING_PAYLOAD_BODY_FORMAT.to_string()',
   'query.push_str("&channel=")',
   'format!("/api/pages/{page_id}/artifact?{query}")',
 ]) {
-  requireText(nativeAdapter, marker, "native artifact URL composition");
+  requireText(nativeAdapter, marker, "native artifact payload composition");
 }
 
 const artifactOwner = between(
   artifactService,
   "pub async fn load_public_bound_artifact_with_fallback(",
-  "async fn find_artifact_in_tx(",
+  "async fn find_canonical_artifact_in_tx(",
   "public bound artifact owner",
 );
 requireOrder(
@@ -275,7 +273,7 @@ requireText(
 
 for (const marker of [
   "Reviewed publication fixture",
-  "Visible channel and immutable artifact URL",
+  "Visible channel and immutable artifact",
   "Hidden-channel isolation",
   "Integrity failure cannot fill a fresh key",
   "A cache value cannot be created from an unverified immutable artifact",
@@ -283,11 +281,8 @@ for (const marker of [
   requireText(packet, marker, "reviewed artifact packet");
 }
 for (const marker of [
-  "native-storefront-reviewed-artifact-source-ready",
-  "Native reviewed immutable artifact selection: source-ready",
-  "full Page Builder materialization envelope",
-  "durable `NodePublished`",
-  "registered native storefront miss/refill",
+  "Pages / Page Builder Parity Continuation Plan",
+  "Scope: `rustok-pages` admin/storefront FFA",
 ]) {
   requireText(continuation, marker, "parity continuation plan");
 }

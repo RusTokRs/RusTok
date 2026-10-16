@@ -160,7 +160,7 @@ async fn native_storefront_returns_reviewed_artifact_for_visible_channel_and_ref
 
     let visible = call_storefront(&app, &tenant, &channel_context(&web), "en").await?;
     assert_eq!(visible.status, StatusCode::OK);
-    assert!(visible.body.contains("fly_artifact_url"));
+    assert!(visible.body.contains("fly_artifact_payload"));
     assert!(visible.body.contains(&fixture.expected_artifact_url));
     assert!(visible.body.contains(&fixture.page_id.to_string()));
     assert!(visible.body.contains("Reviewed native artifact"));
@@ -178,7 +178,7 @@ async fn native_storefront_returns_reviewed_artifact_for_visible_channel_and_ref
     let hidden = call_storefront(&app, &tenant, &channel_context(&mobile), "en").await?;
     assert_eq!(hidden.status, StatusCode::OK);
     assert!(!hidden.body.contains(&fixture.expected_artifact_url));
-    assert!(!hidden.body.contains("fly_artifact_url"));
+    assert!(!hidden.body.contains("fly_artifact_payload"));
     let hidden_cache = cache.snapshot();
     assert_eq!(hidden_cache.generation_reads, 2);
     assert_eq!(hidden_cache.get_keys.len(), 2);

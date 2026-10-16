@@ -33,6 +33,25 @@ pub async fn move_category(
     Path(category_id): Path<Uuid>,
     Json(input): Json<MoveCategoryInput>,
 ) -> HttpResult<Json<MoveCategoryResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        category_id = %category_id,
+        new_parent_id = ?input.parent_id,
+        position = input.position,
+        "Forum category move requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if category_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_category_id", "Category ID must not be nil"));
+    }
+    if let Some(parent_id) = input.parent_id {
+        if parent_id.is_nil() {
+            return Err(HttpError::bad_request("invalid_parent_id", "Parent category ID must not be nil"));
+        }
+    }
     ensure_manage_permission(&auth)?;
     let response = CategoryService::new(runtime.db_clone())
         .move_category(tenant.id, category_id, forum_security(&auth), input)
@@ -59,6 +78,24 @@ pub async fn reorder_category_siblings(
     auth: AuthContext,
     Json(input): Json<ReorderCategorySiblingsInput>,
 ) -> HttpResult<Json<ReorderCategorySiblingsResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        parent_id = ?input.parent_id,
+        count = input.ordered_category_ids.len(),
+        "Forum category siblings reorder requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if let Some(parent_id) = input.parent_id {
+        if parent_id.is_nil() {
+            return Err(HttpError::bad_request("invalid_parent_id", "Parent category ID must not be nil"));
+        }
+    }
+    if input.ordered_category_ids.iter().any(|id| id.is_nil()) {
+        return Err(HttpError::bad_request("invalid_category_id", "Ordered category IDs must not contain nil UUIDs"));
+    }
     ensure_manage_permission(&auth)?;
     let response = CategoryService::new(runtime.db_clone())
         .reorder_siblings(tenant.id, forum_security(&auth), input)
@@ -80,6 +117,12 @@ fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
 }
 
 fn ensure_manage_permission(auth: &AuthContext) -> HttpResult<()> {
+    if auth.tenant_id.is_nil() {
+        return Err(HttpError::unauthorized("invalid_auth_tenant_id", "Authenticated tenant ID must not be nil"));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::unauthorized("invalid_auth_user_id", "Authenticated user ID must not be nil"));
+    }
     if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_MANAGE]) {
         return Err(HttpError::forbidden(
             "forum_permission_denied",

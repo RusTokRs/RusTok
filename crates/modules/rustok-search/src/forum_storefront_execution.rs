@@ -837,11 +837,14 @@ mod tests {
     use super::{
         ForumStorefrontCurrentChannelFilter, ForumStorefrontDocumentFilters,
         ResultEligibleSearchRequest, StorefrontSearchResultCandidate,
-        StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
-        StorefrontSearchTransport, build_forum_result_facets, execute_result_eligible_search,
-        forum_visible_status, normalize_optional_rfc3339, resolve_current_channel_filter,
+        StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
+        build_forum_result_facets, execute_result_eligible_search, forum_visible_status,
+        normalize_optional_rfc3339, resolve_current_channel_filter,
     };
-    use crate::{SearchQuery, SearchRankingProfile, TrustedStorefrontChannel};
+    use crate::{
+        SearchQuery, SearchRankingProfile, StorefrontSearchResultEligibilityPort,
+        TrustedStorefrontChannel,
+    };
 
     struct PrivateForum;
 

@@ -26,6 +26,18 @@ pub async fn get_user_stats(
     auth: AuthContext,
     Path(user_id): Path<Uuid>,
 ) -> HttpResult<Json<ForumUserStatsResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        auth_user_id = %auth.user_id,
+        target_user_id = %user_id,
+        "Forum get user stats requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
+    if user_id.is_nil() {
+        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+    }
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -52,6 +64,12 @@ fn ensure_forum_permission(
     permissions: &[Permission],
     message: &str,
 ) -> HttpResult<()> {
+    if auth.tenant_id.is_nil() {
+        return Err(HttpError::unauthorized("invalid_auth_tenant_id", "Authenticated tenant ID must not be nil"));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::unauthorized("invalid_auth_user_id", "Authenticated user ID must not be nil"));
+    }
     if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden(
             "forum_permission_denied",

@@ -60,6 +60,26 @@ pub async fn list_replies(
     Path(topic_id): Path<Uuid>,
     Query(query): Query<ListRepliesQuery>,
 ) -> HttpResult<Json<ReplyListItemPage>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if topic_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        topic_id = %topic_id,
+        user_id = %auth.user_id,
+        locale = ?query.locale,
+        "list_replies"
+    );
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_LIST],
@@ -163,6 +183,20 @@ pub async fn get_reply(
     Path(id): Path<Uuid>,
     Query(filter): Query<ListRepliesFilter>,
 ) -> HttpResult<Json<ReplyResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_reply_id",
+            "Reply ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, reply_id = %id, user_id = %auth.user_id, "get_reply");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_READ],
@@ -212,6 +246,20 @@ pub async fn delete_reply(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_reply_id",
+            "Reply ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, reply_id = %id, user_id = %auth.user_id, "delete_reply");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_DELETE],
@@ -245,6 +293,20 @@ pub async fn restore_reply(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_reply_id",
+            "Reply ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, reply_id = %id, user_id = %auth.user_id, "restore_reply");
+
     runtime
         .reply_service()
         .restore(tenant.id, id, forum_security(&auth))
@@ -274,6 +336,20 @@ pub async fn set_reply_vote(
     request_context: RequestContext,
     Path((reply_id, value)): Path<(Uuid, i32)>,
 ) -> HttpResult<Json<ReplyResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if reply_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_reply_id",
+            "Reply ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, reply_id = %reply_id, value, user_id = %auth.user_id, "set_reply_vote");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_READ],
@@ -344,6 +420,20 @@ pub async fn clear_reply_vote(
     request_context: RequestContext,
     Path(reply_id): Path<Uuid>,
 ) -> HttpResult<Json<ReplyResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if reply_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_reply_id",
+            "Reply ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, reply_id = %reply_id, user_id = %auth.user_id, "clear_reply_vote");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_REPLIES_READ],
@@ -398,6 +488,18 @@ fn ensure_forum_permission(
     permissions: &[Permission],
     message: &str,
 ) -> HttpResult<()> {
+    if auth.tenant_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Auth tenant ID must not be nil",
+        ));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_user_id",
+            "Auth user ID must not be nil",
+        ));
+    }
     if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden(
             "forum_permission_denied",

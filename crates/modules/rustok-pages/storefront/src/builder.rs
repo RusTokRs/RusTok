@@ -2,17 +2,35 @@ use crate::model::PageBody;
 use leptos::prelude::*;
 pub use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_page_builder_storefront::{
-    PageBuilderStorefront, PageSelection, SharedRichTextRenderer,
+    PageBuilderStorefront, PageSelection, SharedRichTextRenderer, StaticLandingStorefront,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub const STATIC_LANDING_PAYLOAD_BODY_FORMAT: &str = "fly_artifact_payload";
 pub const STATIC_LANDING_URL_BODY_FORMAT: &str = "fly_artifact_url";
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StaticLandingBodyPayload {
+    pub html: String,
+    pub css: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_url: Option<String>,
+}
+
 pub fn is_page_builder_body(body: &PageBody) -> bool {
-    body.format == PAGE_BUILDER_DOCUMENT_FORMAT || body.format == STATIC_LANDING_URL_BODY_FORMAT
+    body.format == PAGE_BUILDER_DOCUMENT_FORMAT
+        || body.format == STATIC_LANDING_PAYLOAD_BODY_FORMAT
+        || body.format == STATIC_LANDING_URL_BODY_FORMAT
 }
 
 pub fn decode_page_builder_body(body: &PageBody) -> Result<Value, serde_json::Error> {
+    serde_json::from_str(&body.content)
+}
+
+pub fn decode_static_landing_payload(
+    body: &PageBody,
+) -> Result<StaticLandingBodyPayload, serde_json::Error> {
     serde_json::from_str(&body.content)
 }
 
@@ -34,7 +52,41 @@ pub fn PageBuilderPageBody(
         .into_any();
     }
 
+    if body.format == STATIC_LANDING_PAYLOAD_BODY_FORMAT {
+        return match decode_static_landing_payload(&body) {
+            Ok(payload) => view! {
+                <StaticLandingStorefront
+                    html=payload.html
+                    css=payload.css
+                    class=class
+                />
+            }
+            .into_any(),
+            Err(error) => view! {
+                <div
+                    class=class
+                    data-page-builder-body="invalid"
+                    role="alert"
+                >
+                    <p>{format!("Invalid static landing payload: {error}")}</p>
+                </div>
+            }
+            .into_any(),
+        };
+    }
+
     if body.format == STATIC_LANDING_URL_BODY_FORMAT {
+        if let Ok(payload) = decode_static_landing_payload(&body) {
+            return view! {
+                <StaticLandingStorefront
+                    html=payload.html
+                    css=payload.css
+                    class=class
+                />
+            }
+            .into_any();
+        }
+
         return view! {
             <iframe
                 class=class
@@ -129,6 +181,10 @@ mod tests {
             "{}".to_string()
         )));
         assert!(is_page_builder_body(&body(
+            STATIC_LANDING_PAYLOAD_BODY_FORMAT,
+            "{}".to_string()
+        )));
+        assert!(is_page_builder_body(&body(
             STATIC_LANDING_URL_BODY_FORMAT,
             "/api/pages/id/artifact".to_string(),
         )));
@@ -155,10 +211,32 @@ mod tests {
     }
 
     #[test]
+    fn decodes_static_landing_payload() {
+        let payload = StaticLandingBodyPayload {
+            html: "<h1>Landing</h1>".to_string(),
+            css: "h1 { color: red; }".to_string(),
+            artifact_url: Some("/api/pages/123/artifact".to_string()),
+        };
+        let decoded = decode_static_landing_payload(&body(
+            STATIC_LANDING_PAYLOAD_BODY_FORMAT,
+            serde_json::to_string(&payload).expect("payload json"),
+        ))
+        .expect("decode payload");
+        assert_eq!(decoded, payload);
+    }
+
+    #[test]
     fn invalid_builder_json_is_rejected() {
         assert!(
             decode_page_builder_body(&body(PAGE_BUILDER_DOCUMENT_FORMAT, "{invalid".to_string(),))
                 .is_err()
+        );
+        assert!(
+            decode_static_landing_payload(&body(
+                STATIC_LANDING_PAYLOAD_BODY_FORMAT,
+                "{invalid".to_string(),
+            ))
+            .is_err()
         );
     }
 }

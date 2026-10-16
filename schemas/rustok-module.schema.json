@@ -1,0 +1,253 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RusToK Module Package Contract",
+  "description": "Scoped module package manifest defining identity, surfaces, and capabilities (rustok-module.toml)",
+  "type": "object",
+  "required": ["module"],
+  "properties": {
+    "module": {
+      "type": "object",
+      "required": ["slug", "name", "version"],
+      "properties": {
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]{1,48}$",
+          "description": "Unique module identifier (1-48 chars, lowercase alphanumeric and underscore)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable display name"
+        },
+        "version": {
+          "type": "string",
+          "description": "SemVer version of this module release"
+        },
+        "description": {
+          "type": "string",
+          "description": "Short description of the module responsibility"
+        },
+        "ownership": {
+          "type": "string",
+          "enum": ["first_party", "third_party"],
+          "default": "first_party",
+          "description": "Platform ownership tier"
+        },
+        "trust_level": {
+          "type": "string",
+          "enum": ["core", "verified", "unverified", "private"],
+          "default": "verified",
+          "description": "Platform admission trust level"
+        },
+        "ui_classification": {
+          "type": "string",
+          "enum": [
+            "dual_surface",
+            "admin_only",
+            "storefront_only",
+            "no_ui",
+            "capability_only",
+            "future_ui"
+          ],
+          "default": "no_ui",
+          "description": "UI surface classification matching declared UI crates"
+        },
+        "recommended_admin_surfaces": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Admin UI surfaces where this module is recommended"
+        },
+        "showcase_admin_surfaces": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Admin UI surfaces where this module is showcased"
+        },
+        "runtime": {
+          "type": "string",
+          "default": "module",
+          "description": "Runtime classification"
+        }
+      },
+      "additionalProperties": false
+    },
+    "marketplace": {
+      "type": "object",
+      "properties": {
+        "category": { "type": "string" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "publisher": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "dependencies": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z0-9_]{1,48}$": {
+          "type": "object",
+          "properties": {
+            "version_req": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "crate": {
+      "type": "object",
+      "properties": {
+        "entry_type": {
+          "type": "string",
+          "description": "Public Rust struct implementing RusToKModule"
+        }
+      },
+      "additionalProperties": false
+    },
+    "provides": {
+      "type": "object",
+      "properties": {
+        "graphql": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string" },
+            "mutation": { "type": "string" },
+            "subscription": { "type": "string" },
+            "runtime_data_factory": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "http": {
+          "type": "object",
+          "properties": {
+            "routes": { "type": "string" },
+            "axum_router": { "type": "string" },
+            "webhook_routes": { "type": "string" },
+            "axum_webhook_router": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "cli": {
+          "type": "object",
+          "properties": {
+            "namespace": { "type": "string" },
+            "factory": { "type": "string" },
+            "provider": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "admin_ui": {
+          "type": "object",
+          "properties": {
+            "leptos_crate": { "type": "string" },
+            "route_segment": { "type": "string" },
+            "nav_label": { "type": "string" },
+            "nav_group": { "type": "string" },
+            "nav_order": { "type": "integer" },
+            "slot": { "type": "string" },
+            "page_title": { "type": "string" },
+            "next_package": { "type": "string" },
+            "components": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "component", "slot"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "component": { "type": "string" },
+                  "slot": { "type": "string" },
+                  "order": { "type": "integer" }
+                }
+              }
+            },
+            "child_pages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["subpath", "title", "nav_label"],
+                "properties": {
+                  "subpath": { "type": "string" },
+                  "title": { "type": "string" },
+                  "nav_label": { "type": "string" }
+                }
+              }
+            },
+            "i18n": {
+              "type": "object",
+              "properties": {
+                "default_locale": { "type": "string" },
+                "supported_locales": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "leptos_locales_path": { "type": "string" }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "storefront_ui": {
+          "type": "object",
+          "properties": {
+            "leptos_crate": { "type": "string" },
+            "route_segment": { "type": "string" },
+            "nav_label": { "type": "string" },
+            "nav_group": { "type": "string" },
+            "nav_order": { "type": "integer" },
+            "slot": { "type": "string" },
+            "page_title": { "type": "string" },
+            "next_package": { "type": "string" },
+            "components": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "component", "slot"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "component": { "type": "string" },
+                  "slot": { "type": "string" },
+                  "order": { "type": "integer" }
+                }
+              }
+            },
+            "child_pages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["subpath", "title", "nav_label"],
+                "properties": {
+                  "subpath": { "type": "string" },
+                  "title": { "type": "string" },
+                  "nav_label": { "type": "string" }
+                }
+              }
+            },
+            "i18n": {
+              "type": "object",
+              "properties": {
+                "default_locale": { "type": "string" },
+                "supported_locales": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "leptos_locales_path": { "type": "string" }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "settings": {
+      "type": "object",
+      "description": "Tenant settings schema definitions"
+    },
+    "fba": {
+      "type": "object",
+      "description": "Fluid Backend Architecture capabilities and dependencies"
+    }
+  },
+  "additionalProperties": false
+}

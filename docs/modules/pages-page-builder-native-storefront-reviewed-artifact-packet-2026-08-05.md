@@ -51,11 +51,11 @@ The reviewed page is constrained to channel slug `web`. A real `web` channel wit
 The admitted request must return:
 
 ```text
-format = fly_artifact_url
-content = /api/pages/{page_id}/artifact?locale=en&channel=web
+format = fly_artifact_payload
+content = {"html":"...","css":"...","artifact_url":"/api/pages/{page_id}/artifact?locale=en&channel=web"}
 ```
 
-This proves that the registered native route consumes the binding produced by reviewed publication and preserves the selected public channel in the artifact URL. The complete owner response is cached only after the artifact service has reloaded and verified the published binding and full materialization envelope.
+This proves that the registered native route consumes the binding produced by reviewed publication, delivers direct SSR HTML and scoped CSS without requiring an iframe, and preserves the selected public channel in the artifact URL. The complete owner response is cached only after the artifact service has reloaded and verified the published binding and full materialization envelope.
 
 ## Hidden-channel isolation
 

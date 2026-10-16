@@ -87,6 +87,26 @@ pub async fn list_topics(
     request_context: RequestContext,
     Query(query): Query<ListTopicsQuery>,
 ) -> HttpResult<Json<TopicListItemPage>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if let Some(category_id) = query.category_id && category_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
+    }
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        category_id = ?query.category_id,
+        locale = ?query.locale,
+        "list_topics"
+    );
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_LIST],
@@ -224,6 +244,20 @@ pub async fn get_topic(
     Path(id): Path<Uuid>,
     Query(filter): Query<ListTopicsFilter>,
 ) -> HttpResult<Json<TopicResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, topic_id = %id, user_id = %auth.user_id, "get_topic");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -273,6 +307,20 @@ pub async fn delete_topic(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, topic_id = %id, user_id = %auth.user_id, "delete_topic");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_DELETE],
@@ -307,6 +355,20 @@ pub async fn restore_topic(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, topic_id = %id, user_id = %auth.user_id, "restore_topic");
+
     runtime
         .topic_service()
         .restore(tenant.id, id, forum_security(&auth))
@@ -336,6 +398,20 @@ pub async fn set_topic_vote(
     request_context: RequestContext,
     Path((topic_id, value)): Path<(Uuid, i32)>,
 ) -> HttpResult<Json<TopicResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if topic_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, topic_id = %topic_id, value, user_id = %auth.user_id, "set_topic_vote");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -403,6 +479,20 @@ pub async fn clear_topic_vote(
     request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
 ) -> HttpResult<Json<TopicResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if topic_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, topic_id = %topic_id, user_id = %auth.user_id, "clear_topic_vote");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -455,6 +545,20 @@ pub async fn subscribe_topic(
     request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
 ) -> HttpResult<Json<TopicResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if topic_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, topic_id = %topic_id, user_id = %auth.user_id, "subscribe_topic");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -515,6 +619,20 @@ pub async fn unsubscribe_topic(
     auth: AuthContext,
     Path(topic_id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if topic_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, topic_id = %topic_id, user_id = %auth.user_id, "unsubscribe_topic");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -536,6 +654,18 @@ fn ensure_forum_permission(
     permissions: &[Permission],
     message: &str,
 ) -> HttpResult<()> {
+    if auth.tenant_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Auth tenant ID must not be nil",
+        ));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_user_id",
+            "Auth user ID must not be nil",
+        ));
+    }
     if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden(
             "forum_permission_denied",

@@ -51,6 +51,19 @@ pub async fn list_categories(
     request_context: RequestContext,
     Query(params): Query<CategoryListParams>,
 ) -> HttpResult<Json<Vec<CategoryListItem>>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        locale = ?params.locale,
+        "list_categories"
+    );
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_LIST],
@@ -129,6 +142,20 @@ pub async fn get_category(
     Path(id): Path<Uuid>,
     Query(params): Query<CategoryListParams>,
 ) -> HttpResult<Json<CategoryResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, category_id = %id, user_id = %auth.user_id, "get_category");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_READ],
@@ -178,6 +205,20 @@ pub async fn create_category(
     auth: AuthContext,
     Json(input): Json<CreateCategoryInput>,
 ) -> HttpResult<(StatusCode, Json<CategoryResponse>)> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if let Some(parent_id) = input.parent_id && parent_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_parent_id",
+            "Parent category ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, user_id = %auth.user_id, name = %input.name, "create_category");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_CREATE],
@@ -212,6 +253,26 @@ pub async fn update_category(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateCategoryInput>,
 ) -> HttpResult<Json<CategoryResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
+    }
+    if let Some(parent_id) = input.parent_id && parent_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_parent_id",
+            "Parent category ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, category_id = %id, user_id = %auth.user_id, "update_category");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_UPDATE],
@@ -244,6 +305,20 @@ pub async fn delete_category(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, category_id = %id, user_id = %auth.user_id, "delete_category");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_DELETE],
@@ -276,6 +351,20 @@ pub async fn subscribe_category(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<CategoryResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, category_id = %id, user_id = %auth.user_id, "subscribe_category");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_READ],
@@ -330,6 +419,20 @@ pub async fn unsubscribe_category(
     request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<CategoryResponse>> {
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
+    }
+    tracing::debug!(tenant_id = %tenant.id, category_id = %id, user_id = %auth.user_id, "unsubscribe_category");
+
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_CATEGORIES_READ],
@@ -380,6 +483,18 @@ fn ensure_forum_permission(
     permissions: &[Permission],
     message: &str,
 ) -> HttpResult<()> {
+    if auth.tenant_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Auth tenant ID must not be nil",
+        ));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_user_id",
+            "Auth user ID must not be nil",
+        ));
+    }
     if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden(
             "forum_permission_denied",

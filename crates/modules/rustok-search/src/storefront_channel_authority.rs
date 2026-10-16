@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 const MAX_TRUSTED_STOREFRONT_CHANNEL_SLUG_LEN: usize = 128;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TrustedStorefrontChannel {
     pub channel_id: Option<Uuid>,
     pub channel_slug: Option<String>,
