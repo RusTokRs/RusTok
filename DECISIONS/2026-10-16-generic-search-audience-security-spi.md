@@ -2,7 +2,7 @@
 
 - Date: 2026-10-16
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Completed
 - Owners: platform / search team
 - Extends: `2026-07-31-forum-search-versioned-invalidation-rollout.md`
 - Supersedes: None

@@ -5,7 +5,9 @@
 The Search module generalizes cross-module authorization and ingestion boundaries:
 1. **Audience Security SPI (`audience_security.rs`):**
    - Introduced `SearchAudiencePolicyPort` and `SearchAudienceRegistry` replacing hard-coded Forum audience couplings with a generic port-based registry.
-   - Domain modules implement `SearchAudiencePolicyPort` directly (`ServerForumSearchResultEligibilityPort`), eliminating legacy bridging wrappers.
+   - Domain modules implement `SearchAudiencePolicyPort` directly (`ServerForumSearchResultEligibilityPort`), registered directly in `apps/server/src/services/mod.rs`.
+   - Wired `SearchAudienceRegistry` into GraphQL `storefrontSearch` and native SSR `storefront_search_native`, providing real-time multi-module candidate post-authorization.
+   - Historical Forum endpoints (`execute_forum_storefront_search` and `StorefrontSearchResultEligibilityPort`) are preserved as `#[deprecated]` adapter bridges over the generic SPI, satisfying ADR `2026-10-16-generic-search-audience-security-spi.md` (§3) and existing contract verification suites.
 2. **Search Projection Sources (`SearchProjectionSourceRegistry`):**
    - Generalizes projection ingestion from domain modules via `SearchProjectionSource` and `SearchProjectionSourceFactory`.
    - `SearchIngestionHandler::with_projection_sources` accepts both `blog_source` and `forum_source` registered via module runtime extensions.
