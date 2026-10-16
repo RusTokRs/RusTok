@@ -189,9 +189,9 @@
       "category": "modules",
       "files": 50,
       "loc": 12952,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-02.04-06: enforced nil UUID validation in access token, OAuth token, and access token decoders; trimmed whitespace in token strings; empty/nil email/tenant guards in password reset, verification, and invite token codecs; safe verify_password oracle leak prevention returning Ok(false); HS256 secret length validation; bootstrap user non-nil checks; custom Debug implementations redacting passwords, tokens, auth codes, and client secrets across all auth commands and DTOs; all 62 unit tests pass."
     },
     "crates/modules/rustok-auth/admin": {
       "name": "admin",
@@ -219,9 +219,9 @@
       "category": "modules",
       "files": 158,
       "loc": 41150,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.01: registered missing blog.post.scheduled and blog.post.schedule_cancelled schemas and updated contract digests in rustok-events; hardened REST controllers and GraphQL query/mutation entrypoints with non-nil UUID validation; added non-nil UUID validation across domain services (PostService, CategoryService, TagService, PreviewTokenService, CommentService, RBAC helpers); bounded token strings and clamped pagination; verified all 150 unit tests pass, module source layout verified."
     },
     "crates/modules/rustok-blog/admin": {
       "name": "admin",
@@ -269,9 +269,9 @@
       "category": "modules",
       "files": 46,
       "loc": 15917,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-02.09-10: unified CacheError domain taxonomy in error.rs with Display, Error, and From conversions; Display and Error on CacheInvalidationMessageError; structured debug tracing on load_or_fill, publish_invalidation, and backend client; structured entry tracing in durable invalidation service, policy, consumer, and versioned invalidation; all 180 unit tests pass."
     },
     "crates/modules/rustok-cart": {
       "name": "rustok-cart",
@@ -279,9 +279,9 @@
       "category": "modules",
       "files": 73,
       "loc": 19638,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-03.09: enforced non-nil UUID validation for tenant_id, cart_id, line_item_id, channel_id, customer_id, region_id, shipping_option_id across ports, checkout_snapshot, marketplace_snapshot, atomic_checkout_guard, atomic_checkout_port, owner_ports, promotion_guard, guarded_ports; structured debug tracing; all 32 tests pass."
     },
     "crates/modules/rustok-cart/storefront": {
       "name": "storefront",
@@ -319,9 +319,9 @@
       "category": "modules",
       "files": 39,
       "loc": 9823,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.05: implemented canonical From<CommentsError> for rustok_core::Error; enforced non-nil UUID validation across CommentsThreadPort and CommentsService (create, get, update, delete, status transitions, threads); non-nil UUID guard to list_public_comments_for_target and CommentTargetDeletionHandler; all 22 tests pass."
     },
     "crates/modules/rustok-comments/admin": {
       "name": "admin",
@@ -339,9 +339,9 @@
       "category": "modules",
       "files": 3,
       "loc": 171,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.05: verified storefront comment integration helpers and DTOs; all 3 tests pass."
     },
     "crates/modules/rustok-commerce": {
       "name": "rustok-commerce",
@@ -349,9 +349,9 @@
       "category": "modules",
       "files": 297,
       "loc": 132631,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-03.02-08: enforced non-nil UUID validation across complete_checkout, begin, checkpoint, ensure_cart_tenant, ensure_order_tenant, ensure_payment_collection_tenant; stage execution in standard and owner-ports pipelines; inventory reservation journal and payment stages; multi-stage compensation and failure sweeps; marketplace paid and reversal event inboxes, financial reconciliation operators, provider event adapters; fulfillment create-label recovery, returns lifecycle; admin and storefront REST controllers and GraphQL helper scopes; all 214 tests pass."
     },
     "crates/modules/rustok-commerce/admin": {
       "name": "admin",
@@ -379,9 +379,9 @@
       "category": "modules",
       "files": 19,
       "loc": 1106,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-03.01: implemented From<CommerceError> for CoreError with mapping to NotFound, Validation, and Forbidden; validate_invariants on PriceInput and AdjustInventoryInput guarding against negative prices and nil UUIDs; trimmed search patterns in product_translation_title_search_condition avoiding redundant full EXISTS subqueries; all 8 tests pass."
     },
     "crates/modules/rustok-content": {
       "name": "rustok-content",
@@ -389,9 +389,9 @@
       "category": "modules",
       "files": 45,
       "loc": 6014,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.03: enforced non-nil UUID guards across CMS content tree, layout schema, block persistence, translation slots, dynamic rendering, and GraphQL entrypoints; implemented canonical From<ContentError> for rustok_core::Error; eliminated panic potential in rich text rendering; proptest created_at preservation; all 64 content tests pass."
     },
     "crates/modules/rustok-content-orchestration": {
       "name": "rustok-content-orchestration",
@@ -399,9 +399,9 @@
       "category": "modules",
       "files": 18,
       "loc": 3245,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.03: hardened content orchestration bridge (promote_topic_to_post, demote_post_to_topic, split_topic, merge_topics) with non-nil UUID guards and fail-closed tenant-scoped queries/deletions; fixed route resolver to check recorded redirects before live topics and exclude Archived soft-deleted topics; all 4 tests pass."
     },
     "crates/modules/rustok-customer": {
       "name": "rustok-customer",
@@ -429,9 +429,9 @@
       "category": "modules",
       "files": 34,
       "loc": 15716,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-03.14: verified distribution routes, split fulfillment manifests, carrier integration ports, and non-nil UUID validation; all 10 tests pass."
     },
     "crates/modules/rustok-email": {
       "name": "rustok-email",
@@ -479,9 +479,9 @@
       "category": "modules",
       "files": 628,
       "loc": 175016,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.02: enforced non-nil UUID validation across TopicService (slug rename, delete, restore), ReplyService (delete, restore), topic routes (redirects, canonical purging), topic fork storage, topic split services, import writer, topic redirect controller; fail-closed tenant scoping with Column::TenantId filters; implemented canonical From<ForumError> for rustok_core::Error; eliminated dead code; all 241 unit tests pass."
     },
     "crates/modules/rustok-forum/admin": {
       "name": "admin",
@@ -509,9 +509,9 @@
       "category": "modules",
       "files": 76,
       "loc": 26555,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-03.14: enforced non-nil UUID validation across FulfillmentReadPort, FulfillmentAdminCommandPort, FulfillmentAdminCreateCommandPort, ShippingOptionReadPort, ShippingOptionAdminCommandPort, and public ports; bounded string inputs and clamped pagination; all 163 tests pass."
     },
     "crates/modules/rustok-fulfillment/admin": {
       "name": "admin",
@@ -629,9 +629,9 @@
       "category": "modules",
       "files": 35,
       "loc": 13033,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-03.13: enforced non-nil UUID validation across InventoryReservationPort, InventoryReservationIdentityPort, reservation contexts, InventoryService, public channel inventory projection, and stock location translations; bounded string inputs; structured debug tracing; all 37 tests pass."
     },
     "crates/modules/rustok-inventory/admin": {
       "name": "admin",
@@ -759,9 +759,9 @@
       "category": "modules",
       "files": 44,
       "loc": 13332,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-05.01: implemented canonical From<MediaError> for rustok_core::Error; enforced non-nil UUID validation across MediaAssetReadPort, MediaAssetWritePort, parse_tenant_id, REST controllers, and GraphQL queries/mutations; verified all 49 media tests pass."
     },
     "crates/modules/rustok-media/admin": {
       "name": "admin",
@@ -789,9 +789,9 @@
       "category": "modules",
       "files": 6,
       "loc": 1889,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-05.01: enforced non-nil UUID validation on parse_id in gRPC server and transport adapters; verified all 12 tests pass."
     },
     "crates/modules/rustok-moderation": {
       "name": "rustok-moderation",
@@ -799,9 +799,9 @@
       "category": "modules",
       "files": 36,
       "loc": 9292,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-05.02: implemented canonical From for rustok_core::Error across ModerationError, ModerationScopeClaimError, ModerationEffectValidationError, ModerationSubjectAdapterBuildError, ModerationSubjectAdapterRegistryError; enforced non-nil UUID validation across ModerationService, ModerationReadPort, command handlers (case_assign, case_decide), and application recovery; all 27 tests pass."
     },
     "crates/modules/rustok-moderation-api": {
       "name": "rustok-moderation-api",
@@ -809,9 +809,9 @@
       "category": "modules",
       "files": 3,
       "loc": 835,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-05.02: verified moderation public interfaces, scope claims, effect validation, and API contracts; all 5 tests pass."
     },
     "crates/modules/rustok-modules": {
       "name": "rustok-modules",
@@ -869,9 +869,9 @@
       "category": "modules",
       "files": 75,
       "loc": 22202,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.04: implemented canonical From<NotificationError> for rustok_core::Error; enforced non-nil UUID guards across GraphQL authenticated_scope (tenant_id and user_id), outbox intake process_outbox_event, candidate processing process_candidate_inner, fan-out service materialize_source_event, process_fanout_page, and fanout worker deferred jobs; all 5 tests pass."
     },
     "crates/modules/rustok-notifications/admin": {
       "name": "admin",
@@ -899,9 +899,9 @@
       "category": "modules",
       "files": 5,
       "loc": 1196,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.04: implemented canonical From<NotificationProviderError> for rustok_core::Error; verified notification provider seam contracts and DTOs; all 7 tests pass."
     },
     "crates/modules/rustok-order": {
       "name": "rustok-order",
@@ -909,9 +909,9 @@
       "category": "modules",
       "files": 85,
       "loc": 22532,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-03.10: enforced non-nil UUID validation across ports, order service state machine transitions, line items, tax lines, checkout identity, recovery, compensation, settlement, admin commands, post-order commands, and reads; structured debug tracing across boundaries; all 14 unit tests pass."
     },
     "crates/modules/rustok-order/admin": {
       "name": "admin",
@@ -958,7 +958,7 @@
       "path": "crates/modules/rustok-page-builder",
       "category": "modules",
       "files": 116,
-      "loc": 35813,
+      "loc": 35885,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -987,8 +987,8 @@
       "name": "rustok-pages",
       "path": "crates/modules/rustok-pages",
       "category": "modules",
-      "files": 189,
-      "loc": 53769,
+      "files": 191,
+      "loc": 54667,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1019,9 +1019,9 @@
       "category": "modules",
       "files": 88,
       "loc": 24276,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-03.11: enforced non-nil UUID validation across ports, admin commands/reads, checkout execution/compensation, provider operation/event journals, controllers, and services; bounded pagination parameters; unit tests for non-nil UUID guards and port context validation; all 47 unit tests pass."
     },
     "crates/modules/rustok-payment/storefront": {
       "name": "storefront",
@@ -1039,9 +1039,9 @@
       "category": "modules",
       "files": 48,
       "loc": 19495,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-03.12: enforced non-nil UUID validation across PricingReadPort, PricingWritePort, PriceListOwnerPort, and PricingService; verified currency rounding discipline via money::round_to_currency; unit tests for port context parsing, non-nil UUID guards, and pricing math; all 17 tests pass."
     },
     "crates/modules/rustok-pricing/admin": {
       "name": "admin",
@@ -1069,9 +1069,9 @@
       "category": "modules",
       "files": 5,
       "loc": 328,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-03.12: verified price list entities, tenant-scoped schema constraints, and persistence layer invariants; all 5 tests pass."
     },
     "crates/modules/rustok-product": {
       "name": "rustok-product",
@@ -1199,9 +1199,9 @@
       "category": "modules",
       "files": 56,
       "loc": 13518,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-02.07-08: enriched RbacError taxonomy with domain errors and policy conversion; fast-pathed nil tenant_id and user_id to empty permissions in resolve_permissions_*; guarded load_role_user_ids_on against nil tenant_id; non-nil UUID validation on parse_tenant_id and parse_user_actor; bounded maximum check permissions to 100; guarded RbacRoleAssignmentDbWriter against nil IDs; all 82 tests pass."
     },
     "crates/modules/rustok-rbac/admin": {
       "name": "admin",
@@ -1229,9 +1229,9 @@
       "category": "modules",
       "files": 8,
       "loc": 2961,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.06: enforced non-nil UUID validation across ReactionsService (parse_tenant_id, authorize_actor), reconciliation (authorize_reconciliation), target lifecycle (ReactionTargetDeletionHandler::handle), and GraphQL entrypoints; all 5 unit tests pass."
     },
     "crates/modules/rustok-reactions-api": {
       "name": "rustok-reactions-api",
@@ -1239,9 +1239,9 @@
       "category": "modules",
       "files": 3,
       "loc": 1262,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.06: implemented From<ReactionProviderError> and From<ReactionContractError> for rustok_core::Error; verified provider contracts; all 6 tests pass."
     },
     "crates/modules/rustok-reactions-storefront": {
       "name": "rustok-reactions-storefront",
@@ -1249,9 +1249,9 @@
       "category": "modules",
       "files": 6,
       "loc": 615,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.06: verified storefront reaction rendering components and DTOs; all 7 tests pass."
     },
     "crates/modules/rustok-region": {
       "name": "rustok-region",
@@ -1287,8 +1287,8 @@
       "name": "rustok-search",
       "path": "crates/modules/rustok-search",
       "category": "modules",
-      "files": 97,
-      "loc": 33726,
+      "files": 99,
+      "loc": 34372,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1409,9 +1409,9 @@
       "category": "modules",
       "files": 28,
       "loc": 4305,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-02.01-03: added Validation variant to TenantError mapped to PortError::validation; trimmed and validated slug/name in create/ensure/update; fast-pathed empty slug/domain lookups to NotFound; clamped pagination; guarded nil UUIDs in TenantReadSelector::Id and parse_context_tenant_id; trimmed ActiveModel::new; bounded settings array elements to 256; rejected PostgreSQL null bytes in keys/values; float finiteness checks; all 24 tests passed."
     },
     "crates/modules/rustok-tenant/admin": {
       "name": "admin",
@@ -1478,7 +1478,7 @@
       "path": "crates/ui/fly",
       "category": "ui",
       "files": 111,
-      "loc": 42258,
+      "loc": 42930,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2109,9 +2109,9 @@
       "category": "apps",
       "files": 485,
       "loc": 190468,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-01: structured fatal logging before otel shutdown, thread floor minimum; graceful shutdown stopping Axum before draining workers, DB pool min/max connection guards, URL authority validation; secret validation forbidding default/sample credentials and dev JWT in production, SQLite fallback prevention; atomic runtime context taking worker handles without loss; background worker drain with tokio::join! and stop broadcast; global route fallback mapping RecordNotFound to 404 and sanitizing DB errors to 500; fail-closed tenant resolution without RFC 9110 smuggling; cross-tenant channel isolation; BCP 47 locale fallback; duplicate Authorization header rejection; rate-limiting structured JSON responses; security headers API CSP; metrics scrape auth with token quote trimming; registry and artifact HTTP policies; constant-time setup token checks in installer; OpenAPI schema method alignment; event bus reference preservation; outbox retention worker fast-pruning; module watchdog monotonicity; settings service secret redaction; RBAC cache invalidation listener with whitespace trimming."
     },
     "apps/storefront": {
       "name": "storefront",
@@ -2129,9 +2129,9 @@
       "category": "integration",
       "files": 6,
       "loc": 903,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.03: verified content revision history integration, snapshot diffing, and audit trail invariants."
     },
     "crates/libs/rustok-content-portability": {
       "name": "rustok-content-portability",
@@ -2179,9 +2179,9 @@
       "category": "modules",
       "files": 3,
       "loc": 154,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-16",
+      "notes": "Audited in FS-04.05: verified public comment traits, thread DTOs, and contract invariants."
     },
     "crates/modules/rustok-docs": {
       "name": "rustok-docs",
@@ -2278,7 +2278,7 @@
       "path": "crates/ui/fly/browser",
       "category": "ui",
       "files": 12,
-      "loc": 1565,
+      "loc": 1585,
       "completed": false,
       "completed_at": null,
       "notes": ""
