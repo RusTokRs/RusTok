@@ -144,5 +144,24 @@ mod tests {
             assert_eq!(registry.entries()[0].supported_kinds.len(), 2);
             assert!(registry.get_by_str("forum").is_some());
         }
+
+        #[test]
+        fn test_error_conversions() {
+            let contract_err = ReactionContractError::NilIdentity;
+            let core_err: rustok_core::Error = contract_err.into();
+            assert!(matches!(core_err, rustok_core::Error::Validation(_)));
+
+            let invalid_err = ReactionProviderError::InvalidRequest;
+            let core_err: rustok_core::Error = invalid_err.into();
+            assert!(matches!(core_err, rustok_core::Error::Validation(_)));
+
+            let unavail_err = ReactionProviderError::Unavailable;
+            let core_err: rustok_core::Error = unavail_err.into();
+            assert!(matches!(core_err, rustok_core::Error::NotFound(_)));
+
+            let internal_err = ReactionProviderError::Internal { retryable: false };
+            let core_err: rustok_core::Error = internal_err.into();
+            assert!(matches!(core_err, rustok_core::Error::Internal(_)));
+        }
     }
 }

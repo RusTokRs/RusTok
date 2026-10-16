@@ -917,6 +917,12 @@ fn validate_subject_tenant(
 }
 
 fn authorize_actor(context: &PortContext, actor_id: Uuid) -> Result<(), PortError> {
+    if actor_id.is_nil() {
+        return Err(PortError::validation(
+            "reactions.actor_id_nil",
+            "reaction actor ID cannot be nil",
+        ));
+    }
     match &context.actor.kind {
         PortActorKind::User => {
             let context_actor = Uuid::parse_str(&context.actor.id).map_err(|_| {
@@ -925,6 +931,12 @@ fn authorize_actor(context: &PortContext, actor_id: Uuid) -> Result<(), PortErro
                     "reaction user actor identity must be a UUID",
                 )
             })?;
+            if context_actor.is_nil() {
+                return Err(PortError::validation(
+                    "reactions.actor_id_nil",
+                    "reaction user actor identity cannot be nil",
+                ));
+            }
             if context_actor != actor_id {
                 return Err(PortError::forbidden(
                     "reactions.actor_mismatch",
@@ -949,12 +961,19 @@ fn authorize_actor(context: &PortContext, actor_id: Uuid) -> Result<(), PortErro
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         PortError::validation(
             "reactions.tenant_id_invalid",
             "reaction port context must carry a UUID tenant_id",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        return Err(PortError::validation(
+            "reactions.tenant_id_nil",
+            "reaction port context tenant_id cannot be nil",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn provider_error_to_port_error(error: ReactionProviderError) -> PortError {

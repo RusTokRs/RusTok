@@ -41,6 +41,20 @@ impl ReactionProviderError {
     }
 }
 
+#[cfg(feature = "server")]
+impl From<ReactionProviderError> for rustok_core::Error {
+    fn from(err: ReactionProviderError) -> Self {
+        match err {
+            ReactionProviderError::InvalidRequest | ReactionProviderError::Conflict => {
+                Self::Validation(err.to_string())
+            }
+            ReactionProviderError::Unavailable => Self::NotFound(err.to_string()),
+            ReactionProviderError::CapabilityUnavailable { .. }
+            | ReactionProviderError::Internal { .. } => Self::Internal(err.to_string()),
+        }
+    }
+}
+
 pub type ReactionProviderResult<T> = Result<T, ReactionProviderError>;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

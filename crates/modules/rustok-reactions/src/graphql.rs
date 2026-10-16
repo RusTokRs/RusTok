@@ -86,6 +86,9 @@ impl ReactionsMutation {
         let tenant = require_tenant(ctx)?;
         let auth = require_human_user(ctx, tenant)?;
         let command_id = input.command_id;
+        if command_id.is_nil() {
+            return Err(bad_input("command_id cannot be nil"));
+        }
         let subject = input.subject.into_subject(tenant.id)?;
         let identity = ReactionCommandIdentity::new(command_id, auth.user_id)
             .map_err(|_| bad_input("invalid reaction command identity"))?;
@@ -261,9 +264,13 @@ fn runtime<'a>(ctx: &'a Context<'a>) -> Result<&'a ReactionsService> {
 }
 
 fn require_tenant<'a>(ctx: &'a Context<'a>) -> Result<&'a TenantContext> {
-    ctx.data::<TenantContext>().map_err(|_| {
+    let tenant = ctx.data::<TenantContext>().map_err(|_| {
         <FieldError as GraphQLError>::internal_error("Reactions tenant context is not registered")
-    })
+    })?;
+    if tenant.id.is_nil() {
+        return Err(<FieldError as GraphQLError>::bad_user_input("tenant ID cannot be nil"));
+    }
+    Ok(tenant)
 }
 
 fn optional_principal<'a>(
@@ -282,7 +289,7 @@ fn require_human_user<'a>(ctx: &'a Context<'a>, tenant: &TenantContext) -> Resul
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
     ensure_principal_tenant(auth, tenant)?;
-    if auth.is_service_principal() {
+    if auth.user_id.is_nil() || auth.is_service_principal() {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "reaction writes require human-user credentials",
         ));
@@ -291,7 +298,7 @@ fn require_human_user<'a>(ctx: &'a Context<'a>, tenant: &TenantContext) -> Resul
 }
 
 fn ensure_principal_tenant(auth: &AuthContext, tenant: &TenantContext) -> Result<()> {
-    if auth.tenant_id != tenant.id {
+    if auth.tenant_id.is_nil() || tenant.id.is_nil() || auth.tenant_id != tenant.id {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "reaction operations must use the authenticated tenant",
         ));

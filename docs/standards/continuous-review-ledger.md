@@ -189,7 +189,26 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-04.05 — `crates/modules/rustok-comments`, `rustok-comments-api` & `rustok-comments-storefront-support`** — comment trees, thread hierarchy, author verification, moderation hooks. (Done: implemented canonical From<CommentsError> for rustok_core::Error with unit tests; enforced non-nil UUID validation across CommentsThreadPort (parse_tenant_id, create_comment, get_comment, list_comments_for_target, list_public_comments_for_target, update_comment, delete_comment, set_comment_status) and CommentsService (create_comment_in_tx, get_comment, update_comment_in_tx, delete_comment_in_tx, list_comments_for_target, set_thread_status_for_target, list_threads, get_thread_detail, set_comment_status_in_tx, set_thread_status, find_comment_inner, find_or_create_thread_in_tx); added non-nil UUID guard to list_public_comments_for_target and CommentTargetDeletionHandler; verified all 17 lib tests and 5 integration tests pass in rustok-comments, 3 tests in rustok-comments-storefront-support, clippy clean, architecture dependency guard passed, and gatekeeper approved).
 
 #### 6. rustok-reactions
-- [ ] **FS-04.06 — `crates/modules/rustok-reactions`, `rustok-reactions-api` & `rustok-reactions-storefront`** — reaction emojis, polymorphic entity binding, counter aggregation, rate guards.
+- [x] **FS-04.06 — `crates/modules/rustok-reactions`, `rustok-reactions-api` & `rustok-reactions-storefront`** — reaction emojis, polymorphic entity binding, counter aggregation, rate guards. (Done: implemented From<ReactionProviderError> and From<ReactionContractError> for rustok_core::Error in rustok-reactions-api with unit tests; enforced non-nil UUID validation across ReactionsService (parse_tenant_id, authorize_actor), reconciliation (authorize_reconciliation), target lifecycle (ReactionTargetDeletionHandler::handle), and GraphQL (require_tenant, require_human_user, ensure_principal_tenant, apply_reaction command_id); verified all 6 reactions-api, 7 reactions-storefront, and 5 reactions unit tests pass, clippy clean, architecture dependency guard passed, and gatekeeper approved).
+
+---
+
+### Active Phase: FS-05 — Media, Moderation & Core Catalog Support Modules Queue
+
+#### 1. rustok-media
+- [ ] **FS-05.01 — `crates/modules/rustok-media` & `rustok-media-transport`** — media asset storage, uploads, mime verification, variant generation, CDN URLs.
+
+#### 2. rustok-moderation
+- [ ] **FS-05.02 — `crates/modules/rustok-moderation` & `rustok-moderation-api`** — moderation queue, automated rules, reports, penalty actions.
+
+#### 3. rustok-taxonomy
+- [ ] **FS-05.03 — `crates/modules/rustok-taxonomy`** — hierarchical categories, term trees, faceted navigation.
+
+#### 4. rustok-tax
+- [ ] **FS-05.04 — `crates/modules/rustok-tax`** — tax rates, tax categories, calculation providers.
+
+#### 5. rustok-translation
+- [ ] **FS-05.05 — `crates/modules/rustok-translation` & `rustok-translation-targets`** — localized translation slots, fallback hierarchies, translation export/import.
 
 ---
 
@@ -200,7 +219,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-10-13T20:15:00Z`
-- **Progress:** `21 / 254` components audited (**8.3%**)
+- **Progress:** `24 / 254` components audited (**9.4%**)
 - **Total Workspace Codebase:** ~350,000 LOC across 254 modules/apps
 
 ---
@@ -372,9 +391,9 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 56 | 13,098 | 2026-10-15 | Completed all 2 audit tracks in Phase FS-02 (rbac service/error taxonomy, entities/ports & bootstrap) |
 | [ ] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 8 | 970 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 1 | 243 | None |  |
-| [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 8 | 2,925 | None |  |
-| [ ] | [rustok-reactions-api](../../crates/modules/rustok-reactions-api) | `modules` | 3 | 1,222 | None |  |
-| [ ] | [rustok-reactions-storefront](../../crates/modules/rustok-reactions-storefront) | `modules` | 6 | 615 | None |  |
+| [x] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 8 | 2,925 | 2026-10-16 | Enforced non-nil UUID guards in service, reconciliation, target lifecycle, and GraphQL |
+| [x] | [rustok-reactions-api](../../crates/modules/rustok-reactions-api) | `modules` | 3 | 1,222 | 2026-10-16 | Implemented From<ReactionProviderError> and From<ReactionContractError> for rustok_core::Error with unit tests |
+| [x] | [rustok-reactions-storefront](../../crates/modules/rustok-reactions-storefront) | `modules` | 6 | 615 | 2026-10-16 | Verified FFA clean boundaries, non-nil UUIDs, and i18n catalogs |
 | [ ] | [rustok-region](../../crates/modules/rustok-region) | `modules` | 39 | 8,566 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-region/admin) | `modules` | 8 | 2,944 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-region/storefront) | `modules` | 9 | 1,738 | None |  |

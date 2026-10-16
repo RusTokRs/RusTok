@@ -39,6 +39,10 @@ impl EventHandler for ReactionTargetDeletionHandler {
             return Ok(());
         };
 
+        if envelope.tenant_id.is_nil() || target_id.is_nil() {
+            return Ok(());
+        }
+
         let bindings = self
             .subjects
             .deletion_bindings()

@@ -44,6 +44,13 @@ pub enum ReactionContractError {
     ProviderSubjectMismatch,
 }
 
+#[cfg(feature = "server")]
+impl From<ReactionContractError> for rustok_core::Error {
+    fn from(err: ReactionContractError) -> Self {
+        Self::Validation(err.to_string())
+    }
+}
+
 fn valid_segment(
     value: &str,
     maximum_bytes: usize,

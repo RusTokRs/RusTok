@@ -700,6 +700,12 @@ fn authorize_reconciliation(
             "reaction port context must carry a UUID tenant_id",
         )
     })?;
+    if tenant_id.is_nil() {
+        return Err(PortError::validation(
+            "reactions.tenant_id_nil",
+            "reaction port context tenant_id cannot be nil",
+        ));
+    }
     if tenant_id != request.subject.tenant_id() {
         return Err(PortError::forbidden(
             "reactions.tenant_mismatch",
