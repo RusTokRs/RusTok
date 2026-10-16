@@ -24,10 +24,16 @@ fn ensure_permission(
     message: &'static str,
 ) -> HttpResult<()> {
     if auth.tenant_id.is_nil() {
-        return Err(HttpError::unauthorized("invalid_auth_tenant_id", "Authenticated tenant ID must not be nil"));
+        return Err(HttpError::unauthorized(
+            "invalid_auth_tenant_id",
+            "Authenticated tenant ID must not be nil",
+        ));
     }
     if auth.user_id.is_nil() {
-        return Err(HttpError::unauthorized("invalid_auth_user_id", "Authenticated user ID must not be nil"));
+        return Err(HttpError::unauthorized(
+            "invalid_auth_user_id",
+            "Authenticated user ID must not be nil",
+        ));
     }
     if has_any_effective_permission(&auth.permissions, &[permission]) {
         Ok(())
@@ -69,13 +75,22 @@ pub async fn set_topic_quotes(
         "Forum topic quotes update requested"
     );
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if topic_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_topic_id", "Topic ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
     }
     if input.quotes.iter().any(|q| q.target_id.is_nil()) {
-        return Err(HttpError::bad_request("invalid_target_id", "Quoted target ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_target_id",
+            "Quoted target ID must not be nil",
+        ));
     }
     ensure_permission(
         &auth,
@@ -118,13 +133,22 @@ pub async fn set_reply_quotes(
         "Forum reply quotes update requested"
     );
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if reply_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_reply_id", "Reply ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_reply_id",
+            "Reply ID must not be nil",
+        ));
     }
     if input.quotes.iter().any(|q| q.target_id.is_nil()) {
-        return Err(HttpError::bad_request("invalid_target_id", "Quoted target ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_target_id",
+            "Quoted target ID must not be nil",
+        ));
     }
     ensure_permission(
         &auth,

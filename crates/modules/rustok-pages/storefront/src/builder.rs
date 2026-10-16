@@ -239,4 +239,30 @@ mod tests {
             .is_err()
         );
     }
+
+    #[test]
+    fn page_builder_page_body_constructs_views() {
+        let payload = StaticLandingBodyPayload {
+            html: "<h1>Landing</h1>".to_string(),
+            css: "h1 { color: red; }".to_string(),
+            artifact_url: Some("/api/pages/123/artifact".to_string()),
+        };
+        let _payload_view = view! {
+            <PageBuilderPageBody
+                body=body(
+                    STATIC_LANDING_PAYLOAD_BODY_FORMAT,
+                    serde_json::to_string(&payload).unwrap(),
+                )
+            />
+        };
+        let _url_view = view! {
+            <PageBuilderPageBody
+                body=body(
+                    STATIC_LANDING_URL_BODY_FORMAT,
+                    "/api/pages/123/artifact".to_string(),
+                )
+            />
+        };
+    }
 }
+

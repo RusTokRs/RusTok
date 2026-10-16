@@ -92,6 +92,16 @@ impl SubscriptionService {
         security: SecurityContext,
         context: PortContext,
     ) -> ForumResult<ForumSubscriptionResponse> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Tenant ID must not be nil".to_string(),
+            ));
+        }
+        if category_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Category ID must not be nil".to_string(),
+            ));
+        }
         enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         self.require_category_visible(tenant_id, category_id, &security, context)
@@ -123,6 +133,16 @@ impl SubscriptionService {
         context: PortContext,
         input: UpdateForumSubscriptionInput,
     ) -> ForumResult<ForumSubscriptionResponse> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Tenant ID must not be nil".to_string(),
+            ));
+        }
+        if category_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Category ID must not be nil".to_string(),
+            ));
+        }
         enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         self.require_category_visible(tenant_id, category_id, &security, context)

@@ -133,6 +133,10 @@ Status source of truth per item: the deep audit
    - Verified 100% load & roundtrip idempotence across all 9 fixture documents in real GrapesJS 0.23.6 runtime.
    - Rebound generic accessibility browser harness (`scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs`) to the canonical Leptos workspace owner; harness passing clean.
    - Closed P0-5 storefront action runtime wiring: `rustok-page-builder::render` and `rustok-page-builder-storefront` now materialize internal page links (`flyPageLink`), component actions (`flyAction`), and provider form endpoints (`HostFormProviderEndpoints`) on static and storefront renders; `PageBuilderStorefront` conditionally attaches `<script data-fly-actions="true" inner_html=fly_browser::FLY_ACTIONS_JS></script>` when `data-fly-action` attributes are present. Verified via scoped unit tests (`rustok-page-builder-storefront`, `rustok-page-builder`, `rustok-pages-storefront`).
+   - Eliminated storefront `<iframe>` presentation in favor of direct SSR HTML + CSS injection and Islands Architecture across both storefront hosts:
+     - Rust storefront (`rustok-pages-storefront`): `PublishedLandingArtifact` carries pre-compiled `body_html` and `css` via `fly_artifact_payload` (`StaticLandingBodyPayload`), rendered directly by `StaticLandingStorefront` in `rustok-page-builder-storefront` with `fly-actions.js` inlined for interactive actions.
+     - Next.js storefront (`apps/next-frontend/packages/rustok-pages`): `@rustok/pages-frontend` (`PageBuilderContent`) parses static landing artifacts into scoped `<style>` and sanitized markup, with `FlyActionBridge` (Client Island) bridging `fly:action` CustomEvents to `@rustok/cart-frontend` (`addItem`/`openCart`) and Next.js client routing.
+     - Iframe isolation is strictly retained for authoring (`IsolatedAuthoringCanvas` in `apps/admin`) where CSS isolation and viewport resizing are required.
    - All 295 `fly` tests passing clean.
    - Remaining: 3–5 Playwright editor scenarios and executable accessibility evidence run against deployment.
 5. **Performance, second half (P1-6) — DONE (2026-10-15).** Completed:

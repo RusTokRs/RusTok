@@ -114,7 +114,8 @@ impl ForumCategoryAudienceVisibilityService {
         viewer: &ForumCategoryAudienceViewer,
     ) -> ForumResult<bool> {
         self.validate_viewer_context(tenant_id, viewer)?;
-        if !viewer.is_authenticated() && !self.settings.anonymous_reading_allowed(tenant_id).await? {
+        if !viewer.is_authenticated() && !self.settings.anonymous_reading_allowed(tenant_id).await?
+        {
             return Ok(false);
         }
 

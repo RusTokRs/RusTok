@@ -47,7 +47,7 @@ impl SearchCandidateDescriptor {
 }
 
 /// Request passed to a domain owner to evaluate real-time candidate eligibility.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SearchAudienceRequest {
     pub tenant_id: Uuid,
     pub locale: String,
@@ -128,6 +128,17 @@ impl SearchAudienceRegistry {
     pub fn source_modules(&self) -> Vec<String> {
         self.policies.keys().cloned().collect()
     }
+    pub async fn public_discovery_allowed(
+        &self,
+        source_module: &str,
+        tenant_id: Uuid,
+    ) -> Result<bool, PortError> {
+        if let Some(policy) = self.get(source_module) {
+            policy.public_discovery_allowed(tenant_id).await
+        } else {
+            Ok(true)
+        }
+    }
 }
 
 /// Backward-compatibility adapter that adapts the legacy `StorefrontSearchResultEligibilityPort`
@@ -200,6 +211,18 @@ pub async fn resolve_audience_eligible_candidates(
     if candidates.is_empty() {
         return Ok(HashSet::new());
     }
+    if tenant_id.is_nil() {
+        return Err(PortError::validation(
+            "search.audience.tenant_required",
+            "Search audience candidate resolution requires a valid tenant ID",
+        ));
+    }
+    if locale.trim().is_empty() {
+        return Err(PortError::validation(
+            "search.audience.locale_required",
+            "Search audience candidate resolution requires a locale",
+        ));
+    }
 
     let mut allowed_ids = HashSet::with_capacity(candidates.len());
     let mut partitioned: HashMap<String, Vec<SearchCandidateDescriptor>> = HashMap::new();
@@ -222,6 +245,11 @@ pub async fn resolve_audience_eligible_candidates(
                 ));
             }
 
+            let requested_ids = module_candidates
+                .iter()
+                .map(|candidate| candidate.document_id)
+                .collect::<HashSet<_>>();
+
             let request = SearchAudienceRequest {
                 tenant_id,
                 locale: locale.to_string(),
@@ -232,7 +260,26 @@ pub async fn resolve_audience_eligible_candidates(
             };
 
             let module_allowed = policy.filter_eligible_candidates(request).await?;
-            allowed_ids.extend(module_allowed);
+            if module_allowed.len() > requested_ids.len() {
+                return Err(PortError::invariant_violation(
+                    "search.audience.owner_limit_exceeded",
+                    format!(
+                        "Search audience policy for `{source_module}` returned more candidates than requested"
+                    ),
+                ));
+            }
+
+            for allowed_id in module_allowed {
+                if !requested_ids.contains(&allowed_id) {
+                    return Err(PortError::invariant_violation(
+                        "search.audience.owner_scope_invalid",
+                        format!(
+                            "Search audience policy for `{source_module}` returned an unrequested candidate ID"
+                        ),
+                    ));
+                }
+                allowed_ids.insert(allowed_id);
+            }
         } else {
             // Unconstrained public source modules (e.g. blog, content, pages) are public by default.
             for candidate in module_candidates {
@@ -325,5 +372,111 @@ mod tests {
         assert!(allowed.contains(&allowed_event));
         assert!(!allowed.contains(&denied_event));
         assert!(allowed.contains(&blog_post)); // Blog has no policy, so it passes as public
+    }
+
+    struct RoguePolicy;
+
+    #[async_trait]
+    impl SearchAudiencePolicyPort for RoguePolicy {
+        fn source_module(&self) -> &'static str {
+            "rogue"
+        }
+
+        async fn filter_eligible_candidates(
+            &self,
+            _request: SearchAudienceRequest,
+        ) -> Result<Vec<Uuid>, PortError> {
+            // Returns an unrequested UUID
+            Ok(vec![Uuid::new_v4()])
+        }
+    }
+
+    #[tokio::test]
+    async fn unrequested_candidate_id_fails_closed() {
+        let requested_id = Uuid::new_v4();
+        let mut registry = SearchAudienceRegistry::new();
+        registry.register(RoguePolicy).unwrap();
+
+        let candidates = vec![SearchCandidateDescriptor::new(
+            requested_id,
+            "rogue",
+            "item",
+        )];
+
+        let result = resolve_audience_eligible_candidates(
+            &registry,
+            Uuid::new_v4(),
+            "en",
+            &candidates,
+            None,
+            None,
+            StorefrontSearchTransport::Graphql,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    struct MockLegacyForumPort {
+        allowed_topic_id: Uuid,
+    }
+
+    #[async_trait]
+    impl StorefrontSearchResultEligibilityPort for MockLegacyForumPort {
+        async fn public_forum_discovery_allowed(&self, _tenant_id: Uuid) -> Result<bool, PortError> {
+            Ok(true)
+        }
+
+        async fn filter_forum_result_candidates(
+            &self,
+            request: StorefrontSearchResultEligibilityRequest,
+        ) -> Result<Vec<StorefrontSearchResultCandidate>, PortError> {
+            Ok(request
+                .candidates
+                .into_iter()
+                .filter(|c| c.document_id == self.allowed_topic_id)
+                .collect())
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_forum_adapter_bridges_contracts() {
+        let allowed_topic = Uuid::new_v4();
+        let denied_topic = Uuid::new_v4();
+
+        let legacy_port = Arc::new(MockLegacyForumPort {
+            allowed_topic_id: allowed_topic,
+        });
+        let adapter = LegacyForumAudienceAdapter::new(legacy_port);
+
+        let mut registry = SearchAudienceRegistry::new();
+        registry.register(adapter).unwrap();
+
+        assert!(
+            registry
+                .public_discovery_allowed("forum", Uuid::new_v4())
+                .await
+                .unwrap()
+        );
+
+        let candidates = vec![
+            SearchCandidateDescriptor::new(allowed_topic, "forum", "forum_topic"),
+            SearchCandidateDescriptor::new(denied_topic, "forum", "forum_topic"),
+        ];
+
+        let allowed = resolve_audience_eligible_candidates(
+            &registry,
+            Uuid::new_v4(),
+            "en",
+            &candidates,
+            None,
+            None,
+            StorefrontSearchTransport::Graphql,
+        )
+        .await
+        .expect("authorized candidates");
+
+        assert!(allowed.contains(&allowed_topic));
+        assert!(!allowed.contains(&denied_topic));
     }
 }

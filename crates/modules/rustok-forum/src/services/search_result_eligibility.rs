@@ -63,7 +63,10 @@ impl ForumSearchResultEligibilityService {
     ) -> Self {
         Self {
             visibility: ForumTopicAudienceVisibilityService::new(db.clone(), facts_port.clone()),
-            category_visibility: ForumCategoryAudienceVisibilityService::new(db.clone(), facts_port),
+            category_visibility: ForumCategoryAudienceVisibilityService::new(
+                db.clone(),
+                facts_port,
+            ),
             db,
         }
     }
@@ -105,10 +108,17 @@ impl ForumSearchResultEligibilityService {
         candidates: &[ForumSearchResultCandidate],
     ) -> ForumResult<Vec<ForumSearchResultCandidate>> {
         let channel_slug = context.channel.clone();
-        let category_viewer = ForumCategoryAudienceViewer::authenticated(security.clone(), context.clone())?;
+        let category_viewer =
+            ForumCategoryAudienceViewer::authenticated(security.clone(), context.clone())?;
         let viewer = ForumTopicAudienceViewer::authenticated(security, context)?;
-        self.filter_visible(tenant_id, viewer, category_viewer, channel_slug.as_deref(), candidates)
-            .await
+        self.filter_visible(
+            tenant_id,
+            viewer,
+            category_viewer,
+            channel_slug.as_deref(),
+            candidates,
+        )
+        .await
     }
 
     async fn filter_visible(
@@ -128,7 +138,8 @@ impl ForumSearchResultEligibilityService {
             .iter()
             .filter_map(|candidate| match candidate.kind {
                 ForumSearchResultCandidateKind::Reply => Some(candidate.document_id),
-                ForumSearchResultCandidateKind::Topic | ForumSearchResultCandidateKind::Category => None,
+                ForumSearchResultCandidateKind::Topic
+                | ForumSearchResultCandidateKind::Category => None,
             })
             .collect::<HashSet<_>>();
         let reply_topics = self
@@ -164,11 +175,18 @@ impl ForumSearchResultEligibilityService {
         // settings/audience change. Recheck it alongside topic/reply rows before
         // counts and facets are derived from the eligible sequence.
         let mut visible_categories = HashSet::new();
-        for category_id in candidates.iter().filter_map(|candidate| match candidate.kind {
-            ForumSearchResultCandidateKind::Category => Some(candidate.document_id),
-            _ => None,
-        }) {
-            if self.category_visibility.is_category_visible(tenant_id, category_id, &category_viewer).await? {
+        for category_id in candidates
+            .iter()
+            .filter_map(|candidate| match candidate.kind {
+                ForumSearchResultCandidateKind::Category => Some(candidate.document_id),
+                _ => None,
+            })
+        {
+            if self
+                .category_visibility
+                .is_category_visible(tenant_id, category_id, &category_viewer)
+                .await?
+            {
                 visible_categories.insert(category_id);
             }
         }

@@ -279,10 +279,10 @@ async fn forum_channel_enabled(ctx: &Context<'_>) -> Result<bool> {
     {
         Ok(enabled) => Ok(enabled),
         Err(rustok_channel::ChannelError::NotFound(_)) => Ok(false),
-        Err(error) => Err(
-            async_graphql::Error::new(format!("Channel module check failed: {error}"))
-                .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR")),
-        ),
+        Err(error) => Err(async_graphql::Error::new(format!(
+            "Channel module check failed: {error}"
+        ))
+        .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR"))),
     }
 }
 

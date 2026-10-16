@@ -100,6 +100,16 @@ impl VoteService {
         context: PortContext,
         value: i32,
     ) -> ForumResult<()> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Tenant ID must not be nil".to_string(),
+            ));
+        }
+        if topic_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Topic ID must not be nil".to_string(),
+            ));
+        }
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         validate_vote_value(value)?;
@@ -149,6 +159,16 @@ impl VoteService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Tenant ID must not be nil".to_string(),
+            ));
+        }
+        if topic_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Topic ID must not be nil".to_string(),
+            ));
+        }
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
 
@@ -182,6 +202,16 @@ impl VoteService {
         context: PortContext,
         value: i32,
     ) -> ForumResult<()> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Tenant ID must not be nil".to_string(),
+            ));
+        }
+        if reply_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Reply ID must not be nil".to_string(),
+            ));
+        }
         enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         validate_vote_value(value)?;
@@ -239,6 +269,16 @@ impl VoteService {
         reply_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Tenant ID must not be nil".to_string(),
+            ));
+        }
+        if reply_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Reply ID must not be nil".to_string(),
+            ));
+        }
         enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         let txn = self.db.begin().await?;

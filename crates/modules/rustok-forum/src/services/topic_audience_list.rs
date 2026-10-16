@@ -185,7 +185,10 @@ impl ForumTopicAudienceListService {
             && !viewer.is_authenticated()
             && !self.visibility.anonymous_reading_allowed(tenant_id).await?
         {
-            return Ok(ForumTopicAudiencePage { items: Vec::new(), next_cursor: None });
+            return Ok(ForumTopicAudiencePage {
+                items: Vec::new(),
+                next_cursor: None,
+            });
         }
 
         // Walk owner keyset batches from the cursor, keeping only topics the audience can

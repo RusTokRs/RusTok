@@ -2,11 +2,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use rustok_api::SharedStaticModuleSettingsReader;
 use rustok_core::search_projection::{
     MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchProjectionPage,
     SearchProjectionSource, SearchProjectionSourceFactory,
 };
-use rustok_api::SharedStaticModuleSettingsReader;
 use rustok_core::{Error, ModuleRuntimeExtensions, Result};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::{TaxonomyError, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
@@ -44,7 +44,10 @@ impl SearchProjectionSourceFactory for ForumSearchProjectionSourceFactory {
 
     fn build(&self, db: DatabaseConnection) -> Arc<dyn SearchProjectionSource> {
         // Standalone composition without the settings owner fails closed on public reads.
-        Arc::new(ForumSearchProjectionSource::new(db, ForumSettingsProviders::default()))
+        Arc::new(ForumSearchProjectionSource::new(
+            db,
+            ForumSettingsProviders::default(),
+        ))
     }
 
     fn build_with_extensions(
@@ -52,7 +55,10 @@ impl SearchProjectionSourceFactory for ForumSearchProjectionSourceFactory {
         db: DatabaseConnection,
         extensions: &ModuleRuntimeExtensions,
     ) -> Arc<dyn SearchProjectionSource> {
-        let settings = match extensions.get::<SharedStaticModuleSettingsReader>().cloned() {
+        let settings = match extensions
+            .get::<SharedStaticModuleSettingsReader>()
+            .cloned()
+        {
             Some(reader) => ForumSettingsProviders::default().with_static_reader(reader),
             None => ForumSettingsProviders::default(),
         };
@@ -619,7 +625,12 @@ impl SearchProjectionSource for ForumSearchProjectionSource {
                 "Forum Search projection page size must be between 1 and {MAX_SEARCH_PROJECTION_PAGE_SIZE}"
             )));
         }
-        if !self.discovery.anonymous_reading_allowed(tenant_id).await.map_err(map_forum_error)? {
+        if !self
+            .discovery
+            .anonymous_reading_allowed(tenant_id)
+            .await
+            .map_err(map_forum_error)?
+        {
             return Ok(SearchProjectionPage::default());
         }
         let cursor = after.as_deref().map(ProjectionCursor::parse).transpose()?;
@@ -645,7 +656,12 @@ impl SearchProjectionSource for ForumSearchProjectionSource {
         entity_type: &str,
         entity_id: Uuid,
     ) -> Result<Vec<SearchProjectionDocument>> {
-        if !self.discovery.anonymous_reading_allowed(tenant_id).await.map_err(map_forum_error)? {
+        if !self
+            .discovery
+            .anonymous_reading_allowed(tenant_id)
+            .await
+            .map_err(map_forum_error)?
+        {
             return Ok(Vec::new());
         }
         let candidates = self

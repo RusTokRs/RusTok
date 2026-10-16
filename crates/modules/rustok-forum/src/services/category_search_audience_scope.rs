@@ -8,10 +8,10 @@ use crate::dto::CategoryTreeQuery;
 use crate::error::ForumResult;
 
 use super::category_audience_read::ForumCategoryAudienceReadService;
-use super::engagement_mode::ForumSettingsProviders;
 use super::category_search_scope::{
     ForumSearchCategoryScope, expand_search_category_scope_from_visible_tree,
 };
+use super::engagement_mode::ForumSettingsProviders;
 
 /// Forum-owned category subtree scope after the complete delivered category
 /// audience decision has been applied for the exact viewer.

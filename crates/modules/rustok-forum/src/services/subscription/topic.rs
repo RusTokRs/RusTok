@@ -90,6 +90,16 @@ impl SubscriptionService {
         security: SecurityContext,
         context: PortContext,
     ) -> ForumResult<ForumSubscriptionResponse> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Tenant ID must not be nil".to_string(),
+            ));
+        }
+        if topic_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Topic ID must not be nil".to_string(),
+            ));
+        }
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         if !topic_write_audience_allows(
@@ -131,6 +141,16 @@ impl SubscriptionService {
         context: PortContext,
         input: UpdateForumSubscriptionInput,
     ) -> ForumResult<ForumSubscriptionResponse> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Tenant ID must not be nil".to_string(),
+            ));
+        }
+        if topic_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Topic ID must not be nil".to_string(),
+            ));
+        }
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         if !topic_write_audience_allows(
@@ -271,5 +291,4 @@ impl SubscriptionService {
             .one(&self.db)
             .await?)
     }
-
 }

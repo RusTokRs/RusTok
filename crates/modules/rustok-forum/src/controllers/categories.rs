@@ -211,7 +211,9 @@ pub async fn create_category(
             "Tenant ID must not be nil",
         ));
     }
-    if let Some(parent_id) = input.parent_id && parent_id.is_nil() {
+    if let Some(parent_id) = input.parent_id
+        && parent_id.is_nil()
+    {
         return Err(HttpError::bad_request(
             "invalid_parent_id",
             "Parent category ID must not be nil",

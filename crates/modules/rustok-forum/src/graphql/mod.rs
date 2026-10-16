@@ -132,14 +132,37 @@ pub(crate) fn require_forum_permission<'a>(
     permissions: &[rustok_api::Permission],
     message: &str,
 ) -> async_graphql::Result<&'a rustok_api::AuthContext> {
-    rustok_api::graphql::require_graphql_auth(ctx, permissions, message)
+    let auth = rustok_api::graphql::require_graphql_auth(ctx, permissions, message)?;
+    if auth.tenant_id.is_nil() {
+        return Err(
+            async_graphql::Error::new("Unauthenticated: tenant ID must not be nil")
+                .extend_with(|_, ext| ext.set("code", "UNAUTHENTICATED")),
+        );
+    }
+    if auth.user_id.is_nil() {
+        return Err(
+            async_graphql::Error::new("Unauthenticated: user ID must not be nil")
+                .extend_with(|_, ext| ext.set("code", "UNAUTHENTICATED")),
+        );
+    }
+    Ok(auth)
 }
 
 pub(crate) fn resolve_tenant_scope(
     tenant: &rustok_api::TenantContext,
     requested_tenant_id: Option<uuid::Uuid>,
 ) -> async_graphql::Result<uuid::Uuid> {
+    if tenant.id.is_nil() {
+        return Err(
+            async_graphql::Error::new("Invalid tenant ID: tenant ID must not be nil")
+                .extend_with(|_, ext| ext.set("code", "BAD_USER_INPUT")),
+        );
+    }
     match requested_tenant_id {
+        Some(requested_tenant_id) if requested_tenant_id.is_nil() => Err(
+            async_graphql::Error::new("Invalid tenant ID: tenant ID must not be nil")
+                .extend_with(|_, ext| ext.set("code", "BAD_USER_INPUT")),
+        ),
         Some(requested_tenant_id) if requested_tenant_id != tenant.id => Err(
             async_graphql::Error::new("Permission denied: tenant scope mismatch")
                 .extend_with(|_, ext| ext.set("code", "FORBIDDEN")),
@@ -174,9 +197,9 @@ pub(crate) async fn require_public_forum_channel_enabled(
             async_graphql::Error::new("Forum module is not enabled for this channel")
                 .extend_with(|_, extension| extension.set("code", "FORBIDDEN")),
         ),
-        Err(error) => Err(
-            async_graphql::Error::new(format!("Channel module check failed: {error}"))
-                .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR")),
-        ),
+        Err(error) => Err(async_graphql::Error::new(format!(
+            "Channel module check failed: {error}"
+        ))
+        .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR"))),
     }
 }

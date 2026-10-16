@@ -23,7 +23,10 @@ async fn quote_revision_uses_global_relation_primary_key_scoped_to_exact_target_
         "sqlite:file:forum_quote_revision_{}?mode=memory&cache=shared",
         Uuid::new_v4()
     ));
-    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(options).await.expect("sqlite");
     db.execute_unprepared(
         "CREATE TABLE forum_relation_revisions (\
@@ -63,21 +66,39 @@ async fn quote_revision_uses_global_relation_primary_key_scoped_to_exact_target_
 
     let service = RevisionService::new(db);
     assert_eq!(
-        service.current_quote_revision(tenant, ForumContentTarget::topic(topic_id), "en").await.unwrap(),
+        service
+            .current_quote_revision(tenant, ForumContentTarget::topic(topic_id), "en")
+            .await
+            .unwrap(),
         Some(40)
     );
     assert_eq!(
-        service.current_quote_revision(tenant, ForumContentTarget::topic(topic_id), "ru").await.unwrap(),
+        service
+            .current_quote_revision(tenant, ForumContentTarget::topic(topic_id), "ru")
+            .await
+            .unwrap(),
         Some(41)
     );
     assert_eq!(
-        service.current_quote_revision(tenant, ForumContentTarget::reply(reply_id), "en").await.unwrap(),
+        service
+            .current_quote_revision(tenant, ForumContentTarget::reply(reply_id), "en")
+            .await
+            .unwrap(),
         Some(13)
     );
     assert_eq!(
-        service.current_quote_revision(tenant, ForumContentTarget::reply(reply_id), "ru").await.unwrap(),
+        service
+            .current_quote_revision(tenant, ForumContentTarget::reply(reply_id), "ru")
+            .await
+            .unwrap(),
         None
     );
     // Reactions' next content version is not the quote relation primary key.
-    assert_eq!(service.current_topic_revision(tenant, topic_id).await.unwrap(), 1);
+    assert_eq!(
+        service
+            .current_topic_revision(tenant, topic_id)
+            .await
+            .unwrap(),
+        1
+    );
 }

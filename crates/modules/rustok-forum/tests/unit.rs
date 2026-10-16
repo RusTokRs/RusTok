@@ -184,3 +184,169 @@ fn create_reply_input_fields() {
     );
     assert!(input.parent_reply_id.is_none());
 }
+
+// ── Hardening: Non-nil UUID Guards ──────────────────────────────────────────
+
+#[tokio::test]
+async fn user_stats_service_rejects_nil_uuids() {
+    let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+    let service = rustok_forum::UserStatsService::new(db);
+    let security = rustok_core::SecurityContext::system();
+
+    let err = service
+        .get(Uuid::nil(), security.clone(), Uuid::new_v4())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ForumError::Validation(msg) if msg.contains("Tenant ID must not be nil"))
+    );
+
+    let err = service
+        .get(Uuid::new_v4(), security, Uuid::nil())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ForumError::Validation(msg) if msg.contains("User ID must not be nil")));
+}
+
+#[tokio::test]
+async fn vote_service_rejects_nil_uuids() {
+    let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+    let service = rustok_forum::VoteService::new(db);
+    let security = rustok_core::SecurityContext::system();
+    let context =
+        rustok_api::PortContext::new("test", rustok_api::PortActor::system(), "en", "corr");
+
+    let err = service
+        .set_topic_vote(
+            Uuid::nil(),
+            Uuid::new_v4(),
+            security.clone(),
+            context.clone(),
+            1,
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ForumError::Validation(msg) if msg.contains("Tenant ID must not be nil"))
+    );
+
+    let err = service
+        .set_topic_vote(
+            Uuid::new_v4(),
+            Uuid::nil(),
+            security.clone(),
+            context.clone(),
+            1,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ForumError::Validation(msg) if msg.contains("Topic ID must not be nil")));
+
+    let err = service
+        .clear_topic_vote(Uuid::nil(), Uuid::new_v4(), security.clone())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ForumError::Validation(msg) if msg.contains("Tenant ID must not be nil"))
+    );
+
+    let err = service
+        .clear_topic_vote(Uuid::new_v4(), Uuid::nil(), security.clone())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ForumError::Validation(msg) if msg.contains("Topic ID must not be nil")));
+
+    let err = service
+        .set_reply_vote(
+            Uuid::nil(),
+            Uuid::new_v4(),
+            security.clone(),
+            context.clone(),
+            1,
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ForumError::Validation(msg) if msg.contains("Tenant ID must not be nil"))
+    );
+
+    let err = service
+        .set_reply_vote(
+            Uuid::new_v4(),
+            Uuid::nil(),
+            security.clone(),
+            context.clone(),
+            1,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ForumError::Validation(msg) if msg.contains("Reply ID must not be nil")));
+
+    let err = service
+        .clear_reply_vote(Uuid::nil(), Uuid::new_v4(), security.clone())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ForumError::Validation(msg) if msg.contains("Tenant ID must not be nil"))
+    );
+
+    let err = service
+        .clear_reply_vote(Uuid::new_v4(), Uuid::nil(), security)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ForumError::Validation(msg) if msg.contains("Reply ID must not be nil")));
+}
+
+#[tokio::test]
+async fn subscription_service_rejects_nil_uuids() {
+    let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+    let service = rustok_forum::SubscriptionService::new(db);
+    let security = rustok_core::SecurityContext::system();
+    let context =
+        rustok_api::PortContext::new("test", rustok_api::PortActor::system(), "en", "corr");
+
+    let err = service
+        .get_category_subscription(
+            Uuid::nil(),
+            Uuid::new_v4(),
+            security.clone(),
+            context.clone(),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ForumError::Validation(msg) if msg.contains("Tenant ID must not be nil"))
+    );
+
+    let err = service
+        .get_category_subscription(
+            Uuid::new_v4(),
+            Uuid::nil(),
+            security.clone(),
+            context.clone(),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ForumError::Validation(msg) if msg.contains("Category ID must not be nil"))
+    );
+
+    let err = service
+        .get_topic_subscription(
+            Uuid::nil(),
+            Uuid::new_v4(),
+            security.clone(),
+            context.clone(),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ForumError::Validation(msg) if msg.contains("Tenant ID must not be nil"))
+    );
+
+    let err = service
+        .get_topic_subscription(Uuid::new_v4(), Uuid::nil(), security, context)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ForumError::Validation(msg) if msg.contains("Topic ID must not be nil")));
+}

@@ -21,8 +21,7 @@ use crate::topic_create_transport::{
 use crate::{
     CategoryResponse, CategoryService, ForumCategoryReadOperation, ForumCategoryReadTransport,
     ForumReplyReadOperation, ForumReplyReadTransport, ForumTopicReadOperation,
-    ForumTopicReadTransport,
-    category_read_audience_port_context, reply_read_audience_port_context,
+    ForumTopicReadTransport, category_read_audience_port_context, reply_read_audience_port_context,
     topic_read_audience_port_context,
 };
 
@@ -563,12 +562,7 @@ impl ForumContentMutation {
             .await?;
         super::forum_graphql_runtime(ctx)
             .subscription_service(db.clone())
-            .set_category_subscription(
-                tenant_id,
-                category_id,
-                security,
-                context,
-            )
+            .set_category_subscription(tenant_id, category_id, security, context)
             .await?;
         // The subscription itself is the only field intentionally changed
         // since the authorized pre-read; do not return its old flag.
@@ -618,12 +612,7 @@ impl ForumContentMutation {
             .await?;
         super::forum_graphql_runtime(ctx)
             .subscription_service(db.clone())
-            .clear_category_subscription(
-                tenant_id,
-                category_id,
-                security,
-                context,
-            )
+            .clear_category_subscription(tenant_id, category_id, security, context)
             .await?;
         category.is_subscribed = false;
         Ok(map_category(category))
@@ -648,8 +637,14 @@ impl ForumContentMutation {
         let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
         let mut response = subscription_topic_response(
-            ctx, db, event_bus, tenant_id, topic_id,
-            resolved_locale.as_str(), tenant.default_locale.as_str(), auth,
+            ctx,
+            db,
+            event_bus,
+            tenant_id,
+            topic_id,
+            resolved_locale.as_str(),
+            tenant.default_locale.as_str(),
+            auth,
         )
         .await?;
         let write_context = topic_read_audience_port_context(
@@ -666,7 +661,8 @@ impl ForumContentMutation {
                 tenant_id,
                 topic_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id), &auth.permissions,
+                    Some(auth.user_id),
+                    &auth.permissions,
                 ),
                 write_context,
             )
@@ -1496,7 +1492,8 @@ async fn subscription_topic_response(
         .get_authenticated_owner_visible_with_audience_context(
             tenant_id,
             rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id), &auth.permissions,
+                Some(auth.user_id),
+                &auth.permissions,
             ),
             context,
             topic_id,
@@ -1504,7 +1501,11 @@ async fn subscription_topic_response(
         )
         .await?;
     let author_profile = load_author_profile(
-        ctx, db, tenant_id, topic.author_id, topic.effective_locale.as_str(),
+        ctx,
+        db,
+        tenant_id,
+        topic.author_id,
+        topic.effective_locale.as_str(),
     )
     .await?;
     Ok(map_topic(topic, author_profile))

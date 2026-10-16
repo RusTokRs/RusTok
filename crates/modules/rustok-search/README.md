@@ -24,6 +24,7 @@ RusToK.
 - Own canonical application URLs for normalized `SearchResultItem` values through
   `canonical_search_result_url`.
 - Serve storefront Search, admin preview, and host global-search capabilities. Generic storefront FTS and suggestions exclude Forum documents at the SQL boundary (including totals, facets and pinned query rules) because those surfaces have no Forum audience owner; admin Search is unaffected. The explicit Forum-only storefront path preflights the Forum owner's public-discovery policy before scanning raw indexed candidates; its query rules may reorder only the already authorized page and never inject a pinned document outside owner eligibility.
+- Provide generic `SearchAudiencePolicyPort` and `SearchAudienceRegistry` SPI for domain-owned real-time audience discovery preflights and batch candidate authorization across dynamic access-controlled source modules.
 - Publish transport-neutral `SearchQueryPort` and `SearchSuggestionPort` provider
   boundaries.
 
@@ -72,6 +73,9 @@ transport-local Blog route builder, or compatibility URL implementation.
 - `PgSearchEngine`
 - `SearchQueryPort`
 - `SearchSuggestionPort`
+- `SearchAudiencePolicyPort` / `SearchAudienceRegistry`
+- `SearchCandidateDescriptor` / `resolve_audience_eligible_candidates`
+- `LegacyForumAudienceAdapter`
 - `canonical_search_result_url`
 - `graphql::SearchQueryRoot` / `graphql::SearchMutationRoot`
 
@@ -80,6 +84,7 @@ transport-local Blog route builder, or compatibility URL implementation.
 | Capability | Primary surface | Consumer | Boundary |
 |---|---|---|---|
 | Public search | `storefrontSearch` | Storefronts | Tenant-scoped, published/public documents only |
+| Audience security | `resolve_audience_eligible_candidates` | Storefronts | Multi-module real-time candidate post-authorization and preflight discovery |
 | Suggestions | `storefrontSearchSuggestions` | Storefronts | Same public visibility boundary as search |
 | Click tracking | `trackSearchClick` | Storefronts/admin | Best-effort analytics write using canonical href |
 | Admin preview | `searchPreview` / `searchSettingsPreview` | Admin packages | Authenticated tenant-scoped control plane |

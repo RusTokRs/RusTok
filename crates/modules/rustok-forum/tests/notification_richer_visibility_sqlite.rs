@@ -106,7 +106,10 @@ async fn notification_source_rechecks_category_and_topic_richer_visibility() {
     let mut extensions = registry
         .build_runtime_extensions()
         .expect("Notifications and Forum runtime extensions should initialize");
-    let host = extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()).with_shared_value(forum_public_settings::default_settings_reader()));
+    let host = extensions.apply_to_host_runtime(
+        HostRuntimeContext::new(db.clone())
+            .with_shared_value(forum_public_settings::default_settings_reader()),
+    );
     let providers = materialize_notification_source_registry(&mut extensions, &host)
         .expect("Forum source factory should materialize");
     let provider = providers
@@ -302,9 +305,13 @@ async fn notification_public_description_and_stale_audience_obey_private_tenant_
     );
     let open_registry = materialize_notification_source_registry(&mut open_extensions, &open_host)
         .expect("open source");
-    let open_source = open_registry.get_by_str("forum").expect("open forum source");
+    let open_source = open_registry
+        .get_by_str("forum")
+        .expect("open forum source");
     let descriptor = open_source
-        .describe_event(DescribeNotificationRequest { event: event_ref.clone() })
+        .describe_event(DescribeNotificationRequest {
+            event: event_ref.clone(),
+        })
         .await
         .expect("public description")
         .expect("previously public topic is describable");
@@ -326,21 +333,28 @@ async fn notification_public_description_and_stale_audience_obey_private_tenant_
     // Simulate a saved settings change without changing the event or its old
     // descriptor. The notification owner must not reuse that descriptor to leak
     // the public audience after the tenant closes anonymous reads.
-    let mut closed_extensions = registry.build_runtime_extensions().expect("closed registry");
-    let closed_host = closed_extensions.apply_to_host_runtime(
-        HostRuntimeContext::new(db).with_shared_value(
+    let mut closed_extensions = registry
+        .build_runtime_extensions()
+        .expect("closed registry");
+    let closed_host =
+        closed_extensions.apply_to_host_runtime(HostRuntimeContext::new(db).with_shared_value(
             SharedStaticModuleSettingsReader(Arc::new(PrivateForumSettings)),
-        ),
-    );
+        ));
     let closed_registry =
         materialize_notification_source_registry(&mut closed_extensions, &closed_host)
             .expect("closed source");
-    let closed_source = closed_registry.get_by_str("forum").expect("closed forum source");
-    assert!(closed_source
-        .describe_event(DescribeNotificationRequest { event: event_ref.clone() })
-        .await
-        .expect("private description")
-        .is_none());
+    let closed_source = closed_registry
+        .get_by_str("forum")
+        .expect("closed forum source");
+    assert!(
+        closed_source
+            .describe_event(DescribeNotificationRequest {
+                event: event_ref.clone()
+            })
+            .await
+            .expect("private description")
+            .is_none()
+    );
     let page = closed_source
         .resolve_audience(ResolveNotificationAudienceRequest {
             event: event_ref,

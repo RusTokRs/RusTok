@@ -12,8 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     ForumContentTarget, ForumReplyReadOperation, ForumReplyReadTransport, ReplyResponse,
-    ReplyStatus, RevisionService,
-    reply_read_audience_port_context,
+    ReplyStatus, RevisionService, reply_read_audience_port_context,
 };
 
 use super::{ForumGraphqlRuntimeData, ForumReplyPage, GqlForumReply};

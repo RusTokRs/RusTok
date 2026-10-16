@@ -94,7 +94,10 @@ impl ForumStorefrontAudienceTopicsQuery {
             service
                 .list_authenticated_storefront_visible_with_audience_context(
                     tenant_id,
-                    SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions),
+                    SecurityContext::from_permission_snapshot(
+                        Some(auth.user_id),
+                        &auth.permissions,
+                    ),
                     audience_context,
                     filter,
                     Some(tenant.default_locale.as_str()),

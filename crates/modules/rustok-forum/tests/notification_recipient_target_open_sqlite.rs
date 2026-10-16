@@ -158,7 +158,10 @@ async fn notification_target_open_uses_exact_recipient_role_for_topics_and_repli
             manager_id,
         });
     extensions.insert(recipient_port);
-    let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db).with_shared_value(forum_public_settings::default_settings_reader()));
+    let host = extensions.apply_to_host_runtime(
+        rustok_api::HostRuntimeContext::new(db)
+            .with_shared_value(forum_public_settings::default_settings_reader()),
+    );
     let providers = materialize_notification_source_registry(&mut extensions, &host)
         .expect("Forum source factory should consume the recipient capability");
     let provider = providers

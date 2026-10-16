@@ -4,10 +4,9 @@ use anyhow::{Result as AnyResult, anyhow};
 use async_trait::async_trait;
 use rustok_seo_targets::{
     SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
-    SeoSitemapCandidateRecord,
-    SeoTargetAlternateRoute, SeoTargetBulkPageRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
-    SeoTargetLoadScope, SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
-    SeoTargetSitemapRequest, SeoTargetSlug,
+    SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
+    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetProvider,
+    SeoTargetRouteResolveRequest, SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug,
 };
 use url::Url;
 use uuid::Uuid;
@@ -168,7 +167,10 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         let default_locale = request.default_locale;
         let discovery = public_discovery(runtime);
         if !discovery.anonymous_reading_allowed(tenant_id).await? {
-            return Ok(SeoBulkSummaryPage { items: Vec::new(), next_cursor: None });
+            return Ok(SeoBulkSummaryPage {
+                items: Vec::new(),
+                next_cursor: None,
+            });
         }
         // The legacy mapper scans a raw category keyset. Its cursor may point at a
         // category that the public owner would hide; never forward that cursor or
@@ -227,7 +229,9 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
             }
         }
         let next_cursor = if has_more {
-            visible.last().map(|candidate| candidate.target_id.to_string())
+            visible
+                .last()
+                .map(|candidate| candidate.target_id.to_string())
         } else {
             None
         };
@@ -430,25 +434,29 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         let default_locale = request.default_locale;
         let discovery = public_discovery(runtime);
         if !discovery.anonymous_reading_allowed(tenant_id).await? {
-            return Ok(SeoBulkSummaryPage { items: Vec::new(), next_cursor: None });
+            return Ok(SeoBulkSummaryPage {
+                items: Vec::new(),
+                next_cursor: None,
+            });
         }
         // Unlike the legacy mapper's raw topic list, this owner derives both the
         // items and the cursor from the audience-allowed sequence before paging.
-        let page = ForumTopicAudienceListService::new(runtime.db.clone(), runtime.event_bus.clone())
-            .with_settings_providers(crate::seo_targets::seo_settings_providers(runtime))
-            .list_public_storefront_visible_with_locale_fallback(
-                tenant_id,
-                ListTopicsFilter {
-                    category_id: None,
-                    status: None,
-                    locale: Some(request.locale.to_string()),
-                    after: request.after.map(str::to_owned),
-                    per_page: request.limit.clamp(1, MAX_FORUM_READ_LIMIT),
-                },
-                Some(default_locale),
-                None,
-            )
-            .await?;
+        let page =
+            ForumTopicAudienceListService::new(runtime.db.clone(), runtime.event_bus.clone())
+                .with_settings_providers(crate::seo_targets::seo_settings_providers(runtime))
+                .list_public_storefront_visible_with_locale_fallback(
+                    tenant_id,
+                    ListTopicsFilter {
+                        category_id: None,
+                        status: None,
+                        locale: Some(request.locale.to_string()),
+                        after: request.after.map(str::to_owned),
+                        per_page: request.limit.clamp(1, MAX_FORUM_READ_LIMIT),
+                    },
+                    Some(default_locale),
+                    None,
+                )
+                .await?;
         let has_more = page.next_cursor.is_some();
         let mut visible = Vec::with_capacity(page.items.len());
         let mut last_visible_cursor = None;
@@ -695,7 +703,6 @@ fn topic_provider() -> crate::seo_targets::ForumTopicSeoTargetProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use async_trait::async_trait;
     use rustok_api::{
         PortError, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
@@ -703,12 +710,17 @@ mod tests {
     };
     use rustok_outbox::{OutboxTransport, TransactionalEventBus};
     use sea_orm::Database;
+    use std::sync::Arc;
 
     struct ForumReading(bool);
 
     #[async_trait]
     impl StaticModuleSettingsReader for ForumReading {
-        async fn settings(&self, _tenant: Uuid, slug: &str) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        async fn settings(
+            &self,
+            _tenant: Uuid,
+            slug: &str,
+        ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
             assert_eq!(slug, "forum");
             Ok(Some(StaticModuleSettingsSnapshot {
                 enabled: true,
@@ -727,32 +739,70 @@ mod tests {
             static_settings_reader: Some(reader),
         };
         let tenant = Uuid::new_v4();
-        assert!(ForumCategorySeoTargetProvider
-            .public_sitemap_requires_refresh(&runtime, tenant)
-            .await
-            .unwrap());
-        assert!(ForumTopicSeoTargetProvider
-            .public_sitemap_requires_refresh(&runtime, tenant)
-            .await
-            .unwrap());
+        assert!(
+            ForumCategorySeoTargetProvider
+                .public_sitemap_requires_refresh(&runtime, tenant)
+                .await
+                .unwrap()
+        );
+        assert!(
+            ForumTopicSeoTargetProvider
+                .public_sitemap_requires_refresh(&runtime, tenant)
+                .await
+                .unwrap()
+        );
         for page in [
-            ForumCategorySeoTargetProvider.list_bulk_summaries_page(&runtime, SeoTargetBulkPageRequest {
-                tenant_id: tenant, default_locale: "en", locale: "en", after: None, limit: 10,
-            }).await.unwrap(),
-            ForumTopicSeoTargetProvider.list_bulk_summaries_page(&runtime, SeoTargetBulkPageRequest {
-                tenant_id: tenant, default_locale: "en", locale: "en", after: None, limit: 10,
-            }).await.unwrap(),
+            ForumCategorySeoTargetProvider
+                .list_bulk_summaries_page(
+                    &runtime,
+                    SeoTargetBulkPageRequest {
+                        tenant_id: tenant,
+                        default_locale: "en",
+                        locale: "en",
+                        after: None,
+                        limit: 10,
+                    },
+                )
+                .await
+                .unwrap(),
+            ForumTopicSeoTargetProvider
+                .list_bulk_summaries_page(
+                    &runtime,
+                    SeoTargetBulkPageRequest {
+                        tenant_id: tenant,
+                        default_locale: "en",
+                        locale: "en",
+                        after: None,
+                        limit: 10,
+                    },
+                )
+                .await
+                .unwrap(),
         ] {
             assert!(page.items.is_empty());
             assert!(page.next_cursor.is_none());
         }
         for candidates in [
-            ForumCategorySeoTargetProvider.sitemap_candidates(&runtime, SeoTargetSitemapRequest {
-                tenant_id: tenant, default_locale: "en",
-            }).await.unwrap(),
-            ForumTopicSeoTargetProvider.sitemap_candidates(&runtime, SeoTargetSitemapRequest {
-                tenant_id: tenant, default_locale: "en",
-            }).await.unwrap(),
+            ForumCategorySeoTargetProvider
+                .sitemap_candidates(
+                    &runtime,
+                    SeoTargetSitemapRequest {
+                        tenant_id: tenant,
+                        default_locale: "en",
+                    },
+                )
+                .await
+                .unwrap(),
+            ForumTopicSeoTargetProvider
+                .sitemap_candidates(
+                    &runtime,
+                    SeoTargetSitemapRequest {
+                        tenant_id: tenant,
+                        default_locale: "en",
+                    },
+                )
+                .await
+                .unwrap(),
         ] {
             assert!(candidates.is_empty());
         }
@@ -764,26 +814,34 @@ mod tests {
         let mut runtime = SeoTargetRuntimeContext {
             event_bus: TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
             db,
-            static_settings_reader: Some(SharedStaticModuleSettingsReader(Arc::new(
-                ForumReading(true),
-            ))),
+            static_settings_reader: Some(SharedStaticModuleSettingsReader(Arc::new(ForumReading(
+                true,
+            )))),
         };
         let tenant = Uuid::new_v4();
         for refresh in [
-            ForumCategorySeoTargetProvider.public_sitemap_requires_refresh(&runtime, tenant).await,
-            ForumTopicSeoTargetProvider.public_sitemap_requires_refresh(&runtime, tenant).await,
+            ForumCategorySeoTargetProvider
+                .public_sitemap_requires_refresh(&runtime, tenant)
+                .await,
+            ForumTopicSeoTargetProvider
+                .public_sitemap_requires_refresh(&runtime, tenant)
+                .await,
         ] {
             assert!(refresh.expect("stored URLs may predate a changed audience policy"));
         }
         runtime.static_settings_reader = None;
-        assert!(ForumCategorySeoTargetProvider
-            .public_sitemap_requires_refresh(&runtime, tenant)
-            .await
-            .is_err());
-        assert!(ForumTopicSeoTargetProvider
-            .public_sitemap_requires_refresh(&runtime, tenant)
-            .await
-            .is_err());
+        assert!(
+            ForumCategorySeoTargetProvider
+                .public_sitemap_requires_refresh(&runtime, tenant)
+                .await
+                .is_err()
+        );
+        assert!(
+            ForumTopicSeoTargetProvider
+                .public_sitemap_requires_refresh(&runtime, tenant)
+                .await
+                .is_err()
+        );
     }
 
     #[test]

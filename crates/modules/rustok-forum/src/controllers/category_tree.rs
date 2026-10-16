@@ -51,7 +51,10 @@ pub async fn get_category_tree(
         "Forum category tree requested"
     );
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     ensure_forum_permission(
         &auth,
@@ -133,10 +136,16 @@ fn ensure_forum_permission(
     message: &str,
 ) -> HttpResult<()> {
     if auth.tenant_id.is_nil() {
-        return Err(HttpError::unauthorized("invalid_auth_tenant_id", "Authenticated tenant ID must not be nil"));
+        return Err(HttpError::unauthorized(
+            "invalid_auth_tenant_id",
+            "Authenticated tenant ID must not be nil",
+        ));
     }
     if auth.user_id.is_nil() {
-        return Err(HttpError::unauthorized("invalid_auth_user_id", "Authenticated user ID must not be nil"));
+        return Err(HttpError::unauthorized(
+            "invalid_auth_user_id",
+            "Authenticated user ID must not be nil",
+        ));
     }
     if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden(

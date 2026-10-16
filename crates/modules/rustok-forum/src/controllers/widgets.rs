@@ -55,7 +55,7 @@ pub async fn validate_widget_props(
 ) -> HttpResult<(StatusCode, Json<ForumWidgetPropsValidationResponse>)> {
     tracing::debug!(
         user_id = %auth.user_id,
-        widget_kind = ?input.widget_kind,
+        widget_type = ?input.widget_type,
         "Forum validate widget props requested"
     );
     ensure_forum_permission(
@@ -96,11 +96,14 @@ pub async fn preview_widget(
     tracing::debug!(
         tenant_id = %tenant.id,
         user_id = %auth.user_id,
-        widget_kind = ?input.widget_kind,
+        widget_type = ?input.widget_type,
         "Forum preview widget requested"
     );
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     ensure_forum_permission(
         &auth,
@@ -146,10 +149,16 @@ fn ensure_forum_permission(
     message: &str,
 ) -> HttpResult<()> {
     if auth.tenant_id.is_nil() {
-        return Err(HttpError::unauthorized("invalid_auth_tenant_id", "Authenticated tenant ID must not be nil"));
+        return Err(HttpError::unauthorized(
+            "invalid_auth_tenant_id",
+            "Authenticated tenant ID must not be nil",
+        ));
     }
     if auth.user_id.is_nil() {
-        return Err(HttpError::unauthorized("invalid_auth_user_id", "Authenticated user ID must not be nil"));
+        return Err(HttpError::unauthorized(
+            "invalid_auth_user_id",
+            "Authenticated user ID must not be nil",
+        ));
     }
     if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden(

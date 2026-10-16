@@ -43,6 +43,12 @@ impl CategoryService {
         tenant_id: Uuid,
         category_id: Uuid,
     ) -> ForumResult<forum_category::Model> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation("Tenant ID must not be nil".to_string()));
+        }
+        if category_id.is_nil() {
+            return Err(ForumError::Validation("Category ID must not be nil".to_string()));
+        }
         let existing = forum_category::Entity::find_by_id(category_id)
             .filter(forum_category::Column::TenantId.eq(tenant_id))
             .one(txn)
@@ -55,6 +61,12 @@ impl CategoryService {
         tenant_id: Uuid,
         category_id: Uuid,
     ) -> ForumResult<forum_category::Model> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation("Tenant ID must not be nil".to_string()));
+        }
+        if category_id.is_nil() {
+            return Err(ForumError::Validation("Category ID must not be nil".to_string()));
+        }
         let query = forum_category::Entity::find_by_id(category_id)
             .filter(forum_category::Column::TenantId.eq(tenant_id));
         match txn.get_database_backend() {

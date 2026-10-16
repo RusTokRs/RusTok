@@ -1,7 +1,7 @@
-#[path = "support/posting_cooldown.rs"]
-mod posting_cooldown;
 #[path = "support/forum_public_settings.rs"]
 mod forum_public_settings;
+#[path = "support/posting_cooldown.rs"]
+mod posting_cooldown;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -470,39 +470,72 @@ async fn category_global_topic_counter_is_not_the_viewers_page_size_or_cursor() 
     let fixture = fixture().await;
     let admin = SecurityContext::new(UserRole::Admin, Some(fixture.trusted_user_id));
     let members_topic = create_topic(
-        &fixture.db, &fixture.event_bus, fixture.tenant_id, admin.clone(),
-        fixture.public_category, "members-only",
-    ).await;
+        &fixture.db,
+        &fixture.event_bus,
+        fixture.tenant_id,
+        admin.clone(),
+        fixture.public_category,
+        "members-only",
+    )
+    .await;
     ForumTopicAudiencePolicyService::new(fixture.db.clone())
-        .set(fixture.tenant_id, members_topic, admin, SetForumTopicAudiencePolicyInput {
-            constraints: ForumAudienceConstraints {
-                roles_any: vec![UserRole::Customer],
-                ..ForumAudienceConstraints::default()
+        .set(
+            fixture.tenant_id,
+            members_topic,
+            admin,
+            SetForumTopicAudiencePolicyInput {
+                constraints: ForumAudienceConstraints {
+                    roles_any: vec![UserRole::Customer],
+                    ..ForumAudienceConstraints::default()
+                },
             },
-        }).await.expect("members-only audience");
+        )
+        .await
+        .expect("members-only audience");
 
     let category = ForumCategoryAudienceReadService::new(fixture.db.clone())
         .with_settings_providers(forum_public_settings::default_public_settings())
         .get_public_storefront_visible_with_locale_fallback(
-            fixture.tenant_id, fixture.public_category, "en", None,
-        ).await.expect("public category");
-    assert_eq!(category.topic_count, 3, "stored aggregate includes the restricted topic");
+            fixture.tenant_id,
+            fixture.public_category,
+            "en",
+            None,
+        )
+        .await
+        .expect("public category");
+    assert_eq!(
+        category.topic_count, 3,
+        "stored aggregate includes the restricted topic"
+    );
 
     let list = ForumTopicAudienceListService::new(fixture.db.clone(), fixture.event_bus.clone())
         .with_settings_providers(forum_public_settings::default_public_settings());
-    let filter = ListTopicsFilter { category_id: Some(fixture.public_category), ..list_filter(10, None) };
-    let public = list.list_public_storefront_visible_with_locale_fallback(
-        fixture.tenant_id, filter.clone(), None, Some("web"),
-    ).await.expect("public page");
+    let filter = ListTopicsFilter {
+        category_id: Some(fixture.public_category),
+        ..list_filter(10, None)
+    };
+    let public = list
+        .list_public_storefront_visible_with_locale_fallback(
+            fixture.tenant_id,
+            filter.clone(),
+            None,
+            Some("web"),
+        )
+        .await
+        .expect("public page");
     assert_eq!(public.items.len(), 2);
     assert!(public.next_cursor.is_none());
     assert!(public.items.iter().all(|item| item.id != members_topic));
-    let customer = list.list_authenticated_storefront_visible_with_audience_context(
-        fixture.tenant_id,
-        SecurityContext::new(UserRole::Customer, Some(fixture.trusted_user_id)),
-        read_context(fixture.tenant_id, fixture.trusted_user_id, "mixed-counts"),
-        filter, None,
-    ).await.expect("signed-in page");
+    let customer = list
+        .list_authenticated_storefront_visible_with_audience_context(
+            fixture.tenant_id,
+            SecurityContext::new(UserRole::Customer, Some(fixture.trusted_user_id)),
+            read_context(fixture.tenant_id, fixture.trusted_user_id, "mixed-counts"),
+            filter,
+            None,
+        )
+        .await
+        .expect("signed-in page");
     assert_eq!(customer.items.len(), 3);
     assert!(customer.items.iter().any(|item| item.id == members_topic));
     assert_eq!(category.topic_count as usize, customer.items.len());

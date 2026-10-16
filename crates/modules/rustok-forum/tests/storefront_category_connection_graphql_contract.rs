@@ -15,6 +15,9 @@ fn storefront_categories_expose_total_count_in_page_info() {
         .expect("connection fields");
     assert!(fields.contains("pageInfo: PageInfo!"));
     assert!(fields.contains("items: [GqlForumCategory!]!"));
-    assert!(!fields.contains("total:"), "there is no connection-level total field");
+    assert!(
+        !fields.contains("total:"),
+        "there is no connection-level total field"
+    );
     assert!(sdl.contains("totalCount:"));
 }

@@ -117,7 +117,12 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
         .expect("topic should be created");
 
     let author_settings = subscriptions
-        .get_topic_subscription(tenant_id, topic.id, admin.clone(), write_context(tenant_id, &admin))
+        .get_topic_subscription(
+            tenant_id,
+            topic.id,
+            admin.clone(),
+            write_context(tenant_id, &admin),
+        )
         .await
         .expect("author settings should load");
     assert_eq!(author_settings.level, ForumSubscriptionLevel::Watching);
@@ -181,7 +186,12 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
         .expect("reply should be created");
 
     let participant_settings = subscriptions
-        .get_topic_subscription(tenant_id, topic.id, participant.clone(), write_context(tenant_id, &participant))
+        .get_topic_subscription(
+            tenant_id,
+            topic.id,
+            participant.clone(),
+            write_context(tenant_id, &participant),
+        )
         .await
         .expect("participant settings should load");
     assert_eq!(participant_settings.level, ForumSubscriptionLevel::Tracking);
@@ -201,7 +211,12 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
         .await
         .expect("muted author reply should be created");
     let still_muted = subscriptions
-        .get_topic_subscription(tenant_id, topic.id, admin.clone(), write_context(tenant_id, &admin))
+        .get_topic_subscription(
+            tenant_id,
+            topic.id,
+            admin.clone(),
+            write_context(tenant_id, &admin),
+        )
         .await
         .expect("muted settings should remain");
     assert_eq!(still_muted.level, ForumSubscriptionLevel::Muted);
@@ -241,7 +256,12 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
         .await
         .expect("clear should restore normal");
     let normal = subscriptions
-        .get_topic_subscription(tenant_id, topic.id, participant.clone(), write_context(tenant_id, &participant))
+        .get_topic_subscription(
+            tenant_id,
+            topic.id,
+            participant.clone(),
+            write_context(tenant_id, &participant),
+        )
         .await
         .expect("normal settings should load");
     assert_eq!(normal.level, ForumSubscriptionLevel::Normal);

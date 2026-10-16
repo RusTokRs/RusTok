@@ -69,7 +69,9 @@ impl ForumGraphqlRuntimeData {
         &self,
         tenant_id: Uuid,
     ) -> crate::error::ForumResult<bool> {
-        self.settings_providers.anonymous_reading_allowed(tenant_id).await
+        self.settings_providers
+            .anonymous_reading_allowed(tenant_id)
+            .await
     }
 
     pub(crate) fn attachment_hold_reconciliation_media(

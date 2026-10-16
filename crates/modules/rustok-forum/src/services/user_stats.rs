@@ -31,6 +31,16 @@ impl UserStatsService {
         security: SecurityContext,
         user_id: Uuid,
     ) -> ForumResult<ForumUserStatsResponse> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Tenant ID must not be nil".to_string(),
+            ));
+        }
+        if user_id.is_nil() {
+            return Err(ForumError::Validation(
+                "User ID must not be nil".to_string(),
+            ));
+        }
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let row = forum_user_stat::Entity::find_by_id((tenant_id, user_id))
             .one(&self.db)

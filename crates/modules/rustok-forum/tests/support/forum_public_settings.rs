@@ -13,7 +13,9 @@ struct DefaultForumSettingsReader;
 #[async_trait]
 impl StaticModuleSettingsReader for DefaultForumSettingsReader {
     async fn settings(
-        &self, _tenant_id: Uuid, module_slug: &str,
+        &self,
+        _tenant_id: Uuid,
+        module_slug: &str,
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
         assert_eq!(module_slug, "forum");
         Ok(Some(StaticModuleSettingsSnapshot {

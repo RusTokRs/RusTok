@@ -47,6 +47,7 @@
   prefix `src/app/[locale]/forum/t/[...slug]`: the owner publishes that path in search documents, SEO
   targets and canonical redirects, so mounting it under `modules/` instead 404s every such link.
 - Composes search storefront controls through host-owned `src/features/search`: product-owned catalog metadata is loaded via `packages/rustok-product` and passed to the search package as safe option props with the route locale.
+- `packages/rustok-pages` (`@rustok/pages-frontend`) renders published Page Builder landing pages directly through Server Components (`PageBuilderContent`) with inline scoped `<style>` and sanitized HTML without an `<iframe>`. Interactive actions (`data-fly-action`) are handled by `FlyActionBridge` (Islands Architecture), bridging custom `fly:action` events into `@rustok/cart-frontend` (`addItem`/`openCart`) and Next.js client-side navigation. Canonical route lives at `src/app/[locale]/pages/[slug]/page.tsx` with dynamic SEO metadata resolution (`resolveSeoPageContextForRoute`).
 
 ## Docs
 

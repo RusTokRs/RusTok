@@ -164,7 +164,10 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
     let mut public_extensions = registry
         .build_runtime_extensions()
         .expect("public fallback extensions should initialize");
-    let public_host = public_extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()).with_shared_value(forum_public_settings::default_settings_reader()));
+    let public_host = public_extensions.apply_to_host_runtime(
+        HostRuntimeContext::new(db.clone())
+            .with_shared_value(forum_public_settings::default_settings_reader()),
+    );
     let public_providers =
         materialize_notification_source_registry(&mut public_extensions, &public_host)
             .expect("public fallback source registry should materialize");
@@ -193,8 +196,10 @@ async fn initially_non_public_topic_descriptor_requires_recipient_capability_and
         .build_runtime_extensions()
         .expect("recipient-aware extensions should initialize");
     recipient_extensions.insert(recipient_port);
-    let recipient_host =
-        recipient_extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()).with_shared_value(forum_public_settings::default_settings_reader()));
+    let recipient_host = recipient_extensions.apply_to_host_runtime(
+        HostRuntimeContext::new(db.clone())
+            .with_shared_value(forum_public_settings::default_settings_reader()),
+    );
     let recipient_providers =
         materialize_notification_source_registry(&mut recipient_extensions, &recipient_host)
             .expect("recipient-aware source registry should materialize");

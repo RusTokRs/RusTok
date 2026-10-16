@@ -55,12 +55,18 @@ pub async fn list_unread_topics(
         "Forum list unread topics requested"
     );
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
-    if let Some(category_id) = query.category_id {
-        if category_id.is_nil() {
-            return Err(HttpError::bad_request("invalid_category_id", "Category ID must not be nil"));
-        }
+    if let Some(category_id) = query.category_id
+        && category_id.is_nil()
+    {
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
     }
     ensure_forum_permission(
         &auth,
@@ -105,10 +111,16 @@ pub async fn get_topic_read_state(
         "Forum topic read state requested"
     );
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if topic_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_topic_id", "Topic ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
     }
     ensure_forum_permission(
         &auth,
@@ -153,10 +165,16 @@ pub async fn mark_topic_read(
         "Forum mark topic read requested"
     );
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if topic_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_topic_id", "Topic ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
     }
     ensure_forum_permission(
         &auth,
@@ -201,10 +219,16 @@ pub async fn mark_category_read(
         "Forum mark category read requested"
     );
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if category_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_category_id", "Category ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
     }
     ensure_forum_permission(
         &auth,
@@ -260,7 +284,10 @@ pub async fn mark_all_topics_read(
         "Forum mark all topics read requested"
     );
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     ensure_forum_permission(
         &auth,
@@ -301,10 +328,16 @@ fn ensure_forum_permission(
     message: &str,
 ) -> HttpResult<()> {
     if auth.tenant_id.is_nil() {
-        return Err(HttpError::unauthorized("invalid_auth_tenant_id", "Authenticated tenant ID must not be nil"));
+        return Err(HttpError::unauthorized(
+            "invalid_auth_tenant_id",
+            "Authenticated tenant ID must not be nil",
+        ));
     }
     if auth.user_id.is_nil() {
-        return Err(HttpError::unauthorized("invalid_auth_user_id", "Authenticated user ID must not be nil"));
+        return Err(HttpError::unauthorized(
+            "invalid_auth_user_id",
+            "Authenticated user ID must not be nil",
+        ));
     }
     if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden(

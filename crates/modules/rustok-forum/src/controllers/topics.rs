@@ -93,7 +93,9 @@ pub async fn list_topics(
             "Tenant ID must not be nil",
         ));
     }
-    if let Some(category_id) = query.category_id && category_id.is_nil() {
+    if let Some(category_id) = query.category_id
+        && category_id.is_nil()
+    {
         return Err(HttpError::bad_request(
             "invalid_category_id",
             "Category ID must not be nil",

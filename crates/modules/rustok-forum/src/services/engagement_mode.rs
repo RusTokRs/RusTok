@@ -49,7 +49,10 @@ impl ForumSettingsProviders {
                 "FORUM_PUBLIC_SETTINGS_UNAVAILABLE",
             ));
         }
-        Ok(self.module_settings(tenant_id).await?.allow_anonymous_reading)
+        Ok(self
+            .module_settings(tenant_id)
+            .await?
+            .allow_anonymous_reading)
     }
 
     /// Reads the Forum module settings inside the caller's transaction. A disabled module or
@@ -352,7 +355,9 @@ mod tests {
         assert_eq!(mode, ForumEngagementMode::InternalVotes);
     }
 
-    struct AnonymousSettingsReader { closed_tenant: Uuid }
+    struct AnonymousSettingsReader {
+        closed_tenant: Uuid,
+    }
 
     #[async_trait]
     impl StaticModuleSettingsReader for AnonymousSettingsReader {
@@ -373,18 +378,36 @@ mod tests {
     async fn anonymous_discovery_uses_saved_tenant_flag_and_requires_owner_reader() {
         let closed_tenant = Uuid::new_v4();
         let open_tenant = Uuid::new_v4();
-        assert!(ForumSettingsProviders::default()
-            .anonymous_reading_allowed(closed_tenant)
-            .await
-            .is_err(), "a missing settings reader cannot grant public access");
-        assert!(providers().anonymous_reading_allowed(open_tenant).await.unwrap(),
-            "a functioning reader with no saved row uses the soft default");
+        assert!(
+            ForumSettingsProviders::default()
+                .anonymous_reading_allowed(closed_tenant)
+                .await
+                .is_err(),
+            "a missing settings reader cannot grant public access"
+        );
+        assert!(
+            providers()
+                .anonymous_reading_allowed(open_tenant)
+                .await
+                .unwrap(),
+            "a functioning reader with no saved row uses the soft default"
+        );
 
         let settings = ForumSettingsProviders::default().with_static_reader(
             SharedStaticModuleSettingsReader(Arc::new(AnonymousSettingsReader { closed_tenant })),
         );
-        assert!(!settings.anonymous_reading_allowed(closed_tenant).await.unwrap());
-        assert!(settings.anonymous_reading_allowed(open_tenant).await.unwrap());
+        assert!(
+            !settings
+                .anonymous_reading_allowed(closed_tenant)
+                .await
+                .unwrap()
+        );
+        assert!(
+            settings
+                .anonymous_reading_allowed(open_tenant)
+                .await
+                .unwrap()
+        );
     }
 
     #[test]

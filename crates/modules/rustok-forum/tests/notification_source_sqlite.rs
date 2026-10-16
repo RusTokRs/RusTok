@@ -129,7 +129,10 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
     let mut on_extensions = on_registry
         .build_runtime_extensions()
         .expect("Notifications and Forum runtime extensions should initialize");
-    let host = on_extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()).with_shared_value(forum_public_settings::default_settings_reader()));
+    let host = on_extensions.apply_to_host_runtime(
+        HostRuntimeContext::new(db.clone())
+            .with_shared_value(forum_public_settings::default_settings_reader()),
+    );
     let providers = materialize_notification_source_registry(&mut on_extensions, &host)
         .expect("Forum source factory should materialize");
     let provider = providers
@@ -246,7 +249,12 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
     let topic_watcher_security = SecurityContext::new(UserRole::Customer, Some(topic_watcher));
     let suppressed_security = SecurityContext::new(UserRole::Customer, Some(suppressed_watcher));
     subscriptions
-        .set_category_subscription(tenant_id, category.id, suppressed_security.clone(), topic_subscription_context(tenant_id, &suppressed_security))
+        .set_category_subscription(
+            tenant_id,
+            category.id,
+            suppressed_security.clone(),
+            topic_subscription_context(tenant_id, &suppressed_security),
+        )
         .await
         .expect("category subscription should be stored");
     subscriptions

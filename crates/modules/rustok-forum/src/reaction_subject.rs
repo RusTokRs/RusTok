@@ -25,7 +25,8 @@ use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
 use crate::services::{
-    ForumSettingsProviders, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService, RevisionService,
+    ForumSettingsProviders, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
+    RevisionService,
 };
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
@@ -135,7 +136,8 @@ impl ForumReactionSubjectProvider {
         let viewer = self
             .resolve_viewer(context, subject.tenant_id(), actor_id)
             .await?;
-        if !self.visibility_service()
+        if !self
+            .visibility_service()
             .is_topic_visible(
                 subject.tenant_id(),
                 subject.subject_id(),
@@ -188,7 +190,8 @@ impl ForumReactionSubjectProvider {
         let viewer = self
             .resolve_viewer(context, subject.tenant_id(), actor_id)
             .await?;
-        if !self.visibility_service()
+        if !self
+            .visibility_service()
             .is_topic_visible(
                 subject.tenant_id(),
                 initial_reply.topic_id,

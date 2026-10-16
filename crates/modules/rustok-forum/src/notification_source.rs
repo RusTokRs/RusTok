@@ -29,7 +29,9 @@ use crate::error::ForumError;
 use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
-use crate::services::{ForumSettingsProviders, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
+use crate::services::{
+    ForumSettingsProviders, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
+};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 use crate::subscription::ForumSubscriptionLevel;
 
@@ -221,7 +223,8 @@ impl ForumNotificationSourceProvider {
         topic_id: Uuid,
         viewer: &ForumTopicAudienceViewer,
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
-        if !self.visibility_service()
+        if !self
+            .visibility_service()
             .is_topic_visible(tenant_id, topic_id, None, viewer)
             .await
             .map_err(forum_owner_error)?

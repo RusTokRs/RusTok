@@ -9,8 +9,8 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumAudienceConstraints,
     ForumCategoryAudiencePolicyService, ForumError, ForumModule, ForumMutation, ForumQuery,
-    ListTopicsFilter, SetForumCategoryAudiencePolicyInput, SetForumTopicAudiencePolicyInput,
-    SubscriptionService, TopicService, ForumTopicAudiencePolicyService,
+    ForumTopicAudiencePolicyService, ListTopicsFilter, SetForumCategoryAudiencePolicyInput,
+    SetForumTopicAudiencePolicyInput, SubscriptionService, TopicService,
     UpdateForumSubscriptionInput,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
@@ -119,7 +119,12 @@ async fn category_and_topic_subscriptions_round_trip_through_read_paths() {
         .expect("topic should be created");
 
     subscription_service
-        .set_category_subscription(tenant_id, category.id, viewer.clone(), write_context(tenant_id, &viewer))
+        .set_category_subscription(
+            tenant_id,
+            category.id,
+            viewer.clone(),
+            write_context(tenant_id, &viewer),
+        )
         .await
         .expect("category subscription should be set");
     subscription_service
@@ -182,7 +187,12 @@ async fn category_and_topic_subscriptions_round_trip_through_read_paths() {
     assert!(!topic_for_other.is_subscribed);
 
     subscription_service
-        .clear_category_subscription(tenant_id, category.id, viewer.clone(), write_context(tenant_id, &viewer))
+        .clear_category_subscription(
+            tenant_id,
+            category.id,
+            viewer.clone(),
+            write_context(tenant_id, &viewer),
+        )
         .await
         .expect("category subscription should clear");
     subscription_service
@@ -249,7 +259,12 @@ async fn subscriptions_require_authenticated_user_context() {
         .expect("topic should be created");
 
     let category_err = subscription_service
-        .set_category_subscription(tenant_id, category.id, SecurityContext::system(), write_context(tenant_id, &SecurityContext::system()))
+        .set_category_subscription(
+            tenant_id,
+            category.id,
+            SecurityContext::system(),
+            write_context(tenant_id, &SecurityContext::system()),
+        )
         .await
         .expect_err("subscription without user should fail");
     assert!(matches!(category_err, ForumError::Forbidden(_)));
@@ -292,7 +307,12 @@ async fn category_subscription_reads_and_writes_do_not_disclose_or_change_hidden
     let subscriptions = SubscriptionService::new(db.clone());
     let policies = ForumCategoryAudiencePolicyService::new(db);
     subscriptions
-        .set_category_subscription(tenant_id, category.id, viewer.clone(), write_context(tenant_id, &viewer))
+        .set_category_subscription(
+            tenant_id,
+            category.id,
+            viewer.clone(),
+            write_context(tenant_id, &viewer),
+        )
         .await
         .expect("viewer may subscribe while category is public");
 
@@ -333,9 +353,14 @@ async fn category_subscription_reads_and_writes_do_not_disclose_or_change_hidden
         ));
     }
     assert!(matches!(
-        subscriptions.get_category_subscription(
-            Uuid::new_v4(), category.id, viewer.clone(), write_context(tenant_id, &viewer)
-        ).await,
+        subscriptions
+            .get_category_subscription(
+                Uuid::new_v4(),
+                category.id,
+                viewer.clone(),
+                write_context(tenant_id, &viewer)
+            )
+            .await,
         Err(ForumError::Validation(_))
     ));
 
@@ -351,10 +376,18 @@ async fn category_subscription_reads_and_writes_do_not_disclose_or_change_hidden
         .await
         .expect("category audience should widen again");
     let unchanged = subscriptions
-        .get_category_subscription(tenant_id, category.id, viewer.clone(), write_context(tenant_id, &viewer))
+        .get_category_subscription(
+            tenant_id,
+            category.id,
+            viewer.clone(),
+            write_context(tenant_id, &viewer),
+        )
         .await
         .expect("original subscription should still be present");
-    assert_eq!(unchanged.level, rustok_forum::ForumSubscriptionLevel::Watching);
+    assert_eq!(
+        unchanged.level,
+        rustok_forum::ForumSubscriptionLevel::Watching
+    );
     assert_eq!(unchanged.revision, 1);
 }
 
@@ -400,12 +433,24 @@ async fn topic_subscription_get_hides_denied_and_absent_topics_equally() {
         .await
         .expect("topic should be created");
     let subscriptions = SubscriptionService::new(db.clone());
-    assert!(subscriptions
-        .get_topic_subscription(tenant_id, topic.id, viewer.clone(), write_context(tenant_id, &viewer))
-        .await
-        .is_ok());
+    assert!(
+        subscriptions
+            .get_topic_subscription(
+                tenant_id,
+                topic.id,
+                viewer.clone(),
+                write_context(tenant_id, &viewer)
+            )
+            .await
+            .is_ok()
+    );
     subscriptions
-        .set_topic_subscription(tenant_id, topic.id, viewer.clone(), write_context(tenant_id, &viewer))
+        .set_topic_subscription(
+            tenant_id,
+            topic.id,
+            viewer.clone(),
+            write_context(tenant_id, &viewer),
+        )
         .await
         .expect("viewer can subscribe before the audience is restricted");
     ForumTopicAudiencePolicyService::new(db.clone())
@@ -430,25 +475,41 @@ async fn topic_subscription_get_hides_denied_and_absent_topics_equally() {
     }
 
     db.execute_unprepared(
-        "CREATE TABLE tenant_modules (tenant_id TEXT, module_slug TEXT, enabled INTEGER)"
-    ).await.expect("GraphQL module enablement table");
+        "CREATE TABLE tenant_modules (tenant_id TEXT, module_slug TEXT, enabled INTEGER)",
+    )
+    .await
+    .expect("GraphQL module enablement table");
     db.execute_unprepared(&format!(
         "INSERT INTO tenant_modules VALUES ('{tenant_id}', 'forum', 1)"
-    )).await.expect("GraphQL module enablement row");
-    let schema = Schema::build(ForumQuery::default(), ForumMutation::default(), EmptySubscription)
-        .data(db.clone())
-        .data(event_bus)
-        .data(TenantContext {
-            id: tenant_id, name: "Forum test".into(), slug: "forum".into(),
-            domain: None, settings: serde_json::json!({}), default_locale: "en".into(),
-            is_active: true,
-        })
-        .data(AuthContext {
-            user_id: viewer.user_id.expect("viewer id"), session_id: Uuid::new_v4(), tenant_id,
-            permissions: vec![Permission::FORUM_TOPICS_READ],
-            client_id: None, scopes: Vec::new(), grant_type: "user".into(),
-        })
-        .finish();
+    ))
+    .await
+    .expect("GraphQL module enablement row");
+    let schema = Schema::build(
+        ForumQuery::default(),
+        ForumMutation::default(),
+        EmptySubscription,
+    )
+    .data(db.clone())
+    .data(event_bus)
+    .data(TenantContext {
+        id: tenant_id,
+        name: "Forum test".into(),
+        slug: "forum".into(),
+        domain: None,
+        settings: serde_json::json!({}),
+        default_locale: "en".into(),
+        is_active: true,
+    })
+    .data(AuthContext {
+        user_id: viewer.user_id.expect("viewer id"),
+        session_id: Uuid::new_v4(),
+        tenant_id,
+        permissions: vec![Permission::FORUM_TOPICS_READ],
+        client_id: None,
+        scopes: Vec::new(),
+        grant_type: "user".into(),
+    })
+    .finish();
     // The canonical clear acknowledges the same outcome for hidden and absent
     // IDs, without returning (or probing for) topic content.
     for id in [topic.id, Uuid::new_v4()] {
@@ -466,14 +527,30 @@ async fn topic_subscription_get_hides_denied_and_absent_topics_equally() {
         assert_eq!(data["clearForumTopicSubscription"], true);
     }
     ForumTopicAudiencePolicyService::new(db.clone())
-        .set(tenant_id, topic.id, admin, SetForumTopicAudiencePolicyInput {
-            constraints: ForumAudienceConstraints::default(),
-        }).await.expect("restore topic audience to inspect state");
+        .set(
+            tenant_id,
+            topic.id,
+            admin,
+            SetForumTopicAudiencePolicyInput {
+                constraints: ForumAudienceConstraints::default(),
+            },
+        )
+        .await
+        .expect("restore topic audience to inspect state");
     let cleared = subscriptions
-        .get_topic_subscription(tenant_id, topic.id, viewer.clone(), write_context(tenant_id, &viewer))
-        .await.expect("read cleared subscription");
+        .get_topic_subscription(
+            tenant_id,
+            topic.id,
+            viewer.clone(),
+            write_context(tenant_id, &viewer),
+        )
+        .await
+        .expect("read cleared subscription");
     assert!(!cleared.level.is_explicitly_subscribed());
-    assert_eq!(cleared.revision, 2, "blind clear updates only the caller's existing subscription");
+    assert_eq!(
+        cleared.revision, 2,
+        "blind clear updates only the caller's existing subscription"
+    );
 }
 
 #[tokio::test]
@@ -483,75 +560,131 @@ async fn graphql_category_subscription_returns_post_write_flag_and_denies_hidden
     let viewer_id = Uuid::new_v4();
     let category = CategoryService::new(db.clone())
         .create(
-            tenant_id, admin.clone(), CreateCategoryInput {
-                locale: "en".into(), name: "Visible category".into(),
-                slug: "graphql-visible-category".into(), description: None,
-                icon: None, color: None, parent_id: None, position: Some(0),
+            tenant_id,
+            admin.clone(),
+            CreateCategoryInput {
+                locale: "en".into(),
+                name: "Visible category".into(),
+                slug: "graphql-visible-category".into(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: None,
+                position: Some(0),
                 moderated: false,
             },
         )
         .await
         .expect("visible category");
     db.execute_unprepared(
-        "CREATE TABLE tenant_modules (tenant_id TEXT, module_slug TEXT, enabled INTEGER)"
-    ).await.expect("GraphQL module enablement table");
+        "CREATE TABLE tenant_modules (tenant_id TEXT, module_slug TEXT, enabled INTEGER)",
+    )
+    .await
+    .expect("GraphQL module enablement table");
     db.execute_unprepared(&format!(
         "INSERT INTO tenant_modules VALUES ('{tenant_id}', 'forum', 1)"
-    )).await.expect("GraphQL module enablement row");
+    ))
+    .await
+    .expect("GraphQL module enablement row");
 
-    let schema = Schema::build(ForumQuery::default(), ForumMutation::default(), EmptySubscription)
-        .data(db.clone())
-        .data(event_bus)
-        .data(TenantContext {
-            id: tenant_id, name: "Forum test".into(), slug: "forum".into(),
-            domain: None, settings: serde_json::json!({}), default_locale: "en".into(),
-            is_active: true,
-        })
-        .data(AuthContext {
-            user_id: viewer_id, session_id: Uuid::new_v4(), tenant_id,
-            permissions: vec![Permission::FORUM_CATEGORIES_READ],
-            client_id: None, scopes: Vec::new(), grant_type: "user".into(),
-        })
-        .finish();
+    let schema = Schema::build(
+        ForumQuery::default(),
+        ForumMutation::default(),
+        EmptySubscription,
+    )
+    .data(db.clone())
+    .data(event_bus)
+    .data(TenantContext {
+        id: tenant_id,
+        name: "Forum test".into(),
+        slug: "forum".into(),
+        domain: None,
+        settings: serde_json::json!({}),
+        default_locale: "en".into(),
+        is_active: true,
+    })
+    .data(AuthContext {
+        user_id: viewer_id,
+        session_id: Uuid::new_v4(),
+        tenant_id,
+        permissions: vec![Permission::FORUM_CATEGORIES_READ],
+        client_id: None,
+        scopes: Vec::new(),
+        grant_type: "user".into(),
+    })
+    .finish();
 
     for (operation, subscribed) in [
         ("setForumCategorySubscription", true),
         ("clearForumCategorySubscription", false),
     ] {
-        let result = schema.execute(format!(
-            "mutation {{ {operation}(tenantId: \"{tenant_id}\", categoryId: \"{}\") \
-             {{ id name isSubscribed }} }}", category.id,
-        )).await;
-        assert!(result.errors.is_empty(), "{operation} errors: {:?}", result.errors);
+        let result = schema
+            .execute(format!(
+                "mutation {{ {operation}(tenantId: \"{tenant_id}\", categoryId: \"{}\") \
+             {{ id name isSubscribed }} }}",
+                category.id,
+            ))
+            .await;
+        assert!(
+            result.errors.is_empty(),
+            "{operation} errors: {:?}",
+            result.errors
+        );
         let data = result.data.into_json().expect("GraphQL mutation data");
         assert_eq!(data[operation]["isSubscribed"], subscribed);
         assert_eq!(data[operation]["name"], "Visible category");
     }
 
     ForumCategoryAudiencePolicyService::new(db.clone())
-        .set(tenant_id, category.id, admin.clone(), SetForumCategoryAudiencePolicyInput {
-            constraints: ForumAudienceConstraints {
-                allow_user_ids: vec![admin.user_id.expect("admin id")],
-                ..Default::default()
+        .set(
+            tenant_id,
+            category.id,
+            admin.clone(),
+            SetForumCategoryAudiencePolicyInput {
+                constraints: ForumAudienceConstraints {
+                    allow_user_ids: vec![admin.user_id.expect("admin id")],
+                    ..Default::default()
+                },
             },
-        }).await.expect("hide category from viewer");
-    let result = schema.execute(format!(
-        "mutation {{ setForumCategorySubscription(tenantId: \"{tenant_id}\", \
-         categoryId: \"{}\") {{ id name isSubscribed }} }}", category.id,
-    )).await;
-    assert!(!result.errors.is_empty(), "hidden target must fail before a write");
+        )
+        .await
+        .expect("hide category from viewer");
+    let result = schema
+        .execute(format!(
+            "mutation {{ setForumCategorySubscription(tenantId: \"{tenant_id}\", \
+         categoryId: \"{}\") {{ id name isSubscribed }} }}",
+            category.id,
+        ))
+        .await;
+    assert!(
+        !result.errors.is_empty(),
+        "hidden target must fail before a write"
+    );
     assert_eq!(result.data, async_graphql::Value::Null);
     assert!(result.errors[0].message.contains("not found"));
     // Widen the audience just to inspect state; a denied mutation must not
     // have written even if the caller knew the category UUID.
     ForumCategoryAudiencePolicyService::new(db.clone())
-        .set(tenant_id, category.id, admin, SetForumCategoryAudiencePolicyInput {
-            constraints: ForumAudienceConstraints::default(),
-        }).await.expect("reopen category");
+        .set(
+            tenant_id,
+            category.id,
+            admin,
+            SetForumCategoryAudiencePolicyInput {
+                constraints: ForumAudienceConstraints::default(),
+            },
+        )
+        .await
+        .expect("reopen category");
     let viewer = SecurityContext::new(UserRole::Customer, Some(viewer_id));
     let stored = SubscriptionService::new(db)
-        .get_category_subscription(tenant_id, category.id, viewer.clone(), write_context(tenant_id, &viewer))
-        .await.expect("inspected subscription");
+        .get_category_subscription(
+            tenant_id,
+            category.id,
+            viewer.clone(),
+            write_context(tenant_id, &viewer),
+        )
+        .await
+        .expect("inspected subscription");
     assert!(!stored.level.is_explicitly_subscribed());
     assert_eq!(stored.revision, 2, "only set and clear may update the row");
 }

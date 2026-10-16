@@ -189,7 +189,9 @@ async fn forum_channel_enabled(ctx: &Context<'_>) -> Result<bool> {
     {
         Ok(enabled) => Ok(enabled),
         Err(rustok_channel::ChannelError::NotFound(_)) => Ok(false),
-        Err(error) => Err(internal_error(format!("Channel module check failed: {error}"))),
+        Err(error) => Err(internal_error(format!(
+            "Channel module check failed: {error}"
+        ))),
     }
 }
 

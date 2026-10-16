@@ -54,10 +54,7 @@ impl StaticModuleSettingsTransactionReader for OpenForum {
     }
 }
 
-fn page_request<'a>(
-    tenant_id: Uuid,
-    after: Option<&'a str>,
-) -> SeoTargetBulkPageRequest<'a> {
+fn page_request<'a>(tenant_id: Uuid, after: Option<&'a str>) -> SeoTargetBulkPageRequest<'a> {
     SeoTargetBulkPageRequest {
         tenant_id,
         default_locale: "en",
@@ -74,7 +71,10 @@ async fn open_forum_seo_loads_topics_and_pages_only_public_owner_candidates() {
         Uuid::new_v4()
     );
     let mut options = ConnectOptions::new(database_url);
-    options.max_connections(5).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(5)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(options)
         .await
         .expect("SEO fixture database");
@@ -223,36 +223,40 @@ async fn open_forum_seo_loads_topics_and_pages_only_public_owner_candidates() {
         .await
         .expect("public topic SEO load must receive settings");
     assert!(visible_topic.is_some());
-    assert!(ForumTopicSeoTargetProvider
-        .load_target(
-            &runtime,
-            SeoTargetLoadRequest {
-                tenant_id: tenant,
-                default_locale: "en",
-                locale: "en",
-                target_id: hidden_topic,
-                scope: SeoTargetLoadScope::PublicRoute,
-                channel_slug: None,
-            },
-        )
-        .await
-        .expect("hidden topic SEO load")
-        .is_none());
-    assert!(ForumCategorySeoTargetProvider
-        .load_target(
-            &runtime,
-            SeoTargetLoadRequest {
-                tenant_id: tenant,
-                default_locale: "en",
-                locale: "en",
-                target_id: hidden_category,
-                scope: SeoTargetLoadScope::PublicRoute,
-                channel_slug: None,
-            },
-        )
-        .await
-        .expect("hidden category SEO load")
-        .is_none());
+    assert!(
+        ForumTopicSeoTargetProvider
+            .load_target(
+                &runtime,
+                SeoTargetLoadRequest {
+                    tenant_id: tenant,
+                    default_locale: "en",
+                    locale: "en",
+                    target_id: hidden_topic,
+                    scope: SeoTargetLoadScope::PublicRoute,
+                    channel_slug: None,
+                },
+            )
+            .await
+            .expect("hidden topic SEO load")
+            .is_none()
+    );
+    assert!(
+        ForumCategorySeoTargetProvider
+            .load_target(
+                &runtime,
+                SeoTargetLoadRequest {
+                    tenant_id: tenant,
+                    default_locale: "en",
+                    locale: "en",
+                    target_id: hidden_category,
+                    scope: SeoTargetLoadScope::PublicRoute,
+                    channel_slug: None,
+                },
+            )
+            .await
+            .expect("hidden category SEO load")
+            .is_none()
+    );
 
     let topic_sitemap = ForumTopicSeoTargetProvider
         .sitemap_candidates(
@@ -265,9 +269,11 @@ async fn open_forum_seo_loads_topics_and_pages_only_public_owner_candidates() {
         .await
         .expect("public topic sitemap must receive settings");
     assert_eq!(topic_sitemap.len(), 2);
-    assert!(!topic_sitemap
-        .iter()
-        .any(|candidate| candidate.target_id == hidden_topic));
+    assert!(
+        !topic_sitemap
+            .iter()
+            .any(|candidate| candidate.target_id == hidden_topic)
+    );
     let category_sitemap = ForumCategorySeoTargetProvider
         .sitemap_candidates(
             &runtime,
@@ -279,9 +285,11 @@ async fn open_forum_seo_loads_topics_and_pages_only_public_owner_candidates() {
         .await
         .expect("public category sitemap");
     assert_eq!(category_sitemap.len(), 3);
-    assert!(!category_sitemap
-        .iter()
-        .any(|candidate| candidate.target_id == hidden_category));
+    assert!(
+        !category_sitemap
+            .iter()
+            .any(|candidate| candidate.target_id == hidden_category)
+    );
 
     let first_category_page = ForumCategorySeoTargetProvider
         .list_bulk_summaries_page(&runtime, page_request(tenant, None))
@@ -332,11 +340,19 @@ async fn open_forum_seo_loads_topics_and_pages_only_public_owner_candidates() {
         .await
         .expect("first public topic SEO page");
     assert_eq!(first_topic_page.items.len(), 1);
-    assert_eq!(first_topic_page.items[0].target_id, ordered_topics.items[0].id);
     assert_eq!(
-        TopicListCursor::decode(first_topic_page.next_cursor.as_deref().expect("public topic cursor"))
-            .expect("topic cursor")
-            .id,
+        first_topic_page.items[0].target_id,
+        ordered_topics.items[0].id
+    );
+    assert_eq!(
+        TopicListCursor::decode(
+            first_topic_page
+                .next_cursor
+                .as_deref()
+                .expect("public topic cursor")
+        )
+        .expect("topic cursor")
+        .id,
         ordered_topics.items[0].id
     );
     let last_topic_page = ForumTopicSeoTargetProvider
@@ -347,47 +363,56 @@ async fn open_forum_seo_loads_topics_and_pages_only_public_owner_candidates() {
         .await
         .expect("last public topic SEO page");
     assert_eq!(last_topic_page.items.len(), 1);
-    assert_eq!(last_topic_page.items[0].target_id, ordered_topics.items[2].id);
+    assert_eq!(
+        last_topic_page.items[0].target_id,
+        ordered_topics.items[2].id
+    );
     assert!(last_topic_page.next_cursor.is_none());
 
     runtime.static_settings_reader = None;
-    assert!(ForumTopicSeoTargetProvider
-        .sitemap_candidates(
-            &runtime,
-            SeoTargetSitemapRequest {
-                tenant_id: tenant,
-                default_locale: "en",
-            },
-        )
-        .await
-        .is_err());
-    assert!(ForumTopicSeoTargetProvider
-        .load_target(
-            &runtime,
-            SeoTargetLoadRequest {
-                tenant_id: tenant,
-                default_locale: "en",
-                locale: "en",
-                target_id: ordered_topics.items[0].id,
-                scope: SeoTargetLoadScope::PublicRoute,
-                channel_slug: None,
-            },
-        )
-        .await
-        .is_err());
-    assert!(ForumTopicSeoTargetProvider
-        .load_target(
-            &runtime,
-            SeoTargetLoadRequest {
-                tenant_id: tenant,
-                default_locale: "en",
-                locale: "en",
-                target_id: hidden_topic,
-                scope: SeoTargetLoadScope::Authoring,
-                channel_slug: None,
-            },
-        )
-        .await
-        .expect("authoring SEO must not depend on a public settings reader")
-        .is_some());
+    assert!(
+        ForumTopicSeoTargetProvider
+            .sitemap_candidates(
+                &runtime,
+                SeoTargetSitemapRequest {
+                    tenant_id: tenant,
+                    default_locale: "en",
+                },
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        ForumTopicSeoTargetProvider
+            .load_target(
+                &runtime,
+                SeoTargetLoadRequest {
+                    tenant_id: tenant,
+                    default_locale: "en",
+                    locale: "en",
+                    target_id: ordered_topics.items[0].id,
+                    scope: SeoTargetLoadScope::PublicRoute,
+                    channel_slug: None,
+                },
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        ForumTopicSeoTargetProvider
+            .load_target(
+                &runtime,
+                SeoTargetLoadRequest {
+                    tenant_id: tenant,
+                    default_locale: "en",
+                    locale: "en",
+                    target_id: hidden_topic,
+                    scope: SeoTargetLoadScope::Authoring,
+                    channel_slug: None,
+                },
+            )
+            .await
+            .expect("authoring SEO must not depend on a public settings reader")
+            .is_some()
+    );
 }
