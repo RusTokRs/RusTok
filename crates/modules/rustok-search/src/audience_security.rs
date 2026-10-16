@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::storefront_category_scope::StorefrontSearchTransport;
+#[allow(deprecated)]
 use crate::storefront_result_eligibility::{
     StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
     StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
@@ -128,6 +129,14 @@ impl SearchAudienceRegistry {
     pub fn source_modules(&self) -> Vec<String> {
         self.policies.keys().cloned().collect()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.policies.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.policies.len()
+    }
     pub async fn public_discovery_allowed(
         &self,
         source_module: &str,
@@ -143,16 +152,19 @@ impl SearchAudienceRegistry {
 
 /// Backward-compatibility adapter that adapts the legacy `StorefrontSearchResultEligibilityPort`
 /// into the generic `SearchAudiencePolicyPort`.
+#[allow(deprecated)]
 pub struct LegacyForumAudienceAdapter {
     port: Arc<dyn StorefrontSearchResultEligibilityPort>,
 }
 
+#[allow(deprecated)]
 impl LegacyForumAudienceAdapter {
     pub fn new(port: Arc<dyn StorefrontSearchResultEligibilityPort>) -> Self {
         Self { port }
     }
 }
 
+#[allow(deprecated)]
 #[async_trait]
 impl SearchAudiencePolicyPort for LegacyForumAudienceAdapter {
     fn source_module(&self) -> &'static str {
@@ -171,9 +183,8 @@ impl SearchAudiencePolicyPort for LegacyForumAudienceAdapter {
             .candidates
             .into_iter()
             .filter_map(|candidate| {
-                let kind = StorefrontSearchResultCandidateKind::from_entity_type(
-                    &candidate.entity_type,
-                )?;
+                let kind =
+                    StorefrontSearchResultCandidateKind::from_entity_type(&candidate.entity_type)?;
                 Some(StorefrontSearchResultCandidate {
                     document_id: candidate.document_id,
                     kind,
@@ -295,9 +306,9 @@ fn normalize_source_module(value: &str) -> Result<String, PortError> {
     let normalized = value.trim().to_ascii_lowercase();
     if normalized.is_empty()
         || normalized.len() > 64
-        || !normalized.chars().all(|ch| {
-            ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '-' | '_')
-        })
+        || !normalized
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '-' | '_'))
     {
         return Err(PortError::validation(
             "search.audience_registry.invalid_source_module",
@@ -423,7 +434,10 @@ mod tests {
 
     #[async_trait]
     impl StorefrontSearchResultEligibilityPort for MockLegacyForumPort {
-        async fn public_forum_discovery_allowed(&self, _tenant_id: Uuid) -> Result<bool, PortError> {
+        async fn public_forum_discovery_allowed(
+            &self,
+            _tenant_id: Uuid,
+        ) -> Result<bool, PortError> {
             Ok(true)
         }
 

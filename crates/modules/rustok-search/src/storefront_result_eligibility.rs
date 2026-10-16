@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -26,6 +26,14 @@ impl StorefrontSearchResultCandidateKind {
             _ => None,
         }
     }
+
+    pub fn entity_type(&self) -> &'static str {
+        match self {
+            Self::ForumCategory => "forum_category",
+            Self::ForumTopic => "forum_topic",
+            Self::ForumReply => "forum_reply",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -44,6 +52,10 @@ pub struct StorefrontSearchResultEligibilityRequest {
     pub transport: StorefrontSearchTransport,
 }
 
+#[deprecated(
+    since = "0.2.0",
+    note = "Implement SearchAudiencePolicyPort and register in SearchAudienceRegistry instead."
+)]
 #[async_trait]
 pub trait StorefrontSearchResultEligibilityPort: Send + Sync {
     /// Owner gate before raw candidate collection. A private tenant with more
@@ -63,9 +75,14 @@ pub trait StorefrontSearchResultEligibilityPort: Send + Sync {
     ) -> Result<Vec<StorefrontSearchResultCandidate>, PortError>;
 }
 
+#[allow(deprecated)]
 pub type SharedStorefrontSearchResultEligibilityPort =
     Arc<dyn StorefrontSearchResultEligibilityPort>;
 
+#[deprecated(
+    since = "0.2.0",
+    note = "Use resolve_audience_eligible_candidates with SearchAudienceRegistry instead."
+)]
 pub async fn resolve_storefront_search_result_candidates(
     port: Option<SharedStorefrontSearchResultEligibilityPort>,
     request: StorefrontSearchResultEligibilityRequest,
@@ -111,17 +128,74 @@ pub async fn resolve_storefront_search_result_candidates(
     }
 
     let requested = request.candidates.iter().copied().collect::<HashSet<_>>();
-    let allowed = port.filter_forum_result_candidates(request).await?;
-    if allowed.len() > MAX_FORUM_SEARCH_RESULT_CANDIDATES {
-        return Err(PortError::invariant_violation(
-            "forum.search_result_eligibility.owner_limit_exceeded",
-            "Forum Search result eligibility owner exceeded the candidate limit",
-        ));
-    }
+    let candidate_map: HashMap<Uuid, StorefrontSearchResultCandidate> = request
+        .candidates
+        .iter()
+        .map(|c| (c.document_id, *c))
+        .collect();
 
+    let adapter = crate::audience_security::LegacyForumAudienceAdapter::new(port);
+    let mut registry = crate::audience_security::SearchAudienceRegistry::new();
+    registry.register(adapter).map_err(|e| {
+        PortError::invariant_violation(
+            "forum.search_result_eligibility.registry_error",
+            e.to_string(),
+        )
+    })?;
+
+    let descriptors = request
+        .candidates
+        .iter()
+        .map(|c| {
+            crate::audience_security::SearchCandidateDescriptor::new(
+                c.document_id,
+                crate::FORUM_SEARCH_SOURCE_MODULE,
+                c.kind.entity_type(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let allowed_ids = crate::audience_security::resolve_audience_eligible_candidates(
+        &registry,
+        request.tenant_id,
+        &request.locale,
+        &descriptors,
+        request.auth,
+        request.request_context,
+        request.transport,
+    )
+    .await
+    .map_err(|e| {
+        if e.code == "search.audience.owner_limit_exceeded" {
+            PortError::invariant_violation(
+                "forum.search_result_eligibility.owner_limit_exceeded",
+                "Forum Search result eligibility owner exceeded the candidate limit",
+            )
+        } else if e.code == "search.audience.unrequested_candidate"
+            || e.code == "search.audience.owner_scope_invalid"
+            || e.code == "search.audience.duplicate_candidate"
+        {
+            PortError::invariant_violation(
+                "forum.search_result_eligibility.owner_scope_invalid",
+                "Forum Search result eligibility owner returned an invalid candidate scope",
+            )
+        } else {
+            e
+        }
+    })?;
+
+    let mut allowed = Vec::with_capacity(allowed_ids.len());
     let mut seen = HashSet::new();
-    for candidate in &allowed {
-        if !requested.contains(candidate) || !seen.insert(*candidate) {
+    for id in &allowed_ids {
+        if let Some(candidate) = candidate_map.get(id) {
+            if !requested.contains(candidate) || !seen.insert(*candidate) {
+                return Err(PortError::invariant_violation(
+                    "forum.search_result_eligibility.owner_scope_invalid",
+                    "Forum Search result eligibility owner returned an invalid candidate scope",
+                ));
+            }
+            allowed.push(*candidate);
+        } else {
             return Err(PortError::invariant_violation(
                 "forum.search_result_eligibility.owner_scope_invalid",
                 "Forum Search result eligibility owner returned an invalid candidate scope",

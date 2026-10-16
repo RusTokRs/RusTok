@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::time::Instant;
@@ -12,13 +14,13 @@ use crate::forum_current_channel_filter::ForumStorefrontCurrentChannelFilter;
 use crate::{
     FORUM_SEARCH_SOURCE_MODULE, ForumStorefrontDocumentFilters, MAX_FORUM_SEARCH_RESULT_CANDIDATES,
     PgSearchEngine, SearchAnalyticsService, SearchAttributeFilter, SearchDictionaryService,
-    SearchEngineKind, SearchFilterPresetService, SearchQuery, SearchQueryLogRecord, SearchRankingProfile,
-    SearchResult, SearchResultItem, SearchSettingsService, SharedStorefrontSearchCategoryScopePort,
-    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopeRequest,
-    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
-    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport, TrustedStorefrontChannel,
-    resolve_storefront_search_category_ids, resolve_storefront_search_result_candidates,
-    resolve_trusted_storefront_channel,
+    SearchEngineKind, SearchFilterPresetService, SearchQuery, SearchQueryLogRecord,
+    SearchRankingProfile, SearchResult, SearchResultItem, SearchSettingsService,
+    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
+    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
+    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityRequest,
+    StorefrontSearchTransport, TrustedStorefrontChannel, resolve_storefront_search_category_ids,
+    resolve_storefront_search_result_candidates, resolve_trusted_storefront_channel,
 };
 
 const STOREFRONT_SEARCH_SURFACE: &str = "storefront_search";
@@ -142,6 +144,10 @@ struct NormalizedForumStorefrontSearchRequest {
     transport: StorefrontSearchTransport,
 }
 
+#[deprecated(
+    since = "0.2.0",
+    note = "Use generic storefront_search or resolve_audience_eligible_candidates instead."
+)]
 pub async fn execute_forum_storefront_search(
     db: &DatabaseConnection,
     category_scope_port: Option<SharedStorefrontSearchCategoryScopePort>,
@@ -295,7 +301,10 @@ async fn execute_result_eligible_search(
         })?;
         if !port
             .public_forum_discovery_allowed(
-                request.query.tenant_id.expect("validated Forum Search tenant"),
+                request
+                    .query
+                    .tenant_id
+                    .expect("validated Forum Search tenant"),
             )
             .await?
         {
@@ -389,9 +398,7 @@ async fn execute_result_eligible_search(
 
     let visible_items = all_items
         .into_iter()
-        .filter(|item| {
-            result_candidate(item).is_some_and(|candidate| allowed.contains(&candidate))
-        })
+        .filter(|item| result_candidate(item).is_some_and(|candidate| allowed.contains(&candidate)))
         .collect::<Vec<_>>();
     let total = visible_items.len() as u64;
     let facets = build_forum_result_facets(&visible_items);
@@ -850,7 +857,10 @@ mod tests {
 
     #[async_trait]
     impl StorefrontSearchResultEligibilityPort for PrivateForum {
-        async fn public_forum_discovery_allowed(&self, _tenant_id: Uuid) -> Result<bool, PortError> {
+        async fn public_forum_discovery_allowed(
+            &self,
+            _tenant_id: Uuid,
+        ) -> Result<bool, PortError> {
             Ok(false)
         }
 
@@ -889,17 +899,22 @@ mod tests {
         let channel = TrustedStorefrontChannel::default();
         let filters = ForumStorefrontDocumentFilters::default();
         let channel_filter = ForumStorefrontCurrentChannelFilter::default();
-        let result = execute_result_eligible_search(&db, ResultEligibleSearchRequest {
-            query: &query,
-            eligibility_port: Some(Arc::new(PrivateForum)),
-            effective_locale: "en".into(),
-            auth: None,
-            request_context: None,
-            trusted_channel: &channel,
-            document_filters: &filters,
-            current_channel_filter: &channel_filter,
-            transport: StorefrontSearchTransport::Graphql,
-        }).await.expect("closed public search");
+        let result = execute_result_eligible_search(
+            &db,
+            ResultEligibleSearchRequest {
+                query: &query,
+                eligibility_port: Some(Arc::new(PrivateForum)),
+                effective_locale: "en".into(),
+                auth: None,
+                request_context: None,
+                trusted_channel: &channel,
+                document_filters: &filters,
+                current_channel_filter: &channel_filter,
+                transport: StorefrontSearchTransport::Graphql,
+            },
+        )
+        .await
+        .expect("closed public search");
         assert!(result.items.is_empty());
         assert_eq!(result.total, 0);
         assert_eq!(result.facets, build_forum_result_facets(&[]));

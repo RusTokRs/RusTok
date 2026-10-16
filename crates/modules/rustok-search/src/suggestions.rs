@@ -360,7 +360,10 @@ mod tests {
 
     #[test]
     fn public_suggestions_never_read_raw_forum_documents() {
-        assert_eq!(suggestion_document_source_scope(true), "source_module <> 'forum'");
+        assert_eq!(
+            suggestion_document_source_scope(true),
+            "source_module <> 'forum'"
+        );
         assert_eq!(suggestion_document_source_scope(false), "TRUE");
     }
 

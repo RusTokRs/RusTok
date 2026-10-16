@@ -35,13 +35,21 @@ impl PgSearchEngine {
             .await
     }
 
-    pub(crate) async fn search_forum_storefront_candidates(
+    pub async fn search_storefront_candidates(
         &self,
         query: SearchQuery,
         channel: &TrustedStorefrontChannel,
     ) -> Result<SearchResult> {
         self.search_with_storefront_channel(query, Some(channel), false)
             .await
+    }
+
+    pub(crate) async fn search_forum_storefront_candidates(
+        &self,
+        query: SearchQuery,
+        channel: &TrustedStorefrontChannel,
+    ) -> Result<SearchResult> {
+        self.search_storefront_candidates(query, channel).await
     }
 
     async fn search_with_storefront_channel(
@@ -107,7 +115,8 @@ impl SearchEngine for PgSearchEngine {
     }
 
     async fn search(&self, query: SearchQuery) -> Result<SearchResult> {
-        self.search_with_storefront_channel(query, None, false).await
+        self.search_with_storefront_channel(query, None, false)
+            .await
     }
 }
 
@@ -274,7 +283,12 @@ async fn run_fts_search(
     db: &DatabaseConnection,
     request: &RankedSearchRequest<'_>,
 ) -> Result<SearchResult> {
-    let filters = build_filter_clause(request.query, 4, request.storefront_channel, request.exclude_forum);
+    let filters = build_filter_clause(
+        request.query,
+        4,
+        request.storefront_channel,
+        request.exclude_forum,
+    );
     let cte = build_fts_cte(request.query.ranking_profile);
 
     finalize_ranked_search(
@@ -301,7 +315,12 @@ async fn run_typo_tolerant_search(
     db: &DatabaseConnection,
     request: &RankedSearchRequest<'_>,
 ) -> Result<SearchResult> {
-    let filters = build_filter_clause(request.query, 4, request.storefront_channel, request.exclude_forum);
+    let filters = build_filter_clause(
+        request.query,
+        4,
+        request.storefront_channel,
+        request.exclude_forum,
+    );
     let cte = build_typo_cte(request.query.ranking_profile);
 
     finalize_ranked_search(
@@ -872,8 +891,12 @@ mod tests {
 
     #[test]
     fn category_filter_preserves_product_and_adds_exact_forum_scope() {
-        let filters =
-            build_filter_clause(&query_with_categories(vec![Uuid::from_u128(7)]), 4, None, false);
+        let filters = build_filter_clause(
+            &query_with_categories(vec![Uuid::from_u128(7)]),
+            4,
+            None,
+            false,
+        );
 
         for marker in [
             "entity_type = 'product'",

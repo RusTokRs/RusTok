@@ -387,7 +387,15 @@ impl SearchDictionaryService {
         result: SearchResult,
         channel: &TrustedStorefrontChannel,
     ) -> Result<SearchResult> {
-        Self::apply_query_rules_with_storefront_channel(db, query, result, Some(channel), true, true).await
+        Self::apply_query_rules_with_storefront_channel(
+            db,
+            query,
+            result,
+            Some(channel),
+            true,
+            true,
+        )
+        .await
     }
 
     /// Forum-only results have already passed their owner visibility check.
@@ -399,7 +407,15 @@ impl SearchDictionaryService {
         result: SearchResult,
         channel: &TrustedStorefrontChannel,
     ) -> Result<SearchResult> {
-        Self::apply_query_rules_with_storefront_channel(db, query, result, Some(channel), false, false).await
+        Self::apply_query_rules_with_storefront_channel(
+            db,
+            query,
+            result,
+            Some(channel),
+            false,
+            false,
+        )
+        .await
     }
 
     async fn apply_query_rules_with_storefront_channel(
@@ -442,8 +458,14 @@ impl SearchDictionaryService {
                 continue;
             }
 
-            if let Some(item) =
-                Self::load_pinned_item(db, query, rule.document_id, storefront_channel, exclude_forum).await?
+            if let Some(item) = Self::load_pinned_item(
+                db,
+                query,
+                rule.document_id,
+                storefront_channel,
+                exclude_forum,
+            )
+            .await?
             {
                 pinned.push((rule.pinned_position.max(1), item));
             }

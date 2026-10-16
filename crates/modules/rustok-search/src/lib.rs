@@ -81,6 +81,7 @@ pub use forum_reconciliation::{
     MAX_FORUM_OWNER_REVISION_PAGE_LIMIT, SharedForumProjectionOwnerRevisionSourcePort,
     resolve_forum_projection_owner_revisions,
 };
+#[allow(deprecated)]
 pub use forum_storefront_execution::{
     ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecution,
     ForumStorefrontSearchExecutionError, ForumStorefrontSearchRequest,
@@ -112,6 +113,7 @@ pub use storefront_channel_authority::{
     StorefrontChannelAuthorityError, TrustedStorefrontChannel, resolve_trusted_storefront_channel,
     resolve_trusted_storefront_channel_input,
 };
+#[allow(deprecated)]
 pub use storefront_result_eligibility::{
     MAX_FORUM_SEARCH_RESULT_CANDIDATES, SharedStorefrontSearchResultEligibilityPort,
     StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
@@ -165,7 +167,9 @@ impl RusToKModule for SearchModule {
         ctx: &ModuleEventListenerContext<'_>,
     ) {
         let forum_source = search_projection_source_registry_from_extensions(ctx.extensions)
-            .and_then(|sources| sources.build_with_extensions("forum", ctx.db.clone(), ctx.extensions));
+            .and_then(|sources| {
+                sources.build_with_extensions("forum", ctx.db.clone(), ctx.extensions)
+            });
         registry.register(SearchIngestionHandler::with_forum_source(
             ctx.db.clone(),
             forum_source,

@@ -194,6 +194,14 @@ pub mod module_event_dispatcher {
                     audience_facts,
                     extensions.get::<rustok_api::SharedStaticModuleSettingsReader>().cloned(),
                 );
+            let mut audience_registry = extensions
+                .get::<rustok_search::SearchAudienceRegistry>()
+                .cloned()
+                .unwrap_or_default();
+            let _ = audience_registry.register(
+                rustok_search::LegacyForumAudienceAdapter::new(result_eligibility.clone()),
+            );
+            extensions.insert(audience_registry);
             extensions.insert(category_scope);
             extensions.insert(owner_revision);
             extensions.insert(result_eligibility);
@@ -478,6 +486,10 @@ pub mod module_event_dispatcher {
             assert!(
                 extensions.contains::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
             );
+            #[cfg(feature = "mod-forum")]
+            assert!(
+                extensions.contains::<rustok_search::SearchAudienceRegistry>()
+            );
             #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
             assert!(
                 extensions.contains::<rustok_notifications::NotificationRecipientPolicyRuntime>()
@@ -502,6 +514,11 @@ pub mod module_event_dispatcher {
             #[cfg(feature = "mod-forum")]
             assert!(
                 host.shared_get::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
+                    .is_some()
+            );
+            #[cfg(feature = "mod-forum")]
+            assert!(
+                host.shared_get::<rustok_search::SearchAudienceRegistry>()
                     .is_some()
             );
         }
