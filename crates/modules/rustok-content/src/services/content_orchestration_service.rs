@@ -156,12 +156,29 @@ impl ContentOrchestrationService {
         }
     }
 
+    #[tracing::instrument(skip(self), fields(tenant_id = %tenant_id, topic_id = %input.topic_id), err)]
     pub async fn promote_topic_to_post(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         input: PromoteTopicToPostInput,
     ) -> ContentResult<OrchestrationResult> {
+        if tenant_id.is_nil() {
+            return Err(ContentError::validation("tenant_id must not be nil"));
+        }
+        if input.topic_id.is_nil() {
+            return Err(ContentError::validation("topic_id must not be nil"));
+        }
+        if let Some(category_id) = input.blog_category_id
+            && category_id.is_nil()
+        {
+            return Err(ContentError::validation("blog_category_id must not be nil"));
+        }
+        if let Some(actor_id) = security.user_id
+            && actor_id.is_nil()
+        {
+            return Err(ContentError::validation("actor_id must not be nil"));
+        }
         self.ensure_scope(security.clone(), Resource::ForumTopics, Action::Moderate)?;
         self.ensure_scope(security.clone(), Resource::BlogPosts, Action::Create)?;
         self.ensure_idempotency_key(&input.idempotency_key)?;
@@ -228,12 +245,27 @@ impl ContentOrchestrationService {
         Ok(result)
     }
 
+    #[tracing::instrument(skip(self), fields(tenant_id = %tenant_id, post_id = %input.post_id), err)]
     pub async fn demote_post_to_topic(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         input: DemotePostToTopicInput,
     ) -> ContentResult<OrchestrationResult> {
+        if tenant_id.is_nil() {
+            return Err(ContentError::validation("tenant_id must not be nil"));
+        }
+        if input.post_id.is_nil() {
+            return Err(ContentError::validation("post_id must not be nil"));
+        }
+        if input.forum_category_id.is_nil() {
+            return Err(ContentError::validation("forum_category_id must not be nil"));
+        }
+        if let Some(actor_id) = security.user_id
+            && actor_id.is_nil()
+        {
+            return Err(ContentError::validation("actor_id must not be nil"));
+        }
         self.ensure_scope(security.clone(), Resource::BlogPosts, Action::Moderate)?;
         self.ensure_scope(security.clone(), Resource::ForumTopics, Action::Create)?;
         self.ensure_idempotency_key(&input.idempotency_key)?;
@@ -300,12 +332,29 @@ impl ContentOrchestrationService {
         Ok(result)
     }
 
+    #[tracing::instrument(skip(self), fields(tenant_id = %tenant_id, topic_id = %input.topic_id), err)]
     pub async fn split_topic(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         input: SplitTopicInput,
     ) -> ContentResult<OrchestrationResult> {
+        if tenant_id.is_nil() {
+            return Err(ContentError::validation("tenant_id must not be nil"));
+        }
+        if input.topic_id.is_nil() {
+            return Err(ContentError::validation("topic_id must not be nil"));
+        }
+        for reply_id in &input.reply_ids {
+            if reply_id.is_nil() {
+                return Err(ContentError::validation("reply_id must not be nil"));
+            }
+        }
+        if let Some(actor_id) = security.user_id
+            && actor_id.is_nil()
+        {
+            return Err(ContentError::validation("actor_id must not be nil"));
+        }
         self.ensure_scope(security.clone(), Resource::ForumTopics, Action::Moderate)?;
         self.ensure_idempotency_key(&input.idempotency_key)?;
         self.ensure_safe_text("new_title", &input.new_title)?;
@@ -373,12 +422,29 @@ impl ContentOrchestrationService {
         Ok(result)
     }
 
+    #[tracing::instrument(skip(self), fields(tenant_id = %tenant_id, target_topic_id = %input.target_topic_id), err)]
     pub async fn merge_topics(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         input: MergeTopicsInput,
     ) -> ContentResult<OrchestrationResult> {
+        if tenant_id.is_nil() {
+            return Err(ContentError::validation("tenant_id must not be nil"));
+        }
+        if input.target_topic_id.is_nil() {
+            return Err(ContentError::validation("target_topic_id must not be nil"));
+        }
+        for source_id in &input.source_topic_ids {
+            if source_id.is_nil() {
+                return Err(ContentError::validation("source_topic_id must not be nil"));
+            }
+        }
+        if let Some(actor_id) = security.user_id
+            && actor_id.is_nil()
+        {
+            return Err(ContentError::validation("actor_id must not be nil"));
+        }
         self.ensure_scope(security.clone(), Resource::ForumTopics, Action::Moderate)?;
         self.ensure_idempotency_key(&input.idempotency_key)?;
         self.ensure_safe_optional_text("reason", input.reason.as_deref())?;

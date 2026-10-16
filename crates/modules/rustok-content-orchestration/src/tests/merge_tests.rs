@@ -4,7 +4,7 @@ use rustok_api::RichTextDocument;
 use rustok_content::{CanonicalRouteResolver, ContentOrchestrationService, MergeTopicsInput};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ReplyService,
-    TopicService, forum_category, forum_reply, forum_topic,
+    TopicService, TopicStatus, forum_category, forum_reply, forum_topic,
 };
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
@@ -14,6 +14,7 @@ use crate::OwnerCanonicalRouteResolver;
 use crate::ServerContentOrchestrationBridge;
 use crate::tests::helpers::{
     admin_security, ensure_conversion_schema, insert_test_actor, setup_conversion_test_db,
+    zero_cooldown_providers,
 };
 
 #[tokio::test]
@@ -64,7 +65,9 @@ async fn merge_topics_moves_replies_and_updates_category_counters() {
         .await
         .expect("category B created");
 
-    let topic_a = TopicService::new(db.clone(), events.clone())
+    let topic_service = TopicService::new(db.clone(), events.clone())
+        .with_settings_providers(zero_cooldown_providers());
+    let topic_a = topic_service
         .create(
             tenant_id,
             security.clone(),
@@ -82,7 +85,7 @@ async fn merge_topics_moves_replies_and_updates_category_counters() {
         .await
         .expect("topic A created");
 
-    let topic_b = TopicService::new(db.clone(), events.clone())
+    let topic_b = topic_service
         .create(
             tenant_id,
             security.clone(),
@@ -100,7 +103,8 @@ async fn merge_topics_moves_replies_and_updates_category_counters() {
         .await
         .expect("topic B created");
 
-    let reply_service = ReplyService::new(db.clone(), events.clone());
+    let reply_service = ReplyService::new(db.clone(), events.clone())
+        .with_settings_providers(zero_cooldown_providers());
     let _reply_a = reply_service
         .create(
             tenant_id,
@@ -155,11 +159,15 @@ async fn merge_topics_moves_replies_and_updates_category_counters() {
     assert_eq!(merge_result.target_id, topic_a.id);
     assert_eq!(merge_result.moved_comments, 1);
 
-    let source_deleted = forum_topic::Entity::find_by_id(topic_b.id)
+    let source_topic_row = forum_topic::Entity::find_by_id(topic_b.id)
+        .filter(forum_topic::Column::TenantId.eq(tenant_id))
         .one(&db)
         .await
-        .expect("query source topic");
-    assert!(source_deleted.is_none());
+        .expect("query source topic")
+        .expect("source topic row should exist with soft-deleted state");
+    assert_eq!(source_topic_row.status, TopicStatus::Archived);
+    assert!(source_topic_row.is_locked);
+    assert_eq!(source_topic_row.reply_count, 0);
 
     let target_replies = forum_reply::Entity::find()
         .filter(forum_reply::Column::TopicId.eq(topic_a.id))

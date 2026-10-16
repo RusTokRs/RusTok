@@ -14,8 +14,7 @@ use rustok_content::{
     CanonicalRouteResolver, ContentError, ContentResult, ResolvedContentRoute,
     normalize_locale_code, normalize_route, resolve_by_locale,
 };
-use rustok_forum::forum_topic;
-use rustok_forum::forum_topic_translation;
+use rustok_forum::{TopicStatus, forum_topic, forum_topic_translation};
 use rustok_forum::services::topic_routes::{
     FORUM_ROUTE_PREFIX, ForumTopicRouteOwner, forum_topic_route,
 };
@@ -41,6 +40,9 @@ impl OwnerCanonicalRouteResolver {
         tenant_id: Uuid,
         route: &str,
     ) -> ContentResult<Option<ResolvedContentRoute>> {
+        if tenant_id.is_nil() {
+            return Err(ContentError::validation("tenant_id must not be nil"));
+        }
         if let Some(slug) = route
             .strip_prefix(BLOG_ROUTE_PREFIX)
             .and_then(|query| query.strip_prefix(BLOG_SLUG_PARAM))
@@ -90,13 +92,42 @@ impl OwnerCanonicalRouteResolver {
         locale: &str,
         route: &str,
     ) -> ContentResult<Option<ResolvedContentRoute>> {
+        if tenant_id.is_nil() {
+            return Err(ContentError::validation("tenant_id must not be nil"));
+        }
+
+        let redirects = ForumTopicRouteOwner::find_redirects(&self.db, tenant_id, route)
+            .await
+            .map_err(forum_error_to_content_error)?;
+        let resolved = resolve_by_locale(&redirects, locale, |redirect| redirect.locale.as_str());
+        if let Some(redirect) = resolved.item {
+            let Some(canonical) = self
+                .canonical_for_target(tenant_id, &redirect.target_kind, redirect.target_id)
+                .await?
+            else {
+                return Ok(None);
+            };
+            return Ok(Some(ResolvedContentRoute {
+                target_kind: redirect.target_kind.clone(),
+                target_id: redirect.target_id,
+                locale: resolved.effective_locale,
+                matched_url: route.to_string(),
+                canonical_url: canonical,
+                redirect_required: true,
+            }));
+        }
+
         if let Some(raw_id) = route
             .strip_prefix(FORUM_ROUTE_PREFIX)
             .and_then(|query| query.strip_prefix(FORUM_TOPIC_PARAM))
             && let Ok(topic_id) = Uuid::parse_str(raw_id)
         {
+            if topic_id.is_nil() {
+                return Err(ContentError::validation("topic_id must not be nil"));
+            }
             let topic_exists = forum_topic::Entity::find_by_id(topic_id)
                 .filter(forum_topic::Column::TenantId.eq(tenant_id))
+                .filter(forum_topic::Column::Status.ne(TopicStatus::Archived))
                 .one(&self.db)
                 .await?
                 .is_some();
@@ -122,27 +153,7 @@ impl OwnerCanonicalRouteResolver {
             }
         }
 
-        let redirects = ForumTopicRouteOwner::find_redirects(&self.db, tenant_id, route)
-            .await
-            .map_err(forum_error_to_content_error)?;
-        let resolved = resolve_by_locale(&redirects, locale, |redirect| redirect.locale.as_str());
-        let Some(redirect) = resolved.item else {
-            return Ok(None);
-        };
-        let Some(canonical) = self
-            .canonical_for_target(tenant_id, &redirect.target_kind, redirect.target_id)
-            .await?
-        else {
-            return Ok(None);
-        };
-        Ok(Some(ResolvedContentRoute {
-            target_kind: redirect.target_kind.clone(),
-            target_id: redirect.target_id,
-            locale: resolved.effective_locale,
-            matched_url: route.to_string(),
-            canonical_url: canonical,
-            redirect_required: true,
-        }))
+        Ok(None)
     }
 
     /// Canonical route of a live target, read from its owner. `None` means the
@@ -153,6 +164,12 @@ impl OwnerCanonicalRouteResolver {
         target_kind: &str,
         target_id: Uuid,
     ) -> ContentResult<Option<String>> {
+        if tenant_id.is_nil() {
+            return Err(ContentError::validation("tenant_id must not be nil"));
+        }
+        if target_id.is_nil() {
+            return Err(ContentError::validation("target_id must not be nil"));
+        }
         match target_kind {
             "blog_post" => {
                 let post = blog_post::Entity::find_by_id(target_id)
@@ -200,6 +217,9 @@ impl CanonicalRouteResolver for OwnerCanonicalRouteResolver {
         locale: &str,
         route: &str,
     ) -> ContentResult<Option<ResolvedContentRoute>> {
+        if tenant_id.is_nil() {
+            return Err(ContentError::validation("tenant_id must not be nil"));
+        }
         let locale = normalize_locale_code(locale)
             .ok_or_else(|| ContentError::validation("locale must not be empty"))?;
         let route = normalize_route(route)?;

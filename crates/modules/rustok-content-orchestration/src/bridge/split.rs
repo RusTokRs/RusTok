@@ -22,6 +22,17 @@ pub(crate) async fn split_topic(
     _actor_id: Option<Uuid>,
     input: &SplitTopicInput,
 ) -> ContentResult<SplitTopicOutput> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if input.topic_id.is_nil() {
+        return Err(ContentError::validation("topic_id must not be nil"));
+    }
+    for &reply_id in &input.reply_ids {
+        if reply_id.is_nil() {
+            return Err(ContentError::validation("reply_id must not be nil"));
+        }
+    }
     let requested_locale = normalize_locale(&input.locale)?;
     let source_topic = find_topic_in_tx(txn, tenant_id, input.topic_id).await?;
     let source_translations =

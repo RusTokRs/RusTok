@@ -17,13 +17,29 @@ impl ContentQuery {
         ctx: &Context<'_>,
         route: String,
         locale: String,
-    ) -> Result<Option<ResolvedCanonicalRoute>> {
         let resolver = ctx.data::<SharedCanonicalRouteResolver>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        if tenant.id.is_nil() {
+            return Err(FieldError::new("Tenant ID must not be nil"));
+        }
+        let route = route.trim();
+        if route.is_empty() {
+            return Err(FieldError::new("route must not be empty"));
+        }
+        if route.len() > 512 {
+            return Err(FieldError::new("route must be <= 512 chars"));
+        }
+        let locale = locale.trim();
+        if locale.is_empty() {
+            return Err(FieldError::new("locale must not be empty"));
+        }
+        if locale.len() > 32 {
+            return Err(FieldError::new("locale must be <= 32 chars"));
+        }
         let lookup_started_at = Instant::now();
         let resolved = resolver
             .0
-            .resolve_route(tenant.id, locale.as_str(), route.as_str())
+            .resolve_route(tenant.id, locale, route)
             .await
             .map_err(map_content_error)?;
 

@@ -4,7 +4,9 @@ use chrono::Utc;
 use rustok_content::{ContentError, ContentResult, MergeTopicsInput, MergeTopicsOutput};
 use rustok_forum::services::topic_routes::forum_topic_route;
 use rustok_forum::{forum_reply, forum_topic};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseTransaction, EntityTrait};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
+};
 use uuid::Uuid;
 
 use crate::bridge::OwnerRoutes;
@@ -22,11 +24,17 @@ pub(crate) async fn merge_topics(
     actor_id: Option<Uuid>,
     input: &MergeTopicsInput,
 ) -> ContentResult<MergeTopicsOutput> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if input.target_topic_id.is_nil() {
+        return Err(ContentError::validation("target_topic_id must not be nil"));
+    }
     let target_topic = find_topic_in_tx(txn, tenant_id, input.target_topic_id).await?;
     let source_ids = unique_source_ids(input.target_topic_id, &input.source_topic_ids)?;
     let target_translations =
         load_topic_translations_in_tx(txn, tenant_id, target_topic.id).await?;
-    let mut next_position = next_forum_reply_position_in_tx(txn, target_topic.id).await?;
+    let mut next_position = next_forum_reply_position_in_tx(txn, tenant_id, target_topic.id).await?;
     let mut moved_count = 0_u64;
     let now = Utc::now();
     let mut source_topics = Vec::new();
@@ -70,7 +78,9 @@ pub(crate) async fn merge_topics(
         *category_reply_delta
             .entry(source_topic.category_id)
             .or_default() -= source_topic.reply_count;
-        forum_topic::Entity::delete_by_id(source_topic.id)
+        forum_topic::Entity::delete_many()
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic::Column::Id.eq(source_topic.id))
             .exec(txn)
             .await?;
     }
@@ -141,6 +151,11 @@ pub(crate) fn unique_source_ids(
     let mut unique = Vec::new();
     let mut seen = HashSet::new();
     for source_id in source_ids {
+        if source_id.is_nil() {
+            return Err(ContentError::validation(
+                "merge_topics source topic ID must not be nil",
+            ));
+        }
         if *source_id == target_topic_id {
             return Err(ContentError::validation(
                 "merge_topics source topics cannot include the target topic",

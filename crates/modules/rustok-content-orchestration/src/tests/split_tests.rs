@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::ServerContentOrchestrationBridge;
 use crate::tests::helpers::{
     admin_security, ensure_conversion_schema, insert_test_actor, setup_conversion_test_db,
+    zero_cooldown_providers,
 };
 
 #[tokio::test]
@@ -45,6 +46,7 @@ async fn split_topic_moves_replies_and_updates_category_counter() {
         .expect("category should be created");
 
     let topic = TopicService::new(db.clone(), events.clone())
+        .with_settings_providers(zero_cooldown_providers())
         .create(
             tenant_id,
             security.clone(),
@@ -62,7 +64,8 @@ async fn split_topic_moves_replies_and_updates_category_counter() {
         .await
         .expect("topic should be created");
 
-    let reply_service = ReplyService::new(db.clone(), events.clone());
+    let reply_service = ReplyService::new(db.clone(), events.clone())
+        .with_settings_providers(zero_cooldown_providers());
     let reply_1 = reply_service
         .create(
             tenant_id,

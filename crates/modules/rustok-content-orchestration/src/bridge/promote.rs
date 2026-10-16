@@ -29,6 +29,22 @@ pub(crate) async fn promote_topic_to_post(
     actor_id: Option<Uuid>,
     input: &PromoteTopicToPostInput,
 ) -> ContentResult<PromoteTopicToPostOutput> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if input.topic_id.is_nil() {
+        return Err(ContentError::validation("topic_id must not be nil"));
+    }
+    if let Some(category_id) = input.blog_category_id
+        && category_id.is_nil()
+    {
+        return Err(ContentError::validation("blog_category_id must not be nil"));
+    }
+    if let Some(actor_id) = actor_id
+        && actor_id.is_nil()
+    {
+        return Err(ContentError::validation("actor_id must not be nil"));
+    }
     let requested_locale = normalize_locale(&input.locale)?;
     let topic = find_topic_in_tx(txn, tenant_id, input.topic_id).await?;
     let translations = load_topic_translations_in_tx(txn, tenant_id, topic.id).await?;
@@ -157,7 +173,9 @@ pub(crate) async fn promote_topic_to_post(
     )
     .await?;
 
-    forum_topic::Entity::delete_by_id(topic.id)
+    forum_topic::Entity::delete_many()
+        .filter(forum_topic::Column::TenantId.eq(tenant_id))
+        .filter(forum_topic::Column::Id.eq(topic.id))
         .exec(txn)
         .await?;
     adjust_forum_category_counters_in_tx(txn, tenant_id, topic.category_id, -1, -topic.reply_count)
@@ -215,6 +233,12 @@ pub(crate) async fn ensure_blog_category_exists_in_tx(
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ContentResult<()> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if category_id.is_nil() {
+        return Err(ContentError::validation("category_id must not be nil"));
+    }
     let exists = blog_category::Entity::find_by_id(category_id)
         .filter(blog_category::Column::TenantId.eq(tenant_id))
         .one(txn)
@@ -230,6 +254,9 @@ pub(crate) async fn ensure_blog_slug_unique_in_tx(
     tenant_id: Uuid,
     slug: &str,
 ) -> ContentResult<()> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
     let count = blog_post::Entity::find()
         .filter(blog_post::Column::TenantId.eq(tenant_id))
         .filter(blog_post::Column::Slug.eq(slug))

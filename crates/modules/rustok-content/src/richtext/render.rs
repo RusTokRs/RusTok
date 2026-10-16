@@ -76,8 +76,7 @@ fn render_node(node: &RichTextNode, profile: RichTextProfile, html: &mut String)
         "codeBlock" => {
             html.push_str("<pre class=\"richtext-code-block\"><code>");
             for child in &node.content {
-                // INVARIANT: node schema validation guarantees code block children are text nodes with string content.
-                escape_text(child.text.as_deref().expect("validated code text"), html);
+                escape_text(child.text.as_deref().unwrap_or_default(), html);
             }
             html.push_str("</code></pre>");
         }
@@ -85,11 +84,7 @@ fn render_node(node: &RichTextNode, profile: RichTextProfile, html: &mut String)
         "hardBreak" => render_inline("<br>", &node.marks, profile, html),
         "text" => {
             let mut escaped = String::new();
-            // INVARIANT: node schema validation guarantees text nodes carry text content.
-            escape_text(
-                node.text.as_deref().expect("validated text node"),
-                &mut escaped,
-            );
+            escape_text(node.text.as_deref().unwrap_or_default(), &mut escaped);
             render_inline(&escaped, &node.marks, profile, html);
         }
         _ => unreachable!("renderer receives only validated nodes"),

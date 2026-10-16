@@ -84,6 +84,12 @@ pub(crate) async fn find_topic_in_tx(
     tenant_id: Uuid,
     topic_id: Uuid,
 ) -> ContentResult<forum_topic::Model> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if topic_id.is_nil() {
+        return Err(ContentError::validation("topic_id must not be nil"));
+    }
     forum_topic::Entity::find_by_id(topic_id)
         .filter(forum_topic::Column::TenantId.eq(tenant_id))
         .one(txn)
@@ -96,6 +102,12 @@ pub(crate) async fn load_topic_translations_in_tx(
     tenant_id: Uuid,
     topic_id: Uuid,
 ) -> ContentResult<Vec<forum_topic_translation::Model>> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if topic_id.is_nil() {
+        return Err(ContentError::validation("topic_id must not be nil"));
+    }
     Ok(forum_topic_translation::Entity::find()
         .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
         .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
@@ -123,6 +135,12 @@ pub(crate) async fn ensure_forum_category_exists_in_tx(
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ContentResult<()> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if category_id.is_nil() {
+        return Err(ContentError::validation("category_id must not be nil"));
+    }
     let exists = forum_category::Entity::find_by_id(category_id)
         .filter(forum_category::Column::TenantId.eq(tenant_id))
         .one(txn)
@@ -138,6 +156,12 @@ pub(crate) async fn load_forum_reply_records_in_tx(
     tenant_id: Uuid,
     topic_id: Uuid,
 ) -> ContentResult<Vec<ForumReplyRecord>> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if topic_id.is_nil() {
+        return Err(ContentError::validation("topic_id must not be nil"));
+    }
     let replies = forum_reply::Entity::find()
         .filter(forum_reply::Column::TenantId.eq(tenant_id))
         .filter(forum_reply::Column::TopicId.eq(topic_id))
@@ -159,6 +183,12 @@ pub(crate) async fn resequence_forum_topic_replies_in_tx(
     tenant_id: Uuid,
     topic_id: Uuid,
 ) -> ContentResult<()> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if topic_id.is_nil() {
+        return Err(ContentError::validation("topic_id must not be nil"));
+    }
     let replies = forum_reply::Entity::find()
         .filter(forum_reply::Column::TenantId.eq(tenant_id))
         .filter(forum_reply::Column::TopicId.eq(topic_id))
@@ -178,6 +208,12 @@ pub(crate) async fn refresh_forum_topic_stats_in_tx(
     tenant_id: Uuid,
     topic_id: Uuid,
 ) -> ContentResult<()> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if topic_id.is_nil() {
+        return Err(ContentError::validation("topic_id must not be nil"));
+    }
     let topic = find_topic_in_tx(txn, tenant_id, topic_id).await?;
     let replies = forum_reply::Entity::find()
         .filter(forum_reply::Column::TenantId.eq(tenant_id))
@@ -200,6 +236,12 @@ pub(crate) async fn adjust_forum_category_counters_in_tx(
     topic_delta: i32,
     reply_delta: i32,
 ) -> ContentResult<()> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if category_id.is_nil() {
+        return Err(ContentError::validation("category_id must not be nil"));
+    }
     let category = forum_category::Entity::find_by_id(category_id)
         .filter(forum_category::Column::TenantId.eq(tenant_id))
         .one(txn)
@@ -215,9 +257,17 @@ pub(crate) async fn adjust_forum_category_counters_in_tx(
 
 pub(crate) async fn next_forum_reply_position_in_tx(
     txn: &DatabaseTransaction,
+    tenant_id: Uuid,
     topic_id: Uuid,
 ) -> ContentResult<i64> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if topic_id.is_nil() {
+        return Err(ContentError::validation("topic_id must not be nil"));
+    }
     let count = forum_reply::Entity::find()
+        .filter(forum_reply::Column::TenantId.eq(tenant_id))
         .filter(forum_reply::Column::TopicId.eq(topic_id))
         .count(txn)
         .await?;

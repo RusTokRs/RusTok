@@ -183,22 +183,20 @@ mod tests {
             prop_assert_eq!(archived.state.reason, reason);
         }
 
-        /// Property: Restored draft has fresh timestamps
+        /// Property: Restored draft preserves original created_at and has fresh updated_at
         #[test]
         fn restored_draft_has_fresh_timestamps(
             (node, reason) in (draft_node_strategy(), archive_reason_strategy())
         ) {
             let before_restore = chrono::Utc::now();
+            let original_created_at = node.state.created_at;
             let restored = node
                 .publish()
                 .archive(reason)
                 .restore_to_draft();
             let after_restore = chrono::Utc::now();
 
-            prop_assert!(
-                restored.state.created_at >= before_restore
-                    && restored.state.created_at <= after_restore
-            );
+            prop_assert_eq!(restored.state.created_at, original_created_at);
             prop_assert!(
                 restored.state.updated_at >= before_restore
                     && restored.state.updated_at <= after_restore

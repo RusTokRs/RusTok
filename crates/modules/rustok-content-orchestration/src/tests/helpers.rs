@@ -2,17 +2,19 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{
-    PortError, RichTextDocument, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
-    StaticModuleSettingsSnapshot,
+    PortError, RichTextDocument, SharedStaticModuleSettingsReader,
+    SharedStaticModuleSettingsTransactionReader, StaticModuleSettingsReader,
+    StaticModuleSettingsSnapshot, StaticModuleSettingsTransactionReader,
 };
 use rustok_comments::CommentsModule;
 use rustok_content::ContentModule;
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
-use rustok_forum::ForumModule;
+use rustok_forum::{ForumModule, ForumSettingsProviders};
 use rustok_outbox::SysEventsMigration;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction, DbBackend,
+    Statement,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
@@ -53,6 +55,52 @@ pub(crate) fn blog_settings_reader(
 ) -> SharedStaticModuleSettingsReader {
     SharedStaticModuleSettingsReader(Arc::new(BlogSettingsReader { comments_mode }))
 }
+
+struct ZeroCooldownSettings;
+
+#[async_trait]
+impl StaticModuleSettingsReader for ZeroCooldownSettings {
+    async fn settings(
+        &self,
+        _tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        Ok((module_slug == "forum").then(|| StaticModuleSettingsSnapshot {
+            enabled: true,
+            settings: serde_json::json!({
+                "rate_limit_new_topic_seconds": 0,
+                "rate_limit_new_reply_seconds": 0,
+            }),
+        }))
+    }
+}
+
+#[async_trait]
+impl StaticModuleSettingsTransactionReader for ZeroCooldownSettings {
+    async fn settings_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
+        _tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        Ok((module_slug == "forum").then(|| StaticModuleSettingsSnapshot {
+            enabled: true,
+            settings: serde_json::json!({
+                "rate_limit_new_topic_seconds": 0,
+                "rate_limit_new_reply_seconds": 0,
+            }),
+        }))
+    }
+}
+
+pub(crate) fn zero_cooldown_providers() -> ForumSettingsProviders {
+    let reader = Arc::new(ZeroCooldownSettings);
+    ForumSettingsProviders::default().with_static_readers(
+        SharedStaticModuleSettingsReader(reader.clone()),
+        SharedStaticModuleSettingsTransactionReader(reader),
+    )
+}
+
 
 pub(crate) async fn setup_conversion_test_db() -> DatabaseConnection {
     let mut opts = ConnectOptions::new("sqlite::memory:");

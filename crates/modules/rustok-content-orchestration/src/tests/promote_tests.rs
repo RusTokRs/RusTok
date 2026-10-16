@@ -18,6 +18,7 @@ use crate::OwnerCanonicalRouteResolver;
 use crate::ServerContentOrchestrationBridge;
 use crate::tests::helpers::{
     admin_security, ensure_conversion_schema, insert_test_actor, setup_conversion_test_db,
+    zero_cooldown_providers,
 };
 
 #[tokio::test]
@@ -50,6 +51,7 @@ async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
         .expect("forum category should be created");
 
     let topic = TopicService::new(db.clone(), events.clone())
+        .with_settings_providers(zero_cooldown_providers())
         .create(
             tenant_id,
             security.clone(),
@@ -67,7 +69,8 @@ async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
         .await
         .expect("forum topic should be created");
 
-    let reply_service = ReplyService::new(db.clone(), events.clone());
+    let reply_service = ReplyService::new(db.clone(), events.clone())
+        .with_settings_providers(zero_cooldown_providers());
     reply_service
         .create(
             tenant_id,

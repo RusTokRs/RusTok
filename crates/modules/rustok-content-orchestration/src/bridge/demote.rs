@@ -29,6 +29,20 @@ pub(crate) async fn demote_post_to_topic(
     actor_id: Option<Uuid>,
     input: &DemotePostToTopicInput,
 ) -> ContentResult<DemotePostToTopicOutput> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if input.post_id.is_nil() {
+        return Err(ContentError::validation("post_id must not be nil"));
+    }
+    if input.forum_category_id.is_nil() {
+        return Err(ContentError::validation("forum_category_id must not be nil"));
+    }
+    if let Some(actor_id) = actor_id
+        && actor_id.is_nil()
+    {
+        return Err(ContentError::validation("actor_id must not be nil"));
+    }
     let requested_locale = normalize_locale(&input.locale)?;
     ensure_forum_category_exists_in_tx(txn, tenant_id, input.forum_category_id).await?;
     let post = find_post_in_tx(txn, tenant_id, input.post_id).await?;
@@ -130,7 +144,11 @@ pub(crate) async fn demote_post_to_topic(
         .filter(blog_post_tag::Column::PostId.eq(post.id))
         .exec(txn)
         .await?;
-    blog_post::Entity::delete_by_id(post.id).exec(txn).await?;
+    blog_post::Entity::delete_many()
+        .filter(blog_post::Column::TenantId.eq(tenant_id))
+        .filter(blog_post::Column::Id.eq(post.id))
+        .exec(txn)
+        .await?;
 
     // Routes move from Blog to Forum. The post's canonical route and every
     // redirect that pointed at the post leave Blog and Forum. The retired Blog
@@ -172,6 +190,12 @@ pub(crate) async fn find_post_in_tx(
     tenant_id: Uuid,
     post_id: Uuid,
 ) -> ContentResult<blog_post::Model> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if post_id.is_nil() {
+        return Err(ContentError::validation("post_id must not be nil"));
+    }
     blog_post::Entity::find_by_id(post_id)
         .filter(blog_post::Column::TenantId.eq(tenant_id))
         .one(txn)
@@ -183,6 +207,9 @@ pub(crate) async fn load_post_translations_in_tx(
     txn: &DatabaseTransaction,
     post_id: Uuid,
 ) -> ContentResult<Vec<blog_post_translation::Model>> {
+    if post_id.is_nil() {
+        return Err(ContentError::validation("post_id must not be nil"));
+    }
     Ok(blog_post_translation::Entity::find()
         .filter(blog_post_translation::Column::PostId.eq(post_id))
         .all(txn)
@@ -209,6 +236,12 @@ pub(crate) async fn load_comment_records_for_post_in_tx(
     tenant_id: Uuid,
     post_id: Uuid,
 ) -> ContentResult<Vec<comment::Model>> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if post_id.is_nil() {
+        return Err(ContentError::validation("post_id must not be nil"));
+    }
     let thread = comment_thread::Entity::find()
         .filter(comment_thread::Column::TenantId.eq(tenant_id))
         .filter(comment_thread::Column::TargetType.eq("blog_post"))
@@ -252,6 +285,12 @@ pub(crate) async fn delete_comments_for_post_in_tx(
     tenant_id: Uuid,
     post_id: Uuid,
 ) -> ContentResult<()> {
+    if tenant_id.is_nil() {
+        return Err(ContentError::validation("tenant_id must not be nil"));
+    }
+    if post_id.is_nil() {
+        return Err(ContentError::validation("post_id must not be nil"));
+    }
     let thread = comment_thread::Entity::find()
         .filter(comment_thread::Column::TenantId.eq(tenant_id))
         .filter(comment_thread::Column::TargetType.eq("blog_post"))
@@ -259,7 +298,9 @@ pub(crate) async fn delete_comments_for_post_in_tx(
         .one(txn)
         .await?;
     if let Some(thread) = thread {
-        comment_thread::Entity::delete_by_id(thread.id)
+        comment_thread::Entity::delete_many()
+            .filter(comment_thread::Column::TenantId.eq(tenant_id))
+            .filter(comment_thread::Column::Id.eq(thread.id))
             .exec(txn)
             .await?;
     }

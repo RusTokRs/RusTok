@@ -112,6 +112,42 @@ impl From<RichError> for ContentError {
     }
 }
 
+impl From<ContentError> for rustok_core::Error {
+    fn from(err: ContentError) -> Self {
+        match err {
+            ContentError::Core(inner) => inner,
+            ContentError::NodeNotFound(id) => {
+                rustok_core::Error::NotFound(format!("Content node {} not found", id))
+            }
+            ContentError::CategoryNotFound(id) => {
+                rustok_core::Error::NotFound(format!("Content category {} not found", id))
+            }
+            ContentError::TranslationNotFound { node_id, locale } => {
+                rustok_core::Error::NotFound(format!(
+                    "Translation not found for node {} and locale {}",
+                    node_id, locale
+                ))
+            }
+            ContentError::DuplicateSlug { slug, locale } => {
+                rustok_core::Error::Validation(format!(
+                    "Slug already exists: {} for locale {}",
+                    slug, locale
+                ))
+            }
+            ContentError::ConcurrentModification { expected, actual } => {
+                rustok_core::Error::Validation(format!(
+                    "Concurrent modification: expected version {}, found {}",
+                    expected, actual
+                ))
+            }
+            ContentError::Forbidden(message) => rustok_core::Error::Forbidden(message),
+            ContentError::Validation(message) => rustok_core::Error::Validation(message),
+            ContentError::Database(inner) => rustok_core::Error::Database(inner),
+            ContentError::Rich(inner) => rustok_core::Error::Internal(inner.to_string()),
+        }
+    }
+}
+
 /// Helper functions for creating common content errors
 impl ContentError {
     /// Create a node not found error with rich context
@@ -217,5 +253,29 @@ mod tests {
         assert_eq!(rich.error_code.as_deref(), Some("CONCURRENT_MODIFICATION"));
         assert_eq!(rich.fields.get("expected_version"), Some(&"3".to_string()));
         assert_eq!(rich.fields.get("actual_version"), Some(&"2".to_string()));
+    }
+
+    #[test]
+    fn test_core_error_conversion() {
+        let id = Uuid::new_v4();
+        let err = ContentError::node_not_found(id);
+        let core: rustok_core::Error = err.into();
+        assert!(matches!(core, rustok_core::Error::NotFound(_)));
+
+        let err = ContentError::category_not_found(id);
+        let core: rustok_core::Error = err.into();
+        assert!(matches!(core, rustok_core::Error::NotFound(_)));
+
+        let err = ContentError::translation_not_found(id, "en");
+        let core: rustok_core::Error = err.into();
+        assert!(matches!(core, rustok_core::Error::NotFound(_)));
+
+        let err = ContentError::validation("invalid data");
+        let core: rustok_core::Error = err.into();
+        assert!(matches!(core, rustok_core::Error::Validation(_)));
+
+        let err = ContentError::forbidden("access denied");
+        let core: rustok_core::Error = err.into();
+        assert!(matches!(core, rustok_core::Error::Forbidden(_)));
     }
 }
