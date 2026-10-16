@@ -69,6 +69,24 @@ impl ProjectDocument {
         self.component(id).is_some()
     }
 
+    /// Read the declared document kind (`page`, `layout_template`, `section_symbol`, `starter_preset`).
+    pub fn document_kind(&self) -> DocumentKind {
+        self.project
+            .extensions
+            .get(FLY_DOCUMENT_KIND_FIELD)
+            .and_then(|val| serde_json::from_value(val.clone()).ok())
+            .unwrap_or_default()
+    }
+
+    /// Update the declared document kind.
+    pub fn set_document_kind(&mut self, kind: DocumentKind) {
+        self.invalidate_caches();
+        self.project.extensions.insert(
+            FLY_DOCUMENT_KIND_FIELD.to_string(),
+            serde_json::to_value(kind).unwrap_or(Value::String("page".to_string())),
+        );
+    }
+
     /// Give every component a unique, syntactically valid id, minting new ones where needed.
     ///
     /// Ids that fail [`validate_identifier`] are replaced rather than preserved. An id is
@@ -558,3 +576,32 @@ impl ComponentChildren {
         }
     }
 }
+
+pub const FLY_DOCUMENT_KIND_FIELD: &str = "flyDocumentKind";
+
+/// Declared intent of an authored Fly document.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DocumentKind {
+    /// An independent route document owning its unique content body.
+    #[default]
+    Page,
+    /// A site-wide page frame containing headers, footers, and exactly one PageContentSlot.
+    LayoutTemplate,
+    /// A standalone reusable section (e.g. promo bar, subscription form, global navigation).
+    SectionSymbol,
+    /// A pre-built page blueprint cloned deeply into a new page draft at creation.
+    StarterPreset,
+}
+
+impl DocumentKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Page => "page",
+            Self::LayoutTemplate => "layout_template",
+            Self::SectionSymbol => "section_symbol",
+            Self::StarterPreset => "starter_preset",
+        }
+    }
+}
+

@@ -63,7 +63,7 @@ impl PageTemplateService {
         security: &SecurityContext,
         locale: &str,
     ) -> PagesResult<Vec<PageTemplateRecord>> {
-        require_all(security, Action::Read)?;
+        require_all(security, Action::Manage)?;
         let locale = normalize_locale(locale)?;
         page_template::Entity::find()
             .filter(page_template::Column::TenantId.eq(tenant_id))

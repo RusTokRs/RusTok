@@ -537,20 +537,20 @@ impl PageService {
 }
 
 /// Opaque keyset cursor for `scan_published_pages`: `<updated_at RFC 3339>|<page id>`.
-struct PublishedPageCursor {
-    updated_at: DateTimeWithTimeZone,
-    id: Uuid,
+pub(crate) struct PublishedPageCursor {
+    pub(crate) updated_at: DateTimeWithTimeZone,
+    pub(crate) id: Uuid,
 }
 
 impl PublishedPageCursor {
-    fn from_page(page: &page::Model) -> Self {
+    pub(crate) fn from_page(page: &page::Model) -> Self {
         Self {
             updated_at: page.updated_at,
             id: page.id,
         }
     }
 
-    fn encode(&self) -> String {
+    pub(crate) fn encode(&self) -> String {
         format!(
             "{}|{}",
             self.updated_at.to_rfc3339_opts(SecondsFormat::Nanos, false),
@@ -558,7 +558,7 @@ impl PublishedPageCursor {
         )
     }
 
-    fn decode(raw: &str) -> PagesResult<Self> {
+    pub(crate) fn decode(raw: &str) -> PagesResult<Self> {
         let invalid = || PagesError::validation("Invalid published page scan cursor");
         let (updated_at, id) = raw.split_once('|').ok_or_else(invalid)?;
         Ok(Self {

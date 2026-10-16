@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_page_builder::sanitize_static_landing_project;
 use sea_orm::{
@@ -10,10 +12,12 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::entities::{
-    page_body, page_publish_operation, page_publish_operation_artifact,
+    page, page_body, page_publish_operation, page_publish_operation_artifact,
     page_publish_rebuild_source, page_published_landing_artifact, page_static_landing_artifact,
+    page_template,
 };
 use crate::error::{PagesError, PagesResult};
+use crate::services::PageTemplateRecord;
 
 pub(super) const PAGE_PUBLISH_REBUILD_SOURCE_FORMAT: &str = "pages_publish_rebuild_source_v1";
 
@@ -85,6 +89,33 @@ where
         ));
     }
 
+    let page = page::Entity::find_by_id(operation.page_id)
+        .filter(page::Column::TenantId.eq(operation.tenant_id))
+        .one(db)
+        .await?
+        .ok_or_else(|| {
+            PagesError::publish_operation_integrity(format!(
+                "publish operation `{}` references a missing page",
+                operation.page_id
+            ))
+        })?;
+    let site_symbols = super::symbols::load_site_symbols_by_locale(db, operation.tenant_id).await?;
+    let template_records = if page.template.is_empty() || page.template == "default" {
+        HashMap::new()
+    } else {
+        let rows = page_template::Entity::find()
+            .filter(page_template::Column::TenantId.eq(operation.tenant_id))
+            .filter(page_template::Column::TemplateKey.eq(&page.template))
+            .all(db)
+            .await?;
+        let mut by_locale = HashMap::new();
+        for row in rows {
+            let record = PageTemplateRecord::try_from(row)?;
+            by_locale.insert(record.locale.clone(), record);
+        }
+        by_locale
+    };
+
     let mut rows = Vec::with_capacity(bindings.len());
     for binding in bindings {
         let artifact = page_static_landing_artifact::Entity::find_by_id(binding.artifact_id)
@@ -118,7 +149,26 @@ where
             )));
         }
 
-        let project_data: Value = serde_json::from_str(&body.content).map_err(|error| {
+        let composed_content = if page.template.is_empty() || page.template == "default" {
+            let symbols = site_symbols.get(&binding.locale).cloned().unwrap_or_default();
+            super::symbols::apply_site_symbols_to_content(&body.content, &symbols)?
+        } else {
+            let symbols = site_symbols.get(&binding.locale).cloned().unwrap_or_default();
+            let template_record = template_records.get(&binding.locale).ok_or_else(|| {
+                PagesError::publish_operation_integrity(format!(
+                    "page template `{}` missing for locale `{}` during manifest verification",
+                    page.template, binding.locale
+                ))
+            })?;
+            super::layout::compose_layout_document(
+                &body.content,
+                &template_record.header_symbol_ids,
+                &template_record.footer_symbol_ids,
+                &symbols,
+            )?
+        };
+
+        let project_data: Value = serde_json::from_str(&composed_content).map_err(|error| {
             PagesError::publish_operation_integrity(format!(
                 "published source body `{}` is not valid Page Builder JSON: {error}",
                 body.id

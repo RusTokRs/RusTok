@@ -55,7 +55,7 @@ pub use artifact_rebuild::{
     PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY, PAGE_ARTIFACT_REBUILD_SOURCE_INVALID,
 };
 pub use document::{PAGE_BODY_REVISION_NOT_FOUND, PAGE_DOCUMENT_REVISION_CONFLICT};
-pub(crate) use helpers::is_page_visible_for_channel;
+pub(crate) use helpers::{is_page_visible_for_channel, status_to_storage};
 pub use inline_edit::{
     DEFAULT_PAGE_INLINE_EDIT_CLOCK_SKEW_MS, DEFAULT_PAGE_INLINE_EDIT_GRANT_TTL_MS,
     IssuedPageInlineEditGrant, MAX_PAGE_INLINE_EDIT_GRANT_TTL_MS, MAX_PAGE_INLINE_EDIT_KEYS,
@@ -85,6 +85,7 @@ pub use schedule::{
     PAGE_PUBLISH_SCHEDULE_NOT_CANCELABLE, PAGE_PUBLISH_SCHEDULE_NOT_FOUND,
     PAGE_PUBLISH_SCHEDULE_TIME_INVALID, PagePublishScheduler,
 };
+pub(crate) use read::PublishedPageCursor;
 pub(crate) use translation_apply::ApplyExactPageMetadataTranslationInput;
 
 pub(super) const PAGE_KIND: &str = "page";

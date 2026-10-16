@@ -157,7 +157,8 @@ pub use localized_route::{
     resolve_localized_page_route, validate_localized_page_routes,
 };
 pub use model::{
-    ComponentChildren, ComponentNode, ComponentObject, GrapesProject, ProjectDocument, ProjectPage,
+    ComponentChildren, ComponentNode, ComponentObject, DocumentKind, FLY_DOCUMENT_KIND_FIELD,
+    GrapesProject, ProjectDocument, ProjectPage,
 };
 pub use page::{PageCommand, PageLocator, PagePatch, PageSummary, apply_page_command, blank_page};
 pub use page_metadata::{FLY_PAGE_METADATA_FIELD, PageMetadata, normalize_slug};

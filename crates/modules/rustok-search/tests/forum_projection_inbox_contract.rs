@@ -94,7 +94,8 @@ fn handler_has_no_direct_forum_projection_bypass() {
 #[test]
 fn module_registers_inbox_without_new_runtime_dependency() {
     require(LIB, "mod forum_inbox;");
-    require(LIB, "SearchIngestionHandler::with_forum_source");
+    require(LIB, "registry.register(SearchIngestionHandler::");
+    require(INGESTION, "pub fn with_forum_source");
     require(MANIFEST, "rustok-content.workspace = true");
     require(MANIFEST, "[dev-dependencies]");
     reject(LIB, "rustok_forum::");

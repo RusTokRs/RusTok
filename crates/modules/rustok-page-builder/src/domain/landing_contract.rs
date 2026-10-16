@@ -21,15 +21,19 @@ pub enum LandingSectionKind {
     FeatureGrid,
     CallToAction,
     ContactForm,
+    Faq,
+    Pricing,
 }
 
 impl LandingSectionKind {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 7] = [
         Self::Hero,
         Self::TwoColumns,
         Self::FeatureGrid,
         Self::CallToAction,
         Self::ContactForm,
+        Self::Faq,
+        Self::Pricing,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -39,6 +43,8 @@ impl LandingSectionKind {
             Self::FeatureGrid => "feature_grid",
             Self::CallToAction => "call_to_action",
             Self::ContactForm => "contact_form",
+            Self::Faq => "faq",
+            Self::Pricing => "pricing",
         }
     }
 
@@ -49,6 +55,8 @@ impl LandingSectionKind {
             Self::FeatureGrid => "fly.feature_grid",
             Self::CallToAction => "fly.cta",
             Self::ContactForm => "fly.contact_form",
+            Self::Faq => "fly.faq_accordion",
+            Self::Pricing => "fly.pricing_section",
         }
     }
 
@@ -59,6 +67,8 @@ impl LandingSectionKind {
             Self::FeatureGrid => &["heading", "grid", "column", "text"],
             Self::CallToAction => &["heading", "text", "button"],
             Self::ContactForm => &["heading", "text", "form", "input", "textarea", "submit"],
+            Self::Faq => &["heading", "accordion"],
+            Self::Pricing => &["heading", "pricing_table"],
         }
     }
 
@@ -69,6 +79,8 @@ impl LandingSectionKind {
             "feature_grid" => Some(Self::FeatureGrid),
             "call_to_action" => Some(Self::CallToAction),
             "contact_form" => Some(Self::ContactForm),
+            "faq" => Some(Self::Faq),
+            "pricing" => Some(Self::Pricing),
             _ => None,
         }
     }
@@ -991,4 +1003,36 @@ mod tests {
             LandingSectionIssueKind::InvalidMarker
         );
     }
+
+    #[test]
+    fn faq_and_pricing_sections_are_recognized_and_validated() {
+        let project = project_with_section(json!({
+            "id": "faq-sec",
+            "type": "section",
+            "flyLandingSection": "faq",
+            "components": [
+                { "type": "heading", "content": "FAQ" },
+                { "type": "accordion" }
+            ]
+        }));
+        let report = LandingSectionValidationReport::for_document(&project).expect("report");
+        assert!(report.valid);
+        assert_eq!(report.pages[0].sections.len(), 1);
+        assert_eq!(report.pages[0].sections[0].kind, LandingSectionKind::Faq);
+
+        let pricing_project = project_with_section(json!({
+            "id": "pricing-sec",
+            "type": "section",
+            "flyLandingSection": "pricing",
+            "components": [
+                { "type": "heading", "content": "Pricing" },
+                { "type": "pricing_table" }
+            ]
+        }));
+        let report = LandingSectionValidationReport::for_document(&pricing_project).expect("report");
+        assert!(report.valid);
+        assert_eq!(report.pages[0].sections.len(), 1);
+        assert_eq!(report.pages[0].sections[0].kind, LandingSectionKind::Pricing);
+    }
 }
+

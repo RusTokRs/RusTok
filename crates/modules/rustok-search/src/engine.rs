@@ -9,6 +9,10 @@ const BLOG_SOURCE_MODULE: &str = "blog";
 const BLOG_ENTITY_TYPE: &str = "blog_post";
 const BLOG_STOREFRONT_ROUTE: &str = "/modules/blog";
 const MAX_BLOG_SLUG_LEN: usize = 200;
+const PAGES_SOURCE_MODULE: &str = "pages";
+const PAGE_ENTITY_TYPE: &str = "page";
+const PAGES_STOREFRONT_ROUTE: &str = "/modules/pages";
+const MAX_PAGE_SLUG_LEN: usize = 255;
 const FORUM_SOURCE_MODULE: &str = "forum";
 const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
 const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic";
@@ -140,6 +144,9 @@ pub fn canonical_search_result_url(value: &SearchResultItem) -> Option<String> {
         BLOG_ENTITY_TYPE if value.source_module == BLOG_SOURCE_MODULE => {
             canonical_blog_result_url(&value.payload)
         }
+        PAGE_ENTITY_TYPE if value.source_module == PAGES_SOURCE_MODULE => {
+            canonical_page_result_url(&value.payload)
+        }
         FORUM_CATEGORY_ENTITY_TYPE | FORUM_TOPIC_ENTITY_TYPE | FORUM_REPLY_ENTITY_TYPE
             if value.source_module == FORUM_SOURCE_MODULE =>
         {
@@ -180,6 +187,23 @@ fn valid_blog_slug(slug: &str) -> bool {
         && slug
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
+}
+
+fn canonical_page_result_url(payload: &serde_json::Value) -> Option<String> {
+    let slug = payload.get("slug")?.as_str()?.trim();
+    if !valid_page_slug(slug) {
+        return None;
+    }
+
+    Some(format!("{PAGES_STOREFRONT_ROUTE}?slug={slug}"))
+}
+
+fn valid_page_slug(slug: &str) -> bool {
+    !slug.is_empty()
+        && slug.len() <= MAX_PAGE_SLUG_LEN
+        && slug
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '/' | '.'))
 }
 
 fn canonical_forum_projected_result_url(value: &SearchResultItem) -> Option<String> {
@@ -662,5 +686,29 @@ mod tests {
             canonical_search_result_url(&unsafe_content).as_deref(),
             Some("/modules/content?id=00000000-0000-0000-0000-000000000001")
         );
+    }
+
+    #[test]
+    fn canonical_url_preserves_page_contract() {
+        let valid_page = item("page", "pages", json!({ "slug": "about-us" }));
+        assert_eq!(
+            canonical_search_result_url(&valid_page).as_deref(),
+            Some("/modules/pages?slug=about-us")
+        );
+
+        let nested_page = item("page", "pages", json!({ "slug": "company/team" }));
+        assert_eq!(
+            canonical_search_result_url(&nested_page).as_deref(),
+            Some("/modules/pages?slug=company/team")
+        );
+
+        let invalid_slug = item("page", "pages", json!({ "slug": "about?inject=1" }));
+        assert_eq!(canonical_search_result_url(&invalid_slug), None);
+
+        let empty_slug = item("page", "pages", json!({ "slug": "" }));
+        assert_eq!(canonical_search_result_url(&empty_slug), None);
+
+        let missing_slug = item("page", "pages", json!({}));
+        assert_eq!(canonical_search_result_url(&missing_slug), None);
     }
 }

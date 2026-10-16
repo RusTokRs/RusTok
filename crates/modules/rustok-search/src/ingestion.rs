@@ -16,6 +16,7 @@ use crate::SearchProjectionSource;
 use crate::blog_projector::BlogSearchProjector;
 use crate::forum_inbox::{ForumProjectionInbox, ForumProjectionScope};
 use crate::forum_projector::ForumSearchProjector;
+use crate::pages_projector::PagesSearchProjector;
 use crate::projector::SearchProjector;
 
 const FORUM_INBOX_EVENT_BATCH: usize = 64;
@@ -28,6 +29,8 @@ pub struct SearchIngestionHandler {
     blog_source: Option<Arc<dyn SearchProjectionSource>>,
     forum_projector: Option<ForumSearchProjector>,
     forum_inbox: Option<ForumProjectionInbox>,
+    pages_projector: Option<PagesSearchProjector>,
+    pages_source: Option<Arc<dyn SearchProjectionSource>>,
 }
 
 impl SearchIngestionHandler {
@@ -47,17 +50,30 @@ impl SearchIngestionHandler {
         blog_source: Option<Arc<dyn SearchProjectionSource>>,
         forum_source: Option<Arc<dyn SearchProjectionSource>>,
     ) -> Self {
+        Self::with_all_projection_sources(db, blog_source, forum_source, None)
+    }
+
+    pub fn with_all_projection_sources(
+        db: DatabaseConnection,
+        blog_source: Option<Arc<dyn SearchProjectionSource>>,
+        forum_source: Option<Arc<dyn SearchProjectionSource>>,
+        pages_source: Option<Arc<dyn SearchProjectionSource>>,
+    ) -> Self {
         let forum_projector =
             forum_source.map(|source| ForumSearchProjector::new(db.clone(), source));
         let forum_inbox = forum_projector
             .as_ref()
             .map(|_| ForumProjectionInbox::new(db.clone()));
+        let pages_projector =
+            pages_source.clone().map(|source| PagesSearchProjector::new(db.clone(), source));
         Self {
             projector: SearchProjector::new(db.clone()),
             blog_projector: BlogSearchProjector::new(db),
             blog_source,
             forum_projector,
             forum_inbox,
+            pages_projector,
+            pages_source,
         }
     }
 
@@ -65,10 +81,17 @@ impl SearchIngestionHandler {
         self.blog_source.as_ref()
     }
 
+    pub fn pages_source(&self) -> Option<&Arc<dyn SearchProjectionSource>> {
+        self.pages_source.as_ref()
+    }
+
     async fn rebuild_tenant(&self, tenant_id: Uuid) -> HandlerResult {
         self.projector.rebuild_tenant(tenant_id).await?;
         self.blog_projector.rebuild_tenant(tenant_id).await?;
         if let Some(projector) = &self.forum_projector {
+            projector.rebuild_tenant(tenant_id).await?;
+        }
+        if let Some(projector) = &self.pages_projector {
             projector.rebuild_tenant(tenant_id).await?;
         }
         Ok(())
@@ -90,7 +113,30 @@ impl SearchIngestionHandler {
             ("product", None) => self.projector.rebuild_product_scope(tenant_id).await,
             ("blog", Some(post_id)) => self.blog_projector.upsert_post(tenant_id, post_id).await,
             ("blog", None) => self.blog_projector.rebuild_tenant(tenant_id).await,
+            ("pages" | "page", Some(page_id)) => {
+                if let Some(projector) = &self.pages_projector {
+                    projector.refresh_entity(tenant_id, "page", page_id).await?;
+                }
+                Ok(())
+            }
+            ("pages" | "page", None) => {
+                if let Some(projector) = &self.pages_projector {
+                    projector.rebuild_tenant(tenant_id).await?;
+                }
+                Ok(())
+            }
             _ => Ok(()),
+        }
+    }
+
+    async fn handle_pages_module_toggle(&self, tenant_id: Uuid, enabled: bool) -> HandlerResult {
+        let Some(projector) = &self.pages_projector else {
+            return Ok(());
+        };
+        if enabled {
+            projector.rebuild_tenant(tenant_id).await
+        } else {
+            projector.delete_tenant(tenant_id).await
         }
     }
 
@@ -227,7 +273,9 @@ impl EventHandler for SearchIngestionHandler {
             DomainEvent::TagAttached { target_type, .. }
             | DomainEvent::TagDetached { target_type, .. } => target_type == "node",
             DomainEvent::TenantModuleToggled { module_slug, .. } => {
-                module_slug == "blog" || (module_slug == "forum" && self.forum_projector.is_some())
+                module_slug == "blog"
+                    || (module_slug == "forum" && self.forum_projector.is_some())
+                    || (module_slug == "pages" && self.pages_projector.is_some())
             }
             DomainEvent::ReindexRequested { target_type, .. } => {
                 target_type == "search"
@@ -239,6 +287,8 @@ impl EventHandler for SearchIngestionHandler {
                             target_type.as_str(),
                             "forum" | "forum_category" | "forum_topic"
                         ))
+                    || (self.pages_projector.is_some()
+                        && matches!(target_type.as_str(), "pages" | "page"))
             }
             _ => false,
         }
@@ -297,13 +347,31 @@ impl EventHandler for SearchIngestionHandler {
             }
 
             match &envelope.event {
-                DomainEvent::NodeCreated { node_id, .. }
-                | DomainEvent::NodeUpdated { node_id, .. }
-                | DomainEvent::NodePublished { node_id, .. }
-                | DomainEvent::NodeUnpublished { node_id, .. } => {
-                    self.projector
-                        .upsert_node(envelope.tenant_id, *node_id)
-                        .await
+                DomainEvent::NodeCreated { node_id, kind, .. }
+                | DomainEvent::NodeUpdated { node_id, kind }
+                | DomainEvent::NodePublished { node_id, kind } => {
+                    if kind == "page" {
+                        if let Some(projector) = &self.pages_projector {
+                            projector.refresh_entity(envelope.tenant_id, "page", *node_id).await?;
+                        }
+                        Ok(())
+                    } else {
+                        self.projector
+                            .upsert_node(envelope.tenant_id, *node_id)
+                            .await
+                    }
+                }
+                DomainEvent::NodeUnpublished { node_id, kind } => {
+                    if kind == "page" {
+                        if let Some(projector) = &self.pages_projector {
+                            projector.delete_entity(envelope.tenant_id, "page", *node_id).await?;
+                        }
+                        Ok(())
+                    } else {
+                        self.projector
+                            .upsert_node(envelope.tenant_id, *node_id)
+                            .await
+                    }
                 }
                 DomainEvent::NodeTranslationUpdated { node_id, locale }
                 | DomainEvent::BodyUpdated { node_id, locale } => {
@@ -311,10 +379,17 @@ impl EventHandler for SearchIngestionHandler {
                         .upsert_node_locale(envelope.tenant_id, *node_id, locale)
                         .await
                 }
-                DomainEvent::NodeDeleted { node_id, .. } => {
-                    self.projector
-                        .delete_node(envelope.tenant_id, *node_id)
-                        .await
+                DomainEvent::NodeDeleted { node_id, kind } => {
+                    if kind == "page" {
+                        if let Some(projector) = &self.pages_projector {
+                            projector.delete_entity(envelope.tenant_id, "page", *node_id).await?;
+                        }
+                        Ok(())
+                    } else {
+                        self.projector
+                            .delete_node(envelope.tenant_id, *node_id)
+                            .await
+                    }
                 }
                 DomainEvent::TagAttached { target_id, .. }
                 | DomainEvent::TagDetached { target_id, .. } => {
@@ -370,6 +445,14 @@ impl EventHandler for SearchIngestionHandler {
                     ..
                 } if module_slug == "blog" => {
                     self.handle_blog_module_toggle(envelope.tenant_id, *enabled)
+                        .await
+                }
+                DomainEvent::TenantModuleToggled {
+                    module_slug,
+                    enabled,
+                    ..
+                } if module_slug == "pages" => {
+                    self.handle_pages_module_toggle(envelope.tenant_id, *enabled)
                         .await
                 }
                 DomainEvent::LocaleEnabled { .. }

@@ -73,6 +73,7 @@ fn validate_registry_id(id: &str) -> FlyResult<()> {
         "spacer",
         "tabs",
         "accordion",
+        "page_content_slot",
         "form",
         "label",
         "input",
@@ -392,6 +393,7 @@ fn builtin_component_ids() -> Vec<&'static str> {
         "spacer",
         "tabs",
         "accordion",
+        "page_content_slot",
         "form",
         "label",
         "input",
@@ -961,6 +963,30 @@ fn builtin_component_template(id: &str) -> ComponentNode {
                 }
             ]
         }),
+        "page_content_slot" => json!({
+            "type": "page_content_slot",
+            "tagName": "div",
+            "attributes": { "data-fly-page-content-slot": "true" },
+            "style": {
+                "min-height": "120px",
+                "padding": "32px",
+                "border": "2px dashed #94a3b8",
+                "border-radius": "12px",
+                "display": "flex",
+                "align-items": "center",
+                "justify-content": "center",
+                "background": "#f8fafc",
+                "color": "#64748b",
+                "font-size": "14px",
+                "font-weight": "600"
+            },
+            "components": [
+                {
+                    "type": "text",
+                    "content": "Page Content Slot (injected dynamically)"
+                }
+            ]
+        }),
         _ => json!({ "type": id }),
     };
     serde_json::from_value(value).expect("built-in block templates use valid component JSON")
@@ -1070,6 +1096,44 @@ fn landing_templates() -> Vec<BlockDefinition> {
                             { "type": "textarea", "flyLandingProperty": "message_field", "tagName": "textarea", "attributes": { "placeholder": "Your message", "rows": 5 }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
                             landing_component("submit", builtin_component_template("submit"))
                         ] }
+                    ]
+                }]
+            }),
+        ),
+        (
+            "fly.faq_accordion",
+            "FAQ accordion",
+            "landing",
+            json!({
+                "type": "section",
+                "flyLandingSection": "faq",
+                "style": { "padding": "72px 24px", "background": "#f8fafc" },
+                "components": [{
+                    "type": "container",
+                    "style": { "max-width": "800px", "margin": "0 auto" },
+                    "components": [
+                        { "type": "heading", "flyLandingProperty": "headline", "content": "Frequently Asked Questions", "style": { "font-size": "36px", "text-align": "center", "margin": "0 0 12px", "color": "#0f172a" } },
+                        { "type": "text", "flyLandingProperty": "body", "content": "Answers to common questions about our platform.", "style": { "text-align": "center", "color": "#64748b", "font-size": "16px", "margin": "0 0 40px" } },
+                        builtin_component_template("accordion")
+                    ]
+                }]
+            }),
+        ),
+        (
+            "fly.pricing_section",
+            "Pricing section",
+            "landing",
+            json!({
+                "type": "section",
+                "flyLandingSection": "pricing",
+                "style": { "padding": "72px 24px" },
+                "components": [{
+                    "type": "container",
+                    "style": { "max-width": "1120px", "margin": "0 auto" },
+                    "components": [
+                        { "type": "heading", "flyLandingProperty": "headline", "content": "Plans & Pricing", "style": { "font-size": "36px", "text-align": "center", "margin": "0 0 12px", "color": "#0f172a" } },
+                        { "type": "text", "flyLandingProperty": "body", "content": "Choose the best plan for your business needs.", "style": { "text-align": "center", "color": "#64748b", "font-size": "16px", "margin": "0 0 40px" } },
+                        builtin_component_template("pricing_table")
                     ]
                 }]
             }),
@@ -1233,13 +1297,15 @@ fn builtin_block_label(id: &str) -> String {
         "pricing_table" => "Pricing table".to_string(),
         "tabs" => "Tabs".to_string(),
         "accordion" => "Accordion (FAQ)".to_string(),
+        "page_content_slot" => "Page content slot".to_string(),
         _ => humanize_id(id),
     }
 }
 
 fn builtin_category(id: &str) -> &'static str {
     match id {
-        "section" | "container" | "row" | "column" | "grid" | "divider" | "spacer" => "layout",
+        "section" | "container" | "row" | "column" | "grid" | "divider" | "spacer"
+        | "page_content_slot" => "layout",
         "image" | "video" | "media" | "embed" => "media",
         "tabs" | "accordion" => "interactive",
         "form" | "input" | "textarea" | "select" | "checkbox" | "submit" => "forms",

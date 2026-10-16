@@ -382,6 +382,18 @@ pub fn landing_property_schemas(kind: LandingSectionKind) -> Vec<LandingProperty
                 true,
             ),
         ],
+        LandingSectionKind::Faq => vec![
+            content_property(
+                kind, "headline", "content", "Headline", "headline", 0, "heading", true,
+            ),
+            content_property(kind, "body", "content", "Body", "body", 0, "text", true),
+        ],
+        LandingSectionKind::Pricing => vec![
+            content_property(
+                kind, "headline", "content", "Headline", "headline", 0, "heading", true,
+            ),
+            content_property(kind, "body", "content", "Body", "body", 0, "text", true),
+        ],
     }
 }
 

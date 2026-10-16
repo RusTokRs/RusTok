@@ -3,7 +3,7 @@ use std::error::Error;
 
 use chrono::Utc;
 use rustok_core::{MigrationSource, SecurityContext};
-use rustok_pages::entities::site_symbol;
+use rustok_pages::entities::{page, site_symbol};
 use rustok_pages::{PageTemplateService, PagesModule};
 use sea_orm::{
     ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Set,
@@ -138,7 +138,21 @@ async fn catalog_is_tenant_and_exact_locale_scoped_with_revision_cas() -> TestRe
             .await
             .is_err()
     );
-    db.execute_unprepared(&format!("INSERT INTO pages(id, tenant_id, status, template, metadata, created_at, updated_at, version) VALUES ('{}','{}','draft','site','{{}}',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,1)", Uuid::new_v4(), tenant)).await?;
+    page::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant),
+        author_id: Set(None),
+        status: Set("draft".into()),
+        template: Set("site".into()),
+        metadata: Set(json!({})),
+        created_at: Set(Utc::now().into()),
+        updated_at: Set(Utc::now().into()),
+        published_at: Set(None),
+        archived_at: Set(None),
+        version: Set(1),
+    }
+    .insert(&db)
+    .await?;
     assert!(
         service
             .delete(tenant, &actor, "site", "en", 2)

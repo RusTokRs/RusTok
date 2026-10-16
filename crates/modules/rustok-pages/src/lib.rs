@@ -49,12 +49,15 @@ pub mod http;
 pub mod migrations;
 pub mod openapi;
 pub mod provider_health_binding;
+pub mod search_projection;
 mod seo_targets;
 pub mod services;
 mod translation_evidence;
 mod translation_target;
 #[cfg(test)]
 mod translation_target_tests;
+
+pub use search_projection::{PageSearchProjectionSource, PageSearchProjectionSourceFactory};
 
 pub use cache_invalidation::{
     MAX_PAGE_CACHE_KEY_VARIANT_BYTES, MAX_PAGE_CACHE_VALUE_BYTES, PAGE_CACHE_MUTABLE_SCOPES,
@@ -189,6 +192,15 @@ impl RusToKModule for PagesModule {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
+        rustok_core::search_projection::register_search_projection_source(
+            extensions,
+            search_projection::PageSearchProjectionSourceFactory,
+        )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "pages Search projection source registration failed: {error}"
+            ))
+        })?;
         register_seo_target_provider(extensions, seo_targets::PagesSeoTargetProvider).map_err(
             |error| {
                 rustok_core::Error::Validation(format!(

@@ -810,7 +810,7 @@ fn safe_tag(component: &ComponentObject) -> &'static str {
         .as_deref()
         .unwrap_or_else(|| match component.component_type() {
             "wrapper" | "container" | "row" | "column" | "grid" | "spacer" | "symbol"
-            | "product_price" | "tabs" | "accordion" => "div",
+            | "product_price" | "tabs" | "accordion" | "page_content_slot" => "div",
             "section" | "product_grid" | "pricing_table" => "section",
             "heading" => "h2",
             "text" => "p",

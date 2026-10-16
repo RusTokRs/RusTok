@@ -230,6 +230,26 @@ pub fn validate_patch_incremental(
         ));
     }
 
+    if component_type == "page_content_slot" {
+        let document_kind = document.document_kind();
+        if document_kind != crate::DocumentKind::LayoutTemplate {
+            diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "forbidden_page_content_slot",
+                &path,
+                "page_content_slot is only allowed inside layout templates",
+            ));
+        }
+        if !component.children().is_empty() {
+            diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "page_content_slot_cannot_have_children",
+                &path,
+                "page_content_slot cannot contain child components in persisted state",
+            ));
+        }
+    }
+
     let has_page_link = component
         .extensions
         .contains_key(crate::FLY_PAGE_LINK_FIELD);
@@ -438,7 +458,9 @@ fn walk_opaque_value(
     depth: usize,
     path: &str,
     limits: ValidationLimits,
+    document_kind: crate::DocumentKind,
     ids: &mut BTreeSet<String>,
+    slot_count: &mut usize,
     report: &mut ValidationReport,
 ) {
     // Whatever shape it has, an opaque component occupies a node and must count toward the budget.
@@ -460,6 +482,30 @@ fn walk_opaque_value(
     let Some(object) = value.as_object() else {
         return;
     };
+
+    if let Some(component_type) = object.get("type").and_then(Value::as_str) {
+        if component_type == "page_content_slot" {
+            *slot_count += 1;
+            if document_kind != crate::DocumentKind::LayoutTemplate {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "forbidden_page_content_slot",
+                    path,
+                    "page_content_slot is only allowed inside layout templates",
+                ));
+            }
+            if let Some(children) = object.get("components").and_then(Value::as_array)
+                && !children.is_empty()
+            {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "page_content_slot_cannot_have_children",
+                    path,
+                    "page_content_slot cannot contain child components in persisted state",
+                ));
+            }
+        }
+    }
 
     if let Some(id) = object.get("id").and_then(Value::as_str) {
         if !ids.insert(id.to_string()) {
@@ -486,7 +532,9 @@ fn walk_opaque_value(
                 depth + 1,
                 &format!("{path}.components[{index}]"),
                 limits,
+                document_kind,
                 ids,
+                slot_count,
                 report,
             );
         }
@@ -506,6 +554,8 @@ fn validate_components(
     report: &mut ValidationReport,
 ) {
     let mut ids = BTreeSet::new();
+    let document_kind = document.document_kind();
+    let mut slot_count = 0;
     for (page_index, page) in document.project.pages.iter().enumerate() {
         let Some(root) = page.component.as_ref() else {
             continue;
@@ -516,9 +566,34 @@ fn validate_components(
             &format!("pages[{page_index}].component"),
             registries,
             limits,
+            document_kind,
             &mut ids,
+            &mut slot_count,
             report,
         );
+    }
+
+    match document_kind {
+        crate::DocumentKind::LayoutTemplate => {
+            if slot_count == 0 {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "layout_template_missing_content_slot",
+                    "project",
+                    "layout template must contain exactly one page_content_slot",
+                ));
+            } else if slot_count > 1 {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "layout_template_multiple_content_slots",
+                    "project",
+                    format!(
+                        "layout template cannot contain more than one page_content_slot, found {slot_count}"
+                    ),
+                ));
+            }
+        }
+        _ => {}
     }
 }
 
@@ -528,7 +603,9 @@ fn walk_component(
     path: &str,
     registries: &RegistrySet,
     limits: ValidationLimits,
+    document_kind: crate::DocumentKind,
     ids: &mut BTreeSet<String>,
+    slot_count: &mut usize,
     report: &mut ValidationReport,
 ) {
     let component = match node {
@@ -545,13 +622,43 @@ fn walk_component(
                 "component does not match the typed model and is preserved verbatim; it is \
                  checked for ids, depth and node count but not for provider or child rules",
             ));
-            walk_opaque_value(value, depth, path, limits, ids, report);
+            walk_opaque_value(
+                value,
+                depth + 1,
+                path,
+                limits,
+                document_kind,
+                ids,
+                slot_count,
+                report,
+            );
             return;
         }
     };
 
     report.node_count += 1;
     report.maximum_depth = report.maximum_depth.max(depth);
+
+    let component_type = component.component_type();
+    if component_type == "page_content_slot" {
+        *slot_count += 1;
+        if document_kind != crate::DocumentKind::LayoutTemplate {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "forbidden_page_content_slot",
+                path,
+                "page_content_slot is only allowed inside layout templates",
+            ));
+        }
+        if !component.children().is_empty() {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "page_content_slot_cannot_have_children",
+                path,
+                "page_content_slot cannot contain child components in persisted state",
+            ));
+        }
+    }
 
     match component.id.as_deref() {
         Some(id) if !ids.insert(id.to_string()) => report.diagnostics.push(diagnostic(
@@ -663,7 +770,9 @@ fn walk_component(
                     depth + 1,
                     &format!("{path}.components[{index}]"),
                     limits,
+                    document_kind,
                     ids,
+                    slot_count,
                     report,
                 );
             }
@@ -673,7 +782,9 @@ fn walk_component(
                 depth + 1,
                 &format!("{path}.components"),
                 limits,
+                document_kind,
                 ids,
+                slot_count,
                 report,
             );
         }
@@ -686,7 +797,9 @@ fn walk_component(
             &format!("{path}.components[{index}]"),
             registries,
             limits,
+            document_kind,
             ids,
+            slot_count,
             report,
         );
     }
@@ -1633,4 +1746,106 @@ mod tests {
         );
         assert!(incremental.is_some());
     }
+
+    #[test]
+    fn page_content_slot_in_standard_page_is_forbidden() {
+        let mut document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "page-1",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        { "id": "slot", "type": "page_content_slot" }
+                    ]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        document.set_document_kind(crate::DocumentKind::Page);
+        let report = validate_project(&document, &RegistrySet::with_builtins(), ValidationLimits::default());
+        assert!(report.diagnostics.iter().any(|d| d.code == "forbidden_page_content_slot"));
+    }
+
+    #[test]
+    fn layout_template_slot_invariants() {
+        // Missing slot
+        let mut doc_missing = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "layout-1",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "header", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("decode");
+        doc_missing.set_document_kind(crate::DocumentKind::LayoutTemplate);
+        let report = validate_project(&doc_missing, &RegistrySet::with_builtins(), ValidationLimits::default());
+        assert!(report.diagnostics.iter().any(|d| d.code == "layout_template_missing_content_slot"));
+
+        // Multiple slots
+        let mut doc_multiple = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "layout-1",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        { "id": "slot1", "type": "page_content_slot" },
+                        { "id": "slot2", "type": "page_content_slot" }
+                    ]
+                }
+            }]
+        }))
+        .expect("decode");
+        doc_multiple.set_document_kind(crate::DocumentKind::LayoutTemplate);
+        let report = validate_project(&doc_multiple, &RegistrySet::with_builtins(), ValidationLimits::default());
+        assert!(report.diagnostics.iter().any(|d| d.code == "layout_template_multiple_content_slots"));
+
+        // Valid layout with exactly one slot
+        let mut doc_valid = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "layout-1",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        { "id": "header", "type": "section" },
+                        { "id": "main-slot", "type": "page_content_slot" },
+                        { "id": "footer", "type": "section" }
+                    ]
+                }
+            }]
+        }))
+        .expect("decode");
+        doc_valid.set_document_kind(crate::DocumentKind::LayoutTemplate);
+        let report = validate_project(&doc_valid, &RegistrySet::with_builtins(), ValidationLimits::default());
+        assert!(!report.diagnostics.iter().any(|d| d.code.contains("content_slot")));
+
+        // Slot with forbidden children
+        let mut doc_children = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "layout-1",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        {
+                            "id": "main-slot",
+                            "type": "page_content_slot",
+                            "components": [{ "id": "nested", "type": "text", "content": "not allowed" }]
+                        }
+                    ]
+                }
+            }]
+        }))
+        .expect("decode");
+        doc_children.set_document_kind(crate::DocumentKind::LayoutTemplate);
+        let report = validate_project(&doc_children, &RegistrySet::with_builtins(), ValidationLimits::default());
+        assert!(report.diagnostics.iter().any(|d| d.code == "page_content_slot_cannot_have_children"));
+    }
 }
+

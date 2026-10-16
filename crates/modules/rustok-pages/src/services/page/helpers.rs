@@ -334,7 +334,7 @@ pub(super) fn storage_to_status(status: &str) -> PagesResult<ContentStatus> {
     })
 }
 
-pub(super) fn status_to_storage(status: &ContentStatus) -> &'static str {
+pub(crate) fn status_to_storage(status: &ContentStatus) -> &'static str {
     match status {
         ContentStatus::Draft => "draft",
         ContentStatus::Published => "published",

@@ -119,8 +119,9 @@ fn valid_fly_project_json(content_text: &str) -> serde_json::Value {
                     "type": "wrapper",
                     "components": [
                         {
-                            "id": "body-text",
-                            "type": "text",
+                            "id": "body-heading",
+                            "type": "heading",
+                            "tagName": "h1",
                             "content": content_text
                         }
                     ]
