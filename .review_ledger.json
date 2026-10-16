@@ -1,15 +1,7 @@
 {
   "current_round": 1,
   "round_started_at": "2026-10-17T00:00:00Z",
-  "completed_rounds": [
-    {
-      "round": "0 (Exploratory Archive)",
-      "started_at": "2026-10-13T20:15:00Z",
-      "completed_at": "2026-10-16T21:30:00Z",
-      "total_components": 32,
-      "total_loc": 210000
-    }
-  ],
+  "completed_rounds": [],
   "components": {
     "crates/libs/rustok-api": {
       "name": "rustok-api",

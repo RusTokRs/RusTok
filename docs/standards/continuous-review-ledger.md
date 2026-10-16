@@ -1,18 +1,11 @@
-## Scoped Flutter i18n audit — 2026-10-13
+# Continuous Full-Stack Review & Architecture Audit Ledger
 
-- User-requested package audit, independent of the sequential FS cycle below; no FS phase is marked complete.
-- Base `main`: `85e83666947217e772ff234664692f61938c4d99`; working branch: `arena/7ca57eaa-rustok`. Not integrated.
-- Owner/surface: `rustok_flutter_i18n`, core catalog preparation and locale/fallback primitives, package tests/docs, i18n CI and generated cache hygiene.
-- Implemented fixes and compatibility notes: [wrapper audit](../../rustok_mobile/packages/rustok_flutter_i18n/README.md#engineering-audit--2026-10-13).
-
----
-
-## Deep Full-Stack Audit Cycle — 2026-10-17 (Fresh Start from Scratch)
+## Deep Full-Stack Audit Cycle — Round 1 (Fresh Start from Scratch)
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-01 — Entrypoint & Composition Root (`apps/server`)  
 **Next pending component:** [`apps/server`](../../apps/server) (485 files, 190,468 LOC)  
-**Current main SHA:** `62b9cedda`  
+**Current main SHA:** `c11e14dd2`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -651,4 +644,4 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ## Completed Rounds Archive
-- **Round 0 (Exploratory Archive)**: Completed on `2026-10-16T21:30:00Z` (32 components, 210,000 LOC).
+_No completed rounds yet. Round 1 is currently in progress._
