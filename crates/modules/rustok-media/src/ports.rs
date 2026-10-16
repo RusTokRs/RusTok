@@ -190,7 +190,10 @@ impl MediaAssetReadPort for MediaService {
         media_id: Uuid,
     ) -> Result<MediaItem, PortError> {
         if media_id.is_nil() {
-            return Err(PortError::validation("media.nil_media_id", "media_id cannot be nil"));
+            return Err(PortError::validation(
+                "media.nil_media_id",
+                "media_id cannot be nil",
+            ));
         }
         require_media_read_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
@@ -205,7 +208,10 @@ impl MediaAssetReadPort for MediaService {
         media_id: Uuid,
     ) -> Result<MediaAssetReferenceAdmission, PortError> {
         if media_id.is_nil() {
-            return Err(PortError::validation("media.nil_media_id", "media_id cannot be nil"));
+            return Err(PortError::validation(
+                "media.nil_media_id",
+                "media_id cannot be nil",
+            ));
         }
         require_media_read_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
@@ -295,7 +301,10 @@ impl MediaAssetReadPort for MediaService {
         alt: Option<String>,
     ) -> Result<Option<MediaImageDescriptor>, PortError> {
         if media_id.is_nil() {
-            return Err(PortError::validation("media.nil_media_id", "media_id cannot be nil"));
+            return Err(PortError::validation(
+                "media.nil_media_id",
+                "media_id cannot be nil",
+            ));
         }
         require_media_read_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
@@ -312,7 +321,10 @@ impl MediaAssetReadPort for MediaService {
         media_id: Uuid,
     ) -> Result<Vec<MediaTranslationItem>, PortError> {
         if media_id.is_nil() {
-            return Err(PortError::validation("media.nil_media_id", "media_id cannot be nil"));
+            return Err(PortError::validation(
+                "media.nil_media_id",
+                "media_id cannot be nil",
+            ));
         }
         require_media_read_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
@@ -388,7 +400,10 @@ impl MediaAssetWritePort for MediaService {
         session_id: Uuid,
     ) -> Result<MediaItem, PortError> {
         if session_id.is_nil() {
-            return Err(PortError::validation("media.nil_session_id", "session_id cannot be nil"));
+            return Err(PortError::validation(
+                "media.nil_session_id",
+                "session_id cannot be nil",
+            ));
         }
         require_media_write_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
@@ -414,7 +429,10 @@ impl MediaAssetWritePort for MediaService {
 
     async fn delete_asset(&self, context: PortContext, media_id: Uuid) -> Result<(), PortError> {
         if media_id.is_nil() {
-            return Err(PortError::validation("media.nil_media_id", "media_id cannot be nil"));
+            return Err(PortError::validation(
+                "media.nil_media_id",
+                "media_id cannot be nil",
+            ));
         }
         require_media_write_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
@@ -445,7 +463,10 @@ impl MediaAssetWritePort for MediaService {
         input: MediaAssetReferenceInput,
     ) -> Result<MediaAssetReference, PortError> {
         if media_id.is_nil() {
-            return Err(PortError::validation("media.nil_media_id", "media_id cannot be nil"));
+            return Err(PortError::validation(
+                "media.nil_media_id",
+                "media_id cannot be nil",
+            ));
         }
         require_media_write_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
@@ -481,7 +502,10 @@ impl MediaAssetWritePort for MediaService {
         input: MediaAssetReferenceInput,
     ) -> Result<(), PortError> {
         if media_id.is_nil() {
-            return Err(PortError::validation("media.nil_media_id", "media_id cannot be nil"));
+            return Err(PortError::validation(
+                "media.nil_media_id",
+                "media_id cannot be nil",
+            ));
         }
         require_media_write_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
@@ -517,7 +541,10 @@ impl MediaAssetWritePort for MediaService {
         input: UpsertTranslationInput,
     ) -> Result<MediaTranslationItem, PortError> {
         if media_id.is_nil() {
-            return Err(PortError::validation("media.nil_media_id", "media_id cannot be nil"));
+            return Err(PortError::validation(
+                "media.nil_media_id",
+                "media_id cannot be nil",
+            ));
         }
         require_media_write_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
@@ -1056,7 +1083,8 @@ mod tests {
 
     #[test]
     fn parse_tenant_id_rejects_nil_uuid() {
-        let error = parse_tenant_id(&context(Uuid::nil().to_string())).expect_err("nil tenant must fail");
+        let error =
+            parse_tenant_id(&context(Uuid::nil().to_string())).expect_err("nil tenant must fail");
 
         assert_eq!(error.kind, PortErrorKind::Validation);
         assert_eq!(error.code, "media.nil_tenant_id");

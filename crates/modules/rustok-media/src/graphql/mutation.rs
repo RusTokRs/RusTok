@@ -19,7 +19,9 @@ impl MediaMutation {
     /// Delete a media asset and remove it from storage.
     async fn delete_media(&self, ctx: &Context<'_>, tenant_id: Uuid, id: Uuid) -> Result<bool> {
         if id.is_nil() {
-            return Err(<FieldError as GraphQLError>::bad_user_input("media ID cannot be nil"));
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "media ID cannot be nil",
+            ));
         }
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_media_permission(ctx, tenant_id, Action::Delete)?;
@@ -43,7 +45,9 @@ impl MediaMutation {
         input: UpsertMediaTranslationInput,
     ) -> Result<GqlMediaTranslation> {
         if media_id.is_nil() {
-            return Err(<FieldError as GraphQLError>::bad_user_input("media ID cannot be nil"));
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "media ID cannot be nil",
+            ));
         }
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_media_permission(ctx, tenant_id, Action::Update)?;
@@ -75,13 +79,19 @@ fn require_media_permission(
     action: Action,
 ) -> Result<()> {
     if requested_tenant.is_nil() {
-        return Err(<FieldError as GraphQLError>::bad_user_input("tenant ID cannot be nil"));
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "tenant ID cannot be nil",
+        ));
     }
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
     let tenant = ctx.data::<TenantContext>()?;
-    if tenant.id.is_nil() || auth.tenant_id.is_nil() || requested_tenant != tenant.id || auth.tenant_id != tenant.id {
+    if tenant.id.is_nil()
+        || auth.tenant_id.is_nil()
+        || requested_tenant != tenant.id
+        || auth.tenant_id != tenant.id
+    {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "Media mutations must use the current authenticated tenant",
         ));

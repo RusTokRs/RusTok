@@ -65,7 +65,9 @@ impl MediaQuery {
         id: Uuid,
     ) -> Result<Option<GqlMediaItem>> {
         if id.is_nil() {
-            return Err(<FieldError as GraphQLError>::bad_user_input("media ID cannot be nil"));
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "media ID cannot be nil",
+            ));
         }
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_media_permission(ctx, tenant_id, Action::Read)?;
@@ -88,7 +90,9 @@ impl MediaQuery {
         media_id: Uuid,
     ) -> Result<Vec<GqlMediaTranslation>> {
         if media_id.is_nil() {
-            return Err(<FieldError as GraphQLError>::bad_user_input("media ID cannot be nil"));
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "media ID cannot be nil",
+            ));
         }
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_media_permission(ctx, tenant_id, Action::Read)?;
@@ -111,13 +115,19 @@ fn require_media_permission(
     action: Action,
 ) -> Result<()> {
     if requested_tenant.is_nil() {
-        return Err(<FieldError as GraphQLError>::bad_user_input("tenant ID cannot be nil"));
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "tenant ID cannot be nil",
+        ));
     }
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
     let tenant = ctx.data::<TenantContext>()?;
-    if tenant.id.is_nil() || auth.tenant_id.is_nil() || requested_tenant != tenant.id || auth.tenant_id != tenant.id {
+    if tenant.id.is_nil()
+        || auth.tenant_id.is_nil()
+        || requested_tenant != tenant.id
+        || auth.tenant_id != tenant.id
+    {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "Media queries must use the current authenticated tenant",
         ));

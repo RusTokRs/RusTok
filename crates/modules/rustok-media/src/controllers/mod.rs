@@ -288,7 +288,10 @@ pub async fn get_media(
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<MediaItem>> {
     if id.is_nil() {
-        return Err(HttpError::bad_request("media_bad_request", "media ID cannot be nil"));
+        return Err(HttpError::bad_request(
+            "media_bad_request",
+            "media ID cannot be nil",
+        ));
     }
     require_media_permission(&tenant, &auth, Action::Read)?;
     let service = MediaService::new(runtime.db_clone(), runtime.storage());
@@ -304,7 +307,10 @@ pub async fn public_image(
     Path((id, checksum_sha256)): Path<(Uuid, String)>,
 ) -> HttpResult<Response<Body>> {
     if id.is_nil() || tenant.id.is_nil() {
-        return Err(HttpError::not_found("media_public_image_not_found", "Media image not found"));
+        return Err(HttpError::not_found(
+            "media_public_image_not_found",
+            "Media image not found",
+        ));
     }
     let image = MediaPublicImageService::new(runtime.db_clone(), runtime.storage())
         .read_public_image(tenant.id, id, &checksum_sha256)
@@ -352,7 +358,10 @@ pub async fn delete_media(
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
     if id.is_nil() {
-        return Err(HttpError::bad_request("media_bad_request", "media ID cannot be nil"));
+        return Err(HttpError::bad_request(
+            "media_bad_request",
+            "media ID cannot be nil",
+        ));
     }
     require_media_permission(&tenant, &auth, Action::Delete)?;
     let service = MediaService::new(runtime.db_clone(), runtime.storage());
@@ -369,7 +378,10 @@ pub async fn upsert_translation(
     Json(body): Json<UpsertTranslationInput>,
 ) -> HttpResult<Json<MediaTranslationItem>> {
     if id.is_nil() {
-        return Err(HttpError::bad_request("media_bad_request", "media ID cannot be nil"));
+        return Err(HttpError::bad_request(
+            "media_bad_request",
+            "media ID cannot be nil",
+        ));
     }
     require_media_permission(&tenant, &auth, Action::Update)?;
     let service = MediaService::new(runtime.db_clone(), runtime.storage());
@@ -465,5 +477,26 @@ mod tests {
     fn public_image_vary_contains_tenant_id_and_slug() {
         assert!(PUBLIC_IMAGE_VARY.contains("X-Tenant-ID"));
         assert!(PUBLIC_IMAGE_VARY.contains("X-Tenant-Slug"));
+    }
+
+    #[test]
+    fn media_rest_rejects_nil_tenant() {
+        let manage = Permission::new(Resource::Media, Action::Manage);
+        assert!(
+            require_media_permission(
+                &tenant(Uuid::nil()),
+                &auth(Uuid::nil(), vec![manage.clone()]),
+                Action::Read,
+            )
+            .is_err()
+        );
+        assert!(
+            require_media_permission(
+                &tenant(Uuid::new_v4()),
+                &auth(Uuid::nil(), vec![manage]),
+                Action::Read,
+            )
+            .is_err()
+        );
     }
 }
