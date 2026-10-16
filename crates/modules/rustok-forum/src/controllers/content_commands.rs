@@ -45,7 +45,7 @@ pub async fn create_topic(
             "Tenant ID must not be nil",
         ));
     }
-    if input.topic.category_id.is_nil() {
+    if input.category_id.is_nil() {
         return Err(HttpError::bad_request(
             "invalid_category_id",
             "Category ID must not be nil",
@@ -54,8 +54,8 @@ pub async fn create_topic(
     tracing::debug!(
         tenant_id = %tenant.id,
         user_id = %auth.user_id,
-        category_id = %input.topic.category_id,
-        title = %input.topic.title,
+        category_id = %input.category_id,
+        title = %input.title,
         "create_topic"
     );
 

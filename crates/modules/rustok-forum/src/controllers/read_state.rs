@@ -148,8 +148,8 @@ pub async fn mark_topic_read(
         tenant_id = %tenant.id,
         user_id = %auth.user_id,
         topic_id = %topic_id,
-        last_read_reply_id = ?input.last_read_reply_id,
-        last_read_post_number = input.last_read_post_number,
+        last_read_position = input.last_read_position,
+        last_read_revision = input.last_read_revision,
         "Forum mark topic read requested"
     );
     if tenant.id.is_nil() {
@@ -157,11 +157,6 @@ pub async fn mark_topic_read(
     }
     if topic_id.is_nil() {
         return Err(HttpError::bad_request("invalid_topic_id", "Topic ID must not be nil"));
-    }
-    if let Some(reply_id) = input.last_read_reply_id {
-        if reply_id.is_nil() {
-            return Err(HttpError::bad_request("invalid_reply_id", "Last read reply ID must not be nil"));
-        }
     }
     ensure_forum_permission(
         &auth,

@@ -6,6 +6,7 @@ use rustok_core::{
 use sea_orm_migration::MigrationTrait;
 
 pub mod analytics;
+pub mod audience_security;
 mod blog_projector;
 pub mod diagnostics;
 pub mod dictionaries;
@@ -43,6 +44,11 @@ pub use analytics::{
     SLOW_QUERY_THRESHOLD_MS, SearchAnalyticsInsightRow, SearchAnalyticsQueryRow,
     SearchAnalyticsService, SearchAnalyticsSnapshot, SearchAnalyticsSummary, SearchClickRecord,
     SearchQueryLogRecord,
+};
+pub use audience_security::{
+    LegacyForumAudienceAdapter, MAX_SEARCH_AUDIENCE_CANDIDATES, SearchAudiencePolicyPort,
+    SearchAudienceRegistry, SearchAudienceRequest, SearchCandidateDescriptor,
+    SharedSearchAudiencePolicyPort, resolve_audience_eligible_candidates,
 };
 pub use diagnostics::{
     LaggingSearchDocument, SearchConsistencyIssue, SearchDiagnosticsService,

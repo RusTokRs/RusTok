@@ -74,7 +74,7 @@ pub async fn update_category_topic_policy(
         tenant_id = %tenant.id,
         user_id = %auth.user_id,
         category_id = %category_id,
-        topic_creation = ?input.topic_creation,
+        allows_topics = ?input.allows_topics,
         "Forum category topic policy update requested"
     );
     if tenant.id.is_nil() {

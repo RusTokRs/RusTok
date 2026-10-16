@@ -265,12 +265,6 @@ pub async fn update_category(
             "Category ID must not be nil",
         ));
     }
-    if let Some(parent_id) = input.parent_id && parent_id.is_nil() {
-        return Err(HttpError::bad_request(
-            "invalid_parent_id",
-            "Parent category ID must not be nil",
-        ));
-    }
     tracing::debug!(tenant_id = %tenant.id, category_id = %id, user_id = %auth.user_id, "update_category");
 
     ensure_forum_permission(

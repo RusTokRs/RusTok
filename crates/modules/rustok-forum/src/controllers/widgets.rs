@@ -23,6 +23,10 @@ pub async fn get_widget_catalog(
     _runtime: State<crate::controllers::ForumHttpRuntime>,
     auth: AuthContext,
 ) -> HttpResult<Json<ForumWidgetCatalogResponse>> {
+    tracing::debug!(
+        user_id = %auth.user_id,
+        "Forum get widget catalog requested"
+    );
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -49,6 +53,11 @@ pub async fn validate_widget_props(
     auth: AuthContext,
     Json(input): Json<ValidateForumWidgetPropsInput>,
 ) -> HttpResult<(StatusCode, Json<ForumWidgetPropsValidationResponse>)> {
+    tracing::debug!(
+        user_id = %auth.user_id,
+        widget_kind = ?input.widget_kind,
+        "Forum validate widget props requested"
+    );
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -84,6 +93,15 @@ pub async fn preview_widget(
     request_context: RequestContext,
     Json(input): Json<PreviewForumWidgetInput>,
 ) -> HttpResult<(StatusCode, Json<ForumWidgetPreviewResponse>)> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %auth.user_id,
+        widget_kind = ?input.widget_kind,
+        "Forum preview widget requested"
+    );
+    if tenant.id.is_nil() {
+        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+    }
     ensure_forum_permission(
         &auth,
         &[Permission::FORUM_TOPICS_READ],
@@ -127,6 +145,12 @@ fn ensure_forum_permission(
     permissions: &[Permission],
     message: &str,
 ) -> HttpResult<()> {
+    if auth.tenant_id.is_nil() {
+        return Err(HttpError::unauthorized("invalid_auth_tenant_id", "Authenticated tenant ID must not be nil"));
+    }
+    if auth.user_id.is_nil() {
+        return Err(HttpError::unauthorized("invalid_auth_user_id", "Authenticated user ID must not be nil"));
+    }
     if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden(
             "forum_permission_denied",

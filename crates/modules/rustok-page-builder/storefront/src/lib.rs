@@ -217,6 +217,17 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn static_landing_storefront_component_constructs_view() {
+        let _view = view! {
+            <StaticLandingStorefront
+                html="<div data-fly-action=\"test\">Landing</div>".to_string()
+                css=".landing { color: blue; }".to_string()
+                page_id="p1".to_string()
+            />
+        };
+    }
+
+    #[test]
     fn storefront_helper_forces_editor_instrumentation_off() {
         let output = render_storefront_page(
             json!({
