@@ -14,16 +14,16 @@ import { type NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
-  let redirectPath = searchParams.get("redirect") || "/";
+  let redirectPath = "/";
+  const rawRedirect = searchParams.get("redirect") || "/";
 
-  // Prevent open redirect attacks: only allow valid relative paths without protocol or backslash
-  if (
-    !redirectPath.startsWith("/") ||
-    redirectPath.startsWith("//") ||
-    redirectPath.includes("\\") ||
-    redirectPath.includes("\r") ||
-    redirectPath.includes("\n")
-  ) {
+  // Prevent open redirect attacks: only allow valid same-origin relative paths
+  try {
+    const parsed = new URL(rawRedirect, request.nextUrl.origin);
+    if (parsed.origin === request.nextUrl.origin && parsed.pathname.startsWith("/")) {
+      redirectPath = parsed.pathname + parsed.search;
+    }
+  } catch {
     redirectPath = "/";
   }
 

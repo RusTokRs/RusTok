@@ -42,6 +42,12 @@ export async function generateMetadata({
     // Fail gracefully for metadata generation
   }
 
+  const draft = await draftMode();
+  const isDraft = draft.isEnabled;
+  if (page && page.status !== "published" && !isDraft) {
+    page = null;
+  }
+
   const routePath = `/pages/${encodeURIComponent(slug)}`;
   const seoResolution = await resolveSeoPageContextForRoute({
     locale,
@@ -78,7 +84,7 @@ export default async function StorefrontCustomPage({
     notFound();
   }
 
-  if (!page || !page.body) {
+  if (!page || !page.body || (page.status !== "published" && !isDraft)) {
     notFound();
   }
 

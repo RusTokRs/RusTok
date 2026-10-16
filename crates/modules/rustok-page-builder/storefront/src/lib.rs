@@ -240,11 +240,21 @@ pub const FLY_STOREFRONT_BRIDGE_JS: &str = r##"
       } catch (_) {}
     }
   });
+
+  window.addEventListener("rustok:cart:updated", function (e) {
+    var count = e.detail && (typeof e.detail.count !== "undefined" ? e.detail.count : e.detail.itemCount);
+    if (typeof count !== "undefined") {
+      var counters = document.querySelectorAll("[data-fly-island='cart_count']");
+      for (var i = 0; i < counters.length; i++) {
+        counters[i].textContent = String(count);
+      }
+    }
+  });
 })();
 "##;
 
 /// Scopes landing CSS using modern CSS `@scope (<scope_selector>)` and normalizes
-/// root-level selectors (`body`, `html`) to `:scope`, ensuring styles from user-generated
+/// root-level selectors (`body`, `html`, `:root`) to `:scope`, ensuring styles from user-generated
 /// or GrapesJS landings cannot leak into the host application's shell, header, or footer.
 pub fn scope_landing_css(raw_css: &str, scope_selector: &str) -> String {
     let trimmed = raw_css.trim();
@@ -261,11 +271,18 @@ pub fn scope_landing_css(raw_css: &str, scope_selector: &str) -> String {
     )
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum CssBlockKind {
+    GroupRule,
+    Declaration,
+}
+
 fn normalize_landing_root_selectors(css: &str) -> String {
     let mut result = String::with_capacity(css.len());
-    let mut in_rule_block = false;
+    let mut block_stack: Vec<CssBlockKind> = Vec::new();
     let mut in_quote: Option<char> = None;
     let mut in_comment = false;
+    let mut prelude = String::new();
 
     let chars: Vec<char> = css.chars().collect();
     let mut i = 0;
@@ -308,30 +325,54 @@ fn normalize_landing_root_selectors(css: &str) -> String {
         }
 
         if ch == '{' {
-            in_rule_block = true;
+            let is_group = is_css_group_rule(prelude.trim());
+            if is_group {
+                block_stack.push(CssBlockKind::GroupRule);
+            } else {
+                block_stack.push(CssBlockKind::Declaration);
+            }
+            prelude.clear();
             result.push(ch);
             i += 1;
             continue;
         } else if ch == '}' {
-            in_rule_block = false;
+            block_stack.pop();
+            prelude.clear();
+            result.push(ch);
+            i += 1;
+            continue;
+        } else if ch == ';' {
+            prelude.clear();
             result.push(ch);
             i += 1;
             continue;
         }
 
-        if !in_rule_block {
-            let remaining = &css[i..];
-            if remaining.starts_with("body") && is_identifier_boundary(&chars, i, 4) {
+        let in_declaration = block_stack
+            .last()
+            .map(|kind| *kind == CssBlockKind::Declaration)
+            .unwrap_or(false);
+
+        if !in_declaration {
+            if chars[i..].starts_with(&['b', 'o', 'd', 'y']) && is_identifier_boundary(&chars, i, 4) {
                 result.push_str(":scope");
+                prelude.push_str(":scope");
                 i += 4;
                 continue;
-            } else if remaining.starts_with("html") && is_identifier_boundary(&chars, i, 4) {
+            } else if chars[i..].starts_with(&['h', 't', 'm', 'l']) && is_identifier_boundary(&chars, i, 4) {
                 result.push_str(":scope");
+                prelude.push_str(":scope");
                 i += 4;
+                continue;
+            } else if chars[i..].starts_with(&[':', 'r', 'o', 'o', 't']) && is_root_boundary(&chars, i, 5) {
+                result.push_str(":scope");
+                prelude.push_str(":scope");
+                i += 5;
                 continue;
             }
         }
 
+        prelude.push(ch);
         result.push(ch);
         i += 1;
     }
@@ -339,10 +380,35 @@ fn normalize_landing_root_selectors(css: &str) -> String {
     result
 }
 
+fn is_css_group_rule(prelude: &str) -> bool {
+    prelude.starts_with("@media")
+        || prelude.starts_with("@supports")
+        || prelude.starts_with("@container")
+        || prelude.starts_with("@document")
+        || (prelude.starts_with("@layer") && !prelude.contains(';'))
+}
+
+fn is_root_boundary(chars: &[char], start: usize, len: usize) -> bool {
+    if start > 0 {
+        let prev = chars[start - 1];
+        if prev.is_alphanumeric() || prev == '-' || prev == '_' || prev == ':' {
+            return false;
+        }
+    }
+    let end = start + len;
+    if end < chars.len() {
+        let next = chars[end];
+        if next.is_alphanumeric() || next == '-' || next == '_' {
+            return false;
+        }
+    }
+    true
+}
+
 fn is_identifier_boundary(chars: &[char], start: usize, len: usize) -> bool {
     let prev_is_ident = if start > 0 {
         let prev = chars[start - 1];
-        prev.is_alphanumeric() || prev == '-' || prev == '_' || prev == '.' || prev == '#'
+        prev.is_alphanumeric() || prev == '-' || prev == '_' || prev == '.' || prev == '#' || prev == ':'
     } else {
         false
     };
@@ -446,6 +512,39 @@ mod tests {
 
         let already_scoped = "@scope (.test) { :scope { color: green; } }";
         assert_eq!(scope_landing_css(already_scoped, ".other"), already_scoped);
+    }
+
+    #[test]
+    fn scope_landing_css_handles_cyrillic_and_nested_media_queries_and_root() {
+        let raw = r#"
+/* Привет, мир! Комментарий на кириллице */
+:root {
+  --primary-color: #007bff;
+}
+body {
+  font-family: 'Roboto', sans-serif;
+  --custom-ident: body;
+}
+@media (max-width: 768px) {
+  body {
+    padding: 10px;
+  }
+}
+@supports (display: flex) {
+  @media (min-width: 1200px) {
+    html, body {
+      display: flex;
+    }
+  }
+}
+"#;
+        let scoped = scope_landing_css(raw, ".rustok-page-builder-storefront");
+
+        assert!(scoped.contains("/* Привет, мир! Комментарий на кириллице */"));
+        assert!(scoped.contains(":scope {\n  --primary-color: #007bff;\n}"));
+        assert!(scoped.contains(":scope {\n  font-family: 'Roboto', sans-serif;\n  --custom-ident: body;\n}"));
+        assert!(scoped.contains("@media (max-width: 768px) {\n  :scope {\n    padding: 10px;\n  }\n}"));
+        assert!(scoped.contains("@media (min-width: 1200px) {\n    :scope, :scope {\n      display: flex;\n    }\n  }"));
     }
 
     #[test]

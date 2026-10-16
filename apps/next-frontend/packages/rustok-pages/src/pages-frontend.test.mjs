@@ -119,5 +119,38 @@ body { padding: 8px; }`;
   assert.ok(scoped.includes(":scope { padding: 8px; }"));
 });
 
+test("scopeLandingCss handles Cyrillic comments, nested media queries, and :root normalization", () => {
+  const raw = `
+/* Привет, мир! Комментарий на кириллице */
+:root {
+  --primary-color: #007bff;
+}
+body {
+  font-family: 'Roboto', sans-serif;
+  --custom-ident: body;
+}
+@media (max-width: 768px) {
+  body {
+    padding: 10px;
+  }
+}
+@supports (display: flex) {
+  @media (min-width: 1200px) {
+    html, body {
+      display: flex;
+    }
+  }
+}
+`;
+
+  const scoped = scopeLandingCss(raw, ".fly-page-container");
+
+  assert.ok(scoped.includes("/* Привет, мир! Комментарий на кириллице */"));
+  assert.ok(scoped.includes(":scope {\n  --primary-color: #007bff;\n}"));
+  assert.ok(scoped.includes(":scope {\n  font-family: 'Roboto', sans-serif;\n  --custom-ident: body;\n}"));
+  assert.ok(scoped.includes("@media (max-width: 768px) {\n  :scope {\n    padding: 10px;\n  }\n}"));
+  assert.ok(scoped.includes("@media (min-width: 1200px) {\n    :scope, :scope {\n      display: flex;\n    }\n  }"));
+});
+
 
 

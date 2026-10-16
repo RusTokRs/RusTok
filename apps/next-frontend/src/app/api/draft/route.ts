@@ -8,9 +8,19 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+import { timingSafeEqual } from "node:crypto";
 import { draftMode } from "next/headers";
 import { redirect } from "next/navigation";
 import { type NextRequest, NextResponse } from "next/server";
+
+function constantTimeCompare(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) {
+    return false;
+  }
+  return timingSafeEqual(aBuf, bBuf);
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -24,7 +34,7 @@ export async function GET(request: NextRequest) {
   const isDev = process.env.NODE_ENV !== "production";
   const expectedSecret = configuredSecret || (isDev ? "rustok-revalidate-secret" : undefined);
 
-  if (!expectedSecret || !secret || secret !== expectedSecret) {
+  if (!expectedSecret || !secret || !constantTimeCompare(secret, expectedSecret)) {
     return NextResponse.json(
       { error: "Invalid preview secret" },
       { status: 401 },

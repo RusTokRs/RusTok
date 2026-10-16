@@ -8,8 +8,18 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+import { timingSafeEqual } from "node:crypto";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { type NextRequest, NextResponse } from "next/server";
+
+function constantTimeCompare(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) {
+    return false;
+  }
+  return timingSafeEqual(aBuf, bBuf);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,7 +33,7 @@ export async function POST(request: NextRequest) {
     const isDev = process.env.NODE_ENV !== "production";
     const expectedSecret = configuredSecret || (isDev ? "rustok-revalidate-secret" : undefined);
 
-    if (!expectedSecret || !secret || secret !== expectedSecret) {
+    if (!expectedSecret || !secret || !constantTimeCompare(secret, expectedSecret)) {
       return NextResponse.json(
         { error: "Invalid revalidation secret" },
         { status: 401 },

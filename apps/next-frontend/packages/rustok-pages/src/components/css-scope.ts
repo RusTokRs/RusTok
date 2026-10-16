@@ -10,7 +10,7 @@
 
 /**
  * Scopes landing CSS using modern CSS `@scope (<scope_selector>)` and normalizes
- * root-level selectors (`body`, `html`) to `:scope`, ensuring styles from user-generated
+ * root-level selectors (`body`, `html`, `:root`) to `:scope`, ensuring styles from user-generated
  * or GrapesJS landings cannot leak into the host application's shell, header, or footer.
  */
 export function scopeLandingCss(
@@ -22,9 +22,10 @@ export function scopeLandingCss(
   if (trimmed.startsWith("@scope")) return trimmed;
 
   let result = "";
-  let inRuleBlock = false;
+  const blockStack: ("group" | "declaration")[] = [];
   let inQuote: string | null = null;
   let inComment = false;
+  let prelude = "";
 
   for (let i = 0; i < trimmed.length; i++) {
     const ch = trimmed[i];
@@ -61,38 +62,86 @@ export function scopeLandingCss(
     }
 
     if (ch === "{") {
-      inRuleBlock = true;
+      const isGroup = isCssGroupRule(prelude.trim());
+      if (isGroup) {
+        blockStack.push("group");
+      } else {
+        blockStack.push("declaration");
+      }
+      prelude = "";
       result += ch;
       continue;
     } else if (ch === "}") {
-      inRuleBlock = false;
+      blockStack.pop();
+      prelude = "";
+      result += ch;
+      continue;
+    } else if (ch === ";") {
+      prelude = "";
       result += ch;
       continue;
     }
 
-    if (!inRuleBlock) {
+    const inDeclaration = blockStack[blockStack.length - 1] === "declaration";
+
+    if (!inDeclaration) {
       const rest = trimmed.slice(i);
       if (rest.startsWith("body") && isIdentBoundary(trimmed, i, 4)) {
         result += ":scope";
+        prelude += ":scope";
         i += 3;
         continue;
       } else if (rest.startsWith("html") && isIdentBoundary(trimmed, i, 4)) {
         result += ":scope";
+        prelude += ":scope";
         i += 3;
+        continue;
+      } else if (rest.startsWith(":root") && isRootBoundary(trimmed, i, 5)) {
+        result += ":scope";
+        prelude += ":scope";
+        i += 4;
         continue;
       }
     }
 
+    prelude += ch;
     result += ch;
   }
 
   return `@scope (${scopeSelector}) {\n  :scope {\n    isolation: isolate;\n  }\n${result}\n}`;
 }
 
+function isCssGroupRule(prelude: string): boolean {
+  return (
+    prelude.startsWith("@media") ||
+    prelude.startsWith("@supports") ||
+    prelude.startsWith("@container") ||
+    prelude.startsWith("@document") ||
+    (prelude.startsWith("@layer") && !prelude.includes(";"))
+  );
+}
+
+function isRootBoundary(str: string, start: number, len: number): boolean {
+  if (start > 0) {
+    const prev = str[start - 1];
+    if (/[a-zA-Z0-9_\-:]/.test(prev)) {
+      return false;
+    }
+  }
+  const end = start + len;
+  if (end < str.length) {
+    const next = str[end];
+    if (/[a-zA-Z0-9_\-]/.test(next)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function isIdentBoundary(str: string, start: number, len: number): boolean {
   if (start > 0) {
     const prev = str[start - 1];
-    if (/[a-zA-Z0-9_\-.#]/.test(prev)) {
+    if (/[a-zA-Z0-9_\-.#:]/.test(prev)) {
       return false;
     }
   }
