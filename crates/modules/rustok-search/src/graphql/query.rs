@@ -1116,16 +1116,25 @@ async fn run_audience_storefront_search_with_dictionaries(
     auth: Option<AuthContext>,
     request_context: Option<RequestContext>,
 ) -> rustok_core::Result<crate::SearchResult> {
-    let raw_result = engine
+    if let Some(tenant_id) = search_query.tenant_id {
+        if auth.is_none() && search_query.source_modules.len() == 1 {
+            let module = &search_query.source_modules[0];
+            if !registry.public_discovery_allowed(module, tenant_id).await.unwrap_or(true) {
+                return Ok(crate::SearchResult {
+                    items: Vec::new(),
+                    total: 0,
+                    took_ms: 0,
+                    engine: crate::SearchEngineKind::Postgres,
+                    ranking_profile: search_query.ranking_profile,
+                    facets: Vec::new(),
+                });
+            }
+        }
+    }
+
+    let mut result = engine
         .search_storefront_candidates(search_query.clone(), channel)
         .await?;
-    let mut result = SearchDictionaryService::apply_storefront_query_rules(
-        db,
-        &search_query,
-        raw_result,
-        channel,
-    )
-    .await?;
 
     if let Some(tenant_id) = search_query.tenant_id {
         let descriptors: Vec<crate::SearchCandidateDescriptor> = result
@@ -1143,7 +1152,7 @@ async fn run_audience_storefront_search_with_dictionaries(
         let allowed_ids = crate::resolve_audience_eligible_candidates(
             registry,
             tenant_id,
-            &search_query.locale,
+            search_query.locale.as_deref().unwrap_or_default(),
             &descriptors,
             auth,
             request_context,
@@ -1154,9 +1163,16 @@ async fn run_audience_storefront_search_with_dictionaries(
 
         result.items.retain(|item| allowed_ids.contains(&item.id));
         result.total = result.items.len() as u64;
+        result.facets = crate::build_authorized_facets(&result.items);
     }
 
-    Ok(result)
+    SearchDictionaryService::apply_authorized_storefront_query_rules(
+        db,
+        &search_query,
+        result,
+        channel,
+    )
+    .await
 }
 
 fn classify_search_error(error: &rustok_core::Error) -> &'static str {

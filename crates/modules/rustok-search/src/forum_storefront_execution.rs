@@ -493,7 +493,7 @@ fn facet_buckets(values: BTreeMap<String, u64>) -> Vec<SearchFacetBucket> {
     buckets
 }
 
-fn forum_visible_status(entity_type: &str) -> Option<&'static str> {
+pub(crate) fn forum_visible_status(entity_type: &str) -> Option<&'static str> {
     match entity_type {
         "forum_category" => Some("public"),
         "forum_topic" => Some("open"),

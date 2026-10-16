@@ -164,20 +164,33 @@ async fn storefront_search_native(
         let audience_registry = runtime_ctx.shared_get::<rustok_search::SearchAudienceRegistry>();
         let result = if let Some(registry) = audience_registry.as_ref() {
             if !registry.is_empty() {
-                let raw_result = engine
+                let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
+                    .await
+                    .map_err(ServerFnError::new)?
+                    .0;
+
+                if auth.is_none() && search_query.source_modules.len() == 1 {
+                    let module = &search_query.source_modules[0];
+                    if !registry.public_discovery_allowed(module, tenant.id).await.unwrap_or(true) {
+                        return Ok(SearchPreviewPayload {
+                            query_log_id: None,
+                            preset_key: search_query.preset_key.clone(),
+                            items: Vec::new(),
+                            total: 0,
+                            took_ms: 0,
+                            engine: "postgres".to_string(),
+                            ranking_profile: search_query.ranking_profile.as_str().to_string(),
+                            facets: Vec::new(),
+                        });
+                    }
+                }
+
+                let mut raw_result = engine
                     .search_storefront_candidates(search_query.clone(), &trusted_channel)
                     .await
                     .map_err(server_error)?;
-                let mut res = SearchDictionaryService::apply_storefront_query_rules(
-                    &db,
-                    &search_query,
-                    raw_result,
-                    &trusted_channel,
-                )
-                .await
-                .map_err(server_error)?;
 
-                let descriptors: Vec<rustok_search::SearchCandidateDescriptor> = res
+                let descriptors: Vec<rustok_search::SearchCandidateDescriptor> = raw_result
                     .items
                     .iter()
                     .map(|item| {
@@ -188,11 +201,6 @@ async fn storefront_search_native(
                         )
                     })
                     .collect();
-
-                let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
-                    .await
-                    .map_err(ServerFnError::new)?
-                    .0;
 
                 let allowed_ids = rustok_search::resolve_audience_eligible_candidates(
                     registry,
@@ -206,9 +214,18 @@ async fn storefront_search_native(
                 .await
                 .map_err(server_error)?;
 
-                res.items.retain(|item| allowed_ids.contains(&item.id));
-                res.total = res.items.len() as u64;
-                res
+                raw_result.items.retain(|item| allowed_ids.contains(&item.id));
+                raw_result.total = raw_result.items.len() as u64;
+                raw_result.facets = rustok_search::build_authorized_facets(&raw_result.items);
+
+                SearchDictionaryService::apply_authorized_storefront_query_rules(
+                    &db,
+                    &search_query,
+                    raw_result,
+                    &trusted_channel,
+                )
+                .await
+                .map_err(server_error)?
             } else {
                 let res = engine
                     .search_storefront(search_query.clone(), &trusted_channel)

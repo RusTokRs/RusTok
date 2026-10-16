@@ -48,7 +48,7 @@ pub use analytics::{
 pub use audience_security::{
     MAX_SEARCH_AUDIENCE_CANDIDATES, SearchAudiencePolicyPort, SearchAudienceRegistry,
     SearchAudienceRequest, SearchCandidateDescriptor, SharedSearchAudiencePolicyPort,
-    resolve_audience_eligible_candidates,
+    build_authorized_facets, resolve_audience_eligible_candidates,
 };
 pub use diagnostics::{
     LaggingSearchDocument, SearchConsistencyIssue, SearchDiagnosticsService,

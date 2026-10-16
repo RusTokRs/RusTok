@@ -16,6 +16,7 @@ use rustok_api::{AuthContext, PortError, RequestContext};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::engine::{SearchFacetBucket, SearchFacetGroup};
 use crate::storefront_category_scope::StorefrontSearchTransport;
 
 pub const MAX_SEARCH_AUDIENCE_CANDIDATES: usize = 100;
@@ -184,6 +185,13 @@ pub async fn resolve_audience_eligible_candidates(
         ));
     }
 
+    if candidates.iter().any(|candidate| candidate.document_id.is_nil()) {
+        return Err(PortError::validation(
+            "search.audience.document_id_required",
+            "Search audience candidate resolution requires non-nil document identifiers",
+        ));
+    }
+
     let mut allowed_ids = HashSet::with_capacity(candidates.len());
     let mut partitioned: HashMap<String, Vec<SearchCandidateDescriptor>> = HashMap::new();
 
@@ -229,7 +237,16 @@ pub async fn resolve_audience_eligible_candidates(
                 ));
             }
 
+            let mut seen_allowed = HashSet::with_capacity(module_allowed.len());
             for allowed_id in module_allowed {
+                if !seen_allowed.insert(allowed_id) {
+                    return Err(PortError::invariant_violation(
+                        "search.audience.duplicate_candidate",
+                        format!(
+                            "Search audience policy for `{source_module}` returned duplicate candidate ID {allowed_id}"
+                        ),
+                    ));
+                }
                 if !requested_ids.contains(&allowed_id) {
                     return Err(PortError::invariant_violation(
                         "search.audience.owner_scope_invalid",
@@ -249,6 +266,52 @@ pub async fn resolve_audience_eligible_candidates(
     }
 
     Ok(allowed_ids)
+}
+
+/// Builds facet groups strictly over authorized search result items.
+/// Prevents information disclosure oracles by avoiding computing facets over unvetted candidate rows.
+pub fn build_authorized_facets(items: &[crate::SearchResultItem]) -> Vec<SearchFacetGroup> {
+    let mut entity_types = BTreeMap::<String, u64>::new();
+    let mut source_modules = BTreeMap::<String, u64>::new();
+    let mut statuses = BTreeMap::<String, u64>::new();
+
+    for item in items {
+        *entity_types.entry(item.entity_type.clone()).or_default() += 1;
+        *source_modules.entry(item.source_module.clone()).or_default() += 1;
+        if let Some(status) = item.payload.get("status").and_then(|v| v.as_str()) {
+            *statuses.entry(status.to_string()).or_default() += 1;
+        } else if let Some(status) = crate::forum_storefront_execution::forum_visible_status(&item.entity_type) {
+            *statuses.entry(status.to_string()).or_default() += 1;
+        }
+    }
+
+    let to_buckets = |map: BTreeMap<String, u64>| -> Vec<SearchFacetBucket> {
+        let mut buckets: Vec<_> = map
+            .into_iter()
+            .map(|(value, count)| SearchFacetBucket {
+                value,
+                label: None,
+                count,
+            })
+            .collect();
+        buckets.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.value.cmp(&b.value)));
+        buckets
+    };
+
+    vec![
+        SearchFacetGroup {
+            name: "entity_type".to_string(),
+            buckets: to_buckets(entity_types),
+        },
+        SearchFacetGroup {
+            name: "source_module".to_string(),
+            buckets: to_buckets(source_modules),
+        },
+        SearchFacetGroup {
+            name: "status".to_string(),
+            buckets: to_buckets(statuses),
+        },
+    ]
 }
 
 fn normalize_source_module(value: &str) -> Result<String, PortError> {
