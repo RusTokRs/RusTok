@@ -7,12 +7,12 @@
 
 ---
 
-## Deep Full-Stack Audit Cycle — 2026-10-17 (Comprehensive Workspace Expansion)
+## Deep Full-Stack Audit Cycle — 2026-10-17 (Fresh Start from Scratch)
 
 **Status:** ACTIVE  
-**Active phase:** Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)  
-**Next pending component:** [`crates/libs/rustok-core`](../../crates/libs/rustok-core)  
-**Current main SHA:** `6239e3614`  
+**Active phase:** Phase FS-01 — Entrypoint & Composition Root (`apps/server`)  
+**Next pending component:** [`apps/server`](../../apps/server) (485 files, 190,468 LOC)  
+**Current main SHA:** `62b9cedda`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -37,13 +37,13 @@ The single canonical trigger to continue this audit sequence is:
 
 ---
 
-### Phase Backlog — Architectural Sequence (262 Components Total)
+### Phase Backlog — Architectural Sequence (262 Components Total, Round 1)
 
-- [x] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (1/1 completed)
+- [ ] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (0/1 completed)
 - [ ] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (0/10 completed)
-- [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (4/24 completed)
-- [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (10/37 completed)
-- [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (17/39 completed)
+- [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (0/24 completed)
+- [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/37 completed)
+- [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (0/39 completed)
 - [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (0/26 completed)
 - [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (0/26 completed)
 - [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (0/19 completed)
@@ -54,10 +54,9 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-01 — Entrypoint & Composition Root (`apps/server`)
-*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (1/1 completed)
+*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (0/1 completed)
 
-- [x] **[`apps/server`](../../apps/server)** (485 files, 190,468 LOC) — Host composition, CLI entrypoint, Axum routing, tenant/auth/channel middleware, GraphQL/REST controllers, event bus, outbox retention worker, watchdog, settings service, and RBAC cache invalidation listener.
-  - *Audited:* Audited in FS-01: structured fatal logging before otel shutdown, thread floor minimum; graceful shutdown stopping Axum before draining workers, DB pool min/max connection guards, URL authority validation; secret validation forbidding default/sample credentials and dev JWT in production, SQLite fallback prevention; atomic runtime context taking worker handles without loss; background worker drain with tokio::join! and stop broadcast; global route fallback mapping RecordNotFound to 404 and sanitizing DB errors to 500; fail-closed tenant resolution without RFC 9110 smuggling; cross-tenant channel isolation; BCP 47 locale fallback; duplicate Authorization header rejection; rate-limiting structured JSON responses; security headers API CSP; metrics scrape auth with token quote trimming; registry and artifact HTTP policies; constant-time setup token checks in installer; OpenAPI schema method alignment; event bus reference preservation; outbox retention worker fast-pruning; module watchdog monotonicity; settings service secret redaction; RBAC cache invalidation listener with whitespace trimming.
+- [ ] **[`apps/server`](../../apps/server)** (485 files, 190,468 LOC) — Host composition root, CLI arguments, Axum routing table, fail-closed tenant/channel middleware, security headers, GraphQL/REST controllers, event bus, outbox retention worker, watchdog, settings service, and RBAC cache invalidation listener.
 
 ---
 
@@ -78,21 +77,17 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules
-*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (4/24 completed)
+*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (0/24 completed)
 
-- [x] **[`crates/modules/rustok-tenant`](../../crates/modules/rustok-tenant)** (28 files, 4,305 LOC) — Tenant lifecycle, provisioning, slug/domain resolution, locale policy aggregate, input sanitization, and settings schema.
-  - *Audited:* Audited in FS-02.01-03: added Validation variant to TenantError mapped to PortError::validation; trimmed and validated slug/name in create/ensure/update; fast-pathed empty slug/domain lookups to NotFound; clamped pagination; guarded nil UUIDs in TenantReadSelector::Id and parse_context_tenant_id; trimmed ActiveModel::new; bounded settings array elements to 256; rejected PostgreSQL null bytes in keys/values; float finiteness checks; all 24 tests passed.
+- [ ] **[`crates/modules/rustok-tenant`](../../crates/modules/rustok-tenant)** (28 files, 4,305 LOC) — Tenant lifecycle, provisioning, slug/domain resolution, locale policy aggregate, input sanitization, and settings schema.
 - [ ] **[`crates/modules/rustok-tenant/admin`](../../crates/modules/rustok-tenant/admin)** (8 files, 835 LOC) — FFA Leptos/Dioxus admin UI components for tenant provisioning, domain management, and locale settings.
-- [x] **[`crates/modules/rustok-auth`](../../crates/modules/rustok-auth)** (50 files, 12,952 LOC) — Argon2/SHA256 credentials hashing, JWT encode/decode, token rotation, password reset, bootstrap user provisioning, and auth command models.
-  - *Audited:* Audited in FS-02.04-06: enforced nil UUID validation in access token, OAuth token, and access token decoders; trimmed whitespace in token strings; empty/nil email/tenant guards in password reset, verification, and invite token codecs; safe verify_password oracle leak prevention returning Ok(false); HS256 secret length validation; bootstrap user non-nil checks; custom Debug implementations redacting passwords, tokens, auth codes, and client secrets across all auth commands and DTOs; all 62 unit tests pass.
+- [ ] **[`crates/modules/rustok-auth`](../../crates/modules/rustok-auth)** (50 files, 12,952 LOC) — Argon2/SHA256 credentials hashing, JWT encode/decode, token rotation, password reset, bootstrap user provisioning, and auth command models.
 - [ ] **[`crates/modules/rustok-auth/admin`](../../crates/modules/rustok-auth/admin)** (18 files, 6,501 LOC) — FFA admin UI components for user management, password reset requests, session revocation, and security policies.
 - [ ] **[`crates/modules/rustok-auth/cli`](../../crates/modules/rustok-auth/cli)** (1 files, 333 LOC) — CLI maintenance commands for auth administration, token generation, and superadmin provisioning.
-- [x] **[`crates/modules/rustok-rbac`](../../crates/modules/rustok-rbac)** (56 files, 13,518 LOC) — RBAC domain service, role assignment, policy evaluation, permissions matrix, and runtime cache invalidation.
-  - *Audited:* Audited in FS-02.07-08: enriched RbacError taxonomy with domain errors and policy conversion; fast-pathed nil tenant_id and user_id to empty permissions in resolve_permissions_*; guarded load_role_user_ids_on against nil tenant_id; non-nil UUID validation on parse_tenant_id and parse_user_actor; bounded maximum check permissions to 100; guarded RbacRoleAssignmentDbWriter against nil IDs; all 82 tests pass.
+- [ ] **[`crates/modules/rustok-rbac`](../../crates/modules/rustok-rbac)** (56 files, 13,518 LOC) — RBAC domain service, role assignment, policy evaluation, permissions matrix, and runtime cache invalidation.
 - [ ] **[`crates/modules/rustok-rbac/admin`](../../crates/modules/rustok-rbac/admin)** (8 files, 952 LOC) — FFA admin UI components for role management, permission matrices, and user role assignment.
 - [ ] **[`crates/modules/rustok-rbac/cli`](../../crates/modules/rustok-rbac/cli)** (1 files, 243 LOC) — CLI maintenance commands for RBAC policy inspection and role assignment.
-- [x] **[`crates/modules/rustok-cache`](../../crates/modules/rustok-cache)** (46 files, 15,917 LOC) — Distributed caching, Redis/in-memory backends, stampede protection, and durable invalidation consumer.
-  - *Audited:* Audited in FS-02.09-10: unified CacheError domain taxonomy in error.rs with Display, Error, and From conversions; Display and Error on CacheInvalidationMessageError; structured debug tracing on load_or_fill, publish_invalidation, and backend client; structured entry tracing in durable invalidation service, policy, consumer, and versioned invalidation; all 180 unit tests pass.
+- [ ] **[`crates/modules/rustok-cache`](../../crates/modules/rustok-cache)** (46 files, 15,917 LOC) — Distributed caching, Redis/in-memory backends, stampede protection, and durable invalidation consumer.
 - [ ] **[`crates/modules/rustok-cache/admin`](../../crates/modules/rustok-cache/admin)** (7 files, 926 LOC) — FFA admin UI components for cache metrics inspection, manual invalidation, and backend health monitoring.
 - [ ] **[`crates/modules/rustok-channel`](../../crates/modules/rustok-channel)** (47 files, 11,368 LOC) — Sales channel resolution, domain/subdomain mapping, channel scoping, and channel-specific configuration.
 - [ ] **[`crates/modules/rustok-channel/admin`](../../crates/modules/rustok-channel/admin)** (14 files, 5,173 LOC) — FFA admin UI components for sales channel management, domain routing, and currency/locale channel defaults.
@@ -112,39 +107,29 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-04 — Commerce, Financial & Marketplace Domain Modules
-*Cart, checkout pipeline, orders, payments, pricing, inventory reservations, fulfillment, marketplace multi-vendor economics, seller balances, and commissions.* (10/37 completed)
+*Cart, checkout pipeline, orders, payments, pricing, inventory reservations, fulfillment, marketplace multi-vendor economics, seller balances, and commissions.* (0/37 completed)
 
-- [x] **[`crates/modules/rustok-commerce-foundation`](../../crates/modules/rustok-commerce-foundation)** (19 files, 1,106 LOC) — Shared commerce error taxonomy, common DTOs, search contracts, and pricing/inventory input validation.
-  - *Audited:* Audited in FS-03.01: implemented From<CommerceError> for CoreError with mapping to NotFound, Validation, and Forbidden; validate_invariants on PriceInput and AdjustInventoryInput guarding against negative prices and nil UUIDs; trimmed search patterns in product_translation_title_search_condition avoiding redundant full EXISTS subqueries; all 8 tests pass.
-- [x] **[`crates/modules/rustok-commerce`](../../crates/modules/rustok-commerce)** (297 files, 132,631 LOC) — Checkout operation orchestration, stage pipeline, inventory reservation journal, multi-stage compensation sweeps, marketplace paid/reversal inboxes, fulfillment recovery, and REST/GraphQL adapters.
-  - *Audited:* Audited in FS-03.02-08: enforced non-nil UUID validation across complete_checkout, begin, checkpoint, ensure_cart_tenant, ensure_order_tenant, ensure_payment_collection_tenant; stage execution in standard and owner-ports pipelines; inventory reservation journal and payment stages; multi-stage compensation and failure sweeps; marketplace paid and reversal event inboxes, financial reconciliation operators, provider event adapters; fulfillment create-label recovery, returns lifecycle; admin and storefront REST controllers and GraphQL helper scopes; all 214 tests pass.
+- [ ] **[`crates/modules/rustok-commerce-foundation`](../../crates/modules/rustok-commerce-foundation)** (19 files, 1,106 LOC) — Shared commerce error taxonomy, common DTOs, search contracts, and pricing/inventory input validation.
+- [ ] **[`crates/modules/rustok-commerce`](../../crates/modules/rustok-commerce)** (297 files, 132,631 LOC) — Checkout operation orchestration, stage pipeline, inventory reservation journal, multi-stage compensation sweeps, marketplace paid/reversal inboxes, fulfillment recovery, and REST/GraphQL adapters.
 - [ ] **[`crates/modules/rustok-commerce/admin`](../../crates/modules/rustok-commerce/admin)** (21 files, 5,889 LOC) — FFA admin UI for checkout operations, manual order adjustment, and fulfillment management.
 - [ ] **[`crates/modules/rustok-commerce/storefront`](../../crates/modules/rustok-commerce/storefront)** (16 files, 2,022 LOC) — Storefront UI components for checkout flow, address input, and order confirmation.
-- [x] **[`crates/modules/rustok-cart`](../../crates/modules/rustok-cart)** (73 files, 19,638 LOC) — Cart state machine, line items mutation, price calculations, promotion guards, and checkout snapshot creation.
-  - *Audited:* Audited in FS-03.09: enforced non-nil UUID validation for tenant_id, cart_id, line_item_id, channel_id, customer_id, region_id, shipping_option_id across ports, checkout_snapshot, marketplace_snapshot, atomic_checkout_guard, atomic_checkout_port, owner_ports, promotion_guard, guarded_ports; structured debug tracing; all 32 tests pass.
+- [ ] **[`crates/modules/rustok-cart`](../../crates/modules/rustok-cart)** (73 files, 19,638 LOC) — Cart state machine, line items mutation, price calculations, promotion guards, and checkout snapshot creation.
 - [ ] **[`crates/modules/rustok-cart/storefront`](../../crates/modules/rustok-cart/storefront)** (18 files, 4,545 LOC) — Storefront UI components for mini-cart, cart drawer, line item management, and promo code entry.
-- [x] **[`crates/modules/rustok-order`](../../crates/modules/rustok-order)** (85 files, 22,532 LOC) — Order lifecycle state machine, tax lines, checkout identity, recovery, compensation, and outbox event publishing.
-  - *Audited:* Audited in FS-03.10: enforced non-nil UUID validation across ports, order service state machine transitions, line items, tax lines, checkout identity, recovery, compensation, settlement, admin commands, post-order commands, and reads; structured debug tracing across boundaries; all 14 unit tests pass.
+- [ ] **[`crates/modules/rustok-order`](../../crates/modules/rustok-order)** (85 files, 22,532 LOC) — Order lifecycle state machine, tax lines, checkout identity, recovery, compensation, and outbox event publishing.
 - [ ] **[`crates/modules/rustok-order/admin`](../../crates/modules/rustok-order/admin)** (14 files, 2,813 LOC) — FFA admin UI for order detail views, status transitions, fulfillment dispatch, and refund actions.
 - [ ] **[`crates/modules/rustok-order/storefront`](../../crates/modules/rustok-order/storefront)** (12 files, 2,171 LOC) — Storefront UI components for customer order history, order status tracking, and receipt download.
-- [x] **[`crates/modules/rustok-payment`](../../crates/modules/rustok-payment)** (88 files, 24,276 LOC) — Payment provider integration, transaction lifecycle, idempotency receipts, webhooks, and payment captures/refunds.
-  - *Audited:* Audited in FS-03.11: enforced non-nil UUID validation across ports, admin commands/reads, checkout execution/compensation, provider operation/event journals, controllers, and services; bounded pagination parameters; unit tests for non-nil UUID guards and port context validation; all 47 unit tests pass.
+- [ ] **[`crates/modules/rustok-payment`](../../crates/modules/rustok-payment)** (88 files, 24,276 LOC) — Payment provider integration, transaction lifecycle, idempotency receipts, webhooks, and payment captures/refunds.
 - [ ] **[`crates/modules/rustok-payment/storefront`](../../crates/modules/rustok-payment/storefront)** (11 files, 1,315 LOC) — Storefront UI components for payment method selection, card entry, and payment redirects.
-- [x] **[`crates/modules/rustok-pricing`](../../crates/modules/rustok-pricing)** (48 files, 19,495 LOC) — Price resolution rules, currency rounding discipline (money::round_to_currency), discounts, and price list evaluation.
-  - *Audited:* Audited in FS-03.12: enforced non-nil UUID validation across PricingReadPort, PricingWritePort, PriceListOwnerPort, and PricingService; verified currency rounding discipline via money::round_to_currency; unit tests for port context parsing, non-nil UUID guards, and pricing math; all 17 tests pass.
+- [ ] **[`crates/modules/rustok-pricing`](../../crates/modules/rustok-pricing)** (48 files, 19,495 LOC) — Price resolution rules, currency rounding discipline (money::round_to_currency), discounts, and price list evaluation.
 - [ ] **[`crates/modules/rustok-pricing/admin`](../../crates/modules/rustok-pricing/admin)** (14 files, 7,971 LOC) — FFA admin UI for price lists, currency rules, customer group pricing, and discount rules.
 - [ ] **[`crates/modules/rustok-pricing/storefront`](../../crates/modules/rustok-pricing/storefront)** (10 files, 2,487 LOC) — Storefront UI price badges, formatted currency display, and discount indicators.
-- [x] **[`crates/modules/rustok-pricing-persistence`](../../crates/modules/rustok-pricing-persistence)** (5 files, 328 LOC) — SeaORM entities, migrations, and price list repository implementations.
-  - *Audited:* Audited in FS-03.12: verified price list entities, tenant-scoped schema constraints, and persistence layer invariants; all 5 tests pass.
-- [x] **[`crates/modules/rustok-inventory`](../../crates/modules/rustok-inventory)** (35 files, 13,033 LOC) — Stock availability checks, reservation leases, concurrency guards, backorder policies, and stock location translations.
-  - *Audited:* Audited in FS-03.13: enforced non-nil UUID validation across InventoryReservationPort, InventoryReservationIdentityPort, reservation contexts, InventoryService, public channel inventory projection, and stock location translations; bounded string inputs; structured debug tracing; all 37 tests pass.
+- [ ] **[`crates/modules/rustok-pricing-persistence`](../../crates/modules/rustok-pricing-persistence)** (5 files, 328 LOC) — SeaORM entities, migrations, and price list repository implementations.
+- [ ] **[`crates/modules/rustok-inventory`](../../crates/modules/rustok-inventory)** (35 files, 13,033 LOC) — Stock availability checks, reservation leases, concurrency guards, backorder policies, and stock location translations.
 - [ ] **[`crates/modules/rustok-inventory/admin`](../../crates/modules/rustok-inventory/admin)** (10 files, 4,750 LOC) — FFA admin UI for stock adjustments, inventory location tracking, and low-stock alerts.
-- [x] **[`crates/modules/rustok-fulfillment`](../../crates/modules/rustok-fulfillment)** (76 files, 26,555 LOC) — Fulfillment orders, shipping carrier integration, package manifests, tracking updates, and split fulfillment.
-  - *Audited:* Audited in FS-03.14: enforced non-nil UUID validation across FulfillmentReadPort, FulfillmentAdminCommandPort, FulfillmentAdminCreateCommandPort, ShippingOptionReadPort, ShippingOptionAdminCommandPort, and public ports; bounded string inputs and clamped pagination; all 163 tests pass.
+- [ ] **[`crates/modules/rustok-fulfillment`](../../crates/modules/rustok-fulfillment)** (76 files, 26,555 LOC) — Fulfillment orders, shipping carrier integration, package manifests, tracking updates, and split fulfillment.
 - [ ] **[`crates/modules/rustok-fulfillment/admin`](../../crates/modules/rustok-fulfillment/admin)** (8 files, 1,916 LOC) — FFA admin UI for shipment creation, packing slip generation, and carrier tracking entry.
 - [ ] **[`crates/modules/rustok-fulfillment/storefront`](../../crates/modules/rustok-fulfillment/storefront)** (12 files, 1,252 LOC) — Storefront UI components for shipping option selection and tracking links.
-- [x] **[`crates/modules/rustok-distribution`](../../crates/modules/rustok-distribution)** (34 files, 15,716 LOC) — Distribution routing, fulfillment center assignment, and carrier API transport adapters.
-  - *Audited:* Audited in FS-03.14: verified distribution routes, split fulfillment manifests, carrier integration ports, and non-nil UUID validation; all 10 tests pass.
+- [ ] **[`crates/modules/rustok-distribution`](../../crates/modules/rustok-distribution)** (34 files, 15,716 LOC) — Distribution routing, fulfillment center assignment, and carrier API transport adapters.
 - [ ] **[`crates/modules/rustok-customer`](../../crates/modules/rustok-customer)** (26 files, 5,273 LOC) — Customer profile management, addresses, customer groups, and lifetime value analytics.
 - [ ] **[`crates/modules/rustok-customer/admin`](../../crates/modules/rustok-customer/admin)** (9 files, 2,779 LOC) — FFA admin UI for customer directory, address management, and order history view.
 - [ ] **[`crates/modules/rustok-region`](../../crates/modules/rustok-region)** (39 files, 8,566 LOC) — Geographic regions, countries, provinces, postal code rules, and regional currency/tax bindings.
@@ -165,51 +150,34 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-05 — Content, Media, Social & Community Domain Modules
-*CMS articles, forum discussions, comment trees, emoji reactions, notification dispatch, media asset pipeline, moderation rules, and social network features.* (17/39 completed)
+*CMS articles, forum discussions, comment trees, emoji reactions, notification dispatch, media asset pipeline, moderation rules, and social network features.* (0/39 completed)
 
-- [x] **[`crates/modules/rustok-blog`](../../crates/modules/rustok-blog)** (158 files, 41,150 LOC) — Blog post lifecycle, publication status machine, author attribution, category/tag taxonomies, revision history, and SEO metadata.
-  - *Audited:* Audited in FS-04.01: registered missing blog.post.scheduled and blog.post.schedule_cancelled schemas and updated contract digests in rustok-events; hardened REST controllers and GraphQL query/mutation entrypoints with non-nil UUID validation; added non-nil UUID validation across domain services (PostService, CategoryService, TagService, PreviewTokenService, CommentService, RBAC helpers); bounded token strings and clamped pagination; verified all 150 unit tests pass, module source layout verified.
+- [ ] **[`crates/modules/rustok-blog`](../../crates/modules/rustok-blog)** (158 files, 41,150 LOC) — Blog post lifecycle, publication status machine, author attribution, category/tag taxonomies, revision history, and SEO metadata.
 - [ ] **[`crates/modules/rustok-blog/admin`](../../crates/modules/rustok-blog/admin)** (18 files, 6,393 LOC) — FFA admin UI for rich blog post authoring, publishing workflow, category management, and preview generation.
 - [ ] **[`crates/modules/rustok-blog/storefront`](../../crates/modules/rustok-blog/storefront)** (14 files, 3,289 LOC) — Storefront UI for blog post listing, article reading, author cards, and tag filters.
-- [x] **[`crates/modules/rustok-forum`](../../crates/modules/rustok-forum)** (628 files, 175,016 LOC) — Forum channels, topics, replies, moderation queue, reputation scoring, full-text search index, topic redirects, and fork/split services.
-  - *Audited:* Audited in FS-04.02: enforced non-nil UUID validation across TopicService (slug rename, delete, restore), ReplyService (delete, restore), topic routes (redirects, canonical purging), topic fork storage, topic split services, import writer, topic redirect controller; fail-closed tenant scoping with Column::TenantId filters; implemented canonical From<ForumError> for rustok_core::Error; eliminated dead code; all 241 unit tests pass.
+- [ ] **[`crates/modules/rustok-forum`](../../crates/modules/rustok-forum)** (628 files, 175,016 LOC) — Forum channels, topics, replies, moderation queue, reputation scoring, full-text search index, topic redirects, and fork/split services.
 - [ ] **[`crates/modules/rustok-forum/admin`](../../crates/modules/rustok-forum/admin)** (35 files, 13,457 LOC) — FFA admin UI for channel configuration, topic moderation, pinned announcements, and forum permissions.
 - [ ] **[`crates/modules/rustok-forum/storefront`](../../crates/modules/rustok-forum/storefront)** (26 files, 7,472 LOC) — Storefront UI for discussion channels, thread views, reply composers, and user badges.
-- [x] **[`crates/modules/rustok-content`](../../crates/modules/rustok-content)** (45 files, 6,014 LOC) — CMS content tree, layout block schemas, block persistence, translation slots, dynamic rendering, and route resolution.
-  - *Audited:* Audited in FS-04.03: enforced non-nil UUID guards across CMS content tree, layout schema, block persistence, translation slots, dynamic rendering, and GraphQL entrypoints; implemented canonical From<ContentError> for rustok_core::Error; eliminated panic potential in rich text rendering; proptest created_at preservation; all 64 content tests pass.
-- [x] **[`crates/modules/rustok-content-orchestration`](../../crates/modules/rustok-content-orchestration)** (18 files, 3,245 LOC) — Content bridge services (topic-to-post promote, demote, split, merge), redirect management, and archive preservation.
-  - *Audited:* Audited in FS-04.03: hardened content orchestration bridge (promote_topic_to_post, demote_post_to_topic, split_topic, merge_topics) with non-nil UUID guards and fail-closed tenant-scoped queries/deletions; fixed route resolver to check recorded redirects before live topics and exclude Archived soft-deleted topics; all 4 tests pass.
-- [x] **[`crates/integration/rustok-content-revisions`](../../crates/integration/rustok-content-revisions)** (6 files, 903 LOC) — Content revision history integration, snapshot diffing, and audit trail verification.
-  - *Audited:* Audited in FS-04.03: verified content revision history integration, snapshot diffing, and audit trail invariants.
-- [x] **[`crates/modules/rustok-notifications`](../../crates/modules/rustok-notifications)** (75 files, 22,202 LOC) — Notification template registry, multi-channel dispatch (email/push/in-app), user preferences, and outbox batching/throttling.
-  - *Audited:* Audited in FS-04.04: implemented canonical From<NotificationError> for rustok_core::Error; enforced non-nil UUID guards across GraphQL authenticated_scope (tenant_id and user_id), outbox intake process_outbox_event, candidate processing process_candidate_inner, fan-out service materialize_source_event, process_fanout_page, and fanout worker deferred jobs; all 5 tests pass.
-- [x] **[`crates/modules/rustok-notifications-api`](../../crates/modules/rustok-notifications-api)** (5 files, 1,196 LOC) — Notification provider seam traits, dispatch commands, and delivery result DTOs.
-  - *Audited:* Audited in FS-04.04: implemented canonical From<NotificationProviderError> for rustok_core::Error; verified notification provider seam contracts and DTOs; all 7 tests pass.
+- [ ] **[`crates/modules/rustok-content`](../../crates/modules/rustok-content)** (45 files, 6,014 LOC) — CMS content tree, layout block schemas, block persistence, translation slots, dynamic rendering, and route resolution.
+- [ ] **[`crates/modules/rustok-content-orchestration`](../../crates/modules/rustok-content-orchestration)** (18 files, 3,245 LOC) — Content bridge services (topic-to-post promote, demote, split, merge), redirect management, and archive preservation.
+- [ ] **[`crates/integration/rustok-content-revisions`](../../crates/integration/rustok-content-revisions)** (6 files, 903 LOC) — Content revision history integration, snapshot diffing, and audit trail verification.
+- [ ] **[`crates/modules/rustok-notifications`](../../crates/modules/rustok-notifications)** (75 files, 22,202 LOC) — Notification template registry, multi-channel dispatch (email/push/in-app), user preferences, and outbox batching/throttling.
+- [ ] **[`crates/modules/rustok-notifications-api`](../../crates/modules/rustok-notifications-api)** (5 files, 1,196 LOC) — Notification provider seam traits, dispatch commands, and delivery result DTOs.
 - [ ] **[`crates/modules/rustok-notifications/admin`](../../crates/modules/rustok-notifications/admin)** (6 files, 127 LOC) — FFA admin UI for notification template authoring, delivery log inspection, and provider configuration.
 - [ ] **[`crates/modules/rustok-notifications/storefront`](../../crates/modules/rustok-notifications/storefront)** (16 files, 3,152 LOC) — Storefront UI notification bell, notification dropdown, and user alert preferences.
-- [x] **[`crates/modules/rustok-comments`](../../crates/modules/rustok-comments)** (39 files, 9,823 LOC) — Threaded comment trees, author verification, moderation status transitions, target entity lifecycle hooks, and tenant scoping.
-  - *Audited:* Audited in FS-04.05: implemented canonical From<CommentsError> for rustok_core::Error; enforced non-nil UUID validation across CommentsThreadPort and CommentsService (create, get, update, delete, status transitions, threads); non-nil UUID guard to list_public_comments_for_target and CommentTargetDeletionHandler; all 22 tests pass.
-- [x] **[`crates/modules/rustok-comments-api`](../../crates/modules/rustok-comments-api)** (3 files, 154 LOC) — Public comment traits, thread DTOs, and target binding contracts.
-  - *Audited:* Audited in FS-04.05: verified public comment traits, thread DTOs, and contract invariants.
-- [x] **[`crates/modules/rustok-comments-storefront-support`](../../crates/modules/rustok-comments-storefront-support)** (3 files, 171 LOC) — Storefront comment helper utilities, view-models, and formatting primitives.
-  - *Audited:* Audited in FS-04.05: verified storefront comment integration helpers and DTOs; all 3 tests pass.
+- [ ] **[`crates/modules/rustok-comments`](../../crates/modules/rustok-comments)** (39 files, 9,823 LOC) — Threaded comment trees, author verification, moderation status transitions, target entity lifecycle hooks, and tenant scoping.
+- [ ] **[`crates/modules/rustok-comments-api`](../../crates/modules/rustok-comments-api)** (3 files, 154 LOC) — Public comment traits, thread DTOs, and target binding contracts.
+- [ ] **[`crates/modules/rustok-comments-storefront-support`](../../crates/modules/rustok-comments-storefront-support)** (3 files, 171 LOC) — Storefront comment helper utilities, view-models, and formatting primitives.
 - [ ] **[`crates/modules/rustok-comments/admin`](../../crates/modules/rustok-comments/admin)** (8 files, 1,382 LOC) — FFA admin UI for comment moderation queue, batch approval/deletion, and thread status management.
-- [x] **[`crates/modules/rustok-reactions`](../../crates/modules/rustok-reactions)** (8 files, 2,961 LOC) — Polymorphic emoji reactions, counter aggregation, rate limiting, and target entity lifecycle deletion hooks.
-  - *Audited:* Audited in FS-04.06: enforced non-nil UUID validation across ReactionsService (parse_tenant_id, authorize_actor), reconciliation (authorize_reconciliation), target lifecycle (ReactionTargetDeletionHandler::handle), and GraphQL entrypoints; all 5 unit tests pass.
-- [x] **[`crates/modules/rustok-reactions-api`](../../crates/modules/rustok-reactions-api)** (3 files, 1,262 LOC) — Reaction provider seam contracts, emoji validation rules, and summary DTOs.
-  - *Audited:* Audited in FS-04.06: implemented From<ReactionProviderError> and From<ReactionContractError> for rustok_core::Error; verified provider contracts; all 6 tests pass.
-- [x] **[`crates/modules/rustok-reactions-storefront`](../../crates/modules/rustok-reactions-storefront)** (6 files, 615 LOC) — Storefront UI reaction buttons, emoji picker popup, and animated counter badges.
-  - *Audited:* Audited in FS-04.06: verified storefront reaction rendering components and DTOs; all 7 tests pass.
-- [x] **[`crates/modules/rustok-media`](../../crates/modules/rustok-media)** (44 files, 13,332 LOC) — Media asset storage, file upload pipeline, MIME verification, image variant resizing, CDN URL generation, and translation slots.
-  - *Audited:* Audited in FS-05.01: implemented canonical From<MediaError> for rustok_core::Error; enforced non-nil UUID validation across MediaAssetReadPort, MediaAssetWritePort, parse_tenant_id, REST controllers, and GraphQL queries/mutations; verified all 49 media tests pass.
-- [x] **[`crates/modules/rustok-media-transport`](../../crates/modules/rustok-media-transport)** (6 files, 1,889 LOC) — Media gRPC and REST transport adapters, streaming upload handlers, and ID validation.
-  - *Audited:* Audited in FS-05.01: enforced non-nil UUID validation on parse_id in gRPC server and transport adapters; verified all 12 tests pass.
+- [ ] **[`crates/modules/rustok-reactions`](../../crates/modules/rustok-reactions)** (8 files, 2,961 LOC) — Polymorphic emoji reactions, counter aggregation, rate limiting, and target entity lifecycle deletion hooks.
+- [ ] **[`crates/modules/rustok-reactions-api`](../../crates/modules/rustok-reactions-api)** (3 files, 1,262 LOC) — Reaction provider seam contracts, emoji validation rules, and summary DTOs.
+- [ ] **[`crates/modules/rustok-reactions-storefront`](../../crates/modules/rustok-reactions-storefront)** (6 files, 615 LOC) — Storefront UI reaction buttons, emoji picker popup, and animated counter badges.
+- [ ] **[`crates/modules/rustok-media`](../../crates/modules/rustok-media)** (44 files, 13,332 LOC) — Media asset storage, file upload pipeline, MIME verification, image variant resizing, CDN URL generation, and translation slots.
+- [ ] **[`crates/modules/rustok-media-transport`](../../crates/modules/rustok-media-transport)** (6 files, 1,889 LOC) — Media gRPC and REST transport adapters, streaming upload handlers, and ID validation.
 - [ ] **[`crates/modules/rustok-media/admin`](../../crates/modules/rustok-media/admin)** (10 files, 2,125 LOC) — FFA admin UI media library, file uploader, image cropping, and asset translation editor.
 - [ ] **[`crates/modules/rustok-media/cli`](../../crates/modules/rustok-media/cli)** (1 files, 175 LOC) — CLI tool for bulk asset ingestion, image optimization, and orphaned file cleanup.
-- [x] **[`crates/modules/rustok-moderation`](../../crates/modules/rustok-moderation)** (36 files, 9,292 LOC) — Moderation queue, automated content scanning rules, user reports, case decisions, and penalty enforcement.
-  - *Audited:* Audited in FS-05.02: implemented canonical From for rustok_core::Error across ModerationError, ModerationScopeClaimError, ModerationEffectValidationError, ModerationSubjectAdapterBuildError, ModerationSubjectAdapterRegistryError; enforced non-nil UUID validation across ModerationService, ModerationReadPort, command handlers (case_assign, case_decide), and application recovery; all 27 tests pass.
-- [x] **[`crates/modules/rustok-moderation-api`](../../crates/modules/rustok-moderation-api)** (3 files, 835 LOC) — Moderation public interfaces, scope claims, effect validation, and case decision DTOs.
-  - *Audited:* Audited in FS-05.02: verified moderation public interfaces, scope claims, effect validation, and API contracts; all 5 tests pass.
+- [ ] **[`crates/modules/rustok-moderation`](../../crates/modules/rustok-moderation)** (36 files, 9,292 LOC) — Moderation queue, automated content scanning rules, user reports, case decisions, and penalty enforcement.
+- [ ] **[`crates/modules/rustok-moderation-api`](../../crates/modules/rustok-moderation-api)** (3 files, 835 LOC) — Moderation public interfaces, scope claims, effect validation, and case decision DTOs.
 - [ ] **[`crates/modules/rustok-social-graph`](../../crates/modules/rustok-social-graph)** (36 files, 8,796 LOC) — Follow/unfollow relations, user connections, activity feed fan-out, and social graph queries.
 - [ ] **[`crates/modules/rustok-social-graph-cli`](../../crates/modules/rustok-social-graph-cli)** (1 files, 324 LOC) — CLI commands for social graph integrity inspection and graph rebuilding.
 - [ ] **[`crates/modules/rustok-groups`](../../crates/modules/rustok-groups)** (112 files, 31,917 LOC) — User groups, community memberships, roles (owner/admin/member), group discussions, and access policies.
@@ -450,9 +418,9 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-profiles](../../apps/next-frontend/packages/rustok-profiles) | `apps` | 7 | 780 | None |  |
 | [ ] | [rustok-seo](../../apps/next-frontend/packages/rustok-seo) | `apps` | 5 | 1,459 | None |  |
 | [ ] | [search](../../apps/next-frontend/packages/search) | `apps` | 1 | 681 | None |  |
-| [x] | [server](../../apps/server) | `apps` | 485 | 190,468 | 2026-10-16 | Audited in FS-01: structured fatal logging before otel shutdown, thread floor minimum; graceful shutdown stopping Axum before draining workers, DB pool min/max connection guards, URL authority validation; secret validation forbidding default/sample credentials and dev JWT in production, SQLite fallback prevention; atomic runtime context taking worker handles without loss; background worker drain with tokio::join! and stop broadcast; global route fallback mapping RecordNotFound to 404 and sanitizing DB errors to 500; fail-closed tenant resolution without RFC 9110 smuggling; cross-tenant channel isolation; BCP 47 locale fallback; duplicate Authorization header rejection; rate-limiting structured JSON responses; security headers API CSP; metrics scrape auth with token quote trimming; registry and artifact HTTP policies; constant-time setup token checks in installer; OpenAPI schema method alignment; event bus reference preservation; outbox retention worker fast-pruning; module watchdog monotonicity; settings service secret redaction; RBAC cache invalidation listener with whitespace trimming. |
+| [ ] | [server](../../apps/server) | `apps` | 485 | 190,468 | None |  |
 | [ ] | [storefront](../../apps/storefront) | `apps` | 34 | 5,987 | None |  |
-| [x] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 6 | 903 | 2026-10-16 | Audited in FS-04.03: verified content revision history integration, snapshot diffing, and audit trail invariants. |
+| [ ] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 6 | 903 | None |  |
 | [ ] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,292 | None |  |
 | [ ] | [rustok-content-portability](../../crates/libs/rustok-content-portability) | `libs` | 6 | 617 | None |  |
 | [ ] | [rustok-content-portability-api](../../crates/libs/rustok-content-portability-api) | `libs` | 6 | 920 | None |  |
@@ -475,33 +443,33 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-ai-product](../../crates/modules/rustok-ai-product) | `modules` | 1 | 307 | None |  |
 | [ ] | [rustok-ai-translation](../../crates/modules/rustok-ai-translation) | `modules` | 1 | 1,655 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-ai/admin) | `modules` | 17 | 8,538 | None |  |
-| [x] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 12,952 | 2026-10-16 | Audited in FS-02.04-06: enforced nil UUID validation in access token, OAuth token, and access token decoders; trimmed whitespace in token strings; empty/nil email/tenant guards in password reset, verification, and invite token codecs; safe verify_password oracle leak prevention returning Ok(false); HS256 secret length validation; bootstrap user non-nil checks; custom Debug implementations redacting passwords, tokens, auth codes, and client secrets across all auth commands and DTOs; all 62 unit tests pass. |
+| [ ] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 12,952 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 18 | 6,501 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 1 | 333 | None |  |
-| [x] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 158 | 41,150 | 2026-10-16 | Audited in FS-04.01: registered missing blog.post.scheduled and blog.post.schedule_cancelled schemas and updated contract digests in rustok-events; hardened REST controllers and GraphQL query/mutation entrypoints with non-nil UUID validation; added non-nil UUID validation across domain services (PostService, CategoryService, TagService, PreviewTokenService, CommentService, RBAC helpers); bounded token strings and clamped pagination; verified all 150 unit tests pass, module source layout verified. |
+| [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 158 | 41,150 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 18 | 6,393 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 14 | 3,289 | None |  |
 | [ ] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 22 | 3,399 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 9 | 2,081 | None |  |
-| [x] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 46 | 15,917 | 2026-10-16 | Audited in FS-02.09-10: unified CacheError domain taxonomy in error.rs with Display, Error, and From conversions; Display and Error on CacheInvalidationMessageError; structured debug tracing on load_or_fill, publish_invalidation, and backend client; structured entry tracing in durable invalidation service, policy, consumer, and versioned invalidation; all 180 unit tests pass. |
+| [ ] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 46 | 15,917 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-cache/admin) | `modules` | 7 | 926 | None |  |
-| [x] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 73 | 19,638 | 2026-10-16 | Audited in FS-03.09: enforced non-nil UUID validation for tenant_id, cart_id, line_item_id, channel_id, customer_id, region_id, shipping_option_id across ports, checkout_snapshot, marketplace_snapshot, atomic_checkout_guard, atomic_checkout_port, owner_ports, promotion_guard, guarded_ports; structured debug tracing; all 32 tests pass. |
+| [ ] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 73 | 19,638 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 18 | 4,545 | None |  |
 | [ ] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 47 | 11,368 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 14 | 5,173 | None |  |
-| [x] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 39 | 9,823 | 2026-10-16 | Audited in FS-04.05: implemented canonical From<CommentsError> for rustok_core::Error; enforced non-nil UUID validation across CommentsThreadPort and CommentsService (create, get, update, delete, status transitions, threads); non-nil UUID guard to list_public_comments_for_target and CommentTargetDeletionHandler; all 22 tests pass. |
-| [x] | [rustok-comments-api](../../crates/modules/rustok-comments-api) | `modules` | 3 | 154 | 2026-10-16 | Audited in FS-04.05: verified public comment traits, thread DTOs, and contract invariants. |
-| [x] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | 2026-10-16 | Audited in FS-04.05: verified storefront comment integration helpers and DTOs; all 3 tests pass. |
+| [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 39 | 9,823 | None |  |
+| [ ] | [rustok-comments-api](../../crates/modules/rustok-comments-api) | `modules` | 3 | 154 | None |  |
+| [ ] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 8 | 1,382 | None |  |
-| [x] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 297 | 132,631 | 2026-10-16 | Audited in FS-03.02-08: enforced non-nil UUID validation across complete_checkout, begin, checkpoint, ensure_cart_tenant, ensure_order_tenant, ensure_payment_collection_tenant; stage execution in standard and owner-ports pipelines; inventory reservation journal and payment stages; multi-stage compensation and failure sweeps; marketplace paid and reversal event inboxes, financial reconciliation operators, provider event adapters; fulfillment create-label recovery, returns lifecycle; admin and storefront REST controllers and GraphQL helper scopes; all 214 tests pass. |
-| [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 19 | 1,106 | 2026-10-16 | Audited in FS-03.01: implemented From<CommerceError> for CoreError with mapping to NotFound, Validation, and Forbidden; validate_invariants on PriceInput and AdjustInventoryInput guarding against negative prices and nil UUIDs; trimmed search patterns in product_translation_title_search_condition avoiding redundant full EXISTS subqueries; all 8 tests pass. |
+| [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 297 | 132,631 | None |  |
+| [ ] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 19 | 1,106 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 21 | 5,889 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 16 | 2,022 | None |  |
-| [x] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 45 | 6,014 | 2026-10-16 | Audited in FS-04.03: enforced non-nil UUID guards across CMS content tree, layout schema, block persistence, translation slots, dynamic rendering, and GraphQL entrypoints; implemented canonical From<ContentError> for rustok_core::Error; eliminated panic potential in rich text rendering; proptest created_at preservation; all 64 content tests pass. |
-| [x] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 18 | 3,245 | 2026-10-16 | Audited in FS-04.03: hardened content orchestration bridge (promote_topic_to_post, demote_post_to_topic, split_topic, merge_topics) with non-nil UUID guards and fail-closed tenant-scoped queries/deletions; fixed route resolver to check recorded redirects before live topics and exclude Archived soft-deleted topics; all 4 tests pass. |
+| [ ] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 45 | 6,014 | None |  |
+| [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 18 | 3,245 | None |  |
 | [ ] | [rustok-customer](../../crates/modules/rustok-customer) | `modules` | 26 | 5,273 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-customer/admin) | `modules` | 9 | 2,779 | None |  |
-| [x] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 34 | 15,716 | 2026-10-16 | Audited in FS-03.14: verified distribution routes, split fulfillment manifests, carrier integration ports, and non-nil UUID validation; all 10 tests pass. |
+| [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 34 | 15,716 | None |  |
 | [ ] | [rustok-docs](../../crates/modules/rustok-docs) | `modules` | 21 | 2,957 | None |  |
 | [ ] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 6 | 784 | None |  |
 | [ ] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 9 | 571 | None |  |
@@ -509,10 +477,10 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [next-admin](../../crates/modules/rustok-events-module/next-admin) | `modules` | 6 | 278 | None |  |
 | [ ] | [rustok-forms](../../crates/modules/rustok-forms) | `modules` | 17 | 1,877 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forms/admin) | `modules` | 4 | 274 | None |  |
-| [x] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 628 | 175,016 | 2026-10-16 | Audited in FS-04.02: enforced non-nil UUID validation across TopicService (slug rename, delete, restore), ReplyService (delete, restore), topic routes (redirects, canonical purging), topic fork storage, topic split services, import writer, topic redirect controller; fail-closed tenant scoping with Column::TenantId filters; implemented canonical From<ForumError> for rustok_core::Error; eliminated dead code; all 241 unit tests pass. |
+| [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 628 | 175,016 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 35 | 13,457 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 26 | 7,472 | None |  |
-| [x] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 76 | 26,555 | 2026-10-16 | Audited in FS-03.14: enforced non-nil UUID validation across FulfillmentReadPort, FulfillmentAdminCommandPort, FulfillmentAdminCreateCommandPort, ShippingOptionReadPort, ShippingOptionAdminCommandPort, and public ports; bounded string inputs and clamped pagination; all 163 tests pass. |
+| [ ] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 76 | 26,555 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-fulfillment/admin) | `modules` | 8 | 1,916 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 12 | 1,252 | None |  |
 | [ ] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 112 | 31,917 | None |  |
@@ -524,7 +492,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [next-admin](../../crates/modules/rustok-iggy-connector/next-admin) | `modules` | 5 | 367 | None |  |
 | [ ] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 137 | 58,160 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 9 | 2,912 | None |  |
-| [x] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 13,033 | 2026-10-16 | Audited in FS-03.13: enforced non-nil UUID validation across InventoryReservationPort, InventoryReservationIdentityPort, reservation contexts, InventoryService, public channel inventory projection, and stock location translations; bounded string inputs; structured debug tracing; all 37 tests pass. |
+| [ ] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 13,033 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 10 | 4,750 | None |  |
 | [ ] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 10 | 1,485 | None |  |
 | [ ] | [rustok-marketplace-allocation](../../crates/modules/rustok-marketplace-allocation) | `modules` | 12 | 1,486 | None |  |
@@ -538,14 +506,14 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [admin](../../crates/modules/rustok-marketplace-seller/admin) | `modules` | 13 | 2,387 | None |  |
 | [ ] | [rustok-mcp](../../crates/modules/rustok-mcp) | `modules` | 26 | 6,939 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-mcp/admin) | `modules` | 7 | 1,873 | None |  |
-| [x] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 44 | 13,332 | 2026-10-16 | Audited in FS-05.01: implemented canonical From<MediaError> for rustok_core::Error; enforced non-nil UUID validation across MediaAssetReadPort, MediaAssetWritePort, parse_tenant_id, REST controllers, and GraphQL queries/mutations; verified all 49 media tests pass. |
-| [x] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 6 | 1,889 | 2026-10-16 | Audited in FS-05.01: enforced non-nil UUID validation on parse_id in gRPC server and transport adapters; verified all 12 tests pass. |
+| [ ] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 44 | 13,332 | None |  |
+| [ ] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 6 | 1,889 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-media/admin) | `modules` | 10 | 2,125 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-media/cli) | `modules` | 1 | 175 | None |  |
 | [ ] | [rustok-messenger](../../crates/modules/rustok-messenger) | `modules` | 49 | 6,244 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-messenger/admin) | `modules` | 9 | 1,189 | None |  |
-| [x] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 36 | 9,292 | 2026-10-16 | Audited in FS-05.02: implemented canonical From for rustok_core::Error across ModerationError, ModerationScopeClaimError, ModerationEffectValidationError, ModerationSubjectAdapterBuildError, ModerationSubjectAdapterRegistryError; enforced non-nil UUID validation across ModerationService, ModerationReadPort, command handlers (case_assign, case_decide), and application recovery; all 27 tests pass. |
-| [x] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 835 | 2026-10-16 | Audited in FS-05.02: verified moderation public interfaces, scope claims, effect validation, and API contracts; all 5 tests pass. |
+| [ ] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 36 | 9,292 | None |  |
+| [ ] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 835 | None |  |
 | [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 242 | 131,685 | None |  |
 | [ ] | [rustok-modules-translation](../../crates/modules/rustok-modules-translation) | `modules` | 1 | 822 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 1 | 1,813 | None |  |
@@ -553,11 +521,11 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [storefront](../../crates/modules/rustok-navigation/storefront) | `modules` | 9 | 495 | None |  |
 | [ ] | [rustok-newsletter](../../crates/modules/rustok-newsletter) | `modules` | 23 | 2,474 | None |  |
 | [ ] | [rustok-newsletter-api](../../crates/modules/rustok-newsletter-api) | `modules` | 4 | 445 | None |  |
-| [x] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 75 | 22,202 | 2026-10-16 | Audited in FS-04.04: implemented canonical From<NotificationError> for rustok_core::Error; enforced non-nil UUID guards across GraphQL authenticated_scope (tenant_id and user_id), outbox intake process_outbox_event, candidate processing process_candidate_inner, fan-out service materialize_source_event, process_fanout_page, and fanout worker deferred jobs; all 5 tests pass. |
-| [x] | [rustok-notifications-api](../../crates/modules/rustok-notifications-api) | `modules` | 5 | 1,196 | 2026-10-16 | Audited in FS-04.04: implemented canonical From<NotificationProviderError> for rustok_core::Error; verified notification provider seam contracts and DTOs; all 7 tests pass. |
+| [ ] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 75 | 22,202 | None |  |
+| [ ] | [rustok-notifications-api](../../crates/modules/rustok-notifications-api) | `modules` | 5 | 1,196 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 6 | 127 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 16 | 3,152 | None |  |
-| [x] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 85 | 22,532 | 2026-10-16 | Audited in FS-03.10: enforced non-nil UUID validation across ports, order service state machine transitions, line items, tax lines, checkout identity, recovery, compensation, settlement, admin commands, post-order commands, and reads; structured debug tracing across boundaries; all 14 unit tests pass. |
+| [ ] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 85 | 22,532 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 14 | 2,813 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 12 | 2,171 | None |  |
 | [ ] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 26 | 4,758 | None |  |
@@ -569,10 +537,10 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 191 | 54,667 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 25 | 6,636 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 17 | 4,935 | None |  |
-| [x] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 88 | 24,276 | 2026-10-16 | Audited in FS-03.11: enforced non-nil UUID validation across ports, admin commands/reads, checkout execution/compensation, provider operation/event journals, controllers, and services; bounded pagination parameters; unit tests for non-nil UUID guards and port context validation; all 47 unit tests pass. |
+| [ ] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 88 | 24,276 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 11 | 1,315 | None |  |
-| [x] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 48 | 19,495 | 2026-10-16 | Audited in FS-03.12: enforced non-nil UUID validation across PricingReadPort, PricingWritePort, PriceListOwnerPort, and PricingService; verified currency rounding discipline via money::round_to_currency; unit tests for port context parsing, non-nil UUID guards, and pricing math; all 17 tests pass. |
-| [x] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 328 | 2026-10-16 | Audited in FS-03.12: verified price list entities, tenant-scoped schema constraints, and persistence layer invariants; all 5 tests pass. |
+| [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 48 | 19,495 | None |  |
+| [ ] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 328 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 14 | 7,971 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 10 | 2,487 | None |  |
 | [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 190 | 81,078 | None |  |
@@ -588,12 +556,12 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-profiles-api](../../crates/modules/rustok-profiles-api) | `modules` | 3 | 132 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 9 | 1,463 | None |  |
-| [x] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 56 | 13,518 | 2026-10-16 | Audited in FS-02.07-08: enriched RbacError taxonomy with domain errors and policy conversion; fast-pathed nil tenant_id and user_id to empty permissions in resolve_permissions_*; guarded load_role_user_ids_on against nil tenant_id; non-nil UUID validation on parse_tenant_id and parse_user_actor; bounded maximum check permissions to 100; guarded RbacRoleAssignmentDbWriter against nil IDs; all 82 tests pass. |
+| [ ] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 56 | 13,518 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 8 | 952 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 1 | 243 | None |  |
-| [x] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 8 | 2,961 | 2026-10-16 | Audited in FS-04.06: enforced non-nil UUID validation across ReactionsService (parse_tenant_id, authorize_actor), reconciliation (authorize_reconciliation), target lifecycle (ReactionTargetDeletionHandler::handle), and GraphQL entrypoints; all 5 unit tests pass. |
-| [x] | [rustok-reactions-api](../../crates/modules/rustok-reactions-api) | `modules` | 3 | 1,262 | 2026-10-16 | Audited in FS-04.06: implemented From<ReactionProviderError> and From<ReactionContractError> for rustok_core::Error; verified provider contracts; all 6 tests pass. |
-| [x] | [rustok-reactions-storefront](../../crates/modules/rustok-reactions-storefront) | `modules` | 6 | 615 | 2026-10-16 | Audited in FS-04.06: verified storefront reaction rendering components and DTOs; all 7 tests pass. |
+| [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 8 | 2,961 | None |  |
+| [ ] | [rustok-reactions-api](../../crates/modules/rustok-reactions-api) | `modules` | 3 | 1,262 | None |  |
+| [ ] | [rustok-reactions-storefront](../../crates/modules/rustok-reactions-storefront) | `modules` | 6 | 615 | None |  |
 | [ ] | [rustok-region](../../crates/modules/rustok-region) | `modules` | 39 | 8,566 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-region/admin) | `modules` | 8 | 2,944 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-region/storefront) | `modules` | 9 | 1,738 | None |  |
@@ -611,7 +579,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-social-graph-cli](../../crates/modules/rustok-social-graph-cli) | `modules` | 1 | 324 | None |  |
 | [ ] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 5 | 1,574 | None |  |
 | [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 53 | 14,828 | None |  |
-| [x] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 28 | 4,305 | 2026-10-16 | Audited in FS-02.01-03: added Validation variant to TenantError mapped to PortError::validation; trimmed and validated slug/name in create/ensure/update; fast-pathed empty slug/domain lookups to NotFound; clamped pagination; guarded nil UUIDs in TenantReadSelector::Id and parse_context_tenant_id; trimmed ActiveModel::new; bounded settings array elements to 256; rejected PostgreSQL null bytes in keys/values; float finiteness checks; all 24 tests passed. |
+| [ ] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 28 | 4,305 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 8 | 835 | None |  |
 | [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 81 | 45,996 | None |  |
 | [ ] | [rustok-translation-targets](../../crates/modules/rustok-translation-targets) | `modules` | 3 | 1,729 | None |  |
@@ -683,4 +651,4 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ## Completed Rounds Archive
-_No completed rounds yet. Round 1 is currently in progress._
+- **Round 0 (Exploratory Archive)**: Completed on `2026-10-16T21:30:00Z` (32 components, 210,000 LOC).
