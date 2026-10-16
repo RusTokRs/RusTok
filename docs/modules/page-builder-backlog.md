@@ -188,6 +188,14 @@ Status source of truth per item: the deep audit
    files already lived in `rustok-page-builder`). Cargo verification of the
    move is part of item 1's maintainer run.
 
+9. **Page and Template Builder Unification ([`DECISIONS/2026-10-16-page-and-template-builder-unification.md`](../../DECISIONS/2026-10-16-page-and-template-builder-unification.md)).**
+   Unified canvas, layout slots, reviewed publish closure, and starter preset catalog:
+   - **Phase 1: Reviewed publish closure & layout wiring.** Connect `compose_layout_document` into `PageService::publish_reviewed`. Enforce exact-locale `page_templates` and `site_symbols` composition into monolithic static landing artifacts (`page_static_landing_artifacts`) with optimistic revision CAS. Emit transactional outbox events (`PageTemplateSaved`) to invalidate Next.js ISR tags.
+   - **Phase 2: Fly `<PageContentSlot />` and DocumentKind.** Add `page_content_slot` component in `fly::builtin_blocks` and `project.extensions["flyDocumentKind"]` (`Page`, `LayoutTemplate`, `SectionSymbol`, `StarterPreset`). Enforce invariant of exactly one slot per layout, zero in page bodies.
+   - **Phase 3: Visual Layout Editor & In-Context Page Authoring.** Enable visual layout editing in `rustok-page-builder-admin`. In page editor, render header/footer layout projection as locked/read-only context while keeping the page body editable, persisting strictly the page body components.
+   - **Phase 4: Starter Templates Catalog.** Introduce `page_starters` catalog in `rustok-pages`, New Page template picker modal (Blank vs Library), and deep AST cloning with `UniqueIdGenerator`.
+   Owner: `rustok-page-builder`, `fly`, `rustok-pages`.
+
 ## Rules for this backlog
 
 - New Fly/Page Builder work adds its remaining items here, not in a new plan

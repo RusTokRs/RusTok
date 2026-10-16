@@ -33,7 +33,6 @@ use super::{
     REMOTE_RUNNER_TOKEN_ENV,
 };
 use std::{
-    collections::HashMap,
     env,
     path::{Path, PathBuf},
     sync::{Mutex, MutexGuard, OnceLock},

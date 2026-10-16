@@ -170,7 +170,7 @@ pub enum LandingProjectError {
     PropertyContractInvalid { issue_count: usize },
     #[error("page-builder component registry is incompatible ({issue_count} issue(s))")]
     RegistryIncompatible { issue_count: usize },
-    #[error("page-builder static publish is not ready")]
+    #[error("page-builder static publish is not ready: {blocking_codes:?}")]
     PublishNotReady { blocking_codes: Vec<String> },
     #[error(transparent)]
     Fly(#[from] FlyError),

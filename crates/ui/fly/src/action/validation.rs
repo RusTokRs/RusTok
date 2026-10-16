@@ -263,8 +263,12 @@ pub(super) fn validate_action_contract(
             }),
         ComponentAction::EmitEvent { event, .. } => validate_identifier(event, "event name"),
         ComponentAction::ToggleVisibility { target_id, .. }
-        | ComponentAction::ScrollTo { target_id } => {
+        | ComponentAction::ScrollTo { target_id }
+        | ComponentAction::ToggleAccordion { target_id, .. } => {
             validate_identifier(target_id, "target component id")
+        }
+        ComponentAction::SwitchTab { panel_id } => {
+            validate_identifier(panel_id, "target panel id")
         }
         ComponentAction::Animate {
             target_id,

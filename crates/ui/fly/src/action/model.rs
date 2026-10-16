@@ -71,6 +71,16 @@ pub enum ComponentAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         duration_ms: Option<u32>,
     },
+    /// Switch active tab panel within a tabs group.
+    SwitchTab {
+        panel_id: String,
+    },
+    /// Expand or collapse an accordion item, optionally collapsing sibling items.
+    ToggleAccordion {
+        target_id: String,
+        #[serde(default)]
+        exclusive: bool,
+    },
     ProviderAction {
         provider: String,
         action: String,
@@ -89,6 +99,8 @@ impl ComponentAction {
             Self::ToggleVisibility { .. } => "toggle_visibility",
             Self::ScrollTo { .. } => "scroll_to",
             Self::Animate { .. } => "animate",
+            Self::SwitchTab { .. } => "switch_tab",
+            Self::ToggleAccordion { .. } => "toggle_accordion",
             Self::ProviderAction { .. } => "provider_action",
         }
     }

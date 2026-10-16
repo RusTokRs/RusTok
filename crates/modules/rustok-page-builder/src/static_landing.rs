@@ -135,13 +135,29 @@ where
         .map_err(LandingProjectError::Fly)?;
         match (build.ready, build.artifact) {
             (true, Some(artifact)) => Ok(artifact),
-            _ => Err(LandingProjectError::PublishNotReady {
-                blocking_codes: build
+            _ => {
+                let mut blocking_codes: Vec<String> = build
                     .readiness
                     .blocking_issues()
                     .map(|issue| issue.diagnostic.code.clone())
-                    .collect(),
-            }),
+                    .collect();
+                if !build.registry_compatibility.compatible {
+                    for issue in &build.registry_compatibility.issues {
+                        blocking_codes.push(format!("registry_incompatible: {:?}", issue));
+                    }
+                }
+                if !build.landing_sections.valid {
+                    for issue in &build.landing_sections.issues {
+                        blocking_codes.push(format!("landing_sections_invalid: {:?}", issue));
+                    }
+                }
+                if !build.landing_properties.valid {
+                    for issue in &build.landing_properties.issues {
+                        blocking_codes.push(format!("landing_properties_invalid: {:?}", issue));
+                    }
+                }
+                Err(LandingProjectError::PublishNotReady { blocking_codes })
+            }
         }
     }
 

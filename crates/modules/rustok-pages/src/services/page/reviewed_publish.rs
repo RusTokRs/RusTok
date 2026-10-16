@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use chrono::Utc;
 use rustok_api::{Action, Resource};
@@ -24,11 +24,11 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::dto::{PageBodyRevisionInput, PublishPageInput, PublishPageResult};
-use crate::entities::{page, page_builder_scenario_baseline, page_publish_operation};
+use crate::entities::{page, page_builder_scenario_baseline, page_publish_operation, page_template};
 use crate::error::{PagesError, PagesResult};
-use crate::services::PageBuilderArtifactService;
 use crate::services::page_builder_artifact::CompiledLandingArtifact;
 use crate::services::rbac::enforce_owned_scope;
+use crate::services::{PageBuilderArtifactService, PageTemplateRecord};
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
 use super::document::document_revision_conflict;
@@ -124,15 +124,47 @@ impl PageService {
 
         let builder_sources =
             require_builder_sources(collect_builder_sources(&current_bodies, None, true))?;
-        // Site symbols resolve freshly at publish: the stored catalog wins over
+        // Layout templates and site symbols resolve freshly at publish: the stored catalogs win over
         // each body's embedded working copy, and every instance expands into its
         // definition before sanitization so re-publishing re-issues occurrences.
         let site_symbols = super::symbols::load_site_symbols_by_locale(&txn, tenant_id).await?;
+        let template_records = if existing_page.template.is_empty()
+            || existing_page.template == "default"
+        {
+            HashMap::new()
+        } else {
+            let rows = page_template::Entity::find()
+                .filter(page_template::Column::TenantId.eq(tenant_id))
+                .filter(page_template::Column::TemplateKey.eq(&existing_page.template))
+                .all(&txn)
+                .await?;
+            let mut by_locale = HashMap::new();
+            for row in rows {
+                let record = PageTemplateRecord::try_from(row)?;
+                by_locale.insert(record.locale.clone(), record);
+            }
+            by_locale
+        };
         let mut builder_sources = builder_sources;
         for (locale, content) in builder_sources.iter_mut() {
             let symbols = site_symbols.get(locale).cloned().unwrap_or_default();
             super::symbols::assert_reviewed_symbol_snapshot(content, &symbols)?;
-            *content = super::symbols::apply_site_symbols_to_content(content, &symbols)?;
+            if existing_page.template.is_empty() || existing_page.template == "default" {
+                *content = super::symbols::apply_site_symbols_to_content(content, &symbols)?;
+            } else {
+                let template_record = template_records.get(locale).ok_or_else(|| {
+                    PagesError::validation(format!(
+                        "Page template `{}` is not defined for locale `{}`",
+                        existing_page.template, locale
+                    ))
+                })?;
+                *content = super::layout::compose_layout_document(
+                    content,
+                    &template_record.header_symbol_ids,
+                    &template_record.footer_symbol_ids,
+                    &symbols,
+                )?;
+            }
         }
         let project_values = parse_builder_project_values(&builder_sources)?;
         ensure_builder_publish_enabled_in_tx(&txn, tenant_id).await?;

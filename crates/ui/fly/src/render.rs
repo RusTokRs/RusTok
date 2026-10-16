@@ -387,8 +387,12 @@ fn collect_action_targets(node: &ComponentNode, targets: &mut std::collections::
         match action {
             crate::ComponentAction::ToggleVisibility { target_id, .. }
             | crate::ComponentAction::ScrollTo { target_id }
-            | crate::ComponentAction::Animate { target_id, .. } => {
+            | crate::ComponentAction::Animate { target_id, .. }
+            | crate::ComponentAction::ToggleAccordion { target_id, .. } => {
                 targets.insert(target_id);
+            }
+            crate::ComponentAction::SwitchTab { panel_id } => {
+                targets.insert(panel_id);
             }
             _ => {}
         }
@@ -806,7 +810,7 @@ fn safe_tag(component: &ComponentObject) -> &'static str {
         .as_deref()
         .unwrap_or_else(|| match component.component_type() {
             "wrapper" | "container" | "row" | "column" | "grid" | "spacer" | "symbol"
-            | "product_price" => "div",
+            | "product_price" | "tabs" | "accordion" => "div",
             "section" | "product_grid" | "pricing_table" => "section",
             "heading" => "h2",
             "text" => "p",

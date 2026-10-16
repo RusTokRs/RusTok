@@ -22,6 +22,8 @@ fn action_runtime_handles_every_custom_action_kind() {
         "emit_event",
         "provider_action",
         "toggle_visibility",
+        "switch_tab",
+        "toggle_accordion",
         "scroll_to",
     ] {
         assert_contains(&format!("case \"{kind}\""));
@@ -41,6 +43,23 @@ fn action_runtime_keeps_aria_state_in_sync_for_toggles() {
     assert_contains("element.setAttribute(\"aria-expanded\", willShow ? \"true\" : \"false\")");
     assert_contains("target.setAttribute(\"aria-hidden\", willShow ? \"false\" : \"true\")");
     assert_contains("target.hidden = !willShow");
+}
+
+#[test]
+fn action_runtime_handles_tab_switching_and_aria_selected() {
+    assert_contains("switchTab");
+    assert_contains("tab.setAttribute(\"aria-selected\", isCurrent ? \"true\" : \"false\")");
+    assert_contains("tab.classList.add(\"is-active\")");
+    assert_contains("panel.hidden = !isTarget");
+    assert_contains("panel.setAttribute(\"aria-hidden\", isTarget ? \"false\" : \"true\")");
+}
+
+#[test]
+fn action_runtime_handles_accordion_toggling_and_exclusive_mode() {
+    assert_contains("toggleAccordion");
+    assert_contains("action.exclusive !== false");
+    assert_contains("element.setAttribute(\"aria-expanded\", willExpand ? \"true\" : \"false\")");
+    assert_contains("otherTrigger.setAttribute(\"aria-expanded\", \"false\")");
 }
 
 #[test]
@@ -75,3 +94,4 @@ fn runtime_finds_targets_in_published_and_instrumented_renders() {
     assert_contains("root.getElementById(targetId)");
     assert_contains("[data-fly-component-id=\"");
 }
+

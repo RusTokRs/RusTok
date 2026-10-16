@@ -17,6 +17,7 @@ impl ContentQuery {
         ctx: &Context<'_>,
         route: String,
         locale: String,
+    ) -> Result<Option<ResolvedCanonicalRoute>> {
         let resolver = ctx.data::<SharedCanonicalRouteResolver>()?;
         let tenant = ctx.data::<TenantContext>()?;
         if tenant.id.is_nil() {

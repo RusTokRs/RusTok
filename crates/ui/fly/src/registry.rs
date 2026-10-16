@@ -71,6 +71,8 @@ fn validate_registry_id(id: &str) -> FlyResult<()> {
         "button",
         "divider",
         "spacer",
+        "tabs",
+        "accordion",
         "form",
         "label",
         "input",
@@ -310,6 +312,8 @@ pub fn builtin_component_definitions() -> Vec<ComponentDefinition> {
                     | "row"
                     | "column"
                     | "grid"
+                    | "tabs"
+                    | "accordion"
                     | "media"
                     | "form"
                     | "symbol"
@@ -386,6 +390,8 @@ fn builtin_component_ids() -> Vec<&'static str> {
         "button",
         "divider",
         "spacer",
+        "tabs",
+        "accordion",
         "form",
         "label",
         "input",
@@ -790,6 +796,171 @@ fn builtin_component_template(id: &str) -> ComponentNode {
                 }
             ]
         }),
+        "tabs" => json!({
+            "type": "tabs",
+            "tagName": "div",
+            "style": { "display": "flex", "flex-direction": "column", "gap": "16px", "width": "100%" },
+            "components": [
+                {
+                    "type": "container",
+                    "tagName": "div",
+                    "attributes": { "role": "tablist", "aria-label": "Content tabs" },
+                    "style": { "display": "flex", "gap": "8px", "border-bottom": "1px solid #e2e8f0", "padding-bottom": "8px" },
+                    "components": [
+                        {
+                            "type": "button",
+                            "tagName": "button",
+                            "content": "Tab 1",
+                            "attributes": { "type": "button", "role": "tab", "aria-selected": "true", "data-fly-tab-target": "tab-panel-1" },
+                            "flyAction": { "kind": "switch_tab", "panel_id": "tab-panel-1" },
+                            "style": {
+                                "padding": "8px 16px",
+                                "border": "0",
+                                "border-radius": "8px",
+                                "background": "#2563eb",
+                                "color": "#ffffff",
+                                "font-size": "14px",
+                                "font-weight": "600",
+                                "cursor": "pointer"
+                            }
+                        },
+                        {
+                            "type": "button",
+                            "tagName": "button",
+                            "content": "Tab 2",
+                            "attributes": { "type": "button", "role": "tab", "aria-selected": "false", "data-fly-tab-target": "tab-panel-2" },
+                            "flyAction": { "kind": "switch_tab", "panel_id": "tab-panel-2" },
+                            "style": {
+                                "padding": "8px 16px",
+                                "border": "0",
+                                "border-radius": "8px",
+                                "background": "transparent",
+                                "color": "#64748b",
+                                "font-size": "14px",
+                                "font-weight": "600",
+                                "cursor": "pointer"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "container",
+                    "tagName": "div",
+                    "attributes": { "id": "tab-panel-1", "role": "tabpanel", "aria-hidden": "false" },
+                    "style": { "padding": "12px 0" },
+                    "components": [
+                        {
+                            "type": "text",
+                            "content": "Content for the first tab panel goes here.",
+                            "style": { "font-size": "15px", "line-height": "1.6", "color": "#334155" }
+                        }
+                    ]
+                },
+                {
+                    "type": "container",
+                    "tagName": "div",
+                    "attributes": { "id": "tab-panel-2", "role": "tabpanel", "aria-hidden": "true", "hidden": "hidden" },
+                    "style": { "padding": "12px 0", "display": "none" },
+                    "components": [
+                        {
+                            "type": "text",
+                            "content": "Content for the second tab panel goes here.",
+                            "style": { "font-size": "15px", "line-height": "1.6", "color": "#334155" }
+                        }
+                    ]
+                }
+            ]
+        }),
+        "accordion" => json!({
+            "type": "accordion",
+            "tagName": "div",
+            "attributes": { "data-fly-accordion": "true" },
+            "style": { "display": "flex", "flex-direction": "column", "gap": "12px", "width": "100%" },
+            "components": [
+                {
+                    "type": "container",
+                    "tagName": "div",
+                    "style": { "border": "1px solid #e2e8f0", "border-radius": "12px", "overflow": "hidden" },
+                    "components": [
+                        {
+                            "type": "button",
+                            "tagName": "button",
+                            "content": "Frequently asked question #1",
+                            "attributes": { "type": "button", "aria-expanded": "true" },
+                            "flyAction": { "kind": "toggle_accordion", "target_id": "faq-answer-1", "exclusive": true },
+                            "style": {
+                                "display": "flex",
+                                "width": "100%",
+                                "justify-content": "space-between",
+                                "align-items": "center",
+                                "padding": "16px 20px",
+                                "background": "#f8fafc",
+                                "border": "0",
+                                "font-size": "15px",
+                                "font-weight": "600",
+                                "color": "#0f172a",
+                                "cursor": "pointer",
+                                "text-align": "left"
+                            }
+                        },
+                        {
+                            "type": "container",
+                            "tagName": "div",
+                            "attributes": { "id": "faq-answer-1", "role": "region", "aria-hidden": "false" },
+                            "style": { "padding": "16px 20px", "background": "#ffffff" },
+                            "components": [
+                                {
+                                    "type": "text",
+                                    "content": "Here is the clear and helpful answer for the first question.",
+                                    "style": { "font-size": "14px", "line-height": "1.6", "color": "#475569" }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "container",
+                    "tagName": "div",
+                    "style": { "border": "1px solid #e2e8f0", "border-radius": "12px", "overflow": "hidden" },
+                    "components": [
+                        {
+                            "type": "button",
+                            "tagName": "button",
+                            "content": "Frequently asked question #2",
+                            "attributes": { "type": "button", "aria-expanded": "false" },
+                            "flyAction": { "kind": "toggle_accordion", "target_id": "faq-answer-2", "exclusive": true },
+                            "style": {
+                                "display": "flex",
+                                "width": "100%",
+                                "justify-content": "space-between",
+                                "align-items": "center",
+                                "padding": "16px 20px",
+                                "background": "#f8fafc",
+                                "border": "0",
+                                "font-size": "15px",
+                                "font-weight": "600",
+                                "color": "#0f172a",
+                                "cursor": "pointer",
+                                "text-align": "left"
+                            }
+                        },
+                        {
+                            "type": "container",
+                            "tagName": "div",
+                            "attributes": { "id": "faq-answer-2", "role": "region", "aria-hidden": "true", "hidden": "hidden" },
+                            "style": { "padding": "16px 20px", "background": "#ffffff", "display": "none" },
+                            "components": [
+                                {
+                                    "type": "text",
+                                    "content": "Here is the clear and helpful answer for the second question.",
+                                    "style": { "font-size": "14px", "line-height": "1.6", "color": "#475569" }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }),
         _ => json!({ "type": id }),
     };
     serde_json::from_value(value).expect("built-in block templates use valid component JSON")
@@ -1060,6 +1231,8 @@ fn builtin_block_label(id: &str) -> String {
         "product_price" => "Product price".to_string(),
         "cart_button" => "Cart widget button".to_string(),
         "pricing_table" => "Pricing table".to_string(),
+        "tabs" => "Tabs".to_string(),
+        "accordion" => "Accordion (FAQ)".to_string(),
         _ => humanize_id(id),
     }
 }
@@ -1068,6 +1241,7 @@ fn builtin_category(id: &str) -> &'static str {
     match id {
         "section" | "container" | "row" | "column" | "grid" | "divider" | "spacer" => "layout",
         "image" | "video" | "media" | "embed" => "media",
+        "tabs" | "accordion" => "interactive",
         "form" | "input" | "textarea" | "select" | "checkbox" | "submit" => "forms",
         "raw_html" => "advanced",
         "product_card" | "product_grid" | "product_price" | "cart_button" | "pricing_table" => {
@@ -1130,4 +1304,24 @@ mod tests {
         assert!(registries.accepts_child_type(Some("select"), "option"));
         assert!(registries.accepts_child_type(Some("form"), "input"));
     }
+
+    #[test]
+    fn interactive_blocks_are_registered_and_have_interactive_category() {
+        let blocks = builtin_blocks();
+        for id in ["tabs", "accordion"] {
+            let block = blocks
+                .iter()
+                .find(|b| b.id == id)
+                .unwrap_or_else(|| panic!("expected block {id} to exist"));
+            assert_eq!(block.category, "interactive");
+            let root = block.component.as_object().expect("block root is object");
+            assert!(!root.component_type().is_empty());
+            assert!(!root.children().is_empty());
+        }
+        let registries = RegistrySet::with_builtins();
+        assert!(registries.accepts_child_type(Some("tabs"), "button"));
+        assert!(registries.accepts_child_type(Some("tabs"), "container"));
+        assert!(registries.accepts_child_type(Some("accordion"), "container"));
+    }
 }
+

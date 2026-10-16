@@ -228,16 +228,19 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 
 | Status | Component | Category | Files | LOC | Last Audited | Notes |
 |:---:|---|---|---:|---:|---|---|
-| [ ] | [admin](../../apps/admin) | `apps` | 116 | 26,430 | None |  |
+| [ ] | [admin](../../apps/admin) | `apps` | 116 | 26,837 | None |  |
 | [ ] | [dioxus-admin](../../apps/dioxus-admin) | `apps` | 1 | 13 | None |  |
-| [ ] | [next-admin](../../apps/next-admin) | `apps` | 520 | 81,193 | None |  |
-| [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 14 | 1,909 | None |  |
+| [ ] | [next-admin](../../apps/next-admin) | `apps` | 540 | 82,499 | None |  |
+| [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 15 | 2,122 | None |  |
 | [ ] | [cache](../../apps/next-admin/packages/cache) | `apps` | 6 | 478 | None |  |
 | [ ] | [commerce](../../apps/next-admin/packages/commerce) | `apps` | 11 | 2,737 | None |  |
 | [ ] | [email](../../apps/next-admin/packages/email) | `apps` | 5 | 291 | None |  |
 | [ ] | [events](../../apps/next-admin/packages/events) | `apps` | 6 | 350 | None |  |
+| [ ] | [forms](../../apps/next-admin/packages/forms) | `apps` | 5 | 215 | None |  |
 | [ ] | [forum](../../apps/next-admin/packages/forum) | `apps` | 19 | 4,844 | None |  |
 | [ ] | [iggy-connector](../../apps/next-admin/packages/iggy-connector) | `apps` | 5 | 367 | None |  |
+| [ ] | [media](../../apps/next-admin/packages/media) | `apps` | 5 | 246 | None |  |
+| [ ] | [pages](../../apps/next-admin/packages/pages) | `apps` | 6 | 470 | None |  |
 | [ ] | [rbac](../../apps/next-admin/packages/rbac) | `apps` | 13 | 2,155 | None |  |
 | [ ] | [rustok-ai](../../apps/next-admin/packages/rustok-ai) | `apps` | 1 | 4,055 | None |  |
 | [ ] | [rustok-mcp](../../apps/next-admin/packages/rustok-mcp) | `apps` | 1 | 1,050 | None |  |
@@ -245,34 +248,36 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [search](../../apps/next-admin/packages/search) | `apps` | 1 | 2,926 | None |  |
 | [ ] | [translation](../../apps/next-admin/packages/translation) | `apps` | 4 | 5,449 | None |  |
 | [ ] | [workflow](../../apps/next-admin/packages/workflow) | `apps` | 13 | 1,529 | None |  |
-| [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 134 | 22,793 | None |  |
+| [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 151 | 24,872 | None |  |
 | [ ] | [rustok-blog](../../apps/next-frontend/packages/rustok-blog) | `apps` | 16 | 1,678 | None |  |
 | [ ] | [rustok-cart](../../apps/next-frontend/packages/rustok-cart) | `apps` | 7 | 2,142 | None |  |
 | [ ] | [rustok-comments](../../apps/next-frontend/packages/rustok-comments) | `apps` | 2 | 123 | None |  |
-| [ ] | [rustok-forum](../../apps/next-frontend/packages/rustok-forum) | `apps` | 15 | 3,593 | None |  |
+| [ ] | [rustok-forum](../../apps/next-frontend/packages/rustok-forum) | `apps` | 20 | 4,414 | None |  |
 | [ ] | [rustok-notifications](../../apps/next-frontend/packages/rustok-notifications) | `apps` | 7 | 916 | None |  |
 | [ ] | [rustok-order](../../apps/next-frontend/packages/rustok-order) | `apps` | 5 | 1,361 | None |  |
+| [ ] | [rustok-pages](../../apps/next-frontend/packages/rustok-pages) | `apps` | 8 | 801 | None |  |
 | [ ] | [rustok-pricing](../../apps/next-frontend/packages/rustok-pricing) | `apps` | 7 | 904 | None |  |
 | [ ] | [rustok-product](../../apps/next-frontend/packages/rustok-product) | `apps` | 10 | 2,252 | None |  |
 | [ ] | [rustok-profiles](../../apps/next-frontend/packages/rustok-profiles) | `apps` | 7 | 780 | None |  |
 | [ ] | [rustok-seo](../../apps/next-frontend/packages/rustok-seo) | `apps` | 5 | 1,459 | None |  |
 | [ ] | [search](../../apps/next-frontend/packages/search) | `apps` | 1 | 681 | None |  |
-| [x] | [server](../../apps/server) | `apps` | 484 | 187,425 | 2026-10-14 | Completed all 33 audit tracks in Phase FS-01 |
+| [ ] | [server](../../apps/server) | `apps` | 485 | 190,468 | None |  |
 | [ ] | [storefront](../../apps/storefront) | `apps` | 34 | 5,987 | None |  |
 | [ ] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 6 | 903 | None |  |
-| [ ] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,230 | None |  |
+| [ ] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,292 | None |  |
 | [ ] | [rustok-content-portability](../../crates/libs/rustok-content-portability) | `libs` | 6 | 617 | None |  |
 | [ ] | [rustok-content-portability-api](../../crates/libs/rustok-content-portability-api) | `libs` | 6 | 920 | None |  |
-| [ ] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 65 | 17,586 | None |  |
-| [ ] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 34 | 12,066 | None |  |
+| [ ] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 65 | 17,627 | None |  |
+| [ ] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 34 | 12,081 | None |  |
 | [ ] | [rustok-fba](../../crates/libs/rustok-fba) | `libs` | 1 | 82 | None |  |
+| [ ] | [rustok-manifest](../../crates/libs/rustok-manifest) | `libs` | 6 | 832 | None |  |
 | [ ] | [rustok-runtime](../../crates/libs/rustok-runtime) | `libs` | 4 | 2,423 | None |  |
 | [ ] | [rustok-telemetry](../../crates/libs/rustok-telemetry) | `libs` | 15 | 3,340 | None |  |
 | [ ] | [rustok-web](../../crates/libs/rustok-web) | `libs` | 2 | 742 | None |  |
 | [ ] | [alloy](../../crates/modules/alloy) | `modules` | 77 | 25,206 | None |  |
 | [ ] | [flex](../../crates/modules/flex) | `modules` | 51 | 17,159 | None |  |
 | [ ] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 13 | 417 | None |  |
-| [ ] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 74 | 42,424 | None |  |
+| [ ] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 74 | 42,418 | None |  |
 | [ ] | [rustok-ai-alloy](../../crates/modules/rustok-ai-alloy) | `modules` | 1 | 384 | None |  |
 | [ ] | [rustok-ai-athanor](../../crates/modules/rustok-ai-athanor) | `modules` | 2 | 548 | None |  |
 | [ ] | [rustok-ai-content](../../crates/modules/rustok-ai-content) | `modules` | 1 | 326 | None |  |
@@ -281,43 +286,44 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-ai-product](../../crates/modules/rustok-ai-product) | `modules` | 1 | 307 | None |  |
 | [ ] | [rustok-ai-translation](../../crates/modules/rustok-ai-translation) | `modules` | 1 | 1,655 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-ai/admin) | `modules` | 17 | 8,538 | None |  |
-| [x] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 12,368 | 2026-10-15 | Completed all 3 audit tracks in Phase FS-02 (credentials/JWT, config/bootstrap, admin mutations & rest) |
+| [ ] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 12,952 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 18 | 6,501 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 1 | 333 | None |  |
-| [x] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 148 | 35,732 | 2026-10-16 | Completed Phase FS-04.01 (blog posts, categories, tags, preview tokens, comments, non-nil UUID guards, entry tracing & schema registration) |
-| [ ] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 16 | 5,248 | None |  |
+| [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 158 | 41,150 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 18 | 6,393 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 14 | 3,289 | None |  |
 | [ ] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 22 | 3,399 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 9 | 2,081 | None |  |
-| [x] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 45 | 15,736 | 2026-10-15 | Completed all 2 audit tracks in Phase FS-02 (cache service/error taxonomy, invalidation/stampede protection) |
+| [ ] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 46 | 15,917 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-cache/admin) | `modules` | 7 | 926 | None |  |
-| [x] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 73 | 18,625 | 2026-10-15 | Completed cart lifecycle, port boundaries nil UUID guards, entry tracing & validation tests in Phase FS-03.09 |
+| [ ] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 73 | 19,638 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 18 | 4,545 | None |  |
 | [ ] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 47 | 11,368 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 14 | 5,173 | None |  |
-| [x] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 39 | 9,622 | 2026-10-16 | Completed Phase FS-04.05 (non-nil UUID guards across ports & services, public read, lifecycle handler, From<CommentsError> for rustok_core::Error) |
-| [x] | [rustok-comments-api](../../crates/modules/rustok-comments-api) | `modules` | 3 | 154 | 2026-10-16 | Completed Phase FS-04.05 (CommentsThreadPort contract, verified compilation and gatekeeper) |
-| [x] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | 2026-10-16 | Completed Phase FS-04.05 (FFA separation, verified all 3 core unit tests and gatekeeper) |
+| [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 39 | 9,823 | None |  |
+| [ ] | [rustok-comments-api](../../crates/modules/rustok-comments-api) | `modules` | 3 | 154 | None |  |
+| [ ] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 8 | 1,382 | None |  |
-| [x] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 297 | 129,394 | 2026-10-15 | Completed audit tracks FS-03.02 - FS-03.08 (checkout pipeline, stage pipeline, inventory/payment, compensation, marketplace, fulfillment, controllers/graphql) |
-| [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 19 | 929 | 2026-10-15 | Completed audit track FS-03.01 (error taxonomy, DTO invariant validation, search condition trimming) |
+| [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 297 | 132,631 | None |  |
+| [ ] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 19 | 1,106 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 21 | 5,889 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 16 | 2,022 | None |  |
-| [ ] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 45 | 5,878 | None |  |
-| [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 18 | 3,020 | None |  |
+| [ ] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 45 | 6,014 | None |  |
+| [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 18 | 3,245 | None |  |
 | [ ] | [rustok-customer](../../crates/modules/rustok-customer) | `modules` | 26 | 5,273 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-customer/admin) | `modules` | 9 | 2,779 | None |  |
-| [x] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 34 | 15,714 | 2026-10-16 | Completed distribution compilation, runtime extensions and index bridge composition in Phase FS-03.14 |
+| [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 34 | 15,716 | None |  |
 | [ ] | [rustok-docs](../../crates/modules/rustok-docs) | `modules` | 21 | 2,957 | None |  |
 | [ ] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 6 | 784 | None |  |
 | [ ] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 9 | 571 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 8 | 508 | None |  |
+| [ ] | [next-admin](../../crates/modules/rustok-events-module/next-admin) | `modules` | 6 | 278 | None |  |
 | [ ] | [rustok-forms](../../crates/modules/rustok-forms) | `modules` | 17 | 1,877 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forms/admin) | `modules` | 4 | 274 | None |  |
-| [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 620 | 170,498 | None |  |
+| [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 628 | 175,016 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 35 | 13,457 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 26 | 7,437 | None |  |
-| [x] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 76 | 26,191 | 2026-10-16 | Completed port boundaries non-nil UUID guards, bound validation & entry debug tracing in Phase FS-03.14 |
+| [ ] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 26 | 7,472 | None |  |
+| [ ] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 76 | 26,555 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-fulfillment/admin) | `modules` | 8 | 1,916 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 12 | 1,252 | None |  |
 | [ ] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 112 | 31,917 | None |  |
@@ -326,14 +332,16 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-iggy](../../crates/modules/rustok-iggy) | `modules` | 32 | 8,270 | None |  |
 | [ ] | [rustok-iggy-connector](../../crates/modules/rustok-iggy-connector) | `modules` | 17 | 4,593 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-iggy-connector/admin) | `modules` | 8 | 614 | None |  |
+| [ ] | [next-admin](../../crates/modules/rustok-iggy-connector/next-admin) | `modules` | 5 | 367 | None |  |
 | [ ] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 137 | 58,160 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 9 | 2,912 | None |  |
-| [x] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 12,536 | 2026-10-15 | Completed stock allocation, reservation leases, non-nil UUID guards & entry tracing in Phase FS-03.13 |
+| [ ] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 13,033 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 10 | 4,750 | None |  |
 | [ ] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 10 | 1,485 | None |  |
 | [ ] | [rustok-marketplace-allocation](../../crates/modules/rustok-marketplace-allocation) | `modules` | 12 | 1,486 | None |  |
 | [ ] | [rustok-marketplace-balance](../../crates/modules/rustok-marketplace-balance) | `modules` | 29 | 6,779 | None |  |
 | [ ] | [rustok-marketplace-commission](../../crates/modules/rustok-marketplace-commission) | `modules` | 16 | 2,662 | None |  |
+| [ ] | [rustok-marketplace-ledger](../../crates/modules/rustok-marketplace-ledger) | `modules` | 28 | 6,426 | None |  |
 | [ ] | [rustok-marketplace-listing](../../crates/modules/rustok-marketplace-listing) | `modules` | 31 | 6,455 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-marketplace-listing/admin) | `modules` | 9 | 1,911 | None |  |
 | [ ] | [rustok-marketplace-payout](../../crates/modules/rustok-marketplace-payout) | `modules` | 13 | 1,702 | None |  |
@@ -341,38 +349,41 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [admin](../../crates/modules/rustok-marketplace-seller/admin) | `modules` | 13 | 2,387 | None |  |
 | [ ] | [rustok-mcp](../../crates/modules/rustok-mcp) | `modules` | 26 | 6,939 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-mcp/admin) | `modules` | 7 | 1,873 | None |  |
-| [x] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 44 | 13,117 | 2026-10-16 | Implemented canonical From<MediaError> for rustok_core::Error, non-nil UUID guards across ports, controllers, and GraphQL |
-| [x] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 6 | 1,882 | 2026-10-16 | Enforced non-nil UUID validation on gRPC server parse_id and verified client/server framing |
+| [ ] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 44 | 13,332 | None |  |
+| [ ] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 6 | 1,889 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-media/admin) | `modules` | 10 | 2,125 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-media/cli) | `modules` | 1 | 175 | None |  |
-| [x] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 36 | 9,132 | 2026-10-16 | Completed Phase FS-05.02 (From<ModerationError> for rustok_core::Error, non-nil UUID guards across service, ports, commands, and application recovery) |
-| [x] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 766 | 2026-10-16 | Completed Phase FS-05.02 (From conversions for adapter build, registry, and scope claim errors to rustok_core::Error with unit tests) |
-| [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 242 | 131,456 | None |  |
+| [ ] | [rustok-messenger](../../crates/modules/rustok-messenger) | `modules` | 49 | 6,244 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-messenger/admin) | `modules` | 9 | 1,189 | None |  |
+| [ ] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 36 | 9,292 | None |  |
+| [ ] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 835 | None |  |
+| [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 242 | 131,685 | None |  |
 | [ ] | [rustok-modules-translation](../../crates/modules/rustok-modules-translation) | `modules` | 1 | 822 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 1 | 1,813 | None |  |
 | [ ] | [rustok-navigation](../../crates/modules/rustok-navigation) | `modules` | 40 | 5,286 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-navigation/storefront) | `modules` | 9 | 495 | None |  |
 | [ ] | [rustok-newsletter](../../crates/modules/rustok-newsletter) | `modules` | 23 | 2,474 | None |  |
 | [ ] | [rustok-newsletter-api](../../crates/modules/rustok-newsletter-api) | `modules` | 4 | 445 | None |  |
-| [x] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 75 | 22,126 | 2026-10-16 | Completed Phase FS-04.04 (non-nil UUID guards, outbox intake, candidate processing, fan-out workers, and From<NotificationError> for rustok_core::Error) |
-| [x] | [rustok-notifications-api](../../crates/modules/rustok-notifications-api) | `modules` | 5 | 1,166 | 2026-10-16 | Completed Phase FS-04.04 (canonical From<NotificationProviderError> for rustok_core::Error and unit test) |
+| [ ] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 75 | 22,202 | None |  |
+| [ ] | [rustok-notifications-api](../../crates/modules/rustok-notifications-api) | `modules` | 5 | 1,196 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 6 | 127 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 16 | 3,152 | None |  |
-| [x] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 85 | 21,547 | 2026-10-15 | Completed Phase FS-03.10 (state machine transitions, ports, checkout identity, post-order commands & nil UUID guards) |
+| [ ] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 85 | 22,532 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 14 | 2,813 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 12 | 2,171 | None |  |
 | [ ] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 26 | 4,758 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-outbox/admin) | `modules` | 8 | 493 | None |  |
-| [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 108 | 30,260 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 74 | 20,424 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-page-builder/storefront) | `modules` | 3 | 1,200 | None |  |
-| [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 189 | 53,554 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 25 | 6,626 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 17 | 4,732 | None |  |
-| [x] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 88 | 23,137 | 2026-10-15 | Enforced non-nil UUID validation, structured entry debug tracing, bounded pagination, added unit tests |
+| [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 116 | 35,813 | None |  |
+| [ ] | [rustok-page-builder-storefront](../../crates/modules/rustok-page-builder-storefront) | `modules` | 3 | 1,200 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 66 | 19,006 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-page-builder/storefront) | `modules` | 3 | 1,633 | None |  |
+| [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 189 | 53,769 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 25 | 6,636 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 17 | 4,935 | None |  |
+| [ ] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 88 | 24,276 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 11 | 1,315 | None |  |
-| [x] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 48 | 19,082 | 2026-10-15 | Enforced non-nil UUID validation, structured entry debug tracing, price resolution rules, added unit tests |
-| [x] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 204 | 2026-10-15 | Verified bootstrap price invariants, nil UUID guards, negative amount guards, fmt and clippy clean |
+| [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 48 | 19,495 | None |  |
+| [ ] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 328 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 14 | 7,971 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 10 | 2,487 | None |  |
 | [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 190 | 81,078 | None |  |
@@ -388,20 +399,21 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-profiles-api](../../crates/modules/rustok-profiles-api) | `modules` | 3 | 132 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 9 | 1,463 | None |  |
-| [x] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 56 | 13,098 | 2026-10-15 | Completed all 2 audit tracks in Phase FS-02 (rbac service/error taxonomy, entities/ports & bootstrap) |
-| [ ] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 8 | 970 | None |  |
+| [ ] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 56 | 13,518 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 8 | 952 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 1 | 243 | None |  |
-| [x] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 8 | 2,925 | 2026-10-16 | Enforced non-nil UUID guards in service, reconciliation, target lifecycle, and GraphQL |
-| [x] | [rustok-reactions-api](../../crates/modules/rustok-reactions-api) | `modules` | 3 | 1,222 | 2026-10-16 | Implemented From<ReactionProviderError> and From<ReactionContractError> for rustok_core::Error with unit tests |
-| [x] | [rustok-reactions-storefront](../../crates/modules/rustok-reactions-storefront) | `modules` | 6 | 615 | 2026-10-16 | Verified FFA clean boundaries, non-nil UUIDs, and i18n catalogs |
+| [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 8 | 2,961 | None |  |
+| [ ] | [rustok-reactions-api](../../crates/modules/rustok-reactions-api) | `modules` | 3 | 1,262 | None |  |
+| [ ] | [rustok-reactions-storefront](../../crates/modules/rustok-reactions-storefront) | `modules` | 6 | 615 | None |  |
 | [ ] | [rustok-region](../../crates/modules/rustok-region) | `modules` | 39 | 8,566 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-region/admin) | `modules` | 8 | 2,944 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-region/storefront) | `modules` | 9 | 1,738 | None |  |
-| [ ] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 96 | 32,629 | None |  |
+| [ ] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 97 | 33,726 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-search/admin) | `modules` | 20 | 8,298 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-search/storefront) | `modules` | 11 | 3,960 | None |  |
-| [ ] | [rustok-seo](../../crates/modules/rustok-seo) | `modules` | 82 | 35,387 | None |  |
-| [ ] | [rustok-seo-targets](../../crates/modules/rustok-seo-targets) | `modules` | 1 | 1,428 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-search/storefront) | `modules` | 11 | 4,042 | None |  |
+| [ ] | [rustok-seo](../../crates/modules/rustok-seo) | `modules` | 82 | 35,554 | None |  |
+| [ ] | [rustok-seo-admin-support](../../crates/modules/rustok-seo-admin-support) | `modules` | 6 | 2,627 | None |  |
+| [ ] | [rustok-seo-targets](../../crates/modules/rustok-seo-targets) | `modules` | 1 | 1,444 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-seo/admin) | `modules` | 15 | 4,557 | None |  |
 | [ ] | [panel](../../crates/modules/rustok-seo/panel) | `modules` | 6 | 2,754 | None |  |
 | [ ] | [render](../../crates/modules/rustok-seo/render) | `modules` | 1 | 17 | None |  |
@@ -410,19 +422,22 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-social-graph-cli](../../crates/modules/rustok-social-graph-cli) | `modules` | 1 | 324 | None |  |
 | [ ] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 5 | 1,574 | None |  |
 | [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 53 | 14,828 | None |  |
-| [x] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 28 | 4,005 | 2026-10-14 | Completed all 3 audit tracks in Phase FS-02 (tenant service, ports/entities, settings schema) |
+| [ ] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 28 | 4,305 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 8 | 835 | None |  |
 | [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 81 | 45,996 | None |  |
 | [ ] | [rustok-translation-targets](../../crates/modules/rustok-translation-targets) | `modules` | 3 | 1,729 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 9 | 14,236 | None |  |
-| [ ] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 52 | 7,300 | None |  |
+| [ ] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 52 | 7,328 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 14 | 1,434 | None |  |
-| [ ] | [fly](../../crates/ui/fly) | `ui` | 114 | 39,582 | None |  |
-| [ ] | [browser](../../crates/ui/fly/browser) | `ui` | 11 | 931 | None |  |
-| [ ] | [dioxus](../../crates/ui/fly/dioxus) | `ui` | 1 | 77 | None |  |
-| [ ] | [leptos](../../crates/ui/fly/leptos) | `ui` | 4 | 113 | None |  |
-| [ ] | [ui](../../crates/ui/fly/ui) | `ui` | 20 | 5,495 | None |  |
-| [ ] | [web](../../crates/ui/fly/web) | `ui` | 6 | 2,217 | None |  |
+| [ ] | [fly](../../crates/ui/fly) | `ui` | 111 | 42,258 | None |  |
+| [ ] | [fly-browser](../../crates/ui/fly-browser) | `ui` | 9 | 816 | None |  |
+| [ ] | [fly-leptos](../../crates/ui/fly-leptos) | `ui` | 5 | 1,691 | None |  |
+| [ ] | [fly-ui](../../crates/ui/fly-ui) | `ui` | 20 | 5,225 | None |  |
+| [ ] | [browser](../../crates/ui/fly/browser) | `ui` | 12 | 1,565 | None |  |
+| [ ] | [dioxus](../../crates/ui/fly/dioxus) | `ui` | 2 | 393 | None |  |
+| [ ] | [leptos](../../crates/ui/fly/leptos) | `ui` | 5 | 2,434 | None |  |
+| [ ] | [ui](../../crates/ui/fly/ui) | `ui` | 22 | 6,289 | None |  |
+| [ ] | [web](../../crates/ui/fly/web) | `ui` | 6 | 2,234 | None |  |
 | [ ] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 9 | 1,506 | None |  |
 | [ ] | [leptos-ui](../../crates/ui/leptos-ui) | `ui` | 5 | 415 | None |  |
 | [ ] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 1 | 233 | None |  |
@@ -436,6 +451,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-ui](../../crates/ui/rustok-ui) | `ui` | 46 | 5,231 | None |  |
 | [ ] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 1 | 66 | None |  |
 | [ ] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 9 | 2,257 | None |  |
+| [ ] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 1 | 75 | None |  |
 | [ ] | [rustok-ui-i18n](../../crates/ui/rustok-ui-i18n) | `ui` | 32 | 6,793 | None |  |
 | [ ] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 1 | 478 | None |  |
 | [ ] | [dioxus](../../crates/ui/rustok-ui/dioxus) | `ui` | 20 | 1,299 | None |  |

@@ -418,3 +418,93 @@ fn anonymous_action_diagnostics_use_the_shared_canonical_path() {
             .any(|diagnostic| { diagnostic.path == "project.pages[0].component.components[0]" })
     );
 }
+
+#[test]
+fn switch_tab_and_toggle_accordion_materialize_correctly() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{
+            "component": {
+                "id": "root",
+                "type": "wrapper",
+                "components": [
+                    {
+                        "id": "tab-btn",
+                        "type": "button",
+                        "flyAction": { "kind": "switch_tab", "panel_id": "overview-panel" }
+                    },
+                    {
+                        "id": "accordion-trigger",
+                        "type": "button",
+                        "flyAction": { "kind": "toggle_accordion", "target_id": "faq-content", "exclusive": true }
+                    }
+                ]
+            }
+        }]
+    }))
+    .expect("document");
+    let result = materialize_component_actions(&document, &json!({}));
+    assert_eq!(result.custom_actions, 2);
+
+    let tab_btn = result.document.component("tab-btn").expect("tab-btn");
+    assert_eq!(tab_btn.attributes[FLY_ACTION_KIND_ATTRIBUTE], "switch_tab");
+    assert_eq!(tab_btn.attributes["data-fly-action-target"], "overview-panel");
+    let tab_action: serde_json::Value = serde_json::from_str(
+        tab_btn.attributes[FLY_ACTION_DATA_ATTRIBUTE]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(tab_action["kind"], "switch_tab");
+    assert_eq!(tab_action["panel_id"], "overview-panel");
+
+    let accordion_trigger = result
+        .document
+        .component("accordion-trigger")
+        .expect("accordion-trigger");
+    assert_eq!(
+        accordion_trigger.attributes[FLY_ACTION_KIND_ATTRIBUTE],
+        "toggle_accordion"
+    );
+    assert_eq!(
+        accordion_trigger.attributes["data-fly-action-target"],
+        "faq-content"
+    );
+    let accordion_action: serde_json::Value = serde_json::from_str(
+        accordion_trigger.attributes[FLY_ACTION_DATA_ATTRIBUTE]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(accordion_action["kind"], "toggle_accordion");
+    assert_eq!(accordion_action["target_id"], "faq-content");
+    assert_eq!(accordion_action["exclusive"], true);
+}
+
+#[test]
+fn switch_tab_and_toggle_accordion_validation_rejects_empty_targets() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{
+            "component": {
+                "id": "root",
+                "type": "wrapper",
+                "components": [
+                    {
+                        "id": "bad-tab",
+                        "type": "button",
+                        "flyAction": { "kind": "switch_tab", "panel_id": "   " }
+                    },
+                    {
+                        "id": "bad-accordion",
+                        "type": "button",
+                        "flyAction": { "kind": "toggle_accordion", "target_id": "" }
+                    }
+                ]
+            }
+        }]
+    }))
+    .expect("document");
+    let diagnostics = validate_component_actions(&document);
+    assert!(diagnostics.iter().any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-tab"));
+    assert!(diagnostics.iter().any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-accordion"));
+}
+

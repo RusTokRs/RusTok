@@ -10,6 +10,10 @@
  *   Hosts subscribe with `element.addEventListener("fly:action", ...)` or at document level.
  * - `toggle_visibility`: show/hide/toggle the target element (payload `target_id`, `mode`),
  *   keeping `aria-expanded` on the trigger and `aria-hidden` on the target in sync.
+ * - `switch_tab`: switch active tab in a tablist (payload `panel_id`), synchronizing `aria-selected`
+ *   and `.is-active` on tabs and toggling visibility/`aria-hidden` on tab panels.
+ * - `toggle_accordion`: expand/collapse accordion panel (payload `target_id`, `exclusive`),
+ *   synchronizing `aria-expanded` on trigger, `aria-hidden` on content, and optionally collapsing siblings.
  * - `scroll_to`: smooth-scroll the target element (payload `target_id`) into view.
  * - `animate`: play an allow-listed Web Animations keyframe set (payload `animation`,
  *   optional `duration_ms`) on the target element. The keyframe sets below are the only
@@ -37,7 +41,10 @@
 
   function findTarget(action, element) {
     var targetId =
-      action.target_id || element.getAttribute("data-fly-action-target") || "";
+      action.target_id ||
+      action.panel_id ||
+      element.getAttribute("data-fly-action-target") ||
+      "";
     if (!targetId) return null;
     var root = element.ownerDocument || document;
     if (root.getElementById) {
@@ -86,6 +93,107 @@
     target.hidden = !willShow;
     target.setAttribute("aria-hidden", willShow ? "false" : "true");
     element.setAttribute("aria-expanded", willShow ? "true" : "false");
+  }
+
+  function switchTab(element, action) {
+    var target = findTarget(action, element);
+
+    // 1. Update tab triggers in the tablist or common parent
+    var tablist = element.closest('[role="tablist"]') || element.parentElement;
+    if (tablist) {
+      var tabs = tablist.querySelectorAll('[role="tab"], [data-fly-tab-target], [data-fly-action*="switch_tab"]');
+      for (var i = 0; i < tabs.length; i++) {
+        var tab = tabs[i];
+        var isCurrent = tab === element;
+        tab.setAttribute("aria-selected", isCurrent ? "true" : "false");
+        if (isCurrent) {
+          tab.classList.add("is-active");
+        } else {
+          tab.classList.remove("is-active");
+        }
+      }
+    } else {
+      element.setAttribute("aria-selected", "true");
+      element.classList.add("is-active");
+    }
+
+    // 2. Update target panel and sibling panels
+    if (target) {
+      var panelsContainer = target.parentElement;
+      if (panelsContainer) {
+        var panels = panelsContainer.children;
+        for (var j = 0; j < panels.length; j++) {
+          var panel = panels[j];
+          var isTarget = panel === target;
+          panel.hidden = !isTarget;
+          panel.setAttribute("aria-hidden", isTarget ? "false" : "true");
+          if (isTarget) {
+            panel.classList.add("is-active");
+            if (panel.style.display === "none") panel.style.display = "";
+          } else {
+            panel.classList.remove("is-active");
+            panel.style.display = "none";
+          }
+        }
+      } else {
+        target.hidden = false;
+        target.setAttribute("aria-hidden", "false");
+        target.classList.add("is-active");
+        if (target.style.display === "none") target.style.display = "";
+      }
+    }
+  }
+
+  function toggleAccordion(element, action) {
+    var target = findTarget(action, element);
+    var isExpanded = element.getAttribute("aria-expanded") === "true";
+    var willExpand = !isExpanded;
+
+    var isExclusive = action.exclusive !== false;
+    if (isExclusive && willExpand) {
+      var accordionRoot =
+        element.closest("[data-fly-accordion]") ||
+        element.closest(".fly-accordion");
+      if (accordionRoot) {
+        var activeTriggers = accordionRoot.querySelectorAll('[aria-expanded="true"]');
+        for (var i = 0; i < activeTriggers.length; i++) {
+          var otherTrigger = activeTriggers[i];
+          if (otherTrigger !== element) {
+            otherTrigger.setAttribute("aria-expanded", "false");
+            otherTrigger.classList.remove("is-expanded");
+            var otherAction = parseAction(otherTrigger);
+            if (otherAction) {
+              var otherTarget = findTarget(otherAction, otherTrigger);
+              if (otherTarget) {
+                otherTarget.hidden = true;
+                otherTarget.setAttribute("aria-hidden", "true");
+                otherTarget.classList.remove("is-expanded");
+                otherTarget.style.display = "none";
+              }
+            }
+          }
+        }
+      }
+    }
+
+    element.setAttribute("aria-expanded", willExpand ? "true" : "false");
+    if (willExpand) {
+      element.classList.add("is-expanded");
+    } else {
+      element.classList.remove("is-expanded");
+    }
+
+    if (target) {
+      target.hidden = !willExpand;
+      target.setAttribute("aria-hidden", willExpand ? "false" : "true");
+      if (willExpand) {
+        target.classList.add("is-expanded");
+        if (target.style.display === "none") target.style.display = "";
+      } else {
+        target.classList.remove("is-expanded");
+        target.style.display = "none";
+      }
+    }
   }
 
   function scrollToTarget(element, action) {
@@ -160,6 +268,12 @@
         return true;
       case "toggle_visibility":
         toggleVisibility(element, action);
+        return true;
+      case "switch_tab":
+        switchTab(element, action);
+        return true;
+      case "toggle_accordion":
+        toggleAccordion(element, action);
         return true;
       case "scroll_to":
         scrollToTarget(element, action);
