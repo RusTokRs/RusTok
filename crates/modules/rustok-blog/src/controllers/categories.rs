@@ -32,6 +32,12 @@ fn ensure_category_permission(
     auth: &AuthContext,
     action: Action,
 ) -> HttpResult<()> {
+    if tenant.id.is_nil() || auth.tenant_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
     if auth.tenant_id != tenant.id {
         return Err(HttpError::forbidden(
             "blog_category_tenant_mismatch",
@@ -74,6 +80,11 @@ pub async fn list_categories(
     request_context: RequestContext,
     Query(mut filter): Query<ListCategoriesFilter>,
 ) -> HttpResult<Json<CategoryListResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = ?auth.user_id,
+        "Handling list_categories HTTP request"
+    );
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_category_permission(&tenant, &auth, Action::List)?;
     filter.locale = filter.locale.or(Some(request_context.locale));
@@ -118,6 +129,17 @@ pub async fn get_category(
     Path(id): Path<Uuid>,
     Query(params): Query<HashMap<String, String>>,
 ) -> HttpResult<Json<CategoryResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        category_id = %id,
+        "Handling get_category HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_category_permission(&tenant, &auth, Action::Read)?;
     let locale = params
@@ -152,6 +174,19 @@ pub async fn create_category(
     auth: AuthContext,
     Json(input): Json<CreateCategoryInput>,
 ) -> HttpResult<(StatusCode, Json<Uuid>)> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = ?auth.user_id,
+        "Handling create_category HTTP request"
+    );
+    if let Some(parent_id) = input.parent_id
+        && parent_id.is_nil()
+    {
+        return Err(HttpError::bad_request(
+            "invalid_parent_id",
+            "Parent category ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_category_permission(&tenant, &auth, Action::Create)?;
     let category_id = category_service(&runtime)
@@ -183,6 +218,17 @@ pub async fn update_category(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateCategoryInput>,
 ) -> HttpResult<Json<CategoryResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        category_id = %id,
+        "Handling update_category HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_category_permission(&tenant, &auth, Action::Update)?;
     let category = category_service(&runtime)
@@ -214,6 +260,25 @@ pub async fn move_category(
     Path(id): Path<Uuid>,
     Json(input): Json<MoveCategoryInput>,
 ) -> HttpResult<Json<MoveCategoryResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        category_id = %id,
+        "Handling move_category HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
+    }
+    if let Some(parent_id) = input.parent_id
+        && parent_id.is_nil()
+    {
+        return Err(HttpError::bad_request(
+            "invalid_parent_id",
+            "Parent category ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_category_permission(&tenant, &auth, Action::Manage)?;
     let response = category_command_service(&runtime)
@@ -242,6 +307,17 @@ pub async fn delete_category(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        category_id = %id,
+        "Handling delete_category HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_category_id",
+            "Category ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_category_permission(&tenant, &auth, Action::Delete)?;
     category_service(&runtime)

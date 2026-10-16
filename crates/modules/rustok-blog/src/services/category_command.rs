@@ -42,6 +42,12 @@ impl CategoryCommandService {
         security: SecurityContext,
         input: MoveCategoryInput,
     ) -> BlogResult<MoveCategoryResponse> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if category_id.is_nil() {
+            return Err(BlogError::validation("Category ID must not be nil"));
+        }
         enforce_scope(&security, Resource::BlogCategories, Action::Manage)?;
 
         let txn = self.db.begin().await?;
@@ -230,12 +236,15 @@ async fn load_categories_in_tx(
 }
 
 fn ensure_parent_exists(blog_ids: &HashSet<Uuid>, parent_id: Option<Uuid>) -> BlogResult<()> {
-    if let Some(parent_id) = parent_id
-        && !blog_ids.contains(&parent_id)
-    {
-        return Err(BlogError::validation(format!(
-            "Category parent {parent_id} does not exist in the tenant"
-        )));
+    if let Some(parent_id) = parent_id {
+        if parent_id.is_nil() {
+            return Err(BlogError::validation("Parent category ID must not be nil"));
+        }
+        if !blog_ids.contains(&parent_id) {
+            return Err(BlogError::validation(format!(
+                "Category parent {parent_id} does not exist in the tenant"
+            )));
+        }
     }
     Ok(())
 }

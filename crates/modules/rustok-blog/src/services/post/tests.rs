@@ -551,7 +551,7 @@ async fn public_visible_keyset_keeps_pinned_post_via_cursor_rank() {
             )
             .await
             .expect("post should be created");
-        created.push(post.id);
+        created.push(post);
     }
 
     // The oldest post is pinned after publication. A cursor that only carried

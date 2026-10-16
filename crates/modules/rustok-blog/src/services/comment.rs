@@ -153,8 +153,17 @@ impl CommentService {
             return Err(BlogError::AuthorRequired);
         }
 
-        let locale = input.locale.clone();
         let command_id = input.command_id;
+        if command_id.is_nil() {
+            return Err(BlogError::validation("Command ID must not be nil"));
+        }
+        if let Some(parent_id) = input.parent_comment_id
+            && parent_id.is_nil()
+        {
+            return Err(BlogError::validation("Parent comment ID must not be nil"));
+        }
+
+        let locale = input.locale.clone();
         let record = self
             .require_comments_thread_port()?
             .create_comment(
@@ -278,6 +287,15 @@ impl CommentService {
         security: SecurityContext,
         input: UpdateCommentInput,
     ) -> BlogResult<CommentResponse> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if comment_id.is_nil() {
+            return Err(BlogError::validation("Comment ID must not be nil"));
+        }
+        if input.command_id.is_nil() {
+            return Err(BlogError::validation("Command ID must not be nil"));
+        }
         enforce_scope(&security, Resource::Comments, Action::Update)?;
         let existing = self
             .require_comments_thread_port()?
@@ -330,6 +348,15 @@ impl CommentService {
         input: ModerateCommentInput,
         fallback_locale: Option<&str>,
     ) -> BlogResult<CommentResponse> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if comment_id.is_nil() {
+            return Err(BlogError::validation("Comment ID must not be nil"));
+        }
+        if input.command_id.is_nil() {
+            return Err(BlogError::validation("Command ID must not be nil"));
+        }
         enforce_scope(&security, Resource::BlogPosts, Action::Manage)?;
 
         let locale = input
@@ -386,6 +413,15 @@ impl CommentService {
         security: SecurityContext,
         command_id: Uuid,
     ) -> BlogResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if comment_id.is_nil() {
+            return Err(BlogError::validation("Comment ID must not be nil"));
+        }
+        if command_id.is_nil() {
+            return Err(BlogError::validation("Command ID must not be nil"));
+        }
         enforce_scope(&security, Resource::Comments, Action::Delete)?;
         let existing = self
             .require_comments_thread_port()?
@@ -493,6 +529,12 @@ impl CommentService {
     }
 
     async fn ensure_post_exists(&self, tenant_id: Uuid, post_id: Uuid) -> BlogResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if post_id.is_nil() {
+            return Err(BlogError::validation("Post ID must not be nil"));
+        }
         let exists = blog_post::Entity::find_by_id(post_id)
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -526,6 +568,12 @@ impl CommentService {
         post_id: Uuid,
         public_channel_slug: Option<&str>,
     ) -> BlogResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if post_id.is_nil() {
+            return Err(BlogError::validation("Post ID must not be nil"));
+        }
         let Some(post) = blog_post::Entity::find_by_id(post_id)
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -686,6 +734,12 @@ fn comments_port_context(
     resource_id: Uuid,
     command_id: Option<Uuid>,
 ) -> BlogResult<PortContext> {
+    if tenant_id.is_nil() {
+        return Err(BlogError::validation("Tenant ID must not be nil"));
+    }
+    if resource_id.is_nil() {
+        return Err(BlogError::validation("Resource ID must not be nil"));
+    }
     let actor = match security.actor_kind {
         SecurityActorKind::System => PortActor::system(),
         SecurityActorKind::User => PortActor::user(

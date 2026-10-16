@@ -174,7 +174,7 @@ The single canonical trigger to continue this audit sequence is:
 ### Active Phase: FS-04 — Content, Interaction & Social Modules Queue
 
 #### 1. rustok-blog
-- [ ] **FS-04.01 — `crates/modules/rustok-blog`** — blog posts, categories, tags, author attribution, publication status machine, revision history, SEO metadata.
+- [x] **FS-04.01 — `crates/modules/rustok-blog`** — blog posts, categories, tags, author attribution, publication status machine, revision history, SEO metadata. (Done: registered missing blog.post.scheduled and blog.post.schedule_cancelled schemas and updated contract digests in rustok-events; hardened REST controllers and GraphQL query/mutation entrypoints with non-nil UUID validation; added non-nil UUID validation across domain services including PostService, CategoryService, TagService, PreviewTokenService, CommentService, and RBAC helpers; added bounded token strings and clamped pagination; added structured entry debug tracing across all controller endpoints; added unit tests for non-nil UUID guards; verified all 150 unit tests pass, clippy clean, and module source layout verification passes).
 
 #### 2. rustok-forum
 - [ ] **FS-04.02 — `crates/modules/rustok-forum`** — channels, topics, posts, moderation workflow, reputation scoring, full-text search index, rate limits.
@@ -200,7 +200,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-10-13T20:15:00Z`
-- **Progress:** `15 / 254` components audited (**5.9%**)
+- **Progress:** `16 / 254` components audited (**6.3%**)
 - **Total Workspace Codebase:** ~350,000 LOC across 254 modules/apps
 
 ---
@@ -265,7 +265,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 12,368 | 2026-10-15 | Completed all 3 audit tracks in Phase FS-02 (credentials/JWT, config/bootstrap, admin mutations & rest) |
 | [ ] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 18 | 6,501 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 1 | 333 | None |  |
-| [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 148 | 35,732 | None |  |
+| [x] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 148 | 35,732 | 2026-10-16 | Completed Phase FS-04.01 (blog posts, categories, tags, preview tokens, comments, non-nil UUID guards, entry tracing & schema registration) |
 | [ ] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 16 | 5,248 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 14 | 3,289 | None |  |
 | [ ] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 22 | 3,399 | None |  |

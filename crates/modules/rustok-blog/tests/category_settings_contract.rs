@@ -24,10 +24,12 @@ async fn setup_without_settings_contract() -> (DatabaseConnection, Box<dyn Migra
             .expect("taxonomy migration should apply");
     }
     let mut migrations = BlogModule.migrations();
-    let settings_contract = migrations
-        .pop()
+    let contract_idx = migrations
+        .iter()
+        .position(|m| m.name() == "m20260924_000029_enforce_blog_category_settings_contract")
         .expect("Blog settings contract migration should be registered");
-    for migration in migrations {
+    let settings_contract = migrations.remove(contract_idx);
+    for migration in migrations.into_iter().take(contract_idx) {
         migration
             .up(&manager)
             .await

@@ -33,6 +33,13 @@ impl BlogQuery {
         locale: Option<String>,
         tenant_id: Option<Uuid>,
     ) -> Result<Option<GqlPost>> {
+        if id.is_nil() {
+            return Err(
+                <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::bad_user_input(
+                    "Post ID must not be nil",
+                ),
+            );
+        }
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_public_blog_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
@@ -302,6 +309,13 @@ impl BlogQuery {
         locale: Option<String>,
         tenant_id: Option<Uuid>,
     ) -> Result<Option<GqlBlogCategory>> {
+        if id.is_nil() {
+            return Err(
+                <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::bad_user_input(
+                    "Category ID must not be nil",
+                ),
+            );
+        }
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_public_blog_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
@@ -428,21 +442,44 @@ fn query_tenant_id(
     tenant: &TenantContext,
     requested: Option<Uuid>,
 ) -> Result<Uuid> {
-    if requested.is_some_and(|tenant_id| tenant_id != tenant.id) {
+    if tenant.id.is_nil() {
         return Err(
-            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
-                "Blog queries must use the current tenant",
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::bad_user_input(
+                "Tenant ID must not be nil",
             ),
         );
     }
-    if let Some(auth) = ctx.data_opt::<AuthContext>()
-        && auth.tenant_id != tenant.id
-    {
-        return Err(
-            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
-                "Authenticated actor is not bound to the current tenant",
-            ),
-        );
+    if let Some(requested) = requested {
+        if requested.is_nil() {
+            return Err(
+                <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::bad_user_input(
+                    "Requested tenant ID must not be nil",
+                ),
+            );
+        }
+        if requested != tenant.id {
+            return Err(
+                <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
+                    "Blog queries must use the current tenant",
+                ),
+            );
+        }
+    }
+    if let Some(auth) = ctx.data_opt::<AuthContext>() {
+        if auth.tenant_id.is_nil() {
+            return Err(
+                <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::bad_user_input(
+                    "Authenticated tenant ID must not be nil",
+                ),
+            );
+        }
+        if auth.tenant_id != tenant.id {
+            return Err(
+                <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
+                    "Authenticated actor is not bound to the current tenant",
+                ),
+            );
+        }
     }
     Ok(tenant.id)
 }

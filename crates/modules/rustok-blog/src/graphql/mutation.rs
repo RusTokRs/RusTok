@@ -757,15 +757,27 @@ fn mutation_tenant_id(
     auth: &AuthContext,
     requested: Option<Uuid>,
 ) -> Result<Uuid> {
+    if tenant.id.is_nil() || auth.tenant_id.is_nil() {
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "Tenant ID must not be nil",
+        ));
+    }
     if auth.tenant_id != tenant.id {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "Authenticated actor is not bound to the current tenant",
         ));
     }
-    if requested.is_some_and(|tenant_id| tenant_id != tenant.id) {
-        return Err(<FieldError as GraphQLError>::permission_denied(
-            "Blog mutations must use the current tenant",
-        ));
+    if let Some(requested) = requested {
+        if requested.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Requested tenant ID must not be nil",
+            ));
+        }
+        if requested != tenant.id {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Blog mutations must use the current tenant",
+            ));
+        }
     }
     Ok(tenant.id)
 }
@@ -828,5 +840,8 @@ mod tests {
             mutation_tenant_id(&tenant(current), &auth(current), Some(Uuid::new_v4())).is_err()
         );
         assert!(mutation_tenant_id(&tenant(current), &auth(Uuid::new_v4()), None).is_err());
+        assert!(mutation_tenant_id(&tenant(Uuid::nil()), &auth(current), None).is_err());
+        assert!(mutation_tenant_id(&tenant(current), &auth(Uuid::nil()), None).is_err());
+        assert!(mutation_tenant_id(&tenant(current), &auth(current), Some(Uuid::nil())).is_err());
     }
 }

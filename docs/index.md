@@ -75,6 +75,7 @@ The owner and release-safety plans track current runtime verification separately
 from complete operation safety and retention through serving cutover.
 
 - [`rustok-modules` Control-Plane Documentation](../crates/modules/rustok-modules/docs/README.md)
+- [`rustok-manifest` Foundation Documentation](../crates/libs/rustok-manifest/docs/README.md)
 - [`rustok-runtime` Portable Instance and Deployment Primitives](../crates/libs/rustok-runtime/docs/README.md)
 - [Module Control-plane Consolidation Plan](./modules/module-control-plane-consolidation-plan.md)
 - [`rustok-build-source` Deterministic Source Archives](../crates/utils/rustok-build-source/docs/README.md)

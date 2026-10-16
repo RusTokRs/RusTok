@@ -40,6 +40,14 @@ impl CategoryService {
         security: SecurityContext,
         input: CreateCategoryInput,
     ) -> BlogResult<Uuid> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if let Some(parent_id) = input.parent_id
+            && parent_id.is_nil()
+        {
+            return Err(BlogError::validation("Parent category ID must not be nil"));
+        }
         enforce_scope(&security, Resource::BlogCategories, Action::Create)?;
         validate_category_name(&input.name)?;
         validate_optional_description(input.description.as_deref())?;
@@ -108,6 +116,12 @@ impl CategoryService {
         security: SecurityContext,
         input: UpdateCategoryInput,
     ) -> BlogResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if category_id.is_nil() {
+            return Err(BlogError::validation("Category ID must not be nil"));
+        }
         enforce_scope(&security, Resource::BlogCategories, Action::Update)?;
         let locale = normalize_locale(&input.locale)?;
         let requested_name = input.name.clone();
@@ -232,6 +246,12 @@ impl CategoryService {
         tenant_id: Uuid,
         category_id: Uuid,
     ) -> BlogResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if category_id.is_nil() {
+            return Err(BlogError::validation("Category ID must not be nil"));
+        }
         let exists = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(txn)

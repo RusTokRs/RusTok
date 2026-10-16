@@ -73,6 +73,12 @@ impl CategoryService {
         category_id: Uuid,
         locale: &str,
     ) -> BlogResult<CategoryResponse> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if category_id.is_nil() {
+            return Err(BlogError::validation("Category ID must not be nil"));
+        }
         enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
         self.load_category_response(tenant_id, category_id, locale)
             .await
@@ -99,6 +105,12 @@ impl CategoryService {
         category_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if category_id.is_nil() {
+            return Err(BlogError::validation("Category ID must not be nil"));
+        }
         enforce_scope(&security, Resource::BlogCategories, Action::Delete)?;
         let capability_cleanup = self.category_delete_cleanup.clone().ok_or_else(|| {
             BlogError::invariant(
@@ -128,6 +140,9 @@ impl CategoryService {
         security: SecurityContext,
         filter: ListCategoriesFilter,
     ) -> BlogResult<(Vec<CategoryListItem>, u64)> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
         enforce_scope(&security, Resource::BlogCategories, Action::List)?;
         let locale =
             normalize_locale(filter.locale.as_deref().unwrap_or(PLATFORM_FALLBACK_LOCALE))?;

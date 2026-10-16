@@ -51,6 +51,12 @@ impl PostService {
         security: SecurityContext,
         pinned: bool,
     ) -> BlogResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if post_id.is_nil() {
+            return Err(BlogError::validation("Post ID must not be nil"));
+        }
         enforce_scope(&security, Resource::BlogPosts, Action::Update)?;
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;

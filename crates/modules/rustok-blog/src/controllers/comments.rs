@@ -4,7 +4,7 @@ use axum::{
 };
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
-use rustok_web::HttpResult;
+use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{BlogHttpRuntime, ensure_blog_module_enabled, posts::ensure_blog_permission};
@@ -34,6 +34,23 @@ pub async fn moderate_comment(
     Path(id): Path<Uuid>,
     Json(mut input): Json<ModerateCommentInput>,
 ) -> HttpResult<Json<CommentResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        comment_id = %id,
+        "Handling moderate_comment HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_comment_id",
+            "Comment ID must not be nil",
+        ));
+    }
+    if input.command_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_command_id",
+            "Command ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,

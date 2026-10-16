@@ -297,7 +297,7 @@ async fn leaving_draft_revokes_the_post_preview_tokens() {
         .create_token(tenant_id, post_id, admin(), None)
         .await
         .expect("a draft may be previewed");
-    let other_token = service
+    let _other_token = service
         .create_token(other_tenant, other_post_id, admin(), None)
         .await
         .expect("a draft may be previewed");

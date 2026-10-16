@@ -24,7 +24,7 @@ Terminology and layout rules:
 - Platform modules receive only `Core` or `Optional` status, are defined through `modules.toml`, and reside in `crates/modules/`;
 - A crate is a technical packaging form;
 - Crates are organized into 5 top-level categories under `crates/`:
-  - `crates/libs/`: Platform foundation libraries (`rustok-core`, `rustok-api`, `rustok-events`, `rustok-telemetry`, `rustok-runtime`, `rustok-web`, `rustok-fba`)
+  - `crates/libs/`: Platform foundation libraries (`rustok-core`, `rustok-api`, `rustok-events`, `rustok-telemetry`, `rustok-runtime`, `rustok-web`, `rustok-fba`, `rustok-manifest`)
   - `crates/modules/`: Domain, system, and external integration modules
   - `crates/ui/`: Leptos and frontend support crates
   - `crates/utils/`: Tooling, CLI, build, installer, and migration utilities
@@ -42,6 +42,7 @@ This registry serves as a summary layer: it captures ownership, public entry poi
 
 | Crate | Responsibility | Public Entry Points | Must Not Do |
 |---|---|---|---|
+| `rustok-manifest` | Platform foundation library: typed models (`ModulesManifest`, `ModulePackageManifest`), pure validation, acyclic graph resolution (Kahn's algorithm), and deterministic snapshot hashing for `modules.toml` and `rustok-module.toml`. | `ModulesManifest`, `ModulePackageManifest`, `load_modules_manifest`, `load_module_package_manifest`, `validate_modules_manifest`, `validate_module_package_manifest`, `is_valid_module_slug`, `compute_modules_manifest_hash`. | Depend on server runtime, SeaORM, Axum, Leptos or domain modules; own build execution, lifecycle state or DB persistence. |
 | `rustok-core` | Platform foundation library (shared infra, not a domain module): modular model traits, typed primitives, security contexts, validation helpers, and base cross-module types. | `RusToKModule`, `ModuleRegistry`, `Permission`, `Resource`, `Action`, `SecurityContext`, shared helper types from `lib.rs`. | Duplicate foundation contracts in applications and modules or pull domain-owned runtime logic here. |
 | `rustok-events` | Canonical import surface for event contracts: `DomainEvent`, `EventEnvelope`, schema metadata and validation rules; `rustok-core::events` remains only a compatibility re-export path. | `DomainEvent`, `EventEnvelope`, `EventSchema`, `FieldSchema`, `EVENT_SCHEMAS`, `ValidateEvent`. | Return canonical event contract ownership back to `rustok-core` or duplicate schema registry in consumer crates. |
 | `rustok-api` | Shared host/API layer for transport adapters: tenant/auth/request/channel contexts, GraphQL helpers, pagination and permission matching. UI route/query/input/i18n contracts live outside this crate. | `AuthContext`, `TenantContext`, `RequestContext`, `PageInfo`, `PaginationInput`, `GraphQLError`, `scope_matches`, `locale_tags_match`. | Return shared HTTP/GraphQL host contracts back to `apps/server`, pull web/API-specific surface into `rustok-core` or own UI route/query/input/i18n helpers. |

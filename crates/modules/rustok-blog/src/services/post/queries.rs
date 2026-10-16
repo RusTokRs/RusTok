@@ -24,6 +24,12 @@ impl PostService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<PostResponse> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if post_id.is_nil() {
+            return Err(BlogError::validation("Post ID must not be nil"));
+        }
         enforce_scope(&security, Resource::BlogPosts, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
@@ -60,6 +66,12 @@ impl PostService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<Option<PostResponse>> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if post_id.is_nil() {
+            return Err(BlogError::validation("Post ID must not be nil"));
+        }
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let Some(post) = blog_post::Entity::find_by_id(post_id)
@@ -109,6 +121,9 @@ impl PostService {
         slug: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<Option<PostResponse>> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
         enforce_scope(&security, Resource::BlogPosts, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
@@ -164,6 +179,9 @@ impl PostService {
         query: PostListQuery,
         fallback_locale: Option<&str>,
     ) -> BlogResult<PostListResponse> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
         enforce_scope(&security, Resource::BlogPosts, Action::List)?;
         let locale = query
             .locale

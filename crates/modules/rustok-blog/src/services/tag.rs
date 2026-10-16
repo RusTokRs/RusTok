@@ -46,6 +46,9 @@ impl TagService {
         security: SecurityContext,
         input: CreateTagInput,
     ) -> BlogResult<Uuid> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
         enforce_scope(&security, Resource::Tags, Action::Create)?;
         validate_tag_name(&input.name)?;
         validate_optional_tag_slug(input.slug.as_deref())?;
@@ -91,6 +94,12 @@ impl TagService {
         tag_id: Uuid,
         locale: &str,
     ) -> BlogResult<TagResponse> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if tag_id.is_nil() {
+            return Err(BlogError::validation("Tag ID must not be nil"));
+        }
         enforce_scope(&security, Resource::Tags, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let term = self.find_visible_term(tenant_id, tag_id, &locale).await?;
@@ -111,6 +120,12 @@ impl TagService {
         security: SecurityContext,
         input: UpdateTagInput,
     ) -> BlogResult<TagResponse> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if tag_id.is_nil() {
+            return Err(BlogError::validation("Tag ID must not be nil"));
+        }
         enforce_scope(&security, Resource::Tags, Action::Update)?;
         let locale = normalize_locale(&input.locale)?;
         validate_tag_name_if_present(input.name.as_deref())?;
@@ -147,6 +162,12 @@ impl TagService {
         tag_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if tag_id.is_nil() {
+            return Err(BlogError::validation("Tag ID must not be nil"));
+        }
         enforce_scope(&security, Resource::Tags, Action::Delete)?;
         self.ensure_blog_owned_tag(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
             .await?;
@@ -181,6 +202,9 @@ impl TagService {
         security: SecurityContext,
         filter: ListTagsFilter,
     ) -> BlogResult<(Vec<TagListItem>, u64)> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
         enforce_scope(&security, Resource::Tags, Action::List)?;
         let locale =
             normalize_locale(filter.locale.as_deref().unwrap_or(PLATFORM_FALLBACK_LOCALE))?;

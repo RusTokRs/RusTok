@@ -29,6 +29,12 @@ impl PostService {
         tenant_id: Uuid,
         post_id: Uuid,
     ) -> BlogResult<blog_post::Model> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if post_id.is_nil() {
+            return Err(BlogError::validation("Post ID must not be nil"));
+        }
         blog_post::Entity::find_by_id(post_id)
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -46,6 +52,12 @@ impl PostService {
         tenant_id: Uuid,
         post_id: Uuid,
     ) -> BlogResult<Vec<blog_post_translation::Model>> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if post_id.is_nil() {
+            return Err(BlogError::validation("Post ID must not be nil"));
+        }
         blog_post_translation::Entity::find()
             .inner_join(blog_post::Entity)
             .filter(blog_post::Column::TenantId.eq(tenant_id))
@@ -60,6 +72,9 @@ impl PostService {
         tenant_id: Uuid,
         post_ids: &[Uuid],
     ) -> BlogResult<HashMap<Uuid, Vec<blog_post_translation::Model>>> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
         if post_ids.is_empty() {
             return Ok(HashMap::new());
         }

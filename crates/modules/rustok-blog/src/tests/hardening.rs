@@ -14,7 +14,9 @@ use rustok_core::{DomainEvent, MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use rustok_test_utils::setup_test_db;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, Statement,
+};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
@@ -301,7 +303,7 @@ async fn target_deleted_listener_purges_blog_routes_once() {
 /// A route of another owner stays untouched when Blog reports the same id.
 #[tokio::test]
 async fn target_deleted_listener_keeps_routes_of_other_target_kinds() {
-    let (db, event_bus) = setup_hardening_schema().await;
+    let (db, _event_bus) = setup_hardening_schema().await;
     let tenant_id = Uuid::new_v4();
     let shared_target = Uuid::new_v4();
     let foreign_route =
@@ -331,4 +333,130 @@ async fn target_deleted_listener_keeps_routes_of_other_target_kinds() {
         0,
         "nothing was removed, so nothing is reported"
     );
+}
+
+#[tokio::test]
+async fn nil_uuid_validation_guards_reject_invalid_identifiers() {
+    let (db, event_bus) = setup_hardening_schema().await;
+    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let category_service = crate::services::CategoryService::new(db.clone(), event_bus.clone());
+    let tag_service = crate::services::TagService::new(db.clone());
+    let preview_service = crate::services::PreviewTokenService::new(db.clone(), event_bus.clone());
+
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    // PostService guards
+    let err = post_service
+        .find_post(Uuid::nil(), Uuid::new_v4())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Tenant ID must not be nil"));
+
+    let err = post_service
+        .find_post(Uuid::new_v4(), Uuid::nil())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Post ID must not be nil"));
+
+    let create_post = CreatePostInput {
+        locale: "en".into(),
+        title: "Test Post".into(),
+        content: crate::richtext::article_document_from_plain_text("Test content"),
+        excerpt: None,
+        slug: None,
+        publish: false,
+        tags: vec![],
+        category_id: Some(Uuid::nil()),
+        featured_image_url: None,
+        seo_title: None,
+        seo_description: None,
+        channel_slugs: None,
+        metadata: None,
+        scheduled_at: None,
+    };
+    let err = post_service
+        .create_post(Uuid::nil(), admin.clone(), create_post.clone())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Tenant ID must not be nil"));
+
+    let err = post_service
+        .create_post(Uuid::new_v4(), admin.clone(), create_post)
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Category ID must not be nil"));
+
+    // CategoryService guards
+    let create_cat = crate::dto::CreateCategoryInput {
+        locale: "en".into(),
+        name: "Test Cat".into(),
+        slug: None,
+        description: None,
+        parent_id: Some(Uuid::nil()),
+        position: Some(0),
+        settings: serde_json::json!({}),
+    };
+    let err = category_service
+        .create(Uuid::nil(), admin.clone(), create_cat.clone())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Tenant ID must not be nil"));
+
+    let err = category_service
+        .create(Uuid::new_v4(), admin.clone(), create_cat)
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("Parent category ID must not be nil")
+    );
+
+    let err = category_service
+        .get(Uuid::nil(), admin.clone(), Uuid::new_v4(), "en")
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Tenant ID must not be nil"));
+
+    let err = category_service
+        .get(Uuid::new_v4(), admin.clone(), Uuid::nil(), "en")
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Category ID must not be nil"));
+
+    // TagService guards
+    let create_tag = crate::dto::CreateTagInput {
+        locale: "en".into(),
+        name: "Test Tag".into(),
+        slug: None,
+    };
+    let err = tag_service
+        .create_tag(Uuid::nil(), admin.clone(), create_tag)
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Tenant ID must not be nil"));
+
+    let err = tag_service
+        .get_tag(Uuid::nil(), admin.clone(), Uuid::new_v4(), "en")
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Tenant ID must not be nil"));
+
+    let err = tag_service
+        .get_tag(Uuid::new_v4(), admin.clone(), Uuid::nil(), "en")
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Tag ID must not be nil"));
+
+    // PreviewTokenService guards
+    let err = preview_service
+        .revoke_token(Uuid::nil(), Uuid::new_v4(), admin.clone())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Tenant ID must not be nil"));
+
+    let err = preview_service
+        .revoke_token(Uuid::new_v4(), Uuid::nil(), admin.clone())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Token ID must not be nil"));
 }

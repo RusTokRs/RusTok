@@ -23,6 +23,9 @@ pub(crate) fn enforce_owned_scope(
     action: Action,
     owner_id: Uuid,
 ) -> BlogResult<()> {
+    if owner_id.is_nil() {
+        return Err(BlogError::validation("Owner ID must not be nil"));
+    }
     match security.get_scope(resource, action) {
         PermissionScope::All => Ok(()),
         PermissionScope::Own if security.user_id == Some(owner_id) => Ok(()),
@@ -39,7 +42,11 @@ pub(crate) fn enforce_create_author(
 ) -> BlogResult<Uuid> {
     match security.get_scope(resource, action) {
         PermissionScope::All | PermissionScope::Own => {
-            security.user_id.ok_or(BlogError::AuthorRequired)
+            let author_id = security.user_id.ok_or(BlogError::AuthorRequired)?;
+            if author_id.is_nil() {
+                return Err(BlogError::validation("Author ID must not be nil"));
+            }
+            Ok(author_id)
         }
         PermissionScope::None => Err(BlogError::forbidden("Permission denied")),
     }

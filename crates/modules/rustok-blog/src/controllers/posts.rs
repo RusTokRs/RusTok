@@ -42,6 +42,11 @@ pub async fn list_posts(
     request_context: RequestContext,
     Query(mut query): Query<PostListQuery>,
 ) -> HttpResult<Json<crate::PostListResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = ?auth.user_id,
+        "Handling list_posts HTTP request"
+    );
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
@@ -107,6 +112,17 @@ pub async fn get_post(
     Path(id): Path<Uuid>,
     Query(params): Query<HashMap<String, String>>,
 ) -> HttpResult<Json<PostResponse>> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        post_id = %id,
+        "Handling get_post HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_post_id",
+            "Post ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
@@ -152,6 +168,11 @@ pub async fn create_post(
     auth: AuthContext,
     Json(input): Json<CreatePostInput>,
 ) -> HttpResult<(StatusCode, Json<Uuid>)> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = ?auth.user_id,
+        "Handling create_post HTTP request"
+    );
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
@@ -191,6 +212,17 @@ pub async fn update_post(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdatePostInput>,
 ) -> HttpResult<()> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        post_id = %id,
+        "Handling update_post HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_post_id",
+            "Post ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
@@ -228,6 +260,17 @@ pub async fn delete_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        post_id = %id,
+        "Handling delete_post HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_post_id",
+            "Post ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
@@ -265,6 +308,17 @@ pub async fn publish_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        post_id = %id,
+        "Handling publish_post HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_post_id",
+            "Post ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
@@ -302,6 +356,17 @@ pub async fn unpublish_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        post_id = %id,
+        "Handling unpublish_post HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_post_id",
+            "Post ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
@@ -324,6 +389,12 @@ pub(super) fn ensure_blog_permission(
     permissions: &[Permission],
     message: &str,
 ) -> HttpResult<()> {
+    if tenant.id.is_nil() || auth.tenant_id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
     if auth.tenant_id != tenant.id {
         return Err(HttpError::forbidden(
             "blog_tenant_mismatch",
@@ -359,6 +430,17 @@ pub async fn archive_post(
     Path(id): Path<Uuid>,
     Json(input): Json<ArchivePostInput>,
 ) -> HttpResult<()> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        post_id = %id,
+        "Handling archive_post HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_post_id",
+            "Post ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
@@ -393,6 +475,17 @@ pub async fn restore_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        post_id = %id,
+        "Handling restore_post HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_post_id",
+            "Post ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
@@ -426,6 +519,10 @@ pub async fn preview_post(
     Path(token): Path<String>,
     Query(params): Query<PreviewQueryParams>,
 ) -> HttpResult<Json<PostResponse>> {
+    tracing::debug!(
+        token_len = token.len(),
+        "Handling preview_post HTTP request"
+    );
     // The token is the authorization of this read, so the request carries no tenant
     // context. The token's own tenant is resolved inside the service, which also
     // enforces the Blog module gate for that tenant and serves drafts only.
@@ -476,6 +573,17 @@ pub async fn pin_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        post_id = %id,
+        "Handling pin_post HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_post_id",
+            "Post ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
@@ -513,6 +621,17 @@ pub async fn unpin_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        post_id = %id,
+        "Handling unpin_post HTTP request"
+    );
+    if id.is_nil() {
+        return Err(HttpError::bad_request(
+            "invalid_post_id",
+            "Post ID must not be nil",
+        ));
+    }
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,

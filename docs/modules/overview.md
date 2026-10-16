@@ -45,7 +45,8 @@ It is important to distinguish:
 
 - Platform module composition: `modules.toml`
 - Runtime registry: `apps/server/src/modules/mod.rs`
-- Manifest wiring: `apps/server/src/modules/manifest.rs`
+- Manifest foundation: `crates/libs/rustok-manifest`
+- Host manifest wiring: `apps/server/src/modules/manifest/`
 - Base module contracts: `crates/libs/rustok-core/src/module.rs`
 - `Core` / `Optional` taxonomy: `crates/libs/rustok-core/src/registry.rs`
 

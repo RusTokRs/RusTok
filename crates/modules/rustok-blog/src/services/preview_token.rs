@@ -1,5 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, Set,
+};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -134,6 +136,10 @@ impl PreviewTokenService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<Option<PostResponse>> {
+        let token = token.trim();
+        if token.is_empty() || token.len() > 128 {
+            return Ok(None);
+        }
         let token_record = blog_preview_token::Entity::find()
             .filter(blog_preview_token::Column::Token.eq(token))
             .one(&self.db)
@@ -187,6 +193,12 @@ impl PreviewTokenService {
         token_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if token_id.is_nil() {
+            return Err(BlogError::validation("Token ID must not be nil"));
+        }
         let token_record = blog_preview_token::Entity::find_by_id(token_id)
             .filter(blog_preview_token::Column::TenantId.eq(tenant_id))
             .one(&self.db)

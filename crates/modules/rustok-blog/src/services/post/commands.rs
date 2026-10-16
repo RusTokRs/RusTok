@@ -8,6 +8,9 @@ impl PostService {
         security: SecurityContext,
         input: CreatePostInput,
     ) -> BlogResult<Uuid> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
         let CreatePostInput {
             locale,
             title,
@@ -24,6 +27,12 @@ impl PostService {
             metadata,
             scheduled_at,
         } = input;
+
+        if let Some(cat_id) = category_id
+            && cat_id.is_nil()
+        {
+            return Err(BlogError::validation("Category ID must not be nil"));
+        }
 
         validate_title(&title)?;
         validate_post_field_length(excerpt.as_deref(), MAX_POST_EXCERPT_CHARS, "Excerpt")?;
@@ -239,6 +248,11 @@ impl PostService {
                 MAX_POST_SEO_DESCRIPTION_CHARS,
                 "SEO description",
             )?;
+        }
+        if let Patch::Set(cat_id) = category_id
+            && cat_id.is_nil()
+        {
+            return Err(BlogError::validation("Category ID must not be nil"));
         }
         if let Some(ref tags) = tags {
             validate_tags(tags)?;
