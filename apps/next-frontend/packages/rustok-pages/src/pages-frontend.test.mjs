@@ -105,4 +105,19 @@ test("pageCacheTags generates canonical cache tags for ISR", () => {
   assert.deepEqual(pageCacheTags(), ["pages"]);
 });
 
+test("scopeLandingCss preserves comments with braces and does not remap #body", () => {
+  const rawWithComments = `/* { comment with braces } */
+#body { font-size: 14px; }
+/* body in comment */
+body { padding: 8px; }`;
+
+  const scoped = scopeLandingCss(rawWithComments, ".fly-page-container");
+
+  assert.ok(scoped.includes("/* { comment with braces } */"));
+  assert.ok(scoped.includes("#body { font-size: 14px; }"));
+  assert.ok(scoped.includes("/* body in comment */"));
+  assert.ok(scoped.includes(":scope { padding: 8px; }"));
+});
+
+
 

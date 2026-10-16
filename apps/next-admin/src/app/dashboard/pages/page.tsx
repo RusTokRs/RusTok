@@ -15,6 +15,14 @@ export default async function Page() {
   // Origin of the Rust (FFA/Leptos) admin that owns the visual builder UI. When it
   // is not configured, the pages surface still works and simply hides builder links.
   const builderBaseUrl = process.env.NEXT_PUBLIC_RUST_ADMIN_URL ?? null;
+  const storefrontBaseUrl =
+    process.env.NEXT_PUBLIC_STOREFRONT_URL ??
+    process.env.STOREFRONT_URL ??
+    null;
+  const previewSecret =
+    process.env.REVALIDATE_SECRET ??
+    process.env.PREVIEW_SECRET ??
+    null;
 
   return (
     <PageContainer scrollable pageTitle="Pages" pageDescription="Pages and builder">
@@ -24,6 +32,8 @@ export default async function Page() {
           tenantSlug={tenantSlug}
           tenantId={tenantId}
           builderBaseUrl={builderBaseUrl}
+          storefrontBaseUrl={storefrontBaseUrl}
+          previewSecret={previewSecret}
         />
       </Suspense>
     </PageContainer>

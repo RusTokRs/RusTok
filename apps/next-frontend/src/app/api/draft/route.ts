@@ -16,14 +16,15 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const secret = searchParams.get("secret");
   const slug = searchParams.get("slug");
-  const locale = searchParams.get("locale") || "en";
+  const rawLocale = searchParams.get("locale") || "en";
+  const locale = /^[a-z]{2}(-[a-zA-Z]{2,4})?$/.test(rawLocale) ? rawLocale : "en";
 
-  const expectedSecret =
-    process.env.REVALIDATE_SECRET ||
-    process.env.PREVIEW_SECRET ||
-    "rustok-revalidate-secret";
+  const configuredSecret =
+    process.env.REVALIDATE_SECRET || process.env.PREVIEW_SECRET;
+  const isDev = process.env.NODE_ENV !== "production";
+  const expectedSecret = configuredSecret || (isDev ? "rustok-revalidate-secret" : undefined);
 
-  if (!secret || secret !== expectedSecret) {
+  if (!expectedSecret || !secret || secret !== expectedSecret) {
     return NextResponse.json(
       { error: "Invalid preview secret" },
       { status: 401 },

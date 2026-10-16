@@ -24,15 +24,33 @@ export function scopeLandingCss(
   let result = "";
   let inRuleBlock = false;
   let inQuote: string | null = null;
+  let inComment = false;
 
   for (let i = 0; i < trimmed.length; i++) {
     const ch = trimmed[i];
+
+    if (inComment) {
+      result += ch;
+      if (ch === "*" && i + 1 < trimmed.length && trimmed[i + 1] === "/") {
+        result += "/";
+        i++;
+        inComment = false;
+      }
+      continue;
+    }
 
     if (inQuote) {
       result += ch;
       if (ch === inQuote && (i === 0 || trimmed[i - 1] !== "\\")) {
         inQuote = null;
       }
+      continue;
+    }
+
+    if (ch === "/" && i + 1 < trimmed.length && trimmed[i + 1] === "*") {
+      inComment = true;
+      result += "/*";
+      i++;
       continue;
     }
 
@@ -74,7 +92,7 @@ export function scopeLandingCss(
 function isIdentBoundary(str: string, start: number, len: number): boolean {
   if (start > 0) {
     const prev = str[start - 1];
-    if (/[a-zA-Z0-9_\-.]/.test(prev)) {
+    if (/[a-zA-Z0-9_\-.#]/.test(prev)) {
       return false;
     }
   }

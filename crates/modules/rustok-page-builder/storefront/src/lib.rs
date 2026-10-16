@@ -203,6 +203,12 @@ pub const FLY_STOREFRONT_BRIDGE_JS: &str = r##"
           detail: { variantId: String(variantId), quantity: quantity, openDrawer: true }
         }));
       }
+    } else if (event === "cart:open" || event === "open_cart") {
+      window.dispatchEvent(new CustomEvent("rustok:cart:open", { bubbles: true }));
+    } else if (event === "cart:close" || event === "close_cart") {
+      window.dispatchEvent(new CustomEvent("rustok:cart:close", { bubbles: true }));
+    } else if (event === "cart:toggle" || event === "toggle_cart") {
+      window.dispatchEvent(new CustomEvent("rustok:cart:toggle", { bubbles: true }));
     } else if (event === "navigate") {
       var href = data.href || data.url;
       if (href && typeof href === "string") {
@@ -214,17 +220,24 @@ pub const FLY_STOREFRONT_BRIDGE_JS: &str = r##"
   document.addEventListener("click", function (e) {
     var target = e.target;
     if (!target || typeof target.closest !== "function") return;
+    if (target.closest("[data-fly-island='cart_trigger']")) {
+      e.preventDefault();
+      window.dispatchEvent(new CustomEvent("rustok:cart:toggle", { bubbles: true }));
+      return;
+    }
     var anchor = target.closest("a");
     if (!anchor) return;
     if (anchor.target === "_blank" || anchor.hasAttribute("download") || anchor.hasAttribute("data-fly-action")) return;
     var href = anchor.getAttribute("href");
     if (!href) return;
-    if (href.startsWith("#")) {
-      var el = document.querySelector(href);
-      if (el) {
-        e.preventDefault();
-        el.scrollIntoView({ behavior: "smooth" });
-      }
+    if (href.startsWith("#") && href.length > 1) {
+      try {
+        var el = document.querySelector(href);
+        if (el) {
+          e.preventDefault();
+          el.scrollIntoView({ behavior: "smooth" });
+        }
+      } catch (_) {}
     }
   });
 })();
@@ -252,11 +265,24 @@ fn normalize_landing_root_selectors(css: &str) -> String {
     let mut result = String::with_capacity(css.len());
     let mut in_rule_block = false;
     let mut in_quote: Option<char> = None;
+    let mut in_comment = false;
 
     let chars: Vec<char> = css.chars().collect();
     let mut i = 0;
     while i < chars.len() {
         let ch = chars[i];
+
+        if in_comment {
+            result.push(ch);
+            if ch == '*' && i + 1 < chars.len() && chars[i + 1] == '/' {
+                result.push('/');
+                i += 2;
+                in_comment = false;
+                continue;
+            }
+            i += 1;
+            continue;
+        }
 
         if let Some(quote) = in_quote {
             result.push(ch);
@@ -264,6 +290,13 @@ fn normalize_landing_root_selectors(css: &str) -> String {
                 in_quote = None;
             }
             i += 1;
+            continue;
+        }
+
+        if ch == '/' && i + 1 < chars.len() && chars[i + 1] == '*' {
+            in_comment = true;
+            result.push_str("/*");
+            i += 2;
             continue;
         }
 
@@ -393,6 +426,17 @@ mod tests {
         // Ensure tbody and .some-body are NOT accidentally remapped
         assert!(scoped.contains("tbody { display: table-row-group; }"));
         assert!(scoped.contains(".some-body { color: blue; }"));
+    }
+
+    #[test]
+    fn scope_landing_css_preserves_comments_with_braces_and_preserves_id_body() {
+        let raw = "/* { comment with braces } */\n#body { font-size: 14px; }\n/* body in comment */\nbody { padding: 8px; }";
+        let scoped = scope_landing_css(raw, ".rustok-page-builder-storefront");
+
+        assert!(scoped.contains("/* { comment with braces } */"));
+        assert!(scoped.contains("#body { font-size: 14px; }"));
+        assert!(scoped.contains("/* body in comment */"));
+        assert!(scoped.contains(":scope { padding: 8px; }"));
     }
 
     #[test]

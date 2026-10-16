@@ -14,7 +14,18 @@ import { type NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
-  const redirectPath = searchParams.get("redirect") || "/";
+  let redirectPath = searchParams.get("redirect") || "/";
+
+  // Prevent open redirect attacks: only allow valid relative paths without protocol or backslash
+  if (
+    !redirectPath.startsWith("/") ||
+    redirectPath.startsWith("//") ||
+    redirectPath.includes("\\") ||
+    redirectPath.includes("\r") ||
+    redirectPath.includes("\n")
+  ) {
+    redirectPath = "/";
+  }
 
   const draft = await draftMode();
   draft.disable();

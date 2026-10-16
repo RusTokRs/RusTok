@@ -104,12 +104,18 @@ export function FlyActionBridge() {
       const href = anchor.getAttribute("href");
       if (!href) return;
 
-      // Intercept in-page hash links for smooth scrolling
+      // Intercept in-page hash links for smooth scrolling (safely ignore bare "#" or invalid selectors)
       if (href.startsWith("#")) {
-        const el = document.querySelector(href);
-        if (el) {
-          e.preventDefault();
-          el.scrollIntoView({ behavior: "smooth" });
+        if (href.length > 1) {
+          try {
+            const el = document.querySelector(href);
+            if (el) {
+              e.preventDefault();
+              el.scrollIntoView({ behavior: "smooth" });
+            }
+          } catch {
+            // Ignore invalid selector syntax
+          }
         }
         return;
       }

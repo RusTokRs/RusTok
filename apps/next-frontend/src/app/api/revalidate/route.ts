@@ -19,10 +19,11 @@ export async function POST(request: NextRequest) {
       request.nextUrl.searchParams.get("secret") ??
       request.headers.get("x-revalidate-secret");
 
-    const expectedSecret =
-      process.env.REVALIDATE_SECRET || "rustok-revalidate-secret";
+    const configuredSecret = process.env.REVALIDATE_SECRET;
+    const isDev = process.env.NODE_ENV !== "production";
+    const expectedSecret = configuredSecret || (isDev ? "rustok-revalidate-secret" : undefined);
 
-    if (!secret || secret !== expectedSecret) {
+    if (!expectedSecret || !secret || secret !== expectedSecret) {
       return NextResponse.json(
         { error: "Invalid revalidation secret" },
         { status: 401 },
