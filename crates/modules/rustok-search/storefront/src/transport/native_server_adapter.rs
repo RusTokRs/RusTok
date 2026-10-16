@@ -160,18 +160,83 @@ async fn storefront_search_native(
             sort_desc: input.sort_desc,
         };
 
-        let result = PgSearchEngine::new(db.clone())
-            .search_storefront(search_query.clone(), &trusted_channel)
-            .await
-            .map_err(server_error)?;
-        let result = SearchDictionaryService::apply_storefront_query_rules(
-            &db,
-            &search_query,
-            result,
-            &trusted_channel,
-        )
-        .await
-        .map_err(server_error)?;
+        let engine = PgSearchEngine::new(db.clone());
+        let audience_registry = runtime_ctx.shared_get::<rustok_search::SearchAudienceRegistry>();
+        let result = if let Some(registry) = audience_registry.as_ref() {
+            if !registry.is_empty() {
+                let raw_result = engine
+                    .search_storefront_candidates(search_query.clone(), &trusted_channel)
+                    .await
+                    .map_err(server_error)?;
+                let mut res = SearchDictionaryService::apply_storefront_query_rules(
+                    &db,
+                    &search_query,
+                    raw_result,
+                    &trusted_channel,
+                )
+                .await
+                .map_err(server_error)?;
+
+                let descriptors: Vec<rustok_search::SearchCandidateDescriptor> = res
+                    .items
+                    .iter()
+                    .map(|item| {
+                        rustok_search::SearchCandidateDescriptor::new(
+                            item.id,
+                            &item.source_module,
+                            &item.entity_type,
+                        )
+                    })
+                    .collect();
+
+                let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
+                    .await
+                    .map_err(ServerFnError::new)?
+                    .0;
+
+                let allowed_ids = rustok_search::resolve_audience_eligible_candidates(
+                    registry,
+                    tenant.id,
+                    search_query.locale.as_deref().unwrap_or_default(),
+                    &descriptors,
+                    auth,
+                    Some(request_context.clone()),
+                    rustok_search::StorefrontSearchTransport::NativeServer,
+                )
+                .await
+                .map_err(server_error)?;
+
+                res.items.retain(|item| allowed_ids.contains(&item.id));
+                res.total = res.items.len() as u64;
+                res
+            } else {
+                let res = engine
+                    .search_storefront(search_query.clone(), &trusted_channel)
+                    .await
+                    .map_err(server_error)?;
+                SearchDictionaryService::apply_storefront_query_rules(
+                    &db,
+                    &search_query,
+                    res,
+                    &trusted_channel,
+                )
+                .await
+                .map_err(server_error)?
+            }
+        } else {
+            let res = engine
+                .search_storefront(search_query.clone(), &trusted_channel)
+                .await
+                .map_err(server_error)?;
+            SearchDictionaryService::apply_storefront_query_rules(
+                &db,
+                &search_query,
+                res,
+                &trusted_channel,
+            )
+                .await
+                .map_err(server_error)?
+        };
         let query_log_id = rustok_search::SearchAnalyticsService::record_query(
             &db,
             SearchQueryLogRecord {
