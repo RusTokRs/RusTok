@@ -82,4 +82,65 @@ pub enum MediaError {
     Db(#[from] sea_orm::DbErr),
 }
 
+impl From<MediaError> for rustok_core::Error {
+    fn from(err: MediaError) -> Self {
+        match err {
+            MediaError::NotFound(_) | MediaError::TranslationSourceNotFound { .. } => {
+                Self::NotFound(err.to_string())
+            }
+            MediaError::Forbidden => Self::Forbidden(err.to_string()),
+            MediaError::TranslationRevisionConflict { .. }
+            | MediaError::ResourceRevisionConflict { .. }
+            | MediaError::AssetReferenceConflict(_) => Self::Validation(err.to_string()),
+            MediaError::UnsupportedMimeType(_)
+            | MediaError::InvalidMediaContent { .. }
+            | MediaError::FileTooLarge { .. }
+            | MediaError::InvalidLocale(_)
+            | MediaError::InvalidTranslationRevision(_)
+            | MediaError::InvalidRenditionPurpose(_)
+            | MediaError::InvalidOwnerModule(_)
+            | MediaError::AssetReferenceNotAdmissible(_)
+            | MediaError::AssetReferenced(_)
+            | MediaError::InvalidAssetReferenceId
+            | MediaError::RenditionInProgress(_)
+            | MediaError::UploadSessionExpired(_) => Self::Validation(err.to_string()),
+            MediaError::Db(db_err) => Self::Database(db_err),
+            MediaError::Json(json_err) => Self::Serialization(json_err),
+            MediaError::TranslationRevisionExhausted { .. }
+            | MediaError::TranslationEvent(_)
+            | MediaError::PresignedUploadUnavailable
+            | MediaError::ImageProcessing(_)
+            | MediaError::Storage(_)
+            | MediaError::StorageKey(_) => Self::Internal(err.to_string()),
+        }
+    }
+}
+
 pub type Result<T> = std::result::Result<T, MediaError>;
+
+#[cfg(test)]
+mod tests {
+    use super::MediaError;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_media_error_to_core_error() {
+        let not_found = MediaError::NotFound(Uuid::new_v4());
+        let core_err: rustok_core::Error = not_found.into();
+        assert!(matches!(core_err, rustok_core::Error::NotFound(_)));
+
+        let forbidden = MediaError::Forbidden;
+        let core_err: rustok_core::Error = forbidden.into();
+        assert!(matches!(core_err, rustok_core::Error::Forbidden(_)));
+
+        let conflict = MediaError::ResourceRevisionConflict {
+            media_id: Uuid::new_v4(),
+        };
+        let core_err: rustok_core::Error = conflict.into();
+        assert!(matches!(core_err, rustok_core::Error::Validation(_)));
+
+        let invalid = MediaError::InvalidAssetReferenceId;
+        let core_err: rustok_core::Error = invalid.into();
+        assert!(matches!(core_err, rustok_core::Error::Validation(_)));
+    }
+}

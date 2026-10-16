@@ -443,12 +443,19 @@ fn decode_input<T: DeserializeOwned>(value: &[u8]) -> Result<T, Status> {
 }
 
 fn parse_id(value: &str) -> Result<Uuid, Status> {
-    Uuid::parse_str(value).map_err(|_| {
+    let id = Uuid::parse_str(value).map_err(|_| {
         port_error_to_status(PortError::validation(
             "media.transport_invalid_id",
             "media gRPC identifiers must be UUIDs",
         ))
-    })
+    })?;
+    if id.is_nil() {
+        return Err(port_error_to_status(PortError::validation(
+            "media.transport_nil_id",
+            "media gRPC identifiers cannot be nil",
+        )));
+    }
+    Ok(id)
 }
 
 fn json_response<T: Serialize>(value: &T) -> Result<Response<JsonResponse>, Status> {

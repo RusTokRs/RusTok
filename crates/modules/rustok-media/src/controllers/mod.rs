@@ -168,7 +168,7 @@ fn require_media_permission(
     auth: &AuthContext,
     action: Action,
 ) -> HttpResult<()> {
-    if auth.tenant_id != tenant.id {
+    if tenant.id.is_nil() || auth.tenant_id.is_nil() || auth.tenant_id != tenant.id {
         return Err(HttpError::forbidden(
             "media_access_denied",
             "Authenticated principal is not bound to the current tenant",
@@ -287,6 +287,9 @@ pub async fn get_media(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<MediaItem>> {
+    if id.is_nil() {
+        return Err(HttpError::bad_request("media_bad_request", "media ID cannot be nil"));
+    }
     require_media_permission(&tenant, &auth, Action::Read)?;
     let service = MediaService::new(runtime.db_clone(), runtime.storage());
     let item = service.get(tenant.id, id).await.map_err(media_error)?;
@@ -300,6 +303,9 @@ pub async fn public_image(
     headers: HeaderMap,
     Path((id, checksum_sha256)): Path<(Uuid, String)>,
 ) -> HttpResult<Response<Body>> {
+    if id.is_nil() || tenant.id.is_nil() {
+        return Err(HttpError::not_found("media_public_image_not_found", "Media image not found"));
+    }
     let image = MediaPublicImageService::new(runtime.db_clone(), runtime.storage())
         .read_public_image(tenant.id, id, &checksum_sha256)
         .await
@@ -345,6 +351,9 @@ pub async fn delete_media(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    if id.is_nil() {
+        return Err(HttpError::bad_request("media_bad_request", "media ID cannot be nil"));
+    }
     require_media_permission(&tenant, &auth, Action::Delete)?;
     let service = MediaService::new(runtime.db_clone(), runtime.storage());
     service.delete(tenant.id, id).await.map_err(media_error)?;
@@ -359,6 +368,9 @@ pub async fn upsert_translation(
     Path((id, locale)): Path<(Uuid, String)>,
     Json(body): Json<UpsertTranslationInput>,
 ) -> HttpResult<Json<MediaTranslationItem>> {
+    if id.is_nil() {
+        return Err(HttpError::bad_request("media_bad_request", "media ID cannot be nil"));
+    }
     require_media_permission(&tenant, &auth, Action::Update)?;
     let service = MediaService::new(runtime.db_clone(), runtime.storage());
     let translation = service

@@ -196,7 +196,7 @@ The single canonical trigger to continue this audit sequence is:
 ### Active Phase: FS-05 — Media, Moderation & Core Catalog Support Modules Queue
 
 #### 1. rustok-media
-- [ ] **FS-05.01 — `crates/modules/rustok-media` & `rustok-media-transport`** — media asset storage, uploads, mime verification, variant generation, CDN URLs.
+- [x] **FS-05.01 — `crates/modules/rustok-media` & `rustok-media-transport`** — media asset storage, uploads, mime verification, variant generation, CDN URLs. (Done: implemented canonical From<MediaError> for rustok_core::Error with unit tests; enforced non-nil UUID validation across MediaAssetReadPort (get_asset, get_asset_reference_admission, get_image_descriptor, get_translations), MediaAssetWritePort (complete_upload, delete_asset, retain_asset_reference, release_asset_reference, upsert_translation), parse_tenant_id with unit test, REST controllers (require_media_permission, get_media, public_image, delete_media, upsert_translation), GraphQL queries/mutations (require_media_permission, media_item, media_translations, delete_media, upsert_media_translation), and gRPC server parse_id; verified all 49 media and 12 media-transport unit tests pass, clippy clean, architecture dependency guard passed, and gatekeeper approved).
 
 #### 2. rustok-moderation
 - [ ] **FS-05.02 — `crates/modules/rustok-moderation` & `rustok-moderation-api`** — moderation queue, automated rules, reports, penalty actions.
@@ -219,7 +219,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-10-13T20:15:00Z`
-- **Progress:** `24 / 254` components audited (**9.4%**)
+- **Progress:** `26 / 254` components audited (**10.2%**)
 - **Total Workspace Codebase:** ~350,000 LOC across 254 modules/apps
 
 ---
@@ -341,8 +341,8 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [admin](../../crates/modules/rustok-marketplace-seller/admin) | `modules` | 13 | 2,387 | None |  |
 | [ ] | [rustok-mcp](../../crates/modules/rustok-mcp) | `modules` | 26 | 6,939 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-mcp/admin) | `modules` | 7 | 1,873 | None |  |
-| [ ] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 44 | 13,117 | None |  |
-| [ ] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 6 | 1,882 | None |  |
+| [x] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 44 | 13,117 | 2026-10-16 | Implemented canonical From<MediaError> for rustok_core::Error, non-nil UUID guards across ports, controllers, and GraphQL |
+| [x] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 6 | 1,882 | 2026-10-16 | Enforced non-nil UUID validation on gRPC server parse_id and verified client/server framing |
 | [ ] | [admin](../../crates/modules/rustok-media/admin) | `modules` | 10 | 2,125 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-media/cli) | `modules` | 1 | 175 | None |  |
 | [ ] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 36 | 9,132 | None |  |
