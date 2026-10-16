@@ -199,7 +199,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-05.01 — `crates/modules/rustok-media` & `rustok-media-transport`** — media asset storage, uploads, mime verification, variant generation, CDN URLs. (Done: implemented canonical From<MediaError> for rustok_core::Error with unit tests; enforced non-nil UUID validation across MediaAssetReadPort (get_asset, get_asset_reference_admission, get_image_descriptor, get_translations), MediaAssetWritePort (complete_upload, delete_asset, retain_asset_reference, release_asset_reference, upsert_translation), parse_tenant_id with unit test, REST controllers (require_media_permission, get_media, public_image, delete_media, upsert_translation), GraphQL queries/mutations (require_media_permission, media_item, media_translations, delete_media, upsert_media_translation), and gRPC server parse_id; verified all 49 media and 12 media-transport unit tests pass, clippy clean, architecture dependency guard passed, and gatekeeper approved).
 
 #### 2. rustok-moderation
-- [ ] **FS-05.02 — `crates/modules/rustok-moderation` & `rustok-moderation-api`** — moderation queue, automated rules, reports, penalty actions.
+- [x] **FS-05.02 — `crates/modules/rustok-moderation` & `rustok-moderation-api`** — moderation queue, automated rules, reports, penalty actions. (Done: implemented canonical From for rustok_core::Error across ModerationError, ModerationScopeClaimError, ModerationEffectValidationError, ModerationSubjectAdapterBuildError, and ModerationSubjectAdapterRegistryError with unit tests; enforced non-nil UUID validation across ModerationService (get_report, get_case, get_decision, list_queue_records, normalize_report_command, normalize_case_command, normalize_subject, validate_scope, actor_uuid, parse_tenant_id, append_event, find_case, find_active_case_by_key), ModerationReadPort (read_report, read_case, read_decision), command handlers (case_assign, case_decide), and application recovery (requeue, reconcile, finish_with_error, mark_applied); verified all 13 lib tests and 14 integration tests in rustok-moderation, 5 tests in rustok-moderation-api pass, clippy clean, architecture dependency guard passed, and gatekeeper approved).
 
 #### 3. rustok-taxonomy
 - [ ] **FS-05.03 — `crates/modules/rustok-taxonomy`** — hierarchical categories, term trees, faceted navigation.
@@ -219,7 +219,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-10-13T20:15:00Z`
-- **Progress:** `26 / 254` components audited (**10.2%**)
+- **Progress:** `28 / 254` components audited (**11.0%**)
 - **Total Workspace Codebase:** ~350,000 LOC across 254 modules/apps
 
 ---
@@ -345,8 +345,8 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 6 | 1,882 | 2026-10-16 | Enforced non-nil UUID validation on gRPC server parse_id and verified client/server framing |
 | [ ] | [admin](../../crates/modules/rustok-media/admin) | `modules` | 10 | 2,125 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-media/cli) | `modules` | 1 | 175 | None |  |
-| [ ] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 36 | 9,132 | None |  |
-| [ ] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 766 | None |  |
+| [x] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 36 | 9,132 | 2026-10-16 | Completed Phase FS-05.02 (From<ModerationError> for rustok_core::Error, non-nil UUID guards across service, ports, commands, and application recovery) |
+| [x] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 766 | 2026-10-16 | Completed Phase FS-05.02 (From conversions for adapter build, registry, and scope claim errors to rustok_core::Error with unit tests) |
 | [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 242 | 131,456 | None |  |
 | [ ] | [rustok-modules-translation](../../crates/modules/rustok-modules-translation) | `modules` | 1 | 822 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 1 | 1,813 | None |  |
