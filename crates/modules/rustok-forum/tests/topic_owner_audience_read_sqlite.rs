@@ -12,15 +12,20 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumAudienceConstraints,
     ForumAudienceFacts, ForumAudienceFactsPort, ForumAudienceFactsRequest,
-    ForumCategoryAudiencePolicyService, ForumError, ForumModule, ForumTopicAudienceListService,
-    ForumTopicAudienceReadService, ListTopicsFilter, SetForumCategoryAudiencePolicyInput,
-    TopicService,
+    ForumCategoryAudiencePolicyService, ForumError, ForumModule, ForumSettingsProviders,
+    ForumTopicAudienceListService, ForumTopicAudienceReadService, ListTopicsFilter,
+    SetForumCategoryAudiencePolicyInput, TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
+
+fn default_public_settings() -> ForumSettingsProviders {
+    ForumSettingsProviders::default()
+        .with_static_reader(forum_public_settings::default_settings_reader())
+}
 
 /// Trust facts for the owner-read tests: one low-trust user, everyone else is trusted.
 struct TrustFactsPort {
@@ -435,7 +440,7 @@ async fn owner_topic_list_applies_audience_before_pagination() {
 async fn public_storefront_topic_list_excludes_audience_restricted_topics() {
     let fixture = fixture().await;
     let service = ForumTopicAudienceListService::new(fixture.db.clone(), fixture.event_bus.clone())
-        .with_settings_providers(forum_public_settings::default_public_settings());
+        .with_settings_providers(default_public_settings());
 
     let page = service
         .list_public_storefront_visible_with_locale_fallback(
@@ -494,7 +499,7 @@ async fn category_global_topic_counter_is_not_the_viewers_page_size_or_cursor() 
         .expect("members-only audience");
 
     let category = ForumCategoryAudienceReadService::new(fixture.db.clone())
-        .with_settings_providers(forum_public_settings::default_public_settings())
+        .with_settings_providers(default_public_settings())
         .get_public_storefront_visible_with_locale_fallback(
             fixture.tenant_id,
             fixture.public_category,
@@ -509,7 +514,7 @@ async fn category_global_topic_counter_is_not_the_viewers_page_size_or_cursor() 
     );
 
     let list = ForumTopicAudienceListService::new(fixture.db.clone(), fixture.event_bus.clone())
-        .with_settings_providers(forum_public_settings::default_public_settings());
+        .with_settings_providers(default_public_settings());
     let filter = ListTopicsFilter {
         category_id: Some(fixture.public_category),
         ..list_filter(10, None)

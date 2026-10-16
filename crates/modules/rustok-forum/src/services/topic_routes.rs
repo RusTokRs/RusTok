@@ -84,6 +84,17 @@ impl ForumTopicRouteOwner {
         target_id: Uuid,
         target_canonical_url: &str,
     ) -> ForumResult<()> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation("tenant_id must not be nil".into()));
+        }
+        if target_id.is_nil() {
+            return Err(ForumError::Validation("target_id must not be nil".into()));
+        }
+        if let Some(actor_id) = actor_id
+            && actor_id.is_nil()
+        {
+            return Err(ForumError::Validation("actor_id must not be nil".into()));
+        }
         let locale = normalize_locale_code(locale)
             .ok_or_else(|| ForumError::Validation("forum route locale must not be empty".into()))?;
         if !source_route.starts_with(FORUM_ROUTE_PREFIX) {
@@ -98,7 +109,10 @@ impl ForumTopicRouteOwner {
         }
         let now = Utc::now();
         let key = (tenant_id, locale.clone(), source_route.to_string());
-        let existing = forum_topic_route::Entity::find_by_id(key).one(txn).await?;
+        let existing = forum_topic_route::Entity::find_by_id(key)
+            .filter(forum_topic_route::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?;
 
         match existing {
             Some(existing)
@@ -168,6 +182,17 @@ impl ForumTopicRouteOwner {
         target_kind: &str,
         target_id: Uuid,
     ) -> ForumResult<()> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation("tenant_id must not be nil".into()));
+        }
+        if target_id.is_nil() {
+            return Err(ForumError::Validation("target_id must not be nil".into()));
+        }
+        if let Some(actor_id) = actor_id
+            && actor_id.is_nil()
+        {
+            return Err(ForumError::Validation("actor_id must not be nil".into()));
+        }
         let rows = forum_topic_route::Entity::find()
             .filter(forum_topic_route::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_route::Column::TargetKind.eq(target_kind))
@@ -217,6 +242,17 @@ impl ForumTopicRouteOwner {
         topic_id: Uuid,
         locales: &[String],
     ) -> ForumResult<()> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation("tenant_id must not be nil".into()));
+        }
+        if topic_id.is_nil() {
+            return Err(ForumError::Validation("topic_id must not be nil".into()));
+        }
+        if let Some(actor_id) = actor_id
+            && actor_id.is_nil()
+        {
+            return Err(ForumError::Validation("actor_id must not be nil".into()));
+        }
         let canonical = forum_topic_route(topic_id);
         for locale in locales {
             let locale = normalize_locale_code(locale).ok_or_else(|| {

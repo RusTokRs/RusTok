@@ -487,22 +487,36 @@ async fn ensure_target_ids_absent_in_tx(
     txn: &sea_orm::DatabaseTransaction,
     batch: &ForumPreparedImportRelationBatch,
 ) -> ForumResult<()> {
+    let tenant_id = batch.writes.tenant_id;
+    if tenant_id.is_nil() {
+        return Err(ForumError::Validation(
+            "Forum import tenant ID must not be nil".to_string(),
+        ));
+    }
+
     let category_ids = batch
         .writes
         .categories
         .iter()
         .map(|record| record.id)
         .collect::<Vec<_>>();
-    if !category_ids.is_empty()
-        && forum_category::Entity::find()
+    if !category_ids.is_empty() {
+        if category_ids.iter().any(Uuid::is_nil) {
+            return Err(ForumError::Validation(
+                "Forum import category target ID must not be nil".to_string(),
+            ));
+        }
+        if forum_category::Entity::find()
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
             .filter(forum_category::Column::Id.is_in(category_ids))
             .one(txn)
             .await?
             .is_some()
-    {
-        return Err(ForumError::Validation(
-            "Forum import category target ID already exists".to_string(),
-        ));
+        {
+            return Err(ForumError::Validation(
+                "Forum import category target ID already exists".to_string(),
+            ));
+        }
     }
 
     let topic_ids = batch
@@ -511,16 +525,23 @@ async fn ensure_target_ids_absent_in_tx(
         .iter()
         .map(|record| record.id)
         .collect::<Vec<_>>();
-    if !topic_ids.is_empty()
-        && forum_topic::Entity::find()
+    if !topic_ids.is_empty() {
+        if topic_ids.iter().any(Uuid::is_nil) {
+            return Err(ForumError::Validation(
+                "Forum import topic target ID must not be nil".to_string(),
+            ));
+        }
+        if forum_topic::Entity::find()
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
             .filter(forum_topic::Column::Id.is_in(topic_ids))
             .one(txn)
             .await?
             .is_some()
-    {
-        return Err(ForumError::Validation(
-            "Forum import topic target ID already exists".to_string(),
-        ));
+        {
+            return Err(ForumError::Validation(
+                "Forum import topic target ID already exists".to_string(),
+            ));
+        }
     }
 
     let reply_ids = batch
@@ -529,16 +550,23 @@ async fn ensure_target_ids_absent_in_tx(
         .iter()
         .map(|record| record.id)
         .collect::<Vec<_>>();
-    if !reply_ids.is_empty()
-        && forum_reply::Entity::find()
+    if !reply_ids.is_empty() {
+        if reply_ids.iter().any(Uuid::is_nil) {
+            return Err(ForumError::Validation(
+                "Forum import reply target ID must not be nil".to_string(),
+            ));
+        }
+        if forum_reply::Entity::find()
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
             .filter(forum_reply::Column::Id.is_in(reply_ids))
             .one(txn)
             .await?
             .is_some()
-    {
-        return Err(ForumError::Validation(
-            "Forum import reply target ID already exists".to_string(),
-        ));
+        {
+            return Err(ForumError::Validation(
+                "Forum import reply target ID already exists".to_string(),
+            ));
+        }
     }
 
     Ok(())

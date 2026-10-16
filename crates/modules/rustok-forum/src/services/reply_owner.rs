@@ -157,6 +157,12 @@ impl ReplyService {
         reply_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation("tenant_id must not be nil".into()));
+        }
+        if reply_id.is_nil() {
+            return Err(ForumError::Validation("reply_id must not be nil".into()));
+        }
         let existing = self.find_reply(tenant_id, reply_id).await?;
         enforce_owned_scope(
             &security,
@@ -224,6 +230,12 @@ impl ReplyService {
         reply_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation("tenant_id must not be nil".into()));
+        }
+        if reply_id.is_nil() {
+            return Err(ForumError::Validation("reply_id must not be nil".into()));
+        }
         enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;
 
         let initial_reply = self.inner.find_reply(tenant_id, reply_id).await?;

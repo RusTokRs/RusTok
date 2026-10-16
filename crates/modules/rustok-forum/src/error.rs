@@ -340,3 +340,26 @@ impl From<rustok_taxonomy::TaxonomyError> for ForumError {
         }
     }
 }
+
+impl From<ForumError> for rustok_core::Error {
+    fn from(error: ForumError) -> Self {
+        match error {
+            ForumError::CategoryNotFound(id) => {
+                rustok_core::Error::NotFound(format!("category {id}"))
+            }
+            ForumError::TopicNotFound(id) => rustok_core::Error::NotFound(format!("topic {id}")),
+            ForumError::ReplyNotFound(id) => rustok_core::Error::NotFound(format!("reply {id}")),
+            ForumError::SolutionNotFound(id) => {
+                rustok_core::Error::NotFound(format!("solution {id}"))
+            }
+            ForumError::TopicRouteNotFound | ForumError::CategoryRouteNotFound => {
+                rustok_core::Error::NotFound("forum route".into())
+            }
+            ForumError::Forbidden(msg) => rustok_core::Error::Forbidden(msg),
+            ForumError::Validation(msg) => rustok_core::Error::Validation(msg),
+            ForumError::Internal(err) => err,
+            other => rustok_core::Error::External(other.to_string()),
+        }
+    }
+}
+

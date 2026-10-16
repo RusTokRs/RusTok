@@ -12,15 +12,20 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumAudienceConstraints,
     ForumAudienceFacts, ForumAudienceFactsPort, ForumAudienceFactsRequest,
-    ForumCategoryAudiencePolicyService, ForumError, ForumModule, ForumTopicAudiencePolicyService,
-    ForumTopicAudienceReadService, SetForumCategoryAudiencePolicyInput,
-    SetForumTopicAudiencePolicyInput, TopicService,
+    ForumCategoryAudiencePolicyService, ForumError, ForumModule, ForumSettingsProviders,
+    ForumTopicAudiencePolicyService, ForumTopicAudienceReadService,
+    SetForumCategoryAudiencePolicyInput, SetForumTopicAudiencePolicyInput, TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
+
+fn default_public_settings() -> ForumSettingsProviders {
+    ForumSettingsProviders::default()
+        .with_static_reader(forum_public_settings::default_settings_reader())
+}
 
 #[derive(Clone)]
 struct RecordingFactsPort {
@@ -266,7 +271,7 @@ async fn exact_topic_read_enforces_inherited_and_topic_audience_before_hydration
             requests: requests.clone(),
         }),
     )
-    .with_settings_providers(forum_public_settings::default_public_settings());
+    .with_settings_providers(default_public_settings());
 
     assert!(
         service

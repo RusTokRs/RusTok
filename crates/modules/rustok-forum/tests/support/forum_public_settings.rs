@@ -5,7 +5,6 @@ use rustok_api::{
     PortError, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
     StaticModuleSettingsSnapshot,
 };
-use rustok_forum::ForumSettingsProviders;
 use uuid::Uuid;
 
 struct DefaultForumSettingsReader;
@@ -27,8 +26,4 @@ impl StaticModuleSettingsReader for DefaultForumSettingsReader {
 
 pub fn default_settings_reader() -> SharedStaticModuleSettingsReader {
     SharedStaticModuleSettingsReader(Arc::new(DefaultForumSettingsReader))
-}
-
-pub fn default_public_settings() -> ForumSettingsProviders {
-    ForumSettingsProviders::default().with_static_reader(default_settings_reader())
 }

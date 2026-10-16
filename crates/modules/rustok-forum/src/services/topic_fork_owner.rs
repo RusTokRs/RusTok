@@ -260,7 +260,7 @@ impl ForumTopicForkService {
             ));
         }
         ensure_category_active_in_tx(&txn, tenant_id, source.category_id).await?;
-        ensure_target_topic_absent_in_tx(&txn, prepared.target_topic_id).await?;
+        ensure_target_topic_absent_in_tx(&txn, tenant_id, prepared.target_topic_id).await?;
 
         let topic_pair = [source_topic_id, prepared.target_topic_id];
         lock_topic_audience_scopes_in_tx(&txn, tenant_id, &topic_pair).await?;
@@ -293,7 +293,7 @@ impl ForumTopicForkService {
         let source_solution =
             load_valid_source_solution_in_tx(&txn, tenant_id, source_topic_id).await?;
         let reply_id_map = derive_reply_id_map(prepared.operation_id, &snapshot.replies)?;
-        ensure_target_reply_ids_absent_in_tx(&txn, &reply_id_map).await?;
+        ensure_target_reply_ids_absent_in_tx(&txn, tenant_id, &reply_id_map).await?;
 
         let copied_reply_count = checked_i32(snapshot.replies.len(), "copied reply")?;
         let copied_published_reply_count = checked_i32(
@@ -887,10 +887,28 @@ fn ensure_bound(actual: usize, maximum: usize, label: &str) -> ForumResult<()> {
 
 async fn ensure_target_reply_ids_absent_in_tx(
     txn: &DatabaseTransaction,
+    tenant_id: Uuid,
     reply_id_map: &HashMap<Uuid, Uuid>,
 ) -> ForumResult<()> {
+    if tenant_id.is_nil() {
+        return Err(ForumError::Validation(
+            "Forum topic fork tenant ID must not be nil".to_string(),
+        ));
+    }
+    for &id in reply_id_map.values() {
+        if id.is_nil() {
+            return Err(ForumError::Validation(
+                "Forum topic fork deterministic target reply ID must not be nil".to_string(),
+            ));
+        }
+    }
+    let target_ids: Vec<Uuid> = reply_id_map.values().copied().collect();
+    if target_ids.is_empty() {
+        return Ok(());
+    }
     let existing = forum_reply::Entity::find()
-        .filter(forum_reply::Column::Id.is_in(reply_id_map.values().copied().collect::<Vec<_>>()))
+        .filter(forum_reply::Column::TenantId.eq(tenant_id))
+        .filter(forum_reply::Column::Id.is_in(target_ids))
         .count(txn)
         .await?;
     if existing != 0 {

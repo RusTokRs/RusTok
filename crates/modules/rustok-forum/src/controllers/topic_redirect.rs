@@ -53,6 +53,18 @@ pub(crate) async fn redirect_merged_topic(
     request: Request,
     next: Next,
 ) -> HttpResult<Response> {
+    if tenant.id.is_nil() {
+        return Err(rustok_web::HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
+    }
+    if topic_id.is_nil() {
+        return Err(rustok_web::HttpError::bad_request(
+            "invalid_topic_id",
+            "Topic ID must not be nil",
+        ));
+    }
     if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_READ]) {
         return Ok(next.run(request).await);
     }
@@ -422,7 +434,7 @@ mod tests {
             .oneshot(request(
                 format!("/api/forum/topics/{}", Uuid::new_v4()),
                 tenant.clone(),
-                read_auth,
+                read_auth.clone(),
             ))
             .await?;
         assert_eq!(missing_response.status(), StatusCode::NOT_FOUND);
@@ -432,7 +444,7 @@ mod tests {
             .clone()
             .oneshot(request(
                 format!("/api/forum/topics/{source_topic_id}"),
-                tenant,
+                tenant.clone(),
                 auth_context(tenant_id, actor_id, Vec::new()),
             ))
             .await?;
@@ -440,6 +452,7 @@ mod tests {
         assert!(forbidden_response.headers().get(LOCATION).is_none());
 
         let put_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method(Method::PUT)
@@ -449,6 +462,31 @@ mod tests {
             .await?;
         assert_eq!(put_response.status(), StatusCode::NO_CONTENT);
         assert!(put_response.headers().get(LOCATION).is_none());
+
+        let nil_topic_response = app
+            .clone()
+            .oneshot(request(
+                format!("/api/forum/topics/{}", Uuid::nil()),
+                tenant.clone(),
+                read_auth.clone(),
+            ))
+            .await?;
+        assert_eq!(nil_topic_response.status(), StatusCode::BAD_REQUEST);
+
+        let nil_tenant_context = tenant_context(Uuid::nil());
+        let nil_tenant_auth = auth_context(
+            Uuid::nil(),
+            actor_id,
+            vec![Permission::FORUM_TOPICS_READ],
+        );
+        let nil_tenant_response = app
+            .oneshot(request(
+                format!("/api/forum/topics/{target_topic_id}"),
+                nil_tenant_context,
+                nil_tenant_auth,
+            ))
+            .await?;
+        assert_eq!(nil_tenant_response.status(), StatusCode::BAD_REQUEST);
 
         Ok(())
     }

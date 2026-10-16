@@ -145,6 +145,12 @@ impl TopicService {
         security: SecurityContext,
         input: RenameForumTopicSlugInput,
     ) -> ForumResult<ForumTopicSlugRenameResult> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation("tenant_id must not be nil".into()));
+        }
+        if topic_id.is_nil() {
+            return Err(ForumError::Validation("topic_id must not be nil".into()));
+        }
         let existing = self.inner.find_topic(tenant_id, topic_id).await?;
         enforce_owned_scope(
             &security,
@@ -182,6 +188,12 @@ impl TopicService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation("tenant_id must not be nil".into()));
+        }
+        if topic_id.is_nil() {
+            return Err(ForumError::Validation("topic_id must not be nil".into()));
+        }
         let existing = self.inner.find_topic(tenant_id, topic_id).await?;
         enforce_owned_scope(
             &security,
@@ -326,6 +338,12 @@ impl TopicService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
+        if tenant_id.is_nil() {
+            return Err(ForumError::Validation("tenant_id must not be nil".into()));
+        }
+        if topic_id.is_nil() {
+            return Err(ForumError::Validation("topic_id must not be nil".into()));
+        }
         enforce_scope(&security, Resource::ForumTopics, Action::Manage)?;
 
         let txn = self.db.begin().await?;

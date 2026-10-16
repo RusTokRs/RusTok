@@ -200,9 +200,21 @@ async fn find_topic_in_tx(
 
 async fn ensure_target_topic_absent_in_tx(
     txn: &DatabaseTransaction,
+    tenant_id: Uuid,
     target_topic_id: Uuid,
 ) -> ForumResult<()> {
+    if tenant_id.is_nil() {
+        return Err(ForumError::Validation(
+            "Forum topic fork tenant ID must not be nil".to_string(),
+        ));
+    }
+    if target_topic_id.is_nil() {
+        return Err(ForumError::Validation(
+            "Forum topic fork target topic ID must not be nil".to_string(),
+        ));
+    }
     if forum_topic::Entity::find_by_id(target_topic_id)
+        .filter(forum_topic::Column::TenantId.eq(tenant_id))
         .one(txn)
         .await?
         .is_some()
