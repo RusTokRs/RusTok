@@ -28,11 +28,24 @@ Rather than isolating the public storefront within a sandboxed `<iframe>`, `@rus
    - Bridges `emit_event` and `provider_action` events (`add_to_cart`, `buy_now`, `navigate`) to React context and Next.js router.
    - Intercepts internal same-origin link clicks for SPA client routing.
 
-## Exports
-
 - `PageBuilderContent` — React Component rendering scoped HTML + CSS + client action bridge.
-- `FlyActionBridge` — Client Component handling interactive actions and cart integration.
+- `FlyActionBridge` — Client Component handling interactive actions, cart integration, and dynamic island sync.
+- `DraftPreviewBanner` — Sticky indicator banner displayed when viewing unpublished draft pages in Next.js Draft Mode.
 - `scopeLandingCss` — Utility wrapping styles with `@scope (.fly-page-container)` and remapping root selectors.
 - `initFlyActions` — Standalone idempotent actions runtime initializer.
 - `parseArtifactHtml` — Utility extracting `<style>` and `<body>` from artifact documents.
-- `fetchPublishedPage`, `fetchPageArtifact` — GraphQL and HTTP artifact fetching helpers.
+- `pageCacheTags` — Generates canonical ISR cache tags (`["page-${slug}", "pages"]`).
+- `fetchPublishedPage`, `fetchPageArtifact` — GraphQL and HTTP artifact fetching helpers with configurable ISR tags and draft cache options.
+
+## Caching & On-Demand Revalidation (ISR)
+
+Storefront page artifacts are cached with Next.js Incremental Static Regeneration (ISR) and tagged via `pageCacheTags(slug)` (`["page-${slug}", "pages"]`).
+When a landing page is updated or published in the Builder:
+- The host webhook `/api/revalidate?secret=...&tag=page-${slug}` instantly invalidates the cached static HTML and CSS.
+
+## Draft Mode & Live Preview
+
+When viewing unpublished pages or reviewing drafts from the Admin:
+- Route handler `/api/draft?slug=${slug}&secret=${secret}` activates Next.js Draft Mode.
+- The storefront bypasses ISR caching (`cache: 'no-store'`) and displays `DraftPreviewBanner` with a direct "Exit Preview" action (`/api/disable-draft`).
+
