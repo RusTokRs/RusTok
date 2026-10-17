@@ -3,14 +3,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{
     BundleAdminCommand, BundleAdminCommandResult, BundleAdminDirectory, BundleAdminFilters,
-    BundleAdminItemRecord, BundleAdminListItem, BundleAdminRecord,
+    BundleAdminItemRecord, BundleAdminListItem, BundleAdminRecord, BundleAdminTranslation,
 };
 
 pub type GraphqlBundleAdminError = String;
 
 const DIRECTORY_QUERY: &str = r#"
 query BundleAdminDirectory($page: Int, $perPage: Int, $search: String, $status: String, $bundleType: String) {
-  bundles(filter: { page: $page, perPage: $perPage, search: $search, status: $status, bundleType: $bundleType }) {
+  bundles(
+    page: $page
+    perPage: $perPage
+    filter: { search: $search, status: $status, bundleType: $bundleType }
+  ) {
     total
     page
     perPage
@@ -24,9 +28,9 @@ query BundleAdminDirectory($page: Int, $perPage: Int, $search: String, $status: 
       status
       discountType
       discountValue
-      itemsCount
       createdAt
       updatedAt
+      items { id }
     }
   }
 }
@@ -48,6 +52,11 @@ query BundleAdminDetail($id: UUID!) {
     metadata
     createdAt
     updatedAt
+    translations {
+      locale
+      name
+      description
+    }
     items {
       id
       bundleId
@@ -83,8 +92,8 @@ mutation BundleAdminCreate($idempotencyKey: String!, $input: CreateBundleInputGq
 "#;
 
 const UPDATE_MUTATION: &str = r#"
-mutation BundleAdminUpdate($id: UUID!, $input: UpdateBundleInputGql!) {
-  updateBundle(id: $id, input: $input) {
+mutation BundleAdminUpdate($idempotencyKey: String!, $id: UUID!, $input: UpdateBundleInputGql!) {
+  updateBundle(idempotencyKey: $idempotencyKey, id: $id, input: $input) {
     id
     tenantId
     bundleProductId
@@ -103,14 +112,14 @@ mutation BundleAdminUpdate($id: UUID!, $input: UpdateBundleInputGql!) {
 "#;
 
 const DELETE_MUTATION: &str = r#"
-mutation BundleAdminDelete($id: UUID!) {
-  deleteBundle(id: $id)
+mutation BundleAdminDelete($idempotencyKey: String!, $id: UUID!) {
+  deleteBundle(idempotencyKey: $idempotencyKey, id: $id)
 }
 "#;
 
 const ADD_ITEM_MUTATION: &str = r#"
-mutation BundleAdminAddItem($idempotencyKey: String!, $bundleId: UUID!, $input: AddBundleItemInputGql!) {
-  addBundleItem(idempotencyKey: $idempotencyKey, bundleId: $bundleId, input: $input) {
+mutation BundleAdminAddItem($idempotencyKey: String!, $bundleId: UUID!, $item: BundleItemInputGql!) {
+  addBundleItem(idempotencyKey: $idempotencyKey, bundleId: $bundleId, item: $item) {
     id
     bundleId
     productId
@@ -124,8 +133,8 @@ mutation BundleAdminAddItem($idempotencyKey: String!, $bundleId: UUID!, $input: 
 "#;
 
 const REMOVE_ITEM_MUTATION: &str = r#"
-mutation BundleAdminRemoveItem($bundleId: UUID!, $itemId: UUID!) {
-  removeBundleItem(bundleId: $bundleId, itemId: $itemId)
+mutation BundleAdminRemoveItem($idempotencyKey: String!, $bundleId: UUID!, $itemId: UUID!) {
+  removeBundleItem(idempotencyKey: $idempotencyKey, bundleId: $bundleId, itemId: $itemId)
 }
 "#;
 
@@ -169,8 +178,7 @@ struct ListItemWire {
     discount_type: String,
     #[serde(rename = "discountValue")]
     discount_value: String,
-    #[serde(rename = "itemsCount", default)]
-    items_count: i64,
+    items: Vec<serde_json::Value>,
     #[serde(rename = "createdAt")]
     created_at: String,
     #[serde(rename = "updatedAt")]
@@ -206,7 +214,16 @@ struct RecordWire {
     #[serde(rename = "updatedAt")]
     updated_at: String,
     #[serde(default)]
+    translations: Vec<TranslationWire>,
+    #[serde(default)]
     items: Vec<ItemWire>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TranslationWire {
+    locale: String,
+    name: String,
+    description: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -297,7 +314,7 @@ pub async fn load_directory(
                 status: i.status,
                 discount_type: i.discount_type,
                 discount_value: i.discount_value,
-                items_count: i.items_count,
+                items_count: i.items.len() as i64,
                 created_at: i.created_at,
                 updated_at: i.updated_at,
             })
@@ -335,7 +352,15 @@ pub async fn load_detail(
         metadata: record.metadata,
         created_at: record.created_at,
         updated_at: record.updated_at,
-        translations: Vec::new(),
+        translations: record
+            .translations
+            .into_iter()
+            .map(|translation| BundleAdminTranslation {
+                locale: translation.locale,
+                name: translation.name,
+                description: translation.description,
+            })
+            .collect(),
         items: record
             .items
             .into_iter()
@@ -419,33 +444,56 @@ pub async fn execute_command(
         BundleAdminCommand::Update { id, draft } => {
             #[derive(Serialize)]
             struct Input {
+                #[serde(skip_serializing_if = "Option::is_none")]
                 slug: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
                 name: Option<String>,
-                description: Option<String>,
-                #[serde(rename = "bundleType")]
+                // The outer option controls omission. An inner `None` is GraphQL `null`, which
+                // clears a description only when the editor is also updating the localized name.
+                #[serde(skip_serializing_if = "Option::is_none")]
+                description: Option<Option<String>>,
+                #[serde(rename = "bundleType", skip_serializing_if = "Option::is_none")]
                 bundle_type: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
                 status: Option<String>,
-                #[serde(rename = "discountType")]
+                #[serde(rename = "discountType", skip_serializing_if = "Option::is_none")]
                 discount_type: Option<String>,
-                #[serde(rename = "discountValue")]
+                #[serde(rename = "discountValue", skip_serializing_if = "Option::is_none")]
                 discount_value: Option<String>,
             }
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 id: String,
                 input: Input,
             }
 
+            let crate::model::BundleAdminUpdateDraft {
+                slug,
+                name,
+                description,
+                bundle_type,
+                status,
+                discount_type,
+                discount_value,
+            } = draft;
+            let description = match (name.is_some(), description) {
+                (true, description) => Some(description),
+                (false, Some(description)) => Some(Some(description)),
+                (false, None) => None,
+            };
             let vars = Vars {
+                idempotency_key,
                 id,
                 input: Input {
-                    slug: draft.slug,
-                    name: draft.name,
-                    description: draft.description,
-                    bundle_type: draft.bundle_type,
-                    status: draft.status,
-                    discount_type: draft.discount_type,
-                    discount_value: draft.discount_value,
+                    slug,
+                    name,
+                    description,
+                    bundle_type,
+                    status,
+                    discount_type,
+                    discount_value,
                 },
             };
 
@@ -474,10 +522,20 @@ pub async fn execute_command(
         BundleAdminCommand::Delete { id } => {
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 id: String,
             }
-            let data: DeleteResponse =
-                request(DELETE_MUTATION, Vars { id }, token, tenant_slug).await?;
+            let data: DeleteResponse = request(
+                DELETE_MUTATION,
+                Vars {
+                    idempotency_key,
+                    id,
+                },
+                token,
+                tenant_slug,
+            )
+            .await?;
             Ok(BundleAdminCommandResult {
                 bundle: None,
                 success: data.success,
@@ -506,13 +564,13 @@ pub async fn execute_command(
                 idempotency_key: String,
                 #[serde(rename = "bundleId")]
                 bundle_id: String,
-                input: Input,
+                item: Input,
             }
 
             let vars = Vars {
                 idempotency_key,
                 bundle_id: bundle_id.clone(),
-                input: Input {
+                item: Input {
                     product_id,
                     variant_id,
                     quantity,
@@ -531,6 +589,8 @@ pub async fn execute_command(
         BundleAdminCommand::RemoveItem { bundle_id, item_id } => {
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 #[serde(rename = "bundleId")]
                 bundle_id: String,
                 #[serde(rename = "itemId")]
@@ -538,6 +598,7 @@ pub async fn execute_command(
             }
 
             let vars = Vars {
+                idempotency_key,
                 bundle_id: bundle_id.clone(),
                 item_id,
             };
@@ -555,5 +616,57 @@ pub async fn execute_command(
                 success: true,
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ADD_ITEM_MUTATION, DIRECTORY_QUERY, DirectoryResponse};
+
+    #[test]
+    fn directory_query_uses_the_commerce_pagination_and_bundle_item_shape() {
+        assert!(DIRECTORY_QUERY.contains("page: $page"));
+        assert!(DIRECTORY_QUERY.contains("perPage: $perPage"));
+        assert!(
+            DIRECTORY_QUERY
+                .contains("filter: { search: $search, status: $status, bundleType: $bundleType }")
+        );
+        assert!(DIRECTORY_QUERY.contains("items { id }"));
+        assert!(!DIRECTORY_QUERY.contains("itemsCount"));
+    }
+
+    #[test]
+    fn directory_wire_counts_returned_item_nodes() {
+        let response: DirectoryResponse = serde_json::from_value(serde_json::json!({
+            "bundles": {
+                "items": [{
+                    "id": "bundle",
+                    "tenantId": "tenant",
+                    "slug": "starter",
+                    "name": "Starter",
+                    "description": null,
+                    "bundleType": "fixed",
+                    "status": "active",
+                    "discountType": "none",
+                    "discountValue": "0",
+                    "createdAt": "2026-10-17T00:00:00Z",
+                    "updatedAt": "2026-10-17T00:00:00Z",
+                    "items": [{"id": "one"}, {"id": "two"}]
+                }],
+                "total": 1,
+                "page": 1,
+                "perPage": 20
+            }
+        }))
+        .expect("Commerce Bundle directory response");
+
+        assert_eq!(response.bundles.items[0].items.len(), 2);
+    }
+
+    #[test]
+    fn add_item_mutation_uses_the_owner_graphql_argument_and_input_type() {
+        assert!(ADD_ITEM_MUTATION.contains("$item: BundleItemInputGql!"));
+        assert!(ADD_ITEM_MUTATION.contains("bundleId: $bundleId, item: $item"));
+        assert!(!ADD_ITEM_MUTATION.contains("AddBundleItemInputGql"));
     }
 }

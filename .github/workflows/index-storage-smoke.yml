@@ -170,7 +170,7 @@ jobs:
           } 2>&1 | tee evidence/index-storage/contract/verify.log
       - name: Archive contract diagnostic
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: index-storage-contract-${{ github.sha }}
           path: evidence/index-storage/contract/verify.log
@@ -198,7 +198,7 @@ jobs:
           --health-retries 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
         with:
           toolchain: "1.96.0"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
@@ -222,7 +222,7 @@ jobs:
 
       - name: Archive release build diagnostic
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: index-storage-build-${{ github.sha }}
           path: evidence/index-storage/build/release-build.log
@@ -245,7 +245,7 @@ jobs:
           --root evidence/index-storage/smoke
 
       - name: Archive smoke evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: index-storage-smoke-${{ github.sha }}
           path: evidence/index-storage/smoke

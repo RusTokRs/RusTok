@@ -1,5 +1,7 @@
 use rustok_graphql::{GraphqlRequest, execute as execute_graphql, graphql_url};
+use rustok_product_relations::dto::RelationType;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 use crate::model::{
     ProductRelationItem, ProductRelationsAdminCommand, ProductRelationsAdminCommandResult,
@@ -39,14 +41,14 @@ mutation ProductAdminAddRelation($idempotencyKey: String!, $input: AddProductRel
 "#;
 
 const REMOVE_RELATION_MUTATION: &str = r#"
-mutation ProductAdminRemoveRelation($id: UUID!) {
-  removeProductRelation(id: $id)
+mutation ProductAdminRemoveRelation($idempotencyKey: String!, $id: UUID!) {
+  removeProductRelation(idempotencyKey: $idempotencyKey, id: $id)
 }
 "#;
 
 const REORDER_RELATIONS_MUTATION: &str = r#"
-mutation ProductAdminReorderRelations($productId: UUID!, $relationType: GqlRelationType!, $orderedRelationIds: [UUID!]!) {
-  reorderProductRelations(productId: $productId, relationType: $relationType, orderedRelationIds: $orderedRelationIds) {
+mutation ProductAdminReorderRelations($idempotencyKey: String!, $productId: UUID!, $relationType: GqlRelationType!, $orderedRelationIds: [UUID!]!) {
+  reorderProductRelations(idempotencyKey: $idempotencyKey, productId: $productId, relationType: $relationType, orderedRelationIds: $orderedRelationIds) {
     id
     productId
     relatedProductId
@@ -83,14 +85,16 @@ struct ReorderResponse {
     reorder_product_relations: Vec<ProductRelationItem>,
 }
 
-fn relation_type_to_gql(rtype: &str) -> &'static str {
-    match rtype {
-        "cross_sell" => "CROSS_SELL",
-        "up_sell" => "UP_SELL",
-        "related" => "RELATED",
-        "accessory" => "ACCESSORY",
-        "alternative" => "ALTERNATIVE",
-        _ => "RELATED",
+fn relation_type_to_gql(rtype: &str) -> Result<&'static str, String> {
+    match RelationType::from_str(rtype).map_err(|_| "Invalid product relation type".to_owned())? {
+        RelationType::CrossSell => Ok("CROSS_SELL"),
+        RelationType::UpSell => Ok("UP_SELL"),
+        RelationType::Related => Ok("RELATED"),
+        RelationType::Accessory => Ok("ACCESSORY"),
+        RelationType::Alternative => Ok("ALTERNATIVE"),
+        RelationType::Custom(_) => {
+            Err("Custom product relation types require the native transport".to_owned())
+        }
     }
 }
 
@@ -138,6 +142,7 @@ pub async fn load_relations(
             .relation_type
             .as_deref()
             .map(relation_type_to_gql)
+            .transpose()?
             .map(str::to_string),
     };
 
@@ -163,6 +168,8 @@ pub async fn execute_command(
                 relation_type: String,
                 #[serde(skip_serializing_if = "Option::is_none")]
                 position: Option<i32>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                metadata: Option<serde_json::Value>,
             }
             #[derive(Serialize)]
             struct Vars {
@@ -176,8 +183,9 @@ pub async fn execute_command(
                 input: AddInput {
                     product_id: draft.product_id,
                     related_product_id: draft.related_product_id,
-                    relation_type: relation_type_to_gql(&draft.relation_type).to_string(),
+                    relation_type: relation_type_to_gql(&draft.relation_type)?.to_string(),
                     position: draft.position,
+                    metadata: draft.metadata,
                 },
             };
 
@@ -192,10 +200,20 @@ pub async fn execute_command(
         ProductRelationsAdminCommand::Remove { id } => {
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 id: String,
             }
-            let data: RemoveResponse =
-                request(REMOVE_RELATION_MUTATION, Vars { id }, token, tenant_slug).await?;
+            let data: RemoveResponse = request(
+                REMOVE_RELATION_MUTATION,
+                Vars {
+                    idempotency_key,
+                    id,
+                },
+                token,
+                tenant_slug,
+            )
+            .await?;
             Ok(ProductRelationsAdminCommandResult {
                 item: None,
                 items: vec![],
@@ -209,6 +227,8 @@ pub async fn execute_command(
         } => {
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 #[serde(rename = "productId")]
                 product_id: String,
                 #[serde(rename = "relationType")]
@@ -218,8 +238,9 @@ pub async fn execute_command(
             }
 
             let vars = Vars {
+                idempotency_key,
                 product_id,
-                relation_type: relation_type_to_gql(&relation_type).to_string(),
+                relation_type: relation_type_to_gql(&relation_type)?.to_string(),
                 ordered_relation_ids: ordered_ids,
             };
 

@@ -27,7 +27,11 @@ pub const PRODUCT_CALLER_IDEMPOTENCY_NAMESPACE: &str = "commerce-graphql-product
 /// Derives the owner idempotency key for a caller-supplied key.
 ///
 /// The digest binds tenant, actor, operation, optional product, and the trimmed caller key.
-/// Callers must validate the caller key (non-empty, bounded length) before calling this.
+/// This deployed Product namespace deliberately retains its original digest framing: receipt keys
+/// are durable, so changing their formula would orphan in-flight and replayable Product receipts
+/// after an upgrade. A transition to a new framing must support both receipt identities atomically,
+/// rather than silently replacing this formula. Callers must validate the caller key (non-empty,
+/// bounded length) before calling this.
 pub fn scoped_caller_idempotency_key(
     tenant_id: Uuid,
     user_id: Uuid,
@@ -536,18 +540,24 @@ async fn finish_receipted_schema_write<T>(
         Err(error) => {
             let port_error = schema_write_error(context, operation, error);
             if !port_error.retryable {
-                let receipt_result = service
+                if let Err(receipt_error) = service
                     .fail_schema_operation_receipt(lease, &port_error)
-                    .await;
-                if let Err(receipt_error) = receipt_result {
+                    .await
+                {
                     tracing::error!(
                         correlation_id = %context.correlation_id,
                         tenant_id = %context.tenant_id,
                         operation,
                         operation_id = %lease.operation_id,
                         internal_code = %receipt_error.code,
+                        retryable = receipt_error.retryable,
                         "failed to persist Product schema terminal failure receipt"
                     );
+                    // A stale lease or failed finalization means the terminal owner error was not
+                    // durably recorded. Return the receipt error so callers retry with the same
+                    // key and observe the eventual replay or reclaim outcome instead of being
+                    // told a non-durable terminal result.
+                    return Err(schema_receipt_error(context, operation, receipt_error));
                 }
             }
             Err(port_error)
@@ -586,7 +596,7 @@ fn schema_receipt_error(
         operation,
         internal_code = %error.code,
         retryable = error.retryable,
-        "Product schema owner receipt admission failed"
+        "Product schema owner receipt operation failed"
     );
 
     match error.kind {
@@ -783,5 +793,27 @@ fn schema_error_code(error: &CommerceError) -> &'static str {
         CommerceError::CannotDeleteOnlyVariant => "product.cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "product.lifecycle_conflict",
         CommerceError::Core(_) => "product.schema_invariant_violation",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scoped_caller_idempotency_key;
+    use uuid::Uuid;
+
+    #[test]
+    fn deployed_product_receipt_key_formula_stays_stable() {
+        let key = scoped_caller_idempotency_key(
+            Uuid::from_u128(0x11111111111111111111111111111111),
+            Uuid::from_u128(0x22222222222222222222222222222222),
+            "create_attribute",
+            Some(Uuid::from_u128(0x33333333333333333333333333333333)),
+            " retry-123 ",
+        );
+
+        assert_eq!(
+            key,
+            "commerce-graphql-product:create_attribute:2944f9218adc8b670e2dab5a8cfd2d0f5427aaa576a158be49be5143b9cc5e5c"
+        );
     }
 }

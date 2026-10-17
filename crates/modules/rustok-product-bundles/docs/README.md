@@ -4,32 +4,39 @@ This document describes the runtime contract, boundaries, and architecture of th
 
 ## Purpose
 
-The `rustok-product-bundles` module manages product bundles, kits, configurable sets, and package discounts in RusToK. It enables store operators to:
-- Create and maintain bundles with custom slugs, bundle types (fixed kit vs. flexible set), active statuses, and discount configurations (percentage or fixed discount).
-- Assemble bundle items with individual quantities, optional flags, and custom item discounts.
-- Store bilingual/multilingual localized names and descriptions per bundle.
-- Associate a bundle with a root catalog product (`bundle_product_id`) or treat it as an independent bundle set.
+The module manages product bundles, kits, configurable sets, and package discounts. Store operators can:
+
+- Create and maintain Bundles with tenant-unique slugs, fixed or flexible composition, lifecycle status, and discount configuration.
+- Assemble component items with validated quantities, optional flags, positions, and item discounts; a selected Variant must belong to the selected component Product.
+- Store localized Bundle names and descriptions.
+- Associate a Bundle with its root catalog Product through `bundle_product_id`, or keep it independent.
+
+`bundle_product_id` is an ownership relationship, not component membership: a Product owns zero or one Bundle, and deleting that owner cascades to its Bundle and Bundle children. A component Product can appear in many Bundle item rows; deleting a component Product or Variant cascades its affected item rows for that component membership.
 
 ## Responsibility Zone
 
 The module boundary strictly owns:
+
 - Persistence and migrations for `product_bundles`, `product_bundle_translations`, and `product_bundle_items`.
-- Multi-tenant data isolation on all operations (requiring non-nil `tenant_id`).
-- Slug validation and uniqueness guarantees per tenant.
-- Cascading deletion of translations and bundle items when a bundle is removed.
-- Transactional outbox event publishing (`bundle.created`, `bundle.updated`, `bundle.deleted`).
+- Tenant-scoped Product, Variant, Bundle, and Bundle-item referential integrity, including that an item Variant belongs to its item Product.
+- Slug and owner-cardinality guarantees per tenant.
+- Cascading deletion of translations and Bundle items when a Bundle is removed, and of an owned Bundle when its owner Product is removed.
+- Append-only upgrade safety: `m20261017_000004_enforce_bundle_tenant_integrity` backfills legacy item tenants and fails closed on orphaned, cross-tenant, wrong-Product Variant, duplicate-owner, or duplicate-position data before replacing the legacy schema transactionally.
+- Receipt-bound create, update, delete, add-item, and remove-item commands.
+
+The module does not currently publish `bundle.created`, `bundle.updated`, or `bundle.deleted` lifecycle events. Those event names must not be consumed as an established contract. Lifecycle publication requires a separate accepted change to the shared `rustok-events` registry, schema, and digest artifacts.
 
 ## Integration
 
-- **`rustok-product`**: References product IDs and variant IDs in `product_bundle_items` and `product_bundles`.
-- **`rustok-pricing`**: Discount application on bundle items and aggregate bundle totals.
-- **`rustok-outbox`**: Emits domain events for inventory allocation, search indexing, and cart/checkout validation.
-- **`rustok-commerce`**: Exposes bundle queries and mutations via GraphQL.
-- **`rustok-product-bundles-admin`**: Dedicated Leptos FFA admin package for bundle management.
+- **`rustok-product`**: Supplies tenant-scoped Product and Variant references for Bundle owners and component items.
+- **`rustok-pricing`**: Applies Bundle and item discounts when pricing consumes this data.
+- **`rustok-outbox`**: Supplies durable command receipt infrastructure; it does not currently emit Bundle lifecycle events.
+- **`rustok-commerce`**: Exposes Bundle queries and receipt-bound mutations via GraphQL.
+- **`rustok-product-bundles-admin`**: Dedicated Leptos FFA admin package for Bundle management.
 
 ## Verification
 
-- Unit tests: `cargo test -p rustok-product-bundles` (validates CRUD, item management, translations, and discount calculations).
+- Unit tests: `cargo test -p rustok-product-bundles` (CRUD, ownership semantics, item management, translations, and validation).
 - Admin package check: `cargo check -p rustok-product-bundles-admin`.
 - Manifest validation: `cargo xtask validate-manifest`.
 - Module contract validation: `cargo xtask module validate product_bundles`.

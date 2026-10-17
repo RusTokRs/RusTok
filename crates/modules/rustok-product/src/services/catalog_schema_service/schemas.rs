@@ -72,7 +72,7 @@ impl ProductCatalogSchemaService {
             id: schema_id,
             code: input.code,
         };
-        record_product_operation_result(&result)?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         Ok(result)
     }
@@ -156,7 +156,7 @@ impl ProductCatalogSchemaService {
             owner_id: input.schema_id,
             code: input.code,
         };
-        record_product_operation_result(&result)?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         Ok(result)
     }
@@ -220,7 +220,7 @@ impl ProductCatalogSchemaService {
             },
         )
         .await?;
-        record_product_operation_result(&())?;
+        record_product_operation_result(&());
         txn.commit().await?;
         Ok(())
     }

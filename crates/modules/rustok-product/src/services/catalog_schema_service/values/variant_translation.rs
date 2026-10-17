@@ -423,7 +423,7 @@ ON CONFLICT (value_id, locale) DO UPDATE SET value_text = EXCLUDED.value_text
             target_revision,
             target_value,
         };
-        record_product_operation_result(&receipt)?;
+        record_product_operation_result(&receipt);
         txn.commit().await?;
         Ok(receipt)
     }
