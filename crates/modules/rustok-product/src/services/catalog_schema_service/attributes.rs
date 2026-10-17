@@ -535,7 +535,7 @@ mod tests {
     use rustok_outbox::{SysEventsMigration, idempotency};
     use rustok_test_utils::mock_transactional_event_bus;
     use sea_orm::{
-        ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement, TryGetable,
+        ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
     };
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use serde_json::json;
@@ -556,7 +556,7 @@ mod tests {
 
     async fn receipt_status(database: &DatabaseConnection, operation_id: Uuid) -> String {
         let row = database
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
                 "SELECT status FROM owner_operation_receipts WHERE id = $1".to_owned(),
                 vec![operation_id.into()],

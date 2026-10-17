@@ -47,9 +47,10 @@ pub use analytics::{
     SearchQueryLogRecord,
 };
 pub use audience_security::{
-    MAX_SEARCH_AUDIENCE_CANDIDATES, SearchAudiencePolicyPort, SearchAudienceRegistry,
-    SearchAudienceRequest, SearchCandidateDescriptor, SharedSearchAudiencePolicyPort,
-    build_authorized_facets, resolve_audience_eligible_candidates,
+    AUDIENCE_CANDIDATE_SCAN_PAGE_SIZE, MAX_SEARCH_AUDIENCE_CANDIDATES, SearchAudiencePolicyPort,
+    SearchAudienceRegistry, SearchAudienceRequest, SearchCandidateDescriptor,
+    SharedSearchAudiencePolicyPort, build_authorized_facets, execute_audience_eligible_search,
+    resolve_audience_eligible_candidates,
 };
 pub use diagnostics::{
     LaggingSearchDocument, SearchConsistencyIssue, SearchDiagnosticsService,

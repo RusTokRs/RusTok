@@ -42,12 +42,14 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         match manager.get_database_backend() {
-            DatabaseBackend::Postgres => down_postgres(manager).await,
-            DatabaseBackend::Sqlite => down_sqlite(manager).await,
-            backend => Err(DbErr::Custom(format!(
-                "Blog comment projection delivery integrity migration does not support {backend:?}"
-            ))),
-        }
+            DatabaseBackend::Postgres => down_postgres(manager).await?,
+            DatabaseBackend::Sqlite => down_sqlite(manager).await?,
+            backend => {
+                return Err(DbErr::Custom(format!(
+                    "Blog comment projection delivery integrity migration does not support {backend:?}"
+                )));
+            }
+        };
         drop_comment_index(manager).await
     }
 }
@@ -62,11 +64,11 @@ async fn remove_orphan_deliveries(manager: &SchemaManager<'_>) -> Result<(), DbE
     let result = connection
         .execute_unprepared(
             r#"
-DELETE FROM blog_comment_projection_deliveries delivery
+DELETE FROM blog_comment_projection_deliveries
 WHERE NOT EXISTS (
     SELECT 1
     FROM blog_posts post
-    WHERE post.id = delivery.post_id
+    WHERE post.id = blog_comment_projection_deliveries.post_id
 )
 "#,
         )

@@ -169,60 +169,15 @@ async fn storefront_search_native(
                     .map_err(ServerFnError::new)?
                     .0;
 
-                if auth.is_none() && search_query.source_modules.len() == 1 {
-                    let module = &search_query.source_modules[0];
-                    if !registry.public_discovery_allowed(module, tenant.id).await.unwrap_or(true) {
-                        return Ok(SearchPreviewPayload {
-                            query_log_id: None,
-                            preset_key: search_query.preset_key.clone(),
-                            items: Vec::new(),
-                            total: 0,
-                            took_ms: 0,
-                            engine: "postgres".to_string(),
-                            ranking_profile: search_query.ranking_profile.as_str().to_string(),
-                            facets: Vec::new(),
-                        });
-                    }
-                }
-
-                let mut raw_result = engine
-                    .search_storefront_candidates(search_query.clone(), &trusted_channel)
-                    .await
-                    .map_err(server_error)?;
-
-                let descriptors: Vec<rustok_search::SearchCandidateDescriptor> = raw_result
-                    .items
-                    .iter()
-                    .map(|item| {
-                        rustok_search::SearchCandidateDescriptor::new(
-                            item.id,
-                            &item.source_module,
-                            &item.entity_type,
-                        )
-                    })
-                    .collect();
-
-                let allowed_ids = rustok_search::resolve_audience_eligible_candidates(
+                rustok_search::execute_audience_eligible_search(
+                    &db,
+                    &engine,
+                    search_query.clone(),
+                    &trusted_channel,
                     registry,
-                    tenant.id,
-                    search_query.locale.as_deref().unwrap_or_default(),
-                    &descriptors,
                     auth,
                     Some(request_context.clone()),
                     rustok_search::StorefrontSearchTransport::NativeServer,
-                )
-                .await
-                .map_err(server_error)?;
-
-                raw_result.items.retain(|item| allowed_ids.contains(&item.id));
-                raw_result.total = raw_result.items.len() as u64;
-                raw_result.facets = rustok_search::build_authorized_facets(&raw_result.items);
-
-                SearchDictionaryService::apply_authorized_storefront_query_rules(
-                    &db,
-                    &search_query,
-                    raw_result,
-                    &trusted_channel,
                 )
                 .await
                 .map_err(server_error)?
@@ -251,8 +206,8 @@ async fn storefront_search_native(
                 res,
                 &trusted_channel,
             )
-                .await
-                .map_err(server_error)?
+            .await
+            .map_err(server_error)?
         };
         let query_log_id = rustok_search::SearchAnalyticsService::record_query(
             &db,
