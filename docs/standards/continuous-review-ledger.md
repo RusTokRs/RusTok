@@ -3,8 +3,8 @@
 ## Deep Full-Stack Audit Cycle — Round 1 (Fresh Start from Scratch)
 
 **Status:** ACTIVE  
-**Active phase:** Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)  
-**Next pending component:** [`crates/libs/rustok-api`](../../crates/libs/rustok-api) (35 files, 7,292 LOC)  
+**Active phase:** Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules  
+**Next pending component:** [`crates/modules/rustok-cache`](../../crates/modules/rustok-cache) (46 files, 15,917 LOC)  
 **Current main SHA:** `03e37fa03`  
 **Active branch:** `main`  
 
@@ -33,8 +33,8 @@ The single canonical trigger to continue this audit sequence is:
 ### Phase Backlog — Architectural Sequence (262 Components Total, Round 1)
 
 - [x] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (1/1 completed)
-- [ ] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (1/10 completed)
-- [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (0/24 completed)
+- [x] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (10/10 completed)
+- [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (8/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (0/39 completed)
 - [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (0/26 completed)
@@ -70,7 +70,7 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules
-*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (7/24 completed)
+*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (8/24 completed)
 
 - [x] **[`crates/modules/rustok-tenant`](../../crates/modules/rustok-tenant)** (28 files, 4,305 LOC) — Tenant lifecycle, provisioning, slug/domain resolution, locale policy aggregate, input sanitization, and settings schema. Audited via CodeGraph; verified transactional outbox publishing on mutations, SHA-256 idempotency receipts for locale policy CAS updates, settings schema validation, and fail-closed tenant resolution. 24/24 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-tenant/admin`](../../crates/modules/rustok-tenant/admin)** (8 files, 835 LOC) — FFA Leptos admin UI components for tenant provisioning, domain management, and locale settings. Audited via CodeGraph; verified strict FFA separation (pure Rust view models/state in `core.rs`, no domain logic in Leptos components), transport isolation with tenant authorization boundary, and catalog i18n diagnostics. 7/7 tests passed, 0 clippy warnings, gate passed.
@@ -79,7 +79,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[`crates/modules/rustok-auth/cli`](../../crates/modules/rustok-auth/cli)** (1 files, 333 LOC) — CLI maintenance commands for auth administration, token generation, and superadmin provisioning. Audited via CodeGraph; verified explicit tenant scoping on development app creation, input identity validation, and expired session cleanup. 4/4 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-rbac`](../../crates/modules/rustok-rbac)** (56 files, 13,518 LOC) — RBAC domain service, role assignment, policy evaluation, permissions matrix, and runtime cache invalidation. Audited via CodeGraph; verified fail-closed hierarchy and tenant scope enforcement, super-admin removal protection, generation-checked permission cache invalidation, and independent multi-tenant scoped projections. 103/103 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-rbac/admin`](../../crates/modules/rustok-rbac/admin)** (8 files, 952 LOC) — FFA admin UI components for role management, permission matrices, and user role assignment. Audited via CodeGraph; verified FFA separation (pure Rust permissions matrix view models/filtering in `core.rs`), pluralization logic without framework runtime, and zero domain logic in Leptos components. 7/7 tests passed, 0 clippy warnings, gate passed.
-- [ ] **[`crates/modules/rustok-rbac/cli`](../../crates/modules/rustok-rbac/cli)** (1 files, 243 LOC) — CLI maintenance commands for RBAC policy inspection and role assignment.
+- [x] **[`crates/modules/rustok-rbac/cli`](../../crates/modules/rustok-rbac/cli)** (1 files, 334 LOC) — CLI maintenance commands for RBAC policy inspection and role assignment. Audited via CodeGraph; added unit tests for command provider descriptor registration, unknown command rejection, mutually exclusive tenant scoping validation, and UUID syntax checks. 5/5 tests passed, 0 clippy warnings, gate passed.
 - [ ] **[`crates/modules/rustok-cache`](../../crates/modules/rustok-cache)** (46 files, 15,917 LOC) — Distributed caching, Redis/in-memory backends, stampede protection, and durable invalidation consumer.
 - [ ] **[`crates/modules/rustok-cache/admin`](../../crates/modules/rustok-cache/admin)** (7 files, 926 LOC) — FFA admin UI components for cache metrics inspection, manual invalidation, and backend health monitoring.
 - [ ] **[`crates/modules/rustok-channel`](../../crates/modules/rustok-channel)** (47 files, 11,368 LOC) — Sales channel resolution, domain/subdomain mapping, channel scoping, and channel-specific configuration.
@@ -549,9 +549,9 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-profiles-api](../../crates/modules/rustok-profiles-api) | `modules` | 3 | 132 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 9 | 1,463 | None |  |
-| [x] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 56 | 13,518 | 2026-10-17 03:33 | Audited and cleaned. |
+| [x] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 56 | 13,609 | 2026-10-17 03:33 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 8 | 952 | 2026-10-17 03:49 | Audited and cleaned. |
-| [ ] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 1 | 243 | None |  |
+| [x] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 1 | 334 | 2026-10-17 04:10 | Audited and cleaned. |
 | [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 8 | 2,961 | None |  |
 | [ ] | [rustok-reactions-api](../../crates/modules/rustok-reactions-api) | `modules` | 3 | 1,262 | None |  |
 | [ ] | [rustok-reactions-storefront](../../crates/modules/rustok-reactions-storefront) | `modules` | 6 | 615 | None |  |

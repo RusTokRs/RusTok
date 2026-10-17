@@ -1198,7 +1198,7 @@
       "path": "crates/modules/rustok-rbac",
       "category": "modules",
       "files": 56,
-      "loc": 13518,
+      "loc": 13609,
       "completed": true,
       "completed_at": "2026-10-17 03:33",
       "notes": "Audited and cleaned."
@@ -1218,10 +1218,10 @@
       "path": "crates/modules/rustok-rbac/cli",
       "category": "modules",
       "files": 1,
-      "loc": 243,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 334,
+      "completed": true,
+      "completed_at": "2026-10-17 04:10",
+      "notes": "Audited and cleaned."
     },
     "crates/modules/rustok-reactions": {
       "name": "rustok-reactions",

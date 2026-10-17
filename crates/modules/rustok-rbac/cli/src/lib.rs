@@ -241,3 +241,94 @@ fn command_failed(error: impl std::fmt::Display) -> CliCoreError {
         message: error.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_provider_registers_expected_commands() {
+        let runtime = RuntimeComposition::without_database(serde_json::json!({}));
+        let provider = command_provider(&runtime);
+        let commands = provider.commands();
+        assert_eq!(commands.len(), 2);
+
+        let report_cmd = commands
+            .iter()
+            .find(|c| c.namespace == "rbac" && c.name == "consistency-report");
+        assert!(report_cmd.is_some());
+
+        let repair_cmd = commands
+            .iter()
+            .find(|c| c.namespace == "rbac" && c.name == "repair-system-roles");
+        assert!(repair_cmd.is_some());
+    }
+
+    fn command_request(name: &str, args: serde_json::Value) -> CommandRequest {
+        CommandRequest {
+            namespace: "rbac".to_string(),
+            name: name.to_string(),
+            args,
+            dry_run: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn unknown_command_returns_error() {
+        let runtime = RuntimeComposition::without_database(serde_json::json!({}));
+        let provider = command_provider(&runtime);
+        let request = command_request("nonexistent-action", serde_json::json!({}));
+        let result = provider.execute(request).await;
+        assert!(matches!(result, Err(CliCoreError::UnknownCommand { .. })));
+    }
+
+    #[tokio::test]
+    async fn repair_system_roles_rejects_mutually_exclusive_tenant_flags() {
+        let runtime = RuntimeComposition::without_database(serde_json::json!({}));
+        let provider = command_provider(&runtime);
+        let request = command_request("repair-system-roles", serde_json::json!({
+            "options": {
+                "tenant_id": Uuid::new_v4().to_string(),
+                "all_tenants": true
+            }
+        }));
+        let result = provider.execute(request).await;
+        assert!(matches!(
+            result,
+            Err(CliCoreError::InvalidInput { ref message }) if message.contains("mutually exclusive")
+        ));
+    }
+
+    #[tokio::test]
+    async fn repair_system_roles_apply_requires_tenant_or_all_tenants() {
+        let runtime = RuntimeComposition::without_database(serde_json::json!({}));
+        let provider = command_provider(&runtime);
+        let request = command_request("repair-system-roles", serde_json::json!({
+            "options": {
+                "apply": true
+            }
+        }));
+        let result = provider.execute(request).await;
+        assert!(matches!(
+            result,
+            Err(CliCoreError::InvalidInput { ref message }) if message.contains("--apply requires")
+        ));
+    }
+
+    #[tokio::test]
+    async fn repair_system_roles_rejects_invalid_uuid() {
+        let runtime = RuntimeComposition::without_database(serde_json::json!({}));
+        let provider = command_provider(&runtime);
+        let request = command_request("repair-system-roles", serde_json::json!({
+            "options": {
+                "tenant_id": "not-a-valid-uuid"
+            }
+        }));
+        let result = provider.execute(request).await;
+        assert!(matches!(
+            result,
+            Err(CliCoreError::InvalidInput { ref message }) if message.contains("must be a UUID")
+        ));
+    }
+}
+
