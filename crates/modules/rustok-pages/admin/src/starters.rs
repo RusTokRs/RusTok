@@ -1,6 +1,5 @@
 use fly::{
-    DocumentKind, GrapesJsCodec, ProjectDocument, RegistrySet, UniqueIdGenerator, ValidationLimits,
-    validate_project,
+    DocumentKind, GrapesJsCodec, ProjectDocument, UniqueIdGenerator,
 };
 use rustok_ui_core::normalize_ui_text;
 use serde::{Deserialize, Serialize};
@@ -576,58 +575,6 @@ fn faq_accordion_node(id: &str) -> Value {
             {
                 "id": format!("{id}-item-2"),
                 "type": "container",
-                "tagName": "div",
-                "style": { "border": "1px solid #e2e8f0", "border-radius": "12px", "overflow": "hidden" },
-                "components": [
-                    {
-                        "id": format!("{id}-trigger-2"),
-                        "type": "button",
-                        "tagName": "button",
-                        "content": "Is multi-tenant and multi-locale supported?",
-                        "attributes": { "type": "button", "aria-expanded": "false" },
-                        "flyAction": { "kind": "toggle_accordion", "target_id": format!("{id}-body-2"), "exclusive": true },
-                        "style": { "display": "flex", "width": "100%", "justify-content": "space-between", "padding": "16px 20px", "background": "#f8fafc", "border": "0", "font-size": "16px", "font-weight": "600", "cursor": "pointer", "text-align": "left" }
-                    },
-                    {
-                        "id": format!("{id}-body-2"),
-                        "type": "container",
-                        "tagName": "div",
-                        "attributes": { "data-fly-accordion-body": "true" },
-                        "style": { "display": "none", "padding": "16px 20px", "background": "#ffffff", "border-top": "1px solid #f1f5f9", "color": "#475569", "font-size": "15px", "line-height": "1.6" },
-                        "components": [
-                            { "id": format!("{id}-p-2"), "type": "text", "content": "Yes, RusToK natively isolates tenants and manages locale-keyed translations and landing revisions." }
-                        ]
-                    }
-                ]
-            }
-        ]
-    })
-}
-                "components": [
-                    {
-                        "id": format!("{id}-trigger-1"),
-                        "type": "button",
-                        "tagName": "button",
-                        "content": "Can I customize the code and design?",
-                        "attributes": { "type": "button", "aria-expanded": "true" },
-                        "flyAction": { "kind": "toggle_accordion", "target_id": format!("{id}-body-1"), "exclusive": true },
-                        "style": { "display": "flex", "width": "100%", "justify-content": "space-between", "padding": "16px 20px", "background": "#f8fafc", "border": "0", "font-size": "16px", "font-weight": "600", "cursor": "pointer", "text-align": "left" }
-                    },
-                    {
-                        "id": format!("{id}-body-1"),
-                        "type": "container",
-                        "tagName": "div",
-                        "attributes": { "data-fly-accordion-body": "true" },
-                        "style": { "padding": "16px 20px", "background": "#ffffff", "border-top": "1px solid #f1f5f9", "color": "#475569", "font-size": "15px", "line-height": "1.6" },
-                        "components": [
-                            { "id": format!("{id}-p-1"), "type": "text", "content": "Yes, every component is fully interactive and customizable via visual canvas or direct code." }
-                        ]
-                    }
-                ]
-            },
-            {
-                "id": format!("{id}-item-2"),
-                "type": "accordion_item",
                 "tagName": "div",
                 "style": { "border": "1px solid #e2e8f0", "border-radius": "12px", "overflow": "hidden" },
                 "components": [

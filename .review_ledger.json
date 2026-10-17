@@ -819,9 +819,9 @@
       "category": "modules",
       "files": 242,
       "loc": 131685,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-17 10:45",
+      "notes": "Audited and cleaned."
     },
     "crates/modules/rustok-modules/cli": {
       "name": "cli",
@@ -988,7 +988,7 @@
       "path": "crates/modules/rustok-pages",
       "category": "modules",
       "files": 197,
-      "loc": 56484,
+      "loc": 56496,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -998,7 +998,7 @@
       "path": "crates/modules/rustok-pages/admin",
       "category": "modules",
       "files": 26,
-      "loc": 7390,
+      "loc": 7389,
       "completed": false,
       "completed_at": null,
       "notes": ""

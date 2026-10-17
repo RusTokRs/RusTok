@@ -384,12 +384,13 @@ pub(super) fn document_revision_conflict(expected: String, actual: String) -> Pa
         RichError::new(
             ErrorKind::Conflict,
             format!(
-                "Page document changed concurrently: expected revision `{expected}`, found `{actual}`"
+                "Page document changed concurrently ({PAGE_DOCUMENT_REVISION_CONFLICT}): expected revision `{expected}`, found `{actual}`"
             ),
         )
         .with_user_message(
             "The visual document changed while you were editing it. Reload the latest document and retry.",
         )
+        .with_field("error_code", PAGE_DOCUMENT_REVISION_CONFLICT)
         .with_field("expected_revision", expected)
         .with_field("actual_revision", actual)
         .with_error_code(PAGE_DOCUMENT_REVISION_CONFLICT),

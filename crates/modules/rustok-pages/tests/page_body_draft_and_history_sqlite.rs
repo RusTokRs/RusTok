@@ -21,8 +21,8 @@ use rustok_pages::{
 };
 use rustok_test_utils::mock_transactional_event_bus;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
+    EntityTrait, QueryFilter, QueryOrder, Set,
 };
 use sea_orm_migration::SchemaManager;
 use serde_json::json;
@@ -456,6 +456,18 @@ async fn setup_db() -> TestResult<DatabaseConnection> {
         .min_connections(1)
         .sqlx_logging(false);
     let db = Database::connect(options).await?;
+    db.execute_unprepared(
+        "CREATE TABLE tenant_modules (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            module_slug TEXT NOT NULL,
+            enabled INTEGER NOT NULL,
+            settings TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )",
+    )
+    .await?;
     let manager = SchemaManager::new(&db);
     for migration in PagesModule.migrations() {
         migration.up(&manager).await?;

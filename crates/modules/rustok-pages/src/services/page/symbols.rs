@@ -66,6 +66,12 @@ pub(super) fn replace_symbol_block(content: &str, symbols: Vec<Value>) -> PagesR
         .as_object_mut()
         .expect("parse_project_value returns an object");
     let replacement = (!symbols.is_empty()).then_some(Value::Array(symbols.clone()));
+    if symbols.is_empty()
+        && object.get(FLY_SYMBOLS_FIELD).is_none()
+        && object.get(FLY_SYMBOLS_REVISION_FIELD).is_none()
+    {
+        return Ok(content.to_string());
+    }
     let revision = Value::String(catalog_revision(&symbols)?);
     if object.get(FLY_SYMBOLS_FIELD) == replacement.as_ref()
         && object.get(FLY_SYMBOLS_REVISION_FIELD) == Some(&revision)
