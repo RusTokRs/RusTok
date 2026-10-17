@@ -423,6 +423,52 @@ test("failure finalization cannot ignore a lost receipt lease", () => {
   );
 });
 
+test("completion finalization must make a lost receipt lease retryable", () => {
+  const relative = "crates/modules/rustok-outbox/src/idempotency.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "PortError::unavailable(\n            \"outbox.operation_receipt_state_invalid\",\n            \"owner operation receipt was not processing during completion\",",
+      "PortError::invariant_violation(\n            \"outbox.operation_receipt_state_invalid\",\n            \"owner operation receipt was not processing during completion\",",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /shared receipt completion finalization: missing return Err\(PortError::unavailable\(/,
+  );
+});
+
+test("caller-key scoping must distinguish a present subject from caller bytes", () => {
+  const relative = "crates/modules/rustok-outbox/src/idempotency.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(relative, "            digest.update([1]);\n", ""),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /shared caller-key scoping primitive: missing digest\.update\(\[1\]\);/,
+  );
+});
+
+test("caller-key scoping must length-frame untrusted caller bytes", () => {
+  const relative = "crates/modules/rustok-outbox/src/idempotency.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "    hash_scoped_key_component(&mut digest, caller_key.trim().as_bytes());",
+      "    digest.update(caller_key.trim().as_bytes());",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /shared caller-key scoping primitive: missing hash_scoped_key_component\(&mut digest, caller_key\.trim\(\)\.as_bytes\(\)\);/,
+  );
+});
 
 test("Bundle GraphQL must preserve an explicit null owner clear", () => {
   const relative = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";

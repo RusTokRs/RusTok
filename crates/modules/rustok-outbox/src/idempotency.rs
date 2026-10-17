@@ -93,7 +93,9 @@ impl OwnerOperationScope {
 /// Transport adapters use one stable namespace owned by their bounded context. Binding tenant,
 /// actor, operation, and an optional aggregate subject prevents one caller key from being replayed
 /// under a different authorization or command meaning, while allowing native and remote adapters
-/// to reach the same owner receipt for one logical command.
+/// to reach the same owner receipt for one logical command. Every component is length-delimited
+/// and the optional subject has an explicit presence tag, so untrusted caller bytes cannot be
+/// concatenated into another command identity.
 pub fn scoped_caller_idempotency_key(
     namespace: &str,
     tenant_id: Uuid,
@@ -103,14 +105,25 @@ pub fn scoped_caller_idempotency_key(
     caller_key: &str,
 ) -> String {
     let mut digest = Sha256::new();
-    digest.update(tenant_id.as_bytes());
-    digest.update(actor_id.as_bytes());
-    digest.update(operation.as_bytes());
-    if let Some(subject_id) = subject_id {
-        digest.update(subject_id.as_bytes());
+    hash_scoped_key_component(&mut digest, b"rustok.owner-operation-receipt-key.v1");
+    hash_scoped_key_component(&mut digest, namespace.as_bytes());
+    hash_scoped_key_component(&mut digest, tenant_id.as_bytes());
+    hash_scoped_key_component(&mut digest, actor_id.as_bytes());
+    hash_scoped_key_component(&mut digest, operation.as_bytes());
+    match subject_id {
+        Some(subject_id) => {
+            digest.update([1]);
+            hash_scoped_key_component(&mut digest, subject_id.as_bytes());
+        }
+        None => digest.update([0]),
     }
-    digest.update(caller_key.trim().as_bytes());
+    hash_scoped_key_component(&mut digest, caller_key.trim().as_bytes());
     format!("{namespace}:{operation}:{}", hex::encode(digest.finalize()))
+}
+
+fn hash_scoped_key_component(digest: &mut Sha256, value: &[u8]) {
+    digest.update((value.len() as u64).to_be_bytes());
+    digest.update(value);
 }
 
 /// Atomically admits an owner-scoped idempotent operation or returns its
@@ -210,7 +223,11 @@ where
         .map_err(database_error)?;
 
     if update.rows_affected != 1 {
-        return Err(PortError::invariant_violation(
+        // A stale worker cannot know whether a newer lease holder already completed, failed, or
+        // reclaimed this receipt. Its caller must retry and let a later admission replay the
+        // durable outcome or reclaim processing ownership; reporting a terminal invariant here
+        // would incorrectly make that unknown outcome non-retryable.
+        return Err(PortError::unavailable(
             "outbox.operation_receipt_state_invalid",
             "owner operation receipt was not processing during completion",
         ));
@@ -456,7 +473,7 @@ mod tests {
         );
         assert_eq!(
             key,
-            "commerce-graphql-relation:remove_product_relation:910d14268f409657a0d2f5d857858af7badc74b70f1cc0ee07c9eeb460cabd61",
+            "commerce-graphql-relation:remove_product_relation:ec63497e3c9f7f42c6b0cb5d2d663f02e74f7a7d6dad063ea507aef29ef8c5c0",
         );
         assert_eq!(
             key,
@@ -490,6 +507,74 @@ mod tests {
                 Some(subject_id),
                 "retry-123",
             )
+        );
+
+        // Without a presence tag and field boundaries these two inputs serialize to the same byte
+        // stream: `subject_id` is sixteen ASCII `A` bytes and is otherwise indistinguishable from
+        // the leading caller-key bytes. A scoped key must never alias distinct owner subjects.
+        let boundary_subject = Uuid::from_bytes(*b"AAAAAAAAAAAAAAAA");
+        assert_ne!(
+            scoped_caller_idempotency_key(
+                "commerce-graphql-relation",
+                tenant_id,
+                actor_id,
+                "remove_product_relation",
+                Some(boundary_subject),
+                "x",
+            ),
+            scoped_caller_idempotency_key(
+                "commerce-graphql-relation",
+                tenant_id,
+                actor_id,
+                "remove_product_relation",
+                None,
+                "AAAAAAAAAAAAAAAAx",
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn receipt_completion_rejects_a_lost_lease_retryably() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database should connect");
+        SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration should apply");
+
+        let lease = match admit(
+            &database,
+            OwnerOperationScope::Tenant(Uuid::new_v4()),
+            "test-owner",
+            "lost-completion-lease",
+            "test-completion",
+            &serde_json::json!({"request": true}),
+        )
+        .await
+        .expect("receipt should admit")
+        {
+            Admission::Run(lease) => lease,
+            Admission::Replay(_) | Admission::ReplayError(_) => {
+                panic!("first admission must run")
+            }
+        };
+        let error = complete(
+            &database,
+            Lease {
+                operation_id: lease.operation_id,
+                token: Uuid::nil(),
+            },
+            &serde_json::json!({"ok": true}),
+        )
+        .await
+        .expect_err("completion must reject a stale lease token");
+
+        assert_eq!(error.kind, rustok_api::PortErrorKind::Unavailable);
+        assert_eq!(error.code, "outbox.operation_receipt_state_invalid");
+        assert!(
+            error.retryable,
+            "lost receipt ownership leaves the command outcome unknown and retryable"
         );
     }
 

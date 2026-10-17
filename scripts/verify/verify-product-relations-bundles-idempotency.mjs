@@ -217,6 +217,11 @@ const bundlesLib = read(bundlesLibPath);
 const bundlesManifest = read(bundlesManifestPath);
 const bundlesAdapter = read(bundlesAdapterPath);
 const outboxIdempotency = read(outboxIdempotencyPath);
+const outboxReceiptCompletion = slice(
+  outboxIdempotency,
+  "pub async fn complete<C, T>",
+  "/// Stores a terminal failure",
+);
 const graphql = read(graphqlPath);
 const graphqlTypes = read(graphqlTypesPath);
 const productCatalogGraphql = read(productCatalogGraphqlPath);
@@ -265,7 +270,15 @@ for (const marker of [
   "pub fn scoped_caller_idempotency_key(",
   "tenant_id: Uuid,",
   "actor_id: Uuid,",
-  "caller_key.trim().as_bytes()",
+  "hash_scoped_key_component",
+  "hash_scoped_key_component(&mut digest, namespace.as_bytes());",
+  "hash_scoped_key_component(&mut digest, tenant_id.as_bytes());",
+  "hash_scoped_key_component(&mut digest, actor_id.as_bytes());",
+  "hash_scoped_key_component(&mut digest, operation.as_bytes());",
+  "digest.update([1]);",
+  "hash_scoped_key_component(&mut digest, subject_id.as_bytes());",
+  "None => digest.update([0])",
+  "hash_scoped_key_component(&mut digest, caller_key.trim().as_bytes());",
 ]) {
   need(outboxIdempotency, marker, "shared caller-key scoping primitive");
 }
@@ -284,6 +297,13 @@ for (const marker of [
   "owner operation receipt was not processing during failure finalization",
 ]) {
   need(outboxIdempotency, marker, "shared failure receipt finalization");
+}
+for (const marker of [
+  "if update.rows_affected != 1",
+  "return Err(PortError::unavailable(",
+  "owner operation receipt was not processing during completion",
+]) {
+  need(outboxReceiptCompletion, marker, "shared receipt completion finalization");
 }
 
 // ── Product owner receipt finalization ────────────────────────────────────────────────────────
