@@ -16,10 +16,12 @@ pub mod error;
 pub mod graphql;
 pub mod migrations;
 pub mod ports;
-pub mod search_projection;
 pub mod services;
 
-pub use search_projection::{BlogSearchProjectionSource, BlogSearchProjectionSourceFactory};
+pub use services::search_projection;
+pub use services::search_projection::{
+    BlogSearchProjectionSource, BlogSearchProjectionSourceFactory,
+};
 
 pub use controllers::openapi;
 pub use domain::{richtext, state_machine};
@@ -51,9 +53,7 @@ pub use services::{
     CategoryService, CommentService, PostService, PreviewToken, PreviewTokenService, TagService,
     canonical_post_route,
 };
-pub use state_machine::{
-    Archived, BlogPost, BlogPostStatus, CommentStatus, Draft, Published, ToBlogPostStatus,
-};
+pub use state_machine::{BlogPostStatus, CommentStatus};
 
 #[cfg(test)]
 mod tests;

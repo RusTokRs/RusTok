@@ -129,9 +129,9 @@ hasAll(auditedStore, [
 ], 'audited PostgreSQL store');
 
 const stateUpdate = auditedStore.indexOf(
-  'execute(update_state_statement(&expected, &candidate))',
+  'execute_raw(update_state_statement(&expected, &candidate))',
 );
-const auditInsert = auditedStore.indexOf('execute(insert_audit_statement(&audit))');
+const auditInsert = auditedStore.indexOf('execute_raw(insert_audit_statement(&audit))');
 const commit = auditedStore.indexOf('transaction.commit().await', auditInsert);
 requireCondition(
   stateUpdate >= 0 && stateUpdate < auditInsert && auditInsert < commit,

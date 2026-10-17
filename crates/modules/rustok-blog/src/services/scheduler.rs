@@ -46,6 +46,11 @@ pub const BLOG_PREVIEW_TOKEN_CLEANUP_WORKER: &str = "blog_preview_token_cleanup"
 pub const BLOG_ROUTE_RECONCILIATION_WORKER: &str = "blog_route_reconciliation";
 /// Upper bound of routes one reconciliation iteration removes.
 const ROUTE_RECONCILIATION_BATCH: u64 = 200;
+/// Upper bound of stale route rows one reconciliation iteration scans.
+///
+/// The scan bound is separate from the removal bound: one scanned row points at
+/// a target that can own more routes than the removal budget allows.
+const ROUTE_RECONCILIATION_SCAN: u64 = 200;
 
 /// Builds the tenant-scoped envelope the scheduler claims and hands back.
 fn tenant_scoped_work_item(worker_slug: &str, tenant_id: Uuid) -> ModuleWorkItem {
@@ -344,7 +349,7 @@ impl BlogRouteReconciliationWorkAdapter {
             .filter(blog_post_route::Column::TenantId.eq(tenant_id))
             .filter(dangling_route_condition())
             .order_by_asc(blog_post_route::Column::SourceRoute)
-            .limit(ROUTE_RECONCILIATION_BATCH)
+            .limit(ROUTE_RECONCILIATION_SCAN)
             .all(&self.database)
             .await
             .map_err(|error| ModuleWorkError::Source(error.to_string()))?;
@@ -360,8 +365,15 @@ impl BlogRouteReconciliationWorkAdapter {
         let owner = BlogPostRouteOwner::new(self.events.clone());
         let mut removed = 0u64;
         for route in stale {
+            // The iteration removes at most ROUTE_RECONCILIATION_BATCH routes, no
+            // matter how many routes one target owns. The remaining routes of a
+            // target are removed by the next iteration.
+            if removed >= ROUTE_RECONCILIATION_BATCH {
+                break;
+            }
+            let budget = ROUTE_RECONCILIATION_BATCH - removed;
             removed += owner
-                .remove_target_routes_in_tx(&txn, tenant_id, None, route.target_id)
+                .remove_target_routes_up_to_in_tx(&txn, tenant_id, None, route.target_id, budget)
                 .await
                 .map_err(|error| ModuleWorkError::Handler(error.to_string()))?;
         }
@@ -443,14 +455,18 @@ fn dangling_route_condition() -> Condition {
     let tenant_post_ids = blog_post::Entity::find()
         .select_only()
         .column(blog_post::Column::Id)
-        .filter(blog_post::Column::Id.eq(Expr::col((
-            blog_post_route::Entity,
-            blog_post_route::Column::TargetId,
-        ))))
-        .filter(blog_post::Column::TenantId.eq(Expr::col((
-            blog_post_route::Entity,
-            blog_post_route::Column::TenantId,
-        ))))
+        .filter(
+            Expr::col((blog_post::Entity, blog_post::Column::Id)).eq(Expr::col((
+                blog_post_route::Entity,
+                blog_post_route::Column::TargetId,
+            ))),
+        )
+        .filter(
+            Expr::col((blog_post::Entity, blog_post::Column::TenantId)).eq(Expr::col((
+                blog_post_route::Entity,
+                blog_post_route::Column::TenantId,
+            ))),
+        )
         .into_query();
 
     Condition::all()

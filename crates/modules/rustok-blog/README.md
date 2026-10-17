@@ -313,6 +313,16 @@ The following are not implemented. Each is tracked with its audit identifier in
   it, so the window is bounded by the host scheduler rather than by a cross-module transaction
   (H-7 of the 2026-10-15 audit).
 - The Leptos storefront does not redirect retired slugs (M-12).
+- The Leptos admin cannot set the Category, the featured image, the SEO title/description, the
+  channel visibility, or a publication schedule: `BlogPostDraft`
+  (`crates/modules/rustok-blog/admin/src/model.rs`) carries only locale, version, title, slug,
+  excerpt, content, publish and tags, and both adapters send `category_id: None`,
+  `featured_image_url: None`, `seo_title: None`, `seo_description: None`, `channel_slugs: None`
+  and `scheduled_at: None` (L-7 of
+  [`docs/audits/rustok-blog-engineering-audit-2026-10-17.md`](../../../docs/audits/rustok-blog-engineering-audit-2026-10-17.md)).
+  The owner input types (`CreatePostInput`, `UpdatePostInput`) accept all of them and the Next
+  admin exposes the Category, the featured image and the SEO fields, so the two admin stacks have
+  different capabilities.
 - Blog Tag mutations are authorized by this module, not by the Taxonomy owner: the owner's
   `update_module_term_in_tx`/`delete_module_term_in_tx` accept a `SecurityContext` they do not
   read (`crates/modules/rustok-taxonomy/src/module_term_mutation.rs`), so

@@ -645,7 +645,7 @@ mod tests {
 
     #[test]
     fn clone_as_page_remaps_all_ids_and_sets_kind() {
-        let mut doc = GrapesJsCodec::decode_value(json!({
+        let doc = GrapesJsCodec::decode_value(json!({
             "flyDocumentKind": "starter_preset",
             "pages": [{
                 "id": "starter-page",

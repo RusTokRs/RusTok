@@ -214,9 +214,9 @@ impl BlogPostRouteOwner {
 
     /// Removes every stored Blog route that points at `target_id` and reports them
     /// through `UrlAliasPurged`. Used when the post disappears without its slug —
-    /// a `TargetDeleted` delivery or route reconciliation — so the derived canonical
-    /// route is unknown and is not claimed as purged. Idempotent: a repeated call
-    /// finds no rows, deletes nothing, and publishes nothing.
+    /// a `TargetDeleted` delivery — so the derived canonical route is unknown and
+    /// is not claimed as purged. Idempotent: a repeated call finds no rows,
+    /// deletes nothing, and publishes nothing.
     pub async fn remove_target_routes_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -224,11 +224,47 @@ impl BlogPostRouteOwner {
         actor_id: Option<Uuid>,
         target_id: Uuid,
     ) -> BlogResult<u64> {
-        let urls = Self::target_route_sources(txn, tenant_id, target_id).await?;
-        if urls.is_empty() {
+        self.remove_target_routes_up_to_in_tx(txn, tenant_id, actor_id, target_id, u64::MAX)
+            .await
+    }
+
+    /// Removes at most `max_routes` stored Blog routes that point at `target_id`
+    /// and reports exactly the removed URLs through `UrlAliasPurged`.
+    ///
+    /// The route reconciliation sweep uses the bound to keep one iteration
+    /// inside its documented removal limit: a target with more routes than the
+    /// budget keeps the rest, and the next iteration removes them.
+    pub async fn remove_target_routes_up_to_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        target_id: Uuid,
+        max_routes: u64,
+    ) -> BlogResult<u64> {
+        if max_routes == 0 {
             return Ok(0);
         }
-        let removed = Self::delete_target_routes_in_tx(txn, tenant_id, target_id).await?;
+
+        let rows = Self::target_route_rows_in_tx(txn, tenant_id, target_id).await?;
+        if rows.is_empty() {
+            return Ok(0);
+        }
+
+        let selected = rows
+            .into_iter()
+            .take(usize::try_from(max_routes).unwrap_or(usize::MAX))
+            .collect::<Vec<_>>();
+        let mut urls = Vec::with_capacity(selected.len());
+        for row in &selected {
+            blog_post_route::Entity::delete_by_id((tenant_id, row.source_route.clone()))
+                .exec(txn)
+                .await
+                .map_err(BlogError::from)?;
+            urls.push(row.source_route.clone());
+        }
+
+        let removed = selected.len() as u64;
         self.publish_purged(
             txn,
             tenant_id,
@@ -247,17 +283,28 @@ impl BlogPostRouteOwner {
         tenant_id: Uuid,
         target_id: Uuid,
     ) -> BlogResult<Vec<String>> {
-        let rows = blog_post_route::Entity::find()
-            .filter(blog_post_route::Column::TenantId.eq(tenant_id))
-            .filter(blog_post_route::Column::TargetKind.eq(BLOG_POST_TARGET_TYPE))
-            .filter(blog_post_route::Column::TargetId.eq(target_id))
-            .all(txn)
-            .await
-            .map_err(BlogError::from)?;
-        Ok(rows
+        Ok(Self::target_route_rows_in_tx(txn, tenant_id, target_id)
+            .await?
             .into_iter()
             .map(|row| row.source_route)
             .collect::<Vec<_>>())
+    }
+
+    /// Stored route rows of this tenant that point at one Blog post, ordered by
+    /// source route so a bounded removal is deterministic.
+    async fn target_route_rows_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        target_id: Uuid,
+    ) -> BlogResult<Vec<blog_post_route::Model>> {
+        Ok(blog_post_route::Entity::find()
+            .filter(blog_post_route::Column::TenantId.eq(tenant_id))
+            .filter(blog_post_route::Column::TargetKind.eq(BLOG_POST_TARGET_TYPE))
+            .filter(blog_post_route::Column::TargetId.eq(target_id))
+            .order_by_asc(blog_post_route::Column::SourceRoute)
+            .all(txn)
+            .await
+            .map_err(BlogError::from)?)
     }
 
     async fn delete_target_routes_in_tx(

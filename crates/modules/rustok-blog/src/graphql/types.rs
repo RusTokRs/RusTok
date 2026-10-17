@@ -699,12 +699,12 @@ impl From<crate::dto::CategoryListItem> for GqlBlogCategory {
             effective_locale: item.effective_locale,
             name: item.name,
             slug: item.slug,
-            description: None,
+            description: item.description,
             parent_id: item.parent_id,
             position: item.position,
             settings: item.settings.to_string(),
             created_at: item.created_at.to_rfc3339(),
-            updated_at: None,
+            updated_at: Some(item.updated_at.to_rfc3339()),
         }
     }
 }

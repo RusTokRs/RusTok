@@ -105,7 +105,8 @@ hasAll(
   [
     'pub fn from_prepared_file(',
     'DelegationScheduleSource::File(file_path)',
-    'pub(super) fn replace_prepared_with_commit',
+    // The bridge module is private, so the method is `pub` inside it.
+    'pub fn replace_prepared_with_commit',
     'let mut current = match self.0.current.write()',
     'candidate.generation <= current.generation',
     '.validate_replacement_from(&current.schedule, now_ms)',
@@ -201,7 +202,6 @@ hasAll(
     'let mut audit = self.0.audit.lock()',
     'let sequence = audit.allocate_sequence()?;',
     'let candidate = match prepare(&self.0.source)',
-    'let mut persisted = self.0.persistence_record.lock()',
     'persisted.generation() != selection.generation',
     'self.0.schedule_handle.replace_prepared_with_commit(',
     '.compare_and_store(Some(&expected_record), &candidate_record)',
@@ -217,15 +217,23 @@ const clockIndex = persistedTrigger.indexOf('let occurred_at_unix_ms = current_u
 const authorizerIndex = persistedTrigger.indexOf('self.0.authorizer.authorize(');
 const auditIndex = persistedTrigger.indexOf('let mut audit = self.0.audit.lock()');
 const prepareIndex = persistedTrigger.indexOf('let candidate = match prepare(&self.0.source)');
-const persistenceLockIndex = persistedTrigger.indexOf(
-  'let mut persisted = self.0.persistence_record.lock()',
+// The persistence lock is a chained call: rustfmt splits the chain, so the
+// guard matches the call chain instead of the line break.
+const persistenceLockIndex = persistedTrigger.search(
+  /let mut persisted = self\s*\.0\s*\.persistence_record\s*\.lock\(\)/,
+);
+requireCondition(
+  persistenceLockIndex >= 0,
+  'persisted trigger missing the persistence record lock',
 );
 const replaceIndex = persistedTrigger.indexOf(
   'self.0.schedule_handle.replace_prepared_with_commit(',
 );
 const processRecordIndex = persistedTrigger.indexOf('*persisted = candidate_record;');
+// The audit outcome is written on the next line by rustfmt, so the guard
+// matches the outcome itself instead of the `outcome:` label.
 const successAuditIndex = persistedTrigger.indexOf(
-  'outcome: CommentsTcpDelegationPersistedScheduleAuditOutcome::ReplacementSucceeded',
+  'CommentsTcpDelegationPersistedScheduleAuditOutcome::ReplacementSucceeded',
 );
 requireCondition(
   operationIndex >= 0
@@ -267,7 +275,7 @@ hasAll(
   triggerGuard,
   [
     'SharedCommentsTcpDelegationPersistedScheduleTrigger',
-    'Persisted and process-local Comments TCP delegation schedule triggers cannot be combined',
+    'persisted, and process-local Comments TCP delegation schedule triggers cannot be combined',
     'trigger and standalone schedule handle cannot be combined',
     'persisted_trigger',
     'process_local_trigger',

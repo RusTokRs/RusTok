@@ -62,7 +62,7 @@ jobs:
           echo "expected_sha=$expected"
           echo "actual_sha=$actual"
           test "$actual" = "$expected"
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
       - name: Verify route-registry PostgreSQL contention source
@@ -99,7 +99,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Activate exact Rust evidence toolchain
@@ -166,7 +166,7 @@ jobs:
             2>&1 | tee evidence/taxonomy-postgres/translation-target.log
       - name: Archive Taxonomy PostgreSQL evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: taxonomy-postgres-evidence-${{ github.run_id }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: evidence/taxonomy-postgres

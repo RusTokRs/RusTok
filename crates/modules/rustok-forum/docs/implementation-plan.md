@@ -271,6 +271,16 @@ whitespace checks pass. Callback tests inject lifecycle bindings and are not mou
 proof. No dependency/storage/protocol change was needed. Docker, browser, Rust/PostgreSQL,
 sparse-search scale and blocked-storage durability limits remain open; no audit phase is closed.
 
+PR #4619 integration reconciliation: fetched main at `d3f4c5f8c`, merged it into the fixed
+session branch, retained both ADR index additions and the upstream native continuation cleanup.
+Upstream dependency updates are retained alongside the verified React/ESLint/TypeScript/Tiptap
+cohorts; Next and its ESLint config now align at `16.4.0` on both hosts rather than restoring
+main's older storefront Next pin. npm locks were regenerated normally. Both native host
+`typecheck`, `lint`, Forum scripts and the combined **161-test** scoped suite pass again.
+Base-owned migration/API/release/worker infrastructure approval evaluators report unchanged
+protected infrastructure. GitHub checks and merge acceptance remain separate from local proof;
+the Rust/PostgreSQL/browser/Docker limitations above still apply.
+
 Fourth-packet evidence (before the requested recheck): **94 scoped Forum JS tests plus 14
 ownership-verifier tests pass (108 total)**. Host scripts separately pass **84 storefront** tests
 (including the two shared GraphQL tests) and **12 admin** tests. Six scoped source guards and three

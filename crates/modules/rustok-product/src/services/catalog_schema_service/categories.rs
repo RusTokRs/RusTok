@@ -107,7 +107,7 @@ impl ProductCatalogSchemaService {
             path,
             kind: input.kind,
         };
-        record_product_operation_result(&result)?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         Ok(result)
     }
@@ -166,7 +166,7 @@ impl ProductCatalogSchemaService {
             owner_id: input.category_id,
             code: input.code,
         };
-        record_product_operation_result(&result)?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         Ok(result)
     }
@@ -227,7 +227,7 @@ impl ProductCatalogSchemaService {
             },
         )
         .await?;
-        record_product_operation_result(&())?;
+        record_product_operation_result(&());
         txn.commit().await?;
         Ok(())
     }
@@ -294,7 +294,7 @@ impl ProductCatalogSchemaService {
             },
         )
         .await?;
-        record_product_operation_result(&())?;
+        record_product_operation_result(&());
         txn.commit().await?;
         Ok(())
     }

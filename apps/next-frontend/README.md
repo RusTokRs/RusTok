@@ -58,7 +58,7 @@
 
 Use the checked-in npm lockfile: `npm ci`, `npm run typecheck`, `npm run lint`.
 Build/verify `packages/richtext` with its own npm lock before using its shared
-frame assets. Next is pinned to 16.3.8; React/React DOM and their types share
+frame assets. Next is pinned to 16.4.0 after the latest-main reconciliation; React/React DOM and their types share
 19.3.0, ESLint is 9.39.4 and TypeScript is 6.0.3. Tiptap's shared package uses
 one 3.30.5 cohort. No `--force` or legacy peer install flags are required, and
 Next build-time type errors are no longer ignored. Full host typecheck/lint and

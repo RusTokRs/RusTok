@@ -77,15 +77,15 @@ mutation CreateBundle($idempotencyKey: String!, $input: CreateBundleInputGql!, $
 }`;
 
 const UPDATE_BUNDLE_MUTATION = `
-mutation UpdateBundle($id: UUID!, $input: UpdateBundleInputGql!, $locale: String) {
-  updateBundle(id: $id, input: $input, locale: $locale) {
+mutation UpdateBundle($idempotencyKey: String!, $id: UUID!, $input: UpdateBundleInputGql!, $locale: String) {
+  updateBundle(idempotencyKey: $idempotencyKey, id: $id, input: $input, locale: $locale) {
     ${BUNDLE_FIELDS}
   }
 }`;
 
 const DELETE_BUNDLE_MUTATION = `
-mutation DeleteBundle($id: UUID!) {
-  deleteBundle(id: $id)
+mutation DeleteBundle($idempotencyKey: String!, $id: UUID!) {
+  deleteBundle(idempotencyKey: $idempotencyKey, id: $id)
 }`;
 
 const ADD_BUNDLE_ITEM_MUTATION = `
@@ -103,8 +103,8 @@ mutation AddBundleItem($idempotencyKey: String!, $bundleId: UUID!, $item: Bundle
 }`;
 
 const REMOVE_BUNDLE_ITEM_MUTATION = `
-mutation RemoveBundleItem($bundleId: UUID!, $itemId: UUID!) {
-  removeBundleItem(bundleId: $bundleId, itemId: $itemId)
+mutation RemoveBundleItem($idempotencyKey: String!, $bundleId: UUID!, $itemId: UUID!) {
+  removeBundleItem(idempotencyKey: $idempotencyKey, bundleId: $bundleId, itemId: $itemId)
 }`;
 
 export async function fetchProductBundles(
@@ -170,7 +170,7 @@ export async function fetchBundles(
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     {
-      filter?: { search?: string; status?: string; bundle_type?: string };
+      filter?: { search?: string; status?: string; bundleType?: string };
       page?: number;
       perPage?: number;
       locale?: string;
@@ -183,7 +183,7 @@ export async function fetchBundles(
         ? {
             search: filter.search,
             status: filter.status,
-            bundle_type: filter.bundleType
+            bundleType: filter.bundleType
           }
         : undefined,
       page: filter?.page,
@@ -204,17 +204,20 @@ export async function fetchBundles(
   );
 }
 
+/**
+ * Pass the same `idempotencyKey` again when retrying an uncertain request.
+ */
 export async function createBundle(
   opts: GqlOpts,
   input: CreateBundleInput,
-  locale?: string
+  locale?: string,
+  idempotencyKey = crypto.randomUUID()
 ): Promise<ProductBundle> {
   if (!opts.token || !opts.tenantSlug) {
     throw new Error('Sign in again to create a bundle.');
   }
 
   const executor = opts.graphql ?? graphqlRequest;
-  const idempotencyKey = crypto.randomUUID();
   const data = await executor<
     {
       idempotencyKey: string;
@@ -256,11 +259,15 @@ export async function createBundle(
   return data.createBundle;
 }
 
+/**
+ * Pass the same `idempotencyKey` again when retrying an uncertain request.
+ */
 export async function updateBundle(
   opts: GqlOpts,
   id: string,
   input: UpdateBundleInput,
-  locale?: string
+  locale?: string,
+  idempotencyKey = crypto.randomUUID()
 ): Promise<ProductBundle> {
   if (!opts.token || !opts.tenantSlug) {
     throw new Error('Sign in again to update bundle.');
@@ -269,6 +276,7 @@ export async function updateBundle(
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     {
+      idempotencyKey: string;
       id: string;
       input: {
         bundleProductId?: string | null;
@@ -287,17 +295,30 @@ export async function updateBundle(
   >(
     UPDATE_BUNDLE_MUTATION,
     {
+      idempotencyKey,
       id,
+      // Conditional fields preserve GraphQL's meaningful omitted/null/value distinction.
+      // In particular, null clears owner/description/metadata while undefined keeps them.
       input: {
-        bundleProductId: input.bundleProductId,
-        slug: input.slug,
-        name: input.name,
-        description: input.description,
-        bundleType: input.bundleType,
-        status: input.status,
-        discountType: input.discountType,
-        discountValue: input.discountValue,
-        metadata: input.metadata
+        ...(input.bundleProductId === undefined
+          ? {}
+          : { bundleProductId: input.bundleProductId }),
+        ...(input.slug === undefined ? {} : { slug: input.slug }),
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.description === undefined
+          ? {}
+          : { description: input.description }),
+        ...(input.bundleType === undefined
+          ? {}
+          : { bundleType: input.bundleType }),
+        ...(input.status === undefined ? {} : { status: input.status }),
+        ...(input.discountType === undefined
+          ? {}
+          : { discountType: input.discountType }),
+        ...(input.discountValue === undefined
+          ? {}
+          : { discountValue: input.discountValue }),
+        ...(input.metadata === undefined ? {} : { metadata: input.metadata })
       },
       locale
     },
@@ -308,18 +329,25 @@ export async function updateBundle(
   return data.updateBundle;
 }
 
+/**
+ * Pass the same `idempotencyKey` again when retrying an uncertain request.
+ */
 export async function deleteBundle(
   opts: GqlOpts,
-  id: string
+  id: string,
+  idempotencyKey = crypto.randomUUID()
 ): Promise<boolean> {
   if (!opts.token || !opts.tenantSlug) {
     throw new Error('Sign in again to delete bundle.');
   }
 
   const executor = opts.graphql ?? graphqlRequest;
-  const data = await executor<{ id: string }, { deleteBundle: boolean }>(
+  const data = await executor<
+    { idempotencyKey: string; id: string },
+    { deleteBundle: boolean }
+  >(
     DELETE_BUNDLE_MUTATION,
-    { id },
+    { idempotencyKey, id },
     opts.token,
     opts.tenantSlug
   );
@@ -327,16 +355,19 @@ export async function deleteBundle(
   return data?.deleteBundle ?? true;
 }
 
+/**
+ * Pass the same `idempotencyKey` again when retrying an uncertain request.
+ */
 export async function addBundleItem(
   opts: GqlOpts,
-  input: AddBundleItemInput
+  input: AddBundleItemInput,
+  idempotencyKey = crypto.randomUUID()
 ): Promise<BundleItem> {
   if (!opts.token || !opts.tenantSlug) {
     throw new Error('Sign in again to add bundle item.');
   }
 
   const executor = opts.graphql ?? graphqlRequest;
-  const idempotencyKey = crypto.randomUUID();
   const data = await executor<
     {
       idempotencyKey: string;
@@ -347,7 +378,7 @@ export async function addBundleItem(
         quantity: number;
         isOptional: boolean;
         discountRate?: string | null;
-        position: number;
+        position?: number;
       };
     },
     { addBundleItem: BundleItem }
@@ -362,7 +393,8 @@ export async function addBundleItem(
         quantity: input.quantity ?? 1,
         isOptional: Boolean(input.isOptional),
         discountRate: input.discountRate || null,
-        position: input.position ?? 0
+        // Omit the field to ask the owner service to append after the current maximum.
+        ...(input.position === undefined ? {} : { position: input.position })
       }
     },
     opts.token,
@@ -372,10 +404,14 @@ export async function addBundleItem(
   return data.addBundleItem;
 }
 
+/**
+ * Pass the same `idempotencyKey` again when retrying an uncertain request.
+ */
 export async function removeBundleItem(
   opts: GqlOpts,
   bundleId: string,
-  itemId: string
+  itemId: string,
+  idempotencyKey = crypto.randomUUID()
 ): Promise<boolean> {
   if (!opts.token || !opts.tenantSlug) {
     throw new Error('Sign in again to remove bundle item.');
@@ -383,11 +419,11 @@ export async function removeBundleItem(
 
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
-    { bundleId: string; itemId: string },
+    { idempotencyKey: string; bundleId: string; itemId: string },
     { removeBundleItem: boolean }
   >(
     REMOVE_BUNDLE_ITEM_MUTATION,
-    { bundleId, itemId },
+    { idempotencyKey, bundleId, itemId },
     opts.token,
     opts.tenantSlug
   );

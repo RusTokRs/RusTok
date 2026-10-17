@@ -22,7 +22,8 @@ use crate::services::catalog_attribute_terms::{
     ProductAttributeFilterValue, parse_product_attribute_filter_value,
 };
 use crate::services::write_transaction::{
-    ProductWriteTransaction, current_product_operation_id, record_product_operation_result,
+    ProductWriteTransaction, current_product_operation_id, fail_product_operation_receipt,
+    record_product_operation_result,
 };
 use crate::services::{
     ProductAttributeFilter, ProductAttributeTermError, ProductAttributeTermExpr,
@@ -118,7 +119,7 @@ impl ProductCatalogSchemaService {
             code: input.code,
             value_type: input.value_type,
         };
-        record_product_operation_result(&result)?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         Ok(result)
     }
@@ -193,7 +194,7 @@ impl ProductCatalogSchemaService {
             attribute_id: input.attribute_id,
             code: input.code,
         };
-        record_product_operation_result(&result)?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         Ok(result)
     }
@@ -221,7 +222,7 @@ impl ProductCatalogSchemaService {
         lease: idempotency::Lease,
         error: &PortError,
     ) -> Result<(), PortError> {
-        idempotency::fail(&self.db, lease, error).await
+        fail_product_operation_receipt(&self.db, lease, error).await
     }
 
     pub async fn list_attributes(
@@ -525,4 +526,103 @@ fn map_term_error(code: &str, error: ProductAttributeTermError) -> CommerceError
     CommerceError::Validation(format!(
         "attribute filter {code} cannot be represented as a canonical term: {error}"
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProductCatalogSchemaService;
+    use rustok_api::PortError;
+    use rustok_outbox::{SysEventsMigration, idempotency};
+    use rustok_test_utils::mock_transactional_event_bus;
+    use sea_orm::{
+        ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement, TryGetable,
+    };
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use serde_json::json;
+    use uuid::Uuid;
+
+    async fn receipt_test_service() -> (ProductCatalogSchemaService, DatabaseConnection) {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database should connect");
+        SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration should apply");
+        let service =
+            ProductCatalogSchemaService::new(database.clone(), mock_transactional_event_bus());
+        (service, database)
+    }
+
+    async fn receipt_status(database: &DatabaseConnection, operation_id: Uuid) -> String {
+        let row = database
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "SELECT status FROM owner_operation_receipts WHERE id = $1".to_owned(),
+                vec![operation_id.into()],
+            ))
+            .await
+            .expect("receipt status should query")
+            .expect("receipt row should exist");
+        row.try_get("", "status")
+            .expect("receipt status should decode")
+    }
+
+    #[tokio::test]
+    async fn retryable_schema_failure_keeps_receipt_processing() {
+        let (service, database) = receipt_test_service().await;
+        let tenant_id = Uuid::new_v4();
+        let request = json!({"test": "retryable"});
+        let lease = match service
+            .admit_schema_operation_receipt(tenant_id, "retryable", "test", &request)
+            .await
+            .expect("receipt admission should succeed")
+        {
+            idempotency::Admission::Run(lease) => lease,
+            _ => panic!("fresh receipt admission must run"),
+        };
+
+        service
+            .fail_schema_operation_receipt(
+                lease,
+                &PortError::unavailable("product.test_unavailable", "temporary storage outage"),
+            )
+            .await
+            .expect("retryable failure must not write a terminal receipt");
+
+        assert_eq!(
+            receipt_status(&database, lease.operation_id).await,
+            "processing",
+            "retryable owner failures must leave the receipt reclaimable"
+        );
+    }
+
+    #[tokio::test]
+    async fn terminal_schema_failure_is_persisted() {
+        let (service, database) = receipt_test_service().await;
+        let tenant_id = Uuid::new_v4();
+        let request = json!({"test": "terminal"});
+        let lease = match service
+            .admit_schema_operation_receipt(tenant_id, "terminal", "test", &request)
+            .await
+            .expect("receipt admission should succeed")
+        {
+            idempotency::Admission::Run(lease) => lease,
+            _ => panic!("fresh receipt admission must run"),
+        };
+
+        service
+            .fail_schema_operation_receipt(
+                lease,
+                &PortError::validation("product.test_invalid", "deterministic request failure"),
+            )
+            .await
+            .expect("terminal failure receipt should persist");
+
+        assert_eq!(
+            receipt_status(&database, lease.operation_id).await,
+            "failed",
+            "deterministic owner failures must remain replayable"
+        );
+    }
 }

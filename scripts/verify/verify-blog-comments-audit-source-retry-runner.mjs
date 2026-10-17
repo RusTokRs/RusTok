@@ -3,6 +3,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { flattenWhitespace } from "./lib/verify-text.mjs";
+
+import { readComposedRustSource } from "./lib/rust-facade-source.mjs";
+
 const root = process.cwd();
 const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
@@ -42,7 +46,10 @@ for (const file of [
   }
 }
 
-const runtime = read(runtimePath);
+// The runtime facade declares its parts as `#[path = "..."] mod ...` modules,
+// so the composition check reads the composed source: the parts a slice owns
+// may live below the facade.
+const runtime = readComposedRustSource(read, runtimePath);
 const bootstrap = read(bootstrapPath);
 const legacyWorker = read(legacyWorkerPath);
 const worker = read(workerPath);
@@ -57,6 +64,17 @@ const evidence = JSON.parse(evidenceText);
 function requireAll(label, text, markers) {
   for (const marker of markers) {
     if (!text.includes(marker)) {
+      throw new Error(`${label} is missing required marker: ${marker}`);
+    }
+  }
+}
+
+function requireAllProse(label, text, markers) {
+  // See scripts/verify/lib/verify-text.mjs: prose markers are wording contracts, so they
+  // are compared against a whitespace-flattened view of the source.
+  const flattened = flattenWhitespace(text);
+  for (const marker of markers) {
+    if (!flattened.includes(flattenWhitespace(marker))) {
       throw new Error(`${label} is missing required marker: ${marker}`);
     }
   }
@@ -94,9 +112,13 @@ if (
 }
 
 requireAll("legacy compatibility surfaces", legacyWorker, [
-  "pub fn start_comments_tcp_delegation_schedule_audit_handoff_worker_if_enabled",
   "CommentsTcpDelegationScheduleAuditHandoffWorkerLifecycleReservation",
   "CommentsTcpDelegationScheduleAuditHandoffWorkerHandle",
+]);
+// The legacy worker entry point is now exposed by the runtime facade as a
+// re-export alias of the operator-composed worker.
+requireAll("legacy worker alias", runtime, [
+  "start_comments_tcp_delegation_schedule_audit_handoff_worker_with_operator_if_enabled as start_comments_tcp_delegation_schedule_audit_handoff_worker_if_enabled",
 ]);
 requireAll("legacy handoff compatibility", legacyHandoff, [
   "pub async fn claim_next",
@@ -217,7 +239,7 @@ forbidAll("active failure ownership", activePolicy, [
   "reset_attempt",
 ]);
 
-requireAll("plan", plan, [
+requireAllProse("plan", plan, [
   "# rustok-blog implementation plan — slice 93 continuation",
   "source_retry_runner_composed_maintainer_execution_pending",
   "claim_next_retry_ready(source_max_attempts)",

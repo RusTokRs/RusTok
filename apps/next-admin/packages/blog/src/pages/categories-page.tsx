@@ -12,7 +12,6 @@ import {
 } from '@tabler/icons-react';
 
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
@@ -165,9 +164,7 @@ export default function CategoriesPage({
                   <tr>
                     <th className='px-4 py-3'>Name</th>
                     <th className='px-4 py-3'>Slug</th>
-                    <th className='px-4 py-3'>Posts</th>
                     <th className='px-4 py-3'>Order</th>
-                    <th className='px-4 py-3'>Status</th>
                     <th className='px-4 py-3 text-right'>Actions</th>
                   </tr>
                 </thead>
@@ -188,21 +185,8 @@ export default function CategoriesPage({
                       <td className='text-muted-foreground px-4 py-3 font-mono text-xs'>
                         {category.slug}
                       </td>
-                      <td className='px-4 py-3'>
-                        <Badge variant='secondary' className='text-xs'>
-                          {category.postsCount} posts
-                        </Badge>
-                      </td>
                       <td className='text-muted-foreground px-4 py-3 text-xs'>
-                        {category.displayOrder}
-                      </td>
-                      <td className='px-4 py-3'>
-                        <Badge
-                          variant={category.isActive ? 'default' : 'outline'}
-                          className='text-xs'
-                        >
-                          {category.isActive ? 'Active' : 'Inactive'}
-                        </Badge>
+                        {category.position}
                       </td>
                       <td className='space-x-2 px-4 py-3 text-right'>
                         <Button

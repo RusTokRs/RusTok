@@ -253,7 +253,10 @@ pub async fn update_post(
                 title: Some(draft.title),
                 content: Some(draft.content),
                 excerpt: core::optional_text(draft.excerpt.as_str()),
-                slug: Some(draft.slug),
+                // An empty slug must not be sent: the owner treats a present but
+                // blank slug as a validation error instead of regenerating it
+                // from the title, so a cleared field would block the save.
+                slug: core::optional_text(draft.slug.as_str()),
                 tags: Some(draft.tags),
                 category_id: None,
                 featured_image_url: None,

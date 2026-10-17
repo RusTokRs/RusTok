@@ -61,10 +61,14 @@ pub trait BundlePort: Send + Sync {
         item_id: Uuid,
     ) -> BundleResult<()>;
 
-    async fn get_bundles_for_product(
+    /// Loads the one bundle owned by the Product editor's `bundle_product_id` association.
+    ///
+    /// This is intentionally distinct from component membership: a Product can appear as a
+    /// component in many bundles, but it can own at most one bundle aggregate.
+    async fn get_owned_bundle_for_product(
         &self,
         tenant_id: Uuid,
         product_id: Uuid,
         locale: Option<&str>,
-    ) -> BundleResult<Vec<BundleDto>>;
+    ) -> BundleResult<Option<BundleDto>>;
 }

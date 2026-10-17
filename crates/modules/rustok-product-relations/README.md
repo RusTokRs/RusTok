@@ -1,28 +1,27 @@
 # rustok-product-relations
 
-Product relations, cross-sells, up-sells, accessories, and merchandising associations for the RusToK platform.
-
-## Purpose
-
-Provides dedicated management and retrieval of relationships between products (such as cross-sells, up-sells, related products, accessories, and alternatives) without polluting the core `rustok-product` catalog entity with merchandising logic.
+Merchandising Product associations for cross-sells, up-sells, related Products, accessories, alternatives, and custom relationship types.
 
 ## Responsibilities
 
-- Maintain bidirectional and directed product associations (`product_relations` table).
-- Enforce relation constraints (disallow self-referencing, multi-tenant isolation, unique relation pairs per type).
-- Emit outbox events on relation changes (`ProductRelationCreated`, `ProductRelationDeleted`, `ProductRelationsReordered`).
-- Provide fast indexed querying by source product and relation type, as well as reverse lookup.
+- Maintain directed Product associations in the `product_relations` table.
+- Enforce tenant isolation, tenant-coupled Product references, no self-references, and unique source/target/type pairs.
+- Maintain one complete, contiguous ordering per `(tenant_id, product_id, relation_type)`: positions are non-negative and unique, and a reorder request must list every relation in the group exactly once.
+- Complete durable owner receipts in the same transaction as create, update, delete, and reorder commands, replaying their stored result for the same tenant-scoped caller key. Native FFA and Commerce GraphQL derive that owner key through the exported Relation scoping function.
+- Provide indexed source-product and reverse-target lookup.
+
+The module does **not** currently publish Product Relation lifecycle outbox events. Event publication must not be inferred from this module until a shared `rustok-events` contract is intentionally designed and registered.
 
 ## Interactions
 
-- **`rustok-product`**: References source and target product IDs.
-- **`rustok-outbox`**: Publishes transactional outbox events for downstream search indices and cache invalidation.
-- **`rustok-commerce`**: Exposes relations via GraphQL API queries and mutations.
+- **`rustok-product`**: Owns the source and target Product records referenced by a relation.
+- **`rustok-outbox`**: Provides the shared receipt ledger for every Relation write command; it does not currently receive Product Relation lifecycle events.
+- **`rustok-commerce`**: Exposes relations through GraphQL queries and mutations.
 
 ## Entry points
 
 - [`ProductRelationsPort`](src/ports.rs): Service and application port for relationship management.
-- [`ProductRelationService`](src/services/relation_service.rs): Domain service orchestrating validation, persistence, and outbox emission.
+- [`ProductRelationService`](src/services/relation_service.rs): Domain service orchestrating validation, persistence, and ordering normalization.
 - [`ProductRelationsModule`](src/lib.rs): Platform module registration and migration provider.
 
 For detailed architecture and implementation notes, see [`docs/`](docs/).

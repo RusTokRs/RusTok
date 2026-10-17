@@ -253,6 +253,7 @@ impl crate::audience_security::SearchAudiencePolicyPort for StorefrontEligibilit
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use std::sync::{
         Arc,

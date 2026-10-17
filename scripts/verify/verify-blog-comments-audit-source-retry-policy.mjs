@@ -3,6 +3,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { flattenWhitespace } from "./lib/verify-text.mjs";
+
 const root = process.cwd();
 const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
@@ -51,6 +53,17 @@ const evidence = JSON.parse(evidenceText);
 function requireAll(label, text, markers) {
   for (const marker of markers) {
     if (!text.includes(marker)) {
+      throw new Error(`${label} is missing required marker: ${marker}`);
+    }
+  }
+}
+
+function requireAllProse(label, text, markers) {
+  // See scripts/verify/lib/verify-text.mjs: prose markers are wording contracts, so they
+  // are compared against a whitespace-flattened view of the source.
+  const flattened = flattenWhitespace(text);
+  for (const marker of markers) {
+    if (!flattened.includes(flattenWhitespace(marker))) {
       throw new Error(`${label} is missing required marker: ${marker}`);
     }
   }
@@ -137,7 +150,7 @@ forbidAll("bootstrap remains uncomposed", bootstrap, [
   "dead_letter_next_expired_exhausted",
 ]);
 
-requireAll("plan", plan, [
+requireAllProse("plan", plan, [
   "# rustok-blog implementation plan — slice 92 continuation",
   "source_retry_policy_ready_runner_composition_pending",
   "exact source fence",

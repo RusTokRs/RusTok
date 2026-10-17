@@ -100,6 +100,11 @@ and one catalog-wiring assertion) bring current evidence to **144 Forum/ownershi
 161**, host **120 storefront / 12 admin**. Storefront native typecheck, host/module lint, six source
 guards and three i18n verifiers pass. No new dependency or persistence contract; these tests are
 not mounted-browser evidence or server mutation idempotency. Earlier runtime limitations remain.
+PR #4619 was reconciled with main `d3f4c5f8c` on the session branch before the requested merge:
+upstream module/policy/dependency changes are retained, both Next hosts now align at 16.4.0,
+and normal install plus native host typecheck/lint/Forum scripts and 161 combined scoped tests
+pass again. The base-owned infrastructure approval comparisons are unchanged. This records
+branch reconciliation evidence, not Rust/browser/Docker runtime or audit-phase completion.
 No sequential phase/component is marked complete and the active FS-03 sequence is unchanged.
 
 ### Phase Backlog — Architectural Sequence (262 Components Total, Round 1)
@@ -217,9 +222,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ### Phase FS-05 — Content, Media, Social & Community Domain Modules
 *CMS articles, forum discussions, comment trees, emoji reactions, notification dispatch, media asset pipeline, moderation rules, and social network features.* (0/39 completed)
 
-- [ ] **[`crates/modules/rustok-blog`](../../crates/modules/rustok-blog)** (158 files, 41,150 LOC) — Blog post lifecycle, publication status machine, author attribution, category/tag taxonomies, revision history, and SEO metadata.
-- [ ] **[`crates/modules/rustok-blog/admin`](../../crates/modules/rustok-blog/admin)** (18 files, 6,393 LOC) — FFA admin UI for rich blog post authoring, publishing workflow, category management, and preview generation.
-- [ ] **[`crates/modules/rustok-blog/storefront`](../../crates/modules/rustok-blog/storefront)** (14 files, 3,289 LOC) — Storefront UI for blog post listing, article reading, author cards, and tag filters.
+- [ ] **[`crates/modules/rustok-blog`](../../crates/modules/rustok-blog)** (162 files, 41,138 LOC) — Blog post lifecycle, publication status machine, author attribution, category/tag taxonomies, revision history, and SEO metadata. Audited in the [2026-10-17 Blog audit](../../docs/audits/rustok-blog-engineering-audit-2026-10-17.md): 4 High, 8 Medium, 10 Low and 1 governance defect found; **all of them are remediated** (phase 1: the 4 High client-contract defects + a new transport↔schema parity gate; phase 2: the 8 Medium, the 10 Low and the verifier-suite governance defect). The Blog verifier suite reports 66 passed / 0 failed, the 23 Blog verifier self-test suites pass, and the canonical module layout and reference-contract verifiers pass again (the search projection moved into the `services` slot and the over-sized reference modules were split). Component stays open until the crate passes scoped verification (`cargo check`/`test`/`clippy` for `-p rustok-blog`), which the audit environment could not run.
+- [ ] **[`crates/modules/rustok-blog/admin`](../../crates/modules/rustok-blog/admin)** (18 files, 6,400 LOC) — FFA admin UI for rich blog post authoring, publishing workflow, category management, and preview generation. Audited in the [2026-10-17 Blog audit](../../docs/audits/rustok-blog-engineering-audit-2026-10-17.md): the empty-slug save failure was remediated; the missing category/featured-image/SEO/channel/schedule capability is now documented in the module README's Known Limitations (L-7). FFA boundary check passed (no UI-framework imports in `core/`, no domain logic in `ui/`).
+- [ ] **[`crates/modules/rustok-blog/storefront`](../../crates/modules/rustok-blog/storefront)** (14 files, 3,289 LOC) — Storefront UI for blog post listing, article reading, author cards, and tag filters. Audited in the [2026-10-17 Blog audit](../../docs/audits/rustok-blog-engineering-audit-2026-10-17.md): no defect found in this package; the known retired-slug redirect gap (M-12) stays documented in the module README. FFA boundary check passed.
 - [ ] **[`crates/modules/rustok-forum`](../../crates/modules/rustok-forum)** (628 files, 175,016 LOC) — Forum channels, topics, replies, moderation queue, reputation scoring, full-text search index, topic redirects, and fork/split services.
 - [ ] **[`crates/modules/rustok-forum/admin`](../../crates/modules/rustok-forum/admin)** (35 files, 13,457 LOC) — FFA admin UI for channel configuration, topic moderation, pinned announcements, and forum permissions.
 - [ ] **[`crates/modules/rustok-forum/storefront`](../../crates/modules/rustok-forum/storefront)** (26 files, 7,472 LOC) — Storefront UI for discussion channels, thread views, reply composers, and user badges.
@@ -413,7 +418,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [ ] **[`apps/storefront`](../../apps/storefront)** (34 files, 5,987 LOC) — Canonical Rust/Leptos e-commerce storefront: catalog navigation, cart drawer, checkout, and account portal.
 - [ ] **[`apps/dioxus-admin`](../../apps/dioxus-admin)** (1 files, 13 LOC) — Experimental Dioxus-based desktop/mobile administration client application.
 - [ ] **[`apps/next-admin`](../../apps/next-admin)** (540 files, 82,499 LOC) — Next.js administration dashboard application host and composition root.
-- [ ] **[`apps/next-admin/packages/blog`](../../apps/next-admin/packages/blog)** (15 files, 2,122 LOC) — Next.js admin package for blog article creation, rich editing, and category management.
+- [ ] **[`apps/next-admin/packages/blog`](../../apps/next-admin/packages/blog)** (15 files, 2,122 LOC) — Next.js admin package for blog article creation, rich editing, and category management. Audited in the [2026-10-17 Blog audit](../../docs/audits/rustok-blog-engineering-audit-2026-10-17.md): the whole category and tag surface was non-functional (the GraphQL documents requested fields the Blog schema never exposed); remediated, and the drift is now blocked by `scripts/verify/verify-blog-nextjs-graphql-contract.mjs`.
 - [ ] **[`apps/next-admin/packages/cache`](../../apps/next-admin/packages/cache)** (6 files, 478 LOC) — Next.js admin package for cache inspection, invalidation, and metrics display.
 - [ ] **[`apps/next-admin/packages/commerce`](../../apps/next-admin/packages/commerce)** (11 files, 2,737 LOC) — Next.js admin package for orders, payments, fulfillments, and checkout operation inspection.
 - [ ] **[`apps/next-admin/packages/email`](../../apps/next-admin/packages/email)** (5 files, 291 LOC) — Next.js admin package for email template management and dispatch logs.
@@ -431,7 +436,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [ ] **[`apps/next-admin/packages/translation`](../../apps/next-admin/packages/translation)** (4 files, 5,449 LOC) — Next.js admin package for localized translation catalogs and fallback management.
 - [ ] **[`apps/next-admin/packages/workflow`](../../apps/next-admin/packages/workflow)** (13 files, 1,529 LOC) — Next.js admin package for workflow trigger configuration and automation rules.
 - [ ] **[`apps/next-frontend`](../../apps/next-frontend)** (151 files, 24,872 LOC) — Next.js storefront customer-facing application host and composition root.
-- [ ] **[`apps/next-frontend/packages/rustok-blog`](../../apps/next-frontend/packages/rustok-blog)** (16 files, 1,678 LOC) — Next.js storefront blog article pages, reading views, and comments.
+- [ ] **[`apps/next-frontend/packages/rustok-blog`](../../apps/next-frontend/packages/rustok-blog)** (16 files, 1,678 LOC) — Next.js storefront blog article pages, reading views, and comments. Audited in the [2026-10-17 Blog audit](../../docs/audits/rustok-blog-engineering-audit-2026-10-17.md): the category query was invalid and its error was swallowed, so the storefront category list silently degraded to the current page; remediated, and the drift is now blocked by the new parity gate.
 - [ ] **[`apps/next-frontend/packages/rustok-cart`](../../apps/next-frontend/packages/rustok-cart)** (7 files, 2,142 LOC) — Next.js storefront shopping cart drawer, line item editing, and promo codes.
 - [ ] **[`apps/next-frontend/packages/rustok-comments`](../../apps/next-frontend/packages/rustok-comments)** (2 files, 123 LOC) — Next.js storefront threaded comments widget and submission forms.
 - [ ] **[`apps/next-frontend/packages/rustok-forum`](../../apps/next-frontend/packages/rustok-forum)** (20 files, 4,414 LOC) — Next.js storefront community forum discussions, topic views, and replies.
@@ -453,7 +458,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [admin](../../apps/admin) | `apps` | 116 | 26,837 | None |  |
 | [ ] | [dioxus-admin](../../apps/dioxus-admin) | `apps` | 1 | 13 | None |  |
 | [ ] | [next-admin](../../apps/next-admin) | `apps` | 540 | 82,499 | None |  |
-| [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 15 | 2,122 | None |  |
+| [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 15 | 2,122 | 2026-10-17 | 2026-10-17 Blog audit: 4 High client-contract defects remediated + new parity gate; all audit findings remediated |
 | [ ] | [cache](../../apps/next-admin/packages/cache) | `apps` | 6 | 478 | None |  |
 | [ ] | [commerce](../../apps/next-admin/packages/commerce) | `apps` | 11 | 2,737 | None |  |
 | [ ] | [email](../../apps/next-admin/packages/email) | `apps` | 5 | 291 | None |  |
@@ -471,7 +476,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [translation](../../apps/next-admin/packages/translation) | `apps` | 4 | 5,449 | None |  |
 | [ ] | [workflow](../../apps/next-admin/packages/workflow) | `apps` | 13 | 1,529 | None |  |
 | [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 151 | 24,872 | None |  |
-| [ ] | [rustok-blog](../../apps/next-frontend/packages/rustok-blog) | `apps` | 16 | 1,678 | None |  |
+| [ ] | [rustok-blog](../../apps/next-frontend/packages/rustok-blog) | `apps` | 16 | 1,678 | 2026-10-17 | 2026-10-17 Blog audit: invalid category query remediated + new parity gate; all audit findings remediated |
 | [ ] | [rustok-cart](../../apps/next-frontend/packages/rustok-cart) | `apps` | 7 | 2,142 | None |  |
 | [ ] | [rustok-comments](../../apps/next-frontend/packages/rustok-comments) | `apps` | 2 | 123 | None |  |
 | [ ] | [rustok-forum](../../apps/next-frontend/packages/rustok-forum) | `apps` | 20 | 4,414 | None |  |
@@ -511,9 +516,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 12,952 | 2026-10-17 02:47 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 18 | 6,501 | 2026-10-17 03:04 | Audited and cleaned. |
 | [x] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 1 | 333 | 2026-10-17 03:19 | Audited and cleaned. |
-| [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 158 | 41,150 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 18 | 6,393 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 14 | 3,289 | None |  |
+| [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 162 | 41,138 | 2026-10-17 | 2026-10-17 Blog audit: 4 High, 8 Medium, 10 Low + 1 governance finding — all remediated; scoped Rust verification outstanding |
+| [ ] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 18 | 6,400 | 2026-10-17 | 2026-10-17 Blog audit: empty-slug save failure remediated; capability gap documented in Known Limitations |
+| [ ] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 14 | 3,289 | 2026-10-17 | 2026-10-17 Blog audit: no defect found; FFA boundary check passed |
 | [ ] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 22 | 3,399 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 9 | 2,081 | None |  |
 | [x] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 46 | 15,982 | 2026-10-17 04:30 | Audited and cleaned. |

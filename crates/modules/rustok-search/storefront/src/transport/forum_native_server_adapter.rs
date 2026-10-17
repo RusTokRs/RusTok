@@ -219,6 +219,7 @@ async fn forum_storefront_search_by_date_window_native(
 }
 
 #[cfg(feature = "ssr")]
+#[allow(deprecated)]
 async fn execute_forum_storefront_search_native(
     query: String,
     locale: Option<String>,
