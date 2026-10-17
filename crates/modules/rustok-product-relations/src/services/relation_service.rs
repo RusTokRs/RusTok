@@ -5,7 +5,7 @@ use chrono::Utc;
 use rustok_product::entities::product;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, Order, QueryFilter, QueryOrder, Set, Statement,
+    DatabaseTransaction, EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
     TransactionTrait,
 };
 use uuid::Uuid;
