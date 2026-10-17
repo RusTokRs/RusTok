@@ -427,13 +427,19 @@ pub async fn execute_audience_eligible_search(
         .await;
     }
 
+    let blocked_exclusions: Vec<String> = blocked_modules.iter().cloned().collect();
+
     // 3. Bounded candidate scan for audience-governed search
     let mut scan_query = search_query.clone();
     scan_query.limit = AUDIENCE_CANDIDATE_SCAN_PAGE_SIZE;
     scan_query.offset = 0;
 
     let first_page = engine
-        .search_storefront_candidates(scan_query.clone(), channel)
+        .search_storefront_candidates_with_exclusions(
+            scan_query.clone(),
+            channel,
+            &blocked_exclusions,
+        )
         .await?;
 
     let raw_total = usize::try_from(first_page.total).map_err(|_| {
@@ -478,7 +484,11 @@ pub async fn execute_audience_eligible_search(
     while all_items.len() < raw_total {
         scan_query.offset = all_items.len();
         let page = engine
-            .search_storefront_candidates(scan_query.clone(), channel)
+            .search_storefront_candidates_with_exclusions(
+                scan_query.clone(),
+                channel,
+                &blocked_exclusions,
+            )
             .await?;
 
         if page.total != raw_total as u64 || page.items.is_empty() {

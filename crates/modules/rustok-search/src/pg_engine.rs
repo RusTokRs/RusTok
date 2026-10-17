@@ -924,6 +924,7 @@ mod tests {
             4,
             None,
             false,
+            &[],
         );
 
         assert_eq!(
