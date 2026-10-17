@@ -212,8 +212,10 @@ pub(crate) fn reorder_policy_rule_ids(
 mod tests {
     use super::*;
     use crate::model::{
-        ChannelAdminBootstrap, ChannelDetail, ChannelRecord, ChannelResolutionPolicySetDetail,
-        ChannelResolutionPolicySetRecord,
+        ChannelAdminBootstrap, ChannelDetail, ChannelRecord, ChannelResolutionActionRecord,
+        ChannelResolutionPolicySetDetail, ChannelResolutionPolicySetRecord,
+        ChannelResolutionPredicateRecord, ChannelResolutionRuleDefinitionRecord,
+        ChannelResolutionRuleRecord,
     };
 
     fn bootstrap_with_channel(id: &str) -> ChannelAdminBootstrap {
@@ -337,5 +339,107 @@ mod tests {
         let active = policy_rule_active_update_payload(false);
         assert_eq!(active.is_active, Some(false));
         assert_eq!(active.priority, None);
+    }
+
+    #[test]
+    fn policy_rule_create_form_state_initializes_with_next_priority_and_default_channel() {
+        let channels = vec![ChannelDetail {
+            channel: ChannelRecord {
+                id: "channel_01".to_string(),
+                tenant_id: "tenant_01".to_string(),
+                slug: "web".to_string(),
+                name: "Web".to_string(),
+                is_active: true,
+                is_default: true,
+                status: "experimental".to_string(),
+                settings: serde_json::json!({}),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                updated_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+            targets: Vec::new(),
+            module_bindings: Vec::new(),
+            oauth_apps: Vec::new(),
+        }];
+
+        let empty_rules = Vec::new();
+        let state_empty = policy_rule_create_form_state(&empty_rules, &channels);
+        assert_eq!(state_empty.priority, 10);
+        assert!(state_empty.is_active);
+        assert_eq!(state_empty.action_channel_id, "channel_01");
+        assert_eq!(state_empty.surface, "http");
+
+        let existing_rules = vec![ChannelResolutionRuleRecord {
+            id: "rule_01".to_string(),
+            policy_set_id: "policy_set_01".to_string(),
+            priority: 25,
+            is_active: true,
+            action_channel_id: "channel_01".to_string(),
+            definition: ChannelResolutionRuleDefinitionRecord {
+                predicates: vec![],
+                action: ChannelResolutionActionRecord::ResolveToChannel {
+                    channel_id: "channel_01".to_string(),
+                },
+            },
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+        }];
+        let state_with_rules = policy_rule_create_form_state(&existing_rules, &channels);
+        assert_eq!(state_with_rules.priority, 35);
+    }
+
+    #[test]
+    fn policy_rule_edit_form_state_prefills_predicates_and_action_channel() {
+        let rule = ChannelResolutionRuleRecord {
+            id: "rule_01".to_string(),
+            policy_set_id: "policy_set_01".to_string(),
+            priority: 30,
+            is_active: false,
+            action_channel_id: "channel_01".to_string(),
+            definition: ChannelResolutionRuleDefinitionRecord {
+                predicates: vec![
+                    ChannelResolutionPredicateRecord::HostEquals("shop.example.test".to_string()),
+                    ChannelResolutionPredicateRecord::OAuthAppEquals(
+                        "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                    ),
+                    ChannelResolutionPredicateRecord::SurfaceIs("http".to_string()),
+                    ChannelResolutionPredicateRecord::LocaleEquals("ru-by".to_string()),
+                ],
+                action: ChannelResolutionActionRecord::ResolveToChannel {
+                    channel_id: "channel_01".to_string(),
+                },
+            },
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+        let channels = vec![ChannelDetail {
+            channel: ChannelRecord {
+                id: "channel_01".to_string(),
+                tenant_id: "tenant_01".to_string(),
+                slug: "web".to_string(),
+                name: "Web".to_string(),
+                is_active: true,
+                is_default: true,
+                status: "experimental".to_string(),
+                settings: serde_json::json!({}),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                updated_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+            targets: Vec::new(),
+            module_bindings: Vec::new(),
+            oauth_apps: Vec::new(),
+        }];
+
+        let form_state = policy_rule_edit_form_state(&rule, &channels);
+
+        assert_eq!(form_state.priority, 30);
+        assert!(!form_state.is_active);
+        assert_eq!(form_state.action_channel_id, "channel_01");
+        assert_eq!(form_state.host_equals, "shop.example.test");
+        assert_eq!(
+            form_state.oauth_app_id,
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+        assert_eq!(form_state.surface, "http");
+        assert_eq!(form_state.locale, "ru-by");
     }
 }

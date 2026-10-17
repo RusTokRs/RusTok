@@ -4,7 +4,7 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules  
-**Next pending component:** [`crates/modules/rustok-channel/admin`](../../crates/modules/rustok-channel/admin) (14 files, 5,173 LOC)  
+**Next pending component:** [`crates/modules/rustok-outbox`](../../crates/modules/rustok-outbox) (26 files, 4,758 LOC)  
 **Current main SHA:** `03e37fa03`  
 **Active branch:** `main`  
 
@@ -34,7 +34,7 @@ The single canonical trigger to continue this audit sequence is:
 
 - [x] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (1/1 completed)
 - [x] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (10/10 completed)
-- [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (11/24 completed)
+- [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (12/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (0/39 completed)
 - [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (0/26 completed)
@@ -70,7 +70,7 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules
-*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (11/24 completed)
+*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (12/24 completed)
 
 - [x] **[`crates/modules/rustok-tenant`](../../crates/modules/rustok-tenant)** (28 files, 4,305 LOC) — Tenant lifecycle, provisioning, slug/domain resolution, locale policy aggregate, input sanitization, and settings schema. Audited via CodeGraph; verified transactional outbox publishing on mutations, SHA-256 idempotency receipts for locale policy CAS updates, settings schema validation, and fail-closed tenant resolution. 24/24 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-tenant/admin`](../../crates/modules/rustok-tenant/admin)** (8 files, 835 LOC) — FFA Leptos admin UI components for tenant provisioning, domain management, and locale settings. Audited via CodeGraph; verified strict FFA separation (pure Rust view models/state in `core.rs`, no domain logic in Leptos components), transport isolation with tenant authorization boundary, and catalog i18n diagnostics. 7/7 tests passed, 0 clippy warnings, gate passed.
@@ -83,7 +83,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[`crates/modules/rustok-cache`](../../crates/modules/rustok-cache)** (46 files, 15,931 LOC) — Distributed caching, Redis/in-memory backends, stampede protection, and durable invalidation consumer. Audited via CodeGraph; eliminated `include!` AI slop across `backend_generation` and `backend_generation_recovery` in favor of standard Rust modules with `pub(crate)` visibility, verified CAS binary-safe semantics, generation recovery, and distributed invalidation. 180 library tests and 11 integration tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-cache/admin`](../../crates/modules/rustok-cache/admin)** (7 files, 977 LOC) — FFA admin UI components for cache metrics inspection, manual invalidation, and backend health monitoring. Audited via CodeGraph; verified FFA framework-agnostic architecture (`core.rs` has zero UI imports, pure unit tests for forms, payload construction, and diagnostics view model), pure i18n label resolution, and dual-path transport facade. 7/7 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-channel`](../../crates/modules/rustok-channel)** (47 files, 11,443 LOC) — Sales channel resolution, domain/subdomain mapping, channel scoping, and channel-specific configuration. Audited via CodeGraph; added non-zero page/per_page validation guards in `list_channels` preventing division-by-zero panics, verified multi-tenant resolution pipeline, durable invalidation triggers, and target bindings. 36 unit tests and 1 integration test passed, 0 clippy warnings, gate passed.
-- [ ] **[`crates/modules/rustok-channel/admin`](../../crates/modules/rustok-channel/admin)** (14 files, 5,173 LOC) — FFA admin UI components for sales channel management, domain routing, and currency/locale channel defaults.
+- [x] **[`crates/modules/rustok-channel/admin`](../../crates/modules/rustok-channel/admin)** (14 files, 5,212 LOC) — FFA admin UI components for sales channel management, domain routing, and currency/locale channel defaults. Audited via CodeGraph; verified FFA architecture (`core.rs` contains 0 UI framework imports and owns form state builders, payload mapping, and reorder logic; `ui/leptos` only handles rendering/binding), verified tenant scoping in permission checks and transport. 8 unit tests and 2 integration tests passed, 0 clippy warnings, gate passed.
 - [ ] **[`crates/modules/rustok-outbox`](../../crates/modules/rustok-outbox)** (26 files, 4,758 LOC) — Outbox dispatch engine, event persistence, publisher loop, retry backoff, and DLQ tracking.
 - [ ] **[`crates/modules/rustok-outbox/admin`](../../crates/modules/rustok-outbox/admin)** (8 files, 493 LOC) — FFA admin UI components for outbox inspection, dead-letter queue replay, and dispatch metrics.
 - [ ] **[`crates/modules/rustok-modules`](../../crates/modules/rustok-modules)** (242 files, 131,685 LOC) — Module registry control-plane, lifecycle state machine, dynamic registration, and migration executor.
@@ -448,8 +448,8 @@ The single canonical trigger to continue this audit sequence is:
 | [x] | [admin](../../crates/modules/rustok-cache/admin) | `modules` | 7 | 977 | 2026-10-17 04:47 | Audited and cleaned. |
 | [ ] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 73 | 19,638 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 18 | 4,545 | None |  |
-| [x] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 47 | 11,443 | 2026-10-17 05:23 | Audited and cleaned. |
-| [ ] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 14 | 5,173 | None |  |
+| [x] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 47 | 11,482 | 2026-10-17 05:23 | Audited and cleaned. |
+| [x] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 14 | 5,212 | 2026-10-17 06:59 | Audited and cleaned. |
 | [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 39 | 9,823 | None |  |
 | [ ] | [rustok-comments-api](../../crates/modules/rustok-comments-api) | `modules` | 3 | 154 | None |  |
 | [ ] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | None |  |
@@ -523,12 +523,12 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 12 | 2,171 | None |  |
 | [ ] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 26 | 4,758 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-outbox/admin) | `modules` | 8 | 493 | None |  |
-| [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 116 | 35,885 | None |  |
+| [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 116 | 35,929 | None |  |
 | [ ] | [rustok-page-builder-storefront](../../crates/modules/rustok-page-builder-storefront) | `modules` | 3 | 1,200 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 66 | 19,006 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 66 | 19,050 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-page-builder/storefront) | `modules` | 3 | 1,633 | None |  |
-| [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 191 | 54,666 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 25 | 6,636 | None |  |
+| [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 195 | 56,155 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 26 | 7,432 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 17 | 4,935 | None |  |
 | [ ] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 88 | 24,276 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 11 | 1,315 | None |  |

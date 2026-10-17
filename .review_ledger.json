@@ -298,7 +298,7 @@
       "path": "crates/modules/rustok-channel",
       "category": "modules",
       "files": 47,
-      "loc": 11443,
+      "loc": 11482,
       "completed": true,
       "completed_at": "2026-10-17 05:23",
       "notes": "Audited and cleaned."
@@ -308,10 +308,10 @@
       "path": "crates/modules/rustok-channel/admin",
       "category": "modules",
       "files": 14,
-      "loc": 5173,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 5212,
+      "completed": true,
+      "completed_at": "2026-10-17 06:59",
+      "notes": "Audited and cleaned."
     },
     "crates/modules/rustok-comments": {
       "name": "rustok-comments",
@@ -958,7 +958,7 @@
       "path": "crates/modules/rustok-page-builder",
       "category": "modules",
       "files": 116,
-      "loc": 35885,
+      "loc": 35929,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -968,7 +968,7 @@
       "path": "crates/modules/rustok-page-builder/admin",
       "category": "modules",
       "files": 66,
-      "loc": 19006,
+      "loc": 19050,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -987,8 +987,8 @@
       "name": "rustok-pages",
       "path": "crates/modules/rustok-pages",
       "category": "modules",
-      "files": 191,
-      "loc": 54666,
+      "files": 195,
+      "loc": 56155,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -997,8 +997,8 @@
       "name": "admin",
       "path": "crates/modules/rustok-pages/admin",
       "category": "modules",
-      "files": 25,
-      "loc": 6636,
+      "files": 26,
+      "loc": 7432,
       "completed": false,
       "completed_at": null,
       "notes": ""
