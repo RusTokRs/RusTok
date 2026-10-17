@@ -63,9 +63,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261009_000033_add_blog_post_scheduled_at::Migration),
         Box::new(m20261009_000034_create_blog_preview_tokens::Migration),
         Box::new(m20261009_000035_add_blog_post_pinned::Migration),
-        Box::new(
-            m20261017_000036_enforce_blog_comment_projection_delivery_integrity::Migration,
-        ),
+        Box::new(m20261017_000036_enforce_blog_comment_projection_delivery_integrity::Migration),
     ]
 }
 

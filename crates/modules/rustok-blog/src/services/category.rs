@@ -266,9 +266,7 @@ impl CategoryService {
         // rejects such a request outright, and a Category that advances its
         // revision on every call breaks every revision-based consumer.
         if copy_unchanged && settings == category.settings {
-            return Err(BlogError::validation(
-                "No Blog category changes were supplied",
-            ));
+            return Err(BlogError::validation("No Blog category changes were supplied"));
         }
 
         let resource_updated = blog_category::Entity::update_many()

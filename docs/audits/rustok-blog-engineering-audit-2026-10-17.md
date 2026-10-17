@@ -38,7 +38,7 @@ correct in the source. The tenant/actor fail-closed behaviour of the GraphQL lay
 Taxonomy-owned Category projection, the transactional outbox usage and the idempotent comment
 projection were re-verified and hold.
 
-**This audit nevertheless found 4 High, 8 Medium and 9 Low defects.** The High findings are
+**This audit nevertheless found 4 High, 8 Medium and 10 Low defects.** The High findings are
 concentrated in one place and share a single root cause:
 
 > **The two Next.js blog packages speak a GraphQL contract that the Blog schema never
@@ -56,14 +56,14 @@ commit are at least partly *false negatives* — verifiers whose substring expec
 longer match the source after a rename or a reformat. The Blog's machine gate therefore
 reports failures that do not exist while staying silent about failures that do.
 
-Counts (this audit): **4 High**, **8 Medium**, **9 Low** findings, plus **1 governance**
+Counts (this audit): **4 High**, **8 Medium**, **10 Low** findings, plus **1 governance**
 finding (M-8) about the verifier suite itself.
 
 **Remediation status**: **every finding of this report is fixed.** Phase 1 (commit `d2d8f82`)
 fixed B-1, B-2, B-3, B-4, M-2, M-3 and L-6 — the four High findings, the two client-side
 schedule/slug defects and the stale TS input field — together with a new machine gate that
 reproduces the four High findings from the pre-fix sources. Phase 2 (the change set that
-contains this section) fixed M-1, M-4, M-5, M-6, M-7, M-8 and L-1…L-8. See §2.1 for the
+contains this section) fixed M-1, M-4, M-5, M-6, M-7, M-8 and L-1…L-10. See §2.1 for the
 per-finding record, §2.2 for the verification evidence and the limits of this environment.
 
 ## 2. Findings summary
@@ -90,6 +90,8 @@ per-finding record, §2.2 for the verification evidence and the limits of this e
 | L-6 | Low | Next.js admin | The `UpdatePostInput` TS type declares a `status` field the backend rejects |
 | L-7 | Low | Leptos admin | Category / featured image / SEO / channels / schedule cannot be set at all, and the gap is undocumented |
 | L-8 | Low | Scheduler | The route-reconciliation batch bound is a scan limit, not a removal limit |
+| L-9 | Low | Module layout | The search projection is a responsibility module at the crate source root — the canonical layout verifier rejects it |
+| L-10 | Low | Module layout | Two reference modules exceed the canonical 32 KiB file limit — the canonical layout verifier rejects them |
 
 ### 2.1 Remediation applied in this change set
 
@@ -115,6 +117,8 @@ per-finding record, §2.2 for the verification evidence and the limits of this e
 | L-4 | **fixed** | `crates/modules/rustok-blog/src/domain/state_machine.rs` — the dead type-state model (`BlogPost<Draft\|Published\|Archived>`, `ToBlogPostStatus`) is removed; the runtime status enum with the canonical transition table (`BlogPostStatus::can_transition_to`, consulted by `src/services/post/commands.rs`) is the only status model. The property suite is **re-targeted, not dropped**: `src/domain/state_machine_proptest.rs` now guards the relations of the canonical table (publish/unpublish/archive symmetry, reachability, no self-transition) and the comment moderation model, and the optional `proptest` dependency plus the `proptest` feature are removed (the dev-dependency stays, because the property suite needs it). |
 | L-5 | **fixed** | `crates/modules/rustok-blog/src/migrations/m20261017_000036_enforce_blog_comment_projection_delivery_integrity.rs` — the delivery table gets the tenant-scoped FK to `blog_posts` with `ON DELETE CASCADE` (Postgres) and the equivalent triggers (SQLite), an index on `(tenant_id, comment_id)`, and the migration blocks on a cross-tenant relation instead of silently repairing it. The entity relation was added as well. |
 | L-7 | **fixed** | `crates/modules/rustok-blog/README.md` — the Leptos admin capability gap (no category, featured image, SEO, channel visibility or schedule) is documented in *Known Limitations* with the owning file references. |
+| L-9 | **fixed** | `crates/modules/rustok-blog/src/search_projection.rs` — the module was a responsibility module at the crate source root, which the canonical layout verifier rejects. It moved to the canonical `services` slot (`src/services/search_projection.rs`), the public path `rustok_blog::search_projection` is preserved through explicit re-exports, and the canonical module layout and module reference-contract verifiers pass again. |
+| L-10 | **fixed** | `crates/modules/rustok-blog/src/graphql/query.rs` and `src/services/comment.rs` — the two reference modules grew past the canonical 32 KiB limit (33,048 and 33,774 bytes) and the canonical module layout verifier rejected them. Their test modules moved to the canonical child slots (`src/graphql/query/tests.rs`, `src/services/comment/rich_content_tests.rs`, `src/services/comment/public_target_tests.rs`), which keeps the implementation modules inside the limit without changing behaviour. |
 | L-8 | **fixed** | `crates/modules/rustok-blog/src/services/post/routes.rs`, `src/services/scheduler.rs` — the route reconciliation sweep has a separate scan bound (200 stale rows) and a removal bound (200 removed routes per iteration): `remove_target_routes_up_to_in_tx` removes at most the remaining budget of the routes of one target and publishes `UrlAliasPurged` with exactly the removed URLs. |
 
 ### 2.2 Verification evidence and the limits of this environment
@@ -128,16 +132,17 @@ per-finding record, §2.2 for the verification evidence and the limits of this e
 - The new parity gate and its self-test: **3/3**, and the gate reports
   `27 Blog schema types checked against 6 client documents`.
 - A repo-wide sweep of all 1186 non-test verifiers was compared against the same sweep on
-  the base commit (`d2d8f82`) in a separate worktree: **21 verifiers changed from red to
-  green and none changed from green to red**. The remaining failures (494 on the base
-  commit) belong to other components (commerce, product, index, groups, taxonomy) and are
-  out of the Blog scope of this audit.
+  the base commit (`d2d8f82`) in a separate worktree: **22 verifiers changed from red to
+  green and none changed from green to red** (21 Blog verifier repairs plus the canonical
+  module source-layout verifier). The remaining failures (494 on the base commit) belong
+  to other components (commerce, product, index, groups, taxonomy) and are out of the Blog
+  scope of this audit.
 
 **What could not be executed here**
 
 - There is **no Rust toolchain** in this environment, so `cargo check`, `cargo test` and
   `cargo clippy` were not run: the Rust changes of phase 2 (M-1, M-4, M-5, M-6, M-7, L-1,
-  L-2, L-3, L-4, L-5, L-8) are **not compiler-verified**. The scope was limited to
+  L-2, L-3, L-4, L-5, L-8, L-9, L-10) are **not compiler-verified**. The scope was limited to
   `cargo -p rustok-blog` per the repository contract.
 - There is **no `node_modules`** in the Next.js packages, so `tsc --noEmit` was not run for
   the TypeScript changes of phase 1 (B-1…B-4, M-2, M-3, L-6).
@@ -633,6 +638,26 @@ documented bound is not the bound the code enforces.
 
 ---
 
+### L-9 (Low) — The search projection is a responsibility module at the crate source root
+
+`crates/modules/rustok-blog/src/search_projection.rs` sits at the crate source root, while
+the canonical native module layout allows only `lib.rs` and `module.rs` there
+(`scripts/verify/verify-module-source-layout.mjs`). The verifier was red on the base commit
+for this reason. The module was moved to the canonical `services` slot
+(`src/services/search_projection.rs`), the public path `rustok_blog::search_projection` is
+preserved through explicit re-exports in `src/lib.rs`, and the `integrations` slot — which
+forbids direct entity access — is deliberately not used.
+
+### L-10 (Low) — Two reference modules exceed the canonical file-size limit
+
+The canonical layout verifier limits every Rust file of the crate to 32 KiB. The phase-2
+changes grew `src/graphql/query.rs` to 33,048 bytes and `src/services/comment.rs` to
+33,774 bytes, which the verifier rejects. Both files were split by responsibility: their
+test modules moved to the canonical child slots (`src/graphql/query/tests.rs`,
+`src/services/comment/rich_content_tests.rs`, `src/services/comment/public_target_tests.rs`),
+the same pattern the `services/post/` slot already uses. The implementation modules are back
+inside the limit and the behaviour is unchanged.
+
 ## 4. Areas re-verified as correct in this pass
 
 These were re-checked because they are load-bearing, and they hold:
@@ -709,10 +734,11 @@ Postgres-gated runtime observation of the new migration (L-5).
    batched.
 7. **M-8 (verifier repair)** — **done** (phase 2): the stale `verify-blog-comments-*.mjs`
    expectations were repaired and the drifted preserved-owner pins were re-baselined.
-8. **L-1…L-5, L-7, L-8** — **done** (phase 2): the GraphQL error mapping and the rate-limit
+8. **L-1…L-5, L-7, L-8, L-9, L-10** — **done** (phase 2): the GraphQL error mapping and the rate-limit
    clamp, the pre-transaction position check, the removal of the dead type-state model, the
    delivery-table migration with FK and index, the README gap record and the bounded route
-   removal.
+   removal, the search projection moved into the canonical `services` slot, and the two
+   over-sized reference modules split by responsibility.
 
 ## 7. Related documents
 
