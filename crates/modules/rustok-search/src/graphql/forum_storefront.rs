@@ -11,6 +11,7 @@ use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
+#[allow(deprecated)]
 use crate::{
     ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecutionError,
     ForumStorefrontSearchRequest, SharedStorefrontSearchCategoryScopePort,
@@ -38,6 +39,10 @@ impl ForumStorefrontSearchQuery {
     /// solved-state, inclusive published-date and trusted current-channel scope.
     /// The input must explicitly select only the `forum` source and at least one
     /// category root.
+    #[graphql(
+        deprecation = "Use generic storefrontSearch or resolve_audience_eligible_candidates instead."
+    )]
+    #[allow(deprecated)]
     async fn forum_storefront_search(
         &self,
         ctx: &Context<'_>,
