@@ -540,18 +540,24 @@ async fn finish_receipted_schema_write<T>(
         Err(error) => {
             let port_error = schema_write_error(context, operation, error);
             if !port_error.retryable {
-                let receipt_result = service
+                if let Err(receipt_error) = service
                     .fail_schema_operation_receipt(lease, &port_error)
-                    .await;
-                if let Err(receipt_error) = receipt_result {
+                    .await
+                {
                     tracing::error!(
                         correlation_id = %context.correlation_id,
                         tenant_id = %context.tenant_id,
                         operation,
                         operation_id = %lease.operation_id,
                         internal_code = %receipt_error.code,
+                        retryable = receipt_error.retryable,
                         "failed to persist Product schema terminal failure receipt"
                     );
+                    // A stale lease or failed finalization means the terminal owner error was not
+                    // durably recorded. Return the receipt error so callers retry with the same
+                    // key and observe the eventual replay or reclaim outcome instead of being
+                    // told a non-durable terminal result.
+                    return Err(schema_receipt_error(context, operation, receipt_error));
                 }
             }
             Err(port_error)
@@ -590,7 +596,7 @@ fn schema_receipt_error(
         operation,
         internal_code = %error.code,
         retryable = error.retryable,
-        "Product schema owner receipt admission failed"
+        "Product schema owner receipt operation failed"
     );
 
     match error.kind {

@@ -344,7 +344,7 @@ test("a Product translation target cannot bypass retryable receipt handling", ()
   const fixtureRoot = writeFixture({
     [relative]: replaceRequired(
       relative,
-      "fail_product_operation_receipt(self.service.database(), lease, error).await",
+      "fail_product_operation_receipt(self.service.database(), lease, error)\n            .await",
       "idempotency::fail(self.service.database(), lease, error).await",
     ),
   });
@@ -760,5 +760,39 @@ test("Relation tenant-key cleanup cannot drop a referenced key without rebuildin
   assert.match(
     result.output,
     /relations tenant-key cleanup migration: missing DROP CONSTRAINT IF EXISTS fk_product_relations_related_product/,
+  );
+});
+
+test("a Product translation target cannot ignore a failed terminal receipt finalization", () => {
+  const relative = "crates/modules/rustok-product/src/translation_target.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "self.fail_receipt(lease, error).await?;",
+      "self.fail_receipt(lease, error).await;",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /Product translation-target receipt finalizer propagation: missing self\.fail_receipt\(lease, error\)\.await\?;/,
+  );
+});
+
+test("a Product schema write cannot return an undurable terminal failure", () => {
+  const relative = "crates/modules/rustok-product/src/catalog_schema_write_port.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "return Err(schema_receipt_error(context, operation, receipt_error));",
+      "return Err(port_error);"
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /Product schema receipt finalizer propagation: missing return Err\(schema_receipt_error\(context, operation, receipt_error\)\);/,
   );
 });

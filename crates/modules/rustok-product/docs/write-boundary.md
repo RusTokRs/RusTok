@@ -78,7 +78,10 @@ Every Product receipt ingress, including the Product, Variant, Image, and schema
 adapters, waits for a receipt-bound owner transaction that returned early to roll back before it
 attempts an independent failure finalization. It records a terminal receipt only for a deterministic
 `PortError`; an unavailable or timeout error retains the processing lease so admission can reclaim
-an unknown infrastructure outcome instead of replaying a terminal transient failure.
+an unknown infrastructure outcome instead of replaying a terminal transient failure. If persisting a
+deterministic failure itself fails or discovers a reclaimed lease, the ingress returns that retryable
+receipt error—not the original terminal domain error—so the caller retries with the same key and
+observes the durable replay or reclaim outcome.
 
 ## Consequences for new integrations
 

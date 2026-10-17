@@ -432,6 +432,32 @@ for (const [source, label] of [
   forbid(source, "idempotency::fail(", label);
 }
 
+// A terminal owner error is only replay-safe after its failure receipt was persisted. Returning
+// it after a lost lease or a finalization outage falsely claims a durable outcome; the retryable
+// receipt error must win in that case.
+for (const [source, label] of [
+  [productTranslationTarget, "Product translation-target receipt finalizer propagation"],
+  [productVariantTranslationTarget, "Product Variant translation-target receipt finalizer propagation"],
+  [productImageTranslationTarget, "Product Image translation-target receipt finalizer propagation"],
+]) {
+  need(source, "self.fail_receipt(lease, error).await?;", label);
+}
+const productSchemaFailureFinalizer = slice(
+  productSchemaWritePort,
+  "async fn finish_receipted_schema_write<T>",
+  "fn decode_schema_receipt",
+);
+need(
+  productSchemaFailureFinalizer,
+  "return Err(schema_receipt_error(context, operation, receipt_error));",
+  "Product schema receipt finalizer propagation",
+);
+need(
+  boundaryDoc,
+  "receipt error—not the original terminal domain error",
+  "write boundary doc",
+);
+
 // ── Relations receipt protocol ───────────────────────────────────────────────────────────────
 for (const marker of [
   'pub const PRODUCT_RELATION_OWNER_SLUG: &str = "product_relations";',

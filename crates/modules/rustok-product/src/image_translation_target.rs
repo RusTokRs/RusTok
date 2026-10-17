@@ -87,16 +87,26 @@ impl ProductImageTranslationTargetProvider {
         snapshot_from_owner(snapshot, request)
     }
 
-    async fn fail_receipt(&self, lease: idempotency::Lease, error: &PortError) {
-        if let Err(receipt_error) =
-            fail_product_operation_receipt(self.service.database(), lease, error).await
-        {
-            tracing::error!(
-                operation_id = %lease.operation_id,
-                error = %receipt_error.message,
-                "Failed to persist Product Image translation-target failure receipt"
-            );
-        }
+    /// Finalize a deterministic owner failure before returning it to the caller.
+    ///
+    /// A receipt-finalization failure leaves the durable outcome unknown, so callers must receive
+    /// that retryable receipt error rather than an undurable terminal domain response.
+    async fn fail_receipt(
+        &self,
+        lease: idempotency::Lease,
+        error: &PortError,
+    ) -> Result<(), PortError> {
+        fail_product_operation_receipt(self.service.database(), lease, error)
+            .await
+            .map_err(|receipt_error| {
+                tracing::error!(
+                    operation_id = %lease.operation_id,
+                    internal_code = %receipt_error.code,
+                    retryable = receipt_error.retryable,
+                    "Failed to persist Product Image translation-target failure receipt"
+                );
+                receipt_error
+            })
     }
 }
 
@@ -272,7 +282,7 @@ impl TranslationTargetProvider for ProductImageTranslationTargetProvider {
         .await;
 
         if let Err(error) = &result {
-            self.fail_receipt(lease, error).await;
+            self.fail_receipt(lease, error).await?;
         }
         result
     }
