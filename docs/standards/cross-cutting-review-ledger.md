@@ -31,9 +31,10 @@ When triggered, the agent:
 
 ## Current Cycle Status
 
-- **Status:** COMPLETED
-- **Active Cycle:** Cross-Cutting Cycle 1 (CC-1)
-- **Completed Phases:** CC-01 through CC-17 (All 17 horizontal cross-cutting audit phases completed)
+- **Status:** ACTIVE
+- **Active Cycle:** Cross-Cutting Cycle 1 (Fresh Start from Scratch)
+- **Active Phase:** CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty
+- **Completed Phases:** None (0/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -44,7 +45,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 
 1. **CodeGraph Discovery Pass (`codegraph_explore`):** Query the cross-module symbols, traits, and facades that define the capability. Inspect how callers across `apps/server`, `crates/modules/*`, `crates/libs/*`, and `crates/ui/*` consume the capability.
 2. **Invariant & Anti-Pattern Map:** Verify code against [docs/standards/patterns-vs-antipatterns.md](./patterns-vs-antipatterns.md), [docs/standards/forbidden-actions.md](./forbidden-actions.md), and [docs/ai/KNOWN_PITFALLS.md](../ai/KNOWN_PITFALLS.md).
-3. **Blast Radius Isolation:** Group all violations by root cause. If an invariant is broken across 5 modules, treat them as part of the unified cross-cutting remediation unit.
+3. **Blast Radius Isolation:** Group all violations by root cause. If an invariant is broken across multiple modules, treat them as part of the unified cross-cutting remediation unit.
 4. **Atomic Remediation:** Fix the underlying contract, types, and implementations simultaneously. Preserve compile-time correctness and module sovereign boundaries.
 5. **Immediate Adjacent Re-Audit:** Verify upstream callers (controllers/handlers/resolvers) and downstream persistence/events.
 6. **Scoped Verification:** Run `cargo check -p <crate>` and `cargo test -p <crate>` for all modified crates. Never claim test passes without execution.
@@ -52,25 +53,25 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 
 ---
 
-## Phase Backlog — Cross-Cutting Capability Sequence
+## Phase Backlog — Cross-Cutting Capability Sequence (17 Phases Total)
 
-- [x] **[CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty](#cc-01-fluid-backend-architecture-fba--module-sovereignty)**
-- [x] **[CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity](#cc-02-fluid-frontend-architecture-ffa--ui-adapter-purity)**
-- [x] **[CC-03: RBAC, Auth & Security Enforcement](#cc-03-rbac-auth--security-enforcement)**
-- [x] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)**
-- [x] **[CC-05: Event Bus, Transactional Outbox & Async Messaging](#cc-05-event-bus-transactional-outbox--async-messaging)**
-- [x] **[CC-06: API Surfaces, Transports & Error Hygiene](#cc-06-api-surfaces-transports--error-hygiene)**
-- [x] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)**
-- [x] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)**
-- [x] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)**
-- [x] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)**
-- [x] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)**
-- [x] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)**
-- [x] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)**
-- [x] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)**
-- [x] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)**
-- [x] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)**
-- [x] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)**
+- [ ] **[CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty](#cc-01-fluid-backend-architecture-fba--module-sovereignty)** (0/6 completed)
+- [ ] **[CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity](#cc-02-fluid-frontend-architecture-ffa--ui-adapter-purity)** (0/4 completed)
+- [ ] **[CC-03: RBAC, Auth & Security Enforcement](#cc-03-rbac-auth--security-enforcement)** (0/8 completed)
+- [ ] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)** (0/4 completed)
+- [ ] **[CC-05: Event Bus, Transactional Outbox & Async Messaging](#cc-05-event-bus-transactional-outbox--async-messaging)** (0/4 completed)
+- [ ] **[CC-06: API Surfaces, Transports & Error Hygiene](#cc-06-api-surfaces-transports--error-hygiene)** (0/5 completed)
+- [ ] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)** (0/4 completed)
+- [ ] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)** (0/4 completed)
+- [ ] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)** (0/4 completed)
+- [ ] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)** (0/4 completed)
+- [ ] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (0/4 completed)
+- [ ] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (0/4 completed)
+- [ ] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (0/4 completed)
+- [ ] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (0/4 completed)
+- [ ] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (0/4 completed)
+- [ ] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (0/4 completed)
+- [ ] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (0/4 completed)
 
 ---
 
@@ -81,12 +82,12 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `FbaProviderDescriptor FbaConsumerDependency PortContext PortError rustok_fba HostRuntimeContext`
 
 #### Sub-Audit Checklist
-- [x] **CC-01.01 — Module Physical Shape & Hexagonal Separation:** Verified that no executable `.rs` code is hidden in `contracts/` or `docs/`. Executed `node scripts/verify/verify-module-source-layout.mjs` — canonical module source layout verification passed.
-- [x] **CC-01.02 — Inter-Module Dependency Sovereignty:** Executed `python scripts/architecture_dependency_guard.py` — passed with 0 violations. Dependency and import boundaries between modules are respected.
-- [x] **CC-01.03 — Port & Seam Purity:** Discovered direct cross-module entity access in `rustok-workflow/src/controllers/webhook.rs` directly querying `rustok_tenant::entities::tenant`. Remediated by replacing with public `TenantService::get_tenant_by_slug(&tenant_slug)`, mapping `TenantError::NotFound` to HTTP 404, and added 2 unit tests. Verified `cargo test -p rustok-workflow` passed.
-- [x] **CC-01.04 — FBA Registry & Capability Profiles:** Verified `rustok-fba` capability definitions (`BackendTopology`, `TransportProfile`, `CapabilityId`, `FbaProviderDescriptor`, `FbaConsumerDependency`). Embedded-first in-process execution is maintained across platform modules without uncontrolled remote fallbacks.
-- [x] **CC-01.05 — Host Minimalism (`apps/server`):** Verified `apps/server` acts purely as composition root and host. Contains 0 `clap` CLI dependencies and delegates module business rules to owner crates.
-- [x] **CC-01.06 — CLI Package Decoupling:** Verified that module maintenance commands reside in isolated `cli/` packages (`rustok-auth/cli`, `rustok-media/cli`, `rustok-modules/cli`, `rustok-profiles/cli`, `rustok-rbac/cli`) over `rustok-cli-core`. All domain crates have 0 `clap` dependencies.
+- [ ] **CC-01.01 — Module Physical Shape & Hexagonal Separation:** Verify no executable `.rs` code is hidden in `contracts/` or `docs/`. Run `node scripts/verify/verify-module-source-layout.mjs` for canonical module source layout verification.
+- [ ] **CC-01.02 — Inter-Module Dependency Sovereignty:** Run `python scripts/architecture_dependency_guard.py` and enforce module import boundaries. Ensure zero direct dependencies on other modules' private entities or repositories.
+- [ ] **CC-01.03 — Port & Seam Purity:** Verify cross-module interactions communicate strictly through owner-defined port traits, transactional event contracts, and provider seams rather than raw internal table access.
+- [ ] **CC-01.04 — FBA Registry & Capability Profiles:** Verify `rustok-fba` capability definitions (`BackendTopology`, `TransportProfile`, `CapabilityId`, `FbaProviderDescriptor`, `FbaConsumerDependency`) and embedded-first in-process execution.
+- [ ] **CC-01.05 — Host Minimalism (`apps/server`):** Verify `apps/server` acts purely as composition root and host with zero leaked module business rules.
+- [ ] **CC-01.06 — CLI Package Decoupling:** Verify module maintenance commands reside in isolated `cli/` packages over `rustok-cli-core` without bloating domain crates with CLI dependencies.
 
 ---
 
@@ -97,10 +98,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `leptos_dom view rsx TransportFacade ViewModel rustok_ui`
 
 #### Sub-Audit Checklist
-- [x] **CC-02.01 — Zero Framework in Core:** Verified every `crates/modules/*/core` crate contains strictly zero imports of `leptos::*`, `dioxus::*`, or other UI frameworks. All models are pure Rust data types. Automated enforcement confirmed via `node scripts/verify/verify-ffa-ui-boundary-sweep.mjs` and codebase-wide regex grep.
-- [x] **CC-02.02 — Zero Domain Logic in UI Adapters:** Verified `crates/modules/*/admin/src` and `storefront/src` do not perform business calculations, price/discount math, status validations, or command construction inside templates (`view!`, `rsx!`). View-models and calculation logic live strictly in framework-agnostic `core/` view-models.
-- [x] **CC-02.03 — Transport Facade Boundary:** Ensured UI adapters invoke backend capabilities strictly through module-owned `transport/` facades, never calling raw fetch or ad-hoc API endpoints directly. Verified zero direct calls to `reqwest` or raw `api::*` from UI templates. Executed `node scripts/verify/verify-ffa-ui-transport-profile-sweep.mjs` — passed.
-- [x] **CC-02.04 — Design Token & UI Primitive Reuse:** Verified module UIs consume canonical visual primitives (`rustok-ui`, `rustok-forms`, `rustok-grid`, `rustok-ui-i18n`) rather than implementing ad-hoc form engines or custom CSS styling. Synchronized documentation and registry status for `rustok-accounting`, `rustok-docs`, and `docs/modules/registry.md`. Executed `node scripts/verify/verify-ffa-ui-boundary-sweep.mjs` and `node scripts/verify/verify-ffa-ui-migration-contract.mjs` — all checks passed cleanly.
+- [ ] **CC-02.01 — Zero Framework in Core:** Verify every `crates/modules/*/core` crate contains strictly zero imports of `leptos::*`, `dioxus::*`, or other UI frameworks. Models must be pure Rust data types verified by unit tests.
+- [ ] **CC-02.02 — Zero Domain Logic in UI Adapters:** Verify `crates/modules/*/admin` and `storefront` adapters contain zero business calculations, price/discount math, status validations, or command construction inside view templates (`view!`, `rsx!`).
+- [ ] **CC-02.03 — Transport Facade Boundary:** Ensure UI adapters access backend capabilities strictly through module-owned `transport/` facades, never calling raw fetch or ad-hoc API endpoints directly.
+- [ ] **CC-02.04 — Design Token & UI Primitive Reuse:** Verify module UIs consume canonical visual primitives (`rustok-ui`, `rustok-forms`, `rustok-grid`, `rustok-ui-i18n`) rather than implementing ad-hoc form engines or custom styling.
 
 ---
 
@@ -111,15 +112,14 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `RequirePermission check_permission RbacService AuthContext PermissionKey`
 
 #### Sub-Audit Checklist
-- [x] **CC-03.01 — Controller & Resolver Permission Coverage:** Audited REST endpoints in `apps/server/src/controllers/*` and GraphQL operations in `apps/server/src/graphql/*`. Verified permission guards (`has_effective_permission`, type-safe extractors `Require*`, `require_graphql_auth`) are enforced across users, channels, flex, and GraphQL endpoints. Public mutations are restricted and validated. Expanded Axum RBAC extractors (`Taxonomy`, `Navigation`, `Forms`, `Seo`, `Media`, `Webhooks`, `Translations`, `LogsList`) in `apps/server/src/extractors/rbac.rs`.
-- [x] **CC-03.02 — Tenant Isolation in Security Context & Authoritative Queries:** Verified `SecurityContext::get_scope()` and `try_from_port_context` strictly require and enforce tenant scope and principal claims. Cross-tenant relations and unauthorized privilege escalations fail closed. Enforced tenant integrity in authoritative role queries (`get_user_role_authoritative`) via `JOIN users u ON u.id = ur.user_id AND u.tenant_id = r.tenant_id` to prevent cross-tenant membership leakage.
-- [x] **CC-03.03 — RBAC Cache Invalidation & Canonical API Seams:** Verified role/permission mutations commit atomically within transaction, reserve invalidation generation, invalidate local caches via `invalidate_user_rbac_caches`, and broadcast multi-node invalidation via `publish_user_rbac_invalidation`. Decoupled `has_effective_permission` and `has_any_effective_permission` from server-only feature gating in `rustok-api`, eliminating ad-hoc copy-pasted permission checking logic in downstream crates (`rustok-page-builder`, `rustok-ai`).
-- [x] **CC-03.04 — Password & Token Security:** Verified Argon2id password hashing parameters with unique random salts via OsRng, 256-bit entropy refresh tokens, strict JWT token validation (RFC 7519, `leeway = 0`, `validate_exp = true`, `set_issuer`, `set_audience`, fail-closed algorithm matching), and transactional revocation of all active sessions upon password changes. Scoped checks `cargo test -p rustok-rbac` (77 passed), `cargo test -p rustok-auth` (48 passed), `cargo test -p rustok-api` (72 passed), `cargo test -p rustok-rbac-admin` (7 passed), `cargo test -p rustok-page-builder` (89 passed), `cargo test -p rustok-ai` (36 passed) verified 100% clean.
-- [x] **CC-03.05 — FFA Purity & Dead Code Cleanup in RBAC:** Enforced FFA i18n invariants in `rustok-rbac/admin/src/core.rs` by replacing hardcoded `if is_ru` language branching with Fluent `.ftl` message catalog resolution (`t(locale, ...)`). Removed dead `InvalidAuthzMode` error variant from `rustok-rbac/src/error.rs` left over from deprecated legacy rollout flags.
-- [x] **CC-03.06 — Built-in Role Resource Parity & Completeness:** Audited built-in system role definitions across `SUPER_ADMIN_PERMISSIONS`, `ADMIN_PERMISSIONS`, `MANAGER_PERMISSIONS`, and `CUSTOMER_PERMISSIONS` in `crates/libs/rustok-core/src/rbac.rs`. Remediated missing permissions for `Resource::Forms`, `Resource::Conversations`, and `Resource::Messages` (`FORMS_READ`, `FORMS_LIST`, `FORMS_UPDATE`, `FORMS_MANAGE`, `CONVERSATIONS_*`, `MESSAGES_*`), removed duplicate `FORMS_*` entries in `MANAGER_PERMISSIONS`, and established chat/message capabilities for customer and manager roles. Synchronized `BuiltinTenantRbacCatalog` and `repair_system_roles`.
-- [x] **CC-03.07 — GraphQL Mutation Race Elimination & Role Invalidation:** Remediated permission insertion race condition in `crates/modules/rustok-rbac/src/graphql/mutation.rs` (`create_role` and `update_role`), ensuring newly inserted or conflicting permission rows are re-queried deterministically from the database before role-permission linking. Added `invalidate_role_users` hook on `RbacGraphqlRoleWriter` (`ServerRbacGraphqlRoleWriter`) to invalidate cached permissions for all users assigned to a role when its permissions change. In `delete_role`, added cleanup of `rbac_artifact_role_permissions` and `rbac_artifact_role_permission_operations` to prevent unhandled `ON DELETE RESTRICT` foreign key constraint failures. Deduplicated `has_effective_permission_in_set` in `permission_policy.rs` to delegate directly to canonical `rustok_api::has_effective_permission`.
-- [x] **CC-03.08 — Platform Permission Catalog Exhaustiveness:** Audited `platform_permission_catalog()` in `crates/modules/rustok-rbac/src/graphql/query.rs` used by admin permission matrix and table components. Added missing definitions for `Resource::Forms`, `Resource::Conversations`, `Resource::Messages`, and complete action sets for `Resource::Translations` (`Resolve`, `Publish`, `Import`, `Export`, `Run`), `Resource::TranslationMemory` (`Import`, `Export`), and `Resource::TranslationGlossaries` (`Import`, `Export`), achieving 100% parity across all 58 resource variants with `rustok-api::Resource`. Scoped checks verified: `cargo test -p rustok-core --lib rbac` (15/15 passed), `cargo test -p rustok-rbac` (77 unit tests + 16 integration tests passed).
-
+- [ ] **CC-03.01 — Controller & Resolver Permission Coverage:** Audit REST endpoints in `apps/server/src/controllers/*` and GraphQL operations in `apps/server/src/graphql/*` to verify permission guards are enforced on all operations.
+- [ ] **CC-03.02 — Tenant Isolation in Security Context & Authoritative Queries:** Verify `SecurityContext` strictly requires and enforces tenant scope and principal claims, preventing cross-tenant role leakage or privilege escalation.
+- [ ] **CC-03.03 — RBAC Cache Invalidation & Canonical API Seams:** Verify role and permission mutations commit atomically within transaction boundaries and broadcast multi-node invalidation via `publish_user_rbac_invalidation`.
+- [ ] **CC-03.04 — Password & Token Security:** Verify Argon2id password hashing parameters, unique random salts, 256-bit entropy refresh tokens, strict JWT validation (RFC 7519), and session revocation on password changes.
+- [ ] **CC-03.05 — FFA Purity & i18n in RBAC UI:** Enforce FFA i18n invariants in RBAC UI components, resolving messages via Fluent message catalogs without hardcoded language branching.
+- [ ] **CC-03.06 — Built-in Role Resource Parity & Completeness:** Audit built-in system role definitions across `SUPER_ADMIN_PERMISSIONS`, `ADMIN_PERMISSIONS`, `MANAGER_PERMISSIONS`, and `CUSTOMER_PERMISSIONS` in `rustok-core::rbac`.
+- [ ] **CC-03.07 — GraphQL Mutation Race Elimination & Role Invalidation:** Verify permission insertion handles concurrency deterministically and invalidates cached permissions for all affected users upon role permission updates.
+- [ ] **CC-03.08 — Platform Permission Catalog Exhaustiveness:** Verify 100% parity across all resource variants between `rustok-core::rbac`, `rustok-api::Resource`, and GraphQL admin permission query catalogs.
 
 ---
 
@@ -130,10 +130,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `CacheService get_cached set_cached invalidate CacheKey TieredCache`
 
 #### Sub-Audit Checklist
-- [x] **CC-04.01 — Tenant Scoping in Cache Keys:** Verified `CacheKeyBuilder::new` requires `tenant_or_global` as part of the immutable 6-tuple prefix (`service`, `environment`, `tenant_or_global`, `domain`, `schema_version`, `resource`). Dynamic identities are tagged and length-bounded, preventing cross-tenant key pollution.
-- [x] **CC-04.02 — Mutation Path Invalidation:** Audited write/mutation paths (Product, Price, Category, User, Order, Settings). Verified that mutations execute deterministic invalidations locally and broadcast via `publish_invalidation` / Redis pub/sub.
-- [x] **CC-04.03 — Stampede & Dogpile Prevention:** Verified singleflight / request coalescing active via `CacheLoadCoordinator` in `load_or_fill`. The first caller for a cache miss fills the key while concurrent callers await the shared in-flight load lease, eliminating cache dogpiles on cold start.
-- [x] **CC-04.04 — Negative Caching & Multi-Node Sync:** Verified negative caching (`TENANT_NEGATIVE_CACHE_TTL = 60s`, `CHANNEL_NEGATIVE_CACHE_TTL = 10s`) via `rustok-cache::negative` to protect against DoS on non-existent tenants/resources. Verified atomic invalidation of negative cache entries on tenant creation, and multi-node sync through `CacheInvalidationService`. Scoped checks `cargo test -p rustok-cache` verified 190 passed tests with 0 failures.
+- [ ] **CC-04.01 — Tenant Scoping in Cache Keys:** Verify `CacheKeyBuilder` requires `tenant_or_global` in the 6-tuple prefix, preventing cross-tenant key pollution.
+- [ ] **CC-04.02 — Mutation Path Invalidation:** Audit all write/mutation paths across modules to verify mutations trigger deterministic cache invalidations locally and via pub/sub broadcast.
+- [ ] **CC-04.03 — Stampede & Dogpile Prevention:** Verify singleflight request coalescing (`CacheLoadCoordinator` in `load_or_fill`) to prevent dogpiles on cold start.
+- [ ] **CC-04.04 — Negative Caching & Multi-Node Sync:** Verify negative caching bounds for non-existent entities and atomic invalidation on creation.
 
 ---
 
@@ -144,10 +144,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `publish_in_tx TransactionalEventBus Outbox sys_events publish`
 
 #### Sub-Audit Checklist
-- [x] **CC-05.01 — Atomic `publish_in_tx` Invariant:** Verified all domain mutations write domain events inside the active database transaction (`publish_root_in_tx`, `publish_contract_in_tx`, `publish_in_tx`). Transaction rollback rolls back outbox events atomically.
-- [x] **CC-05.02 — Event Payload Integrity & PII Boundary:** Verified `EventEnvelope` and `ContractEventEnvelope` enforce non-empty metadata (`id` generated via ULID, `event_type`, `schema_version`, `correlation_id`, `tenant_id`, `trace_id` from OpenTelemetry, `timestamp`). Enforces strict version checks (`schema_version == schema.version`) and PII-free serialization.
-- [x] **CC-05.03 — Consumer Idempotency:** Verified durable owner-scoped idempotency receipts in `owner_operation_receipts` via `rustok-outbox::idempotency` (`Admission::Run(Lease)`, `Admission::Replay(Value)`, `Admission::ReplayError(PortError)`). Duplicate commands replay stored outcome without duplicating side-effects.
-- [x] **CC-05.04 — Outbox Retention & DLQ Pipelines:** Verified `OutboxRelay` claims batches with TTL leases (`claim_batch`), enforces exponential backoff retry policies (`backoff_base` to `backoff_max`), quarantines unprocessable payloads and exhausted retries to DLQ (`SysEventStatus::Failed`), and prunes delivered rows via `OutboxRetentionWorker`. Scoped checks `cargo test -p rustok-events` (114 passed) and `cargo test -p rustok-outbox` (41 passed) verified 100% clean.
+- [ ] **CC-05.01 — Atomic `publish_in_tx` Invariant:** Verify all domain mutations write outbox events inside the active database transaction boundary (`publish_in_tx`).
+- [ ] **CC-05.02 — Event Payload Integrity & PII Boundary:** Verify `EventEnvelope` enforces metadata (ULID id, tenant_id, correlation_id, trace_id), strict schema versioning, and zero PII leaks.
+- [ ] **CC-05.03 — Consumer Idempotency:** Verify durable owner-scoped idempotency receipts in `owner_operation_receipts` to prevent duplicate processing.
+- [ ] **CC-05.04 — Outbox Retention & DLQ Pipelines:** Verify lease batch claiming, exponential backoff, DLQ quarantine for failed events, and retention pruning.
 
 ---
 
@@ -158,11 +158,11 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `build_application_router HttpError ErrorBody MergedObject McpRouter Dataloader`
 
 #### Sub-Audit Checklist
-- [x] **CC-06.01 — Error Envelope Consistency:** Verified all Axum controllers and routes return structured JSON `ErrorBody` responses (`apps/server/src/error.rs`, `apps/server/src/routes.rs`). Zero plain-text 500 responses or raw database SQL error leaks (mapped to `"internal_error"`).
-- [x] **CC-06.02 — DTO vs SeaORM Entity Boundary:** Verified controllers and resolvers do not expose raw SeaORM `Entity`/`Model` instances directly to API clients. Enforced typed DTO transformations across all modules.
-- [x] **CC-06.03 — GraphQL Dataloader & N+1 Elimination:** Verified `DataLoader` batching across nested relations (`TenantNameLoader`, `ProfileSummaryLoader`) in `apps/server/src/graphql/schema.rs`.
-- [x] **CC-06.04 — List Pagination & Limit Clamping:** Verified pagination standardization with `limit` clamped to maximum 100 in `rustok-api/src/graphql/common.rs` and REST controllers.
-- [x] **CC-06.05 — MCP Tool Schema Validation:** Verified `rustok-mcp` tools enforce typed JSON-RPC schema validation and structured tool execution responses (`rustok-mcp/src/tools.rs`). Scoped tests passed (34/34).
+- [ ] **CC-06.01 — Error Envelope Consistency:** Verify all REST controllers and GraphQL handlers return structured JSON `ErrorBody` responses with sanitized internal errors.
+- [ ] **CC-06.02 — DTO vs SeaORM Entity Boundary:** Verify zero leakage of raw SeaORM `Entity`/`Model` instances directly to API clients; enforce typed DTO conversions.
+- [ ] **CC-06.03 — GraphQL Dataloader & N+1 Elimination:** Verify DataLoader batching across nested relations to prevent N+1 query patterns.
+- [ ] **CC-06.04 — List Pagination & Limit Clamping:** Verify limit clamping (max 100) and standard pagination across REST and GraphQL endpoints.
+- [ ] **CC-06.05 — MCP Tool Schema Validation:** Verify Model Context Protocol tools enforce typed JSON-RPC schema validation and structured output.
 
 ---
 
@@ -173,10 +173,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `TenantContext resolve_tenant Column::TenantId ensure_tenant_access`
 
 #### Sub-Audit Checklist
-- [x] **CC-07.01 — Universal Query Filter Invariant:** Verified that domain table SeaORM queries (`find()`, `update_many()`, `delete_many()`) enforce `.filter(Column::TenantId.eq(tenant_id))` or tenant-scoped composite key filters across modules (`rustok-tenant`, `rustok-channel`, `rustok-auth`, `rustok-commerce`).
-- [x] **CC-07.02 — Request Host Smuggling & Boundary Defense:** Verified middleware defense against duplicate Host/Forwarded headers, trailing dots, authority port extraction, and lowercase subdomain normalization in `apps/server/src/middleware/tenant_resolution.rs`.
-- [x] **CC-07.03 — Cross-Tenant Relation Verification:** Verified cross-tenant relation validation across modules (`rustok-commerce`, `flex`, `rustok-fulfillment`), ensuring associated entities match active tenant and non-nil tenant UUIDs. Enforced cross-tenant policy channel update denial in `rustok-channel`.
-- [x] **CC-07.04 — Context Propagation:** Verified explicit propagation of `TenantContext`, `ChannelContext`, and `LocaleContext` through Axum request extensions (`TenantContextExtension`, `ChannelContextExtension`, `LocaleContextExtension`) without manual header re-parsing. Scoped tests passed: `rustok-tenant` (24/24), `rustok-channel` (35/35).
+- [ ] **CC-07.01 — Universal Query Filter Invariant:** Verify every domain SeaORM query enforces `.filter(Column::TenantId.eq(tenant_id))` or composite tenant keys.
+- [ ] **CC-07.02 — Request Host Smuggling & Boundary Defense:** Verify middleware defense against duplicate Host/Forwarded headers, trailing dots, and case normalizations.
+- [ ] **CC-07.03 — Cross-Tenant Relation Verification:** Verify cross-tenant relation checks preventing entities from referencing records in other tenants.
+- [ ] **CC-07.04 — Context Propagation:** Verify explicit typed context propagation (`TenantContext`, `ChannelContext`, `LocaleContext`) without manual downstream header parsing.
 
 ---
 
@@ -187,10 +187,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `DatabaseConnection::begin TransactionTrait find_by_id insert update`
 
 #### Sub-Audit Checklist
-- [x] **CC-08.01 — Atomic Multi-Table Mutations:** Audited write operations touching multiple rows or relations (`TenantService::create_tenant`, `ActiveModel::insert` in `oauth_apps.rs`, `OrderFieldService`). Guaranteed that mutations and transactional outbox publishes are strictly enclosed within `db.begin()` transactions with atomic commit.
-- [x] **CC-08.02 — TOCTOU Race Condition Guards:** Verified compare-and-swap (CAS) via `expected_revision` across modules (`alloy`, `rustok-tenant`, `rustok-groups`, `rustok-commerce`, `rustok-sandbox`), unique database constraints, and row-level locking (`LockType::Update, LockBehavior::SkipLocked` in `rustok-outbox`).
-- [x] **CC-08.03 — Soft Delete & Archive Discipline:** Verified business aggregates utilize explicit lifecycle states (`ProductStatus::Archived`, `PostStatus::Archived`, `TopicStatus`, `is_active` soft-delete toggles, and tombstoned deletion receipts) rather than destructive physical deletes.
-- [x] **CC-08.04 — Non-Blocking Transaction Scope:** Verified that transactions do not hold database connections/locks across external network HTTP calls, timers, or async message broker awaits. Event publishing is deferred to local transactional outbox tables inside transactions. Scoped tests passed: `rustok-tenant` migration contract (3/3), `rustok-outbox` (41/41).
+- [ ] **CC-08.01 — Atomic Multi-Table Mutations:** Verify multi-row domain mutations commit atomically in `db.begin()` transaction boundaries.
+- [ ] **CC-08.02 — TOCTOU Race Condition Guards:** Verify compare-and-swap (CAS) via `expected_revision`, unique constraints, and row-level locks.
+- [ ] **CC-08.03 — Soft Delete & Archive Discipline:** Verify business aggregates use explicit lifecycle states (`Archived`, tombstone receipts) instead of destructive physical deletes.
+- [ ] **CC-08.04 — Non-Blocking Transaction Scope:** Verify transactions do not hold database connections/locks across external network HTTP calls or timers.
 
 ---
 
@@ -201,10 +201,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `spawn_worker StopHandle AppRuntime shutdown_runtime_workers tokio::fs`
 
 #### Sub-Audit Checklist
-- [x] **CC-09.01 — Non-Blocking Async Invariant:** Verified 0 blocking calls (`std::thread::sleep`, `std::fs::*`) in production async code (grep sweep confirmed only test/benchmark blocks). All async runtime operations use `tokio::time::sleep`, `tokio::fs`, or `tokio::task::spawn_blocking`.
-- [x] **CC-09.02 — Graceful Worker Drain:** Verified `StopHandle` broadcast channels and `shutdown_runtime_workers` in `apps/server/src/services/app_lifecycle.rs`, concurrently joining and draining all registered worker handles (relay, retention, reaper, seo, module work, workflow, watchdog) with bounded timeouts.
-- [x] **CC-09.03 — Concurrency Limiting:** Verified explicit `tokio::sync::Semaphore` concurrency boundaries across workers, image processing (`rustok-media`), cache refreshing (`rustok-cache`), OCI registry transfers (`rustok-modules`), and bulkhead execution (`rustok-core`).
-- [x] **CC-09.04 — Sandbox Isolation:** Verified resource quotas, execution timeouts, instruction counters, memory limits (64MB), and capability rate limiting in `rustok-sandbox` (`SandboxLimits`, `SandboxPolicy`). Scoped tests passed: `rustok-sandbox` (35/35).
+- [ ] **CC-09.01 — Non-Blocking Async Invariant:** Verify zero blocking calls (`std::thread::sleep`, `std::fs::*`, sync Mutex) in async execution paths.
+- [ ] **CC-09.02 — Graceful Worker Drain:** Verify `StopHandle` cancellation and bounded graceful drain on shutdown.
+- [ ] **CC-09.03 — Concurrency Limiting:** Verify explicit Semaphore concurrency boundaries on heavy background workloads.
+- [ ] **CC-09.04 — Sandbox Isolation:** Verify resource quotas, execution timeouts, instruction counters, and memory bounds in execution sandboxes.
 
 ---
 
@@ -215,11 +215,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `init_telemetry register_metrics tracing::instrument health_check`
 
 #### Sub-Audit Checklist
-- [x] **CC-10.01 — Ad-Hoc Print Elimination:** Confirmed 0 instances of `println!`, `eprintln!`, and `dbg!` in production code across `apps/server/src`, `crates/libs/*/src`, `crates/modules/*/src`, `crates/workers/*/src`, and `crates/ui/*/src`. All logging routes through structured `tracing::*` macros.
-- [x] **CC-10.02 — PII & Secret Redaction in Spans:** Verified that all `#[instrument]` macros across modules explicitly skip sensitive payload objects (`skip(self, security, input, txn)`), and sensitive auth controllers completely avoid `#[instrument]` to prevent argument logging of passwords or tokens.
-- [x] **CC-10.03 — Telemetry Lifecycle Safety:** Verified `init_metrics_handle` in `rustok-telemetry` uses `METRICS_HANDLE` (`OnceLock`), preventing duplicate registration; `tracing::subscriber::set_global_default` enforces singleton subscriber with `TelemetryError::SubscriberAlreadySet`.
-- [x] **CC-10.04 — Health & Readiness Probes:** Verified `/health/live` always returns 200 for process liveness; `/health/ready` aggregates Critical and NonCritical dependency/module health checks. Critical failures accurately map to HTTP 503 `SERVICE_UNAVAILABLE`, while NonCritical degraded states return HTTP 200 `OK`. Unauthenticated access is properly guarded by `metrics_auth` middleware. Scoped checks `cargo test -p rustok-telemetry` (47 passed) and `cargo test -p rustok-translation --lib observability` (2 passed) verified 100% clean.
-
+- [ ] **CC-10.01 — Ad-Hoc Print Elimination:** Verify zero `println!`, `eprintln!`, or `dbg!` statements in production crates; enforce structured `tracing::*`.
+- [ ] **CC-10.02 — PII & Secret Redaction in Spans:** Verify `#[instrument]` macros skip sensitive arguments (`skip(self, security, input, txn, password, token)`).
+- [ ] **CC-10.03 — Telemetry Lifecycle Safety:** Verify singleton metrics handles and safe global subscriber initialization.
+- [ ] **CC-10.04 — Health & Readiness Probes:** Verify distinct liveness (`/health/live`) and readiness (`/health/ready`) with tri-state status reporting.
 
 ---
 
@@ -230,11 +229,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `SettingsService load_tenant_settings Zeroize`
 
 #### Sub-Audit Checklist
-- [x] **CC-11.01 — In-Memory Secret Zeroization & Redaction:** Verified credentials, encryption keys, and tokens: Argon2 password hashing relies on `argon2` crate's internal memory zeroization; auth parameter DTOs strictly omit `#[derive(Debug)]` to prevent accidental logging; and `redact_secrets` strips sensitive credentials (`smtp_password`, `redis_password`, redis URI auth) upon retrieval.
-- [x] **CC-11.02 — Dynamic Settings Schema Validation:** Verified `ValidatorRegistry` validates tenant module settings prior to persistence against typed domain schemas (`RateLimitSettingsValidator`, `EmailSettingsValidator`, `CacheSettingsValidator` validating against `rustok_cache::CacheSettings`).
-- [x] **CC-11.03 — Hierarchy & Fallback Resolution:** Verified 3-tier fallback resolution in `SettingsService::get`: per-tenant database row -> host YAML configuration defaults (`settings.rustok.<cat>`) -> compiled-in module defaults.
-- [x] **CC-11.04 — Environment Variable Containment:** Verified direct reads of environment variables (`std::env::var`) are restricted to host startup/configuration crates and test harness overrides; domain modules access settings through typed context facades (`ctx.settings()`) and `SettingsService`. Scoped tests in `apps/server/src/services/settings_service.rs` (10 passed) and `rustok-cache` (181 passed) verified 100% clean.
-
+- [ ] **CC-11.01 — In-Memory Secret Zeroization & Redaction:** Verify secret zeroization in memory, absence of Debug leaks, and secret redaction on settings reads.
+- [ ] **CC-11.02 — Dynamic Settings Schema Validation:** Verify tenant settings schemas are validated prior to persistence against typed domain validators.
+- [ ] **CC-11.03 — Hierarchy & Fallback Resolution:** Verify 3-tier settings resolution: tenant database row -> host YAML configuration -> compiled-in defaults.
+- [ ] **CC-11.04 — Environment Variable Containment:** Verify `std::env::var` reads are restricted to host startup; domain modules consume typed context facades.
 
 ---
 
@@ -245,10 +243,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `constrain_locale_to_tenant TranslationService _translations`
 
 #### Sub-Audit Checklist
-- [x] **CC-12.01 — Relational Translation Schema:** Verified entity translations adhere to the canonical `base + *_translations` table pattern with `VARCHAR(32)` locale columns. Validated by `node scripts/verify/verify-db-multilingual-contract.mjs` (passed with 0 schema violations). All 10 multilingual domain aggregates (`taxonomy`, `product`, `post`, `forum`, `content`, `customer`, `currency`, `brand`, `delivery`, `payment`) enforce isolated translation tables with compound primary key `(entity_id, locale)` and tenant isolation.
-- [x] **CC-12.02 — Fallback Negotiation Chain:** Verified the locale resolution chain: `requested locale -> tenant default locale -> platform default fallback`. Traced via CodeGraph across `LocaleContext`, `constrain_locale_to_tenant`, and `TranslationService`. Scoped tests passed: `rustok-translation` (34/34), `rustok-translation-targets` (10/10), `rustok-ui-i18n` (16/16).
-- [x] **CC-12.03 — User-Facing String Decoupling:** Verified backend services return typed error codes and translation keys rather than raw English strings. Frontend/UI adapters strictly resolve presentation strings through neutral `EditorMessages` and module FTL catalogs across all 63 UI packages (`npm run verify:i18n:ui` passed).
-- [x] **CC-12.04 — Fluent & ICU Format Safety:** Audited Fluent message formatting and pluralization for safe argument substitution without panic risks. Verified by `npm run verify:i18n:contract` (`OK i18n contract`), validating EN/RU catalog symmetry, argument matching, and non-panicking bundle evaluation.
+- [ ] **CC-12.01 — Relational Translation Schema:** Verify entity translations adhere to `base + *_translations` pattern with `(entity_id, locale)` composite primary key.
+- [ ] **CC-12.02 — Fallback Negotiation Chain:** Verify locale negotiation: requested locale -> tenant default -> platform fallback.
+- [ ] **CC-12.03 — User-Facing String Decoupling:** Verify backend returns typed error codes/translation keys; presentation strings resolve via FTL catalogs.
+- [ ] **CC-12.04 — Fluent & ICU Format Safety:** Verify Fluent message formatting symmetry and non-panicking argument evaluation.
 
 ---
 
@@ -259,10 +257,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `build_registry RusToKModule modules.toml rustok-module.toml`
 
 #### Sub-Audit Checklist
-- [x] **CC-13.01 — Registry vs Manifest Parity:** Verified that all modules declared in `modules.toml` match `build_registry()` in `apps/server` and their respective `rustok-module.toml`. Traced through CodeGraph (`build_registry` in `apps/server/src/modules/generated.rs` and `crates/modules/rustok-distribution/src/lib.rs`). Validated by `node scripts/verify/verify-module-source-layout.mjs` and `node scripts/verify/verify-module-reference-contract.mjs` (both passed).
-- [x] **CC-13.02 — Active ADR Alignment:** Verified code implementation reflects accepted ADRs in `DECISIONS/` and brought all 2026-10-14 ADRs into full canonical compliance (frontmatter + 13 mandatory sections). Validated by `node scripts/verify/verify-adrs.mjs` (all 147 ADRs passed governance verification and date/filename descending sort in `DECISIONS/README.md`).
-- [x] **CC-13.03 — Reference Schema Parity:** Verified that committed route and module definitions adhere to platform API contracts using `node scripts/verify/verify-api-surface-contract.mjs` (Axum entrypoints, host runtime context, response formatting, and module manifests all conform).
-- [x] **CC-13.04 — Documentation Integrity:** Verified that documentation links, topology, and metadata are intact via `node scripts/verify/verify-docs.mjs` (6/6 checks passed: ADR governance, module topology & diagrams sync, markdown escape sequences, internal relative links & anchors, forbidden stale terminology, canonical metadata on core platform documents). Cleaned stale continuous-review-ledger references and synchronized `docs/architecture/diagram.md` via `node scripts/generate/generate-docs-topology.mjs`.
+- [ ] **CC-13.01 — Registry vs Manifest Parity:** Verify all modules declared in `modules.toml` match server registry and `rustok-module.toml` manifests.
+- [ ] **CC-13.02 — Active ADR Alignment:** Verify code reflects accepted ADRs in `DECISIONS/` and ADRs conform to canonical governance template.
+- [ ] **CC-13.03 — Reference Schema Parity:** Verify committed routes and API contracts adhere to platform API contracts.
+- [ ] **CC-13.04 — Documentation Integrity:** Verify documentation links, module diagrams, and metadata pass `node scripts/verify/verify-docs.mjs`.
 
 ---
 
@@ -273,10 +271,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `FieldDefinitionService FieldDefRegistry flex_attached_localized_values RhaiEngine AlloyScript`
 
 #### Sub-Audit Checklist
-- [x] **CC-14.01 — Unified Donor Opt-in:** Verified that all attached donors (`user`, `product`, `order`, `topic`, `taxonomy.category`) use the canonical Flex engine (`flex`) rather than implementing ad-hoc custom-fields or raw JSON metadata parsing. Traced via CodeGraph (`FieldDefRegistry`, `FieldDefinitionService` in `crates/modules/flex/src/registry.rs`). Validated by `node scripts/verify/verify-flex-standalone-contract.mjs` (passed).
-- [x] **CC-14.02 — Attached Multilingual Separation:** Ensured attached localized field values are stored in `flex_attached_localized_values` rather than inline locale-aware JSON blobs inside base entity rows. Validated by `node scripts/verify/verify-flex-multilingual-contract.mjs` (passed) and unit tests in `crates/modules/flex/src/attached.rs` (`prepare_write_moves_localized_fields_out_of_owner_metadata`, `split_existing_metadata_separates_legacy_localized_keys`).
-- [x] **CC-14.03 — Fail-Closed Data Classification & AI Export:** Verified that `flex_attached_field_policies` enforces fail-closed privacy: default to `tenant_private` with `ai_export_allowed = false`, and prohibit secret or immutable fields from being exported to AI contexts. Validated by `node scripts/verify/verify-ai-alloy-policy.mjs` (passed) and policy checks in `flex::attached_definitions`.
-- [x] **CC-14.04 — Rhai/Alloy Sandbox Safety:** Verified that Rhai execution in `alloy` and `rustok-sandbox` enforces instruction counters (`set_max_operations`), maximum call stack depth (`set_max_call_levels`), memory bounds (`set_max_string_size`, `set_max_array_size`, `set_max_map_size`), and execution timeouts via `on_progress` to prevent DoS via infinite loops. Validated by `node scripts/verify/verify-alloy-runtime-contract.mjs` (passed) and scoped tests: `flex` (84/84 passed), `rustok-sandbox` (20/20 passed), `alloy` (124/124 passed).
+- [ ] **CC-14.01 — Unified Donor Opt-in:** Verify attached donors use canonical Flex engine (`flex`) rather than ad-hoc metadata parsing.
+- [ ] **CC-14.02 — Attached Multilingual Separation:** Verify localized attached values reside in `flex_attached_localized_values` rather than inline base JSON.
+- [ ] **CC-14.03 — Fail-Closed Data Classification & AI Export:** Verify fail-closed privacy policies preventing secret or immutable fields from AI exports.
+- [ ] **CC-14.04 — Rhai/Alloy Sandbox Safety:** Verify instruction counters, call stack limits, memory bounds, and timeouts in Rhai execution engines.
 
 ---
 
@@ -287,10 +285,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `ObjectStorage StorageBackend generate_presigned_url MediaService CanonicalObjectKey`
 
 #### Sub-Audit Checklist
-- [x] **CC-15.01 — Tenant-Scoped Object Keys:** Verified that canonical storage keys in `rustok-storage` are strictly structured with tenant scope (`namespace/zone/tenants/<tenant_id>/modules/<module>/YYYY/MM/DD/shard/<uuid>.<ext>` or `namespace/objects/tenants/<tenant_id>/sha256/aa/bb/<digest>`), preventing cross-tenant asset enumeration and collision. Validated by `key::tests::chronological_key_supports_tenant_module_scope` and `key::tests::namespace_keys_isolate_owners_and_instances_for_the_same_object`.
-- [x] **CC-15.02 — Path Traversal Prevention:** Verified `validated_segment` and `validated_extension` enforce strict ASCII character allow-lists (`[a-z0-9-]` and `[a-z0-9]`), strictly blocking `../`, absolute paths, and null bytes. Validated by `key::tests::key_segments_reject_uncontrolled_paths` and `service::tests::uploaded_display_name_cannot_preserve_path_components`.
-- [x] **CC-15.03 — Presigned Upload Expiration & Verification:** Verified `MediaService::prepare_upload_session` enforces expiry bounded between 1 second and 15 minutes (900s), tracks staging in database, and `complete_upload_session` validates size against `DEFAULT_MAX_SIZE`, matches expected byte length, and runs `verify_media_type` checking magic byte signatures before committing to permanent storage. Validated by `service::tests::validate_upload_policy_accepts_supported_signature` and `service::tests::validate_upload_policy_rejects_unsupported_or_spoofed_content`.
-- [x] **CC-15.04 — Media Extraction SSRF Guard:** Verified that outbound URL requests enforce DNS resolution pinning and IP validation via `is_public_ip`, strictly rejecting RFC 1918 private subnets, loopback `127.0.0.1`, cloud metadata `169.254.169.254`, link-local, multicast, and private IPv6 ranges. Validated by unit tests in `rustok-workflow` (`rejects_literal_metadata_endpoint_before_request`), `node scripts/verify/verify-media-admin-boundary.mjs` (passed), `node scripts/verify/verify-media-fba.mjs` (passed), and scoped tests for `rustok-storage` (5/5 passed) and `rustok-media` (47/47 passed).
+- [ ] **CC-15.01 — Tenant-Scoped Object Keys:** Verify canonical storage keys are strictly structured with tenant scope, preventing cross-tenant enumeration.
+- [ ] **CC-15.02 — Path Traversal Prevention:** Verify strict ASCII allow-lists on key segments, blocking `../`, absolute paths, and null bytes.
+- [ ] **CC-15.03 — Presigned Upload Expiration & Verification:** Verify bounded expiry on upload sessions, byte length checks, and magic byte signature verification.
+- [ ] **CC-15.04 — Media Extraction SSRF Guard:** Verify outbound media URL fetches enforce DNS pinning and block RFC 1918 / cloud metadata IPs.
 
 ---
 
@@ -301,10 +299,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `IndexService SearchService index_products index_content ReindexHandler`
 
 #### Sub-Audit Checklist
-- [x] **CC-16.01 — CQRS-Lite Separation:** Verified that storefront and catalog reads query denormalized `index_*` JSONB projections or search engine indexes (`rustok-index`, `rustok-search`), avoiding joins across write-side normalized tables. Validated by `node scripts/verify/verify-index-fba.mjs` and `node scripts/verify/verify-index-runtime-fallback-smoke.mjs` (Index admin detached from legacy tables).
-- [x] **CC-16.02 — Event-Driven Reindexing Consistency:** Verified that domain aggregate mutations emit outbox events that trigger event handlers (`ProductCreatedIndexHandler`, `BlogCommentProjectionHandler`, `SeoCanonicalUrlRedirectHandler`, `ObservedProjectionHandler` implementing `EventHandler`) to project state asynchronously and deterministically into search documents and secondary index tables.
-- [x] **CC-16.03 — Search Tenant Scoping:** Verified that search queries in `rustok-search` strictly enforce tenant, channel authority, and locale scopes. Validated by unit tests: `storefront_channel_authority::tests::mismatched_tenant_fails_closed`, `blog_projector::tests::author_projection_refresh_is_tenant_scoped_and_in_place`, and `node scripts/verify/verify-search-fba.mjs`.
-- [x] **CC-16.04 — Reindex Idempotency & Batching:** Verified batch replay and reconciliation runners enforce leased attempt fencing, exponential backoff, cursor checkpointing, bounded batch chunking, and deterministic idempotency upon restart or retry. Validated by unit tests: `infrastructure::postgres::secondary_index_tests::ensure_reindex_and_retire_are_durable_and_idempotent`, `infrastructure::postgres::source_replay_runner_tests::bounded_run_yields_pending_and_resumes_with_a_new_attempt`, and scoped tests for `rustok-index` (296/296 passed) and `rustok-search` (90/90 passed).
+- [ ] **CC-16.01 — CQRS-Lite Separation:** Verify storefront and catalog reads query denormalized search/index models rather than joining normalized write tables.
+- [ ] **CC-16.02 — Event-Driven Reindexing Consistency:** Verify domain aggregate mutations emit outbox events that project state deterministically into indexes.
+- [ ] **CC-16.03 — Search Tenant Scoping:** Verify search queries strictly enforce tenant, channel authority, and locale scopes fail-closed.
+- [ ] **CC-16.04 — Reindex Idempotency & Batching:** Verify batch replay and reconciliation runners enforce leased attempt fencing, cursors, and idempotency.
 
 ---
 
@@ -315,8 +313,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `validator::Validate sanitize_html UrlAllowlist SecurityHeaders`
 
 #### Sub-Audit Checklist
-- [x] **CC-17.01 — Universal DTO Ingress Validation:** Verified universal DTO validation contracts across API boundaries (`validator::Validate`, `.validate()?`, typed DTO constraints, and fail-closed validation ordering as prescribed in `docs/guides/input-validation.md` and `docs/standards/patterns-vs-antipatterns.md` §7.5). Validated that domain boundaries reject generic JSON or untyped caller discriminators, enforcing tenant, locale, and length constraints before side-effects.
-- [x] **CC-17.02 — HTML & Richtext Sanitization & Strict CSP:** Ensured user-submitted richtext and markup passes through schema-bounded validation and escaping (`rustok-content` richtext validator and HTML renderer: 9/9 unit tests passed). Ingress validator escapes hazardous input (`test_input_validator_sanitizes_html`, `test_input_validator_blocks_xss`). Remediated inline style attribute violation in `crates/ui/fly/leptos/src/editor.rs` (`FlyLayerTree` `layer_indent_class`), enforcing zero inline styles across hosted UI packages. Validated by `node scripts/verify/verify-csp-inline-style-exceptions.mjs` (0 inline styles), `node scripts/verify/verify-csp-next-style-boundary.mjs`, and `node scripts/verify/verify-csp-reporting-contract.mjs`.
-- [x] **CC-17.03 — Outbound SSRF Verification:** Verified outbound HTTP clients enforce strict SSRF defenses: DNS resolution pinning (`.resolve(host, ip)`), immediate redirect rejection (`reqwest::redirect::Policy::none()`), proxy disabling (`.no_proxy()`), and IP address validation (`is_public_ip` blocking RFC 1918 private subnets, loopback `127.0.0.1`, cloud metadata `169.254.169.254`, IPv6 link-local, multicast, and unique local addresses). Validated by `rustok-core` security audit tests (6/6 SSRF tests passed), `rustok-seo`, and `rustok-workflow`.
-- [x] **CC-17.04 — Path-Based Rate Limiting:** Verified sliding-window rate limiting on ingress entrypoints (`RateLimiter`, per-IP isolation, burst caps, and lockout windows). Validated by `node scripts/verify/verify-blog-graphql-rate-limit.mjs` (passed) and `rustok-core` unit tests (`test_rate_limiter_allows_within_limit`, `test_rate_limiter_blocks_excess`, `test_rate_limiter_per_ip_isolation`).
-
+- [ ] **CC-17.01 — Universal DTO Ingress Validation:** Verify universal DTO validation contracts (`validator::Validate`, `.validate()?`) and fail-closed validation ordering.
+- [ ] **CC-17.02 — HTML & Richtext Sanitization & Strict CSP:** Verify user markup passes schema-bounded sanitization and zero inline styles across hosted UI packages.
+- [ ] **CC-17.03 — Outbound SSRF Verification:** Verify outbound HTTP clients enforce DNS resolution pinning, reject redirects, and block private/loopback IPs.
+- [ ] **CC-17.04 — Path-Based Rate Limiting:** Verify sliding-window rate limiting on ingress entrypoints with per-IP isolation and lockout windows.
