@@ -1,4 +1,5 @@
 use crate::model::{CreatePageDraft, PageDetail};
+pub use crate::starters::*;
 use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_ui_core::{normalize_ui_text, parse_ui_csv};
 use serde_json::{Value, json};
@@ -50,6 +51,7 @@ pub struct PageDraftFormInput<'a> {
     pub title: &'a str,
     pub slug: &'a str,
     pub channel_slugs: &'a str,
+    pub starter_id: Option<&'a str>,
 }
 
 pub fn build_create_page_draft(
@@ -64,6 +66,13 @@ pub fn build_create_page_draft(
         template: Some("default".to_string()),
         channel_slugs: parse_channel_slugs(input.channel_slugs),
     }
+}
+
+pub fn build_create_page_draft_with_starter(input: PageDraftFormInput<'_>) -> CreatePageDraft {
+    let starter_id = input.starter_id.unwrap_or("blank");
+    let doc = instantiate_starter_preset(starter_id, input.title)
+        .unwrap_or_else(|_| default_project_data(input.title));
+    build_create_page_draft(input, doc)
 }
 
 pub fn missing_required_page_field(draft: &CreatePageDraft) -> Option<PageRequiredField> {

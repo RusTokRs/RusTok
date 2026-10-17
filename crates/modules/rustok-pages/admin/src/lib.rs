@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 mod access;
 mod browser_intent;
 mod browser_problem;
@@ -16,6 +18,7 @@ mod metadata_properties;
 mod model;
 mod rollback_control;
 mod standalone_metadata;
+pub mod starters;
 mod transport;
 
 use composition::PagesAdmin as PagesWorkspace;
@@ -57,6 +60,10 @@ pub use contributions::{
     PAGES_OWNER_PROVIDER_VERSION, build_pages_admin_contribution_registry,
     pages_admin_contribution_policy, pages_contribution_manifest,
     pages_landing_blocks_contribution, pages_metadata_contribution, pages_metadata_property_schema,
+};
+pub use starters::{
+    PageStarterDescriptor, instantiate_starter_preset, instantiate_starter_preset_pretty,
+    page_starters,
 };
 pub use fly_browser::{
     BrowserIntentEnvelope, FLY_CSRF_HEADER_NAME, derive_csrf_token, verify_csrf_token,

@@ -79,13 +79,48 @@ fn reference_node(
         fly::validate_identifier(&id).map_err(PagesError::validation)?;
     }
     used.insert(id.clone());
+    let mut attributes = serde_json::Map::new();
+    attributes.insert(
+        "data-fly-layout-slot".to_string(),
+        Value::String(slot.to_string()),
+    );
+    attributes.insert(
+        "data-fly-locked".to_string(),
+        Value::String("true".to_string()),
+    );
     Ok(ComponentNode::Object(Box::new(ComponentObject {
         id: Some(id),
         component_type: Some("symbol".to_string()),
         tag_name: Some(slot.to_string()),
         symbol_id: Some(symbol_id.to_string()),
+        attributes,
         ..ComponentObject::default()
     })))
+}
+
+/// Strips layout-injected nodes (`data-fly-layout-slot`) from a document, ensuring
+/// that only authored page body components are saved to persistence.
+pub(crate) fn strip_layout_nodes(content: &str) -> PagesResult<String> {
+    if !content.contains("data-fly-layout-slot") {
+        return Ok(content.to_string());
+    }
+    let mut document = GrapesJsCodec::decode_str(content)
+        .map_err(|error| PagesError::validation(format!("Invalid document: {error}")))?;
+    for page in &mut document.project.pages {
+        if let Some(root) = page.component.as_mut().and_then(ComponentNode::as_object_mut) {
+            if let Some(children) = root.children_mut() {
+                children.retain(|node| {
+                    node.as_object().map_or(true, |obj| {
+                        !obj.attributes.contains_key("data-fly-layout-slot")
+                    })
+                });
+            }
+        }
+    }
+    let value = GrapesJsCodec::encode_value(&document)
+        .map_err(|error| PagesError::validation(format!("Cannot encode document: {error}")))?;
+    serde_json::to_string(&value)
+        .map_err(|error| PagesError::validation(format!("Cannot serialize document: {error}")))
 }
 
 #[cfg(test)]
@@ -151,5 +186,26 @@ mod tests {
         assert!(compose_layout_document(&body(), &["absent".into()], &[], &symbols()).is_err());
         let many = json!({"pages": [{"component": {"id":"one", "type":"wrapper"}}, {"component": {"id":"two", "type":"wrapper"}}]}).to_string();
         assert!(compose_layout_document(&many, &["site-header".into()], &[], &symbols()).is_err());
+    }
+
+    #[test]
+    fn strip_layout_nodes_removes_injected_slots_and_preserves_body() {
+        let source = body();
+        let composed = compose_layout_document(
+            &source,
+            &["site-header".into()],
+            &["site-footer".into()],
+            &symbols(),
+        )
+        .expect("composed layout");
+        assert!(composed.contains("data-fly-layout-slot"));
+        let stripped = strip_layout_nodes(&composed).expect("strip layout nodes");
+        assert!(!stripped.contains("data-fly-layout-slot"));
+        let doc: Value = serde_json::from_str(&stripped).unwrap();
+        let components = doc["pages"][0]["component"]["components"]
+            .as_array()
+            .unwrap();
+        assert_eq!(components.len(), 1);
+        assert_eq!(components[0]["content"], "Body");
     }
 }

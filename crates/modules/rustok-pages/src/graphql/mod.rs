@@ -5,6 +5,7 @@ mod mutation;
 mod query;
 mod runtime_data;
 mod scenario_baseline;
+mod starters;
 mod templates;
 mod types;
 
@@ -16,6 +17,7 @@ pub struct PagesQuery(
     scenario_baseline::PageBuilderScenarioBaselineQuery,
     builder_rollout::PageBuilderRolloutQuery,
     templates::PageTemplateQuery,
+    starters::PageStarterQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -25,6 +27,7 @@ pub struct PagesMutation(
     artifact_integrity_audit::PageArtifactIntegrityAuditMutation,
     artifact_repair::PageArtifactRepairMutation,
     templates::PageTemplateMutation,
+    starters::PageStarterMutation,
 );
 
 pub use artifact_integrity_audit::{
@@ -44,4 +47,5 @@ pub use scenario_baseline::{
     GqlPageBuilderScenarioBaseline, GqlPageBuilderScenarioBaselineRevision,
     GqlPageBuilderScenarioReleaseStatus, SaveGqlPageBuilderScenarioBaselineInput,
 };
+pub use starters::{GqlPageStarter, SaveGqlPageStarterInput};
 pub use types::*;

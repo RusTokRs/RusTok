@@ -1,6 +1,7 @@
 // Service layer for pages operations.
 pub mod page;
 pub mod page_builder_artifact;
+pub mod page_starter;
 pub mod page_template;
 mod rbac;
 pub mod scenario_baseline;
@@ -41,6 +42,7 @@ pub use page::{
     page_inline_edit_keyring_from_environment,
 };
 pub use page_builder_artifact::{PageBuilderArtifactService, PublishedLandingArtifact};
+pub use page_starter::{PageStarterRecord, PageStarterService, SavePageStarterInput};
 pub use page_template::{MAX_TEMPLATE_SECTIONS, PageTemplateRecord, PageTemplateService};
 pub use scenario_baseline::{
     PageBuilderScenarioBaselineRecord, PageBuilderScenarioBaselineService,

@@ -33,11 +33,18 @@ const ACTION_CANONICAL_FIELDS: &[&str] = &[
     "provider",
     "action",
     "input",
+    "target_id",
+    "mode",
+    "animation",
+    "duration_ms",
+    "panel_id",
+    "exclusive",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SsrComponentActionRequest {
     pub component_id: String,
+    #[serde(default)]
     pub kind: String,
     #[serde(default)]
     pub page_id: String,
@@ -71,6 +78,10 @@ pub struct SsrComponentActionRequest {
     pub animation: String,
     #[serde(default)]
     pub duration_ms: String,
+    #[serde(default)]
+    pub panel_id: String,
+    #[serde(default)]
+    pub exclusive: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -378,6 +389,8 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             {option("toggle_visibility", "Toggle visibility", &action_values.kind)}
                             {option("scroll_to", "Scroll to component", &action_values.kind)}
                             {option("animate", "Animate component", &action_values.kind)}
+                            {option("switch_tab", "Switch tab", &action_values.kind)}
+                            {option("toggle_accordion", "Toggle accordion", &action_values.kind)}
                         </select>
                         <select name="page_id" class="rounded border border-input bg-background px-2 py-1 text-xs">
                             <option value="">"Target page"</option>
@@ -523,6 +536,8 @@ struct ActionValues {
     mode: String,
     animation: String,
     duration_ms: String,
+    panel_id: String,
+    exclusive: bool,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -595,6 +610,17 @@ impl ActionValues {
                 values.duration_ms = duration_ms
                     .map(|value| value.to_string())
                     .unwrap_or_default();
+            }
+            Some(ComponentAction::SwitchTab { panel_id }) => {
+                values.kind = "switch_tab".to_string();
+                values.panel_id = panel_id.clone();
+                values.target_id = panel_id.clone();
+            }
+            Some(ComponentAction::ToggleAccordion { target_id, exclusive }) => {
+                values.kind = "toggle_accordion".to_string();
+                values.target_id = target_id.clone();
+                values.exclusive = *exclusive;
+                values.mode = if *exclusive { "exclusive".to_string() } else { "toggle".to_string() };
             }
             None => {}
         }
@@ -706,6 +732,24 @@ fn action_from_request(request: SsrComponentActionRequest) -> Result<ComponentAc
                     "animation duration must be a number of milliseconds".to_string()
                 })?),
             },
+        }),
+        "switch_tab" => Ok(ComponentAction::SwitchTab {
+            panel_id: validate_token(
+                if !request.panel_id.trim().is_empty() {
+                    &request.panel_id
+                } else {
+                    &request.target_id
+                },
+                "panel id",
+            )?,
+        }),
+        "toggle_accordion" => Ok(ComponentAction::ToggleAccordion {
+            target_id: validate_token(&request.target_id, "target component id")?,
+            exclusive: request.exclusive
+                || matches!(
+                    request.mode.trim().to_ascii_lowercase().as_str(),
+                    "exclusive" | "true"
+                ),
         }),
         other => Err(format!("component action kind `{other}` is unsupported")),
     }

@@ -42,13 +42,14 @@ impl PageService {
         page_id: Uuid,
         input: SavePageDocumentInput,
     ) -> PagesResult<PageResponse> {
-        let body = normalize_page_body_input(Some(input.body))?
+        let mut body = normalize_page_body_input(Some(input.body))?
             .ok_or_else(|| PagesError::validation("Page document body is required"))?;
         if body.format != PAGE_BUILDER_DOCUMENT_FORMAT {
             return Err(PagesError::validation(
                 "Page document save accepts only the current Fly/GrapesJS body format",
             ));
         }
+        body.content = super::layout::strip_layout_nodes(&body.content)?;
         let observed = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,

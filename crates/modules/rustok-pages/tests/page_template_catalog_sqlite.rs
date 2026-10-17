@@ -27,16 +27,11 @@ async fn fixture() -> TestResult<DatabaseConnection> {
     db.execute_unprepared("CREATE TABLE pages (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, author_id TEXT, status TEXT NOT NULL, template TEXT NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, published_at TEXT, archived_at TEXT, version INTEGER NOT NULL)").await?;
     let manager = SchemaManager::new(&db);
     // The catalog is an additive migration; create only its two owner tables.
-    let migrations = PagesModule.migrations();
-    for migration in migrations
-        .into_iter()
-        .rev()
-        .take(2)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-    {
-        migration.up(&manager).await?;
+    for migration in PagesModule.migrations() {
+        let name = migration.name();
+        if name.ends_with("create_site_symbols") || name.ends_with("create_page_templates") {
+            migration.up(&manager).await?;
+        }
     }
     Ok(db)
 }

@@ -351,3 +351,129 @@ async fn publish_reviewed_fails_closed_when_template_is_missing() -> TestResult<
 
     Ok(())
 }
+
+#[tokio::test]
+async fn save_document_strips_layout_nodes_before_persistence() -> TestResult<()> {
+    let tenant_id = Uuid::new_v4();
+    let db = setup_db(tenant_id).await?;
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let service = PageService::new(db.clone(), event_bus);
+    let actor = SecurityContext::system();
+
+    let page = service
+        .create(
+            tenant_id,
+            actor.clone(),
+            CreatePageInput {
+                template: Some("site".to_string()),
+                translations: vec![PageTranslationInput {
+                    locale: "en".to_string(),
+                    title: "Test Page".to_string(),
+                    slug: Some("test-page".to_string()),
+                    meta_title: None,
+                    meta_description: None,
+                }],
+                body: Some(PageBodyInput {
+                    locale: "en".to_string(),
+                    document: json!({
+                        "pages": [{
+                            "id": "p1",
+                            "component": {
+                                "id": "root",
+                                "type": "wrapper",
+                                "components": [
+                                    { "id": "b1", "type": "heading", "tagName": "h1", "content": "Original Heading" }
+                                ]
+                            }
+                        }]
+                    }),
+                }),
+                channel_slugs: None,
+                publish: false,
+            },
+        )
+        .await?;
+
+    let body_response = page.body.as_ref().unwrap();
+
+    // Client sends back a document that includes composed layout slots
+    let composed_content = json!({
+        "pages": [{
+            "id": "p1",
+            "component": {
+                "id": "root",
+                "type": "wrapper",
+                "components": [
+                    {
+                        "id": "layout-header-1",
+                        "type": "symbol",
+                        "tagName": "header",
+                        "attributes": {
+                            "data-fly-layout-slot": "header",
+                            "data-fly-locked": "true"
+                        },
+                        "components": [
+                            { "id": "header-text", "type": "text", "content": "Header Symbol" }
+                        ]
+                    },
+                    { "id": "b1", "type": "heading", "tagName": "h1", "content": "Updated Heading" },
+                    {
+                        "id": "layout-footer-1",
+                        "type": "symbol",
+                        "tagName": "footer",
+                        "attributes": {
+                            "data-fly-layout-slot": "footer",
+                            "data-fly-locked": "true"
+                        },
+                        "components": [
+                            { "id": "footer-text", "type": "text", "content": "Footer Symbol" }
+                        ]
+                    }
+                ]
+            }
+        }]
+    });
+
+    let saved = service
+        .save_document(
+            tenant_id,
+            actor.clone(),
+            page.id,
+            rustok_pages::dto::SavePageDocumentInput {
+                body: PageBodyInput {
+                    locale: "en".to_string(),
+                    document: composed_content,
+                },
+                expected_revision: body_response.updated_at.clone(),
+            },
+        )
+        .await?;
+
+    let saved_body = saved.body.as_ref().unwrap();
+    assert!(
+        !saved_body.content.contains("data-fly-layout-slot"),
+        "Persisted body must not contain layout slot attributes"
+    );
+    assert!(
+        !saved_body.content.contains("layout-header-1"),
+        "Persisted body must strip header slot node"
+    );
+    assert!(
+        !saved_body.content.contains("layout-footer-1"),
+        "Persisted body must strip footer slot node"
+    );
+    assert!(
+        saved_body.content.contains("Updated Heading"),
+        "Persisted body must retain authored page components"
+    );
+
+    let doc: serde_json::Value = serde_json::from_str(&saved_body.content)?;
+    let components = doc["pages"][0]["component"]["components"]
+        .as_array()
+        .unwrap();
+    assert_eq!(components.len(), 1, "Only the 1 page body component must remain");
+    assert_eq!(components[0]["id"], "b1");
+
+    Ok(())
+}
+

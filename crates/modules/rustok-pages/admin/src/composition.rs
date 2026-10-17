@@ -215,6 +215,7 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
     let slug_touched = RwSignal::new(false);
     let locale = RwSignal::new(default_locale);
     let channel_slugs = RwSignal::new(String::new());
+    let selected_starter_id = RwSignal::new("blank".to_string());
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
 
@@ -233,14 +234,15 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
         };
         let locale_value = core::ui_text_or_default(&locale.get_untracked());
         let channels_value = channel_slugs.get_untracked();
-        let draft = core::build_create_page_draft(
+        let starter_id_value = selected_starter_id.get_untracked();
+        let draft = core::build_create_page_draft_with_starter(
             core::PageDraftFormInput {
                 locale: &locale_value,
                 title: &title_value,
                 slug: &slug_value,
                 channel_slugs: &channels_value,
+                starter_id: Some(&starter_id_value),
             },
-            core::default_project_data(&title_value),
         );
         if let Some(field) = core::missing_required_page_field(&draft) {
             error.set(Some(format!("Required page field is missing: {field:?}")));
@@ -259,6 +261,7 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
                     slug.set(String::new());
                     slug_touched.set(false);
                     channel_slugs.set(String::new());
+                    selected_starter_id.set("blank".to_string());
                     refresh_generation
                         .update(|generation| *generation = generation.wrapping_add(1));
                     writer.replace_value(AdminQueryKey::PageId.as_str(), page.id);
@@ -322,6 +325,43 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
                             placeholder="web, mobile"
                     />
                     </label>
+                </div>
+                <div class="space-y-1.5 pt-1">
+                    <span class="block text-xs font-semibold text-card-foreground">
+                        "Starter Template"
+                    </span>
+                    <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {core::page_starters().into_iter().map(|starter| {
+                            let starter_id = starter.id.clone();
+                            let is_selected = {
+                                let id = starter_id.clone();
+                                move || selected_starter_id.get() == id
+                            };
+                            let on_click = {
+                                let id = starter_id.clone();
+                                move |_| selected_starter_id.set(id.clone())
+                            };
+                            view! {
+                                <button
+                                    type="button"
+                                    class=move || {
+                                        if is_selected() {
+                                            "flex flex-col items-start p-2.5 rounded-xl border-2 border-primary bg-primary/10 text-left transition-all shadow-sm"
+                                        } else {
+                                            "flex flex-col items-start p-2.5 rounded-xl border border-border bg-background/50 hover:bg-muted/50 hover:border-muted-foreground/30 text-left transition-all"
+                                        }
+                                    }
+                                    on:click=on_click
+                                >
+                                    <div class="flex w-full items-center justify-between mb-1 gap-1">
+                                        <span class="text-xs font-semibold text-card-foreground truncate">{starter.title}</span>
+                                        <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-muted text-muted-foreground shrink-0">{starter.preview_badge}</span>
+                                    </div>
+                                    <span class="text-[11px] text-muted-foreground line-clamp-2 leading-tight">{starter.description}</span>
+                                </button>
+                            }
+                        }).collect::<Vec<_>>()}
+                    </div>
                 </div>
                 {move || error.get().map(|message| view! {
                     <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
