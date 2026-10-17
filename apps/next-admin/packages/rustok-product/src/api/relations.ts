@@ -46,14 +46,14 @@ mutation ProductAdminAddRelation($idempotencyKey: String!, $input: AddProductRel
 `;
 
 export const REMOVE_RELATION_MUTATION = `
-mutation ProductAdminRemoveRelation($id: UUID!) {
-  removeProductRelation(id: $id)
+mutation ProductAdminRemoveRelation($idempotencyKey: String!, $id: UUID!) {
+  removeProductRelation(idempotencyKey: $idempotencyKey, id: $id)
 }
 `;
 
 export const REORDER_RELATIONS_MUTATION = `
-mutation ProductAdminReorderRelations($productId: UUID!, $relationType: GqlRelationType!, $orderedRelationIds: [UUID!]!) {
-  reorderProductRelations(productId: $productId, relationType: $relationType, orderedRelationIds: $orderedRelationIds) {
+mutation ProductAdminReorderRelations($idempotencyKey: String!, $productId: UUID!, $relationType: GqlRelationType!, $orderedRelationIds: [UUID!]!) {
+  reorderProductRelations(idempotencyKey: $idempotencyKey, productId: $productId, relationType: $relationType, orderedRelationIds: $orderedRelationIds) {
     id
     productId
     relatedProductId
@@ -92,16 +92,19 @@ export async function fetchProductRelations(
   return data.productRelations || [];
 }
 
+/**
+ * Pass the same `idempotencyKey` again when retrying an uncertain request.
+ */
 export async function addProductRelation(
   opts: GqlOpts,
-  input: AddProductRelationInput
+  input: AddProductRelationInput,
+  idempotencyKey = crypto.randomUUID()
 ): Promise<ProductRelation> {
   if (!opts.token || !opts.tenantSlug) {
     throw new Error('Unauthorized');
   }
 
   const executor = opts.graphql ?? graphqlRequest;
-  const idempotencyKey = crypto.randomUUID();
   const data = await executor<
     { idempotencyKey: string; input: AddProductRelationInput },
     { addProductRelation: ProductRelation }
@@ -115,9 +118,13 @@ export async function addProductRelation(
   return data.addProductRelation;
 }
 
+/**
+ * Pass the same `idempotencyKey` again when retrying an uncertain request.
+ */
 export async function removeProductRelation(
   opts: GqlOpts,
-  id: string
+  id: string,
+  idempotencyKey = crypto.randomUUID()
 ): Promise<boolean> {
   if (!opts.token || !opts.tenantSlug) {
     throw new Error('Unauthorized');
@@ -125,18 +132,27 @@ export async function removeProductRelation(
 
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
-    { id: string },
+    { idempotencyKey: string; id: string },
     { removeProductRelation: boolean }
-  >(REMOVE_RELATION_MUTATION, { id }, opts.token, opts.tenantSlug);
+  >(
+    REMOVE_RELATION_MUTATION,
+    { idempotencyKey, id },
+    opts.token,
+    opts.tenantSlug
+  );
 
   return data.removeProductRelation;
 }
 
+/**
+ * Pass the same `idempotencyKey` again when retrying an uncertain request.
+ */
 export async function reorderProductRelations(
   opts: GqlOpts,
   productId: string,
   relationType: ProductRelationType,
-  orderedRelationIds: string[]
+  orderedRelationIds: string[],
+  idempotencyKey = crypto.randomUUID()
 ): Promise<ProductRelation[]> {
   if (!opts.token || !opts.tenantSlug) {
     throw new Error('Unauthorized');
@@ -145,6 +161,7 @@ export async function reorderProductRelations(
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     {
+      idempotencyKey: string;
       productId: string;
       relationType: ProductRelationType;
       orderedRelationIds: string[];
@@ -153,6 +170,7 @@ export async function reorderProductRelations(
   >(
     REORDER_RELATIONS_MUTATION,
     {
+      idempotencyKey,
       productId,
       relationType,
       orderedRelationIds

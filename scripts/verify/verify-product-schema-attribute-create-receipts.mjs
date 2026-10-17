@@ -79,18 +79,27 @@ for (const [name, nextName] of [
 for (const required of [
   "tokio::task_local!",
   "struct ProductOperationReceipt",
-  "Arc<Mutex<Option<Value>>>",
+  "Arc<Mutex<Option<Result<Value, String>>>>",
+  "deferred_rollbacks: Arc<Mutex<Vec<DatabaseTransaction>>>",
   "PRODUCT_OPERATION_RECEIPT.try_with(Clone::clone).ok()",
   "record_product_operation_result",
   "product owner receipt result was not recorded before commit",
-  "idempotency::complete(&self.transaction, receipt.lease, &response_json)",
-  "self.transaction.commit().await?",
+  "idempotency::complete(&transaction, receipt.lease, &response_json)",
+  "transaction.commit().await?",
   "current_product_operation_id()",
+  "transaction: Option<DatabaseTransaction>",
+  "impl Drop for ProductWriteTransaction",
+  "receipt.defer_rollback(transaction);",
+  "E: From<CommerceError>",
+  ".rollback_deferred_transactions()",
+  ".map_err(E::from)?",
+  "receipt_scoped_early_error_awaits_owner_transaction_rollback",
+  "if error.retryable {",
 ]) {
   requireText(transaction, required, "Product write transaction receipt fence");
 }
-const completion = transaction.indexOf("idempotency::complete(&self.transaction");
-const commit = transaction.indexOf("self.transaction.commit().await?");
+const completion = transaction.indexOf("idempotency::complete(&transaction");
+const commit = transaction.indexOf("transaction.commit().await?");
 if (completion < 0 || commit < 0 || completion > commit) {
   failures.push("Product receipt completion must occur before owner transaction commit");
 }
@@ -104,7 +113,7 @@ for (const [source, label, expected] of [
   if (stableIds !== expected) {
     failures.push(`${label} must derive exactly ${expected} stable receipt resource IDs (found ${stableIds})`);
   }
-  const recordedResults = (source.match(/record_product_operation_result\(&result\)\?/g) ?? []).length;
+  const recordedResults = (source.match(/record_product_operation_result\(&result\);/g) ?? []).length;
   if (recordedResults !== expected) {
     failures.push(`${label} must record exactly ${expected} actual receipt results before commit (found ${recordedResults})`);
   }
@@ -113,7 +122,7 @@ for (const [source, label, expected] of [
 for (const required of [
   'const PRODUCT_SCHEMA_RECEIPT_OWNER: &str = "product"',
   "idempotency::admit(",
-  "idempotency::fail(",
+  "fail_product_operation_receipt(&self.db, lease, error).await",
 ]) {
   requireText(attributes, required, "Product schema receipt owner helpers");
 }
@@ -123,7 +132,7 @@ for (const required of [
   "let path = parent",
   "let result = CatalogCategoryRecord",
   "path,",
-  "record_product_operation_result(&result)?",
+  "record_product_operation_result(&result);",
 ]) {
   requireText(categoryCreate, required, "category create actual-result receipt");
 }
@@ -136,7 +145,7 @@ for (const [slice, label] of [
   [categoryBinding, "category attribute binding update"],
   [schemaBinding, "schema attribute binding update"],
 ]) {
-  requireRecordedBeforeCommit(slice, "record_product_operation_result(&())?", label);
+  requireRecordedBeforeCommit(slice, "record_product_operation_result(&());", label);
 }
 
 for (const required of [
@@ -166,8 +175,8 @@ if (!/pub\((?:super|crate)\) async fn load_effective_form_for_product_in<C>/.tes
 
 const saveValues = functionSlice(values, "save_product_attribute_values", "clear_detached_product_attribute_values");
 for (const required of [
-  "let result = Self::load_product_attribute_values_in(&txn, tenant_id, product_id, locale)",
-  "record_product_operation_result(&result)?",
+  "Self::load_product_attribute_values_in(&txn, tenant_id, product_id, locale.as_str())",
+  "record_product_operation_result(&result);",
   "txn.commit().await?",
   "Ok(result)",
 ]) {
@@ -175,7 +184,7 @@ for (const required of [
 }
 requireRecordedBeforeCommit(
   saveValues,
-  "record_product_operation_result(&result)?",
+  "record_product_operation_result(&result);",
   "attribute-value save exact projection",
 );
 const saveProjection = saveValues.indexOf("Self::load_product_attribute_values_in(&txn");
@@ -188,8 +197,8 @@ const clearValues = functionSlice(values, "clear_detached_product_attribute_valu
 for (const required of [
   "let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?",
   "if !target_attribute_ids.is_empty()",
-  "let result = Self::load_product_attribute_values_in(&txn, tenant_id, product_id, locale)",
-  "record_product_operation_result(&result)?",
+  "Self::load_product_attribute_values_in(&txn, tenant_id, product_id, locale.as_str())",
+  "record_product_operation_result(&result);",
   "txn.commit().await?",
   "Ok(result)",
 ]) {
@@ -197,7 +206,7 @@ for (const required of [
 }
 requireRecordedBeforeCommit(
   clearValues,
-  "record_product_operation_result(&result)?",
+  "record_product_operation_result(&result);",
   "detached attribute-value clear exact projection",
 );
 const clearTxn = clearValues.indexOf("let txn = ProductWriteTransaction::begin");
@@ -231,4 +240,4 @@ if (failures.length) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log("✔ all eleven mounted Product schema writes use durable owner receipts; attribute-value results are captured from the owner transaction before commit");
+console.log("✔ all eleven mounted Product schema writes use durable owner receipts; exact results are captured before commit, early owner errors await rollback, and retryable failures remain reclaimable");

@@ -77,13 +77,14 @@ async fn bundle_directory_native(
                     search: filters.search,
                     status: filters.status,
                     bundle_type: filters.bundle_type,
+                    owner_product_id: None,
                 },
                 page,
                 per_page,
                 None,
             )
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(|error| ServerFnError::new(bundle_error_copy(&error)))?;
 
         Ok(BundleAdminDirectory {
             items: response
@@ -134,7 +135,7 @@ async fn bundle_detail_native(bundle_id: String) -> Result<BundleAdminRecord, Se
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_tenant(&auth, &tenant, Permission::PRODUCTS_UPDATE)?;
+        ensure_tenant(&auth, &tenant, Permission::PRODUCTS_READ)?;
 
         let id = parse_uuid(bundle_id.as_str(), "bundle_id")?;
         let service = BundleService::new(runtime.db_clone());
@@ -142,7 +143,7 @@ async fn bundle_detail_native(bundle_id: String) -> Result<BundleAdminRecord, Se
         let bundle = service
             .get_bundle(tenant.id, id, None)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(|error| ServerFnError::new(bundle_error_copy(&error)))?;
 
         Ok(BundleAdminRecord {
             id: bundle.id.to_string(),
@@ -215,7 +216,15 @@ async fn bundle_command_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_tenant(&auth, &tenant, Permission::PRODUCTS_UPDATE)?;
+        let required_permission = match &command {
+            BundleAdminCommand::Create { .. } | BundleAdminCommand::Delete { .. } => {
+                Permission::PRODUCTS_MANAGE
+            }
+            BundleAdminCommand::Update { .. }
+            | BundleAdminCommand::AddItem { .. }
+            | BundleAdminCommand::RemoveItem { .. } => Permission::PRODUCTS_UPDATE,
+        };
+        ensure_tenant(&auth, &tenant, required_permission)?;
 
         let service = BundleService::new(runtime.db_clone());
 
@@ -226,13 +235,20 @@ async fn bundle_command_native(
                 } else {
                     parse_decimal(draft.discount_value.as_str(), "discount_value")?
                 };
+                let receipt_key = scoped_bundle_command_key(
+                    tenant.id,
+                    auth.user_id,
+                    "create_bundle",
+                    None,
+                    &idempotency_key,
+                )?;
 
                 let created = service
                     .create_bundle_idempotent(
                         BundleCommandContext::new(
                             tenant.id,
                             Some(auth.user_id),
-                            idempotency_key.as_str(),
+                            receipt_key.as_str(),
                         ),
                         CreateBundleInput {
                             bundle_product_id: None,
@@ -278,21 +294,44 @@ async fn bundle_command_native(
             }
             BundleAdminCommand::Update { id, draft } => {
                 let bundle_id = parse_uuid(id.as_str(), "bundle_id")?;
-                let translations = draft.name.map(|name| {
-                    vec![rustok_product_bundles::dto::BundleTranslationInput {
-                        locale: "en".to_string(),
-                        name,
-                        description: draft.description.clone(),
-                    }]
-                });
+                let translations = match (draft.name, draft.description) {
+                    // Preserve the native editor's historical "name plus no description clears"
+                    // behavior while also permitting a description-only patch.
+                    (Some(name), description) => Some(vec![
+                        rustok_product_bundles::dto::BundleTranslationUpdateInput {
+                            locale: "en".to_string(),
+                            name: Some(name),
+                            description: Some(description),
+                        },
+                    ]),
+                    (None, Some(description)) => Some(vec![
+                        rustok_product_bundles::dto::BundleTranslationUpdateInput {
+                            locale: "en".to_string(),
+                            name: None,
+                            description: Some(Some(description)),
+                        },
+                    ]),
+                    (None, None) => None,
+                };
                 let discount_value = match draft.discount_value.as_deref().map(str::trim) {
                     None | Some("") => None,
                     Some(value) => Some(parse_decimal(value, "discount_value")?),
                 };
+                let receipt_key = scoped_bundle_command_key(
+                    tenant.id,
+                    auth.user_id,
+                    "update_bundle",
+                    Some(bundle_id),
+                    &idempotency_key,
+                )?;
 
                 let updated = service
-                    .update_bundle(
-                        tenant.id,
+                    .update_bundle_idempotent(
+                        BundleCommandContext::new(
+                            tenant.id,
+                            Some(auth.user_id),
+                            receipt_key.as_str(),
+                        ),
                         bundle_id,
                         UpdateBundleInput {
                             bundle_product_id: None,
@@ -306,7 +345,7 @@ async fn bundle_command_native(
                         },
                     )
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                    .map_err(|error| ServerFnError::new(bundle_command_error_copy(&error)))?;
 
                 Ok(BundleAdminCommandResult {
                     bundle: Some(BundleAdminRecord {
@@ -331,10 +370,24 @@ async fn bundle_command_native(
             }
             BundleAdminCommand::Delete { id } => {
                 let bundle_id = parse_uuid(id.as_str(), "bundle_id")?;
+                let receipt_key = scoped_bundle_command_key(
+                    tenant.id,
+                    auth.user_id,
+                    "delete_bundle",
+                    Some(bundle_id),
+                    &idempotency_key,
+                )?;
                 service
-                    .delete_bundle(tenant.id, bundle_id)
+                    .delete_bundle_idempotent(
+                        BundleCommandContext::new(
+                            tenant.id,
+                            Some(auth.user_id),
+                            receipt_key.as_str(),
+                        ),
+                        bundle_id,
+                    )
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                    .map_err(|error| ServerFnError::new(bundle_command_error_copy(&error)))?;
 
                 Ok(BundleAdminCommandResult {
                     bundle: None,
@@ -355,13 +408,20 @@ async fn bundle_command_native(
                     .filter(|s| !s.trim().is_empty())
                     .map(|s| parse_uuid(s, "variant_id"))
                     .transpose()?;
+                let receipt_key = scoped_bundle_command_key(
+                    tenant.id,
+                    auth.user_id,
+                    "add_bundle_item",
+                    Some(b_id),
+                    &idempotency_key,
+                )?;
 
                 service
                     .add_bundle_item_idempotent(
                         BundleCommandContext::new(
                             tenant.id,
                             Some(auth.user_id),
-                            idempotency_key.as_str(),
+                            receipt_key.as_str(),
                         ),
                         b_id,
                         BundleItemInput {
@@ -379,7 +439,7 @@ async fn bundle_command_native(
                 let refreshed = service
                     .get_bundle(tenant.id, b_id, None)
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                    .map_err(|error| ServerFnError::new(bundle_error_copy(&error)))?;
 
                 Ok(BundleAdminCommandResult {
                     bundle: Some(BundleAdminRecord {
@@ -418,16 +478,31 @@ async fn bundle_command_native(
             BundleAdminCommand::RemoveItem { bundle_id, item_id } => {
                 let b_id = parse_uuid(bundle_id.as_str(), "bundle_id")?;
                 let i_id = parse_uuid(item_id.as_str(), "item_id")?;
+                let receipt_key = scoped_bundle_command_key(
+                    tenant.id,
+                    auth.user_id,
+                    "remove_bundle_item",
+                    Some(b_id),
+                    &idempotency_key,
+                )?;
 
                 service
-                    .remove_bundle_item(tenant.id, b_id, i_id)
+                    .remove_bundle_item_idempotent(
+                        BundleCommandContext::new(
+                            tenant.id,
+                            Some(auth.user_id),
+                            receipt_key.as_str(),
+                        ),
+                        b_id,
+                        i_id,
+                    )
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                    .map_err(|error| ServerFnError::new(bundle_command_error_copy(&error)))?;
 
                 let refreshed = service
                     .get_bundle(tenant.id, b_id, None)
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                    .map_err(|error| ServerFnError::new(bundle_error_copy(&error)))?;
 
                 Ok(BundleAdminCommandResult {
                     bundle: Some(BundleAdminRecord {
@@ -475,11 +550,77 @@ async fn bundle_command_native(
 }
 
 #[cfg(feature = "ssr")]
-/// Bounded operator copy for one failed idempotent bundle command.
+/// Bounded operator copy for one Product bundle domain failure.
+fn bundle_error_copy(error: &rustok_product_bundles::BundleError) -> String {
+    match error {
+        rustok_product_bundles::BundleError::Database(db_err) => {
+            tracing::error!(%db_err, "Product bundles database operation failed");
+            "Internal database error".to_owned()
+        }
+        rustok_product_bundles::BundleError::Outbox(outbox_err) => {
+            tracing::error!(%outbox_err, "Product bundles outbox operation failed");
+            "Internal processing error".to_owned()
+        }
+        rustok_product_bundles::BundleError::InvalidInput(_) => "Invalid bundle request".to_owned(),
+        other => other.to_string(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+/// Bounded operator copy for one owner-receipt failure.
+///
+/// Receipt errors cross a database boundary, so their internal messages can contain driver or
+/// storage detail. Native server functions are public operator transports and must never forward
+/// that text verbatim.
+fn bundle_receipt_error_copy(error: &rustok_api::PortError) -> String {
+    tracing::error!(
+        internal_code = %error.code,
+        retryable = error.retryable,
+        %error,
+        "Product bundles receipt error"
+    );
+
+    match (&error.kind, error.code.as_str()) {
+        (
+            rustok_api::PortErrorKind::Unavailable | rustok_api::PortErrorKind::Timeout,
+            "outbox.operation_receipt_in_progress",
+        ) => {
+            "The same product bundle operation is still being processed; retry with the same idempotency key"
+                .to_owned()
+        }
+        (rustok_api::PortErrorKind::Unavailable | rustok_api::PortErrorKind::Timeout, _) => {
+            "Product bundle operation is temporarily unavailable; retry with the same idempotency key"
+                .to_owned()
+        }
+        (rustok_api::PortErrorKind::Validation, "outbox.operation_receipt_identity_invalid") => {
+            "Idempotency key is invalid".to_owned()
+        }
+        (rustok_api::PortErrorKind::Validation, _) => "Invalid bundle request".to_owned(),
+        (rustok_api::PortErrorKind::Conflict, "outbox.operation_receipt_conflict") => {
+            "This idempotency key is already associated with a different product bundle request"
+                .to_owned()
+        }
+        (rustok_api::PortErrorKind::Conflict, _) => {
+            "Product bundle request conflicts with current state".to_owned()
+        }
+        (
+            rustok_api::PortErrorKind::NotFound
+            | rustok_api::PortErrorKind::Forbidden
+            | rustok_api::PortErrorKind::InvariantViolation,
+            _,
+        ) => {
+            "Product bundle operation could not be completed safely; retry with the same idempotency key"
+                .to_owned()
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+/// Bounded operator copy for one failed idempotent Product bundle command.
 fn bundle_command_error_copy(error: &BundleCommandError) -> String {
     match error {
-        BundleCommandError::Domain(error) => error.to_string(),
-        BundleCommandError::Receipt(error) => error.message.clone(),
+        BundleCommandError::Domain(error) => bundle_error_copy(error),
+        BundleCommandError::Receipt(error) => bundle_receipt_error_copy(error),
     }
 }
 
@@ -489,6 +630,9 @@ fn ensure_tenant(
     tenant: &rustok_api::TenantContext,
     required_permission: rustok_api::Permission,
 ) -> Result<(), ServerFnError> {
+    if auth.tenant_id.is_nil() || auth.user_id.is_nil() || tenant.id.is_nil() {
+        return Err(ServerFnError::new("Authentication required"));
+    }
     if auth.tenant_id != tenant.id {
         return Err(ServerFnError::new(
             "Permission denied: bundle tenant mismatch",
@@ -504,6 +648,33 @@ fn ensure_tenant(
 }
 
 #[cfg(feature = "ssr")]
+fn scoped_bundle_command_key(
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+    operation: &str,
+    subject_id: Option<uuid::Uuid>,
+    caller_key: &str,
+) -> Result<String, ServerFnError> {
+    const MAX_CALLER_IDEMPOTENCY_KEY_LENGTH: usize = 191;
+
+    let caller_key = caller_key.trim();
+    if caller_key.is_empty() {
+        return Err(ServerFnError::new(
+            "Product bundle command idempotency key must not be empty",
+        ));
+    }
+    if caller_key.len() > MAX_CALLER_IDEMPOTENCY_KEY_LENGTH {
+        return Err(ServerFnError::new(format!(
+            "Product bundle command idempotency key must contain at most {MAX_CALLER_IDEMPOTENCY_KEY_LENGTH} bytes"
+        )));
+    }
+
+    Ok(rustok_product_bundles::scoped_caller_idempotency_key(
+        tenant_id, user_id, operation, subject_id, caller_key,
+    ))
+}
+
+#[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
     uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new(format!("Invalid {field}")))
 }
@@ -514,4 +685,25 @@ fn parse_decimal(value: &str, field: &str) -> Result<rust_decimal::Decimal, Serv
     use std::str::FromStr;
 
     Decimal::from_str(value.trim()).map_err(|_| ServerFnError::new(format!("Invalid {field}")))
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::bundle_receipt_error_copy;
+
+    #[test]
+    fn receipt_storage_errors_keep_driver_detail_out_of_native_copy() {
+        let internal_message = "database driver detail for internal-db.example is unavailable";
+        let error =
+            rustok_api::PortError::timeout("outbox.operation_receipt_timeout", internal_message);
+        assert_eq!(error.message, internal_message);
+        let copy = bundle_receipt_error_copy(&error);
+
+        assert_eq!(
+            copy,
+            "Product bundle operation is temporarily unavailable; retry with the same idempotency key"
+        );
+        assert!(!copy.contains("internal-db.example"));
+        assert!(!copy.contains("driver detail"));
+    }
 }

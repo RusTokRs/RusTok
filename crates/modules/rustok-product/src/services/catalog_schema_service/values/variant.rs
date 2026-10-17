@@ -251,7 +251,7 @@ impl ProductCatalogSchemaService {
         let result = self
             .load_variant_attribute_values_in(&txn, tenant_id, variant_id, locale.as_str())
             .await?;
-        record_product_operation_result(&result)?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         Ok(result)
     }
@@ -343,7 +343,7 @@ impl ProductCatalogSchemaService {
         let result = self
             .load_variant_attribute_values_in(&txn, tenant_id, variant_id, locale.as_str())
             .await?;
-        record_product_operation_result(&result)?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         Ok(result)
     }

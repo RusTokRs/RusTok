@@ -33,6 +33,17 @@ pub enum ProductRelationError {
 
     #[error("Invalid relation input: {0}")]
     InvalidInput(String),
+
+    #[error("Relation {0} occurs more than once in a reorder request")]
+    DuplicateRelationInReorder(Uuid),
+
+    #[error(
+        "Reorder request must contain every relation in its group exactly once (expected {expected}, received {received})"
+    )]
+    IncompleteReorder { expected: usize, received: usize },
+
+    #[error("Relation position {position} is outside the allowed range 0..={maximum}")]
+    PositionOutOfRange { position: i32, maximum: usize },
 }
 
 pub type ProductRelationResult<T> = Result<T, ProductRelationError>;

@@ -10,602 +10,71 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 const verifier = path.join(here, "verify-product-relations-bundles-idempotency.mjs");
 
-const canonicalFiles = {
-  "crates/modules/rustok-product-relations/src/services/receipts.rs": `use rustok_outbox::idempotency;
+// Keep the fixture synchronized with the verifier's declared input surface. Each test starts with
+// the real checked-in contract and mutates precisely one invariant, rather than maintaining a
+// second, stale miniature of every Rust and GraphQL source file.
+const verifierInputs = [
+  "crates/modules/rustok-product-relations/src/services/receipts.rs",
+  "crates/modules/rustok-product-relations/src/services/relation_service.rs",
+  "crates/modules/rustok-product-relations/src/dto.rs",
+  "crates/modules/rustok-product-relations/src/services/mod.rs",
+  "crates/modules/rustok-product-relations/src/lib.rs",
+  "crates/modules/rustok-product-relations/Cargo.toml",
+  "crates/modules/rustok-product-relations/admin/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-product-relations/src/migrations/mod.rs",
+  "crates/modules/rustok-product-relations/src/migrations/m20261017_000005_remove_redundant_product_tenant_key.rs",
+  "crates/modules/rustok-product-bundles/src/services/receipts.rs",
+  "crates/modules/rustok-product-bundles/src/services/bundle_service.rs",
+  "crates/modules/rustok-product-bundles/src/dto.rs",
+  "crates/modules/rustok-product-bundles/src/migrations/mod.rs",
+  "crates/modules/rustok-product-bundles/src/migrations/m20261017_000002_normalize_bundle_translation_locales.rs",
+  "crates/modules/rustok-product-bundles/src/migrations/m20261017_000004_enforce_bundle_tenant_integrity.rs",
+  "crates/modules/rustok-product-bundles/src/migrations/m20260916_000001_create_bundles.rs",
+  "crates/modules/rustok-product/src/migrations/m20261017_000036_add_sqlite_tenant_identity_keys.rs",
+  "crates/modules/rustok-product/src/services/write_transaction.rs",
+  "crates/modules/rustok-product/src/catalog_schema_write_port.rs",
+  "crates/modules/rustok-product/src/services/catalog_schema_service/attributes.rs",
+  "crates/modules/rustok-product/src/translation_target.rs",
+  "crates/modules/rustok-product/src/variant_translation_target.rs",
+  "crates/modules/rustok-product/src/image_translation_target.rs",
+  "crates/modules/rustok-product-bundles/src/services/mod.rs",
+  "crates/modules/rustok-product-bundles/src/lib.rs",
+  "crates/modules/rustok-product-bundles/Cargo.toml",
+  "crates/modules/rustok-product-bundles/admin/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-outbox/src/idempotency.rs",
+  "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs",
+  "crates/modules/rustok-commerce/src/graphql/types.rs",
+  "crates/modules/rustok-commerce/src/graphql/product_catalog.rs",
+  "crates/modules/rustok-product-relations/admin/src/transport/graphql_adapter.rs",
+  "crates/modules/rustok-product-bundles/admin/src/transport/graphql_adapter.rs",
+  "apps/next-admin/packages/rustok-product/src/api/relations.ts",
+  "apps/next-admin/packages/rustok-product/src/api/bundles.ts",
+  "crates/modules/rustok-product/docs/write-boundary.md",
+  "docs/modules/registry.md",
+  "docs/audits/product-module-engineering-audit-2026-10-07.md",
+];
 
-pub const PRODUCT_RELATION_OWNER_SLUG: &str = "product_relations";
-pub const CREATE_RELATION_OPERATION: &str = "create_relation";
-
-pub struct ProductRelationCommandContext<'a> {
-    pub idempotency_key: &'a str,
-}
-
-impl ProductRelationService {
-    pub async fn create_relation_idempotent(
-        &self,
-        context: ProductRelationCommandContext<'_>,
-        input: CreateProductRelationInput,
-    ) -> Result<ProductRelationDto, ProductRelationCommandError> {
-        let admission = idempotency::admit(
-            self.database(),
-            idempotency::OwnerOperationScope::Tenant(context.tenant_id),
-            PRODUCT_RELATION_OWNER_SLUG,
-            context.idempotency_key,
-            CREATE_RELATION_OPERATION,
-            &request,
-        )
-        .await?;
-        let lease = match admission {
-            idempotency::Admission::Run(lease) => lease,
-            idempotency::Admission::Replay(value) => return decode_relation_receipt(value),
-            idempotency::Admission::ReplayError(error) => return Err(error.into()),
-        };
-        let txn = self.database().begin().await?;
-        match create_relation_in_tx(&txn, context.tenant_id, input).await {
-            Ok(relation) => {
-                idempotency::complete(&txn, lease, &relation).await?;
-                txn.commit().await?;
-                Ok(relation)
-            }
-            Err(error) => {
-                drop(txn);
-                idempotency::fail(self.database(), lease, &port_error).await;
-                Err(error.into())
-            }
-        }
-    }
-}
-
-pub fn relation_command_error(error: &ProductRelationError) -> PortError {
-    PortError::conflict("product_relation.already_exists", "product relation already exists")
-}
-`,
-  "crates/modules/rustok-product-relations/src/services/relation_service.rs": `impl ProductRelationService {
-    pub(crate) fn database(&self) -> &DatabaseConnection {
-        &self.db
-    }
-}
-
-pub(crate) async fn create_relation_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    input: CreateProductRelationInput,
-) -> ProductRelationResult<ProductRelationDto> {
-    let model = active.insert(txn).await?;
-    Ok(model.into())
-}
-
-impl ProductRelationsPort for ProductRelationService {
-    async fn create_relation(
-        &self,
-        tenant_id: Uuid,
-        _actor_id: Option<Uuid>,
-        input: CreateProductRelationInput,
-    ) -> ProductRelationResult<ProductRelationDto> {
-        let txn = self.db.begin().await?;
-        let relation = create_relation_in_tx(&txn, tenant_id, input).await?;
-        txn.commit().await?;
-        Ok(relation)
-    }
-
-    async fn update_relation(
-        &self,
-        tenant_id: Uuid,
-        _actor_id: Option<Uuid>,
-        relation_id: Uuid,
-        input: UpdateProductRelationInput,
-    ) -> ProductRelationResult<ProductRelationDto> {
-        Ok(relation.into())
-    }
-}
-`,
-  "crates/modules/rustok-product-relations/src/services/mod.rs": `pub mod receipts;
-pub mod relation_service;
-
-pub use receipts::{
-    ProductRelationCommandContext, ProductRelationCommandError, relation_command_error,
-};
-pub use relation_service::ProductRelationService;
-`,
-  "crates/modules/rustok-product-relations/src/lib.rs": `pub use services::{
-    ProductRelationCommandContext, ProductRelationCommandError, ProductRelationService,
-    relation_command_error,
-};
-`,
-  "crates/modules/rustok-product-relations/Cargo.toml": `[dependencies]
-rustok-outbox.workspace = true
-`,
-  "crates/modules/rustok-product-relations/admin/src/transport/native_server_adapter.rs": `async fn product_relations_command_native(
-    idempotency_key: String,
-    command: ProductRelationsAdminCommand,
-) -> Result<ProductRelationsAdminCommandResult, ServerFnError> {
-    let created = service
-        .create_relation_idempotent(
-            ProductRelationCommandContext::new(
-                tenant.id,
-                Some(auth.user_id),
-                idempotency_key.as_str(),
-            ),
-            input,
-        )
-        .await
-        .map_err(|error| ServerFnError::new(relation_command_error_copy(&error)))?;
-}
-`,
-  "crates/modules/rustok-product-bundles/src/services/receipts.rs": `use rustok_outbox::idempotency;
-
-pub const PRODUCT_BUNDLE_OWNER_SLUG: &str = "product_bundles";
-pub const CREATE_BUNDLE_OPERATION: &str = "create_bundle";
-pub const ADD_BUNDLE_ITEM_OPERATION: &str = "add_bundle_item";
-
-pub struct BundleCommandContext<'a> {
-    pub idempotency_key: &'a str,
-}
-
-impl BundleService {
-    pub async fn create_bundle_idempotent(
-        &self,
-        context: BundleCommandContext<'_>,
-        input: CreateBundleInput,
-    ) -> Result<BundleDto, BundleCommandError> {
-        let admission = idempotency::admit(
-            service.database(),
-            idempotency::OwnerOperationScope::Tenant(context.tenant_id),
-            PRODUCT_BUNDLE_OWNER_SLUG,
-            context.idempotency_key,
-            CREATE_BUNDLE_OPERATION,
-            &request,
-        )
-        .await?;
-        let txn = self.database().begin().await?;
-        match create_bundle_in_tx(&txn, context.tenant_id, input).await {
-            Ok(bundle) => {
-                idempotency::complete(&txn, lease, &bundle).await?;
-                txn.commit().await?;
-                Ok(bundle)
-            }
-            Err(error) => {
-                drop(txn);
-                idempotency::fail(service.database(), lease, &port_error).await;
-                Err(error.into())
-            }
-        }
-    }
-
-    pub async fn add_bundle_item_idempotent(
-        &self,
-        context: BundleCommandContext<'_>,
-        bundle_id: Uuid,
-        item: BundleItemInput,
-    ) -> Result<BundleItemDto, BundleCommandError> {
-        let txn = self.database().begin().await?;
-        match add_bundle_item_in_tx(&txn, context.tenant_id, bundle_id, item).await {
-            Ok(created_item) => {
-                idempotency::complete(&txn, lease, &created_item).await?;
-                txn.commit().await?;
-                Ok(created_item)
-            }
-            Err(error) => Err(error.into()),
-        }
-    }
-}
-
-pub fn bundle_command_error(error: &BundleError) -> PortError {
-    match error {
-        BundleError::SlugAlreadyExists(_) => {
-            PortError::conflict("product_bundle.slug_conflict", "bundle slug conflict")
-        }
-        BundleError::ItemNotFound(_) => {
-            PortError::not_found("product_bundle.item_not_found", "bundle item not found")
-        }
-        _ => PortError::unavailable("product_bundle.storage_unavailable", "unavailable"),
-    }
-}
-`,
-  "crates/modules/rustok-product-bundles/src/services/bundle_service.rs": `impl BundleService {
-    pub(crate) fn database(&self) -> &DatabaseConnection {
-        &self.db
-    }
-}
-
-pub(crate) async fn create_bundle_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    input: CreateBundleInput,
-) -> BundleResult<BundleDto> {
-    let inserted_bundle = bundle_active.insert(txn).await?;
-    Ok(BundleService::assemble_bundle_dto(inserted_bundle, vec![], vec![], None))
-}
-
-pub(crate) async fn add_bundle_item_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    bundle_id: Uuid,
-    item: BundleItemInput,
-) -> BundleResult<BundleItemDto> {
-    let inserted = active.insert(txn).await?;
-    Ok(BundleItemDto {
-        id: inserted.id,
-    })
-}
-
-impl BundlePort for BundleService {
-    async fn create_bundle(
-        &self,
-        tenant_id: Uuid,
-        input: CreateBundleInput,
-    ) -> BundleResult<BundleDto> {
-        let txn = self.db.begin().await?;
-        let bundle = create_bundle_in_tx(&txn, tenant_id, input).await?;
-        txn.commit().await?;
-        Ok(bundle)
-    }
-
-    async fn add_bundle_item(
-        &self,
-        tenant_id: Uuid,
-        bundle_id: Uuid,
-        item: BundleItemInput,
-    ) -> BundleResult<BundleItemDto> {
-        let txn = self.db.begin().await?;
-        let created_item = add_bundle_item_in_tx(&txn, tenant_id, bundle_id, item).await?;
-        txn.commit().await?;
-        Ok(created_item)
-    }
-}
-`,
-  "crates/modules/rustok-product-bundles/src/services/mod.rs": `pub mod bundle_service;
-pub mod receipts;
-
-pub use bundle_service::BundleService;
-pub use receipts::{BundleCommandContext, BundleCommandError, bundle_command_error};
-`,
-  "crates/modules/rustok-product-bundles/src/lib.rs": `pub use services::{
-    BundleCommandContext, BundleCommandError, BundleService, bundle_command_error,
-};
-`,
-  "crates/modules/rustok-product-bundles/Cargo.toml": `[dependencies]
-rustok-outbox.workspace = true
-`,
-  "crates/modules/rustok-product-bundles/admin/src/transport/native_server_adapter.rs": `async fn bundle_command_native(
-    idempotency_key: String,
-    command: BundleAdminCommand,
-) -> Result<BundleAdminCommandResult, ServerFnError> {
-    match command {
-        BundleAdminCommand::Create { draft } => {
-            let created = service
-                .create_bundle_idempotent(
-                    BundleCommandContext::new(
-                        tenant.id,
-                        Some(auth.user_id),
-                        idempotency_key.as_str(),
-                    ),
-                    input,
-                )
-                .await
-                .map_err(|error| ServerFnError::new(bundle_command_error_copy(&error)))?;
-        }
-        BundleAdminCommand::AddItem { bundle_id } => {
-            service
-                .add_bundle_item_idempotent(
-                    BundleCommandContext::new(
-                        tenant.id,
-                        Some(auth.user_id),
-                        idempotency_key.as_str(),
-                    ),
-                    bundle_id,
-                    item,
-                )
-                .await
-                .map_err(|error| ServerFnError::new(bundle_command_error_copy(&error)))?;
-        }
-    }
-}
-`,
-  "crates/modules/rustok-product-relations/admin/src/transport/graphql_adapter.rs": `const ADD_RELATION_MUTATION: &str = r#"
-mutation ProductAdminAddRelation($idempotencyKey: String!, $input: AddProductRelationInput!) {
-  addProductRelation(idempotencyKey: $idempotencyKey, input: $input) {
-    id
-  }
-}
-"#;
-
-pub async fn execute_command(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    idempotency_key: String,
-    command: ProductRelationsAdminCommand,
-) -> Result<ProductRelationsAdminCommandResult, GraphqlProductRelationsAdminError> {
-    match command {
-        ProductRelationsAdminCommand::Add { draft } => {
-            #[derive(Serialize)]
-            struct Vars {
-                #[serde(rename = "idempotencyKey")]
-                idempotency_key: String,
-                input: AddInput,
-            }
-
-            let vars = Vars {
-                idempotency_key,
-                input: AddInput {
-                    product_id: draft.product_id,
-                },
-            };
-
-            let data: AddResponse = request(ADD_RELATION_MUTATION, vars, token, tenant_slug).await?;
-            Ok(ProductRelationsAdminCommandResult {
-                item: Some(data.add_product_relation),
-            })
-        }
-    }
-}
-`,
-  "crates/modules/rustok-product-bundles/admin/src/transport/graphql_adapter.rs": `const CREATE_MUTATION: &str = r#"
-mutation BundleAdminCreate($idempotencyKey: String!, $input: CreateBundleInputGql!) {
-  createBundle(idempotencyKey: $idempotencyKey, input: $input) {
-    id
-  }
-}
-"#;
-
-const ADD_ITEM_MUTATION: &str = r#"
-mutation BundleAdminAddItem($idempotencyKey: String!, $bundleId: UUID!, $input: AddBundleItemInputGql!) {
-  addBundleItem(idempotencyKey: $idempotencyKey, bundleId: $bundleId, input: $input) {
-    id
-  }
-}
-"#;
-
-pub async fn execute_command(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    idempotency_key: String,
-    command: BundleAdminCommand,
-) -> Result<BundleAdminCommandResult, GraphqlBundleAdminError> {
-    match command {
-        BundleAdminCommand::Create { draft } => {
-            #[derive(Serialize)]
-            struct Vars {
-                #[serde(rename = "idempotencyKey")]
-                idempotency_key: String,
-                input: Input,
-            }
-
-            let vars = Vars {
-                idempotency_key,
-                input: Input {
-                    slug: draft.slug,
-                },
-            };
-
-            let data: CreateResponse = request(CREATE_MUTATION, vars, token, tenant_slug).await?;
-            Ok(BundleAdminCommandResult {
-                bundle: Some(data.bundle),
-            })
-        }
-        BundleAdminCommand::AddItem { bundle_id } => {
-            #[derive(Serialize)]
-            struct Vars {
-                #[serde(rename = "idempotencyKey")]
-                idempotency_key: String,
-                #[serde(rename = "bundleId")]
-                bundle_id: String,
-                input: Input,
-            }
-
-            let vars = Vars {
-                idempotency_key,
-                bundle_id: bundle_id.clone(),
-                input: Input {
-                    product_id,
-                },
-            };
-
-            let _: serde_json::Value = request(ADD_ITEM_MUTATION, vars, token, tenant_slug).await?;
-            Ok(BundleAdminCommandResult { success: true })
-        }
-    }
-}
-`,
-  "apps/next-admin/packages/rustok-product/src/api/relations.ts": `export const ADD_RELATION_MUTATION = \`
-mutation ProductAdminAddRelation($idempotencyKey: String!, $input: AddProductRelationInput!) {
-  addProductRelation(idempotencyKey: $idempotencyKey, input: $input) {
-    id
-  }
-}
-\`;
-
-export async function addProductRelation(
-  opts: GqlOpts,
-  input: AddProductRelationInput
-): Promise<ProductRelation> {
-  const executor = opts.graphql ?? graphqlRequest;
-  const idempotencyKey = crypto.randomUUID();
-  const data = await executor<
-    { idempotencyKey: string; input: AddProductRelationInput },
-    { addProductRelation: ProductRelation }
-  >(
-    ADD_RELATION_MUTATION,
-    { idempotencyKey, input },
-    opts.token,
-    opts.tenantSlug
-  );
-
-  return data.addProductRelation;
-}
-`,
-  "apps/next-admin/packages/rustok-product/src/api/bundles.ts": `const CREATE_BUNDLE_MUTATION = \`
-mutation CreateBundle($idempotencyKey: String!, $input: CreateBundleInputGql!, $locale: String) {
-  createBundle(idempotencyKey: $idempotencyKey, input: $input, locale: $locale) {
-    id
-  }
-}
-\`;
-
-const ADD_BUNDLE_ITEM_MUTATION = \`
-mutation AddBundleItem($idempotencyKey: String!, $bundleId: UUID!, $item: BundleItemInputGql!) {
-  addBundleItem(idempotencyKey: $idempotencyKey, bundleId: $bundleId, item: $item) {
-    id
-  }
-}
-\`;
-
-export async function createBundle(opts: GqlOpts, input: CreateBundleInput): Promise<ProductBundle> {
-  const executor = opts.graphql ?? graphqlRequest;
-  const idempotencyKey = crypto.randomUUID();
-  const data = await executor<
-    { idempotencyKey: string; input: unknown; locale?: string },
-    { createBundle: ProductBundle }
-  >(
-    CREATE_BUNDLE_MUTATION,
-    { idempotencyKey, input: { slug: input.slug }, locale },
-    opts.token,
-    opts.tenantSlug
-  );
-
-  return data.createBundle;
-}
-
-export async function addBundleItem(opts: GqlOpts, input: AddBundleItemInput): Promise<BundleItem> {
-  const executor = opts.graphql ?? graphqlRequest;
-  const idempotencyKey = crypto.randomUUID();
-  const data = await executor<
-    { idempotencyKey: string; bundleId: string; item: unknown },
-    { addBundleItem: BundleItem }
-  >(
-    ADD_BUNDLE_ITEM_MUTATION,
-    { idempotencyKey, bundleId: input.bundleId, item: { productId: input.productId } },
-    opts.token,
-    opts.tenantSlug
-  );
-
-  return data.addBundleItem;
-}
-`,
-  "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs": `impl CommerceCatalogMutation {
-    async fn add_product_relation(
-        &self,
-        ctx: &Context<'_>,
-        idempotency_key: String,
-        input: AddProductRelationInput,
-    ) -> Result<GqlProductRelation> {
-        let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product relation")?;
-        let scoped_key = scoped_catalog_operation_key(
-            "commerce-graphql-relation",
-            tenant_id,
-            user_id,
-            operation,
-            None,
-            caller_key,
-        );
-        let rel = service
-            .create_relation_idempotent(
-                ProductRelationCommandContext::new(tenant_id, Some(user_id), &scoped_key),
-                domain_input,
-            )
-            .await
-            .map_err(|error| relation_command_graphql_error(operation, error))?;
-        Ok(rel.into())
-    }
-
-    async fn remove_product_relation(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
-        Ok(true)
-    }
-
-    async fn create_bundle(
-        &self,
-        ctx: &Context<'_>,
-        idempotency_key: String,
-        input: CreateBundleInputGql,
-    ) -> Result<GqlBundle> {
-        let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product bundle")?;
-        let scoped_key = scoped_catalog_operation_key(
-            "commerce-graphql-bundle",
-            tenant_id,
-            user_id,
-            operation,
-            None,
-            caller_key,
-        );
-        let bundle = service
-            .create_bundle_idempotent(
-                BundleCommandContext::new(tenant_id, Some(user_id), &scoped_key),
-                domain_input,
-            )
-            .await
-            .map_err(|error| bundle_command_graphql_error(operation, error))?;
-        Ok(bundle.into())
-    }
-
-    async fn update_bundle(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlBundle> {
-        Ok(bundle.into())
-    }
-
-    async fn add_bundle_item(
-        &self,
-        ctx: &Context<'_>,
-        idempotency_key: String,
-        bundle_id: Uuid,
-        item: BundleItemInputGql,
-    ) -> Result<GqlBundleItem> {
-        let scoped_key = scoped_catalog_operation_key(
-            "commerce-graphql-bundle",
-            tenant_id,
-            user_id,
-            operation,
-            Some(bundle_id),
-            caller_key,
-        );
-        let created_item = service
-            .add_bundle_item_idempotent(
-                BundleCommandContext::new(tenant_id, Some(user_id), &scoped_key),
-                bundle_id,
-                item,
-            )
-            .await
-            .map_err(|error| bundle_command_graphql_error(operation, error))?;
-        Ok(created_item.into())
-    }
-
-    async fn remove_bundle_item(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
-        Ok(true)
-    }
-}
-
-fn catalog_write_command_error(domain: CatalogWriteDomain, operation: &'static str, error: PortError) -> async_graphql::Error {
-    match error.code.as_str() {
-        "outbox.operation_receipt_conflict" => "IDEMPOTENCY_KEY_CONFLICT",
-        "outbox.operation_receipt_in_progress" => "CATALOG_OPERATION_IN_PROGRESS",
-        _ => "CATALOG_OPERATION_FAILED",
-    }
-    async_graphql::Error::new("bounded")
-}
-`,
-  "crates/modules/rustok-product/docs/write-boundary.md": `# Product write boundary
-
-Every write must go through \`ProductCatalogCommandPort\` (14 operations including \`archive_product\`)
-or \`ProductCatalogSchemaWritePort\`. Calling an owner service directly is not an allowed integration path.
-Receipt-bound commands: create_relation_idempotent, create_bundle_idempotent,
-add_bundle_item_idempotent. Shipping a new write family requires extending this document together
-with the port.
-`,
-  "docs/modules/registry.md": `- \`product\`: \`scripts/verify/verify-product-relations-bundles-idempotency.mjs\`.
-`,
-  "docs/audits/product-module-engineering-audit-2026-10-07.md": `| \`PROD-IDEM-001\` | Устранено |
-| \`PROD-PORT-001\` | Устранено |
-`,
-};
+const source = (relative) => fs.readFileSync(path.join(repoRoot, relative), "utf8");
 
 const writeFixture = (overrides = {}) => {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "verify-catalog-idem-"));
-  const files = { ...canonicalFiles, ...overrides };
-  for (const [relative, content] of Object.entries(files)) {
-    if (content === null) continue;
+  for (const relative of verifierInputs) {
+    const target = path.join(fixtureRoot, relative);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, source(relative));
+  }
+  for (const [relative, content] of Object.entries(overrides)) {
     const target = path.join(fixtureRoot, relative);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, content);
   }
   return fixtureRoot;
+};
+
+const replaceRequired = (relative, from, to) => {
+  const original = source(relative);
+  assert.ok(original.includes(from), `fixture mutation anchor is missing: ${from}`);
+  return original.replace(from, to);
 };
 
 const runVerifier = (fixtureRoot) => {
@@ -625,40 +94,45 @@ test("canonical receipt-bound relations and bundles pass", () => {
   const fixtureRoot = writeFixture();
   const result = runVerifier(fixtureRoot);
   assert.equal(result.status, 0, result.output);
-  assert.match(result.output, /write through tenant-scoped owner receipts/);
+  assert.match(result.output, /complete tenant-scoped owner receipts/);
 });
 
 test("a receipt that is never completed fails the contract", () => {
+  const relative = "crates/modules/rustok-product-relations/src/services/receipts.rs";
   const fixtureRoot = writeFixture({
-    "crates/modules/rustok-product-relations/src/services/receipts.rs": canonicalFiles[
-      "crates/modules/rustok-product-relations/src/services/receipts.rs"
-    ].replace("idempotency::complete(&txn, lease, &relation).await?;", ""),
+    [relative]: replaceRequired(
+      relative,
+      "complete_relation_operation(txn, context, lease, &relation).await?;",
+      "",
+    ),
   });
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);
-  assert.match(result.output, /relations receipts: missing idempotency::complete/);
+  assert.match(
+    result.output,
+    /create_relation_idempotent receipt command: missing complete_relation_operation\(txn, context, lease, &relation\)\.await\?;/,
+  );
 });
 
-test("reusing the non-idempotent owner call fails the contract", () => {
+test("a Commerce mutation cannot return to a plain relation service call", () => {
+  const relative = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";
   const fixtureRoot = writeFixture({
-    "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs": canonicalFiles[
-      "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs"
-    ].replace(".create_relation_idempotent(", ".create_relation(tenant_id, Some(user_id),"),
+    [relative]: replaceRequired(relative, ".create_relation_idempotent(", ".create_relation("),
   });
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);
-  assert.match(result.output, /forbidden non-idempotent create_relation call/);
+  assert.match(result.output, /catalog write ingress: forbidden \.create_relation\(/);
 });
 
 test("an admin adapter that discards the caller key fails the contract", () => {
+  const relative =
+    "crates/modules/rustok-product-bundles/admin/src/transport/native_server_adapter.rs";
   const fixtureRoot = writeFixture({
-    "crates/modules/rustok-product-bundles/admin/src/transport/native_server_adapter.rs":
-      canonicalFiles[
-        "crates/modules/rustok-product-bundles/admin/src/transport/native_server_adapter.rs"
-      ].replace(
-        "    match command {",
-        "    let _ = idempotency_key;\n    match command {",
-      ),
+    [relative]: replaceRequired(
+      relative,
+      "        let service = BundleService::new(runtime.db_clone());",
+      "        let _ = idempotency_key;\n        let service = BundleService::new(runtime.db_clone());",
+    ),
   });
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);
@@ -666,24 +140,23 @@ test("an admin adapter that discards the caller key fails the contract", () => {
 });
 
 test("an optional GraphQL idempotency key fails the contract", () => {
+  const relative = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";
   const fixtureRoot = writeFixture({
-    "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs": canonicalFiles[
-      "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs"
-    ].replace(
-      `        idempotency_key: String,
-        input: AddProductRelationInput,`,
-      `        idempotency_key: Option<String>,
-        input: AddProductRelationInput,`,
+    [relative]: replaceRequired(
+      relative,
+      "        idempotency_key: String,\n        input: AddProductRelationInput,",
+      "        idempotency_key: Option<String>,\n        input: AddProductRelationInput,",
     ),
   });
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);
-  assert.match(result.output, /add_product_relation mutation: missing idempotency_key: String/);
+  assert.match(result.output, /add_product_relation GraphQL mutation: missing idempotency_key: String/);
 });
 
 test("a parallel receipt ledger fails the contract", () => {
+  const relative = "crates/modules/rustok-product-relations/src/services/receipts.rs";
   const fixtureRoot = writeFixture({
-    "crates/modules/rustok-product-relations/src/services/receipts.rs": `${canonicalFiles["crates/modules/rustok-product-relations/src/services/receipts.rs"]}
+    [relative]: `${source(relative)}
 #[derive(DeriveEntityModel)]
 #[sea_orm(table_name = "owner_operation_receipts")]
 pub struct Model {}
@@ -695,17 +168,34 @@ pub struct Model {}
 });
 
 test("a Next admin client that stops sending its key fails the contract", () => {
+  const relative = "apps/next-admin/packages/rustok-product/src/api/bundles.ts";
   const fixtureRoot = writeFixture({
-    "apps/next-admin/packages/rustok-product/src/api/bundles.ts": canonicalFiles[
-      "apps/next-admin/packages/rustok-product/src/api/bundles.ts"
-    ].replace(
-      "addBundleItem(idempotencyKey: $idempotencyKey, bundleId: $bundleId, item: $item) {",
-      "addBundleItem(bundleId: $bundleId, item: $item) {",
+    [relative]: replaceRequired(
+      relative,
+      "removeBundleItem(idempotencyKey: $idempotencyKey, bundleId: $bundleId, itemId: $itemId)",
+      "removeBundleItem(bundleId: $bundleId, itemId: $itemId)",
     ),
   });
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);
-  assert.match(result.output, /next bundles client: missing addBundleItem/);
+  assert.match(
+    result.output,
+    /next bundles client: missing removeBundleItem\(idempotencyKey: \$idempotencyKey, bundleId: \$bundleId, itemId: \$itemId\)/,
+  );
+});
+
+test("Commerce must use the owner-exported caller-key scope", () => {
+  const relative = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "scoped_relation_caller_key(tenant_id, user_id, operation, None, caller_key)",
+      "scoped_catalog_operation_key(tenant_id, user_id, operation, None, caller_key)",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /add_product_relation GraphQL mutation: missing scoped_relation_caller_key/);
 });
 
 test("an undocumented write boundary fails the contract", () => {
@@ -715,4 +205,653 @@ test("an undocumented write boundary fails the contract", () => {
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);
   assert.match(result.output, /write boundary doc: missing/);
+});
+
+test("the Product receipt rollback boundary must remain documented", () => {
+  const relative = "crates/modules/rustok-product/docs/write-boundary.md";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "receipt-result encoding, a missing result, or completion failure awaits transaction rollback",
+      "receipt finalization behavior is unspecified",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /write boundary doc: missing receipt-result encoding, a missing result, or completion failure awaits transaction rollback/,
+  );
+});
+
+test("a terminal relation failure must await rollback before finalizing its receipt", () => {
+  const relative = "crates/modules/rustok-product-relations/src/services/receipts.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "Err(error) => {\n                rollback_relation_operation(txn, context, lease).await?;",
+      "Err(error) => {\n                drop(txn);",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /create_relation_idempotent receipt command: missing rollback_relation_operation\(txn, context, lease\)\.await\?;/,
+  );
+});
+
+test("a receipt completion error must await rollback before returning", () => {
+  const relative = "crates/modules/rustok-product-relations/src/services/receipts.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {\n        rollback_relation_operation(txn, context, lease).await?;",
+      "if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {\n        drop(txn);",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /relations successful receipt completion: missing rollback_relation_operation\(txn, context, lease\)\.await\?;/,
+  );
+});
+
+test("a Product owner receipt completion error must await rollback before returning", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "        return rollback_product_receipt_failure(\n            transaction,\n            receipt.lease,\n            CommerceError::Database(DbErr::Custom(format!(\n                \"product owner receipt completion failed: {}\",\n                error.code\n            ))),\n        )\n        .await;",
+      "        drop(transaction);\n        return Err(CommerceError::Database(DbErr::Custom(format!(\n            \"product owner receipt completion failed: {}\",\n            error.code\n        ))));",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product owner receipt completion: forbidden drop\(transaction\);/,
+  );
+});
+
+test("a Product receipt result encoding failure must remain deferred to commit", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "*slot = Some(response_json);",
+      "*slot = None;",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product owner receipt result recording: missing \*slot = Some\(response_json\);/,
+  );
+});
+
+test("a receipt-scoped early Product owner error must hand off its transaction for an awaited rollback", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "receipt.defer_rollback(transaction);",
+      "drop(transaction);",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product owner early-error rollback: missing receipt\.defer_rollback\(transaction\);/,
+  );
+});
+
+test("a receipt wrapper must preserve custom Product owner errors while awaiting rollback", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(relative, "    E: From<CommerceError>,\n", ""),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product owner receipt scope rollback fence: missing E: From<CommerceError>/,
+  );
+});
+
+test("a retryable Product failure must not become a terminal receipt", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "    if error.retryable {\n        return Ok(());\n    }\n\n    idempotency::fail(database, lease, error).await",
+      "    idempotency::fail(database, lease, error).await",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product retryable receipt finalization: missing if error\.retryable \{/,
+  );
+});
+
+test("a Product translation target cannot bypass retryable receipt handling", () => {
+  const relative = "crates/modules/rustok-product/src/translation_target.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "fail_product_operation_receipt(self.service.database(), lease, error)\n            .await",
+      "idempotency::fail(self.service.database(), lease, error).await",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /Product translation-target receipt finalizer: forbidden idempotency::fail\(/,
+  );
+});
+
+test("a Product owner receipt completion cannot return without rollback", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "        return rollback_product_receipt_failure(\n            transaction,\n            receipt.lease,\n            CommerceError::Database(DbErr::Custom(format!(\n                \"product owner receipt completion failed: {}\",\n                error.code\n            ))),\n        )\n        .await;",
+      "        return Err(CommerceError::Database(DbErr::Custom(format!(\n            \"product owner receipt completion failed: {}\",\n            error.code\n        ))));",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product owner receipt completion failure: missing return rollback_product_receipt_failure\(/,
+  );
+});
+
+test("a missing Product receipt result cannot return without rollback", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "return rollback_product_receipt_failure(transaction, receipt.lease, error).await;",
+      "return Err(error);",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product owner receipt result failure: missing return rollback_product_receipt_failure\(transaction, receipt\.lease, error\)\.await;/,
+  );
+});
+
+test("a bundle receipt completion error must await rollback before returning", () => {
+  const relative = "crates/modules/rustok-product-bundles/src/services/receipts.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {\n        rollback_bundle_operation(txn, context, lease).await?;",
+      "if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {\n        drop(txn);",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /bundles successful receipt completion: missing rollback_bundle_operation\(txn, context, lease\)\.await\?;/,
+  );
+});
+
+test("failure finalization cannot ignore a lost receipt lease", () => {
+  const relative = "crates/modules/rustok-outbox/src/idempotency.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "owner operation receipt was not processing during failure finalization",
+      "failure finalization outcome is ignored",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /shared failure receipt finalization: missing owner operation receipt was not processing during failure finalization/,
+  );
+});
+
+test("completion finalization must make a lost receipt lease retryable", () => {
+  const relative = "crates/modules/rustok-outbox/src/idempotency.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "PortError::unavailable(\n            \"outbox.operation_receipt_state_invalid\",\n            \"owner operation receipt was not processing during completion\",",
+      "PortError::invariant_violation(\n            \"outbox.operation_receipt_state_invalid\",\n            \"owner operation receipt was not processing during completion\",",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /shared receipt completion finalization: missing return Err\(PortError::unavailable\(/,
+  );
+});
+
+test("caller-key scoping must distinguish a present subject from caller bytes", () => {
+  const relative = "crates/modules/rustok-outbox/src/idempotency.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(relative, "            digest.update([1]);\n", ""),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /shared caller-key scoping primitive: missing digest\.update\(\[1\]\);/,
+  );
+});
+
+test("caller-key scoping must length-frame untrusted caller bytes", () => {
+  const relative = "crates/modules/rustok-outbox/src/idempotency.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "    hash_scoped_key_component(&mut digest, caller_key.trim().as_bytes());",
+      "    digest.update(caller_key.trim().as_bytes());",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /shared caller-key scoping primitive: missing hash_scoped_key_component\(&mut digest, caller_key\.trim\(\)\.as_bytes\(\)\);/,
+  );
+});
+
+test("deployed Product receipt keys cannot silently switch to the framed key formula", () => {
+  const relative = "crates/modules/rustok-product/src/catalog_schema_write_port.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "    digest.update(caller_key.trim().as_bytes());",
+      "    hash_scoped_key_component(&mut digest, caller_key.trim().as_bytes());",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /deployed Product receipt key compatibility: missing digest\.update\(caller_key\.trim\(\)\.as_bytes\(\)\);/,
+  );
+});
+
+test("deployed Relation receipt keys cannot silently switch to the framed key formula", () => {
+  const relative = "crates/modules/rustok-product-relations/src/lib.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "    digest.update(caller_key.trim().as_bytes());",
+      "    hash_scoped_key_component(&mut digest, caller_key.trim().as_bytes());",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /relations deployed receipt key compatibility: missing digest\.update\(caller_key\.trim\(\)\.as_bytes\(\)\);/,
+  );
+});
+
+test("deployed Bundle receipt keys cannot silently switch to the framed key formula", () => {
+  const relative = "crates/modules/rustok-product-bundles/src/lib.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "    digest.update(caller_key.trim().as_bytes());",
+      "    hash_scoped_key_component(&mut digest, caller_key.trim().as_bytes());",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /bundles deployed receipt key compatibility: missing digest\.update\(caller_key\.trim\(\)\.as_bytes\(\)\);/,
+  );
+});
+
+test("Bundle GraphQL must preserve an explicit null owner clear", () => {
+  const relative = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "bundle_product_id: bundle_product_id_update(input.bundle_product_id)",
+      "bundle_product_id: input.bundle_product_id.map(Some)",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /update_bundle GraphQL mutation: missing bundle_product_id: bundle_product_id_update\(input\.bundle_product_id\)/,
+  );
+});
+
+test("Bundle native commands cannot expose raw database errors", () => {
+  const relative =
+    "crates/modules/rustok-product-bundles/admin/src/transport/native_server_adapter.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "BundleCommandError::Domain(error) => bundle_error_copy(error)",
+      "BundleCommandError::Domain(error) => error.to_string()",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /bundles native adapter: forbidden BundleCommandError::Domain\(error\) => error\.to_string\(\)/,
+  );
+});
+
+test("Relation native receipt errors cannot expose raw storage detail", () => {
+  const relative =
+    "crates/modules/rustok-product-relations/admin/src/transport/native_server_adapter.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "ProductRelationCommandError::Receipt(error) => relation_receipt_error_copy(error)",
+      "ProductRelationCommandError::Receipt(error) => error.message.clone()",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /relations native adapter: forbidden error\.message\.clone\(\)/,
+  );
+});
+
+test("Bundle native receipt errors cannot expose raw storage detail", () => {
+  const relative =
+    "crates/modules/rustok-product-bundles/admin/src/transport/native_server_adapter.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "BundleCommandError::Receipt(error) => bundle_receipt_error_copy(error)",
+      "BundleCommandError::Receipt(error) => error.message.clone()",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /bundles native adapter: forbidden error\.message\.clone\(\)/,
+  );
+});
+
+test("a GraphQL adapter cannot coerce an unknown relation type to RELATED", () => {
+  const relative =
+    "crates/modules/rustok-product-relations/admin/src/transport/graphql_adapter.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "RelationType::Custom(_) => {",
+      '_ => Ok("RELATED"),',
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /relations remote graphql adapter type mapping: missing RelationType::Custom\(_\) => \{/,
+  );
+});
+
+test("GraphQL relation enum ingress keeps its total domain conversion", () => {
+  const relative = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "relation_type: input.relation_type.into(),",
+      "relation_type: input.relation_type.try_into().unwrap(),",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /add_product_relation GraphQL relation type ingress: missing relation_type: input\.relation_type\.into\(\),/,
+  );
+});
+
+test("product relation GraphQL reads require product read permission", () => {
+  const relative = "crates/modules/rustok-commerce/src/graphql/product_catalog.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "        require_commerce_permission(\n            ctx,\n            &[Permission::PRODUCTS_READ],\n            \"Permission denied: products:read required\",\n        )?;\n",
+      "",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product_relations GraphQL query authorization: missing require_commerce_permission\(/,
+  );
+});
+
+
+test("bundle GraphQL reads cannot lose their product-read authorization", () => {
+  const relative = "crates/modules/rustok-commerce/src/graphql/product_catalog.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "        require_product_bundle_read(ctx)?;\n",
+      "",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /bundle GraphQL query authorization: missing require_product_bundle_read\(ctx\)\?;/,
+  );
+});
+
+
+test("a Next bundle add must preserve omitted position for append allocation", () => {
+  const relative = "apps/next-admin/packages/rustok-product/src/api/bundles.ts";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "...(input.position === undefined ? {} : { position: input.position })",
+      "position: input.position ?? 0",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /next bundles client: forbidden position: input\.position \?\? 0/);
+});
+
+test("Bundle receipt serialization cannot collapse owner keep and clear", () => {
+  const relative = "crates/modules/rustok-product-bundles/src/dto.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      `#[serde(
+        default,
+        deserialize_with = "deserialize_optional_optional",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub bundle_product_id: Option<Option<Uuid>>`,
+      "pub bundle_product_id: Option<Option<Uuid>>",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /bundles update patch DTO: missing #\[serde\(/);
+});
+
+test("Bundle GraphQL description patches cannot silently disappear", () => {
+  const relative = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "fn bundle_translation_updates(",
+      "fn removed_bundle_translation_updates(",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /Bundle GraphQL update patch mapping: missing fn bundle_translation_updates\(/);
+});
+
+test("relation delete cannot silently accept a zero-row mutation", () => {
+  const relative = "crates/modules/rustok-product-relations/src/services/relation_service.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "if delete.rows_affected != 1",
+      "if false",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /relation mutation lock and delete result: missing if delete\.rows_affected != 1/);
+});
+
+test("Bundle locale normalization must be atomic on SQLite", () => {
+  const relative =
+    "crates/modules/rustok-product-bundles/src/migrations/m20261017_000002_normalize_bundle_translation_locales.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(relative, "Some(true)", "Some(false)"),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /bundles locale migration transaction: missing Some\(true\)/);
+});
+
+test("Bundle tenant integrity cannot be left only in a rewritten historical migration", () => {
+  const relative =
+    "crates/modules/rustok-product-bundles/src/migrations/m20261017_000004_enforce_bundle_tenant_integrity.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "CREATE TABLE product_bundle_items_tenant_integrity",
+      "CREATE TABLE product_bundle_items_without_tenant_integrity",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /bundles tenant-integrity upgrade migration: missing CREATE TABLE product_bundle_items_tenant_integrity/,
+  );
+});
+
+test("Bundle items keep Variant-to-selected-Product foreign-key integrity", () => {
+  const relative =
+    "crates/modules/rustok-product-bundles/src/migrations/m20261017_000004_enforce_bundle_tenant_integrity.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "variant.product_id IS DISTINCT FROM item.product_id",
+      "variant.product_id = item.product_id",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /bundles Variant-to-Product integrity migration: missing variant\.product_id IS DISTINCT FROM item\.product_id/,
+  );
+});
+
+test("Bundle Variant integrity retains its Product-owned parent key", () => {
+  const relative =
+    "crates/modules/rustok-product/src/migrations/m20261017_000036_add_sqlite_tenant_identity_keys.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "UNIQUE (tenant_id, product_id, id)",
+      "UNIQUE (tenant_id, id)",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /Product Variant composite parent key: missing UNIQUE \(tenant_id, product_id, id\)/,
+  );
+});
+
+test("Product SQLite identity keys must be upgraded and downgraded atomically", () => {
+  const relative =
+    "crates/modules/rustok-product/src/migrations/m20261017_000036_add_sqlite_tenant_identity_keys.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(relative, "Some(true)", "Some(false)"),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /Product SQLite identity-key migration transaction: missing Some\(true\)/,
+  );
+});
+
+test("Relation tenant-key cleanup cannot drop a referenced key without rebuilding both FKs", () => {
+  const relative =
+    "crates/modules/rustok-product-relations/src/migrations/m20261017_000005_remove_redundant_product_tenant_key.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "DROP CONSTRAINT IF EXISTS fk_product_relations_related_product",
+      "-- related-product foreign key not rebuilt",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /relations tenant-key cleanup migration: missing DROP CONSTRAINT IF EXISTS fk_product_relations_related_product/,
+  );
+});
+
+test("a Product translation target cannot ignore a failed terminal receipt finalization", () => {
+  const relative = "crates/modules/rustok-product/src/translation_target.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "self.fail_receipt(lease, error).await?;",
+      "self.fail_receipt(lease, error).await;",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /Product translation-target receipt finalizer propagation: missing self\.fail_receipt\(lease, error\)\.await\?;/,
+  );
+});
+
+test("a Product schema write cannot return an undurable terminal failure", () => {
+  const relative = "crates/modules/rustok-product/src/catalog_schema_write_port.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "return Err(schema_receipt_error(context, operation, receipt_error));",
+      "return Err(port_error);"
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /Product schema receipt finalizer propagation: missing return Err\(schema_receipt_error\(context, operation, receipt_error\)\);/,
+  );
 });

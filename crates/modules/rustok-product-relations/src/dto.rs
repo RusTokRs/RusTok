@@ -17,6 +17,9 @@ pub enum RelationType {
     Custom(String),
 }
 
+/// Maximum character width accepted by the `product_relations.relation_type` column.
+pub const MAX_RELATION_TYPE_LEN: usize = 32;
+
 impl RelationType {
     pub fn as_str(&self) -> &str {
         match self {
@@ -28,6 +31,36 @@ impl RelationType {
             Self::Custom(s) => s.as_str(),
         }
     }
+
+    /// Returns the canonical, database-safe key for this relation type.
+    ///
+    /// Transport adapters normally construct this value through `FromStr`, but the DTO is public
+    /// and callers can construct `RelationType::Custom` directly. Keeping the bound here makes
+    /// every write and type-filter path reject a malformed key before PostgreSQL can turn it into
+    /// a storage failure.
+    pub fn storage_key(&self) -> Result<String, ProductRelationError> {
+        normalize_relation_type(self.as_str())
+            .map(|relation_type| relation_type.as_str().to_owned())
+    }
+}
+
+fn normalize_relation_type(value: &str) -> Result<RelationType, ProductRelationError> {
+    let normalized = value.trim().to_lowercase();
+    if normalized.is_empty()
+        || normalized.chars().count() > MAX_RELATION_TYPE_LEN
+        || normalized.contains('\0')
+    {
+        return Err(ProductRelationError::InvalidRelationType(value.to_owned()));
+    }
+
+    Ok(match normalized.as_str() {
+        "cross_sell" | "cross-sell" | "crosssell" => RelationType::CrossSell,
+        "up_sell" | "up-sell" | "upsell" => RelationType::UpSell,
+        "related" => RelationType::Related,
+        "accessory" | "accessories" => RelationType::Accessory,
+        "alternative" | "alternatives" => RelationType::Alternative,
+        other => RelationType::Custom(other.to_owned()),
+    })
 }
 
 impl fmt::Display for RelationType {
@@ -40,15 +73,7 @@ impl FromStr for RelationType {
     type Err = ProductRelationError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.trim().to_lowercase().as_str() {
-            "cross_sell" | "cross-sell" | "crosssell" => Ok(Self::CrossSell),
-            "up_sell" | "up-sell" | "upsell" => Ok(Self::UpSell),
-            "related" => Ok(Self::Related),
-            "accessory" | "accessories" => Ok(Self::Accessory),
-            "alternative" | "alternatives" => Ok(Self::Alternative),
-            other if !other.is_empty() => Ok(Self::Custom(other.to_owned())),
-            _ => Err(ProductRelationError::InvalidRelationType(s.to_owned())),
-        }
+        normalize_relation_type(s)
     }
 }
 
@@ -85,4 +110,43 @@ pub struct ReorderProductRelationsInput {
     pub product_id: Uuid,
     pub relation_type: RelationType,
     pub ordered_relation_ids: Vec<Uuid>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::{MAX_RELATION_TYPE_LEN, RelationType};
+    use crate::error::ProductRelationError;
+
+    #[test]
+    fn relation_type_normalizes_standard_aliases_and_custom_keys() {
+        assert_eq!(
+            RelationType::from_str(" Cross-Sell ").expect("standard alias"),
+            RelationType::CrossSell
+        );
+        assert_eq!(
+            RelationType::from_str("Seasonal").expect("custom type"),
+            RelationType::Custom("seasonal".to_owned())
+        );
+    }
+
+    #[test]
+    fn relation_type_rejects_database_unsafe_custom_keys() {
+        let oversized = "x".repeat(MAX_RELATION_TYPE_LEN + 1);
+        assert!(matches!(
+            RelationType::from_str(&oversized),
+            Err(ProductRelationError::InvalidRelationType(_))
+        ));
+        assert!(matches!(
+            RelationType::from_str("\0"),
+            Err(ProductRelationError::InvalidRelationType(_))
+        ));
+
+        // Public DTO construction must not bypass the storage bound.
+        assert!(matches!(
+            RelationType::Custom(oversized).storage_key(),
+            Err(ProductRelationError::InvalidRelationType(_))
+        ));
+    }
 }

@@ -87,6 +87,36 @@ pub(crate) fn product_catalog_port_error(
     })
 }
 
+fn require_product_bundle_read(ctx: &Context<'_>) -> Result<()> {
+    require_commerce_permission(
+        ctx,
+        &[Permission::PRODUCTS_READ],
+        "Permission denied: products:read required",
+    )?;
+    Ok(())
+}
+
+fn bundle_query_error(
+    operation: &'static str,
+    error: rustok_product_bundles::BundleError,
+) -> async_graphql::Error {
+    tracing::error!(%error, operation, "Product Bundle GraphQL query failed");
+    let (message, code, retryable) = match error {
+        rustok_product_bundles::BundleError::InvalidInput(_) => {
+            ("Invalid bundle query", "BUNDLE_INVALID_QUERY", false)
+        }
+        _ => (
+            "Bundle data is temporarily unavailable",
+            "BUNDLE_TEMPORARILY_UNAVAILABLE",
+            true,
+        ),
+    };
+    async_graphql::Error::new(message).extend_with(|_, extensions| {
+        extensions.set("code", code);
+        extensions.set("retryable", retryable);
+    })
+}
+
 #[derive(InputObject, Default)]
 pub struct StorefrontProductCatalogFilter {
     pub search: Option<String>,
@@ -623,6 +653,11 @@ impl ProductCatalogQuery {
         relation_type: Option<GqlRelationType>,
     ) -> Result<Vec<GqlProductRelation>> {
         require_module_enabled(ctx, "product_relations").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_READ],
+            "Permission denied: products:read required",
+        )?;
         let tenant = ctx.data::<TenantContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
         let service = rustok_product_relations::services::ProductRelationService::new(db.clone());
@@ -630,8 +665,18 @@ impl ProductCatalogQuery {
         let relations = service
             .list_relations(tenant.id, product_id, domain_type)
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
-        Ok(relations.into_iter().map(Into::into).collect())
+            .map_err(|error| {
+                tracing::error!(%error, "Product relation GraphQL query failed");
+                async_graphql::Error::new("Product relations are temporarily unavailable")
+            })?;
+        relations
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|error| {
+                tracing::error!(%error, "Product relation cannot be represented by GraphQL");
+                async_graphql::Error::new("Product relation is unavailable through GraphQL")
+            })
     }
 
     async fn brand(
@@ -731,15 +776,16 @@ impl ProductCatalogQuery {
         locale: Option<String>,
     ) -> Result<Option<super::GqlBundle>> {
         require_module_enabled(ctx, "product_bundles").await?;
+        require_product_bundle_read(ctx)?;
         let tenant = ctx.data::<TenantContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
         let service = rustok_product_bundles::BundleService::new(db.clone());
-        use rustok_product_bundles::ports::BundlePort;
-        let bundle = service
-            .get_bundle(tenant.id, id, locale.as_deref())
-            .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
-        Ok(Some(bundle.into()))
+        use rustok_product_bundles::{BundleError, ports::BundlePort};
+        match service.get_bundle(tenant.id, id, locale.as_deref()).await {
+            Ok(bundle) => Ok(Some(bundle.into())),
+            Err(BundleError::NotFound(_)) => Ok(None),
+            Err(error) => Err(bundle_query_error("bundle", error)),
+        }
     }
 
     async fn bundle_by_slug(
@@ -749,15 +795,19 @@ impl ProductCatalogQuery {
         locale: Option<String>,
     ) -> Result<Option<super::GqlBundle>> {
         require_module_enabled(ctx, "product_bundles").await?;
+        require_product_bundle_read(ctx)?;
         let tenant = ctx.data::<TenantContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
         let service = rustok_product_bundles::BundleService::new(db.clone());
-        use rustok_product_bundles::ports::BundlePort;
-        let bundle = service
+        use rustok_product_bundles::{BundleError, ports::BundlePort};
+        match service
             .get_bundle_by_slug(tenant.id, &slug, locale.as_deref())
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
-        Ok(Some(bundle.into()))
+        {
+            Ok(bundle) => Ok(Some(bundle.into())),
+            Err(BundleError::SlugNotFound(_) | BundleError::NotFound(_)) => Ok(None),
+            Err(error) => Err(bundle_query_error("bundle_by_slug", error)),
+        }
     }
 
     async fn bundles(
@@ -769,6 +819,7 @@ impl ProductCatalogQuery {
         locale: Option<String>,
     ) -> Result<super::GqlBundleListResponse> {
         require_module_enabled(ctx, "product_bundles").await?;
+        require_product_bundle_read(ctx)?;
         let tenant = ctx.data::<TenantContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
         let service = rustok_product_bundles::BundleService::new(db.clone());
@@ -780,13 +831,14 @@ impl ProductCatalogQuery {
                     search: filter.as_ref().and_then(|f| f.search.clone()),
                     status: filter.as_ref().and_then(|f| f.status.clone()),
                     bundle_type: filter.as_ref().and_then(|f| f.bundle_type.clone()),
+                    owner_product_id: filter.as_ref().and_then(|f| f.product_id),
                 },
                 page.unwrap_or(1),
                 per_page.unwrap_or(20),
                 locale.as_deref(),
             )
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            .map_err(|error| bundle_query_error("bundles", error))?;
 
         Ok(super::GqlBundleListResponse {
             items: res.items.into_iter().map(Into::into).collect(),
@@ -796,6 +848,8 @@ impl ProductCatalogQuery {
         })
     }
 
+    /// Returns the zero-or-one Bundle owned by the Product. A Product appearing as a component in
+    /// another Bundle does not appear here.
     async fn product_bundles(
         &self,
         ctx: &Context<'_>,
@@ -803,14 +857,17 @@ impl ProductCatalogQuery {
         locale: Option<String>,
     ) -> Result<Vec<super::GqlBundle>> {
         require_module_enabled(ctx, "product_bundles").await?;
+        require_product_bundle_read(ctx)?;
         let tenant = ctx.data::<TenantContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
         let service = rustok_product_bundles::BundleService::new(db.clone());
         use rustok_product_bundles::ports::BundlePort;
-        let bundles = service
-            .get_bundles_for_product(tenant.id, product_id, locale.as_deref())
+        let owned_bundle = service
+            .get_owned_bundle_for_product(tenant.id, product_id, locale.as_deref())
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
-        Ok(bundles.into_iter().map(Into::into).collect())
+            .map_err(|error| bundle_query_error("product_bundles", error))?;
+        // This GraphQL field is list-shaped, but its canonical value is the Product-owned bundle
+        // (zero or one), never reverse component usage.
+        Ok(owned_bundle.into_iter().map(Into::into).collect())
     }
 }
