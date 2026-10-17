@@ -54,7 +54,7 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)
-*Core platform abstractions, money/currency primitives, pagination, tenant context, transactional outbox traits, runtime interfaces, and telemetry.* (8/10 completed)
+*Core platform abstractions, money/currency primitives, pagination, tenant context, transactional outbox traits, runtime interfaces, and telemetry.* (10/10 completed)
 
 - [x] **[`crates/libs/rustok-core`](../../crates/libs/rustok-core)** (65 files, 17,627 LOC) — Canonical platform kernel primitives: money/currency math, pagination structures, canonical tenant context, and base error traits. Audited via CodeGraph; added non-blocking async config loading (`load_async`), safe file stream reading in `ConfigLoader`, formatted static regex invariants in `tenant_validation` and `field_schema`. 279/279 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/libs/rustok-api`](../../crates/libs/rustok-api)** (35 files, 7,311 LOC) — Public HTTP/gRPC transport contracts, standard REST DTOs, API error body models, and pagination query schemas. Audited; fixed `PaginationInput` default limit alignment with GraphQL schema, corrected OAuth scope permission restriction to avoid expanding manage permissions when scope allows manage directly, ensured `storefront:*` scope only grants non-Manage actions. 128/128 tests passed, 0 clippy warnings, gate passed.
@@ -64,8 +64,8 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[`crates/libs/rustok-telemetry`](../../crates/libs/rustok-telemetry)** (15 files, 3,340 LOC) — Distributed tracing, OpenTelemetry integration, structured JSON logging, metrics collection, and request correlation IDs. Audited via CodeGraph; verified bounded label cardinality, saturating counter arithmetic, and OpenTelemetry OTLP tracing configuration. 47/47 active tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/libs/rustok-fba`](../../crates/libs/rustok-fba)** (1 files, 82 LOC) — Fluid Backend Architecture (FBA) interfaces, capability profiles, provider descriptors, and consumer dependency injection. Audited via CodeGraph; added comprehensive unit tests covering capability ID roundtrip, snake_case topology/transport profile serialization, and provider/consumer descriptor invariants. 4/4 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/libs/rustok-web`](../../crates/libs/rustok-web)** (2 files, 742 LOC) — Shared web utilities, HTTP header parsing, CORS policies, and cookie handling primitives. Audited via CodeGraph; verified CSP nonce generation, secure port error mapping to HTTP status codes, browser asset conditional request revalidation, and rollout/rollback retention. 6/6 tests passed, 0 clippy warnings, gate passed.
-- [ ] **[`crates/libs/rustok-content-portability`](../../crates/libs/rustok-content-portability)** (6 files, 617 LOC) — Content export/import formats, archive packing/unpacking, and migration portability interfaces.
-- [ ] **[`crates/libs/rustok-content-portability-api`](../../crates/libs/rustok-content-portability-api)** (6 files, 920 LOC) — Public API contracts, DTOs, and traits for content portability.
+- [x] **[`crates/libs/rustok-content-portability`](../../crates/libs/rustok-content-portability)** (6 files, 617 LOC) — Content export/import formats, archive packing/unpacking, and migration portability interfaces. Audited via CodeGraph; verified CSV/JSON streaming serialization, async file I/O bounds, and import/export service traits. 15/15 tests passed, 0 clippy warnings, gate passed.
+- [x] **[`crates/libs/rustok-content-portability-api`](../../crates/libs/rustok-content-portability-api)** (6 files, 920 LOC) — Public API contracts, DTOs, and traits for content portability. Audited via CodeGraph; verified validation contracts, actionable error taxonomy, and progress reporter callbacks. 6/6 tests passed, 0 clippy warnings, gate passed.
 
 ---
 
@@ -415,8 +415,8 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [storefront](../../apps/storefront) | `apps` | 34 | 5,987 | None |  |
 | [ ] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 6 | 903 | None |  |
 | [x] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,311 | 2026-10-17 00:43 | Audited and cleaned. |
-| [ ] | [rustok-content-portability](../../crates/libs/rustok-content-portability) | `libs` | 6 | 617 | None |  |
-| [ ] | [rustok-content-portability-api](../../crates/libs/rustok-content-portability-api) | `libs` | 6 | 920 | None |  |
+| [x] | [rustok-content-portability](../../crates/libs/rustok-content-portability) | `libs` | 6 | 617 | 2026-10-17 01:57 | Audited and cleaned. |
+| [x] | [rustok-content-portability-api](../../crates/libs/rustok-content-portability-api) | `libs` | 6 | 920 | 2026-10-17 01:58 | Audited and cleaned. |
 | [x] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 65 | 17,689 | 2026-10-17 00:12 | Audited via CodeGraph: added non-blocking async config loader, safe file reading, formatted regex invariants. |
 | [x] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 34 | 12,081 | 2026-10-17 00:50 | Audited and cleaned. |
 | [x] | [rustok-fba](../../crates/libs/rustok-fba) | `libs` | 1 | 152 | 2026-10-17 01:23 | Audited and cleaned. |
