@@ -39,14 +39,14 @@ mutation ProductAdminAddRelation($idempotencyKey: String!, $input: AddProductRel
 "#;
 
 const REMOVE_RELATION_MUTATION: &str = r#"
-mutation ProductAdminRemoveRelation($id: UUID!) {
-  removeProductRelation(id: $id)
+mutation ProductAdminRemoveRelation($idempotencyKey: String!, $id: UUID!) {
+  removeProductRelation(idempotencyKey: $idempotencyKey, id: $id)
 }
 "#;
 
 const REORDER_RELATIONS_MUTATION: &str = r#"
-mutation ProductAdminReorderRelations($productId: UUID!, $relationType: GqlRelationType!, $orderedRelationIds: [UUID!]!) {
-  reorderProductRelations(productId: $productId, relationType: $relationType, orderedRelationIds: $orderedRelationIds) {
+mutation ProductAdminReorderRelations($idempotencyKey: String!, $productId: UUID!, $relationType: GqlRelationType!, $orderedRelationIds: [UUID!]!) {
+  reorderProductRelations(idempotencyKey: $idempotencyKey, productId: $productId, relationType: $relationType, orderedRelationIds: $orderedRelationIds) {
     id
     productId
     relatedProductId
@@ -163,6 +163,8 @@ pub async fn execute_command(
                 relation_type: String,
                 #[serde(skip_serializing_if = "Option::is_none")]
                 position: Option<i32>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                metadata: Option<serde_json::Value>,
             }
             #[derive(Serialize)]
             struct Vars {
@@ -178,6 +180,7 @@ pub async fn execute_command(
                     related_product_id: draft.related_product_id,
                     relation_type: relation_type_to_gql(&draft.relation_type).to_string(),
                     position: draft.position,
+                    metadata: draft.metadata,
                 },
             };
 
@@ -192,10 +195,20 @@ pub async fn execute_command(
         ProductRelationsAdminCommand::Remove { id } => {
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 id: String,
             }
-            let data: RemoveResponse =
-                request(REMOVE_RELATION_MUTATION, Vars { id }, token, tenant_slug).await?;
+            let data: RemoveResponse = request(
+                REMOVE_RELATION_MUTATION,
+                Vars {
+                    idempotency_key,
+                    id,
+                },
+                token,
+                tenant_slug,
+            )
+            .await?;
             Ok(ProductRelationsAdminCommandResult {
                 item: None,
                 items: vec![],
@@ -209,6 +222,8 @@ pub async fn execute_command(
         } => {
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 #[serde(rename = "productId")]
                 product_id: String,
                 #[serde(rename = "relationType")]
@@ -218,6 +233,7 @@ pub async fn execute_command(
             }
 
             let vars = Vars {
+                idempotency_key,
                 product_id,
                 relation_type: relation_type_to_gql(&relation_type).to_string(),
                 ordered_relation_ids: ordered_ids,

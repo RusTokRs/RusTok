@@ -135,9 +135,15 @@ is the only canonical primary-category source.
 
 `product_images.media_id` stores a Media-owned asset UUID without a direct
 foreign key to Media storage and is non-null in the Product target schema.
-Product validates media references through the
-public Media owner contract, so Media can evolve its own persistence schema
-without a product migration-order dependency.
+When the host composes the Media validation decorator, Product performs a
+pre-write read-side admission through the public Media owner contract, so Media
+can evolve its persistence schema without a Product migration-order dependency.
+That admission is **not** a durable Media retention hold: the current Product
+runtime does not retain a reference before image commit or release one after
+image/Product removal. The proposed retention cutover and its required
+Product-owned image identity, Media write-port composition, and reconciliation
+semantics are recorded in
+[`2026-10-17-product-image-media-reference-retention`](../../../../DECISIONS/2026-10-17-product-image-media-reference-retention.md).
 
 The target-schema migration removes unused compatibility fields from product,
 translation, option, image, and variant storage and aligns

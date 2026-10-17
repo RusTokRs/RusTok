@@ -1,10 +1,13 @@
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_product::entities::{product, product_variant};
+use sea_orm::prelude::Decimal;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
-    Statement, TransactionTrait,
+    DatabaseTransaction, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    Set, Statement, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -114,6 +117,135 @@ async fn validate_bundle_item_refs_in_tx(
     Ok(())
 }
 
+fn normalize_choice(value: &str, field: &'static str, allowed: &[&str]) -> BundleResult<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if allowed.contains(&normalized.as_str()) {
+        Ok(normalized)
+    } else {
+        Err(BundleError::InvalidInput(format!(
+            "Bundle {field} must be one of: {}",
+            allowed.join(", ")
+        )))
+    }
+}
+
+fn normalize_bundle_type(value: Option<String>) -> BundleResult<String> {
+    normalize_choice(
+        value.as_deref().unwrap_or("fixed"),
+        "type",
+        &["fixed", "flexible"],
+    )
+}
+
+fn normalize_bundle_status(value: Option<String>) -> BundleResult<String> {
+    normalize_choice(
+        value.as_deref().unwrap_or("active"),
+        "status",
+        &["draft", "active", "archived"],
+    )
+}
+
+fn normalize_discount(
+    discount_type: Option<String>,
+    discount_value: Option<Decimal>,
+) -> BundleResult<(String, Decimal)> {
+    let discount_type = normalize_choice(
+        discount_type.as_deref().unwrap_or("none"),
+        "discount type",
+        &["none", "percentage", "fixed_amount"],
+    )?;
+    let discount_value = discount_value.unwrap_or_default();
+
+    if discount_value < Decimal::ZERO {
+        return Err(BundleError::InvalidInput(
+            "Bundle discount value cannot be negative".to_owned(),
+        ));
+    }
+    if discount_type == "none" && !discount_value.is_zero() {
+        return Err(BundleError::InvalidInput(
+            "Bundle discount value must be zero when discount type is none".to_owned(),
+        ));
+    }
+    if discount_type == "percentage" && discount_value > Decimal::new(100, 0) {
+        return Err(BundleError::InvalidInput(
+            "Bundle percentage discount cannot exceed 100".to_owned(),
+        ));
+    }
+
+    Ok((discount_type, discount_value))
+}
+
+fn normalize_metadata(metadata: Option<serde_json::Value>) -> BundleResult<serde_json::Value> {
+    let metadata = metadata.unwrap_or_else(|| serde_json::json!({}));
+    if !metadata.is_object() {
+        return Err(BundleError::InvalidInput(
+            "Bundle metadata must be a JSON object".to_owned(),
+        ));
+    }
+    Ok(metadata)
+}
+
+fn validate_bundle_item_input(item: &BundleItemInput) -> BundleResult<()> {
+    if item.quantity < 1 {
+        return Err(BundleError::InvalidInput(
+            "Bundle item quantity must be at least 1".to_owned(),
+        ));
+    }
+    if item.position.is_some_and(|position| position < 0) {
+        return Err(BundleError::InvalidInput(
+            "Bundle item position cannot be negative".to_owned(),
+        ));
+    }
+    if item
+        .discount_rate
+        .is_some_and(|rate| rate < Decimal::ZERO || rate > Decimal::new(1, 0))
+    {
+        return Err(BundleError::InvalidInput(
+            "Bundle item discount rate must be between 0 and 1".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// Converts a database-enforced uniqueness race into one stable domain conflict.
+///
+/// Preflight reads make ordinary duplicate requests actionable, but they cannot replace the
+/// database invariant when independently admitted commands commit concurrently. Do not inspect
+/// backend-specific constraint names here: all unique violations at this write boundary mean the
+/// command lost a concurrent claim and must not leak as a storage outage.
+fn map_unique_constraint_conflict(error: DbErr) -> BundleError {
+    if matches!(
+        error.sql_err(),
+        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+    ) {
+        BundleError::ConcurrentWriteConflict
+    } else {
+        BundleError::Database(error)
+    }
+}
+
+async fn ensure_owner_product_is_available_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    bundle_product_id: Option<Uuid>,
+    excluding_bundle_id: Option<Uuid>,
+) -> BundleResult<()> {
+    let Some(product_id) = bundle_product_id else {
+        return Ok(());
+    };
+
+    let mut query = Bundle::find()
+        .filter(BundleColumn::TenantId.eq(tenant_id))
+        .filter(BundleColumn::BundleProductId.eq(product_id));
+    if let Some(excluding_bundle_id) = excluding_bundle_id {
+        query = query.filter(BundleColumn::Id.ne(excluding_bundle_id));
+    }
+    if query.one(txn).await?.is_some() {
+        return Err(BundleError::OwnerProductAlreadyHasBundle(product_id));
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct BundleService {
     db: DatabaseConnection,
@@ -207,52 +339,76 @@ pub(crate) async fn create_bundle_in_tx(
     tenant_id: Uuid,
     input: CreateBundleInput,
 ) -> BundleResult<BundleDto> {
-    let slug = input.slug.trim().to_lowercase();
+    let CreateBundleInput {
+        bundle_product_id,
+        slug,
+        bundle_type,
+        status,
+        discount_type,
+        discount_value,
+        metadata,
+        translations,
+        items,
+    } = input;
+
+    let slug = slug.trim().to_ascii_lowercase();
     if slug.is_empty() {
-        return Err(BundleError::InvalidInput("Slug cannot be empty".into()));
+        return Err(BundleError::InvalidInput(
+            "Bundle slug cannot be empty".to_owned(),
+        ));
     }
+    let bundle_type = normalize_bundle_type(bundle_type)?;
+    let status = normalize_bundle_status(status)?;
+    let (discount_type, discount_value) = normalize_discount(discount_type, discount_value)?;
+    let metadata = normalize_metadata(metadata)?;
 
     let existing = Bundle::find()
         .filter(BundleColumn::TenantId.eq(tenant_id))
         .filter(BundleColumn::Slug.eq(&slug))
         .one(txn)
         .await?;
-
     if existing.is_some() {
         return Err(BundleError::SlugAlreadyExists(slug));
     }
 
-    validate_bundle_product_ref_in_tx(txn, tenant_id, input.bundle_product_id).await?;
-    for item in &input.items {
-        if item.quantity < 1 {
+    validate_bundle_product_ref_in_tx(txn, tenant_id, bundle_product_id).await?;
+    ensure_owner_product_is_available_in_tx(txn, tenant_id, bundle_product_id, None).await?;
+    let mut positions = HashSet::with_capacity(items.len());
+    for (index, item) in items.iter().enumerate() {
+        validate_bundle_item_input(item)?;
+        validate_bundle_item_refs_in_tx(txn, tenant_id, item.product_id, item.variant_id).await?;
+        let default_position = i32::try_from(index)
+            .map_err(|_| BundleError::InvalidInput("Bundle contains too many items".to_owned()))?;
+        let position = item.position.unwrap_or(default_position);
+        if !positions.insert(position) {
             return Err(BundleError::InvalidInput(
-                "Item quantity must be at least 1".into(),
+                "Bundle item positions must be unique".to_owned(),
             ));
         }
-        validate_bundle_item_refs_in_tx(txn, tenant_id, item.product_id, item.variant_id).await?;
     }
 
     let bundle_id = Uuid::new_v4();
     let now = Utc::now();
-
     let bundle_active = BundleActiveModel {
         id: Set(bundle_id),
         tenant_id: Set(tenant_id),
-        bundle_product_id: Set(input.bundle_product_id),
+        bundle_product_id: Set(bundle_product_id),
         slug: Set(slug),
-        bundle_type: Set(input.bundle_type.unwrap_or_else(|| "fixed".into())),
-        status: Set(input.status.unwrap_or_else(|| "active".into())),
-        discount_type: Set(input.discount_type.unwrap_or_else(|| "none".into())),
-        discount_value: Set(input.discount_value.unwrap_or_default()),
-        metadata: Set(input.metadata.unwrap_or_else(|| serde_json::json!({}))),
+        bundle_type: Set(bundle_type),
+        status: Set(status),
+        discount_type: Set(discount_type),
+        discount_value: Set(discount_value),
+        metadata: Set(metadata),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
     };
+    let inserted_bundle = bundle_active
+        .insert(txn)
+        .await
+        .map_err(map_unique_constraint_conflict)?;
 
-    let inserted_bundle = bundle_active.insert(txn).await?;
-
-    let mut inserted_translations = Vec::new();
-    for trans_input in input.translations {
+    let mut inserted_translations = Vec::with_capacity(translations.len());
+    for trans_input in translations {
         let trans_active = BundleTranslationActiveModel {
             id: Set(Uuid::new_v4()),
             bundle_id: Set(bundle_id),
@@ -262,23 +418,36 @@ pub(crate) async fn create_bundle_in_tx(
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         };
-        inserted_translations.push(trans_active.insert(txn).await?);
+        inserted_translations.push(
+            trans_active
+                .insert(txn)
+                .await
+                .map_err(map_unique_constraint_conflict)?,
+        );
     }
 
-    let mut inserted_items = Vec::new();
-    for (idx, item_input) in input.items.into_iter().enumerate() {
+    let mut inserted_items = Vec::with_capacity(items.len());
+    for (index, item_input) in items.into_iter().enumerate() {
+        let default_position = i32::try_from(index)
+            .map_err(|_| BundleError::InvalidInput("Bundle contains too many items".to_owned()))?;
         let item_active = BundleItemActiveModel {
             id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
             bundle_id: Set(bundle_id),
             product_id: Set(item_input.product_id),
             variant_id: Set(item_input.variant_id),
             quantity: Set(item_input.quantity),
             is_optional: Set(item_input.is_optional.unwrap_or(false)),
             discount_rate: Set(item_input.discount_rate),
-            position: Set(item_input.position.unwrap_or(idx as i32)),
+            position: Set(item_input.position.unwrap_or(default_position)),
             created_at: Set(now.into()),
         };
-        inserted_items.push(item_active.insert(txn).await?);
+        inserted_items.push(
+            item_active
+                .insert(txn)
+                .await
+                .map_err(map_unique_constraint_conflict)?,
+        );
     }
 
     Ok(BundleService::assemble_bundle_dto(
@@ -297,31 +466,38 @@ pub(crate) async fn add_bundle_item_in_tx(
     item: BundleItemInput,
 ) -> BundleResult<BundleItemDto> {
     let _bundle = lock_bundle_for_update(txn, tenant_id, bundle_id).await?;
+    validate_bundle_item_input(&item)?;
+    validate_bundle_item_refs_in_tx(txn, tenant_id, item.product_id, item.variant_id).await?;
 
-    if item.quantity < 1 {
+    let position = match item.position {
+        Some(position) => position,
+        None => {
+            let count = BundleItem::find()
+                .filter(BundleItemColumn::TenantId.eq(tenant_id))
+                .filter(BundleItemColumn::BundleId.eq(bundle_id))
+                .count(txn)
+                .await?;
+            i32::try_from(count).map_err(|_| {
+                BundleError::InvalidInput("Bundle contains too many items".to_owned())
+            })?
+        }
+    };
+    let existing_at_position = BundleItem::find()
+        .filter(BundleItemColumn::TenantId.eq(tenant_id))
+        .filter(BundleItemColumn::BundleId.eq(bundle_id))
+        .filter(BundleItemColumn::Position.eq(position))
+        .one(txn)
+        .await?;
+    if existing_at_position.is_some() {
         return Err(BundleError::InvalidInput(
-            "Item quantity must be at least 1".into(),
+            "Bundle item position is already occupied".to_owned(),
         ));
     }
 
     let now = Utc::now();
-    let item_id = Uuid::new_v4();
-
-    let position = match item.position {
-        Some(p) => p,
-        None => {
-            let count = BundleItem::find()
-                .filter(BundleItemColumn::BundleId.eq(bundle_id))
-                .count(txn)
-                .await?;
-            count as i32
-        }
-    };
-
-    validate_bundle_item_refs_in_tx(txn, tenant_id, item.product_id, item.variant_id).await?;
-
-    let active = BundleItemActiveModel {
-        id: Set(item_id),
+    let inserted = BundleItemActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
         bundle_id: Set(bundle_id),
         product_id: Set(item.product_id),
         variant_id: Set(item.variant_id),
@@ -330,9 +506,10 @@ pub(crate) async fn add_bundle_item_in_tx(
         discount_rate: Set(item.discount_rate),
         position: Set(position),
         created_at: Set(now.into()),
-    };
-
-    let inserted = active.insert(txn).await?;
+    }
+    .insert(txn)
+    .await
+    .map_err(map_unique_constraint_conflict)?;
 
     Ok(BundleItemDto {
         id: inserted.id,
@@ -345,6 +522,165 @@ pub(crate) async fn add_bundle_item_in_tx(
         position: inserted.position,
         created_at: inserted.created_at.into(),
     })
+}
+
+/// Updates one bundle inside the caller transaction.
+pub(crate) async fn update_bundle_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    id: Uuid,
+    input: UpdateBundleInput,
+) -> BundleResult<BundleDto> {
+    let bundle = lock_bundle_for_update(txn, tenant_id, id).await?;
+    let UpdateBundleInput {
+        bundle_product_id,
+        slug,
+        bundle_type,
+        status,
+        discount_type,
+        discount_value,
+        metadata,
+        translations,
+    } = input;
+
+    let mut active: BundleActiveModel = bundle.clone().into();
+    if let Some(slug) = slug {
+        let slug = slug.trim().to_ascii_lowercase();
+        if slug.is_empty() {
+            return Err(BundleError::InvalidInput(
+                "Bundle slug cannot be empty".to_owned(),
+            ));
+        }
+        let existing = Bundle::find()
+            .filter(BundleColumn::TenantId.eq(tenant_id))
+            .filter(BundleColumn::Slug.eq(&slug))
+            .filter(BundleColumn::Id.ne(id))
+            .one(txn)
+            .await?;
+        if existing.is_some() {
+            return Err(BundleError::SlugAlreadyExists(slug));
+        }
+        active.slug = Set(slug);
+    }
+
+    if let Some(bundle_product_id) = bundle_product_id {
+        validate_bundle_product_ref_in_tx(txn, tenant_id, bundle_product_id).await?;
+        ensure_owner_product_is_available_in_tx(txn, tenant_id, bundle_product_id, Some(id))
+            .await?;
+        active.bundle_product_id = Set(bundle_product_id);
+    }
+
+    if let Some(bundle_type) = bundle_type {
+        active.bundle_type = Set(normalize_bundle_type(Some(bundle_type))?);
+    }
+    if let Some(status) = status {
+        active.status = Set(normalize_bundle_status(Some(status))?);
+    }
+
+    let next_discount_type = discount_type.or_else(|| Some(bundle.discount_type.clone()));
+    let next_discount_value = discount_value.or(Some(bundle.discount_value.clone()));
+    let (next_discount_type, next_discount_value) =
+        normalize_discount(next_discount_type, next_discount_value)?;
+    active.discount_type = Set(next_discount_type);
+    active.discount_value = Set(next_discount_value);
+
+    if metadata.is_some() {
+        active.metadata = Set(normalize_metadata(metadata)?);
+    }
+    active.updated_at = Set(Utc::now().into());
+    let updated_bundle = active
+        .update(txn)
+        .await
+        .map_err(map_unique_constraint_conflict)?;
+
+    if let Some(translations) = translations {
+        for translation in translations {
+            let existing = BundleTranslation::find()
+                .filter(BundleTranslationColumn::BundleId.eq(id))
+                .filter(BundleTranslationColumn::Locale.eq(&translation.locale))
+                .one(txn)
+                .await?;
+            if let Some(existing) = existing {
+                let mut active: BundleTranslationActiveModel = existing.into();
+                active.name = Set(translation.name);
+                active.description = Set(translation.description);
+                active.updated_at = Set(Utc::now().into());
+                active.update(txn).await?;
+            } else {
+                BundleTranslationActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    bundle_id: Set(id),
+                    locale: Set(translation.locale),
+                    name: Set(translation.name),
+                    description: Set(translation.description),
+                    created_at: Set(Utc::now().into()),
+                    updated_at: Set(Utc::now().into()),
+                }
+                .insert(txn)
+                .await
+                .map_err(map_unique_constraint_conflict)?;
+            }
+        }
+    }
+
+    let translations = BundleTranslation::find()
+        .filter(BundleTranslationColumn::BundleId.eq(id))
+        .all(txn)
+        .await?;
+    let items = BundleItem::find()
+        .filter(BundleItemColumn::TenantId.eq(tenant_id))
+        .filter(BundleItemColumn::BundleId.eq(id))
+        .order_by_asc(BundleItemColumn::Position)
+        .all(txn)
+        .await?;
+
+    Ok(BundleService::assemble_bundle_dto(
+        updated_bundle,
+        translations,
+        items,
+        None,
+    ))
+}
+
+/// Deletes one bundle inside the caller transaction.
+pub(crate) async fn delete_bundle_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    id: Uuid,
+) -> BundleResult<()> {
+    let bundle = lock_bundle_for_update(txn, tenant_id, id).await?;
+    BundleTranslation::delete_many()
+        .filter(BundleTranslationColumn::BundleId.eq(id))
+        .exec(txn)
+        .await?;
+
+    BundleItem::delete_many()
+        .filter(BundleItemColumn::TenantId.eq(tenant_id))
+        .filter(BundleItemColumn::BundleId.eq(id))
+        .exec(txn)
+        .await?;
+
+    Bundle::delete_by_id(bundle.id).exec(txn).await?;
+    Ok(())
+}
+
+/// Removes one bundle item inside the caller transaction.
+pub(crate) async fn remove_bundle_item_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    bundle_id: Uuid,
+    item_id: Uuid,
+) -> BundleResult<()> {
+    let _bundle = lock_bundle_for_update(txn, tenant_id, bundle_id).await?;
+    let item = BundleItem::find_by_id(item_id)
+        .filter(BundleItemColumn::TenantId.eq(tenant_id))
+        .filter(BundleItemColumn::BundleId.eq(bundle_id))
+        .one(txn)
+        .await?
+        .ok_or(BundleError::ItemNotFound(item_id))?;
+
+    BundleItem::delete_by_id(item.id).exec(txn).await?;
+    Ok(())
 }
 
 #[async_trait]
@@ -367,6 +703,7 @@ impl BundlePort for BundleService {
             .await?;
 
         let items = BundleItem::find()
+            .filter(BundleItemColumn::TenantId.eq(tenant_id))
             .filter(BundleItemColumn::BundleId.eq(id))
             .order_by_asc(BundleItemColumn::Position)
             .all(&self.db)
@@ -400,6 +737,7 @@ impl BundlePort for BundleService {
             .await?;
 
         let items = BundleItem::find()
+            .filter(BundleItemColumn::TenantId.eq(tenant_id))
             .filter(BundleItemColumn::BundleId.eq(bundle_id))
             .order_by_asc(BundleItemColumn::Position)
             .all(&self.db)
@@ -441,6 +779,10 @@ impl BundlePort for BundleService {
             query = query.filter(BundleColumn::BundleType.eq(btype));
         }
 
+        if let Some(owner_product_id) = filter.owner_product_id {
+            query = query.filter(BundleColumn::BundleProductId.eq(owner_product_id));
+        }
+
         let paginator = query
             .order_by_desc(BundleColumn::CreatedAt)
             .paginate(&self.db, per_page);
@@ -461,6 +803,7 @@ impl BundlePort for BundleService {
 
         let all_items = if !bundle_ids.is_empty() {
             BundleItem::find()
+                .filter(BundleItemColumn::TenantId.eq(tenant_id))
                 .filter(BundleItemColumn::BundleId.is_in(bundle_ids))
                 .order_by_asc(BundleItemColumn::Position)
                 .all(&self.db)
@@ -512,124 +855,15 @@ impl BundlePort for BundleService {
         input: UpdateBundleInput,
     ) -> BundleResult<BundleDto> {
         let txn = self.db.begin().await?;
-        let bundle = lock_bundle_for_update(&txn, tenant_id, id).await?;
-        let now = Utc::now();
-        let mut active: BundleActiveModel = bundle.into();
-
-        if let Some(slug) = input.slug {
-            let slug_clean = slug.trim().to_lowercase();
-            if slug_clean.is_empty() {
-                return Err(BundleError::InvalidInput("Slug cannot be empty".into()));
-            }
-            let existing = Bundle::find()
-                .filter(BundleColumn::TenantId.eq(tenant_id))
-                .filter(BundleColumn::Slug.eq(&slug_clean))
-                .filter(BundleColumn::Id.ne(id))
-                .one(&txn)
-                .await?;
-
-            if existing.is_some() {
-                return Err(BundleError::SlugAlreadyExists(slug_clean));
-            }
-            active.slug = Set(slug_clean);
-        }
-
-        if let Some(bundle_product_id) = input.bundle_product_id {
-            if let Some(product_id) = bundle_product_id {
-                validate_product_ref_in_tx(&txn, tenant_id, product_id).await?;
-            }
-            active.bundle_product_id = Set(bundle_product_id);
-        }
-
-        if let Some(btype) = input.bundle_type {
-            active.bundle_type = Set(btype);
-        }
-
-        if let Some(status) = input.status {
-            active.status = Set(status);
-        }
-
-        if let Some(dtype) = input.discount_type {
-            active.discount_type = Set(dtype);
-        }
-
-        if let Some(dval) = input.discount_value {
-            active.discount_value = Set(dval);
-        }
-
-        if let Some(metadata) = input.metadata {
-            active.metadata = Set(metadata);
-        }
-
-        active.updated_at = Set(now.into());
-        let updated_bundle = active.update(&txn).await?;
-
-        if let Some(translations) = input.translations {
-            for trans_in in translations {
-                let existing_trans = BundleTranslation::find()
-                    .filter(BundleTranslationColumn::BundleId.eq(id))
-                    .filter(BundleTranslationColumn::Locale.eq(&trans_in.locale))
-                    .one(&txn)
-                    .await?;
-
-                if let Some(existing) = existing_trans {
-                    let mut trans_act: BundleTranslationActiveModel = existing.into();
-                    trans_act.name = Set(trans_in.name);
-                    trans_act.description = Set(trans_in.description);
-                    trans_act.updated_at = Set(now.into());
-                    trans_act.update(&txn).await?;
-                } else {
-                    let new_trans = BundleTranslationActiveModel {
-                        id: Set(Uuid::new_v4()),
-                        bundle_id: Set(id),
-                        locale: Set(trans_in.locale),
-                        name: Set(trans_in.name),
-                        description: Set(trans_in.description),
-                        created_at: Set(now.into()),
-                        updated_at: Set(now.into()),
-                    };
-                    new_trans.insert(&txn).await?;
-                }
-            }
-        }
-
+        let bundle = update_bundle_in_tx(&txn, tenant_id, id, input).await?;
         txn.commit().await?;
-
-        let translations = BundleTranslation::find()
-            .filter(BundleTranslationColumn::BundleId.eq(id))
-            .all(&self.db)
-            .await?;
-
-        let items = BundleItem::find()
-            .filter(BundleItemColumn::BundleId.eq(id))
-            .order_by_asc(BundleItemColumn::Position)
-            .all(&self.db)
-            .await?;
-
-        Ok(Self::assemble_bundle_dto(
-            updated_bundle,
-            translations,
-            items,
-            None,
-        ))
+        Ok(bundle)
     }
 
     async fn delete_bundle(&self, tenant_id: Uuid, id: Uuid) -> BundleResult<()> {
         let txn = self.db.begin().await?;
-        let bundle = lock_bundle_for_update(&txn, tenant_id, id).await?;
-        BundleTranslation::delete_many()
-            .filter(BundleTranslationColumn::BundleId.eq(id))
-            .exec(&txn)
-            .await?;
-
-        BundleItem::delete_many()
-            .filter(BundleItemColumn::BundleId.eq(id))
-            .exec(&txn)
-            .await?;
-
-        Bundle::delete_by_id(bundle.id).exec(&txn).await?;
+        delete_bundle_in_tx(&txn, tenant_id, id).await?;
         txn.commit().await?;
-
         Ok(())
     }
 
@@ -652,72 +886,29 @@ impl BundlePort for BundleService {
         item_id: Uuid,
     ) -> BundleResult<()> {
         let txn = self.db.begin().await?;
-        let _bundle = lock_bundle_for_update(&txn, tenant_id, bundle_id).await?;
-
-        let item = BundleItem::find_by_id(item_id)
-            .filter(BundleItemColumn::BundleId.eq(bundle_id))
-            .one(&txn)
-            .await?
-            .ok_or(BundleError::ItemNotFound(item_id))?;
-
-        BundleItem::delete_by_id(item.id).exec(&txn).await?;
+        remove_bundle_item_in_tx(&txn, tenant_id, bundle_id, item_id).await?;
         txn.commit().await?;
-
         Ok(())
     }
 
-    async fn get_bundles_for_product(
+    async fn get_owned_bundle_for_product(
         &self,
         tenant_id: Uuid,
         product_id: Uuid,
         locale: Option<&str>,
-    ) -> BundleResult<Vec<BundleDto>> {
-        let bundle_items = BundleItem::find()
-            .filter(BundleItemColumn::ProductId.eq(product_id))
-            .all(&self.db)
-            .await?;
-
-        let bundle_ids: Vec<Uuid> = bundle_items.into_iter().map(|bi| bi.bundle_id).collect();
-        if bundle_ids.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let bundles = Bundle::find()
+    ) -> BundleResult<Option<BundleDto>> {
+        let bundle = Bundle::find()
             .filter(BundleColumn::TenantId.eq(tenant_id))
-            .filter(BundleColumn::Id.is_in(bundle_ids))
-            .all(&self.db)
+            .filter(BundleColumn::BundleProductId.eq(product_id))
+            .one(&self.db)
             .await?;
 
-        let ids: Vec<Uuid> = bundles.iter().map(|b| b.id).collect();
-
-        let all_translations = BundleTranslation::find()
-            .filter(BundleTranslationColumn::BundleId.is_in(ids.clone()))
-            .all(&self.db)
-            .await?;
-
-        let all_items = BundleItem::find()
-            .filter(BundleItemColumn::BundleId.is_in(ids))
-            .order_by_asc(BundleItemColumn::Position)
-            .all(&self.db)
-            .await?;
-
-        let dtos = bundles
-            .into_iter()
-            .map(|b| {
-                let trans = all_translations
-                    .iter()
-                    .filter(|t| t.bundle_id == b.id)
-                    .cloned()
-                    .collect();
-                let items = all_items
-                    .iter()
-                    .filter(|i| i.bundle_id == b.id)
-                    .cloned()
-                    .collect();
-                Self::assemble_bundle_dto(b, trans, items, locale)
-            })
-            .collect();
-
-        Ok(dtos)
+        match bundle {
+            Some(bundle) => self
+                .get_bundle(tenant_id, bundle.id, locale)
+                .await
+                .map(Some),
+            None => Ok(None),
+        }
     }
 }

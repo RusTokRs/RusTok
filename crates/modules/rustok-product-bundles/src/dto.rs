@@ -90,6 +90,9 @@ pub struct BundleFilter {
     pub search: Option<String>,
     pub status: Option<String>,
     pub bundle_type: Option<String>,
+    /// Restricts the directory to the bundle owned by this Product. Component membership is
+    /// intentionally not a directory filter: a Product can be a component of many bundles.
+    pub owner_product_id: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

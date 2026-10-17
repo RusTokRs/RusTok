@@ -77,15 +77,15 @@ mutation CreateBundle($idempotencyKey: String!, $input: CreateBundleInputGql!, $
 }`;
 
 const UPDATE_BUNDLE_MUTATION = `
-mutation UpdateBundle($id: UUID!, $input: UpdateBundleInputGql!, $locale: String) {
-  updateBundle(id: $id, input: $input, locale: $locale) {
+mutation UpdateBundle($idempotencyKey: String!, $id: UUID!, $input: UpdateBundleInputGql!, $locale: String) {
+  updateBundle(idempotencyKey: $idempotencyKey, id: $id, input: $input, locale: $locale) {
     ${BUNDLE_FIELDS}
   }
 }`;
 
 const DELETE_BUNDLE_MUTATION = `
-mutation DeleteBundle($id: UUID!) {
-  deleteBundle(id: $id)
+mutation DeleteBundle($idempotencyKey: String!, $id: UUID!) {
+  deleteBundle(idempotencyKey: $idempotencyKey, id: $id)
 }`;
 
 const ADD_BUNDLE_ITEM_MUTATION = `
@@ -103,8 +103,8 @@ mutation AddBundleItem($idempotencyKey: String!, $bundleId: UUID!, $item: Bundle
 }`;
 
 const REMOVE_BUNDLE_ITEM_MUTATION = `
-mutation RemoveBundleItem($bundleId: UUID!, $itemId: UUID!) {
-  removeBundleItem(bundleId: $bundleId, itemId: $itemId)
+mutation RemoveBundleItem($idempotencyKey: String!, $bundleId: UUID!, $itemId: UUID!) {
+  removeBundleItem(idempotencyKey: $idempotencyKey, bundleId: $bundleId, itemId: $itemId)
 }`;
 
 export async function fetchProductBundles(
@@ -267,8 +267,10 @@ export async function updateBundle(
   }
 
   const executor = opts.graphql ?? graphqlRequest;
+  const idempotencyKey = crypto.randomUUID();
   const data = await executor<
     {
+      idempotencyKey: string;
       id: string;
       input: {
         bundleProductId?: string | null;
@@ -287,6 +289,7 @@ export async function updateBundle(
   >(
     UPDATE_BUNDLE_MUTATION,
     {
+      idempotencyKey,
       id,
       input: {
         bundleProductId: input.bundleProductId,
@@ -317,9 +320,13 @@ export async function deleteBundle(
   }
 
   const executor = opts.graphql ?? graphqlRequest;
-  const data = await executor<{ id: string }, { deleteBundle: boolean }>(
+  const idempotencyKey = crypto.randomUUID();
+  const data = await executor<
+    { idempotencyKey: string; id: string },
+    { deleteBundle: boolean }
+  >(
     DELETE_BUNDLE_MUTATION,
-    { id },
+    { idempotencyKey, id },
     opts.token,
     opts.tenantSlug
   );
@@ -382,12 +389,13 @@ export async function removeBundleItem(
   }
 
   const executor = opts.graphql ?? graphqlRequest;
+  const idempotencyKey = crypto.randomUUID();
   const data = await executor<
-    { bundleId: string; itemId: string },
+    { idempotencyKey: string; bundleId: string; itemId: string },
     { removeBundleItem: boolean }
   >(
     REMOVE_BUNDLE_ITEM_MUTATION,
-    { bundleId, itemId },
+    { idempotencyKey, bundleId, itemId },
     opts.token,
     opts.tenantSlug
   );

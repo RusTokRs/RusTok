@@ -4,14 +4,14 @@ use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     TenantContext,
 };
-use sha2::{Digest, Sha256};
 use std::time::Duration;
 use uuid::Uuid;
 
 use rustok_product::{
     ProductCatalogCommandRuntime, ProductCatalogSchemaWritePort, scoped_caller_idempotency_key,
 };
-use rustok_product_relations::ports::ProductRelationsPort;
+use rustok_product_bundles::scoped_caller_idempotency_key as scoped_bundle_caller_key;
+use rustok_product_relations::scoped_caller_idempotency_key as scoped_relation_caller_key;
 
 use super::super::{
     PRODUCT_MODULE_SLUG as MODULE_SLUG, product_mutation_actor, require_commerce_permission,
@@ -218,26 +218,6 @@ fn validate_scoped_idempotency_key<'a>(idempotency_key: &'a str, subject: &str) 
         )));
     }
     Ok(caller_key)
-}
-
-/// Binds one caller idempotency key to the tenant, actor, operation and subject of this call.
-fn scoped_catalog_operation_key(
-    prefix: &str,
-    actor: (Uuid, Uuid),
-    operation: &'static str,
-    subject_id: Option<Uuid>,
-    caller_key: &str,
-) -> String {
-    let (tenant_id, user_id) = actor;
-    let mut digest = Sha256::new();
-    digest.update(tenant_id.as_bytes());
-    digest.update(user_id.as_bytes());
-    digest.update(operation.as_bytes());
-    if let Some(subject_id) = subject_id {
-        digest.update(subject_id.as_bytes());
-    }
-    digest.update(caller_key.as_bytes());
-    format!("{prefix}:{operation}:{}", hex::encode(digest.finalize()))
 }
 
 /// Owner family of a scoped catalog write command, used for bounded public error copy.
@@ -895,13 +875,8 @@ impl CommerceCatalogMutation {
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
         let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product relation")?;
         let operation = "add_product_relation";
-        let scoped_key = scoped_catalog_operation_key(
-            "commerce-graphql-relation",
-            (tenant_id, user_id),
-            operation,
-            None,
-            caller_key,
-        );
+        let scoped_key =
+            scoped_relation_caller_key(tenant_id, user_id, operation, None, caller_key);
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let service = rustok_product_relations::services::ProductRelationService::new(db.clone());
         let domain_input = rustok_product_relations::dto::CreateProductRelationInput {
@@ -925,7 +900,12 @@ impl CommerceCatalogMutation {
         Ok(rel.into())
     }
 
-    async fn remove_product_relation(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
+    async fn remove_product_relation(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        id: Uuid,
+    ) -> Result<bool> {
         require_module_enabled(ctx, "product_relations").await?;
         require_commerce_permission(
             ctx,
@@ -933,18 +913,30 @@ impl CommerceCatalogMutation {
             "Permission denied: products:update required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product relation")?;
+        let operation = "remove_product_relation";
+        let scoped_key =
+            scoped_relation_caller_key(tenant_id, user_id, operation, Some(id), caller_key);
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let service = rustok_product_relations::services::ProductRelationService::new(db.clone());
         service
-            .delete_relation(tenant_id, Some(user_id), id)
+            .delete_relation_idempotent(
+                rustok_product_relations::ProductRelationCommandContext::new(
+                    tenant_id,
+                    Some(user_id),
+                    &scoped_key,
+                ),
+                id,
+            )
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            .map_err(|error| relation_command_graphql_error(operation, error))?;
         Ok(true)
     }
 
     async fn reorder_product_relations(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         product_id: Uuid,
         relation_type: GqlRelationType,
         ordered_relation_ids: Vec<Uuid>,
@@ -956,6 +948,10 @@ impl CommerceCatalogMutation {
             "Permission denied: products:update required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product relation")?;
+        let operation = "reorder_product_relations";
+        let scoped_key =
+            scoped_relation_caller_key(tenant_id, user_id, operation, Some(product_id), caller_key);
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let service = rustok_product_relations::services::ProductRelationService::new(db.clone());
         let domain_input = rustok_product_relations::dto::ReorderProductRelationsInput {
@@ -964,9 +960,16 @@ impl CommerceCatalogMutation {
             ordered_relation_ids,
         };
         let reordered = service
-            .reorder_relations(tenant_id, Some(user_id), domain_input)
+            .reorder_relations_idempotent(
+                rustok_product_relations::ProductRelationCommandContext::new(
+                    tenant_id,
+                    Some(user_id),
+                    &scoped_key,
+                ),
+                domain_input,
+            )
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            .map_err(|error| relation_command_graphql_error(operation, error))?;
         Ok(reordered.into_iter().map(Into::into).collect())
     }
 
@@ -1130,13 +1133,7 @@ impl CommerceCatalogMutation {
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
         let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product bundle")?;
         let operation = "create_bundle";
-        let scoped_key = scoped_catalog_operation_key(
-            "commerce-graphql-bundle",
-            (tenant_id, user_id),
-            operation,
-            None,
-            caller_key,
-        );
+        let scoped_key = scoped_bundle_caller_key(tenant_id, user_id, operation, None, caller_key);
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let service = rustok_product_bundles::BundleService::new(db.clone());
         let bundle = service
@@ -1170,6 +1167,7 @@ impl CommerceCatalogMutation {
     async fn update_bundle(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         id: Uuid,
         input: UpdateBundleInputGql,
         locale: Option<String>,
@@ -1180,10 +1178,13 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_UPDATE],
             "Permission denied: products:update required",
         )?;
-        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product bundle")?;
+        let operation = "update_bundle";
+        let scoped_key =
+            scoped_bundle_caller_key(tenant_id, user_id, operation, Some(id), caller_key);
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let service = rustok_product_bundles::BundleService::new(db.clone());
-        use rustok_product_bundles::ports::BundlePort;
         let translations = input.name.map(|name| {
             vec![rustok_product_bundles::dto::BundleTranslationInput {
                 locale: locale.unwrap_or_else(|| "en".to_string()),
@@ -1192,8 +1193,12 @@ impl CommerceCatalogMutation {
             }]
         });
         let bundle = service
-            .update_bundle(
-                tenant_id,
+            .update_bundle_idempotent(
+                rustok_product_bundles::BundleCommandContext::new(
+                    tenant_id,
+                    Some(user_id),
+                    &scoped_key,
+                ),
                 id,
                 rustok_product_bundles::dto::UpdateBundleInput {
                     bundle_product_id: input.bundle_product_id.map(Some),
@@ -1207,25 +1212,40 @@ impl CommerceCatalogMutation {
                 },
             )
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            .map_err(|error| bundle_command_graphql_error(operation, error))?;
         Ok(bundle.into())
     }
 
-    async fn delete_bundle(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
+    async fn delete_bundle(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        id: Uuid,
+    ) -> Result<bool> {
         require_module_enabled(ctx, "product_bundles").await?;
         require_commerce_permission(
             ctx,
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
-        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product bundle")?;
+        let operation = "delete_bundle";
+        let scoped_key =
+            scoped_bundle_caller_key(tenant_id, user_id, operation, Some(id), caller_key);
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let service = rustok_product_bundles::BundleService::new(db.clone());
-        use rustok_product_bundles::ports::BundlePort;
         service
-            .delete_bundle(tenant_id, id)
+            .delete_bundle_idempotent(
+                rustok_product_bundles::BundleCommandContext::new(
+                    tenant_id,
+                    Some(user_id),
+                    &scoped_key,
+                ),
+                id,
+            )
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            .map_err(|error| bundle_command_graphql_error(operation, error))?;
         Ok(true)
     }
 
@@ -1245,13 +1265,8 @@ impl CommerceCatalogMutation {
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
         let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product bundle")?;
         let operation = "add_bundle_item";
-        let scoped_key = scoped_catalog_operation_key(
-            "commerce-graphql-bundle",
-            (tenant_id, user_id),
-            operation,
-            Some(bundle_id),
-            caller_key,
-        );
+        let scoped_key =
+            scoped_bundle_caller_key(tenant_id, user_id, operation, Some(bundle_id), caller_key);
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let service = rustok_product_bundles::BundleService::new(db.clone());
         let created_item = service
@@ -1279,6 +1294,7 @@ impl CommerceCatalogMutation {
     async fn remove_bundle_item(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         bundle_id: Uuid,
         item_id: Uuid,
     ) -> Result<bool> {
@@ -1288,14 +1304,25 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_UPDATE],
             "Permission denied: products:update required",
         )?;
-        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product bundle")?;
+        let operation = "remove_bundle_item";
+        let scoped_key =
+            scoped_bundle_caller_key(tenant_id, user_id, operation, Some(bundle_id), caller_key);
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let service = rustok_product_bundles::BundleService::new(db.clone());
-        use rustok_product_bundles::ports::BundlePort;
         service
-            .remove_bundle_item(tenant_id, bundle_id, item_id)
+            .remove_bundle_item_idempotent(
+                rustok_product_bundles::BundleCommandContext::new(
+                    tenant_id,
+                    Some(user_id),
+                    &scoped_key,
+                ),
+                bundle_id,
+                item_id,
+            )
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            .map_err(|error| bundle_command_graphql_error(operation, error))?;
         Ok(true)
     }
 

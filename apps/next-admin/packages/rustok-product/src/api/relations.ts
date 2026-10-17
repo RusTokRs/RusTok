@@ -46,14 +46,14 @@ mutation ProductAdminAddRelation($idempotencyKey: String!, $input: AddProductRel
 `;
 
 export const REMOVE_RELATION_MUTATION = `
-mutation ProductAdminRemoveRelation($id: UUID!) {
-  removeProductRelation(id: $id)
+mutation ProductAdminRemoveRelation($idempotencyKey: String!, $id: UUID!) {
+  removeProductRelation(idempotencyKey: $idempotencyKey, id: $id)
 }
 `;
 
 export const REORDER_RELATIONS_MUTATION = `
-mutation ProductAdminReorderRelations($productId: UUID!, $relationType: GqlRelationType!, $orderedRelationIds: [UUID!]!) {
-  reorderProductRelations(productId: $productId, relationType: $relationType, orderedRelationIds: $orderedRelationIds) {
+mutation ProductAdminReorderRelations($idempotencyKey: String!, $productId: UUID!, $relationType: GqlRelationType!, $orderedRelationIds: [UUID!]!) {
+  reorderProductRelations(idempotencyKey: $idempotencyKey, productId: $productId, relationType: $relationType, orderedRelationIds: $orderedRelationIds) {
     id
     productId
     relatedProductId
@@ -124,10 +124,16 @@ export async function removeProductRelation(
   }
 
   const executor = opts.graphql ?? graphqlRequest;
+  const idempotencyKey = crypto.randomUUID();
   const data = await executor<
-    { id: string },
+    { idempotencyKey: string; id: string },
     { removeProductRelation: boolean }
-  >(REMOVE_RELATION_MUTATION, { id }, opts.token, opts.tenantSlug);
+  >(
+    REMOVE_RELATION_MUTATION,
+    { idempotencyKey, id },
+    opts.token,
+    opts.tenantSlug
+  );
 
   return data.removeProductRelation;
 }
@@ -143,8 +149,10 @@ export async function reorderProductRelations(
   }
 
   const executor = opts.graphql ?? graphqlRequest;
+  const idempotencyKey = crypto.randomUUID();
   const data = await executor<
     {
+      idempotencyKey: string;
       productId: string;
       relationType: ProductRelationType;
       orderedRelationIds: string[];
@@ -153,6 +161,7 @@ export async function reorderProductRelations(
   >(
     REORDER_RELATIONS_MUTATION,
     {
+      idempotencyKey,
       productId,
       relationType,
       orderedRelationIds

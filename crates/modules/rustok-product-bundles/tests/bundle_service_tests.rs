@@ -13,46 +13,11 @@ async fn setup_test_db() -> DatabaseConnection {
         .await
         .expect("Failed to connect to in-memory sqlite");
 
+    db.execute_unprepared("PRAGMA foreign_keys = ON;")
+        .await
+        .expect("SQLite foreign-key enforcement must be enabled");
     db.execute_unprepared(
         r#"
-CREATE TABLE product_bundles (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    bundle_product_id TEXT,
-    slug TEXT NOT NULL,
-    bundle_type TEXT NOT NULL DEFAULT 'fixed',
-    status TEXT NOT NULL DEFAULT 'active',
-    discount_type TEXT NOT NULL DEFAULT 'none',
-    discount_value REAL NOT NULL DEFAULT 0,
-    metadata TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE (tenant_id, slug)
-);
-
-CREATE TABLE product_bundle_translations (
-    id TEXT PRIMARY KEY,
-    bundle_id TEXT NOT NULL REFERENCES product_bundles(id) ON DELETE CASCADE,
-    locale TEXT NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE (bundle_id, locale)
-);
-
-CREATE TABLE product_bundle_items (
-    id TEXT PRIMARY KEY,
-    bundle_id TEXT NOT NULL REFERENCES product_bundles(id) ON DELETE CASCADE,
-    product_id TEXT NOT NULL,
-    variant_id TEXT,
-    quantity INTEGER NOT NULL DEFAULT 1,
-    is_optional INTEGER NOT NULL DEFAULT 0,
-    discount_rate REAL,
-    position INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
-);
-
 CREATE TABLE products (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
@@ -66,7 +31,8 @@ CREATE TABLE products (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     published_at TEXT,
-    revision INTEGER NOT NULL DEFAULT 1
+    revision INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (tenant_id, id)
 );
 
 CREATE TABLE product_variants (
@@ -86,7 +52,73 @@ CREATE TABLE product_variants (
     combination_identity TEXT,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    UNIQUE (tenant_id, id)
+);
+
+CREATE TABLE product_bundles (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    bundle_product_id TEXT,
+    slug TEXT NOT NULL,
+    bundle_type TEXT NOT NULL DEFAULT 'fixed',
+    status TEXT NOT NULL DEFAULT 'active',
+    discount_type TEXT NOT NULL DEFAULT 'none',
+    discount_value REAL NOT NULL DEFAULT 0,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (tenant_id, slug),
+    UNIQUE (tenant_id, id),
+    UNIQUE (tenant_id, bundle_product_id),
+    FOREIGN KEY (tenant_id, bundle_product_id)
+        REFERENCES products (tenant_id, id)
+        ON DELETE CASCADE,
+    CHECK (bundle_type IN ('fixed', 'flexible')),
+    CHECK (status IN ('draft', 'active', 'archived')),
+    CHECK (discount_type IN ('none', 'percentage', 'fixed_amount')),
+    CHECK (
+        discount_value >= 0
+        AND (discount_type <> 'none' OR discount_value = 0)
+        AND (discount_type <> 'percentage' OR discount_value <= 100)
+    )
+);
+
+CREATE TABLE product_bundle_translations (
+    id TEXT PRIMARY KEY,
+    bundle_id TEXT NOT NULL REFERENCES product_bundles(id) ON DELETE CASCADE,
+    locale TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (bundle_id, locale)
+);
+
+CREATE TABLE product_bundle_items (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    bundle_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    variant_id TEXT,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    is_optional INTEGER NOT NULL DEFAULT 0,
+    discount_rate REAL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id, bundle_id)
+        REFERENCES product_bundles (tenant_id, id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id, product_id)
+        REFERENCES products (tenant_id, id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id, variant_id)
+        REFERENCES product_variants (tenant_id, id)
+        ON DELETE CASCADE,
+    UNIQUE (tenant_id, bundle_id, position),
+    CHECK (quantity >= 1),
+    CHECK (position >= 0),
+    CHECK (discount_rate IS NULL OR (discount_rate >= 0 AND discount_rate <= 1))
 );
 "#,
     )
@@ -380,34 +412,30 @@ async fn adds_and_removes_bundle_items() {
 }
 
 #[tokio::test]
-async fn finds_bundles_for_product_and_filters_list() {
+async fn distinguishes_product_owned_bundles_from_component_membership() {
     let db = setup_test_db().await;
     let service = BundleService::new(db.clone());
     let tenant_id = Uuid::new_v4();
-    let product_a = Uuid::new_v4();
-    let product_b = Uuid::new_v4();
+    let owner_product = Uuid::new_v4();
+    let component_product = Uuid::new_v4();
 
-    insert_test_product(&db, tenant_id, product_a).await;
-    insert_test_product(&db, tenant_id, product_b).await;
+    insert_test_product(&db, tenant_id, owner_product).await;
+    insert_test_product(&db, tenant_id, component_product).await;
 
-    service
+    let owned_bundle = service
         .create_bundle(
             tenant_id,
             CreateBundleInput {
-                bundle_product_id: None,
-                slug: "bundle-alpha".to_string(),
+                bundle_product_id: Some(owner_product),
+                slug: "owner-bundle".to_string(),
                 bundle_type: Some("fixed".to_string()),
                 status: Some("active".to_string()),
                 discount_type: None,
                 discount_value: None,
                 metadata: None,
-                translations: vec![BundleTranslationInput {
-                    locale: "en".to_string(),
-                    name: "Alpha Bundle".to_string(),
-                    description: None,
-                }],
+                translations: vec![],
                 items: vec![BundleItemInput {
-                    product_id: product_a,
+                    product_id: component_product,
                     variant_id: None,
                     quantity: 1,
                     is_optional: None,
@@ -419,51 +447,29 @@ async fn finds_bundles_for_product_and_filters_list() {
         .await
         .unwrap();
 
-    service
-        .create_bundle(
-            tenant_id,
-            CreateBundleInput {
-                bundle_product_id: None,
-                slug: "bundle-beta".to_string(),
-                bundle_type: Some("flexible".to_string()),
-                status: Some("draft".to_string()),
-                discount_type: None,
-                discount_value: None,
-                metadata: None,
-                translations: vec![BundleTranslationInput {
-                    locale: "en".to_string(),
-                    name: "Beta Bundle".to_string(),
-                    description: None,
-                }],
-                items: vec![BundleItemInput {
-                    product_id: product_b,
-                    variant_id: None,
-                    quantity: 2,
-                    is_optional: None,
-                    discount_rate: None,
-                    position: None,
-                }],
-            },
-        )
+    let owner_result = service
+        .get_owned_bundle_for_product(tenant_id, owner_product, None)
         .await
-        .unwrap();
+        .unwrap()
+        .expect("owner product should resolve its bundle");
+    assert_eq!(owner_result.id, owned_bundle.id);
 
-    // Query bundles for product_a
-    let bundles_a = service
-        .get_bundles_for_product(tenant_id, product_a, None)
-        .await
-        .unwrap();
-    assert_eq!(bundles_a.len(), 1);
-    assert_eq!(bundles_a[0].slug, "bundle-alpha");
+    assert!(
+        service
+            .get_owned_bundle_for_product(tenant_id, component_product, None)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
-    // Filter active only
-    let active_list = service
+    let owner_filtered_list = service
         .list_bundles(
             tenant_id,
             BundleFilter {
                 search: None,
-                status: Some("active".to_string()),
+                status: None,
                 bundle_type: None,
+                owner_product_id: Some(owner_product),
             },
             1,
             10,
@@ -471,6 +477,91 @@ async fn finds_bundles_for_product_and_filters_list() {
         )
         .await
         .unwrap();
-    assert_eq!(active_list.total, 1);
-    assert_eq!(active_list.items[0].slug, "bundle-alpha");
+    assert_eq!(owner_filtered_list.total, 1);
+    assert_eq!(owner_filtered_list.items[0].id, owned_bundle.id);
+
+    let duplicate_owner_error = service
+        .create_bundle(
+            tenant_id,
+            CreateBundleInput {
+                bundle_product_id: Some(owner_product),
+                slug: "duplicate-owner-bundle".to_string(),
+                bundle_type: None,
+                status: None,
+                discount_type: None,
+                discount_value: None,
+                metadata: None,
+                translations: vec![],
+                items: vec![],
+            },
+        )
+        .await
+        .expect_err("a Product may own only one bundle");
+    assert!(matches!(
+        duplicate_owner_error,
+        BundleError::OwnerProductAlreadyHasBundle(product_id) if product_id == owner_product
+    ));
+}
+
+#[tokio::test]
+async fn rejects_invalid_bundle_values_before_writing() {
+    let db = setup_test_db().await;
+    let service = BundleService::new(db.clone());
+    let tenant_id = Uuid::new_v4();
+    let product_id = Uuid::new_v4();
+    insert_test_product(&db, tenant_id, product_id).await;
+
+    let invalid_discount = service
+        .create_bundle(
+            tenant_id,
+            CreateBundleInput {
+                bundle_product_id: None,
+                slug: "invalid-discount".to_string(),
+                bundle_type: Some("unknown".to_string()),
+                status: None,
+                discount_type: Some("percentage".to_string()),
+                discount_value: Some(Decimal::new(101, 0)),
+                metadata: None,
+                translations: vec![],
+                items: vec![],
+            },
+        )
+        .await
+        .expect_err("invalid bundle type must be rejected");
+    assert!(matches!(invalid_discount, BundleError::InvalidInput(_)));
+
+    let bundle = service
+        .create_bundle(
+            tenant_id,
+            CreateBundleInput {
+                bundle_product_id: None,
+                slug: "valid-bundle".to_string(),
+                bundle_type: None,
+                status: None,
+                discount_type: None,
+                discount_value: None,
+                metadata: Some(serde_json::json!({"source": "test"})),
+                translations: vec![],
+                items: vec![],
+            },
+        )
+        .await
+        .unwrap();
+
+    let invalid_item = service
+        .add_bundle_item(
+            tenant_id,
+            bundle.id,
+            BundleItemInput {
+                product_id,
+                variant_id: None,
+                quantity: 0,
+                is_optional: None,
+                discount_rate: None,
+                position: None,
+            },
+        )
+        .await
+        .expect_err("zero quantity must be rejected");
+    assert!(matches!(invalid_item, BundleError::InvalidInput(_)));
 }

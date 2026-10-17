@@ -3133,6 +3133,7 @@ pub struct GqlBundleFilter {
     pub search: Option<String>,
     pub status: Option<String>,
     pub bundle_type: Option<String>,
+    /// Restricts to the Bundle owned by this root Product; it does not search component items.
     pub product_id: Option<Uuid>,
 }
 

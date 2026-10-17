@@ -780,6 +780,7 @@ impl ProductCatalogQuery {
                     search: filter.as_ref().and_then(|f| f.search.clone()),
                     status: filter.as_ref().and_then(|f| f.status.clone()),
                     bundle_type: filter.as_ref().and_then(|f| f.bundle_type.clone()),
+                    owner_product_id: filter.as_ref().and_then(|f| f.product_id),
                 },
                 page.unwrap_or(1),
                 per_page.unwrap_or(20),
@@ -796,6 +797,8 @@ impl ProductCatalogQuery {
         })
     }
 
+    /// Returns the zero-or-one Bundle owned by the Product. A Product appearing as a component in
+    /// another Bundle does not appear here.
     async fn product_bundles(
         &self,
         ctx: &Context<'_>,
@@ -807,10 +810,12 @@ impl ProductCatalogQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let service = rustok_product_bundles::BundleService::new(db.clone());
         use rustok_product_bundles::ports::BundlePort;
-        let bundles = service
-            .get_bundles_for_product(tenant.id, product_id, locale.as_deref())
+        let owned_bundle = service
+            .get_owned_bundle_for_product(tenant.id, product_id, locale.as_deref())
             .await
             .map_err(|e| async_graphql::Error::new(e.to_string()))?;
-        Ok(bundles.into_iter().map(Into::into).collect())
+        // This GraphQL field is list-shaped, but its canonical value is the Product-owned bundle
+        // (zero or one), never reverse component usage.
+        Ok(owned_bundle.into_iter().map(Into::into).collect())
     }
 }

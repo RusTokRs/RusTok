@@ -10,12 +10,11 @@
 
 //! Receipt-bound owner commands for Product bundles.
 //!
-//! Bundle creation and bundle-item insertion are `PortCallPolicy::write()` operations: each caller
-//! supplies a durable idempotency key, the Product Bundles owner admits one receipt for it and
-//! completes that receipt inside the same database transaction as the write, so a retry after a
-//! timeout or a double click replays the stored response instead of failing on slug or reference
-//! uniqueness. A key is scoped to the tenant and to this owner; reusing one key with another
-//! payload is rejected as a conflict.
+//! Every Product Bundle mutation is a `PortCallPolicy::write()` operation: each caller supplies a
+//! durable idempotency key, the Product Bundles owner admits one receipt for it and completes that
+//! receipt inside the same database transaction as the write. A retry after a timeout or a double
+//! click therefore replays the stored response instead of reapplying a mutation. A key is scoped
+//! to the tenant and to this owner; reusing one key with another payload is rejected as a conflict.
 
 use rustok_api::PortError;
 use rustok_outbox::idempotency;
@@ -23,9 +22,12 @@ use sea_orm::TransactionTrait;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::dto::{BundleDto, BundleItemDto, BundleItemInput, CreateBundleInput};
+use crate::dto::{BundleDto, BundleItemDto, BundleItemInput, CreateBundleInput, UpdateBundleInput};
 use crate::error::BundleError;
-use crate::services::bundle_service::{BundleService, add_bundle_item_in_tx, create_bundle_in_tx};
+use crate::services::bundle_service::{
+    BundleService, add_bundle_item_in_tx, create_bundle_in_tx, delete_bundle_in_tx,
+    remove_bundle_item_in_tx, update_bundle_in_tx,
+};
 
 /// Durable owner identity for Product bundle receipts.
 pub const PRODUCT_BUNDLE_OWNER_SLUG: &str = "product_bundles";
@@ -35,6 +37,15 @@ pub const CREATE_BUNDLE_OPERATION: &str = "create_bundle";
 
 /// Receipt operation name of the idempotent bundle-item insertion command.
 pub const ADD_BUNDLE_ITEM_OPERATION: &str = "add_bundle_item";
+
+/// Receipt operation name of the idempotent bundle update command.
+pub const UPDATE_BUNDLE_OPERATION: &str = "update_bundle";
+
+/// Receipt operation name of the idempotent bundle deletion command.
+pub const DELETE_BUNDLE_OPERATION: &str = "delete_bundle";
+
+/// Receipt operation name of the idempotent bundle-item removal command.
+pub const REMOVE_BUNDLE_ITEM_OPERATION: &str = "remove_bundle_item";
 
 /// Caller identity of one idempotent Product bundle command.
 #[derive(Clone, Copy, Debug)]
@@ -136,6 +147,108 @@ impl BundleService {
             }
         }
     }
+
+    /// Updates one bundle with durable owner replay semantics.
+    pub async fn update_bundle_idempotent(
+        &self,
+        context: BundleCommandContext<'_>,
+        bundle_id: Uuid,
+        input: UpdateBundleInput,
+    ) -> Result<BundleDto, BundleCommandError> {
+        let request = serde_json::json!({
+            "actor": context.actor_id,
+            "bundle_id": bundle_id,
+            "input": &input,
+        });
+        let lease =
+            match admit_bundle_operation(self, context, UPDATE_BUNDLE_OPERATION, &request).await? {
+                idempotency::Admission::Run(lease) => lease,
+                idempotency::Admission::Replay(value) => return decode_bundle_receipt(value),
+                idempotency::Admission::ReplayError(error) => return Err(error.into()),
+            };
+
+        let txn = self.database().begin().await?;
+        match update_bundle_in_tx(&txn, context.tenant_id, bundle_id, input).await {
+            Ok(bundle) => {
+                idempotency::complete(&txn, lease, &bundle).await?;
+                txn.commit().await?;
+                Ok(bundle)
+            }
+            Err(error) => {
+                drop(txn);
+                finish_failed_bundle_operation(self, context, lease, &error).await;
+                Err(error.into())
+            }
+        }
+    }
+
+    /// Deletes one bundle with durable owner replay semantics.
+    pub async fn delete_bundle_idempotent(
+        &self,
+        context: BundleCommandContext<'_>,
+        bundle_id: Uuid,
+    ) -> Result<(), BundleCommandError> {
+        let request = serde_json::json!({
+            "actor": context.actor_id,
+            "bundle_id": bundle_id,
+        });
+        let lease =
+            match admit_bundle_operation(self, context, DELETE_BUNDLE_OPERATION, &request).await? {
+                idempotency::Admission::Run(lease) => lease,
+                idempotency::Admission::Replay(value) => return decode_unit_receipt(value),
+                idempotency::Admission::ReplayError(error) => return Err(error.into()),
+            };
+
+        let txn = self.database().begin().await?;
+        match delete_bundle_in_tx(&txn, context.tenant_id, bundle_id).await {
+            Ok(()) => {
+                idempotency::complete(&txn, lease, &()).await?;
+                txn.commit().await?;
+                Ok(())
+            }
+            Err(error) => {
+                drop(txn);
+                finish_failed_bundle_operation(self, context, lease, &error).await;
+                Err(error.into())
+            }
+        }
+    }
+
+    /// Removes one bundle item with durable owner replay semantics.
+    pub async fn remove_bundle_item_idempotent(
+        &self,
+        context: BundleCommandContext<'_>,
+        bundle_id: Uuid,
+        item_id: Uuid,
+    ) -> Result<(), BundleCommandError> {
+        let request = serde_json::json!({
+            "actor": context.actor_id,
+            "bundle_id": bundle_id,
+            "item_id": item_id,
+        });
+        let lease =
+            match admit_bundle_operation(self, context, REMOVE_BUNDLE_ITEM_OPERATION, &request)
+                .await?
+            {
+                idempotency::Admission::Run(lease) => lease,
+                idempotency::Admission::Replay(value) => return decode_unit_receipt(value),
+                idempotency::Admission::ReplayError(error) => return Err(error.into()),
+            };
+
+        let txn = self.database().begin().await?;
+        match remove_bundle_item_in_tx(&txn, context.tenant_id, bundle_id, item_id).await {
+            Ok(()) => {
+                idempotency::complete(&txn, lease, &()).await?;
+                txn.commit().await?;
+                Ok(())
+            }
+            Err(error) => {
+                drop(txn);
+                finish_failed_bundle_operation(self, context, lease, &error).await;
+                Err(error.into())
+            }
+        }
+    }
 }
 
 async fn admit_bundle_operation<T: serde::Serialize>(
@@ -187,6 +300,14 @@ pub fn bundle_command_error(error: &BundleError) -> PortError {
             "product_bundle.slug_conflict",
             "product bundle slug conflicts with an existing bundle",
         ),
+        BundleError::OwnerProductAlreadyHasBundle(_) => PortError::conflict(
+            "product_bundle.owner_product_conflict",
+            "the product already owns a bundle",
+        ),
+        BundleError::ConcurrentWriteConflict => PortError::conflict(
+            "product_bundle.concurrent_conflict",
+            "the product bundle changed concurrently; refresh and try again",
+        ),
         BundleError::NotFound(_) => {
             PortError::not_found("product_bundle.not_found", "product bundle was not found")
         }
@@ -233,4 +354,33 @@ fn decode_bundle_item_receipt(
         )
         .into()
     })
+}
+
+fn decode_unit_receipt(value: serde_json::Value) -> Result<(), BundleCommandError> {
+    serde_json::from_value(value).map_err(|error| {
+        tracing::error!(
+            error = %error,
+            "failed to decode Product bundle owner receipt replay"
+        );
+        PortError::invariant_violation(
+            "product_bundle.receipt_corrupt",
+            "product bundle operation could not be completed safely",
+        )
+        .into()
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::PortErrorKind;
+
+    #[test]
+    fn unique_constraint_race_is_a_terminal_conflict() {
+        let error = bundle_command_error(&BundleError::ConcurrentWriteConflict);
+
+        assert_eq!(error.kind, PortErrorKind::Conflict);
+        assert_eq!(error.code, "product_bundle.concurrent_conflict");
+        assert!(!error.retryable);
+    }
 }

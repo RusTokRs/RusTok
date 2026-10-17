@@ -19,6 +19,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     vec![MigrationDependencyDescriptor::new(
         "m20260916_000001_create_bundles",
-        vec!["m20250130_000012_create_commerce_products"],
+        vec!["m20260701_000002_add_product_catalog_tenant_consistency_constraints"],
     )]
 }

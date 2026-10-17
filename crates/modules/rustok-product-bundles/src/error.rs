@@ -13,8 +13,15 @@ pub enum BundleError {
     #[error("Bundle with slug '{0}' already exists")]
     SlugAlreadyExists(String),
 
+    #[error("Product '{0}' already owns a bundle")]
+    OwnerProductAlreadyHasBundle(Uuid),
+
     #[error("Bundle item with ID '{0}' not found")]
     ItemNotFound(Uuid),
+
+    /// A database uniqueness invariant won a race after the service-level preflight check.
+    #[error("Bundle write conflicts with a concurrent change")]
+    ConcurrentWriteConflict,
 
     #[error("Invalid input: {0}")]
     InvalidInput(String),

@@ -83,8 +83,8 @@ mutation BundleAdminCreate($idempotencyKey: String!, $input: CreateBundleInputGq
 "#;
 
 const UPDATE_MUTATION: &str = r#"
-mutation BundleAdminUpdate($id: UUID!, $input: UpdateBundleInputGql!) {
-  updateBundle(id: $id, input: $input) {
+mutation BundleAdminUpdate($idempotencyKey: String!, $id: UUID!, $input: UpdateBundleInputGql!) {
+  updateBundle(idempotencyKey: $idempotencyKey, id: $id, input: $input) {
     id
     tenantId
     bundleProductId
@@ -103,8 +103,8 @@ mutation BundleAdminUpdate($id: UUID!, $input: UpdateBundleInputGql!) {
 "#;
 
 const DELETE_MUTATION: &str = r#"
-mutation BundleAdminDelete($id: UUID!) {
-  deleteBundle(id: $id)
+mutation BundleAdminDelete($idempotencyKey: String!, $id: UUID!) {
+  deleteBundle(idempotencyKey: $idempotencyKey, id: $id)
 }
 "#;
 
@@ -124,8 +124,8 @@ mutation BundleAdminAddItem($idempotencyKey: String!, $bundleId: UUID!, $input: 
 "#;
 
 const REMOVE_ITEM_MUTATION: &str = r#"
-mutation BundleAdminRemoveItem($bundleId: UUID!, $itemId: UUID!) {
-  removeBundleItem(bundleId: $bundleId, itemId: $itemId)
+mutation BundleAdminRemoveItem($idempotencyKey: String!, $bundleId: UUID!, $itemId: UUID!) {
+  removeBundleItem(idempotencyKey: $idempotencyKey, bundleId: $bundleId, itemId: $itemId)
 }
 "#;
 
@@ -432,11 +432,14 @@ pub async fn execute_command(
             }
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 id: String,
                 input: Input,
             }
 
             let vars = Vars {
+                idempotency_key,
                 id,
                 input: Input {
                     slug: draft.slug,
@@ -474,10 +477,20 @@ pub async fn execute_command(
         BundleAdminCommand::Delete { id } => {
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 id: String,
             }
-            let data: DeleteResponse =
-                request(DELETE_MUTATION, Vars { id }, token, tenant_slug).await?;
+            let data: DeleteResponse = request(
+                DELETE_MUTATION,
+                Vars {
+                    idempotency_key,
+                    id,
+                },
+                token,
+                tenant_slug,
+            )
+            .await?;
             Ok(BundleAdminCommandResult {
                 bundle: None,
                 success: data.success,
@@ -531,6 +544,8 @@ pub async fn execute_command(
         BundleAdminCommand::RemoveItem { bundle_id, item_id } => {
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 #[serde(rename = "bundleId")]
                 bundle_id: String,
                 #[serde(rename = "itemId")]
@@ -538,6 +553,7 @@ pub async fn execute_command(
             }
 
             let vars = Vars {
+                idempotency_key,
                 bundle_id: bundle_id.clone(),
                 item_id,
             };

@@ -9,20 +9,25 @@ The `rustok-product-bundles` module manages product bundles and kits (fixed comp
 ## Responsibility Zone
 
 The module boundary strictly owns:
-- Persistence and migrations for `product_bundles`, `product_bundle_translations`, and `product_bundle_items` tables.
-- Multi-tenant data isolation on all bundle queries and mutations.
-- Unique slug constraints per tenant (`UNIQUE (tenant_id, slug)`).
-- Bundle lifecycle (draft, active, archived) and bundle types (fixed, flexible).
+
+- Persistence and migrations for `product_bundles`, `product_bundle_translations`, and `product_bundle_items`.
+- Tenant-scoped reads and writes, including tenant-coupled Bundle, Product, and Variant references at the persistence boundary.
+- A unique slug per tenant (`UNIQUE (tenant_id, slug)`).
+- A zero-or-one Product-owned Bundle association: `bundle_product_id` identifies the Product that owns the Bundle aggregate. Component membership is represented only by `product_bundle_items`, and a component Product can belong to many Bundles.
+- Bundle lifecycle values (`draft`, `active`, `archived`) and bundle types (`fixed`, `flexible`).
+- Validated bundle and item discount ranges, item quantities, and item positions.
 - Localized translations lifecycle for bundle names and descriptions.
-- Bundle item composition with quantity, optionality, position, and item-specific discounts.
-- Emitting transactional outbox events on bundle lifecycle events (`bundle.created`, `bundle.updated`, `bundle.deleted`).
+- Durable idempotency receipts for every Bundle mutation (create, update, delete, add item, and remove item); Native FFA and Commerce GraphQL derive one owner key through the exported Bundle scoping function.
+- Database-enforced unique-claim races are surfaced as terminal owner conflicts rather than storage outages, so receipt retries replay a stable outcome.
+
+The module does **not** currently publish Bundle lifecycle outbox events. Adding such events requires an intentional registered `rustok-events` contract (event variants, schemas, and contract digests); it is not a local outbox-row convention.
 
 ## Integration
 
-- **`rustok-product`**: References catalog products and variants in bundle items.
-- **`rustok-outbox`**: Emits `bundle.created`, `bundle.updated`, and `bundle.deleted` events for inventory and pricing consumers.
+- **`rustok-product`**: Provides tenant-scoped catalog Product and Variant references for owners and component items.
 - **`rustok-product-bundles-admin`**: Dedicated FFA/FBA administration UI package.
-- **`rustok-commerce`**: Exposes bundles via GraphQL queries and mutations.
+- **`rustok-commerce`**: Exposes Bundle queries and receipt-bound mutations via GraphQL.
+- **`rustok-outbox`**: Supplies durable receipt infrastructure; it does not currently carry Bundle lifecycle events.
 
 ## Verification
 
