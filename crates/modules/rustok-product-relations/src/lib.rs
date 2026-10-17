@@ -104,14 +104,14 @@ mod tests {
         let key = scoped_caller_idempotency_key(
             Uuid::from_u128(0x11111111111111111111111111111111),
             Uuid::from_u128(0x22222222222222222222222222222222),
-            "remove_product_relation",
-            Some(Uuid::from_u128(0x33333333333333333333333333333333)),
+            "add_product_relation",
+            None,
             " retry-123 ",
         );
 
         assert_eq!(
             key,
-            "commerce-graphql-relation:remove_product_relation:910d14268f409657a0d2f5d857858af7badc74b70f1cc0ee07c9eeb460cabd61"
+            "commerce-graphql-relation:add_product_relation:8346a5949e6c96a2844f67fbc37f4d112a3dd36bec196ef4ca8f9c61422ef7af"
         );
     }
 }
