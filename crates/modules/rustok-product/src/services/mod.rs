@@ -75,4 +75,6 @@ pub use index_refresh_relay::{
     ProductIndexRefreshRelayStepOutcome,
 };
 
-pub(crate) use write_transaction::with_product_operation_receipt;
+pub(crate) use write_transaction::{
+    fail_product_operation_receipt, with_product_operation_receipt,
+};

@@ -32,6 +32,10 @@ const verifierInputs = [
   "crates/modules/rustok-product-bundles/src/migrations/m20260916_000001_create_bundles.rs",
   "crates/modules/rustok-product/src/migrations/m20261017_000036_add_sqlite_tenant_identity_keys.rs",
   "crates/modules/rustok-product/src/services/write_transaction.rs",
+  "crates/modules/rustok-product/src/services/catalog_schema_service/attributes.rs",
+  "crates/modules/rustok-product/src/translation_target.rs",
+  "crates/modules/rustok-product/src/variant_translation_target.rs",
+  "crates/modules/rustok-product/src/image_translation_target.rs",
   "crates/modules/rustok-product-bundles/src/services/mod.rs",
   "crates/modules/rustok-product-bundles/src/lib.rs",
   "crates/modules/rustok-product-bundles/Cargo.toml",
@@ -284,6 +288,70 @@ test("a Product receipt result encoding failure must remain deferred to commit",
   assert.match(
     result.output,
     /product owner receipt result recording: missing \*slot = Some\(response_json\);/,
+  );
+});
+
+test("a receipt-scoped early Product owner error must hand off its transaction for an awaited rollback", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "receipt.defer_rollback(transaction);",
+      "drop(transaction);",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product owner early-error rollback: missing receipt\.defer_rollback\(transaction\);/,
+  );
+});
+
+test("a receipt wrapper must preserve custom Product owner errors while awaiting rollback", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(relative, "    E: From<CommerceError>,\n", ""),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product owner receipt scope rollback fence: missing E: From<CommerceError>/,
+  );
+});
+
+test("a retryable Product failure must not become a terminal receipt", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "    if error.retryable {\n        return Ok(());\n    }\n\n    idempotency::fail(database, lease, error).await",
+      "    idempotency::fail(database, lease, error).await",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product retryable receipt finalization: missing if error\.retryable \{/,
+  );
+});
+
+test("a Product translation target cannot bypass retryable receipt handling", () => {
+  const relative = "crates/modules/rustok-product/src/translation_target.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "fail_product_operation_receipt(self.service.database(), lease, error).await",
+      "idempotency::fail(self.service.database(), lease, error).await",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /Product translation-target receipt finalizer: forbidden idempotency::fail\(/,
   );
 });
 

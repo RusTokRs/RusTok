@@ -61,6 +61,13 @@ const productSqliteIdentityMigrationPath =
   "crates/modules/rustok-product/src/migrations/m20261017_000036_add_sqlite_tenant_identity_keys.rs";
 const productWriteTransactionPath =
   "crates/modules/rustok-product/src/services/write_transaction.rs";
+const productSchemaAttributesPath =
+  "crates/modules/rustok-product/src/services/catalog_schema_service/attributes.rs";
+const productTranslationTargetPath = "crates/modules/rustok-product/src/translation_target.rs";
+const productVariantTranslationTargetPath =
+  "crates/modules/rustok-product/src/variant_translation_target.rs";
+const productImageTranslationTargetPath =
+  "crates/modules/rustok-product/src/image_translation_target.rs";
 const bundlesServicesModPath = "crates/modules/rustok-product-bundles/src/services/mod.rs";
 const bundlesLibPath = "crates/modules/rustok-product-bundles/src/lib.rs";
 const bundlesManifestPath = "crates/modules/rustok-product-bundles/Cargo.toml";
@@ -99,6 +106,10 @@ for (const relative of [
   bundlesCreateMigrationPath,
   productSqliteIdentityMigrationPath,
   productWriteTransactionPath,
+  productSchemaAttributesPath,
+  productTranslationTargetPath,
+  productVariantTranslationTargetPath,
+  productImageTranslationTargetPath,
   bundlesServicesModPath,
   bundlesLibPath,
   bundlesManifestPath,
@@ -152,6 +163,30 @@ const productSqliteIdentityMigrationUp = slice(
   "async fn down",
 );
 const productWriteTransaction = read(productWriteTransactionPath);
+const productSchemaAttributes = read(productSchemaAttributesPath);
+const productTranslationTarget = read(productTranslationTargetPath);
+const productVariantTranslationTarget = read(productVariantTranslationTargetPath);
+const productImageTranslationTarget = read(productImageTranslationTargetPath);
+const productDeferredRollback = slice(
+  productWriteTransaction,
+  "impl ProductOperationReceipt",
+  "tokio::task_local!",
+);
+const productReceiptScope = slice(
+  productWriteTransaction,
+  "pub(crate) async fn with_product_operation_receipt",
+  "/// Persists only a deterministic Product owner failure",
+);
+const productFailureReceiptFinalizer = slice(
+  productWriteTransaction,
+  "pub(crate) async fn fail_product_operation_receipt",
+  "/// The receipt operation UUID",
+);
+const productWriteTransactionDrop = slice(
+  productWriteTransaction,
+  "impl Drop for ProductWriteTransaction",
+  "fn product_index_revision_touch_target",
+);
 const productReceiptResultRecord = slice(
   productWriteTransaction,
   "pub(crate) fn record_product_operation_result",
@@ -303,6 +338,60 @@ forbid(
   "drop(transaction);",
   "product owner receipt completion",
 );
+
+// Owner methods can fail before their success-only `commit` call. A receipt-bound wrapper must
+// take ownership of that live transaction on Drop and await rollback after the task-local scope
+// ends, before any independent terminal failure receipt can be persisted.
+need(
+  productWriteTransaction,
+  "deferred_rollbacks: Arc<Mutex<Vec<DatabaseTransaction>>>",
+  "product owner deferred rollback",
+);
+for (const marker of [
+  "async fn rollback_deferred_transactions(&self)",
+  "transaction.rollback().await",
+]) {
+  need(productDeferredRollback, marker, "product owner deferred rollback");
+}
+for (const marker of [
+  "F: Future<Output = Result<T, E>>",
+  "E: From<CommerceError>",
+  "let rolled_back = receipt",
+  ".rollback_deferred_transactions()",
+  ".map_err(E::from)?",
+  "product owner write returned success without committing its transaction",
+]) {
+  need(productReceiptScope, marker, "product owner receipt scope rollback fence");
+}
+for (const marker of [
+  "transaction: Option<DatabaseTransaction>",
+  "impl Drop for ProductWriteTransaction",
+  "receipt.defer_rollback(transaction);",
+  "receipt_scoped_early_error_awaits_owner_transaction_rollback",
+]) {
+  need(productWriteTransaction, marker, "product owner early-error rollback");
+}
+need(
+  productWriteTransactionDrop,
+  "receipt.defer_rollback(transaction);",
+  "product owner transaction Drop rollback handoff",
+);
+for (const marker of [
+  "if error.retryable {",
+  "return Ok(());",
+  "idempotency::fail(database, lease, error).await",
+]) {
+  need(productFailureReceiptFinalizer, marker, "product retryable receipt finalization");
+}
+for (const [source, label] of [
+  [productTranslationTarget, "Product translation-target receipt finalizer"],
+  [productVariantTranslationTarget, "Product Variant translation-target receipt finalizer"],
+  [productImageTranslationTarget, "Product Image translation-target receipt finalizer"],
+  [productSchemaAttributes, "Product schema receipt finalizer"],
+]) {
+  need(source, "fail_product_operation_receipt(", label);
+  forbid(source, "idempotency::fail(", label);
+}
 
 // ── Relations receipt protocol ───────────────────────────────────────────────────────────────
 for (const marker of [
@@ -1065,6 +1154,8 @@ for (const marker of [
   "extending this document",
   "scoped_caller_idempotency_key",
   "receipt-result encoding, a missing result, or completion failure awaits transaction rollback",
+  "any early owner error",
+  "retryable failures retain a reclaimable lease",
 ]) {
   need(boundaryDoc, marker, "write boundary doc");
 }

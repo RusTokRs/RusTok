@@ -20,7 +20,7 @@ adapters must not call the corresponding plain `ProductRelationsPort`/`BundlePor
 | Write family | Owner boundary | Operations | Current call/receipt policy |
 |---|---|---|---|
 | Product lifecycle, variants, variant axes, images | `ProductCatalogCommandPort` | create/update/delete product; publish/unpublish/archive; create/update/delete variant; set axes; add/update/delete/reorder image | `PortCallPolicy::write()` requires deadline and caller key. **The key is validated but lifecycle commands do not currently admit, complete, fail, or replay a durable owner receipt.** Do not represent this as durable idempotency. |
-| Attribute definitions, options, schemas, category schemas/bindings, and attribute values | `ProductCatalogSchemaWritePort` | mounted schema/EAV operations | Durable receipts: `rustok_outbox::idempotency::admit` → Product write transaction → `complete`/terminal `fail`; receipt-result encoding, a missing result, or completion failure awaits transaction rollback before the error leaves the owner; replay decodes the stored response. |
+| Attribute definitions, options, schemas, category schemas/bindings, and attribute values | `ProductCatalogSchemaWritePort` | mounted schema/EAV operations | Durable receipts: `rustok_outbox::idempotency::admit` → Product write transaction → `complete`/terminal `fail`; receipt-result encoding, a missing result, or completion failure awaits transaction rollback before the error leaves the owner, as does any early owner error; only deterministic failures become terminal, while retryable failures retain a reclaimable lease; replay decodes the stored response. |
 | Product relations | `ProductRelationService::create_relation_idempotent`, `update_relation_idempotent`, `delete_relation_idempotent`, and `reorder_relations_idempotent` with `ProductRelationCommandContext` | create, update, delete, reorder | Tenant-scoped durable receipt and same-transaction response completion for every command. Plain relation-port mutations are not external ingress. |
 | Product bundles | `BundleService::create_bundle_idempotent`, `update_bundle_idempotent`, `delete_bundle_idempotent`, `add_bundle_item_idempotent`, and `remove_bundle_item_idempotent` with `BundleCommandContext` | create, update, delete, add item, remove item | Tenant-scoped durable receipt and same-transaction response completion for every command. Plain Bundle-port mutations are not external ingress. |
 
@@ -71,6 +71,14 @@ receipt protocol and broaden an already incomplete lifecycle-receipt surface.
   GraphQL derive the same owner key with `rustok_product_bundles::scoped_caller_idempotency_key`.
 - Reusing a receipt key with a different payload is rejected as
   `outbox.operation_receipt_conflict` instead of aliasing two logical writes.
+
+## Receipt failure finalization
+
+Every Product receipt ingress, including the Product, Variant, Image, and schema/EAV Translation
+adapters, waits for a receipt-bound owner transaction that returned early to roll back before it
+attempts an independent failure finalization. It records a terminal receipt only for a deterministic
+`PortError`; an unavailable or timeout error retains the processing lease so admission can reclaim
+an unknown infrastructure outcome instead of replaying a terminal transient failure.
 
 ## Consequences for new integrations
 

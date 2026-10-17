@@ -30,7 +30,10 @@ use crate::{
     ProductTranslationExactResourceSummary,
     dto::ProductTranslationInput,
     entities::product::ProductStatus,
-    services::{catalog::ProductTranslationChangeLifecycle, with_product_operation_receipt},
+    services::{
+        catalog::ProductTranslationChangeLifecycle, fail_product_operation_receipt,
+        with_product_operation_receipt,
+    },
 };
 
 const TRANSLATION_OWNER_SLUG: &str = "product";
@@ -96,7 +99,9 @@ impl ProductTranslationTargetProvider {
     }
 
     async fn fail_receipt(&self, lease: idempotency::Lease, error: &PortError) {
-        if let Err(receipt_error) = idempotency::fail(self.service.database(), lease, error).await {
+        if let Err(receipt_error) =
+            fail_product_operation_receipt(self.service.database(), lease, error).await
+        {
             tracing::error!(
                 operation_id = %lease.operation_id,
                 error = %receipt_error.message,
