@@ -831,6 +831,26 @@ forbid(
   "RelationType::Custom(_) => GqlRelationType::Related",
   "GraphQL relation type projection",
 );
+for (const [name, start, end, marker] of [
+  [
+    "add_product_relation",
+    "async fn add_product_relation(",
+    "async fn remove_product_relation(",
+    "relation_type: input.relation_type.into(),",
+  ],
+  [
+    "reorder_product_relations",
+    "async fn reorder_product_relations(",
+    "async fn create_brand(",
+    "relation_type: relation_type.into(),",
+  ],
+]) {
+  need(
+    slice(graphql, start, end),
+    marker,
+    `${name} GraphQL relation type ingress`,
+  );
+}
 for (const marker of [
   "fn relation_type_to_gql(rtype: &str) -> Result<&'static str, String>",
   "RelationType::from_str(rtype)",

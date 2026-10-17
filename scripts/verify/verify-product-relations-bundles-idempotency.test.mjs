@@ -410,6 +410,23 @@ test("a GraphQL adapter cannot coerce an unknown relation type to RELATED", () =
   );
 });
 
+test("GraphQL relation enum ingress keeps its total domain conversion", () => {
+  const relative = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "relation_type: input.relation_type.into(),",
+      "relation_type: input.relation_type.try_into().unwrap(),",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /add_product_relation GraphQL relation type ingress: missing relation_type: input\.relation_type\.into\(\),/,
+  );
+});
+
 test("product relation GraphQL reads require product read permission", () => {
   const relative = "crates/modules/rustok-commerce/src/graphql/product_catalog.rs";
   const fixtureRoot = writeFixture({

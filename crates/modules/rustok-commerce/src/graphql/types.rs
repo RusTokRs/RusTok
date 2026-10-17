@@ -3195,9 +3195,10 @@ pub struct BundleItemInputGql {
 
 #[cfg(test)]
 mod revision_tests {
-    use super::{UpdateProductInput, graphql_patch};
+    use super::{GqlRelationType, UpdateProductInput, graphql_patch};
     use async_graphql::MaybeUndefined;
     use rustok_api::Patch;
+    use rustok_product_relations::dto::RelationType;
     use uuid::Uuid;
 
     #[test]
@@ -3219,6 +3220,18 @@ mod revision_tests {
         assert_eq!(
             graphql_patch(MaybeUndefined::Value(category_id)),
             Patch::Set(category_id)
+        );
+    }
+
+    #[test]
+    fn graphql_relation_type_maps_to_the_canonical_domain_type() {
+        assert_eq!(
+            RelationType::from(GqlRelationType::CrossSell),
+            RelationType::CrossSell
+        );
+        assert_eq!(
+            RelationType::from(GqlRelationType::Alternative),
+            RelationType::Alternative
         );
     }
 

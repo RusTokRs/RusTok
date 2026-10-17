@@ -893,10 +893,10 @@ impl CommerceCatalogMutation {
         let domain_input = rustok_product_relations::dto::CreateProductRelationInput {
             product_id: input.product_id,
             related_product_id: input.related_product_id,
-            relation_type: input
-                .relation_type
-                .try_into()
-                .map_err(|error| relation_domain_graphql_error(operation, error))?,
+            // Every GraphQL enum variant has one canonical domain counterpart. The fallible
+            // direction is the reverse projection, where a stored custom relation type cannot be
+            // represented by this enum.
+            relation_type: input.relation_type.into(),
             position: input.position,
             metadata: input.metadata.map(|m| m.0),
         };
@@ -971,9 +971,9 @@ impl CommerceCatalogMutation {
         let service = rustok_product_relations::services::ProductRelationService::new(db.clone());
         let domain_input = rustok_product_relations::dto::ReorderProductRelationsInput {
             product_id,
-            relation_type: relation_type
-                .try_into()
-                .map_err(|error| relation_domain_graphql_error(operation, error))?,
+            // GraphQL accepts only the canonical enum variants, so this ingress conversion is
+            // total. Domain-to-GraphQL projection remains fallible for custom relation types.
+            relation_type: relation_type.into(),
             ordered_relation_ids,
         };
         let reordered = service
