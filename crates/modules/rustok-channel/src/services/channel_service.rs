@@ -185,13 +185,18 @@ impl ChannelService {
         page: u64,
         per_page: u64,
     ) -> ChannelResult<(Vec<ChannelResponse>, u64)> {
+        if page == 0 || per_page == 0 {
+            return Err(ChannelError::Validation(
+                "channel pagination requires non-zero page and per_page".to_string(),
+            ));
+        }
         let paginator = channel::Entity::find()
             .filter(channel::Column::TenantId.eq(tenant_id))
             .order_by_desc(channel::Column::IsDefault)
             .order_by_asc(channel::Column::CreatedAt)
             .paginate(&self.db, per_page);
         let total = paginator.num_items().await?;
-        let models = paginator.fetch_page(page.saturating_sub(1)).await?;
+        let models = paginator.fetch_page(page - 1).await?;
         let items = models.into_iter().map(to_channel_response).collect();
         Ok((items, total))
     }
@@ -2217,5 +2222,75 @@ mod tests {
         .await
         .expect("oauth app should be inserted");
         oauth_app_id
+    }
+
+    #[tokio::test]
+    async fn list_channels_rejects_zero_pagination() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant-a").await;
+        let service = ChannelService::new(db);
+
+        let err_page_zero = service
+            .list_channels(tenant_id, 0, 10)
+            .await
+            .expect_err("page 0 must be rejected");
+        assert!(matches!(err_page_zero, ChannelError::Validation(_)));
+
+        let err_per_page_zero = service
+            .list_channels(tenant_id, 1, 0)
+            .await
+            .expect_err("per_page 0 must be rejected");
+        assert!(matches!(err_per_page_zero, ChannelError::Validation(_)));
+    }
+
+    #[tokio::test]
+    async fn list_channels_returns_paginated_results() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant-b").await;
+        let service = ChannelService::new(db);
+
+        service
+            .create_channel(CreateChannelInput {
+                tenant_id,
+                slug: "first".to_string(),
+                name: "First Channel".to_string(),
+                settings: None,
+            })
+            .await
+            .expect("first channel");
+
+        service
+            .create_channel(CreateChannelInput {
+                tenant_id,
+                slug: "second".to_string(),
+                name: "Second Channel".to_string(),
+                settings: None,
+            })
+            .await
+            .expect("second channel");
+
+        let (items, total) = service
+            .list_channels(tenant_id, 1, 10)
+            .await
+            .expect("list channels");
+        assert_eq!(total, 2);
+        assert_eq!(items.len(), 2);
+
+        let (page1, total) = service
+            .list_channels(tenant_id, 1, 1)
+            .await
+            .expect("page 1");
+        assert_eq!(total, 2);
+        assert_eq!(page1.len(), 1);
+
+        let (page2, total) = service
+            .list_channels(tenant_id, 2, 1)
+            .await
+            .expect("page 2");
+        assert_eq!(total, 2);
+        assert_eq!(page2.len(), 1);
+        assert_ne!(page1[0].id, page2[0].id);
     }
 }

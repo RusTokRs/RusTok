@@ -298,10 +298,10 @@
       "path": "crates/modules/rustok-channel",
       "category": "modules",
       "files": 47,
-      "loc": 11368,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 11443,
+      "completed": true,
+      "completed_at": "2026-10-17 05:23",
+      "notes": "Audited and cleaned."
     },
     "crates/modules/rustok-channel/admin": {
       "name": "admin",
@@ -1478,7 +1478,7 @@
       "path": "crates/ui/fly",
       "category": "ui",
       "files": 111,
-      "loc": 42922,
+      "loc": 43009,
       "completed": false,
       "completed_at": null,
       "notes": ""
