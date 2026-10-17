@@ -34,6 +34,7 @@ pub struct LayerItemView {
     pub parent_component_id: Option<String>,
     pub index: usize,
     pub child_count: usize,
+    pub is_locked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +47,7 @@ pub struct SelectedComponentView {
     pub fields: Map<String, Value>,
     pub child_count: usize,
     pub is_root: bool,
+    pub is_locked: bool,
 }
 
 impl AdminCanvasController {
@@ -75,15 +77,24 @@ impl AdminCanvasController {
     pub fn layer_items(&self) -> Vec<LayerItemView> {
         // Layer flattening is owned by `fly-ui` as well; the admin keeps only its
         // active-page selection and view shape.
-        fly_ui::editor_layer_items_for_page(self.editor().document(), self.active_page_index())
+        let document = self.editor().document();
+        fly_ui::editor_layer_items_for_page(document, self.active_page_index())
             .into_iter()
-            .map(|item| LayerItemView {
-                id: item.id,
-                component_type: item.component_type,
-                depth: item.depth,
-                parent_component_id: item.parent_id,
-                index: item.index,
-                child_count: item.child_count,
+            .map(|item| {
+                let is_locked = document
+                    .component(&item.id)
+                    .and_then(|c| c.attributes.get("data-fly-locked"))
+                    .and_then(Value::as_str)
+                    == Some("true");
+                LayerItemView {
+                    id: item.id,
+                    component_type: item.component_type,
+                    depth: item.depth,
+                    parent_component_id: item.parent_id,
+                    index: item.index,
+                    child_count: item.child_count,
+                    is_locked,
+                }
             })
             .collect()
     }
@@ -95,6 +106,11 @@ impl AdminCanvasController {
         if location.page_index != self.active_page_index() {
             return None;
         }
+        let is_locked = component
+            .attributes
+            .get("data-fly-locked")
+            .and_then(Value::as_str)
+            == Some("true");
         Some(SelectedComponentView {
             id: component_id.to_string(),
             component_type: component.component_type().to_string(),
@@ -104,6 +120,7 @@ impl AdminCanvasController {
             fields: component.extensions.clone(),
             child_count: component.children().len(),
             is_root: location.depth == 0,
+            is_locked,
         })
     }
 
@@ -163,6 +180,19 @@ impl AdminCanvasController {
             }
         };
 
+        if let Some(parent_id_str) = parent_id.as_deref() {
+            if let Some(parent_comp) = document.component(parent_id_str) {
+                if parent_comp
+                    .attributes
+                    .get("data-fly-locked")
+                    .and_then(Value::as_str)
+                    == Some("true")
+                {
+                    return Err("cannot insert into a locked layout component".to_string());
+                }
+            }
+        }
+
         let decision = registries.evaluate_placement(
             document,
             None,
@@ -190,6 +220,9 @@ impl AdminCanvasController {
         if selected.is_root {
             return Err("the page root cannot be moved".to_string());
         }
+        if selected.is_locked {
+            return Err("locked layout component cannot be moved".to_string());
+        }
         Ok(UiIntent::BeginDrag(DragSource::ExistingComponent {
             component_id: selected.id,
         }))
@@ -201,6 +234,9 @@ impl AdminCanvasController {
             .ok_or_else(|| "select a component before removing it".to_string())?;
         if selected.is_root {
             return Err("the page root cannot be removed".to_string());
+        }
+        if selected.is_locked {
+            return Err("locked layout component cannot be removed".to_string());
         }
         Ok(UiIntent::execute(EditorCommand::Remove {
             component_id: selected.id,
@@ -229,6 +265,16 @@ impl AdminCanvasController {
                 let location = document.component_location(&geometry.component_id)?;
                 if location.page_index != active_page_index {
                     return None;
+                }
+                if let Some(target_comp) = document.component(&geometry.component_id) {
+                    if target_comp
+                        .attributes
+                        .get("data-fly-locked")
+                        .and_then(Value::as_str)
+                        == Some("true")
+                    {
+                        return None;
+                    }
                 }
                 let target_type = document.component_type_for_id(&geometry.component_id)?;
                 let allow_inside = registries.accepts_child_type(Some(target_type), &child_type);
@@ -430,5 +476,75 @@ mod tests {
             }],
         );
         assert!(candidates.iter().all(|candidate| !candidate.legal));
+    }
+
+    #[test]
+    fn locked_layout_component_cannot_be_moved_or_removed_or_inserted_into() {
+        let mut controller = AdminCanvasController::new(
+            "home",
+            "rev-1",
+            json!({
+                "pages": [{
+                    "id": "home",
+                    "component": {
+                        "id": "root",
+                        "type": "wrapper",
+                        "components": [
+                            {
+                                "id": "layout-header",
+                                "type": "section",
+                                "attributes": { "data-fly-locked": "true", "data-fly-layout-slot": "header" },
+                                "components": [{ "id": "nav", "type": "text" }]
+                            },
+                            {
+                                "id": "body-section",
+                                "type": "section",
+                                "components": [{ "id": "body-text", "type": "text" }]
+                            }
+                        ]
+                    }
+                }]
+            }),
+        )
+        .expect("controller");
+
+        controller
+            .dispatch(UiIntent::Select(Some("layout-header".to_string())))
+            .expect("select");
+        let selected = controller.selected_component_view().expect("selected");
+        assert!(selected.is_locked);
+
+        let move_err = controller.begin_selected_move_intent().unwrap_err();
+        assert!(move_err.contains("locked layout component"));
+
+        let remove_err = controller.remove_selected_intent().unwrap_err();
+        assert!(remove_err.contains("locked layout component"));
+
+        let insert_err = controller.insert_palette_block_intent("text").unwrap_err();
+        assert!(insert_err.contains("locked layout component"));
+
+        controller
+            .dispatch(UiIntent::Select(Some("body-text".to_string())))
+            .expect("select body text");
+        controller
+            .dispatch(UiIntent::BeginDrag(DragSource::ExistingComponent {
+                component_id: "body-text".to_string(),
+            }))
+            .expect("begin drag");
+        let candidates = controller.hit_candidates(
+            BrowserPoint { x: 10.0, y: 10.0 },
+            [CanvasComponentGeometry {
+                component_id: "layout-header".to_string(),
+                parent_component_id: Some("root".to_string()),
+                index: 0,
+                rect: fly_leptos::BrowserRect {
+                    left: 0.0,
+                    top: 0.0,
+                    width: 100.0,
+                    height: 50.0,
+                },
+            }],
+        );
+        assert!(candidates.is_empty());
     }
 }
