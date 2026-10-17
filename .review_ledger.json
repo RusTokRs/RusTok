@@ -18,10 +18,10 @@
       "path": "crates/libs/rustok-core",
       "category": "libs",
       "files": 65,
-      "loc": 17627,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 17689,
+      "completed": true,
+      "completed_at": "2026-10-17 00:12",
+      "notes": "Audited via CodeGraph: added non-blocking async config loader, safe file reading, formatted regex invariants."
     },
     "crates/libs/rustok-events": {
       "name": "rustok-events",

@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)  
-**Next pending component:** [`crates/libs/rustok-core`](../../crates/libs/rustok-core) (65 files, 17,627 LOC)  
-**Current main SHA:** `4277d1f9a`  
+**Next pending component:** [`crates/libs/rustok-api`](../../crates/libs/rustok-api) (35 files, 7,292 LOC)  
+**Current main SHA:** `03e37fa03`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -33,7 +33,7 @@ The single canonical trigger to continue this audit sequence is:
 ### Phase Backlog — Architectural Sequence (262 Components Total, Round 1)
 
 - [x] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (1/1 completed)
-- [ ] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (0/10 completed)
+- [ ] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (1/10 completed)
 - [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (0/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (0/39 completed)
@@ -54,9 +54,9 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)
-*Core platform abstractions, money/currency primitives, pagination, tenant context, transactional outbox traits, runtime interfaces, and telemetry.* (0/10 completed)
+*Core platform abstractions, money/currency primitives, pagination, tenant context, transactional outbox traits, runtime interfaces, and telemetry.* (1/10 completed)
 
-- [ ] **[`crates/libs/rustok-core`](../../crates/libs/rustok-core)** (65 files, 17,627 LOC) — Canonical platform kernel primitives: money/currency math, pagination structures, canonical tenant context, and base error traits.
+- [x] **[`crates/libs/rustok-core`](../../crates/libs/rustok-core)** (65 files, 17,627 LOC) — Canonical platform kernel primitives: money/currency math, pagination structures, canonical tenant context, and base error traits. Audited via CodeGraph; added non-blocking async config loading (`load_async`), safe file stream reading in `ConfigLoader`, formatted static regex invariants in `tenant_validation` and `field_schema`. 279/279 tests passed, 0 clippy warnings, gate passed.
 - [ ] **[`crates/libs/rustok-api`](../../crates/libs/rustok-api)** (35 files, 7,292 LOC) — Public HTTP/gRPC transport contracts, standard REST DTOs, API error body models, and pagination query schemas.
 - [ ] **[`crates/libs/rustok-events`](../../crates/libs/rustok-events)** (34 files, 12,081 LOC) — Transactional event bus, outbox event schema contracts, event versioning, and dead-letter queue structures.
 - [ ] **[`crates/libs/rustok-runtime`](../../crates/libs/rustok-runtime)** (4 files, 2,423 LOC) — Runtime lifecycle primitives, instance-bound handles, execution environment detection, and shutdown signals.
@@ -417,7 +417,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,292 | None |  |
 | [ ] | [rustok-content-portability](../../crates/libs/rustok-content-portability) | `libs` | 6 | 617 | None |  |
 | [ ] | [rustok-content-portability-api](../../crates/libs/rustok-content-portability-api) | `libs` | 6 | 920 | None |  |
-| [ ] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 65 | 17,627 | None |  |
+| [x] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 65 | 17,689 | 2026-10-17 00:12 | Audited via CodeGraph: added non-blocking async config loader, safe file reading, formatted regex invariants. |
 | [ ] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 34 | 12,081 | None |  |
 | [ ] | [rustok-fba](../../crates/libs/rustok-fba) | `libs` | 1 | 82 | None |  |
 | [ ] | [rustok-manifest](../../crates/libs/rustok-manifest) | `libs` | 6 | 832 | None |  |

@@ -154,6 +154,42 @@ impl ConfigLoader {
 
         Ok(merged)
     }
+
+    /// Load configuration asynchronously into a type that implements Config
+    pub async fn load_async<T: Config>(self) -> Result<T, ConfigError> {
+        let mut merged = HashMap::new();
+
+        for source in &self.sources {
+            let values = match source {
+                ConfigSource::Env { prefix } => load_from_env(prefix.as_deref()),
+                ConfigSource::File(path) => load_from_file_async(path).await,
+                ConfigSource::String { content, format } => parse_content(content, *format),
+                ConfigSource::Memory(values) => Ok(values.clone()),
+            }?;
+
+            merged.extend(values);
+        }
+
+        T::from_map(merged)
+    }
+
+    /// Load configuration asynchronously as a raw HashMap
+    pub async fn load_raw_async(self) -> Result<HashMap<String, String>, ConfigError> {
+        let mut merged = HashMap::new();
+
+        for source in &self.sources {
+            let values = match source {
+                ConfigSource::Env { prefix } => load_from_env(prefix.as_deref()),
+                ConfigSource::File(path) => load_from_file_async(path).await,
+                ConfigSource::String { content, format } => parse_content(content, *format),
+                ConfigSource::Memory(values) => Ok(values.clone()),
+            }?;
+
+            merged.extend(values);
+        }
+
+        Ok(merged)
+    }
 }
 
 /// Trait for types that can be loaded from configuration
@@ -248,10 +284,33 @@ fn load_from_file(path: &str) -> Result<HashMap<String, String>, ConfigError> {
         ConfigError::Other(format!("Cannot detect config format from path: {}", path))
     })?;
 
-    let content = std::fs::read_to_string(path).map_err(|e| ConfigError::ReadError {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).map_err(|e| ConfigError::ReadError {
         path: path.to_string(),
         message: e.to_string(),
     })?;
+    let mut content = String::new();
+    file.read_to_string(&mut content)
+        .map_err(|e| ConfigError::ReadError {
+            path: path.to_string(),
+            message: e.to_string(),
+        })?;
+
+    parse_content(&content, format)
+}
+
+/// Load configuration from a file asynchronously without blocking
+pub async fn load_from_file_async(path: &str) -> Result<HashMap<String, String>, ConfigError> {
+    let format = ConfigFormat::from_extension(path).ok_or_else(|| {
+        ConfigError::Other(format!("Cannot detect config format from path: {}", path))
+    })?;
+
+    let content = tokio::fs::read_to_string(path)
+        .await
+        .map_err(|e| ConfigError::ReadError {
+            path: path.to_string(),
+            message: e.to_string(),
+        })?;
 
     parse_content(&content, format)
 }
