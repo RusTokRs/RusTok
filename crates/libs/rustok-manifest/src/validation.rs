@@ -53,17 +53,19 @@ pub fn validate_modules_manifest(manifest: &ModulesManifest) -> Result<()> {
     }
 
     // 2. Validate default_enabled
-    if let Some(settings) = &manifest.settings {
-        if let Some(default_enabled) = &settings.default_enabled {
-            for slug in default_enabled {
-                let Some(spec) = manifest.modules.get(slug) else {
-                    return Err(ManifestError::UnknownModule(slug.clone()));
-                };
-                if spec.required {
-                    return Err(ManifestError::Validation(format!(
-                        "Module '{slug}' is marked as required=true and must not be in default_enabled"
-                    )));
-                }
+    if let Some(default_enabled) = manifest
+        .settings
+        .as_ref()
+        .and_then(|s| s.default_enabled.as_ref())
+    {
+        for slug in default_enabled {
+            let Some(spec) = manifest.modules.get(slug) else {
+                return Err(ManifestError::UnknownModule(slug.clone()));
+            };
+            if spec.required {
+                return Err(ManifestError::Validation(format!(
+                    "Module '{slug}' is marked as required=true and must not be in default_enabled"
+                )));
             }
         }
     }

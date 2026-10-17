@@ -2548,10 +2548,10 @@
       "path": "crates/libs/rustok-manifest",
       "category": "libs",
       "files": 6,
-      "loc": 832,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 834,
+      "completed": true,
+      "completed_at": "2026-10-17 01:09",
+      "notes": "Audited and cleaned."
     },
     "crates/modules/rustok-messenger": {
       "name": "rustok-messenger",
