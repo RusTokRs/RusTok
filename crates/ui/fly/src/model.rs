@@ -87,6 +87,38 @@ impl ProjectDocument {
         );
     }
 
+    /// Deeply clones a template or preset into an independent Page document,
+    /// remapping all component, style, and asset identifiers with the provided ID generator.
+    pub fn clone_as_page(&self, generator: &mut impl IdGenerator) -> Self {
+        let mut cloned = self.clone();
+        let mut source_ids = Vec::new();
+        for page in &cloned.project.pages {
+            if let Some(component) = &page.component {
+                component.collect_ids(&mut source_ids);
+            }
+        }
+        let mapping = source_ids
+            .into_iter()
+            .map(|id| (id, generator.next_id("comp")))
+            .collect::<BTreeMap<_, _>>();
+        for page in &mut cloned.project.pages {
+            if let Some(component) = &mut page.component {
+                component.remap_ids(&mapping);
+            }
+        }
+        for style in &mut cloned.project.styles {
+            crate::id_reference::remap_value_ids(style, &mapping);
+            crate::fragment::reset_remapped_style_rule_identity(style, &mapping);
+        }
+        for asset in &mut cloned.project.assets {
+            crate::id_reference::remap_value_ids(asset, &mapping);
+        }
+        crate::id_reference::remap_map_ids(&mut cloned.project.extensions, &mapping);
+        cloned.set_document_kind(DocumentKind::Page);
+        cloned.invalidate_caches();
+        cloned
+    }
+
     /// Give every component a unique, syntactically valid id, minting new ones where needed.
     ///
     /// Ids that fail [`validate_identifier`] are replaced rather than preserved. An id is
@@ -602,6 +634,56 @@ impl DocumentKind {
             Self::SectionSymbol => "section_symbol",
             Self::StarterPreset => "starter_preset",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::GrapesJsCodec;
+    use serde_json::json;
+
+    #[test]
+    fn clone_as_page_remaps_all_ids_and_sets_kind() {
+        let mut doc = GrapesJsCodec::decode_value(json!({
+            "flyDocumentKind": "starter_preset",
+            "pages": [{
+                "id": "starter-page",
+                "component": {
+                    "id": "orig-root",
+                    "type": "wrapper",
+                    "components": [
+                        { "id": "orig-h1", "type": "heading", "content": "Title" },
+                        { "id": "orig-p", "type": "text", "content": "Desc" }
+                    ]
+                }
+            }],
+            "styles": [
+                {
+                    "selectors": [{ "name": "orig-h1", "type": 2 }],
+                    "flyComponentId": "orig-h1",
+                    "style": { "color": "red" }
+                }
+            ]
+        })).expect("valid document");
+
+        assert_eq!(doc.document_kind(), DocumentKind::StarterPreset);
+
+        let mut generator = crate::SequentialIdGenerator::default();
+        let cloned = doc.clone_as_page(&mut generator);
+
+        assert_eq!(cloned.document_kind(), DocumentKind::Page);
+        let orig_root = cloned.component("orig-root");
+        assert!(orig_root.is_none(), "Original IDs must be remapped");
+        let orig_h1 = cloned.component("orig-h1");
+        assert!(orig_h1.is_none(), "Original child IDs must be remapped");
+
+        // Verify style rule identity remapped
+        let style_val = &cloned.project.styles[0];
+        assert_ne!(
+            style_val.get("flyComponentId").and_then(Value::as_str),
+            Some("orig-h1")
+        );
     }
 }
 
