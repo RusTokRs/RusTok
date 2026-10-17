@@ -488,6 +488,40 @@ test("deployed Product receipt keys cannot silently switch to the framed key for
   );
 });
 
+test("deployed Relation receipt keys cannot silently switch to the framed key formula", () => {
+  const relative = "crates/modules/rustok-product-relations/src/lib.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "    digest.update(caller_key.trim().as_bytes());",
+      "    hash_scoped_key_component(&mut digest, caller_key.trim().as_bytes());",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /relations deployed receipt key compatibility: missing digest\.update\(caller_key\.trim\(\)\.as_bytes\(\)\);/,
+  );
+});
+
+test("deployed Bundle receipt keys cannot silently switch to the framed key formula", () => {
+  const relative = "crates/modules/rustok-product-bundles/src/lib.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "    digest.update(caller_key.trim().as_bytes());",
+      "    hash_scoped_key_component(&mut digest, caller_key.trim().as_bytes());",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /bundles deployed receipt key compatibility: missing digest\.update\(caller_key\.trim\(\)\.as_bytes\(\)\);/,
+  );
+});
+
 test("Bundle GraphQL must preserve an explicit null owner clear", () => {
   const relative = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";
   const fixtureRoot = writeFixture({

@@ -301,13 +301,37 @@ forbid(
   "idempotency::scoped_caller_idempotency_key(",
   "deployed Product receipt key compatibility",
 );
-for (const [source, namespace, label] of [
-  [relationsLib, 'RELATION_CALLER_IDEMPOTENCY_NAMESPACE: &str = "commerce-graphql-relation"', "relations receipt key owner"],
-  [bundlesLib, 'BUNDLE_CALLER_IDEMPOTENCY_NAMESPACE: &str = "commerce-graphql-bundle"', "bundles receipt key owner"],
+for (const [source, namespace, compatibilityMarker, label] of [
+  [
+    relationsLib,
+    'RELATION_CALLER_IDEMPOTENCY_NAMESPACE: &str = "commerce-graphql-relation"',
+    "This deployed Product Relation namespace deliberately retains its original digest framing",
+    "relations deployed receipt key compatibility",
+  ],
+  [
+    bundlesLib,
+    'BUNDLE_CALLER_IDEMPOTENCY_NAMESPACE: &str = "commerce-graphql-bundle"',
+    "This deployed Product Bundle namespace deliberately retains its original digest framing",
+    "bundles deployed receipt key compatibility",
+  ],
 ]) {
-  need(source, namespace, label);
-  need(source, "pub fn scoped_caller_idempotency_key(", label);
-  need(source, "rustok_outbox::idempotency::scoped_caller_idempotency_key(", label);
+  for (const marker of [
+    namespace,
+    compatibilityMarker,
+    "pub fn scoped_caller_idempotency_key(",
+    "let mut digest = Sha256::new();",
+    "digest.update(tenant_id.as_bytes());",
+    "digest.update(user_id.as_bytes());",
+    "digest.update(operation.as_bytes());",
+    "digest.update(caller_key.trim().as_bytes());",
+  ]) {
+    need(source, marker, label);
+  }
+  forbid(
+    source,
+    "rustok_outbox::idempotency::scoped_caller_idempotency_key(",
+    label,
+  );
 }
 for (const marker of [
   "let update = entity::Entity::update_many()",

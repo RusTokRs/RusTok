@@ -16750,6 +16750,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "hex",
  "rustok-api",
  "rustok-core",
  "rustok-events",
@@ -16759,6 +16760,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -16811,6 +16813,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "hex",
  "rustok-api",
  "rustok-core",
  "rustok-events",
@@ -16820,6 +16823,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
