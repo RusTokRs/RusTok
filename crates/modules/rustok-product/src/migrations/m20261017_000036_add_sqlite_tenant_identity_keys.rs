@@ -6,6 +6,13 @@ pub struct Migration;
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
+    fn use_transaction(&self) -> Option<bool> {
+        // SeaORM leaves SQLite migrations unwrapped by default. These three parent keys form one
+        // Bundle foreign-key contract, so a failed multi-statement upgrade or downgrade must not
+        // leave only a subset of that contract installed.
+        Some(true)
+    }
+
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
         match manager.get_database_backend() {
@@ -90,6 +97,12 @@ mod tests {
     use sea_orm_migration::{MigrationTrait, SchemaManager};
 
     use super::Migration;
+
+    #[test]
+    fn parent_identity_key_contract_is_transactional_on_sqlite() {
+        let migration = Migration;
+        assert_eq!(migration.use_transaction(), Some(true));
+    }
 
     #[tokio::test]
     async fn sqlite_parent_keys_support_tenant_scoped_bundle_variant_foreign_keys() {

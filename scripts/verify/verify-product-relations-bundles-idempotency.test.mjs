@@ -779,6 +779,20 @@ test("Bundle Variant integrity retains its Product-owned parent key", () => {
   );
 });
 
+test("Product SQLite identity keys must be upgraded and downgraded atomically", () => {
+  const relative =
+    "crates/modules/rustok-product/src/migrations/m20261017_000036_add_sqlite_tenant_identity_keys.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(relative, "Some(true)", "Some(false)"),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /Product SQLite identity-key migration transaction: missing Some\(true\)/,
+  );
+});
+
 test("Relation tenant-key cleanup cannot drop a referenced key without rebuilding both FKs", () => {
   const relative =
     "crates/modules/rustok-product-relations/src/migrations/m20261017_000005_remove_redundant_product_tenant_key.rs";

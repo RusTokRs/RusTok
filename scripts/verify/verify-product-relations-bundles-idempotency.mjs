@@ -160,6 +160,11 @@ const bundlesLocaleMigration = read(bundlesLocaleMigrationPath);
 const bundlesIntegrityMigration = read(bundlesIntegrityMigrationPath);
 const bundlesCreateMigration = read(bundlesCreateMigrationPath);
 const productSqliteIdentityMigration = read(productSqliteIdentityMigrationPath);
+const productSqliteIdentityMigrationTransaction = slice(
+  productSqliteIdentityMigration,
+  "impl MigrationTrait for Migration {",
+  "async fn up",
+);
 const productSqliteIdentityMigrationUp = slice(
   productSqliteIdentityMigration,
   "async fn up",
@@ -771,6 +776,16 @@ for (const marker of [
   "variant.product_id IS DISTINCT FROM item.product_id",
 ]) {
   need(bundlesIntegrityMigration, marker, "bundles Variant-to-Product integrity migration");
+}
+for (const marker of [
+  "fn use_transaction(&self) -> Option<bool>",
+  "Some(true)",
+]) {
+  need(
+    productSqliteIdentityMigrationTransaction,
+    marker,
+    "Product SQLite identity-key migration transaction",
+  );
 }
 for (const marker of [
   "uq_product_variants_tenant_product_id",
