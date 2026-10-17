@@ -1,3 +1,15 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
+
+use async_trait::async_trait;
+use rustok_core::{CacheBackend, CacheCompareAndSetOutcome, CacheStats};
+
+use crate::backend_generation::{
+    backend_generations, generation_state, BackendGenerationState, CacheBackendGenerationError,
+};
+use crate::CacheService;
+
 #[cfg(feature = "redis-cache")]
 const MAX_GENERATION_RECOVERIES_PER_PROBE: usize = 16;
 
@@ -340,6 +352,10 @@ impl CacheBackend for GenerationRecoveryHealthBackend {
 #[cfg(test)]
 mod recovery_tests {
     use super::*;
+    use crate::backend_generation::{
+        bind_cache_backend_generation_aliases, cache_backend_generation_snapshot,
+    };
+    use uuid::Uuid;
 
     #[cfg(feature = "redis-cache")]
     fn unique_prefix(name: &str) -> String {

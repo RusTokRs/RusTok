@@ -1,7 +1,5 @@
-mod backend_generation {
-    include!("backend_generation.rs");
-    include!("backend_generation_recovery.rs");
-}
+mod backend_generation;
+mod backend_generation_recovery;
 mod bounded_invalidation;
 mod cas_observability;
 mod clock;

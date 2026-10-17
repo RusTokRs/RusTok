@@ -268,10 +268,10 @@
       "path": "crates/modules/rustok-cache",
       "category": "modules",
       "files": 46,
-      "loc": 15917,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 15931,
+      "completed": true,
+      "completed_at": "2026-10-17 04:30",
+      "notes": "Audited and cleaned."
     },
     "crates/modules/rustok-cart": {
       "name": "rustok-cart",

@@ -16,11 +16,11 @@ const MAX_GENERATION_OPERATION_ATTEMPTS: usize = 4;
 static BACKEND_GENERATIONS: OnceLock<Mutex<HashMap<String, Arc<BackendGenerationState>>>> =
     OnceLock::new();
 
-fn backend_generations() -> &'static Mutex<HashMap<String, Arc<BackendGenerationState>>> {
+pub(crate) fn backend_generations() -> &'static Mutex<HashMap<String, Arc<BackendGenerationState>>> {
     BACKEND_GENERATIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-struct BackendGenerationState {
+pub(crate) struct BackendGenerationState {
     generation: AtomicU64,
     trusted: AtomicBool,
     boot_namespace: String,
@@ -28,7 +28,7 @@ struct BackendGenerationState {
 }
 
 impl BackendGenerationState {
-    fn untrusted() -> Self {
+    pub(crate) fn untrusted() -> Self {
         Self {
             generation: AtomicU64::new(0),
             trusted: AtomicBool::new(false),
@@ -37,7 +37,7 @@ impl BackendGenerationState {
         }
     }
 
-    fn snapshot(&self) -> CacheBackendGenerationSnapshot {
+    pub(crate) fn snapshot(&self) -> CacheBackendGenerationSnapshot {
         // Observe trust first. The transition to trusted stores the generation before publishing
         // `trusted = true`; loading generation afterwards avoids a mixed `trusted=true, g=old`
         // snapshot. A concurrent later rotation is detected by the post-I/O token recheck.
@@ -53,7 +53,7 @@ impl BackendGenerationState {
         }
     }
 
-    fn observe(&self, generation: u64) -> Result<(), CacheBackendGenerationError> {
+    pub(crate) fn observe(&self, generation: u64) -> Result<(), CacheBackendGenerationError> {
         let _guard = self
             .update_lock
             .lock()
@@ -180,7 +180,7 @@ fn validate_prefix(prefix: &str) -> Result<(), CacheBackendGenerationError> {
     Ok(())
 }
 
-fn generation_state(
+pub(crate) fn generation_state(
     prefix: &str,
 ) -> Result<Arc<BackendGenerationState>, CacheBackendGenerationError> {
     validate_prefix(prefix)?;
