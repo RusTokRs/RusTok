@@ -54,12 +54,12 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)
-*Core platform abstractions, money/currency primitives, pagination, tenant context, transactional outbox traits, runtime interfaces, and telemetry.* (3/10 completed)
+*Core platform abstractions, money/currency primitives, pagination, tenant context, transactional outbox traits, runtime interfaces, and telemetry.* (4/10 completed)
 
 - [x] **[`crates/libs/rustok-core`](../../crates/libs/rustok-core)** (65 files, 17,627 LOC) — Canonical platform kernel primitives: money/currency math, pagination structures, canonical tenant context, and base error traits. Audited via CodeGraph; added non-blocking async config loading (`load_async`), safe file stream reading in `ConfigLoader`, formatted static regex invariants in `tenant_validation` and `field_schema`. 279/279 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/libs/rustok-api`](../../crates/libs/rustok-api)** (35 files, 7,311 LOC) — Public HTTP/gRPC transport contracts, standard REST DTOs, API error body models, and pagination query schemas. Audited; fixed `PaginationInput` default limit alignment with GraphQL schema, corrected OAuth scope permission restriction to avoid expanding manage permissions when scope allows manage directly, ensured `storefront:*` scope only grants non-Manage actions. 128/128 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/libs/rustok-events`](../../crates/libs/rustok-events)** (34 files, 12,081 LOC) — Transactional event bus, outbox event schema contracts, event versioning, and dead-letter queue structures. Audited via CodeGraph; sealed `EventContract` trait, verified ULID correlation/causation tracking, verified fail-closed schema registry and JSON schema generation. 116/116 tests passed, 0 clippy warnings, gate passed.
-- [ ] **[`crates/libs/rustok-runtime`](../../crates/libs/rustok-runtime)** (4 files, 2,423 LOC) — Runtime lifecycle primitives, instance-bound handles, execution environment detection, and shutdown signals.
+- [x] **[`crates/libs/rustok-runtime`](../../crates/libs/rustok-runtime)** (4 files, 2,423 LOC) — Runtime lifecycle primitives, instance-bound handles, execution environment detection, and shutdown signals. Audited via CodeGraph; verified instance placement normalization, path traversal prevention, content-addressed payload caching, and graceful shutdown signal propagation. 19/19 tests passed, 0 clippy warnings, gate passed.
 - [ ] **[`crates/libs/rustok-manifest`](../../crates/libs/rustok-manifest)** (6 files, 832 LOC) — Module manifest (`rustok-module.toml`) schema, dependency validation, capability declarations, and permissions metadata.
 - [ ] **[`crates/libs/rustok-telemetry`](../../crates/libs/rustok-telemetry)** (15 files, 3,340 LOC) — Distributed tracing, OpenTelemetry integration, structured JSON logging, metrics collection, and request correlation IDs.
 - [ ] **[`crates/libs/rustok-fba`](../../crates/libs/rustok-fba)** (1 files, 82 LOC) — Fluid Backend Architecture (FBA) interfaces, capability profiles, provider descriptors, and consumer dependency injection.
@@ -421,7 +421,7 @@ The single canonical trigger to continue this audit sequence is:
 | [x] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 34 | 12,081 | 2026-10-17 00:50 | Audited and cleaned. |
 | [ ] | [rustok-fba](../../crates/libs/rustok-fba) | `libs` | 1 | 82 | None |  |
 | [ ] | [rustok-manifest](../../crates/libs/rustok-manifest) | `libs` | 6 | 832 | None |  |
-| [ ] | [rustok-runtime](../../crates/libs/rustok-runtime) | `libs` | 4 | 2,423 | None |  |
+| [x] | [rustok-runtime](../../crates/libs/rustok-runtime) | `libs` | 4 | 2,423 | 2026-10-17 00:58 | Audited and cleaned. |
 | [ ] | [rustok-telemetry](../../crates/libs/rustok-telemetry) | `libs` | 15 | 3,340 | None |  |
 | [ ] | [rustok-web](../../crates/libs/rustok-web) | `libs` | 2 | 742 | None |  |
 | [ ] | [alloy](../../crates/modules/alloy) | `modules` | 77 | 25,206 | None |  |
