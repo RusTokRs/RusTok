@@ -175,6 +175,9 @@ async fn open_forum_seo_loads_topics_and_pages_only_public_owner_candidates() {
         .list_public_storefront_visible_with_locale_fallback(
             tenant,
             ListTopicsFilter {
+                search: None,
+                order: Default::default(),
+                solved_only: false,
                 category_id: None,
                 status: None,
                 locale: Some("en".into()),

@@ -16,13 +16,19 @@ interface QuoteTooltipProps {
 }
 
 export function QuoteTooltip({ tenantId, tenantSlug, locale, replyTopic }: QuoteTooltipProps) {
-  const { state, openReply, appendQuote } = useComposer();
+  const { state, openReply, appendQuote, captureEditorSession } = useComposer();
   const forum = useTranslations('Forum');
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const [selectedText, setSelectedText] = useState('');
   const [textOnlyNotice, setTextOnlyNotice] = useState(false);
   const [isQuoting, setIsQuoting] = useState(false);
   const quoteInFlight = useRef(false);
+  const selectionVersionRef = useRef(0);
+  const quoteActiveRef = useRef(true);
+  useEffect(() => {
+    quoteActiveRef.current = true;
+    return () => { quoteActiveRef.current = false; };
+  }, []);
   const composerTarget = useRef({
     isOpen: state.isOpen, isSubmitting: state.isSubmitting,
     mode: state.mode, topicId: state.topicId, categoryId: state.categoryId,
@@ -40,6 +46,7 @@ export function QuoteTooltip({ tenantId, tenantSlug, locale, replyTopic }: Quote
   } | null>(null);
 
   const handleSelectionChange = useCallback(() => {
+    selectionVersionRef.current += 1;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) {
       setPosition(null);
@@ -105,20 +112,20 @@ export function QuoteTooltip({ tenantId, tenantSlug, locale, replyTopic }: Quote
     const expectedTarget = state.isOpen
       ? { mode: state.mode, topicId: state.topicId, categoryId: state.categoryId, parentReplyId: state.parentReplyId }
       : { mode: 'reply' as const, topicId: replyTopic?.id ?? null, categoryId: null, parentReplyId };
-    // appendQuote alone opens the drawer without a target topic. Bind the
-    // reply before awaiting the revision lookup, even when it falls back to
+    // Bind the reply before awaiting the revision lookup, even when it falls back to
     // text-only. Keep an already-open composer (including a new-topic draft).
     if (!state.isOpen) {
       if (!replyTopic) return;
-      openReply({ topicId: replyTopic.id, topicTitle: replyTopic.title, parentReplyId });
+      if (!openReply({ topicId: replyTopic.id, topicTitle: replyTopic.title, parentReplyId })) return;
       composerTarget.current = { ...composerTarget.current, ...expectedTarget, isOpen: true };
     }
+    const isEditingSession = captureEditorSession();
     // The lookup can finish after the viewer closes or switches composers.
     // Never reopen a closed editor or attach this quote to another draft.
     const stillEditingTarget = () => {
       const currentAuth = getClientAuth();
       const current = composerTarget.current;
-      return currentAuth.token === auth.token && currentAuth.tenant === auth.tenant &&
+      return quoteActiveRef.current && isEditingSession() && currentAuth.token === auth.token && currentAuth.tenant === auth.tenant &&
         current.isOpen && !current.isSubmitting &&
         current.mode === expectedTarget.mode && current.topicId === expectedTarget.topicId &&
         current.categoryId === expectedTarget.categoryId &&
@@ -128,6 +135,7 @@ export function QuoteTooltip({ tenantId, tenantSlug, locale, replyTopic }: Quote
     setIsQuoting(true);
     const { targetKind, targetId, authorHandle } = targetContext;
     const snippet = selectedText;
+    const selectionVersion = selectionVersionRef.current;
     try {
       const revisionId = await fetchStorefrontQuoteRevision({
         tenantId,
@@ -155,10 +163,14 @@ export function QuoteTooltip({ tenantId, tenantSlug, locale, replyTopic }: Quote
         setTextOnlyNotice(true);
       }
     } finally {
-      window.getSelection()?.removeAllRanges();
-      setPosition(null);
+      if (quoteActiveRef.current) {
+        if (stillEditingTarget() && selectionVersionRef.current === selectionVersion) {
+          window.getSelection()?.removeAllRanges();
+          setPosition(null);
+        }
+        setIsQuoting(false);
+      }
       quoteInFlight.current = false;
-      setIsQuoting(false);
     }
   }
 

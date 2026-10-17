@@ -128,6 +128,7 @@ export class RichTextFrameController {
 
     const onMessage = (event: MessageEvent<unknown>) => {
       if (
+        this.destroyed ||
         event.source !== this.options.iframe.contentWindow ||
         !isHandshakeReady(event.data, nonce)
       ) {
@@ -177,6 +178,7 @@ export class RichTextFrameController {
   }
 
   private receive(value: unknown): void {
+    if (this.destroyed) return;
     if (
       !isEnvelope(
         value,

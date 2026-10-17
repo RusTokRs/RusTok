@@ -251,8 +251,11 @@ wrappers. Each one has an owner decision or a follow-up task in
   the body; `0` as a maximum means unlimited. The admin form edits only the title limits; body limits are
   set through the settings JSON. See
   [`DECISIONS/2026-10-09-forum-content-length-enforcement.md`](../../../DECISIONS/2026-10-09-forum-content-length-enforcement.md).
-- `max_edit_window_minutes` is enforced on author topic and reply updates. After the window closes, an author
-  update returns `FORUM_VALIDATION_FAILED` (HTTP 400). Moderators and administrators are not limited. See
+- `max_edit_window_minutes` is enforced on author topic and reply updates, including standalone
+  quote replacements through REST and GraphQL. Both transports inject the tenant settings providers
+  into `ForumQuoteCommandService`; a settings read failure propagates before relation persistence.
+  After the window closes, an author update returns `FORUM_VALIDATION_FAILED` (HTTP 400).
+  Moderators and administrators are not limited. See
   [`DECISIONS/2026-10-09-forum-wire-author-edit-window-and-locked-list-settings.md`](../../../DECISIONS/2026-10-09-forum-wire-author-edit-window-and-locked-list-settings.md).
 - Author self-service: the built-in Customer role edits its own topics and replies (`forum_topics:update` and
   `forum_replies:update`, scope `Own`). A role without the update or delete permission gets no author access, and any
@@ -323,12 +326,16 @@ wrappers. Each one has an owner decision or a follow-up task in
   validation error rather than a partial total. Page Builder gets a faithful owner read, not a
   pixel copy of the rendered block.
 - Forum search documents carry the exact filter facts (`author`, `tags`, solved state,
-  `published_at`, `channel_slugs`) and the Search module filters on them, but neither the
-  Forum nor the Search storefront surface renders a control for author, tag, solved,
-  locale, date or current-channel filtering. The transports are additive and the owner
+  `published_at`, `channel_slugs`) and the Search module filters on them, but the
+  indexed Search storefront surface does not yet render controls for author, tag, solved,
+  locale, date or current-channel filtering. Forum's owner-backed feed selection below is
+  separate from the Search index contract. The transports are additive and the owner
   plan tracks the missing product surface under `FORUM-23B2F1` to `FORUM-23B2F4`.
-- Topic view counters and topic sort orders are not implemented. The list order is
-  fixed as pinned first, then recent activity. `last_reply_at` is a derived
+- Topic view counters are not implemented. Topic lists support owner-backed Latest
+  (pinned first, then recent activity) and Top (canonical reply count descending,
+  then the full Latest tie-break key). Search matches the displayed effective-locale
+  title or slug, and Solved selects the canonical solution relation before output pagination.
+  `last_reply_at` is a derived
   projection recomputed from the newest approved reply in both counter directions, so
   an imported or restored reply cannot move a topic by a timestamp the data does not
   carry; `updated_at` still advances with the counter write.
@@ -357,12 +364,72 @@ wrappers. Each one has an owner decision or a follow-up task in
   outgoing edits under their previous key rather than overwriting either.
   Closing or switching editors and leaving the route flush pending text before
   cancelling autosave; failed browser writes are reported in the editor and block
-  a draft switch.
+  a draft switch. Reply draft persistence additionally keys and validates the exact
+  `(topicId, parentReplyId)`; top-level replies and each reply branch restore separately and
+  successful cleanup removes only that target. Corrupt destination reads fail before retargeting
+  the editor. Historical topic-only reply keys remain untouched but are not restored with an
+  invented parent. Preview keeps the canonical discussion frame mounted in read-only mode,
+  preserving nested richtext without duplicate quote blocks; public reads still use server
+  projections. Both thread Retry controls repeat content/category reads and failed read receipts,
+  with stale-response guards and no duplicate pending/successful receipt writes.
+  Inline and full-page thread timelines track the actual post at the viewport reading line
+  within their own DOM root. Jump to end follows the same audience-scoped opaque reply cursors,
+  reading at most 20 additional pages per explicit click. If pages remain, a localized notice
+  offers continuation by another click; it never labels the loaded frontier as the actual end.
+  Snapshot refreshes and viewer/topic changes cancel stale walks, pending reads cannot duplicate,
+  and the jump scroll runs after commit without replaying on later appends. A terminal cursor
+  supplies the exact visible post total. The automatic `?reply=` anchor budget is unchanged.
+  Search/Top/Solved now delegate to the server over the full authorized selection, including
+  older candidate pages. Candidate reads stay bounded; sparse localized search/Solved can scan
+  many server batches, not download them into the browser. Next debounces search and rejects
+  late pages/errors from another selection. Native and GraphQL Leptos requests carry the same
+  typed selection through initial/continuation reads; current Leptos controls still request Latest.
+  Cursors bind tenant/viewer/category/status/locale/fallback/channel/surface and search/order/solved;
+  mismatches and pre-cutover opaque cursors fail validation. Migration 39 adds tenant-first global
+  and category Top indexes. This packet is source-only until Rust/runtime/plan verification;
+  see [the owning decision](../../../DECISIONS/2026-10-17-forum-topic-feed-selection.md).
   The loaded category list clears an unavailable category selection after an
   account or audience change. Highlighting text in a thread opens a reply to
   that thread (or inserts into an already-open composer), with an exact quote
   relation only if its revision lookup succeeds. Next.js hides reply actions
   for locked or non-`open` topics; the write owner still decides permission.
+- The requested remediation recheck also guards stale feed/thread refresh callbacks before they
+  change request generations, keeps appended pages on whitespace-only search edits, and requires
+  successful reply-draft restoration before quoting. Pending quote reads are cancelled on tooltip
+  unmount. Next composer title/quote controls freeze during a write, with a synchronous duplicate
+  submission lock and retry release. The owner plan records failing-before regressions and the
+  remaining Rust/browser/performance verification limits.
+- Continued draft inspection keeps a scoped composer open when the closing flush fails and
+  validates saved documents through the shared richtext discussion profile (empty drafts allowed).
+  Failed post-success draft deletion now shows an explicit cleanup-only retry. Session-local
+  pending cleanup guards both direct restore and category switching against already-posted text;
+  blocked storage still requires successful cleanup before reload/session remount. No durable
+  idempotency or cross-tab recovery guarantee is introduced. The owner plan records four additional
+  regressions and their 124-test scoped evidence, not mounted-browser/runtime acceptance.
+- The next asynchronous-composer pass adds a composer-owned editing lifetime so closing and
+  reopening the same target cannot revive old quote lookups. A synchronous context submission
+  lock freezes target, title/document and quote mutations before the pending render; failed writes
+  release it for retry. Late quote cleanup preserves newer text selections and always releases
+  its in-flight lock. The owner plan records 12 additional tests and their 136-test scoped
+  evidence, still without mounted React/browser or Rust/runtime acceptance.
+- Frame replacement follows the same composer-owned lifetime: its render projection keys a
+  distinct richtext frame and document callbacks reject replaced sessions. Shared richtext
+  controllers also ignore queued messages/handshakes after disposal; Forum does not fork the
+  protocol. Six further checks bring current evidence to 139 Forum/ownership plus 13 richtext
+  tests (152 combined at that pass). The owner plans retain browser/runtime limitations.
+- The dependency follow-up aligns Tiptap, React/render/types and host lint/compiler peers;
+  native host typecheck/lint now pass without the previous scratch/forced-install workarounds.
+  That pass records 156 Forum/ownership/richtext tests. Host build error suppression
+  is removed; admin Docker/npm/asset wiring is updated but not image-runtime verified here.
+- Form submission now checks its captured editing lifetime before validation or locking: a
+  retained callback from a closed/replaced/successfully cleared composer cannot publish its old
+  document again. Composer headings and the quotes label are catalog-owned in English/Russian.
+  Five further checks bring scoped evidence to 161 combined tests (120 storefront / 12 admin
+  through host scripts), without claiming browser or server-idempotency acceptance.
+- The Next-admin reply composer clears its document only after a successful owner write,
+  retains the submitted content locale, and preserves failed or genuinely newer input.
+  Topic/locale/tenant/auth changes start a new editor session; late old-session completions
+  cannot clear it or show stale notices. Pending writes reject duplicate submits.
 - The Leptos storefront composer writes real content: topics go through
   `createForumTopicWithQuotes` (GraphQL) or `forum/storefront-topic-create`
   (native `#[server]`) and replies through `createForumReplyWithQuotes` or

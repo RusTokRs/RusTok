@@ -308,6 +308,9 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                 request.tenant_id,
                 SecurityContext::public_read(),
                 ListTopicsFilter {
+                    search: None,
+                    order: Default::default(),
+                    solved_only: false,
                     category_id: None,
                     status: None,
                     locale: Some(request.locale.to_string()),
@@ -357,6 +360,9 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                 .list_public_storefront_visible_with_locale_fallback(
                     request.tenant_id,
                     ListTopicsFilter {
+                        search: None,
+                        order: Default::default(),
+                        solved_only: false,
                         category_id: None,
                         status: Some(TopicStatus::Open),
                         locale: Some(request.default_locale.to_string()),

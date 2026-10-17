@@ -1,3 +1,6 @@
+use crate::model::{
+    CreateStorefrontForumReplyDraft, CreateStorefrontForumTopicDraft, StorefrontForumComposerQuote,
+};
 use rustok_ui_core::css_hex_accent_class;
 use uuid::Uuid;
 
@@ -331,5 +334,414 @@ mod tests {
         let class =
             forum_storefront_accent_class(Some("#fff;background:url(https://attacker.invalid/x)"));
         assert!(class.contains("from-sky-500"));
+    }
+}
+
+/// A composer quote. `revision_id` pins the exact quoted source revision when the
+/// caller already knows it; `None` keeps the quote as quoted text only, because
+/// the owner contract rejects a fabricated revision.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ComposerQuote {
+    pub target_kind: String,
+    pub target_id: String,
+    pub revision_id: Option<i64>,
+    pub author_handle: Option<String>,
+    pub snippet: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum ComposerMode {
+    #[default]
+    Reply,
+    Topic,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ComposerState {
+    pub is_open: bool,
+    pub is_minimized: bool,
+    pub mode: ComposerMode,
+    pub topic_id: Option<String>,
+    pub topic_title: Option<String>,
+    pub category_id: Option<String>,
+    pub parent_reply_id: Option<String>,
+    pub title: String,
+    pub content: String,
+    pub quotes: Vec<ComposerQuote>,
+    pub is_submitting: bool,
+    pub error: Option<String>,
+    drafts: std::collections::HashMap<ComposerTarget, ComposerDraft>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+enum ComposerTarget {
+    Reply(String, Option<String>),
+    Topic(Option<String>),
+}
+
+#[derive(Clone, Debug, Default)]
+struct ComposerDraft {
+    title: String,
+    content: String,
+    quotes: Vec<ComposerQuote>,
+}
+
+pub(crate) enum ComposerSubmission {
+    Topic(CreateStorefrontForumTopicDraft),
+    Reply(CreateStorefrontForumReplyDraft),
+}
+
+impl ComposerState {
+    fn target(&self) -> ComposerTarget {
+        match self.mode {
+            ComposerMode::Reply => ComposerTarget::Reply(
+                self.topic_id.clone().unwrap_or_default(),
+                self.parent_reply_id.clone(),
+            ),
+            ComposerMode::Topic => ComposerTarget::Topic(self.category_id.clone()),
+        }
+    }
+
+    fn save_draft(&mut self) {
+        self.drafts.insert(
+            self.target(),
+            ComposerDraft {
+                title: self.title.clone(),
+                content: self.content.clone(),
+                quotes: self.quotes.clone(),
+            },
+        );
+    }
+
+    fn restore_draft(&mut self) {
+        let draft = self.drafts.remove(&self.target()).unwrap_or_default();
+        self.title = draft.title;
+        self.content = draft.content;
+        self.quotes = draft.quotes;
+        self.error = None;
+    }
+
+    pub fn select_category(&mut self, category_id: Option<String>) {
+        if self.is_submitting || self.category_id == category_id {
+            return;
+        }
+        let previous = self.target();
+        self.save_draft();
+        self.category_id = category_id;
+        if self.drafts.contains_key(&self.target()) {
+            self.restore_draft();
+        } else {
+            // Selecting an empty destination moves the current editor instead
+            // of clearing text typed before choosing a posting category.
+            self.drafts.remove(&previous);
+            self.error = None;
+        }
+    }
+
+    pub(crate) fn begin_submission(&mut self, locale: String) -> Option<ComposerSubmission> {
+        if !self.can_submit() {
+            return None;
+        }
+        let quotes = self.transport_quotes();
+        let body_text = self.content.clone();
+        let submission = match self.mode {
+            ComposerMode::Topic => ComposerSubmission::Topic(CreateStorefrontForumTopicDraft {
+                category_id: self.category_id.clone().unwrap_or_default(),
+                title: self.title.trim().to_string(),
+                body_text,
+                locale,
+                quotes,
+            }),
+            ComposerMode::Reply => ComposerSubmission::Reply(CreateStorefrontForumReplyDraft {
+                topic_id: self.topic_id.clone().unwrap_or_default(),
+                parent_reply_id: self.parent_reply_id.clone(),
+                body_text,
+                locale,
+                quotes,
+            }),
+        };
+        self.is_submitting = true;
+        self.error = None;
+        Some(submission)
+    }
+
+    pub fn fail_submission(&mut self, error: String) {
+        self.is_submitting = false;
+        self.error = Some(error);
+    }
+
+    pub fn open_reply(
+        &mut self,
+        topic_id: String,
+        topic_title: String,
+        parent_reply_id: Option<String>,
+    ) {
+        if self.is_submitting {
+            return;
+        }
+        self.save_draft();
+        self.mode = ComposerMode::Reply;
+        self.category_id = None;
+        self.topic_id = Some(topic_id);
+        self.topic_title = Some(topic_title);
+        self.parent_reply_id = parent_reply_id;
+        self.restore_draft();
+        self.is_open = true;
+        self.is_minimized = false;
+    }
+
+    pub fn open_topic(&mut self, category_id: Option<String>) {
+        if self.is_submitting {
+            return;
+        }
+        self.save_draft();
+        self.mode = ComposerMode::Topic;
+        self.topic_id = None;
+        self.topic_title = None;
+        self.category_id = category_id;
+        self.parent_reply_id = None;
+        self.restore_draft();
+        self.is_open = true;
+        self.is_minimized = false;
+    }
+
+    pub fn close(&mut self) {
+        self.is_open = false;
+        self.is_minimized = false;
+    }
+
+    pub fn minimize(&mut self) {
+        self.is_minimized = true;
+    }
+
+    pub fn expand(&mut self) {
+        self.is_minimized = false;
+    }
+
+    pub fn append_quote(&mut self, quote: ComposerQuote, quote_text: Option<String>) {
+        if self.is_submitting {
+            return;
+        }
+        if !self
+            .quotes
+            .iter()
+            .any(|q| q.target_id == quote.target_id && q.target_kind == quote.target_kind)
+        {
+            self.quotes.push(quote.clone());
+        }
+
+        if let Some(text) = quote_text {
+            let quote_header = match &quote.author_handle {
+                Some(handle) => format!("> @{handle}:\n"),
+                None => "> Quote:\n".to_string(),
+            };
+            let quoted_lines = text
+                .lines()
+                .map(|l| format!("> {l}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let quote_block = format!("{quote_header}{quoted_lines}\n\n");
+            self.content.push_str(&quote_block);
+        }
+
+        self.is_open = true;
+        self.is_minimized = false;
+    }
+
+    pub fn remove_quote(&mut self, index: usize) {
+        if !self.is_submitting && index < self.quotes.len() {
+            self.quotes.remove(index);
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.drafts.remove(&self.target());
+        self.title.clear();
+        self.content.clear();
+        self.quotes.clear();
+        self.error = None;
+        self.is_submitting = false;
+        self.is_open = false;
+        self.is_minimized = false;
+    }
+
+    /// Whether the owner contract can accept the current draft.
+    ///
+    /// A topic needs a title and a category and a reply needs its topic. The owner
+    /// rejects an empty discussion document, so the submit action stays disabled
+    /// instead of sending a doomed write.
+    pub fn can_submit(&self) -> bool {
+        if self.is_submitting || !forum_storefront_composer_has_text(self.content.as_str()) {
+            return false;
+        }
+        match self.mode {
+            ComposerMode::Topic => {
+                !self.title.trim().is_empty()
+                    && self
+                        .category_id
+                        .as_deref()
+                        .is_some_and(|category_id| !category_id.trim().is_empty())
+            }
+            ComposerMode::Reply => self
+                .topic_id
+                .as_deref()
+                .is_some_and(|topic_id| !topic_id.trim().is_empty()),
+        }
+    }
+
+    /// Quotes that may be sent as owner relations, i.e. only the ones pinned to a
+    /// positive source revision. Unpinned quotes stay in the post body as text.
+    pub(crate) fn transport_quotes(&self) -> Vec<StorefrontForumComposerQuote> {
+        self.quotes
+            .iter()
+            .filter_map(|quote| {
+                forum_storefront_quote_revision(quote.revision_id).map(|revision_id| {
+                    StorefrontForumComposerQuote {
+                        target_kind: quote.target_kind.clone(),
+                        target_id: quote.target_id.clone(),
+                        revision_id,
+                    }
+                })
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod composer_tests {
+    use super::*;
+
+    fn quote() -> ComposerQuote {
+        ComposerQuote {
+            target_kind: "REPLY".into(),
+            target_id: "quoted".into(),
+            revision_id: Some(7),
+            snippet: Some("quoted text".into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn switching_topic_and_mode_restores_each_draft_without_moving_text() {
+        let mut state = ComposerState::default();
+        state.open_reply("a".into(), "A".into(), None);
+        state.content = "reply A".into();
+        state.quotes.push(quote());
+        state.open_reply("b".into(), "B".into(), None);
+        assert!(state.content.is_empty());
+        assert!(state.quotes.is_empty());
+        state.content = "reply B".into();
+        state.open_topic(Some("category".into()));
+        assert!(state.content.is_empty());
+        state.title = "New topic".into();
+        state.content = "topic body".into();
+        state.open_reply("a".into(), "A".into(), None);
+        assert_eq!(state.content, "reply A");
+        assert_eq!(state.quotes, vec![quote()]);
+        state.open_reply("b".into(), "B".into(), None);
+        assert_eq!(state.content, "reply B");
+        state.open_topic(Some("category".into()));
+        assert_eq!(state.title, "New topic");
+        assert_eq!(state.content, "topic body");
+    }
+
+    #[test]
+    fn reply_parent_and_category_are_part_of_the_draft_target() {
+        let mut state = ComposerState::default();
+        state.open_reply("a".into(), "A".into(), Some("parent-a".into()));
+        state.content = "answer to parent A".into();
+        state.open_reply("a".into(), "A".into(), Some("parent-b".into()));
+        assert!(state.content.is_empty());
+        state.open_reply("a".into(), "A".into(), Some("parent-a".into()));
+        assert_eq!(state.content, "answer to parent A");
+        state.open_topic(Some("category-a".into()));
+        state.title = "A".into();
+        state.content = "category A draft".into();
+        state.open_topic(Some("category-b".into()));
+        assert!(state.content.is_empty());
+        state.title = "B".into();
+        state.content = "category B draft".into();
+        state.select_category(Some("category-a".into()));
+        assert_eq!(state.content, "category A draft");
+        assert_eq!(state.title, "A");
+        state.select_category(Some("category-b".into()));
+        assert_eq!(state.content, "category B draft");
+    }
+
+    #[test]
+    fn submission_freezes_target_and_quotes_and_failure_preserves_the_draft() {
+        let mut state = ComposerState::default();
+        state.open_reply("a".into(), "A".into(), Some("parent".into()));
+        state.content = "pending reply".into();
+        state.quotes.push(quote());
+        let Some(ComposerSubmission::Reply(request)) = state.begin_submission("ru".into()) else {
+            panic!("a complete reply must produce its transport command");
+        };
+        assert_eq!(request.topic_id, "a");
+        assert_eq!(request.parent_reply_id.as_deref(), Some("parent"));
+        assert_eq!(request.body_text, "pending reply");
+        assert_eq!(request.locale, "ru");
+        assert_eq!(request.quotes[0].revision_id, 7);
+        assert!(state.begin_submission("en".into()).is_none());
+        state.close();
+        state.open_reply("b".into(), "B".into(), None);
+        state.open_topic(Some("other".into()));
+        state.select_category(Some("other".into()));
+        state.append_quote(quote(), Some("late quote".into()));
+        state.remove_quote(0);
+        assert_eq!(state.topic_id.as_deref(), Some("a"));
+        assert_eq!(state.content, "pending reply");
+        assert_eq!(state.quotes, vec![quote()]);
+        assert!(!state.is_open);
+        state.fail_submission("temporary failure".into());
+        assert!(!state.is_submitting);
+        assert_eq!(state.content, "pending reply");
+        state.open_reply("a".into(), "A".into(), Some("parent".into()));
+        assert_eq!(state.content, "pending reply");
+        assert!(state.begin_submission("ru".into()).is_some());
+    }
+
+    #[test]
+    fn success_discards_only_the_submitted_draft_and_does_not_resurrect_it() {
+        let mut state = ComposerState::default();
+        state.open_reply("b".into(), "B".into(), None);
+        state.content = "keep B".into();
+        state.open_reply("a".into(), "A".into(), None);
+        state.content = "send A".into();
+        assert!(state.begin_submission("en".into()).is_some());
+        state.reset();
+        state.open_reply("b".into(), "B".into(), None);
+        assert_eq!(state.content, "keep B");
+        state.open_reply("a".into(), "A".into(), None);
+        assert!(state.content.is_empty());
+    }
+
+    #[test]
+    fn choosing_an_empty_category_moves_the_current_text_without_erasing_it() {
+        let mut state = ComposerState::default();
+        state.open_topic(None);
+        state.title = "draft title".into();
+        state.content = "typed before selecting a category".into();
+        state.select_category(Some("category".into()));
+        assert_eq!(state.content, "typed before selecting a category");
+        assert_eq!(state.title, "draft title");
+        assert!(state.begin_submission("en".into()).is_some());
+    }
+
+    #[test]
+    fn incomplete_drafts_do_not_start_a_write() {
+        let mut state = ComposerState::default();
+        assert!(state.begin_submission("en".into()).is_none());
+        state.open_topic(None);
+        state.content = "body".into();
+        state.title = "title".into();
+        assert!(state.begin_submission("en".into()).is_none());
+        state.select_category(Some("category".into()));
+        state.content = "body".into();
+        state.title = "title".into();
+        assert!(matches!(
+            state.begin_submission("en".into()),
+            Some(ComposerSubmission::Topic(_))
+        ));
     }
 }

@@ -43,12 +43,14 @@ pub async fn fetch_storefront_forum(
     selected_category_id: Option<String>,
     selected_topic_id: Option<String>,
     locale: Option<String>,
+    selection: crate::model::ForumTopicSelection,
 ) -> Result<StorefrontForumData, TransportError> {
     if use_native_transport() {
         native_server_adapter::fetch_storefront_forum_server(
             selected_category_id,
             selected_topic_id,
             locale,
+            selection,
         )
         .await
     } else {
@@ -56,6 +58,7 @@ pub async fn fetch_storefront_forum(
             selected_category_id,
             selected_topic_id,
             locale,
+            selection,
         )
         .await
     }
@@ -71,6 +74,7 @@ pub async fn fetch_storefront_forum_topic_page(
     after: String,
     locale: Option<String>,
     read_state_available: bool,
+    selection: crate::model::ForumTopicSelection,
 ) -> Result<ForumTopicPage, TransportError> {
     if use_native_transport() {
         native_server_adapter_pages::fetch_storefront_forum_topic_page_server(
@@ -78,6 +82,7 @@ pub async fn fetch_storefront_forum_topic_page(
             after,
             locale,
             read_state_available,
+            selection,
         )
         .await
     } else {
@@ -86,6 +91,7 @@ pub async fn fetch_storefront_forum_topic_page(
             after,
             locale,
             read_state_available,
+            selection,
         )
         .await
     }

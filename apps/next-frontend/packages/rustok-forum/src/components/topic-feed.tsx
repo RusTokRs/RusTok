@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import {
   Pin,
@@ -19,7 +19,7 @@ import { useComposer } from '../context/composer-context';
 import { TopicStatusLabel } from './topic-status-label';
 import { useTranslations } from '@rustok/next-fluent';
 
-export type TopicFilterTab = 'latest' | 'top' | 'unread' | 'solved';
+import type { TopicFilterTab } from './topic-feed-selection';
 
 interface TopicFeedProps {
   /** The first page is still in flight; the empty state must not claim there is nothing. */
@@ -30,6 +30,8 @@ interface TopicFeedProps {
   /** Count of loaded, audience-visible items, not a global category aggregate. */
   total: number;
   activeTab: TopicFilterTab;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
   onTabChange: (tab: TopicFilterTab) => void;
   isAuthenticated: boolean;
   hasMore: boolean;
@@ -46,6 +48,8 @@ export function TopicFeed({
   topics,
   total,
   activeTab,
+  searchQuery,
+  onSearchChange,
   onTabChange,
   isAuthenticated,
   hasMore,
@@ -57,56 +61,13 @@ export function TopicFeed({
 }: TopicFeedProps) {
   const forum = useTranslations('Forum');
   const { openNewTopic } = useComposer();
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Filter and sort topics based on active tab and search query
-  const filteredTopics = useMemo(() => {
-    let result = [...topics];
-
-    // 1. Text search filter
-    const query = searchQuery.trim().toLowerCase();
-    if (query) {
-      result = result.filter(
-        (t) =>
-          t.title.toLowerCase().includes(query) ||
-          t.slug.toLowerCase().includes(query)
-      );
-    }
-
-    // 2. Tab filter & sorting
-    switch (activeTab) {
-      case 'top':
-        result.sort((a, b) => (b.replyCount ?? 0) - (a.replyCount ?? 0));
-        break;
-      case 'unread':
-        // Already selected by the authenticated owner query, not from the public page.
-        break;
-      case 'solved':
-        result = result.filter((t) => Boolean(t.solutionReplyId));
-        break;
-      case 'latest':
-      default:
-        // Default sort keeps pinned topics on top, then preserves arrival/created date order
-        result.sort((a, b) => {
-          if (a.isPinned && !b.isPinned) return -1;
-          if (!a.isPinned && b.isPinned) return 1;
-          return 0;
-        });
-        break;
-    }
-
-    return result;
-  }, [topics, searchQuery, activeTab]);
-
+  // Order, search, solution and unread selection are already resolved by the owner page.
   const unreadCountTotal = activeTab === 'unread' ? topics.length : 0;
-
-  const solvedCountTotal = useMemo(() => {
-    return topics.filter((t) => Boolean(t.solutionReplyId)).length;
-  }, [topics]);
+  const solvedCountTotal = activeTab === 'solved' ? topics.length : 0;
 
   const handleResetFilters = () => {
     onTabChange('latest');
-    setSearchQuery('');
+    onSearchChange('');
   };
 
   return (
@@ -208,16 +169,18 @@ export function TopicFeed({
         <div className="relative flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
-            type="text"
+            type="search"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => onSearchChange(e.target.value)}
+            aria-label={forum('searchPlaceholder')}
             placeholder={forum('searchPlaceholder')}
             className="w-full rounded-2xl border border-border bg-background/80 py-1.5 pl-9 pr-8 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
           />
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
+              aria-label={forum('clearSearch')}
+              onClick={() => onSearchChange('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground transition hover:text-foreground"
             >
               <X className="h-3 w-3" />
@@ -225,11 +188,6 @@ export function TopicFeed({
           )}
         </div>
       </div>
-
-      {/* These filters and text search apply to loaded pages, not the whole forum. */}
-      {(searchQuery || activeTab === 'top' || activeTab === 'solved') && (
-        <p className="text-xs text-muted-foreground">{forum('filtersLoadedOnly')}</p>
-      )}
 
       {/* Topic List */}
       {isLoading && topics.length === 0 ? (
@@ -243,6 +201,22 @@ export function TopicFeed({
       ) : hasError && topics.length === 0 ? (
         <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
           {forum('errorLoad')}
+        </div>
+      ) : topics.length === 0 && (Boolean(searchQuery.trim()) || activeTab === 'solved') ? (
+        <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center">
+          <h4 className="text-base font-semibold text-card-foreground">
+            {forum('noMatchingDiscussions')}
+          </h4>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {forum('noMatchingDiscussionsHint')}
+          </p>
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground shadow-xs transition hover:bg-muted"
+          >
+            {forum('clearFilters')}
+          </button>
         </div>
       ) : activeTab === 'unread' && topics.length === 0 ? (
         <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center">
@@ -264,25 +238,9 @@ export function TopicFeed({
             {forum('startDiscussion')}
           </button>
         </div>
-      ) : filteredTopics.length === 0 ? (
-        <div className="rounded-[1.5rem] border border-dashed border-border p-8 text-center">
-          <h4 className="text-base font-semibold text-card-foreground">
-            {forum('noMatchingDiscussions')}
-          </h4>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {forum('noMatchingDiscussionsHint')}
-          </p>
-          <button
-            type="button"
-            onClick={handleResetFilters}
-            className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground shadow-xs transition hover:bg-muted"
-          >
-            {forum('clearFilters')}
-          </button>
-        </div>
       ) : (
         <div className="space-y-3">
-          {filteredTopics.map((topic) => {
+          {topics.map((topic) => {
             const isSelected = selectedTopicId === topic.id;
             return (
               <div

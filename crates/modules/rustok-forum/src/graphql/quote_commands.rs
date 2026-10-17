@@ -5,8 +5,8 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ForumQuoteCommandService, ForumQuoteReferenceInput, ForumQuoteTargetKindInput,
-    ForumRelationSnapshotResponse, SetForumQuotesInput,
+    ForumQuoteReferenceInput, ForumQuoteTargetKindInput, ForumRelationSnapshotResponse,
+    SetForumQuotesInput,
 };
 
 const MODULE_SLUG: &str = "forum";
@@ -70,7 +70,8 @@ impl ForumQuoteCommandMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let response = ForumQuoteCommandService::new(db.clone())
+        let response = super::forum_graphql_runtime(ctx)
+            .quote_command_service(db.clone())
             .set_topic_quotes(
                 tenant_id,
                 topic_id,
@@ -100,7 +101,8 @@ impl ForumQuoteCommandMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let response = ForumQuoteCommandService::new(db.clone())
+        let response = super::forum_graphql_runtime(ctx)
+            .quote_command_service(db.clone())
             .set_reply_quotes(
                 tenant_id,
                 reply_id,

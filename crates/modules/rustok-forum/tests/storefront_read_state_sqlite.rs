@@ -64,6 +64,9 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
 
 fn topic_filter(category_id: Option<Uuid>, per_page: u64) -> ListTopicsFilter {
     ListTopicsFilter {
+        search: None,
+        order: Default::default(),
+        solved_only: false,
         category_id,
         status: None,
         locale: Some("en".into()),
@@ -427,6 +430,34 @@ async fn unread_only_skips_read_and_hidden_topics_without_sparse_pages_or_raw_cu
             .count(),
         2
     );
+
+    // Search/Top must compose with unread and audience selection, not filter a loaded page.
+    for (slug, expected) in [
+        (all.items[0].topic.slug.as_str(), None),
+        (
+            all.items[2].topic.slug.as_str(),
+            Some(all.items[2].topic.id),
+        ),
+        ("unread-page-4", None),
+    ] {
+        let selected = service
+            .list_topics_with_unread_audience_visible(
+                tenant_id,
+                reader.clone(),
+                read_context(tenant_id, reader_id),
+                ListTopicsFilter {
+                    search: Some(slug.into()),
+                    order: rustok_forum::ForumTopicListOrder::Top,
+                    ..topic_filter(Some(category.id), 1)
+                },
+                Some("en"),
+                true,
+            )
+            .await
+            .expect("selected unread page");
+        assert_eq!(selected.items.first().map(|item| item.topic.id), expected);
+        assert!(selected.next_cursor.is_none());
+    }
 
     let first = service
         .list_topics_with_unread_audience_visible(

@@ -1,9 +1,10 @@
-import type { RichTextDocument } from '@rustok/richtext';
+import { getRichTextProfile, validateRichTextDocument, type RichTextDocument } from '@rustok/richtext';
 import type { ForumQuoteReference } from '../api/forum';
 
 export type DraftIdentity = { userId: string; tenantId: string };
 export type DraftScope = DraftIdentity & { tenant: string };
 export type TopicDraft = { title: string; document: RichTextDocument; quotes: ForumQuoteReference[] };
+export type ReplyDraft = TopicDraft & { parentReplyId: string | null };
 
 const STORAGE_KEY_PREFIX = 'rustok_forum_draft_';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,11 +52,12 @@ export function getDraftStorageKey(
   scope: DraftScope,
   mode: 'reply' | 'topic',
   topicId: string | null,
-  categoryId: string | null
+  categoryId: string | null,
+  parentReplyId: string | null = null,
 ): string {
   return `${STORAGE_KEY_PREFIX}${encodeURIComponent(JSON.stringify([
     scope.tenant, scope.tenantId, scope.userId, mode,
-    mode === 'reply' ? topicId : categoryId,
+    mode === 'reply' ? [topicId, parentReplyId] : categoryId,
   ]))}`;
 }
 
@@ -69,8 +71,7 @@ export function parseTopicDraft(raw: string): TopicDraft {
   const draft = parsed as Record<string, unknown>;
   const document = draft.document;
   if (typeof draft.title !== 'string' || !document || typeof document !== 'object' ||
-      (document as Record<string, unknown>).type !== 'doc' ||
-      !Array.isArray((document as Record<string, unknown>).content) ||
+      !validateRichTextDocument(document, getRichTextProfile('discussion'), { allowEmpty: true }).valid ||
       !Array.isArray(draft.quotes) ||
       !draft.quotes.every((value: unknown) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -89,6 +90,18 @@ export function parseTopicDraft(raw: string): TopicDraft {
     document: document as RichTextDocument,
     quotes: draft.quotes as ForumQuoteReference[],
   };
+}
+
+/** A reply draft must identify the same parent as its storage namespace.
+ * Old topic-only reply keys are deliberately not read: their parent was never
+ * recorded, so restoring them to a selected reply would silently retarget text. */
+export function parseReplyDraft(raw: string, parentReplyId: string | null): ReplyDraft {
+  const draft = parseTopicDraft(raw);
+  const saved = JSON.parse(raw) as Record<string, unknown>;
+  if (saved.parentReplyId !== parentReplyId) {
+    throw new Error('Saved reply draft parent does not match the selected reply');
+  }
+  return { ...draft, parentReplyId };
 }
 
 /** Switch to a category without losing either draft. An empty destination

@@ -22,6 +22,8 @@ use crate::mentions::{
     ForumContentTarget, ForumQuoteReference,
 };
 
+use super::edit_window::enforce_author_edit_window;
+use super::engagement_mode::ForumSettingsProviders;
 use super::mention_relation::MentionRelationService;
 use super::rbac::enforce_owned_scope;
 
@@ -50,11 +52,20 @@ impl ForumQuoteSource {
 #[derive(Clone)]
 pub struct ForumQuoteCommandService {
     db: DatabaseConnection,
+    settings: ForumSettingsProviders,
 }
 
 impl ForumQuoteCommandService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            settings: ForumSettingsProviders::default(),
+        }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.settings = settings;
+        self
     }
 
     pub async fn set_topic_quotes(
@@ -106,8 +117,17 @@ impl ForumQuoteCommandService {
             return Err(ForumError::relation_revision_unavailable());
         }
 
-        let (owner_id, document) = self.load_source(tenant_id, source, &locale).await?;
+        let (owner_id, created_at, document) = self.load_source(tenant_id, source, &locale).await?;
         enforce_owned_scope(&security, source.resource(), Action::Update, owner_id)?;
+        let settings = self.settings.module_settings(tenant_id).await?;
+        enforce_author_edit_window(
+            &security,
+            source.resource(),
+            owner_id,
+            created_at,
+            settings.max_edit_window_minutes,
+            chrono::Utc::now(),
+        )?;
         let quotes = normalize_quote_references(input.quotes)?;
 
         let relations = MentionRelationService::new(self.db.clone());
@@ -133,7 +153,11 @@ impl ForumQuoteCommandService {
         tenant_id: Uuid,
         source: ForumQuoteSource,
         locale: &str,
-    ) -> ForumResult<(Option<Uuid>, RichTextDocument)> {
+    ) -> ForumResult<(
+        Option<Uuid>,
+        sea_orm::prelude::DateTimeWithTimeZone,
+        RichTextDocument,
+    )> {
         match source {
             ForumQuoteSource::Topic(topic_id) => {
                 let topic = forum_topic::Entity::find_by_id(topic_id)
@@ -160,7 +184,7 @@ impl ForumQuoteCommandService {
                 let document = crate::richtext::project_stored_discussion(&translation.body)?
                     .view
                     .document;
-                Ok((topic.author_id, document))
+                Ok((topic.author_id, topic.created_at, document))
             }
             ForumQuoteSource::Reply(reply_id) => {
                 let reply = forum_reply::Entity::find_by_id(reply_id)
@@ -187,7 +211,7 @@ impl ForumQuoteCommandService {
                 let document = crate::richtext::project_stored_discussion(&body.body)?
                     .view
                     .document;
-                Ok((reply.author_id, document))
+                Ok((reply.author_id, reply.created_at, document))
             }
         }
     }

@@ -65,7 +65,7 @@ validateRichTextDocument
 richTextDocumentHasText
 contentLocale={contentLocale}
 disabled={form.formState.isSubmitting}
-content: doc
+${options.replyUsesStaleDocument ? 'content: doc' : 'const submittedDocument = documentRef.current;\ncontent: submittedDocument'}
 ${options.forumPlainTextMissingBidi ? '' : "dir='ltr'"}
 ${options.legacyAdapterImport ? "from './rt-json-format'" : ''}`);
   writeFixtureFile(root, 'apps/next-admin/packages/forum/src/components/forum-topic-editor.tsx',
@@ -242,4 +242,12 @@ test('Blog Forum UI ownership verifier rejects missing aggregate self-test wirin
   const result = run(fixture({ omitTestAggregate: true }));
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /self-test aggregate does not include Forum ownership fixture/);
+});
+
+
+test('rejects a reply editor that submits a stale render snapshot instead of current frame input', () => {
+  const root = fixture({ replyUsesStaleDocument: true });
+  const result = spawnSync(process.execPath, [scriptPath], { cwd: root, encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Forum reply editor missing const submittedDocument = documentRef.current/);
 });

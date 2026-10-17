@@ -1,16 +1,17 @@
 use super::pending_visibility::topic_pending_condition;
 
 impl TopicService {
-    #[instrument(skip(self, security, hidden_category_ids))]
+    #[instrument(skip(self, security, filter, hidden_category_ids))]
     pub(crate) async fn list_with_locale_fallback_and_hidden_categories(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
-        filter: ListTopicsFilter,
+        mut filter: ListTopicsFilter,
         fallback_locale: Option<&str>,
         hidden_category_ids: &[Uuid],
     ) -> ForumResult<TopicPage<TopicListItem>> {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
+        filter.normalize_selection()?;
         let locale = filter
             .locale
             .clone()
@@ -32,34 +33,37 @@ impl TopicService {
         }
         select = select.filter(topic_pending_condition(&security));
 
-        let page = self.fetch_topic_keyset_page(select, &filter).await?;
-        let items = self
-            .hydrate_topic_list_items(
-                tenant_id,
-                security.user_id,
-                page.items,
-                &locale,
-                fallback_locale.as_deref(),
-            )
-            .await?;
-
-        Ok(TopicPage {
-            items,
-            next_cursor: page.next_cursor,
-        })
+        let scope = filter.cursor_scope(
+            tenant_id,
+            security.user_id,
+            &locale,
+            fallback_locale.as_deref(),
+            None,
+            false,
+        )?;
+        self.fetch_localized_topic_page(
+            select,
+            &filter,
+            tenant_id,
+            security.user_id,
+            (&locale, fallback_locale.as_deref()),
+            scope,
+        )
+        .await
     }
 
-    #[instrument(skip(self, security, hidden_category_ids))]
+    #[instrument(skip(self, security, filter, hidden_category_ids))]
     pub(crate) async fn list_storefront_visible_with_locale_fallback_and_hidden_categories(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
-        filter: ListTopicsFilter,
+        mut filter: ListTopicsFilter,
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
         hidden_category_ids: &[Uuid],
     ) -> ForumResult<TopicPage<TopicListItem>> {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
+        filter.normalize_selection()?;
         let locale = filter
             .locale
             .clone()
@@ -87,21 +91,89 @@ impl TopicService {
             select = select.filter(forum_topic::Column::IsLocked.eq(false));
         }
 
-        let page = self.fetch_topic_keyset_page(select, &filter).await?;
-        let items = self
-            .hydrate_topic_list_items(
-                tenant_id,
-                security.user_id,
-                page.items,
-                &locale,
-                fallback_locale.as_deref(),
-            )
-            .await?;
+        let cursor_channel = normalize_public_channel_slug(channel_slug);
+        let scope = filter.cursor_scope(
+            tenant_id,
+            security.user_id,
+            &locale,
+            fallback_locale.as_deref(),
+            cursor_channel.as_deref(),
+            true,
+        )?;
+        self.fetch_localized_topic_page(
+            select,
+            &filter,
+            tenant_id,
+            security.user_id,
+            (&locale, fallback_locale.as_deref()),
+            scope,
+        )
+        .await
+    }
 
-        Ok(TopicPage {
-            items,
-            next_cursor: page.next_cursor,
-        })
+    /// Select over hydrated owner-localized items, not a browser page or an arbitrary translation.
+    async fn fetch_localized_topic_page(
+        &self,
+        select: Select<forum_topic::Entity>,
+        filter: &ListTopicsFilter,
+        tenant_id: Uuid,
+        viewer_id: Option<Uuid>,
+        locale: (&str, Option<&str>),
+        scope: [u8; 32],
+    ) -> ForumResult<TopicPage<TopicListItem>> {
+        if filter.search.is_none() && !filter.solved_only {
+            let page = self.fetch_topic_keyset_page(select, filter, scope).await?;
+            let mut items = self
+                .hydrate_topic_list_items(tenant_id, viewer_id, page.items, locale.0, locale.1)
+                .await?;
+            for topic in &mut items {
+                if let Some(key) = topic.sort_key.as_mut() {
+                    key.order = filter.order;
+                    key.selection_scope = Some(scope);
+                }
+            }
+            return Ok(TopicPage {
+                items,
+                next_cursor: page.next_cursor,
+            });
+        }
+        let mut candidate = filter.clone();
+        candidate.per_page = crate::dto::MAX_FORUM_READ_LIMIT;
+        let mut items: Vec<TopicListItem> = Vec::new();
+        loop {
+            let page = self
+                .fetch_topic_keyset_page(select.clone(), &candidate, scope)
+                .await?;
+            let hydrated = self
+                .hydrate_topic_list_items(tenant_id, viewer_id, page.items, locale.0, locale.1)
+                .await?;
+            for mut topic in hydrated {
+                if !filter.matches_selection(&topic) {
+                    continue;
+                }
+                if items.len() as u64 == filter.per_page.max(1) {
+                    let next_cursor = items
+                        .last()
+                        .and_then(|last| last.sort_key)
+                        .map(|key| key.encode());
+                    return Ok(TopicPage { items, next_cursor });
+                }
+                if let Some(key) = topic.sort_key.as_mut() {
+                    key.order = filter.order;
+                    key.selection_scope = Some(scope);
+                }
+                items.push(topic);
+            }
+            match page.next_cursor {
+                Some(after) => candidate.after = Some(after),
+                None => {
+                    return Ok(TopicPage {
+                        items,
+                        next_cursor: None,
+                    });
+                }
+            }
+        }
     }
 
     /// Keyset page of topics ordered `is_pinned DESC, last_reply_at DESC NULLS LAST,
@@ -111,13 +183,33 @@ impl TopicService {
         &self,
         mut select: Select<forum_topic::Entity>,
         filter: &ListTopicsFilter,
+        scope: [u8; 32],
     ) -> ForumResult<TopicPage<forum_topic::Model>> {
         let per_page = filter.per_page.max(1);
         if let Some(raw) = filter.after.as_deref() {
             let after = TopicListCursor::decode(raw)?;
-            select = select.filter(topic_list_after_condition(&after));
+            if after.order != filter.order || after.selection_scope != Some(scope) {
+                return Err(ForumError::Validation(
+                    "Forum topic cursor does not match this selection".into(),
+                ));
+            }
+            let condition = if filter.order == crate::ForumTopicListOrder::Top {
+                Condition::any()
+                    .add(forum_topic::Column::ReplyCount.lt(after.reply_count))
+                    .add(
+                        Condition::all()
+                            .add(forum_topic::Column::ReplyCount.eq(after.reply_count))
+                            .add(topic_list_after_condition(&after)),
+                    )
+            } else {
+                topic_list_after_condition(&after)
+            };
+            select = select.filter(condition);
         }
 
+        if filter.order == crate::ForumTopicListOrder::Top {
+            select = select.order_by_desc(forum_topic::Column::ReplyCount);
+        }
         let mut topics = order_topic_list(select)
             .limit(per_page + 1)
             .all(&self.db)
@@ -129,7 +221,10 @@ impl TopicService {
             let last = topics.last().ok_or_else(|| {
                 ForumError::Validation("Topic page reported a next page without rows".to_string())
             })?;
-            Some(topic_list_cursor(last).encode())
+            let mut key = topic_list_cursor(last);
+            key.order = filter.order;
+            key.selection_scope = Some(scope);
+            Some(key.encode())
         } else {
             None
         };
@@ -163,6 +258,9 @@ pub(crate) fn topic_list_cursor(topic: &forum_topic::Model) -> TopicListCursor {
         last_reply_at: topic.last_reply_at,
         updated_at: topic.updated_at,
         id: topic.id,
+        reply_count: topic.reply_count,
+        order: Default::default(),
+        selection_scope: None,
     }
 }
 

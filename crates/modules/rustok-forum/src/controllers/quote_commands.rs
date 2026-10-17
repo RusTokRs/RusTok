@@ -6,9 +6,7 @@ use rustok_api::{AuthContext, Permission, TenantContext, has_any_effective_permi
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
-use crate::{
-    ForumError, ForumQuoteCommandService, ForumRelationSnapshotResponse, SetForumQuotesInput,
-};
+use crate::{ForumError, ForumRelationSnapshotResponse, SetForumQuotesInput};
 
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::security_context_from_access_token(
@@ -97,7 +95,8 @@ pub async fn set_topic_quotes(
         Permission::FORUM_TOPICS_UPDATE,
         "Permission denied: forum_topics:update required",
     )?;
-    let response = ForumQuoteCommandService::new(runtime.db_clone())
+    let response = runtime
+        .quote_command_service()
         .set_topic_quotes(tenant.id, topic_id, forum_security(&auth), input)
         .await
         .map_err(quote_command_error)?;
@@ -155,7 +154,8 @@ pub async fn set_reply_quotes(
         Permission::FORUM_REPLIES_UPDATE,
         "Permission denied: forum_replies:update required",
     )?;
-    let response = ForumQuoteCommandService::new(runtime.db_clone())
+    let response = runtime
+        .quote_command_service()
         .set_reply_quotes(tenant.id, reply_id, forum_security(&auth), input)
         .await
         .map_err(quote_command_error)?;

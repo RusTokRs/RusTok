@@ -69,6 +69,9 @@ impl ForumStorefrontReadStateQuery {
         after: Option<String>,
         limit: Option<i32>,
         #[graphql(default)] unread_only: bool,
+        search: Option<String>,
+        order: Option<crate::ForumTopicListOrder>,
+        #[graphql(default)] solved_only: bool,
     ) -> Result<GqlForumStorefrontUnreadTopicPage> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         super::require_public_forum_channel_enabled(ctx).await?;
@@ -112,6 +115,9 @@ impl ForumStorefrontReadStateQuery {
                 forum_security(auth),
                 audience_context,
                 ListTopicsFilter {
+                    search,
+                    order: order.unwrap_or_default(),
+                    solved_only,
                     category_id,
                     status: None,
                     locale: Some(locale),

@@ -117,6 +117,9 @@ async fn create_topic(
 
 fn topic_filter(category_id: Uuid) -> ListTopicsFilter {
     ListTopicsFilter {
+        search: None,
+        order: Default::default(),
+        solved_only: false,
         category_id: Some(category_id),
         status: None,
         locale: Some("en".into()),

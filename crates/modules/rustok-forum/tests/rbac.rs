@@ -234,6 +234,9 @@ async fn customer_permissions_are_enforced_in_forum_services() {
             tenant_id,
             customer,
             ListTopicsFilter {
+                search: None,
+                order: Default::default(),
+                solved_only: false,
                 category_id: Some(category.id),
                 status: None,
                 locale: Some("en".to_string()),

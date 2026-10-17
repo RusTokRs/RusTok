@@ -13,7 +13,9 @@ Next and Leptos hosts without creating a persistence or backend module.
 - Expose one unversioned, bounded, sequenced `MessageChannel` protocol.
 - Apply host-selected content locale, derived writing direction, spellcheck and
   dynamic editable/read-only state inside the isolated frame.
-- Supply thin browser and React lifecycle adapters.
+- Supply thin browser and React lifecycle adapters; disposed controllers ignore
+  queued handshakes and port events rather than invoking owner callbacks or
+  recreating a channel.
 - Expose a separate editor-free React `RichTextHtml` boundary for rendering a
   typed server-derived `RichTextView`.
 - Produce immutable, self-contained frame assets.
@@ -48,3 +50,12 @@ headers documented in the central
 [richtext implementation plan](../../docs/modules/rich-text-implementation-plan.md).
 
 See [`docs/README.md`](./docs/README.md) for the runtime contract.
+
+## Dependency installation
+
+All `@tiptap/*` dependencies use the same exact release (`3.30.5`), including
+locked transitive peers. Use `npm ci` and `npm run verify`; no forced/legacy peer
+resolution is required. The Next hosts' npm locks carry the same local-package
+contract. Dependency-contract tests check the cohort, lock metadata and matching
+host React/render/type versions. Host tooling currently uses ESLint 9.39.4 and
+TypeScript 6.0.3 to satisfy the installed Next/TypeScript-ESLint peer contracts.

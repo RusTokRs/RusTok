@@ -19,7 +19,7 @@ Document when this operational item is used, who owns it, and what successful ex
 
 - Canonical entity: `docker://apps/next-admin/Dockerfile#builder`
 - Entity kind: `docker_service`
-- Source: `apps/next-admin/Dockerfile`:33
+- Source: `apps/next-admin/Dockerfile`:24
 
 ## Procedure
 
@@ -29,8 +29,12 @@ Document when this operational item is used, who owns it, and what successful ex
 
 ## Evidence
 
-- `apps/next-admin/Dockerfile:33`
+- `apps/next-admin/Dockerfile:24`
 
 ## Notes
 
 Generated from diagnostic `diag_deployment_67b36bec95691817`. Review this page before relying on it as operational documentation.
+
+2026-10-17 source update: build from the repository root with the npm lockfiles,
+not Bun. See the admin README for the command and shared-asset layout. Docker
+was unavailable during this correction; image execution is not verified evidence.

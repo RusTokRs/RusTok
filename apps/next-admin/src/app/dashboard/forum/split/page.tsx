@@ -25,10 +25,7 @@ export default async function ForumTopicSplitPage() {
     );
   }
 
-  const topics = await listForumTopics(
-    { token, tenantId, tenantSlug },
-    { first: 100 }
-  );
+  const topics = await listForumTopics({ token, tenantId, tenantSlug });
 
   return (
     <PageContainer
