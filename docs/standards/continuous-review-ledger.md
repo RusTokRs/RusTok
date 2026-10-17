@@ -70,7 +70,7 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules
-*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (15/24 completed)
+*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (16/24 completed)
 
 - [x] **[`crates/modules/rustok-tenant`](../../crates/modules/rustok-tenant)** (28 files, 4,305 LOC) — Tenant lifecycle, provisioning, slug/domain resolution, locale policy aggregate, input sanitization, and settings schema. Audited via CodeGraph; verified transactional outbox publishing on mutations, SHA-256 idempotency receipts for locale policy CAS updates, settings schema validation, and fail-closed tenant resolution. 24/24 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-tenant/admin`](../../crates/modules/rustok-tenant/admin)** (8 files, 835 LOC) — FFA Leptos admin UI components for tenant provisioning, domain management, and locale settings. Audited via CodeGraph; verified strict FFA separation (pure Rust view models/state in `core.rs`, no domain logic in Leptos components), transport isolation with tenant authorization boundary, and catalog i18n diagnostics. 7/7 tests passed, 0 clippy warnings, gate passed.
@@ -87,8 +87,8 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[`crates/modules/rustok-outbox`](../../crates/modules/rustok-outbox)** (26 files, 4,834 LOC) — Outbox dispatch engine, event persistence, publisher loop, retry backoff, and DLQ tracking. Audited via CodeGraph; added unit tests in `ports.rs` covering `require_outbox_relay_policy`, `map_outbox_error`, and request/projection serde; verified transactional append, write-once deduplication, DLQ threshold transitions, and retention pruning. 20 unit tests and 24 integration tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-outbox/admin`](../../crates/modules/rustok-outbox/admin)** (8 files, 548 LOC) — FFA admin UI components for outbox inspection, dead-letter queue replay, and dispatch metrics. Audited via CodeGraph; added unit tests in `core.rs` covering explicit tenant slug handling and serde roundtrip; verified strict FFA separation (`core.rs` contains 0 UI framework imports), tenant boundary enforcement (`require_outbox_admin_tenant_scope`), and backend-agnostic SQL queries. 6 unit tests and 1 integration test passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-modules`](../../crates/modules/rustok-modules)** (242 files, 131,685 LOC) — Module registry control-plane, lifecycle state machine, dynamic registration, and migration executor. Audited via CodeGraph; verified lifecycle state machine convergence, artifact CAS digest verification, security epoch preemption, retention hold ledger, policy commit guards, and dynamic registration pipeline. 316 unit tests and 30 integration test suites passed, 0 clippy warnings, gate passed.
+- [x] **[`crates/modules/rustok-modules/cli`](../../crates/modules/rustok-modules/cli)** (1 files, 1,813 LOC) — CLI tool for module scaffolding, manifest verification, and lifecycle management. Audited via CodeGraph; verified standalone module authoring commands (init, build, inspect, publish), path traversal rejection, dry-run safety, and tenant command context UUID verification. 6/6 tests passed, 0 clippy warnings, gate passed.
 
-- [ ] **[`crates/modules/rustok-modules/cli`](../../crates/modules/rustok-modules/cli)** (1 files, 1,813 LOC) — CLI tool for module scaffolding, manifest verification, and lifecycle management.
 - [ ] **[`crates/modules/rustok-modules-translation`](../../crates/modules/rustok-modules-translation)** (1 files, 822 LOC) — Module descriptor translation target bindings and localized manifest metadata.
 - [ ] **[`crates/modules/rustok-events-module`](../../crates/modules/rustok-events-module)** (9 files, 571 LOC) — Host runtime adapter for event subscriptions and module event bridge.
 - [ ] **[`crates/modules/rustok-events-module/admin`](../../crates/modules/rustok-events-module/admin)** (8 files, 508 LOC) — FFA admin UI for system event monitoring and subscription inspection.
@@ -510,7 +510,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 835 | None |  |
 | [x] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 242 | 131,685 | 2026-10-17 10:45 | Audited and cleaned. |
 | [ ] | [rustok-modules-translation](../../crates/modules/rustok-modules-translation) | `modules` | 1 | 822 | None |  |
-| [ ] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 1 | 1,813 | None |  |
+| [x] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 1 | 1,813 | 2026-10-17 11:44 | Audited and cleaned. |
 | [ ] | [rustok-navigation](../../crates/modules/rustok-navigation) | `modules` | 40 | 5,286 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-navigation/storefront) | `modules` | 9 | 495 | None |  |
 | [ ] | [rustok-newsletter](../../crates/modules/rustok-newsletter) | `modules` | 23 | 2,474 | None |  |
@@ -524,9 +524,9 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 12 | 2,171 | None |  |
 | [x] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 26 | 4,889 | 2026-10-17 08:43 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-outbox/admin) | `modules` | 8 | 548 | 2026-10-17 09:49 | Audited and cleaned. |
-| [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 116 | 35,929 | None |  |
+| [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 116 | 36,058 | None |  |
 | [ ] | [rustok-page-builder-storefront](../../crates/modules/rustok-page-builder-storefront) | `modules` | 3 | 1,200 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 66 | 19,050 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 66 | 19,179 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-page-builder/storefront) | `modules` | 3 | 1,633 | None |  |
 | [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 197 | 56,496 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 26 | 7,389 | None |  |
