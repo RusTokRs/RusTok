@@ -19,6 +19,9 @@ impl AdminCanvasController {
         let selected = self
             .selected_component_view()
             .ok_or_else(|| "select a component before assigning an asset".to_string())?;
+        if selected.is_locked {
+            return Err("cannot modify attributes of a locked layout component".to_string());
+        }
         let catalog = AssetCatalog::from_document(self.editor().document());
         let asset = catalog
             .get(asset_id)
@@ -38,6 +41,9 @@ impl AdminCanvasController {
             .ok_or_else(|| "select a component before reordering it".to_string())?;
         if selected.is_root {
             return Err("the page root cannot be reordered".to_string());
+        }
+        if selected.is_locked {
+            return Err("locked layout component cannot be reordered".to_string());
         }
         let location = self
             .editor()

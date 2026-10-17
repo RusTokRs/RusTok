@@ -267,7 +267,7 @@ fn selection_disabled(
             !capability(&controller.ui().state.capabilities)
                 || controller
                     .selected_component_view()
-                    .is_none_or(|selected| reject_root && selected.is_root)
+                    .is_none_or(|selected| (reject_root && selected.is_root) || selected.is_locked)
         })
     })
 }

@@ -32,6 +32,7 @@ pub fn TraitPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     let component = controller.editor().document().component(&selected.id)?;
                     Some((
                         selected.id,
+                        selected.is_locked,
                         trait_snapshots(
                             component,
                             panel_runtime
@@ -41,7 +42,13 @@ pub fn TraitPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     ))
                 });
                 match selection {
-                    Some((component_id, snapshots)) if !snapshots.is_empty() => snapshots
+                    Some((_, true, _)) => view! {
+                        <div class="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
+                            <span>{"🔒 This component is part of the layout template and is read-only in page view."}</span>
+                        </div>
+                    }
+                    .into_any(),
+                    Some((component_id, false, snapshots)) if !snapshots.is_empty() => snapshots
                         .into_iter()
                         .map(|snapshot| view! {
                             <TraitEditorRow
