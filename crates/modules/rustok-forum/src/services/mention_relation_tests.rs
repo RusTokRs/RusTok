@@ -583,3 +583,122 @@ async fn quote_owner_replace_replay_clear_and_cross_tenant_rejection_are_atomic(
         "failed quote replacement must not append a relation revision"
     );
 }
+
+struct QuoteEditSettings {
+    tenant_id: Uuid,
+    minutes: u32,
+    unavailable: bool,
+}
+
+#[async_trait]
+impl rustok_api::StaticModuleSettingsReader for QuoteEditSettings {
+    async fn settings(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<rustok_api::StaticModuleSettingsSnapshot>, rustok_api::PortError> {
+        assert_eq!(tenant_id, self.tenant_id);
+        assert_eq!(module_slug, "forum");
+        if self.unavailable {
+            return Err(rustok_api::PortError::unavailable(
+                "settings_down",
+                "settings unavailable",
+            ));
+        }
+        Ok(Some(rustok_api::StaticModuleSettingsSnapshot {
+            enabled: true,
+            settings: serde_json::json!({ "max_edit_window_minutes": self.minutes }),
+        }))
+    }
+}
+
+#[tokio::test]
+async fn standalone_quote_commands_obey_the_author_edit_window_for_topics_and_replies() {
+    use rustok_api::{Permission, SharedStaticModuleSettingsReader};
+    use rustok_core::UserRole;
+
+    let db = setup_db().await;
+    let tenant_id = Uuid::new_v4();
+    let topic_id = Uuid::new_v4();
+    let reply_id = Uuid::new_v4();
+    let author_id = Uuid::new_v4();
+    insert_topic_source(&db, tenant_id, topic_id, "Topic").await;
+    insert_reply_source(&db, tenant_id, topic_id, reply_id, "Reply").await;
+    apply_relation_migrations(&db).await;
+    let created_at = (Utc::now() - chrono::Duration::minutes(30)).fixed_offset();
+    let mut topic = forum_topic::Entity::find_by_id(topic_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap()
+        .into_active_model();
+    topic.author_id = Set(Some(author_id));
+    topic.created_at = Set(created_at);
+    topic.update(&db).await.unwrap();
+    let mut reply = forum_reply::Entity::find_by_id(reply_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap()
+        .into_active_model();
+    reply.author_id = Set(Some(author_id));
+    reply.created_at = Set(created_at);
+    reply.update(&db).await.unwrap();
+
+    for (minutes, unavailable, staff, allowed) in [
+        (10, false, false, false), // Expired author window.
+        (60, false, false, true),  // Author still inside the window.
+        (0, false, false, true),   // Explicit unlimited policy.
+        (10, false, true, true),   // Moderator is also the author.
+        (0, true, false, false),   // Reader failures must not grant permission.
+    ] {
+        let security = if staff {
+            SecurityContext::new(UserRole::Manager, Some(author_id))
+        } else {
+            SecurityContext::from_permissions(
+                UserRole::Customer,
+                Some(author_id),
+                [
+                    Permission::FORUM_TOPICS_UPDATE,
+                    Permission::FORUM_REPLIES_UPDATE,
+                ],
+            )
+        };
+        let command = ForumQuoteCommandService::new(db.clone()).with_settings_providers(
+            super::engagement_mode::ForumSettingsProviders::default().with_static_reader(
+                SharedStaticModuleSettingsReader(Arc::new(QuoteEditSettings {
+                    tenant_id,
+                    minutes,
+                    unavailable,
+                })),
+            ),
+        );
+        for is_reply in [false, true] {
+            let before = relation_revision_count(&db, tenant_id).await;
+            let input = SetForumQuotesInput {
+                locale: "en".into(),
+                quotes: Vec::new(),
+            };
+            let result = if is_reply {
+                command
+                    .set_reply_quotes(tenant_id, reply_id, security.clone(), input)
+                    .await
+            } else {
+                command
+                    .set_topic_quotes(tenant_id, topic_id, security.clone(), input)
+                    .await
+            };
+            assert_eq!(
+                result.is_ok(),
+                allowed,
+                "minutes={minutes}, unavailable={unavailable}, staff={staff}, reply={is_reply}: {result:?}"
+            );
+            if !allowed {
+                assert_eq!(relation_revision_count(&db, tenant_id).await, before);
+                if !unavailable {
+                    assert_eq!(result.unwrap_err().stable_code(), "FORUM_VALIDATION_FAILED");
+                }
+            }
+        }
+    }
+}

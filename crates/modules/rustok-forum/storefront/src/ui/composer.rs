@@ -3,179 +3,11 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    forum_storefront_composer_has_text, forum_storefront_content_locale,
-    forum_storefront_quote_revision,
+    ComposerMode, ComposerState, ComposerSubmission, forum_storefront_content_locale,
 };
 use crate::i18n::t;
-use crate::model::{
-    CreateStorefrontForumReplyDraft, CreateStorefrontForumTopicDraft, ForumCategoryListItem,
-    StorefrontForumComposerQuote,
-};
+use crate::model::ForumCategoryListItem;
 use crate::transport;
-
-/// A composer quote. `revision_id` pins the exact quoted source revision when the
-/// caller already knows it; `None` keeps the quote as quoted text only, because
-/// the owner contract rejects a fabricated revision.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct ComposerQuote {
-    pub target_kind: String,
-    pub target_id: String,
-    pub revision_id: Option<i64>,
-    pub author_handle: Option<String>,
-    pub snippet: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub enum ComposerMode {
-    #[default]
-    Reply,
-    Topic,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct ComposerState {
-    pub is_open: bool,
-    pub is_minimized: bool,
-    pub mode: ComposerMode,
-    pub topic_id: Option<String>,
-    pub topic_title: Option<String>,
-    pub category_id: Option<String>,
-    pub parent_reply_id: Option<String>,
-    pub title: String,
-    pub content: String,
-    pub quotes: Vec<ComposerQuote>,
-    pub is_submitting: bool,
-    pub error: Option<String>,
-}
-
-impl ComposerState {
-    pub fn open_reply(
-        &mut self,
-        topic_id: String,
-        topic_title: String,
-        parent_reply_id: Option<String>,
-    ) {
-        self.mode = ComposerMode::Reply;
-        self.topic_id = Some(topic_id);
-        self.topic_title = Some(topic_title);
-        self.parent_reply_id = parent_reply_id;
-        self.title.clear();
-        self.quotes.clear();
-        self.error = None;
-        self.is_open = true;
-        self.is_minimized = false;
-    }
-
-    pub fn open_topic(&mut self, category_id: Option<String>) {
-        self.mode = ComposerMode::Topic;
-        self.topic_id = None;
-        self.topic_title = None;
-        self.category_id = category_id;
-        self.parent_reply_id = None;
-        self.title.clear();
-        self.quotes.clear();
-        self.error = None;
-        self.is_open = true;
-        self.is_minimized = false;
-    }
-
-    pub fn close(&mut self) {
-        self.is_open = false;
-        self.is_minimized = false;
-    }
-
-    pub fn minimize(&mut self) {
-        self.is_minimized = true;
-    }
-
-    pub fn expand(&mut self) {
-        self.is_minimized = false;
-    }
-
-    pub fn append_quote(&mut self, quote: ComposerQuote, quote_text: Option<String>) {
-        if !self
-            .quotes
-            .iter()
-            .any(|q| q.target_id == quote.target_id && q.target_kind == quote.target_kind)
-        {
-            self.quotes.push(quote.clone());
-        }
-
-        if let Some(text) = quote_text {
-            let quote_header = match &quote.author_handle {
-                Some(handle) => format!("> @{handle}:\n"),
-                None => "> Quote:\n".to_string(),
-            };
-            let quoted_lines = text
-                .lines()
-                .map(|l| format!("> {l}"))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let quote_block = format!("{quote_header}{quoted_lines}\n\n");
-            self.content.push_str(&quote_block);
-        }
-
-        self.is_open = true;
-        self.is_minimized = false;
-    }
-
-    pub fn remove_quote(&mut self, index: usize) {
-        if index < self.quotes.len() {
-            self.quotes.remove(index);
-        }
-    }
-
-    pub fn reset(&mut self) {
-        self.title.clear();
-        self.content.clear();
-        self.quotes.clear();
-        self.error = None;
-        self.is_submitting = false;
-        self.is_open = false;
-        self.is_minimized = false;
-    }
-
-    /// Whether the owner contract can accept the current draft.
-    ///
-    /// A topic needs a title and a category and a reply needs its topic. The owner
-    /// rejects an empty discussion document, so the submit action stays disabled
-    /// instead of sending a doomed write.
-    pub fn can_submit(&self) -> bool {
-        if self.is_submitting || !forum_storefront_composer_has_text(self.content.as_str()) {
-            return false;
-        }
-        match self.mode {
-            ComposerMode::Topic => {
-                !self.title.trim().is_empty()
-                    && self
-                        .category_id
-                        .as_deref()
-                        .is_some_and(|category_id| !category_id.trim().is_empty())
-            }
-            ComposerMode::Reply => self
-                .topic_id
-                .as_deref()
-                .is_some_and(|topic_id| !topic_id.trim().is_empty()),
-        }
-    }
-
-    /// Quotes that may be sent as owner relations, i.e. only the ones pinned to a
-    /// positive source revision. Unpinned quotes stay in the post body as text.
-    fn transport_quotes(&self) -> Vec<StorefrontForumComposerQuote> {
-        self.quotes
-            .iter()
-            .filter_map(|quote| {
-                forum_storefront_quote_revision(quote.revision_id).map(|revision_id| {
-                    StorefrontForumComposerQuote {
-                        target_kind: quote.target_kind.clone(),
-                        target_id: quote.target_id.clone(),
-                        revision_id,
-                    }
-                })
-            })
-            .collect()
-    }
-}
 
 pub type ComposerSignal = RwSignal<ComposerState>;
 
@@ -381,6 +213,7 @@ pub fn ForumComposer(
                                         <input
                                             type="text"
                                             placeholder=topic_title_placeholder.clone()
+                                            disabled=move || composer.get().is_submitting
                                             prop:value=move || composer.get().title
                                             on:input=move |ev| {
                                                 let val = event_target_value(&ev);
@@ -389,6 +222,7 @@ pub fn ForumComposer(
                                             class="rounded-xl border border-border bg-background px-3.5 py-2 text-sm font-medium text-foreground outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
                                         />
                                         <select
+                                            disabled=move || composer.get().is_submitting
                                             prop:value=move || {
                                                 composer
                                                     .get()
@@ -398,7 +232,7 @@ pub fn ForumComposer(
                                             }
                                             on:change=move |ev| {
                                                 let val = event_target_value(&ev);
-                                                composer.update(|c| c.category_id = Some(val));
+                                                composer.update(|c| c.select_category(if val.is_empty() { None } else { Some(val) }));
                                             }
                                             class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
                                         >
@@ -490,6 +324,7 @@ pub fn ForumComposer(
                                     view! {
                                         <textarea
                                             placeholder=body_placeholder.clone()
+                                            disabled=move || composer.get().is_submitting
                                             prop:value=move || composer.get().content
                                             on:input=move |ev| {
                                                 let val = event_target_value(&ev);
@@ -547,71 +382,29 @@ pub fn ForumComposer(
                                         on:click={
                                             let route_locale = route_locale.clone();
                                             move |_| {
-                                                let draft = composer.get();
-                                                if !draft.can_submit() {
-                                                    return;
-                                                }
-                                                let is_topic = matches!(draft.mode, ComposerMode::Topic);
-                                                let locale = forum_storefront_content_locale(
-                                                    route_locale.as_deref(),
-                                                );
-                                            let quotes = draft.transport_quotes();
-                                            let body_text = draft.content.clone();
-                                            let category_id = draft
-                                                .category_id
-                                                .clone()
-                                                .unwrap_or_default();
-                                            let title = draft.title.trim().to_string();
-                                            let topic_id = draft
-                                                .topic_id
-                                                .clone()
-                                                .unwrap_or_default();
-                                            let parent_reply_id = draft.parent_reply_id.clone();
-                                            composer.update(|c| {
-                                                c.is_submitting = true;
-                                                c.error = None;
-                                            });
-                                            spawn_local(async move {
-                                                let outcome = if is_topic {
-                                                    transport::create_storefront_forum_topic(
-                                                        CreateStorefrontForumTopicDraft {
-                                                            category_id,
-                                                            title,
-                                                            body_text,
-                                                            locale,
-                                                            quotes,
-                                                        },
-                                                    )
-                                                    .await
-                                                    .map(|created| created.topic_id)
-                                                } else {
-                                                    transport::create_storefront_forum_reply(
-                                                        CreateStorefrontForumReplyDraft {
-                                                            topic_id,
-                                                            parent_reply_id,
-                                                            body_text,
-                                                            locale,
-                                                            quotes,
-                                                        },
-                                                    )
-                                                    .await
-                                                    .map(|created| created.topic_id)
-                                                };
-                                                match outcome {
-                                                    Ok(target_topic_id) => {
-                                                        composer.update(|c| c.reset());
-                                                        if let Some(callback) = on_submitted {
-                                                            callback.run(target_topic_id);
+                                                let locale = forum_storefront_content_locale(route_locale.as_deref());
+                                                let mut submission = None;
+                                                composer.update(|c| submission = c.begin_submission(locale));
+                                                let Some(submission) = submission else { return; };
+                                                spawn_local(async move {
+                                                    let outcome = match submission {
+                                                        ComposerSubmission::Topic(draft) => transport::create_storefront_forum_topic(draft)
+                                                            .await.map(|created| created.topic_id),
+                                                        ComposerSubmission::Reply(draft) => transport::create_storefront_forum_reply(draft)
+                                                            .await.map(|created| created.topic_id),
+                                                    };
+                                                    match outcome {
+                                                        Ok(target_topic_id) => {
+                                                            composer.update(|c| c.reset());
+                                                            if let Some(callback) = on_submitted {
+                                                                callback.run(target_topic_id);
+                                                            }
                                                         }
+                                                        Err(error) => composer.update(|c| c.fail_submission(error.to_string())),
                                                     }
-                                                    Err(error) => composer.update(|c| {
-                                                        c.is_submitting = false;
-                                                        c.error = Some(error.to_string());
-                                                    }),
-                                                }
-                                            });
+                                                });
+                                            }
                                         }
-                                    }
                                     >
                                         {if state.is_submitting {
                                             submitting_label.clone()

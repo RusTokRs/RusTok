@@ -34,6 +34,296 @@ integration, migration/backfill, tests, public contracts, documentation and
 required runtime evidence are complete. Source-ready slices remain
 `in_progress`.
 
+## Scoped functional remediation — 2026-10-17
+
+Source changes on `arena/d189c701-rustok`, based on main
+`f8dd78dc807e93cae21bea608f43bc8c2c9f9d5a`; not integrated and not runtime-verified:
+
+- Leptos composer state and command construction now belong to framework-independent `core.rs`.
+  Topic/parent/mode switches preserve separate in-memory drafts, category selection preserves the
+  current text or restores an occupied draft, and pending submissions freeze editor/target changes.
+  Six pure Rust regression tests cover isolation, restoration, request capture, failed retry,
+  successful cleanup and incomplete drafts.
+- Next-admin topic selectors now consume every owner `nextCursor` page, preserve tenant/auth/locale,
+  deduplicate overlapping topic identities and reject stalled/incomplete cursor streams. The obsolete
+  `first: 100` candidate cap is removed from all five operation-page callers; topic and reply pages
+  consume the same complete list. Five executable JS transport tests cover multi-page selection,
+  overlaps, empty lists, cursor failures and upstream errors.
+- Standalone topic/reply quote replacement now applies the canonical author edit window. REST and
+  GraphQL runtime composition inject the existing settings provider rather than constructing an
+  unconfigured quote service. A SQLite owner regression covers both targets, expired/open/unlimited
+  windows, moderator exemption, settings failure and no revision writes on rejection.
+
+Second packet (findings 5, 7, 10 and 11) is also source-ready:
+
+- Next reply drafts are persisted and validated against the exact `(topicId, parentReplyId)`
+  within the existing tenant/viewer namespace. Top-level and distinct parent replies no longer
+  overwrite each other, and success removes only the submitted target. Destination reads are
+  validated before changing editor state; corrupt/unavailable storage blocks switching and
+  reports a localized error, including when the composer is closed. Old topic-only reply keys
+  are left untouched and are not auto-restored: their missing parent cannot be inferred safely.
+- Next composer preview reuses the same canonical discussion richtext frame with dynamic
+  read-only state and no toolbar, rather than flattening nested nodes or rendering quote
+  relations twice. This is editor preview, not a replacement for server-owned public projections
+  (see `DECISIONS/2026-07-22-richtext-capability-boundary.md`).
+- Both thread retry controls now retry categories, thread content/member cards and a failed
+  read receipt. Category request generations reject stale completions. Receipt state distinguishes
+  pending/succeeded/failed: effects never loop on failure, concurrent clicks cannot duplicate a
+  pending write, and only explicit retry repeats a failure. Viewer/tenant response isolation remains.
+- Next-admin reply success clears the submitted document while retaining its content locale;
+  failure preserves input and releases the retry lock. It reads current frame input rather than a
+  stale render snapshot, rejects double submissions, preserves genuinely newer input and ignores
+  completions from an unmounted topic/locale/tenant/auth editor session.
+
+Third packet (findings 8 and 9) is source-ready:
+
+- Inline `ThreadPanel` and full-page topic navigation now share a framework-independent cursor
+  walker and a React DOM-position adapter. “Jump to end” follows the existing audience-scoped
+  reply read, not an unloaded DOM index or the topic aggregate count. Each explicit click reads
+  at most 20 additional pages; a partial walk keeps its cursor, focuses the loaded frontier and
+  displays a localized continuation notice rather than claiming it reached the end. Ordinary
+  Load more still reads one page. Cursor cycles and transport errors remain visible failures.
+- A synchronous pending lock covers both load-more and jump actions. Snapshot refreshes invalidate
+  the old walk; viewer/tenant/topic changes stop it after the pending page, before another read or
+  stale commit. Scroll runs after the new DOM is committed, once per explicit jump, and cannot
+  replay on an ordinary append. The opening-link `?reply=` budget/contract remains unchanged.
+- Reading position is measured inside the mounted thread root, with frame-coalesced scroll/resize
+  updates and logarithmic post-position lookup, including tall posts. Same-length replacement
+  snapshots rebind DOM nodes. The inline timeline no longer hardcodes post 1. Cursor exhaustion
+  supplies the exact visible denominator; before then the owner count is bounded below by the
+  loaded prefix. Busy controls and accessible progress values reflect the actual navigation state.
+- The English/Russian continuation message is catalog-owned. Message declarations were regenerated
+  with the host's pinned next-fluent CLI (`14f870bb900069762054dc882427c654a69822be`), not edited by hand.
+
+Fourth packet (finding 6) has source changes under
+[`2026-10-17-forum-topic-feed-selection`](../../../../DECISIONS/2026-10-17-forum-topic-feed-selection.md)
+(Accepted, implementation In progress):
+
+- The canonical topic filter now carries search/order/solved. Top orders stored reply counts
+  before the existing Latest keys; search uses the actual hydrated locale title/slug and Solved
+  uses the canonical solution relation. Sparse selections refill from bounded server candidate
+  batches before audience/unread output pagination; no browser-wide scan or invented count.
+- Cursors carry rank and selection/context scope; query/order/solved, tenant/viewer, locale/fallback,
+  category/status, channel/surface mismatches are rejected. Page size is excluded. The separate
+  read-model owner rejects scoped/ranked cursors. Old opaque tokens have no compatibility decoder.
+- REST and all three GraphQL list variants delegate to the same owner fields. Native and GraphQL
+  Leptos adapters carry/retain the same typed selection across initial and continuation reads;
+  current Leptos UI still requests Latest. Migration 39 adds global/category Top keyset indexes;
+  production index creation needs the deployment owner's lock/maintenance-window assessment.
+- Next controls now request owner-selected pages, reset feed identity on every selection change,
+  debounce text input and ignore stale results/errors, while preserving owner order. The loaded-only
+  warning and local search/Top/Solved transforms are retired; empty search/unread/error states remain
+  distinct. Catalog-owned search-clear accessibility text was generated with the pinned Fluent CLI.
+- Six new API and ten selection/lifecycle JS regressions execute production functions. Rust source
+  regressions cover a sparse match beyond 100 candidates, hidden matches, Top ties/paging, Solved,
+  displayed-locale-only matching/fallback, invalid context, failures, DTO normalization/cursors,
+  schema/native projections and unread/read-model composition. **These Rust tests have not run.**
+
+Requested recheck (same branch/base; no phase completion) found and corrected seven further
+frontend defects in these changes/adjacent touched flows:
+
+- A delayed receipt/post could call an old feed callback, increment the shared request generation
+  and discard the current selection's pending result, leaving its loader stuck. An old detail
+  callback could likewise cancel another thread's current detail/reply request. Both entrypoints
+  now reject obsolete scope before touching generations, pending flags or loading state.
+- Whitespace-only search edits changed callback/effect dependencies even though the feed key and
+  owner selection were unchanged; this unnecessarily replaced appended pages with a first page.
+  The callback, debounce and key now use the same trimmed input, while the input keeps raw text.
+- QuoteTooltip optimistically assumed `openReply` succeeded even when destination draft restoration
+  failed. `openReply` now acknowledges a successful switch with a boolean; pending/stale-viewer,
+  save and restore failures return false without editor mutation. No lookup/quote append follows
+  a rejected switch. Tooltip unmount also invalidates pending quote results and their DOM cleanup,
+  preventing an old selection from modifying a still-live composer after its tooltip is gone.
+- Next composer title and quote-removal controls remained editable during a write although the
+  frame/category were frozen; successful cleanup could discard those newer edits. They now share
+  the same pending lock. A synchronous submit ref additionally rejects duplicate form submissions
+  before React commits the pending state, and releases on failure for retry.
+
+The failing-before regressions were executed before fixes (including a separate stale-detail case
+and duplicate reply/topic submissions). Twelve new tests now cover ten production-callback/draft
+scenarios plus two source-wiring assertions. **First recheck evidence: 106 scoped Forum JS + 14
+ownership-verifier tests pass (120 total); host scripts separately pass 96 storefront and 12 admin
+tests.** The scoped TS 6.0.3 semantic check and six source guards pass; `git diff --check` is clean.
+All 42 modified Rust files parsed through WASM rustfmt without edits; that is not Rust compilation,
+macro expansion, migration execution or an owner runtime test. Cargo remains unavailable, and
+PostgreSQL, mounted React/browser and sparse-search performance evidence remain open. No product
+dependency change or temporary node_modules link remains.
+
+Continued user-requested inspection (same branch/base, 2026-10-17) reproduced and corrected
+three further Next storefront draft defects:
+
+- Closing a scoped editor ignored a failed final save and could replace fresh in-memory text
+  with an older stored draft on reopening. A failed flush now keeps the editor active/open;
+  successful saves and unscoped memory-only closing still work.
+- Saved richtext validation checked only the root, admitting malformed nested nodes and unsafe
+  link marks. Draft parsing now reuses `@rustok/richtext`'s canonical discussion-profile validator
+  with `allowEmpty: true`. Invalid destinations fail before replacing an editor or mutating
+  category draft storage. No parallel schema/profile or product dependency was added.
+- Post-success `removeItem` failures were swallowed, allowing already-posted content to be
+  restored. The composer now reports cleanup failure with a cleanup-only retry action. A private
+  per-session pending-key set prevents restoration until deletion succeeds; both direct opening
+  and category switching retry cleanup before reading that key. A successful fresh save supersedes
+  pending cleanup for its key. This set is temporary recovery control state, not another persisted
+  draft store. **Blocked browser storage cannot be durably repaired across reload, account/session
+  remount or another tab**; the warning explicitly requires retrying cleanup before reloading.
+  This is not server mutation idempotency or cross-tab conflict resolution.
+
+Four new tests (including the category-switch bypass) were executed failing before their respective
+fixes. They exercise production callbacks and actual shared richtext validation/profile code;
+closed cleanup-alert/retry wiring also has source assertions. **Draft-storage-pass evidence: 110 scoped Forum
+JS + 14 ownership-verifier tests pass (124 total); host scripts pass 100 storefront / 12 admin.**
+Scoped TS 6.0.3, six source guards, three i18n verifiers and `git diff --check` pass; existing i18n
+baselines remain warnings, not browser proof. These callback tests are not mounted React tests.
+No additional Rust/runtime evidence, product dependency changes, phase completion or acceptance
+of the original 11 findings is implied. Browser, Rust/PostgreSQL and sparse-search scale checks
+remain outstanding.
+
+The next user-requested continuation (same branch/base, 2026-10-17) corrected three adjacent
+asynchronous composer defects:
+
+- A quote lookup checked only mode/target IDs and open state. Closing and reopening the same
+  target could therefore accept an old exact-revision quote or its text-only fallback. The
+  composer now owns a private editing-lifetime generation and exposes `captureEditorSession`.
+  Successful open/target replacement, category change, close and post-success reset invalidate
+  captured lifetimes. Rejected transitions and same-category/minimize/expand actions do not.
+- The form's synchronous duplicate-submit lock did not cover context mutations before React's
+  pending render. The context now owns a synchronous submission lock, with `isSubmitting` as its
+  render projection. Opening/replacing targets, category selection, title/document updates and
+  quote append/removal cannot modify a pending submission's editor; controlled updates also
+  reject inactive/obsolete viewers. Releasing a failed write permits editing/retry again.
+  Quote completions consult the captured owner guard, not only the last rendered pending flag.
+- A late quote's final DOM cleanup could clear a newer selection and hide its quote action,
+  including after editor reopening. Cleanup now requires the same editor lifetime/target and
+  the same selection-change generation. Its in-flight lock still releases when cleanup is skipped;
+  a valid original quote continues to use its captured text, not the later selection.
+
+Twelve additional tests cover these paths: nine new cases reproduced failures without their fixes,
+plus three controlled-edit/lifetime/retry checks. Existing source-wiring assertions require the
+owner lock/guard and selection counter to remain connected. **Asynchronous-composer-pass evidence: 122 scoped Forum
+JS + 14 ownership-verifier tests pass (136 total); host scripts pass 112 storefront / 12 admin.**
+The scoped TS 6.0.3 check, six source guards, three i18n verifiers and `git diff --check` pass with
+the existing i18n baselines. Tests execute production callback bodies with injected lifecycle/DOM
+bindings, not a mounted React/browser lifecycle. No persistence schema, server idempotency,
+product dependency or accepted architectural boundary changed. Browser, Rust/PostgreSQL and
+sparse-search performance evidence are still open; this is not phase completion or runtime
+acceptance of the original findings.
+
+Continued frame inspection (same branch/base, 2026-10-17) corrected two related defects:
+
+- A queued richtext update could replace a different draft after a successful target/session
+  switch. `ComposerState.editorSession` is now an explicit render projection of the existing
+  composer-owned generation. Each committed lifetime updates that projection and keys its own
+  `RichTextEditor`; the document callback also captures the lifetime before updating state.
+  Normal keystrokes/read-only toggles do not advance it. Existing rejected-transition and
+  cleanup/retry lifetime checks now verify the render projection as well.
+- The shared controller still accepted queued document/focus/error callbacks and handshake
+  callbacks after disposal. The fix belongs to `packages/richtext`, not a Forum protocol fork:
+  destroyed controllers now ignore both entrypoints. Its canonical build regenerated tracked
+  bundles and immutable frame assets/manifest. See the shared richtext plan for build limits.
+
+Six new checks include three failing-before behavioral regressions, a failing-before frame-key
+wiring assertion and two positive editing cases. **Frame-pass evidence: 125 scoped Forum JS + 14
+ownership-verifier tests (139), plus 13 shared-richtext tests, all pass (152 combined).** Host
+scripts pass **115 storefront / 12 admin**. Scoped Forum TS and the full richtext package semantic
+TS 6.0.3 check, richtext generated-contract verification, six source guards, three i18n verifiers
+and `git diff --check` pass. The shared package's canonical `npm test` build passes, using the
+existing frozen dependency graph with forced peer resolution outside the checkout; normal peer
+resolution is blocked by the pre-existing mixed Tiptap versions, not repaired in this lifecycle
+slice. No product dependency or lockfile change. Callback/channel tests are not mounted browser
+evidence, and Rust/PostgreSQL/performance and blocked-storage durability limits remain open.
+
+The subsequent user-authorized dependency pass resolves the earlier installation conflicts:
+Tiptap now shares a `3.30.5` cohort; both host React/render/type pairs, ESLint/TypeScript and admin
+parser/AJV peers are compatible. Storefront Next is `16.3.8`, matching admin. npm locks and tracked
+richtext artifacts were regenerated; four dependency/build tests prevent the previous drift.
+Both hosts now pass their **full native `typecheck` and `lint` commands**, plus explicit Forum
+module lint, without scratch aliases. Ordinary clean npm installs and installed dependency-tree
+checks pass without forced peer resolution; the central richtext plan records CA/prune details.
+Dependency-pass scoped combined evidence is **139 Forum/ownership + 17 richtext = 156 tests**, with host
+scripts still **115 storefront / 12 admin**. The TypeScript-7 build-ignore workarounds are removed;
+admin's Bun lock/Docker path is cut over to npm with correct root/local-package/asset wiring.
+Docker is unavailable, so this image path is source-reviewed, not runtime accepted. The prior
+whole-host TS/lint and Tiptap peer blockers are resolved; Rust, PostgreSQL, browser, sparse-search
+scale and blocked-storage durability limits remain. This does not mark FS-03 or the original
+findings runtime-accepted, nor assert that every transitive advisory is fixed.
+
+The next functional continuation (same branch/base, 2026-10-17) fixes two further storefront
+composer defects:
+
+- The form submit callback checked pending state and viewer identity, but not its captured editor
+  lifetime. A retained callback could send the old topic/reply target and document after closing
+  or replacement; after successful cleanup the released local lock could also permit that old
+  callback to post again. Submit entry now uses the existing `isEditingSession` guard before
+  validation, error updates, locking or any mutation request. Failure/retry behavior for the
+  still-current editor is unchanged. This is client lifetime isolation, not server idempotency
+  for ambiguous network outcomes or multi-tab retries.
+- Composer headings, the fallback topic label and the quotes heading were hardcoded English.
+  They now use the English/Russian Fluent catalogs (`replyingTo` with typed `title`, `topic`,
+  `quotes`, and the existing `newTopic`). Host message declarations were regenerated by the
+  installed pinned Fluent CLI rather than edited manually.
+
+Five new checks cover four production submit-callback scenarios (reply/topic replacement and
+post-success invalidation) plus catalog-owned label wiring. The scenarios fail without the
+entry guard; the label assertion failed before the catalog cutover. **Current evidence: 144
+Forum/ownership + 17 shared-richtext = 161 tests**, with host scripts **120 storefront / 12 admin**.
+Native storefront typecheck, host/module lint, six source guards, three i18n verifiers and diff
+whitespace checks pass. Callback tests inject lifecycle bindings and are not mounted React/browser
+proof. No dependency/storage/protocol change was needed. Docker, browser, Rust/PostgreSQL,
+sparse-search scale and blocked-storage durability limits remain open; no audit phase is closed.
+
+Fourth-packet evidence (before the requested recheck): **94 scoped Forum JS tests plus 14
+ownership-verifier tests pass (108 total)**. Host scripts separately pass **84 storefront** tests
+(including the two shared GraphQL tests) and **12 admin** tests. Six scoped source guards and three
+i18n verifiers exit successfully (their existing baselined i18n warnings are not new green proof).
+The scoped TypeScript 6.0.3 check, including the feed, selection projection and API imports, passes
+against exact Next 16.3.6 and real dependencies outside the checkout. Temporary node_modules links
+were removed. No product dependency/lockfile change. SQLite executed the **literal migration 39
+SQL** twice up/down and used both covering indexes on toy EXPLAIN plans, preserving an unrelated
+index; that is not the SeaORM migration chain, owner runtime, PostgreSQL or scale evidence.
+The ADR verifier still fails on exactly the same two pre-existing 2026-10-16 ADRs as base HEAD
+(reproduced from `git archive HEAD`); the new ADR adds no governance errors.
+
+Earlier packet evidence (retained for provenance): 78 scoped Forum JS tests pass, including 22 new second-packet and 27 new third-packet
+regressions; 14 Blog/Forum ownership-verifier tests pass. Host `test:forum` commands pass separately:
+68 storefront tests (including two shared GraphQL transport tests, using temporary external Apollo
+4.3.1 test dependencies) and 12 admin tests. No product dependency/lockfile changes were needed.
+Forum admin/storefront boundary, storefront cursor paging, reply-Reactions storefront composition
+and Blog/Forum UI ownership guards pass. The ownership guard and its negative fixtures require
+submission from the captured current document; no guard was weakened to accept an old path.
+UI catalog parity, UI key verification and the i18n contract verifier pass.
+
+The six third-packet TS/TSX source roots and their imports pass a scoped semantic TypeScript 6.0.3
+check using real declared dependencies/owner sources and the host-generated i18n declarations,
+with a temporary external compiler config (no stubs or suppressions). This is not the whole-host
+Next typecheck. Preview wiring tests and deterministic navigation hook/DOM bindings are not
+mounted React/browser rendering evidence.
+
+Modified Rust files were parsed/formatted using WASM rustfmt, not compiled.
+`cargo test -p rustok-forum --lib` and `cargo test -p rustok-forum-storefront --lib` remain required
+in a Rust-enabled environment. The architecture dependency guard and remediation gate cannot
+complete without `cargo`. The installed host environments still lack the `next-fluent` and `eslint`
+executables: the whole-host typecheck/lint commands cannot run there. The pinned CLI used for
+catalog generation and the scoped compiler/dependencies live outside the checkout; full host
+installation, Next integration checks and browser E2E remain pending.
+The previous packet established six additional guards failing identically at base `HEAD`:
+quote commands (stale runtime/doc markers), mention runtime proof (stale PostgreSQL marker),
+and merge/fork/split/slug-rename admin UI (stale Leptos markers/contracts).
+These failures are not green evidence for this change.
+
+All eleven original findings now have source changes, not complete runtime acceptance. Required
+fourth-packet checks attempted here stop at `cargo: command not found` (exit 127): owner check/lib
+and scoped SQLite/schema tests, storefront lib tests and native `--features ssr` check. Maintainers
+must also check hydrate/CSR profiles and PostgreSQL owner/migration/EXPLAIN behavior. Sparse search
+has bounded memory but can scan many server batches; production latency/buffer evidence is open.
+Browser E2E, Rust compilation/owner tests and transport runtime verification remain pending. This
+is not completion of the Forum audit, ADR implementation or a sequential audit phase.
+
+Additional host dependency observation (outside these eleven functional findings): installing the
+exact declared Next 16.3.6 in isolated verification tools produced npm audit advisories including
+high-severity `GHSA-cjq9-62q9-8jv4` (Image Optimization SSRF) and cache/disclosure advisories fixed
+in 16.3.8. Runtime applicability was not assessed. The host dependency/lockfile upgrade is not part
+of this module navigation packet and requires host-owner remediation before release.
+
 ## Current state
 
 Forum owns canonical topic/reply storage, transports, revisions, projections,
@@ -49,9 +339,9 @@ locale switching is now fail-closed for Forum admin category/topic editors:
 unsaved owner-localized content and reply drafts block switching, fallback-only
 localized content is scrubbed before writable target-locale state is exposed,
 and unchanged Taxonomy tag attachments are preserved. Full mounted save/reload
-evidence and the broader product/runtime gates listed below remain open. The
-native Forum storefront check, whole-host Next typecheck,
-and the updated ownership verifiers pass.
+evidence and the broader product/runtime gates listed below remain open. Previously retained baseline evidence includes native Forum storefront checks, a whole-host Next
+typecheck and ownership verifiers; that evidence does not verify the unintegrated scoped
+remediation above.
 Manifest dependencies between `modules.toml`, `rustok-module.toml`,
 `RusToKModule::dependencies()` and `docs/modules/registry.md` are aligned to
 `["content", "media", "taxonomy"]. Taxonomy owns the canonical Forum Category persistence boundary.

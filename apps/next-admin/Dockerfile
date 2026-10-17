@@ -1,57 +1,36 @@
-# Dockerfile for Next.js Admin Panel
-# Supports both development and production builds
+# Build with the repository root as context:
+# docker build -f apps/next-admin/Dockerfile --target production .
+FROM node:24-alpine AS base
 
-# ============================================================================
-# Base stage: Install dependencies
-# ============================================================================
-FROM node:20-alpine AS base
+WORKDIR /workspace
+RUN apk add --no-cache git \
+    && git config --global url."https://github.com/".insteadOf ssh://git@github.com/
 
-WORKDIR /app
+# Local file dependencies must retain their repository-relative locations.
+COPY packages/richtext/ packages/richtext/
+COPY packages/rustok-ui-grid/ packages/rustok-ui-grid/
+RUN npm ci --prefix packages/richtext \
+    && npm run build --prefix packages/richtext
+COPY apps/next-admin/ apps/next-admin/
+WORKDIR /workspace/apps/next-admin
+ENV HUSKY=0
+RUN npm ci
 
-# Install bun (if using bun instead of npm/yarn)
-RUN npm install -g bun
-
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
-
-# ============================================================================
-# Development stage
-# ============================================================================
 FROM base AS development
-
 ENV NODE_ENV=development
-
-COPY . .
-
 EXPOSE 3000
+CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
 
-CMD ["bun", "run", "dev", "--port", "3000"]
-
-# ============================================================================
-# Builder stage: Build production app
-# ============================================================================
 FROM base AS builder
-
 ENV NODE_ENV=production
+RUN npm run build
 
-COPY . .
-
-RUN bun run build
-
-# ============================================================================
-# Production stage: Serve built app
-# ============================================================================
-FROM node:20-alpine AS production
-
+FROM node:24-alpine AS production
 WORKDIR /app
-
-ENV NODE_ENV=production
-
-# Copy built app from builder
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
-
+ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000
+COPY --from=builder /workspace/apps/next-admin/.next/standalone ./
+COPY --from=builder /workspace/apps/next-admin/.next/static ./apps/next-admin/.next/static
+COPY --from=builder /workspace/apps/next-admin/public ./apps/next-admin/public
+COPY --from=builder /workspace/packages/richtext/dist ./packages/richtext/dist
 EXPOSE 3000
-
-CMD ["node", "server.js"]
+CMD ["node", "apps/next-admin/server.js"]

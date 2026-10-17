@@ -18,7 +18,8 @@ import {
 import { ComposerProvider } from '../context/composer-context';
 import { MemberCardProvider } from './member-card';
 import { CategoryRail } from './category-rail';
-import { TopicFeed, type TopicFilterTab } from './topic-feed';
+import { TopicFeed } from './topic-feed';
+import { topicFeedSelection, type TopicFilterTab } from './topic-feed-selection';
 import { useForumAuth } from './use-forum-auth';
 import { ThreadPanel } from './thread-panel';
 import { Composer } from './composer';
@@ -27,6 +28,7 @@ import { canReplyToTopic } from './topic-reply-availability';
 import { CategoryOverview } from './category-overview';
 import { isForumReplyId, MAX_ANCHOR_REPLY_PAGES } from './reply-anchor';
 import { useTranslations } from '@rustok/next-fluent';
+import { loadThreadReplyPages, threadJumpResult, type ThreadPostTarget } from './thread-navigation';
 
 interface ForumSectionProps {
   tenantId?: string | null;
@@ -55,9 +57,11 @@ export function ForumSection({
   const viewerKey = `${tenantId ?? ''}:${tenantSlug ?? ''}:${locale}:${token}`;
   const [activeView, setActiveView] = useState<'topics' | 'categories'>(initialView);
   const [activeTab, setActiveTab] = useState<TopicFilterTab>('latest');
+  const [searchQuery, setSearchQuery] = useState('');
+  const normalizedSearchQuery = searchQuery.trim();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(initialCategoryId);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(initialTopicId);
-  const feedKey = `${viewerKey}:${selectedCategoryId ?? ''}:${activeTab === 'unread' ? 'unread' : 'all'}`;
+  const feedKey = JSON.stringify([viewerKey, selectedCategoryId, activeTab, normalizedSearchQuery]);
   const detailKey = `${viewerKey}:${selectedTopicId ?? ''}`;
 
   const [categoryPage, setCategoryPage] = useState<{
@@ -96,6 +100,12 @@ export function ForumSection({
   const topicsRequest = useRef(0);
   const detailsRequest = useRef(0);
   const repliesRequest = useRef(0);
+  const repliesPendingRef = useRef(false);
+  // Do not keep walking reply pages after this surface is unmounted.
+  useEffect(() => () => {
+    ++repliesRequest.current;
+    repliesPendingRef.current = false;
+  }, []);
   // Refs are updated during render, not in an effect: a response that finishes
   // between a viewer/tab change and the next effect must never mutate its UI.
   const viewerKeyRef = useRef(viewerKey);
@@ -159,7 +169,9 @@ export function ForumSection({
   }, [token, locale, tenantSlug, viewerKey, forum]);
 
   const loadTopics = useCallback(async (after?: string) => {
-    if (auth === null) return;
+    // A receipt/post can hold this callback across a selection change. Reject it
+    // before incrementing the shared generation, or it cancels the new feed read.
+    if (auth === null || feedKeyRef.current !== feedKey) return;
     const request = ++topicsRequest.current;
     if (activeTab === 'unread' && !token) {
       setTopicPage({ key: feedKey, items: [], nextCursor: null });
@@ -176,6 +188,7 @@ export function ForumSection({
         categoryId: selectedCategoryId ?? undefined,
         locale,
         after,
+        ...topicFeedSelection(activeTab, normalizedSearchQuery),
       };
       const data = activeTab === 'unread' && token
         ? await fetchStorefrontUnreadTopics({ ...options, token })
@@ -193,16 +206,17 @@ export function ForumSection({
     } finally {
       if (request === topicsRequest.current && feedKeyRef.current === feedKey) setLoadingTopics(false);
     }
-  }, [auth, tenantId, tenantSlug, selectedCategoryId, locale, activeTab, token, feedKey, loadMemberCards, forum]);
+  }, [auth, tenantId, tenantSlug, selectedCategoryId, locale, activeTab, normalizedSearchQuery, token, feedKey, loadMemberCards, forum]);
 
   const loadTopicDetails = useCallback(async (topicId: string) => {
-    if (auth === null) return;
+    const expectedKey = `${viewerKey}:${topicId}`;
+    if (auth === null || detailKeyRef.current !== expectedKey) return;
     const request = ++detailsRequest.current;
     // A late "load more" from the old snapshot must not overwrite this
     // refresh's replies or cursor (notably after posting a new reply).
     ++repliesRequest.current;
+    repliesPendingRef.current = false;
     setLoadingReplies(false);
-    const expectedKey = `${viewerKey}:${topicId}`;
     setDetailsError(null);
     try {
       const [topicData, repliesData] = await Promise.all([
@@ -246,30 +260,39 @@ export function ForumSection({
     }
   }, [auth, tenantId, tenantSlug, token, locale, viewerKey, loadMemberCards, forum]);
 
-  const loadMoreReplies = useCallback(async () => {
-    if (!selectedTopicId || !repliesCursor || loadingReplies) return;
+  const loadMoreReplies = useCallback(async (target?: ThreadPostTarget) => {
+    if (!selectedTopicId || !repliesCursor || repliesPendingRef.current) return null;
     const request = ++repliesRequest.current;
-    const after = repliesCursor;
+    const isCurrent = () => request === repliesRequest.current && detailKeyRef.current === detailKey;
+    repliesPendingRef.current = true;
     setLoadingReplies(true);
     try {
-      const data = await fetchStorefrontReplies({
-        tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
-        token: token || undefined, topicId: selectedTopicId, locale, after,
+      const data = await loadThreadReplyPages({
+        items: replies, nextCursor: repliesCursor, target, isCurrent,
+        loadPage: (after) => fetchStorefrontReplies({
+          tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
+          token: token || undefined, topicId: selectedTopicId, locale, after,
+        }),
       });
-      if (request !== repliesRequest.current || detailKeyRef.current !== detailKey) return;
+      if (!data || !isCurrent()) return null;
       setDetailPage((previous) => {
         if (previous?.key !== detailKey) return previous;
         const items = new Map([...previous.replies, ...data.items].map((item) => [item.id, item]));
         return { ...previous, replies: Array.from(items.values()), nextCursor: data.nextCursor };
       });
       setDetailsError(null);
-      void loadMemberCards(data.items);
+      void loadMemberCards(data.items.slice(replies.length));
+      return target === undefined ? null : threadJumpResult(data, target);
     } catch {
       if (request === repliesRequest.current && detailKeyRef.current === detailKey) setDetailsError(forum('errorLoad'));
+      return null;
     } finally {
-      if (request === repliesRequest.current && detailKeyRef.current === detailKey) setLoadingReplies(false);
+      if (isCurrent()) {
+        repliesPendingRef.current = false;
+        setLoadingReplies(false);
+      }
     }
-  }, [selectedTopicId, repliesCursor, loadingReplies, tenantId, tenantSlug, token, locale, detailKey, loadMemberCards, forum]);
+  }, [selectedTopicId, replies, repliesCursor, tenantId, tenantSlug, token, locale, detailKey, loadMemberCards, forum]);
 
   useEffect(() => {
     setCategoriesError(null);
@@ -289,7 +312,13 @@ export function ForumSection({
     if (categoryPage.items.some((category) => category.id === selectedCategoryId)) return;
     setSelectedCategoryId(null);
   }, [categoryPage, viewerKey, selectedCategoryId]);
-  useEffect(() => { if (auth) void loadTopics(); }, [auth, loadTopics]);
+  useEffect(() => {
+    if (!auth) return;
+    setTopicsError(null);
+    // Hide the previous selection immediately via feedKey, but coalesce typing requests.
+    const timer = window.setTimeout(() => void loadTopics(), normalizedSearchQuery ? 250 : 0);
+    return () => window.clearTimeout(timer);
+  }, [auth, loadTopics, normalizedSearchQuery]);
   useEffect(() => {
     if (auth && selectedTopicId) void loadTopicDetails(selectedTopicId);
   }, [auth, selectedTopicId, loadTopicDetails]);
@@ -418,6 +447,8 @@ export function ForumSection({
                 topics={topics}
                 total={topics.length}
                 activeTab={activeTab}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
                 onTabChange={setActiveTab}
                 isAuthenticated={Boolean(token)}
                 hasMore={Boolean(topicsCursor)}
@@ -432,6 +463,7 @@ export function ForumSection({
               />
 
               <ThreadPanel
+                key={detailKey}
                 topic={selectedTopic}
                 replies={replies}
                 repliesTotal={repliesTotal}
@@ -440,6 +472,7 @@ export function ForumSection({
                 hasMoreReplies={Boolean(repliesCursor)}
                 isLoadingReplies={loadingReplies}
                 onLoadMoreReplies={() => void loadMoreReplies()}
+                onNavigateReplies={loadMoreReplies}
                 focusReplyId={
                   replyAnchor && replyAnchor.topicId === selectedTopicId && replyAnchor.visible
                     ? replyAnchor.replyId

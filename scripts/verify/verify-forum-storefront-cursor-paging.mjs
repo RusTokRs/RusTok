@@ -287,6 +287,38 @@ for (const [locale, file] of [
   }
 }
 
+// Feed selectors are owner inputs on every page, not transforms of a loaded browser slice.
+const ownerFilter = read("crates/modules/rustok-forum/src/dto/topic.rs");
+for (const marker of ["pub search: Option<String>", "pub order: ForumTopicListOrder", "pub solved_only: bool", "selection_scope"]) {
+  requireText(ownerFilter, marker, "canonical topic selection");
+}
+const listOwner = read("crates/modules/rustok-forum/src/services/topic_visibility_list.rs");
+for (const marker of ["filter.normalize_selection()?", "filter.matches_selection(&topic)", "ReplyCount", "after.selection_scope != Some(scope)"]) {
+  requireText(listOwner, marker, "paged selection owner");
+}
+for (const file of ["query_runtime.rs", "storefront_audience_topics.rs", "storefront_read_state.rs"]) {
+  const adapter = read(`crates/modules/rustok-forum/src/graphql/${file}`);
+  requireText(adapter, "search: Option<String>", `${file} search input`);
+  requireText(adapter, "order: Option<crate::ForumTopicListOrder>", `${file} typed order`);
+  requireText(adapter, "order: order.unwrap_or_default()", `${file} owner delegation`);
+  requireText(adapter, "solved_only,", `${file} solved input delegation`);
+}
+const restTopics = read("crates/modules/rustok-forum/src/controllers/topics.rs");
+for (const field of ["search", "order", "solved_only"]) {
+  requireText(restTopics, `${field}: query.${field}`, "REST owner selection");
+}
+requireText(model, "pub topic_selection: ForumTopicSelection", "retained initial selection");
+requireText(ui, "let selection = topic_selection.clone()", "same selection on continuation");
+requireText(read(`${storefront}/src/transport/native_server_adapter.rs`), "selected_topic_filter(topic_filter, selection.clone())", "initial native selection");
+requireText(pages, "selected_topic_filter(filter, selection)", "continuation native selection");
+for (const field of ["search", "order", "solvedOnly"]) {
+  requireText(graphql, `${field}: $${field}`, "GraphQL topic selection");
+}
+const nextFeed = read("apps/next-frontend/packages/rustok-forum/src/components/topic-feed.tsx");
+for (const marker of ["topics.filter(", ".sort(", "filteredTopics", "filtersLoadedOnly"]) {
+  forbidText(nextFeed, marker, "Next must preserve the owner selection and order");
+}
+
 if (failures.length > 0) {
   console.error("forum storefront cursor paging verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);

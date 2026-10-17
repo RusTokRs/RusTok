@@ -6,10 +6,11 @@ use rustok_api::normalize_locale_tag;
 use rustok_ui_core::UiRouteContext;
 
 use super::category_overview::CategoryOverview;
-use super::composer::{ComposerQuote, ComposerSignal, ComposerState, ForumComposer};
+use super::composer::{ComposerSignal, ForumComposer};
 use super::member_card::{ForumAuthorBadge, member_card_context};
 use super::timeline::TimelineScroller;
 use super::topic_feed::ForumTopicFeed;
+use crate::core::{ComposerQuote, ComposerState};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ForumViewMode {
@@ -80,7 +81,8 @@ pub fn ForumView() -> impl IntoView {
             )
         },
         move |(category_id, topic_id, locale, _)| async move {
-            transport::fetch_storefront_forum(category_id, topic_id, locale).await
+            transport::fetch_storefront_forum(category_id, topic_id, locale, Default::default())
+                .await
         },
     );
 
@@ -169,6 +171,7 @@ fn ForumShowcase(
     mutation_busy: ReadSignal<bool>,
 ) -> impl IntoView {
     let StorefrontForumData {
+        topic_selection,
         categories,
         topics,
         selected_category_id,
@@ -221,6 +224,7 @@ fn ForumShowcase(
         };
         let category_id = feed_category_id.clone();
         let locale = feed_locale.clone();
+        let selection = topic_selection.clone();
         set_topics_busy.set(true);
         set_topics_error.set(None);
         spawn_local(async move {
@@ -229,6 +233,7 @@ fn ForumShowcase(
                 cursor,
                 locale,
                 read_state_available,
+                selection,
             )
             .await
             {

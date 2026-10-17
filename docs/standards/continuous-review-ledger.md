@@ -30,6 +30,78 @@ The single canonical trigger to continue this audit sequence is:
 
 ---
 
+### Scoped Forum remediation (2026-10-17; not a phase completion)
+
+User-requested functional fixes are tracked in the [Forum owner plan](../../crates/modules/rustok-forum/docs/implementation-plan.md#scoped-functional-remediation--2026-10-17).
+Base main: `f8dd78dc807e93cae21bea608f43bc8c2c9f9d5a`; session branch:
+`arena/d189c701-rustok`. Leptos draft/submission isolation, complete Next-admin topic candidates,
+standalone quote edit-window enforcement, parent-aware Next reply drafts, canonical frame preview,
+category/read-receipt retries, admin reply success cleanup and bounded end navigation/real reading
+position plus server-owned global search/Top/Solved now have source changes for all 11 original
+findings. This is **not runtime acceptance**. The fourth packet adds 16 executable JS regressions:
+94 scoped Forum JS + 14 ownership-verifier tests pass (108 total); host scripts pass separately
+(84 storefront including shared GraphQL, 12 admin). Scoped semantic TS 6.0.3 against exact Next
+16.3.6, six source guards and three i18n verifiers pass with existing baselined i18n warnings.
+Migration 39's literal SQLite index SQL passed toy up/down/EXPLAIN checks, not the SeaORM chain.
+New Rust owner/DTO/schema/native regressions are source-only: all attempted Rust checks stop at
+missing cargo, including native SSR. Hydrate/CSR, PostgreSQL, sparse-search performance, transport
+runtime and browser evidence remain open. The fourth-packet ADR is Accepted / In progress; the
+ADR verifier fails identically at HEAD on two unrelated existing ADRs. Whole-host typecheck/lint
+and architecture/remediation gates retain the previously documented environment blockers.
+Six other guards failed identically at the base in the first packet. The separate host Next
+16.3.6 security advisories still need host-owner remediation; no product dependency was upgraded.
+Requested recheck corrected seven additional frontend defects: stale feed/detail callbacks cancelling
+new reads, whitespace-only search replacing appended pages, failed draft-open acknowledgement during
+quoting, quote completion after tooltip unmount, editable title/quotes during a pending write, and
+same-render duplicate submissions. Twelve new regressions brought that recheck evidence to **106 scoped
+Forum JS + 14 verifier tests (120 total)**; host scripts pass **96 storefront / 12 admin**, scoped
+TS 6.0.3 and six source guards pass. Failures were reproduced before the corresponding fixes.
+WASM rustfmt parsed 42 changed Rust files; no Rust compilation/runtime acceptance is implied.
+Continued inspection then fixed three more Next draft defects: failed-close flush discarding fresh
+text, shallow nested-richtext validation, and silent post-success cleanup failure resurrecting
+submitted content. Canonical richtext validation replaces the shallow check. Cleanup failures are
+visible/retryable, with session-local pending-key protection across direct opening and category
+switching; blocked storage is not durably recoverable across reload/remount/another tab. Four more
+failing-before regressions pass: **110 scoped Forum JS + 14 verifier tests (124 total)**, host
+**100 storefront / 12 admin**, scoped TS, six source guards and three i18n verifiers pass (existing
+i18n baseline warnings retained). No product dependency change or new Rust/browser evidence.
+The next continuation fixed three asynchronous composer defects: stale quotes surviving close/reopen
+of the same target, context edits/target switches racing the pending-state render, and late quote
+cleanup clearing newer text selections. Composer-owned lifetime capture and a synchronous context
+submission lock now guard those paths; selection generations limit DOM cleanup. Twelve new tests
+(nine failing-before cases plus three positive/guard checks) bring current evidence to **122 scoped
+Forum JS + 14 verifier tests (136 total)**; host **112 storefront / 12 admin**, scoped TS, six source
+guards and three i18n verifiers pass. Callback/DOM bindings are not mounted React/browser evidence;
+Rust/PostgreSQL/performance and the earlier blocked-storage durability limits remain open.
+Frame inspection then fixed stale frame updates overwriting replacement drafts and shared richtext
+controllers accepting queued port/handshake callbacks after disposal. Composer lifetime now has a
+render projection for frame keys and captured document callbacks; shared controller disposal is
+terminal. Six additional checks pass: **125 scoped Forum JS + 14 ownership tests (139), plus 13
+shared-richtext tests = 152 combined**, host **115 storefront / 12 admin**. Scoped Forum and full
+richtext semantic TS checks, canonical richtext build/contract verification, six source guards and
+three i18n verifiers pass. Tracked dist artifacts were regenerated. Existing mixed Tiptap peers
+required frozen-lock `npm ci --force` in external tooling; no product dependency/lockfile changed.
+The shared richtext plan records this dependency-owner limitation. No mounted-browser, Rust or
+PostgreSQL evidence or new architectural contract is claimed.
+The user then authorized dependency conflict resolution. Tiptap is aligned at 3.30.5; React/DOM/types
+at 19.3.0, ESLint 9.39.4, TypeScript 6.0.3 and the admin parser/AJV peer graph are compatible.
+Storefront Next is upgraded to 16.3.8. Ordinary npm clean installs, installed tree checks, full native
+host typecheck/lint, explicit Forum module lint and full richtext verify now pass. Four new contract
+tests bring combined evidence to **139 Forum/ownership + 17 richtext = 156**, host **115 / 12**.
+Next build-error ignores and the stale admin Bun install/lock path are removed; npm Docker stages
+use the repository root/local packages and copy shared frame assets. Docker is unavailable, so no
+image runtime proof is claimed. Earlier Tiptap/whole-host TS/lint blockers are resolved; CA/prune
+setup, remaining browser/Rust/PostgreSQL/scale checks and the distinction from security-audit
+completion are recorded in the central richtext plan. No forced peer or TLS bypass was retained.
+The next functional pass fixes stale form callbacks submitting a closed/replaced/already-cleared
+editor and hardcoded English composer headings/quotes. Submit entry now uses the existing owner
+lifetime guard; Fluent catalogs/types own the labels. Five new checks (four callback regressions
+and one catalog-wiring assertion) bring current evidence to **144 Forum/ownership + 17 richtext =
+161**, host **120 storefront / 12 admin**. Storefront native typecheck, host/module lint, six source
+guards and three i18n verifiers pass. No new dependency or persistence contract; these tests are
+not mounted-browser evidence or server mutation idempotency. Earlier runtime limitations remain.
+No sequential phase/component is marked complete and the active FS-03 sequence is unchanged.
+
 ### Phase Backlog — Architectural Sequence (262 Components Total, Round 1)
 
 - [x] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (1/1 completed)

@@ -244,6 +244,8 @@ export type AppMessageKey =
   | 'Forum.clear'
   | 'Forum-clearFilters'
   | 'Forum.clearFilters'
+  | 'Forum-clearSearch'
+  | 'Forum.clearSearch'
   | 'Forum-close'
   | 'Forum.close'
   | 'Forum-communityMap'
@@ -254,6 +256,8 @@ export type AppMessageKey =
   | 'Forum.createTopic'
   | 'Forum-discussions'
   | 'Forum.discussions'
+  | 'Forum-draftCleanupFailed'
+  | 'Forum.draftCleanupFailed'
   | 'Forum-draftNotSaved'
   | 'Forum.draftNotSaved'
   | 'Forum-draftRestoredForCategory'
@@ -290,8 +294,6 @@ export type AppMessageKey =
   | 'Forum.expand'
   | 'Forum-filterPlaceholder'
   | 'Forum.filterPlaceholder'
-  | 'Forum-filtersLoadedOnly'
-  | 'Forum.filtersLoadedOnly'
   | 'Forum-forumIndex'
   | 'Forum.forumIndex'
   | 'Forum-fresh'
@@ -330,6 +332,8 @@ export type AppMessageKey =
   | 'Forum.markRead'
   | 'Forum-minimize'
   | 'Forum.minimize'
+  | 'Forum-morePostsToEnd'
+  | 'Forum.morePostsToEnd'
   | 'Forum-newReply'
   | 'Forum.newReply'
   | 'Forum-newTopic'
@@ -378,6 +382,8 @@ export type AppMessageKey =
   | 'Forum.quote'
   | 'Forum-quotedFrom'
   | 'Forum.quotedFrom'
+  | 'Forum-quotes'
+  | 'Forum.quotes'
   | 'Forum-quoteTextOnly'
   | 'Forum.quoteTextOnly'
   | 'Forum-replies'
@@ -390,6 +396,8 @@ export type AppMessageKey =
   | 'Forum.reply'
   | 'Forum-replyContent'
   | 'Forum.replyContent'
+  | 'Forum-replyingTo'
+  | 'Forum.replyingTo'
   | 'Forum-replyToMessage'
   | 'Forum.replyToMessage'
   | 'Forum-replyToTopic'
@@ -428,6 +436,8 @@ export type AppMessageKey =
   | 'Forum.threads'
   | 'Forum-top'
   | 'Forum.top'
+  | 'Forum-topic'
+  | 'Forum.topic'
   | 'Forum-topicContent'
   | 'Forum.topicContent'
   | 'Forum-topicFeed'
@@ -876,6 +886,8 @@ export interface AppMessageArgs {
   'Forum.clear'?: Record<string, never>;
   'Forum-clearFilters'?: Record<string, never>;
   'Forum.clearFilters'?: Record<string, never>;
+  'Forum-clearSearch'?: Record<string, never>;
+  'Forum.clearSearch'?: Record<string, never>;
   'Forum-close'?: Record<string, never>;
   'Forum.close'?: Record<string, never>;
   'Forum-communityMap'?: Record<string, never>;
@@ -886,6 +898,8 @@ export interface AppMessageArgs {
   'Forum.createTopic'?: Record<string, never>;
   'Forum-discussions'?: Record<string, never>;
   'Forum.discussions'?: Record<string, never>;
+  'Forum-draftCleanupFailed'?: Record<string, never>;
+  'Forum.draftCleanupFailed'?: Record<string, never>;
   'Forum-draftNotSaved'?: Record<string, never>;
   'Forum.draftNotSaved'?: Record<string, never>;
   'Forum-draftRestoredForCategory'?: Record<string, never>;
@@ -922,8 +936,6 @@ export interface AppMessageArgs {
   'Forum.expand'?: Record<string, never>;
   'Forum-filterPlaceholder'?: Record<string, never>;
   'Forum.filterPlaceholder'?: Record<string, never>;
-  'Forum-filtersLoadedOnly'?: Record<string, never>;
-  'Forum.filtersLoadedOnly'?: Record<string, never>;
   'Forum-forumIndex'?: Record<string, never>;
   'Forum.forumIndex'?: Record<string, never>;
   'Forum-fresh'?: Record<string, never>;
@@ -962,6 +974,8 @@ export interface AppMessageArgs {
   'Forum.markRead'?: Record<string, never>;
   'Forum-minimize'?: Record<string, never>;
   'Forum.minimize'?: Record<string, never>;
+  'Forum-morePostsToEnd'?: Record<string, never>;
+  'Forum.morePostsToEnd'?: Record<string, never>;
   'Forum-newReply'?: Record<string, never>;
   'Forum.newReply'?: Record<string, never>;
   'Forum-newTopic'?: Record<string, never>;
@@ -1010,6 +1024,8 @@ export interface AppMessageArgs {
   'Forum.quote'?: Record<string, never>;
   'Forum-quotedFrom': { 'author': string | number | Date };
   'Forum.quotedFrom': { 'author': string | number | Date };
+  'Forum-quotes'?: Record<string, never>;
+  'Forum.quotes'?: Record<string, never>;
   'Forum-quoteTextOnly'?: Record<string, never>;
   'Forum.quoteTextOnly'?: Record<string, never>;
   'Forum-replies'?: Record<string, never>;
@@ -1022,6 +1038,8 @@ export interface AppMessageArgs {
   'Forum.reply'?: Record<string, never>;
   'Forum-replyContent'?: Record<string, never>;
   'Forum.replyContent'?: Record<string, never>;
+  'Forum-replyingTo': { 'title': string | number | Date };
+  'Forum.replyingTo': { 'title': string | number | Date };
   'Forum-replyToMessage'?: Record<string, never>;
   'Forum.replyToMessage'?: Record<string, never>;
   'Forum-replyToTopic'?: Record<string, never>;
@@ -1060,6 +1078,8 @@ export interface AppMessageArgs {
   'Forum.threads'?: Record<string, never>;
   'Forum-top'?: Record<string, never>;
   'Forum.top'?: Record<string, never>;
+  'Forum-topic'?: Record<string, never>;
+  'Forum.topic'?: Record<string, never>;
   'Forum-topicContent'?: Record<string, never>;
   'Forum.topicContent'?: Record<string, never>;
   'Forum-topicFeed'?: Record<string, never>;
@@ -1509,6 +1529,8 @@ export interface AppMessages {
   'Forum.clear': Record<string, never>;
   'Forum-clearFilters': Record<string, never>;
   'Forum.clearFilters': Record<string, never>;
+  'Forum-clearSearch': Record<string, never>;
+  'Forum.clearSearch': Record<string, never>;
   'Forum-close': Record<string, never>;
   'Forum.close': Record<string, never>;
   'Forum-communityMap': Record<string, never>;
@@ -1519,6 +1541,8 @@ export interface AppMessages {
   'Forum.createTopic': Record<string, never>;
   'Forum-discussions': Record<string, never>;
   'Forum.discussions': Record<string, never>;
+  'Forum-draftCleanupFailed': Record<string, never>;
+  'Forum.draftCleanupFailed': Record<string, never>;
   'Forum-draftNotSaved': Record<string, never>;
   'Forum.draftNotSaved': Record<string, never>;
   'Forum-draftRestoredForCategory': Record<string, never>;
@@ -1555,8 +1579,6 @@ export interface AppMessages {
   'Forum.expand': Record<string, never>;
   'Forum-filterPlaceholder': Record<string, never>;
   'Forum.filterPlaceholder': Record<string, never>;
-  'Forum-filtersLoadedOnly': Record<string, never>;
-  'Forum.filtersLoadedOnly': Record<string, never>;
   'Forum-forumIndex': Record<string, never>;
   'Forum.forumIndex': Record<string, never>;
   'Forum-fresh': Record<string, never>;
@@ -1595,6 +1617,8 @@ export interface AppMessages {
   'Forum.markRead': Record<string, never>;
   'Forum-minimize': Record<string, never>;
   'Forum.minimize': Record<string, never>;
+  'Forum-morePostsToEnd': Record<string, never>;
+  'Forum.morePostsToEnd': Record<string, never>;
   'Forum-newReply': Record<string, never>;
   'Forum.newReply': Record<string, never>;
   'Forum-newTopic': Record<string, never>;
@@ -1643,6 +1667,8 @@ export interface AppMessages {
   'Forum.quote': Record<string, never>;
   'Forum-quotedFrom': { 'author': string | number | Date };
   'Forum.quotedFrom': { 'author': string | number | Date };
+  'Forum-quotes': Record<string, never>;
+  'Forum.quotes': Record<string, never>;
   'Forum-quoteTextOnly': Record<string, never>;
   'Forum.quoteTextOnly': Record<string, never>;
   'Forum-replies': Record<string, never>;
@@ -1655,6 +1681,8 @@ export interface AppMessages {
   'Forum.reply': Record<string, never>;
   'Forum-replyContent': Record<string, never>;
   'Forum.replyContent': Record<string, never>;
+  'Forum-replyingTo': { 'title': string | number | Date };
+  'Forum.replyingTo': { 'title': string | number | Date };
   'Forum-replyToMessage': Record<string, never>;
   'Forum.replyToMessage': Record<string, never>;
   'Forum-replyToTopic': Record<string, never>;
@@ -1693,6 +1721,8 @@ export interface AppMessages {
   'Forum.threads': Record<string, never>;
   'Forum-top': Record<string, never>;
   'Forum.top': Record<string, never>;
+  'Forum-topic': Record<string, never>;
+  'Forum.topic': Record<string, never>;
   'Forum-topicContent': Record<string, never>;
   'Forum.topicContent': Record<string, never>;
   'Forum-topicFeed': Record<string, never>;

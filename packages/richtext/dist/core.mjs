@@ -461,7 +461,7 @@ var RichTextFrameController = class {
       this.rejectReady(new Error("Richtext frame handshake timed out"));
     }, this.options.timeoutMs ?? 1e4);
     const onMessage = (event) => {
-      if (event.source !== this.options.iframe.contentWindow || !isHandshakeReady(event.data, nonce)) {
+      if (this.destroyed || event.source !== this.options.iframe.contentWindow || !isHandshakeReady(event.data, nonce)) {
         return;
       }
       window.clearTimeout(timeout);
@@ -506,6 +506,7 @@ var RichTextFrameController = class {
     );
   }
   receive(value) {
+    if (this.destroyed) return;
     if (!isEnvelope(
       value,
       this.session,

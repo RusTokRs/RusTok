@@ -22,6 +22,11 @@ use crate::{
 /// the tenant's `topics_per_page` setting instead of a transport constant.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListTopicsQuery {
+    pub search: Option<String>,
+    #[serde(default)]
+    pub order: crate::ForumTopicListOrder,
+    #[serde(default)]
+    pub solved_only: bool,
     pub category_id: Option<uuid::Uuid>,
     pub status: Option<crate::TopicStatus>,
     pub locale: Option<String>,
@@ -125,6 +130,9 @@ pub async fn list_topics(
             .map_err(crate::controllers::map_forum_error)?,
     };
     let filter = ListTopicsFilter {
+        search: query.search,
+        order: query.order,
+        solved_only: query.solved_only,
         category_id: query.category_id,
         status: query.status,
         locale: query.locale.or(Some(request_context.locale.clone())),

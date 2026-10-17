@@ -22,8 +22,9 @@ pub async fn fetch_storefront_forum_topic_page_server(
     after: String,
     locale: Option<String>,
     read_state_available: bool,
+    selection: crate::model::ForumTopicSelection,
 ) -> Result<ForumTopicPage, ApiError> {
-    storefront_forum_topic_page_native(category_id, after, locale, read_state_available)
+    storefront_forum_topic_page_native(category_id, after, locale, read_state_available, selection)
         .await
         .map_err(|error| ApiError::ServerFn(error.to_string()))
 }
@@ -51,6 +52,7 @@ async fn storefront_forum_topic_page_native(
     after: String,
     locale: Option<String>,
     read_state_available: bool,
+    selection: crate::model::ForumTopicSelection,
 ) -> Result<ForumTopicPage, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -78,8 +80,12 @@ async fn storefront_forum_topic_page_native(
         let request = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
-        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
-            return Err(ServerFnError::new("Forum module is not enabled for this channel"));
+        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request)
+            .await?
+        {
+            return Err(ServerFnError::new(
+                "Forum module is not enabled for this channel",
+            ));
         }
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
@@ -103,8 +109,9 @@ async fn storefront_forum_topic_page_native(
         ) {
             (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
                 .with_static_readers(static_reader, transactional_reader),
-            (Some(static_reader), None) =>
-                ForumSettingsProviders::default().with_static_reader(static_reader),
+            (Some(static_reader), None) => {
+                ForumSettingsProviders::default().with_static_reader(static_reader)
+            }
             (None, _) => ForumSettingsProviders::default(),
         };
         let per_page = settings_providers
@@ -112,12 +119,16 @@ async fn storefront_forum_topic_page_native(
             .await
             .map_err(server_error)?;
         let filter = ListTopicsFilter {
+            search: None,
+            order: Default::default(),
+            solved_only: false,
             category_id,
             status: None,
             locale: Some(effective_locale.clone()),
             after: Some(after),
             per_page,
         };
+        let filter = super::native_server_adapter::selected_topic_filter(filter, selection);
 
         if read_state_available {
             let Some(auth) = auth.as_ref().filter(|auth| {
@@ -145,7 +156,8 @@ async fn storefront_forum_topic_page_native(
                     facts,
                 ),
                 None => ForumStorefrontReadStateService::new(db.clone(), event_bus.clone()),
-            }.with_settings_providers(settings_providers.clone());
+            }
+            .with_settings_providers(settings_providers.clone());
             let page = service
                 .list_topics_with_unread_audience_visible(
                     tenant.id,
@@ -166,7 +178,9 @@ async fn storefront_forum_topic_page_native(
         if auth.is_some() {
             // The plain continuation is for guests only; authenticated callers
             // cannot drop their viewer context by forging `read_state_available`.
-            return Err(ServerFnError::new("Forum read state is unavailable for this principal"));
+            return Err(ServerFnError::new(
+                "Forum read state is unavailable for this principal",
+            ));
         }
         let service = match audience_facts {
             Some(facts) => ForumTopicAudienceListService::with_audience_facts(
@@ -175,7 +189,8 @@ async fn storefront_forum_topic_page_native(
                 facts,
             ),
             None => ForumTopicAudienceListService::new(db.clone(), event_bus.clone()),
-        }.with_settings_providers(settings_providers);
+        }
+        .with_settings_providers(settings_providers);
         let page = service
             .list_public_storefront_visible_with_locale_fallback(
                 tenant.id,
@@ -192,7 +207,7 @@ async fn storefront_forum_topic_page_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (category_id, after, locale, read_state_available);
+        let _ = (category_id, after, locale, read_state_available, selection);
         Err(ServerFnError::new(
             "forum/storefront-topic-page requires the `ssr` feature",
         ))
@@ -233,8 +248,12 @@ async fn storefront_forum_reply_page_native(
         let request = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
-        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
-            return Err(ServerFnError::new("Forum module is not enabled for this channel"));
+        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request)
+            .await?
+        {
+            return Err(ServerFnError::new(
+                "Forum module is not enabled for this channel",
+            ));
         }
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
@@ -259,8 +278,9 @@ async fn storefront_forum_reply_page_native(
         ) {
             (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
                 .with_static_readers(static_reader, transactional_reader),
-            (Some(static_reader), None) =>
-                ForumSettingsProviders::default().with_static_reader(static_reader),
+            (Some(static_reader), None) => {
+                ForumSettingsProviders::default().with_static_reader(static_reader)
+            }
             (None, _) => ForumSettingsProviders::default(),
         };
         let per_page = settings_providers
@@ -280,7 +300,8 @@ async fn storefront_forum_reply_page_native(
                 facts,
             ),
             None => ForumReplyAudienceReadService::new(db.clone(), event_bus.clone()),
-        }.with_settings_providers(settings_providers);
+        }
+        .with_settings_providers(settings_providers);
 
         if let Some(auth) = auth.as_ref() {
             let security =

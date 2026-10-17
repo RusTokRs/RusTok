@@ -76,6 +76,34 @@ pub async fn exercise_bounded_cursor_read_models(db: &DatabaseConnection) -> Tes
         .await?;
     assert_eq!(topics_first.items.len(), MAX_FORUM_READ_LIMIT as usize);
     assert!(topics_first.has_more);
+    let position = rustok_forum::TopicListCursor::decode(
+        topics_first
+            .next_cursor
+            .as_deref()
+            .expect("read-model cursor"),
+    )?;
+    for foreign in [
+        rustok_forum::TopicListCursor {
+            order: rustok_forum::ForumTopicListOrder::Top,
+            ..position
+        },
+        rustok_forum::TopicListCursor {
+            selection_scope: Some([7; 32]),
+            ..position
+        },
+    ] {
+        let rejected = service
+            .list_topics(
+                tenant_a,
+                security.clone(),
+                TopicCursorQuery {
+                    cursor: Some(foreign.encode()),
+                    ..Default::default()
+                },
+            )
+            .await;
+        assert!(matches!(rejected, Err(ForumError::Validation(_))));
+    }
     let topics_second = service
         .list_topics(
             tenant_a,

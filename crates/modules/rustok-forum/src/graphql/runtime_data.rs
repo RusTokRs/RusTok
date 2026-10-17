@@ -124,6 +124,14 @@ impl ForumGraphqlRuntimeData {
         )
     }
 
+    pub(crate) fn quote_command_service(
+        &self,
+        db: DatabaseConnection,
+    ) -> crate::ForumQuoteCommandService {
+        crate::ForumQuoteCommandService::new(db)
+            .with_settings_providers(self.settings_providers.clone())
+    }
+
     pub(crate) fn vote_service(&self, db: DatabaseConnection) -> VoteService {
         let service = VoteService::new(db).with_settings_providers(self.settings_providers.clone());
         match self.audience_facts.clone() {

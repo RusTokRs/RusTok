@@ -10,8 +10,26 @@ where
     Ok(value.and_then(|value| normalize_css_hex_color(value.as_str())))
 }
 
+/// Typed projection of the owner's GraphQL/native feed selection (not a local filter).
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ForumTopicFeedOrder {
+    #[default]
+    Latest,
+    Top,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ForumTopicSelection {
+    pub search: Option<String>,
+    pub order: ForumTopicFeedOrder,
+    pub solved_only: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StorefrontForumData {
+    pub topic_selection: ForumTopicSelection,
     pub categories: ForumCategoryConnection,
     pub topics: ForumTopicPage,
     pub selected_category_id: Option<String>,
@@ -358,6 +376,32 @@ mod tests {
         StorefrontForumComposerQuote, StorefrontForumTopicRouteDisposition,
         StorefrontForumTopicRouteResolution,
     };
+
+    #[test]
+    fn topic_selection_is_the_same_typed_wire_projection_for_initial_and_cursor_requests() {
+        use super::{ForumTopicFeedOrder, ForumTopicSelection};
+        let selection = ForumTopicSelection {
+            search: Some("needle".into()),
+            order: ForumTopicFeedOrder::Top,
+            solved_only: true,
+        };
+        assert_eq!(
+            serde_json::to_value(selection).unwrap(),
+            serde_json::json!({
+                "search": "needle", "order": "TOP", "solvedOnly": true,
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(ForumTopicSelection::default()).unwrap(),
+            serde_json::json!({
+                "search": null, "order": "LATEST", "solvedOnly": false,
+            })
+        );
+        assert!(
+            serde_json::from_value::<ForumTopicSelection>(serde_json::json!({"order": "unknown"}))
+                .is_err()
+        );
+    }
 
     fn topic_page_item(id: &str) -> ForumTopicListItem {
         serde_json::from_value(serde_json::json!({

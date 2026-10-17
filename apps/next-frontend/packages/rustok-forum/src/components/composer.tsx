@@ -1,10 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  richTextDocumentHasText,
-  type RichTextDocument,
-} from '@rustok/richtext';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { richTextDocumentHasText, type RichTextDocument } from '@rustok/richtext';
 import { RichTextEditor } from '@rustok/richtext/react';
 import { useTranslations } from '@rustok/next-fluent';
 import {
@@ -53,10 +50,12 @@ export function Composer({
     setError,
     reset,
     isCurrentViewer,
+    captureEditorSession,
   } = useComposer();
 
   const [activeTab, setActiveTab] = useState<'write' | 'preview'>('write');
   const [draftRestored, setDraftRestored] = useState(false);
+  const submittingRef = useRef(false);
   // An unassigned draft must show an unassigned category until the user makes
   // a choice; never post it to the first category just because it arrived first.
   // A category missing from this viewer's current list must not be submitted.
@@ -67,6 +66,11 @@ export function Composer({
   const forum = useTranslations('Forum');
 
   useEffect(() => { setDraftRestored(false); }, [state.isOpen, state.mode]);
+
+  const isEditingSession = captureEditorSession();
+  function handleDocumentChange(document: RichTextDocument) {
+    if (isEditingSession()) setDocument(document);
+  }
 
   function handleCategoryChange(nextCategoryId: string) {
     const result = selectCategory(nextCategoryId);
@@ -101,7 +105,16 @@ export function Composer({
     [richText]
   );
 
-  if (!state.isOpen) return null;
+  if (!state.isOpen) return state.draftStorage === 'failed' || state.draftStorage === 'cleanup_failed' ? (
+    <p role="alert" className="fixed bottom-4 right-4 z-50 rounded-xl border border-destructive/30 bg-card px-4 py-3 text-sm text-destructive">
+      {state.draftStorage === 'cleanup_failed' ? forum('draftCleanupFailed') : forum('errorDraftStorage')}
+      {state.draftStorage === 'cleanup_failed' && (
+        <button type="button" onClick={reset} className="ml-3 font-medium underline">
+          {forum('retry')}
+        </button>
+      )}
+    </p>
+  ) : null;
 
   // Minimized drawer (Floating pill)
   if (state.isMinimized) {
@@ -139,6 +152,7 @@ export function Composer({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (submittingRef.current || state.isSubmitting || !isEditingSession()) return;
 
     if (!richTextDocumentHasText(state.document)) {
       setError(forum('errorEmptyMessage'));
@@ -156,6 +170,7 @@ export function Composer({
       return;
     }
 
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
 
@@ -224,6 +239,7 @@ export function Composer({
     } catch (err) {
       if (isCurrentViewer()) setError(err instanceof Error ? err.message : forum('errorGeneric'));
     } finally {
+      submittingRef.current = false;
       if (isCurrentViewer()) setSubmitting(false);
     }
   }
@@ -239,8 +255,8 @@ export function Composer({
             </span>
             <span className="text-sm font-semibold text-foreground">
               {state.mode === 'reply'
-                ? `Replying to: ${state.topicTitle ?? 'Topic'}`
-                : 'Create New Topic'}
+                ? forum('replyingTo', { title: state.topicTitle ?? forum('topic') })
+                : forum('newTopic')}
             </span>
           </div>
 
@@ -273,6 +289,7 @@ export function Composer({
                 type="text"
                 placeholder={forum('topicTitlePlaceholder')}
                 value={state.title}
+                disabled={state.isSubmitting}
                 onChange={(e) => setTitle(e.target.value)}
                 className="rounded-xl border border-border bg-background px-3.5 py-2 text-sm font-medium text-foreground outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
                 required
@@ -298,7 +315,7 @@ export function Composer({
           {state.quotes.length > 0 && (
             <div className="flex flex-wrap gap-2 border-b border-border bg-muted/20 px-4 py-2">
               <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                <Quote className="h-3 w-3" /> Quotes:
+                <Quote className="h-3 w-3" /> {forum('quotes')}
               </span>
               {state.quotes.map((quote, idx) => (
                 <span
@@ -311,6 +328,7 @@ export function Composer({
                   <button
                     type="button"
                     onClick={() => removeQuote(idx)}
+                    disabled={state.isSubmitting}
                     className="text-muted-foreground hover:text-destructive"
                   >
                     <X className="h-3 w-3" />
@@ -348,46 +366,22 @@ export function Composer({
 
           {/* Editor content container */}
           <div className="flex-1 overflow-y-auto p-4 min-h-[180px]">
-            {activeTab === 'write' ? (
-              <RichTextEditor
-                frameUrl="/richtext/frame"
-                label={state.mode === 'reply' ? forum('replyContent') : forum('topicContent')}
-                profile="discussion"
-                value={state.document}
-                onChange={setDocument}
-                messages={richTextMessages}
-                contentLocale={locale}
-                disabled={state.isSubmitting}
-                className="min-h-[160px]"
-              />
-            ) : (
-              <div className="prose dark:prose-invert max-w-none text-sm text-foreground">
-                <p className="italic text-muted-foreground">{forum('livePreview')}</p>
-                <div className="mt-2 rounded-xl border border-dashed border-border p-4">
-                  {state.quotes.length > 0 && (
-                    <div className="mb-3 space-y-2">
-                      {state.quotes.map((q, i) => (
-                        <blockquote key={i} className="border-l-2 border-primary/40 pl-3 italic text-muted-foreground">
-                          {q.snippet ?? forum('quotedFrom', { author: q.authorHandle ?? forum('unknownAuthor') })}
-                        </blockquote>
-                      ))}
-                    </div>
-                  )}
-                  {richTextDocumentHasText(state.document) ? (
-                    <div className="space-y-2 whitespace-pre-wrap text-foreground">
-                      {state.document.content.map((node, i) => {
-                        const text = (node.content ?? [])
-                          .map((child) => child.text ?? '')
-                          .join('');
-                        return text ? <p key={i}>{text}</p> : null;
-                      })}
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground">{forum('nothingToPreview')}</span>
-                  )}
-                </div>
-              </div>
+            {activeTab === 'preview' && (
+              <p className="mb-2 text-sm italic text-muted-foreground">{forum('livePreview')}</p>
             )}
+            <RichTextEditor
+              key={state.editorSession}
+              frameUrl="/richtext/frame"
+              label={activeTab === 'preview' ? forum('preview')
+                : state.mode === 'reply' ? forum('replyContent') : forum('topicContent')}
+              profile="discussion"
+              value={state.document}
+              onChange={handleDocumentChange}
+              messages={richTextMessages}
+              contentLocale={locale}
+              disabled={state.isSubmitting || activeTab === 'preview'}
+              className="min-h-[160px] w-full"
+            />
           </div>
 
           {draftRestored && state.mode === 'topic' && (

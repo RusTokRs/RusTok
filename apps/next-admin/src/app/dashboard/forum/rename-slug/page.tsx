@@ -25,10 +25,7 @@ export default async function ForumTopicSlugRenamePage() {
     );
   }
 
-  const topics = await listForumTopics(
-    { token, tenantId, tenantSlug },
-    { first: 100 }
-  );
+  const topics = await listForumTopics({ token, tenantId, tenantSlug });
 
   return (
     <PageContainer

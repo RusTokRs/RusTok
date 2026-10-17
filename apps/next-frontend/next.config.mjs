@@ -8,11 +8,7 @@ const apiBaseUrl = (process.env.RUSTOK_API_URL ?? "http://localhost:5150").repla
 const nextConfig = {
   outputFileTracingRoot: join(__dirname, "../.."),
   reactStrictMode: true,
-  // TypeScript 7 no longer exposes the legacy compiler API that Next uses
-  // during `next build`; CI runs `npm run typecheck` as the canonical TS gate.
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+
   transpilePackages: [
     "@rustok/blog-frontend",
     "@rustok/cart-frontend",

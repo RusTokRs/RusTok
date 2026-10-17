@@ -55,6 +55,11 @@ impl ForumHttpRuntime {
             .with_settings_providers(self.settings_providers.clone())
     }
 
+    fn quote_command_service(&self) -> crate::ForumQuoteCommandService {
+        crate::ForumQuoteCommandService::new(self.db_clone())
+            .with_settings_providers(self.settings_providers.clone())
+    }
+
     fn topic_service(&self) -> crate::TopicService {
         let service = match self.audience_facts.clone() {
             Some(facts) => {

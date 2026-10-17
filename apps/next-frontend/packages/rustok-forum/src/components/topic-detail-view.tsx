@@ -39,6 +39,8 @@ import {
   MAX_ANCHOR_REPLY_PAGES,
 } from './reply-anchor';
 import { useTranslations } from '@rustok/next-fluent';
+import { loadThreadReplyPages, threadJumpResult, threadPostTotal, type ThreadPostTarget } from './thread-navigation';
+import { useThreadNavigation } from './use-thread-navigation';
 
 interface TopicDetailViewProps {
   tenantId?: string | null;
@@ -72,7 +74,6 @@ function TopicDetailContent({
   const contentKey = `${tenantId ?? ''}:${tenantSlug ?? ''}:${locale}:${topicId}:${token}`;
   const categoryKey = `${tenantId ?? ''}:${tenantSlug ?? ''}:${locale}:${token}`;
 
-  const [currentPost, setCurrentPost] = useState(1);
   const [content, setContent] = useState<{
     key: string; topic: ForumTopicDetail | null; replies: ForumReplyDetail[];
     nextCursor: string | null;
@@ -103,9 +104,16 @@ function TopicDetailContent({
   const loadError = contentError ?? categoriesError ?? cardsError ?? readError;
   const [anchorMissing, setAnchorMissing] = useState(false);
   const anchorAppliedRef = useRef(false);
-  const attemptedReadRef = useRef<string | null>(null);
+  const readAttemptRef = useRef<{ key: string; status: 'pending' | 'succeeded' | 'failed' } | null>(null);
+  const categoryRequest = useRef(0);
   const contentRequest = useRef(0);
   const replyRequest = useRef(0);
+  const repliesPendingRef = useRef(false);
+  // Do not keep walking reply pages after this surface is unmounted.
+  useEffect(() => () => {
+    ++replyRequest.current;
+    repliesPendingRef.current = false;
+  }, []);
   const contentKeyRef = useRef(contentKey);
   contentKeyRef.current = contentKey;
 
@@ -114,6 +122,7 @@ function TopicDetailContent({
     const request = ++contentRequest.current;
     // The first page of a new snapshot supersedes any in-flight older page.
     ++replyRequest.current;
+    repliesPendingRef.current = false;
     setLoadingReplies(false);
     setLoading(true);
     setContentError(null);
@@ -148,7 +157,6 @@ function TopicDetailContent({
         if (request !== contentRequest.current || contentKeyRef.current !== contentKey) return;
         const anchoredIndex = items.findIndex((reply) => reply.id === anchorId);
         setAnchorMissing(anchoredIndex < 0);
-        if (anchoredIndex >= 0) setCurrentPost(anchoredIndex + 2);
       }
       setContent({ key: contentKey, topic: topicData, replies: items, nextCursor: cursor });
       const userIds = Array.from(new Set(
@@ -184,32 +192,44 @@ function TopicDetailContent({
     }
   }, [auth, tenantId, tenantSlug, token, topicId, locale, contentKey, focusReplyId, forum]);
 
-  useEffect(() => {
+  const loadCategories = useCallback(async () => {
     if (!auth) return;
-    let active = true;
-    fetchAllStorefrontCategories({
-      tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
-      token: token || undefined, locale,
-    }).then((page) => {
-      if (!active || categoryKeyRef.current !== categoryKey) return;
+    const request = ++categoryRequest.current;
+    try {
+      const page = await fetchAllStorefrontCategories({
+        tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
+        token: token || undefined, locale,
+      });
+      if (request !== categoryRequest.current || categoryKeyRef.current !== categoryKey) return;
       setCategoryPage({ key: categoryKey, items: page.items });
       setCategoriesError(null);
-    }).catch(() => {
-      if (active && categoryKeyRef.current === categoryKey) setCategoriesError(forum('errorLoad'));
-    });
-    return () => { active = false; };
+    } catch {
+      if (request === categoryRequest.current && categoryKeyRef.current === categoryKey) {
+        setCategoriesError(forum('errorLoad'));
+      }
+    }
   }, [auth, tenantId, tenantSlug, token, locale, categoryKey, forum]);
 
-  const loadMoreReplies = useCallback(async () => {
-    if (!auth || !repliesCursor || loadingReplies) return;
+  useEffect(() => {
+    void loadCategories();
+    return () => { ++categoryRequest.current; };
+  }, [loadCategories]);
+
+  const loadMoreReplies = useCallback(async (target?: ThreadPostTarget) => {
+    if (!auth || !repliesCursor || repliesPendingRef.current) return null;
     const request = ++replyRequest.current;
+    const isCurrent = () => request === replyRequest.current && contentKeyRef.current === contentKey;
+    repliesPendingRef.current = true;
     setLoadingReplies(true);
     try {
-      const next = await fetchStorefrontReplies({
-        tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
-        token: token || undefined, topicId, locale, after: repliesCursor,
+      const next = await loadThreadReplyPages({
+        items: replies, nextCursor: repliesCursor, target, isCurrent,
+        loadPage: (after) => fetchStorefrontReplies({
+          tenantId: tenantId ?? undefined, tenantSlug: tenantSlug ?? undefined,
+          token: token || undefined, topicId, locale, after,
+        }),
       });
-      if (request !== replyRequest.current || contentKeyRef.current !== contentKey) return;
+      if (!next || !isCurrent()) return null;
       setContent((previous) => {
         if (previous?.key !== contentKey) return previous;
         const items = new Map([...previous.replies, ...next.items].map((reply) => [reply.id, reply]));
@@ -242,12 +262,17 @@ function TopicDetailContent({
           });
         }
       }
+      return target === undefined ? null : threadJumpResult(next, target);
     } catch {
       if (request === replyRequest.current && contentKeyRef.current === contentKey) setContentError(forum('errorLoad'));
+      return null;
     } finally {
-      if (request === replyRequest.current && contentKeyRef.current === contentKey) setLoadingReplies(false);
+      if (isCurrent()) {
+        repliesPendingRef.current = false;
+        setLoadingReplies(false);
+      }
     }
-  }, [auth, repliesCursor, loadingReplies, tenantId, tenantSlug, token, topicId, locale, contentKey, focusReplyId, memberCards, forum]);
+  }, [auth, replies, repliesCursor, tenantId, tenantSlug, token, topicId, locale, contentKey, focusReplyId, memberCards, forum]);
 
   useEffect(() => {
     anchorAppliedRef.current = false;
@@ -279,61 +304,43 @@ function TopicDetailContent({
     if (auth) void loadData();
   }, [auth, loadData]);
 
-  // Mark exactly once per viewer and topic on opening, including after errors.
-  // A ref is set before the network call; request completion cannot retrigger it.
-  useEffect(() => {
-    if (!token || !topic?.id || loading) return;
+  // Automatic opening marks once. Only an explicit retry may repeat a failed
+  // receipt; neither rerenders nor concurrent clicks duplicate a pending write.
+  const markTopicRead = useCallback(async (retry = false) => {
+    if (!token || !topic?.id || (!retry && loading)) return;
     const key = JSON.stringify([token, tenantId, tenantSlug, topic.id]);
-    if (attemptedReadRef.current === key) return;
-    attemptedReadRef.current = key;
-    void markForumTopicRead({
-      tenantId: tenantId ?? undefined,
-      tenantSlug: tenantSlug ?? undefined,
-      token,
-      topicId: topic.id,
-      locale,
-    }).then(() => {
-      if (contentKeyRef.current === contentKey) setReadError(null);
-    }).catch(() => {
-      if (contentKeyRef.current === contentKey) setReadError(forum('errorMarkRead'));
-    });
+    const previous = readAttemptRef.current;
+    if (previous?.key === key && (!retry || previous.status !== 'failed')) return;
+    const attempt: { key: string; status: 'pending' | 'succeeded' | 'failed' } = { key, status: 'pending' };
+    readAttemptRef.current = attempt;
+    try {
+      await markForumTopicRead({
+        tenantId: tenantId ?? undefined,
+        tenantSlug: tenantSlug ?? undefined,
+        token,
+        topicId: topic.id,
+        locale,
+      });
+      attempt.status = 'succeeded';
+      if (readAttemptRef.current === attempt && contentKeyRef.current === contentKey) setReadError(null);
+    } catch {
+      attempt.status = 'failed';
+      if (readAttemptRef.current === attempt && contentKeyRef.current === contentKey) setReadError(forum('errorMarkRead'));
+    }
   }, [token, topic?.id, loading, tenantId, tenantSlug, locale, contentKey, forum]);
 
-  // Track active post position as user scrolls
-  useEffect(() => {
-    if (!topic) return;
+  useEffect(() => { void markTopicRead(); }, [markTopicRead]);
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const el = entry.target as HTMLElement;
-            if (el.getAttribute('data-target-kind') === 'TOPIC') {
-              setCurrentPost(1);
-            } else {
-              const id = el.id;
-              const match = id.match(/reply-(\d+)/);
-              if (match) {
-                const replyIndex = parseInt(match[1], 10);
-                setCurrentPost(replyIndex + 2);
-              }
-            }
-          }
-        }
-      },
-      { rootMargin: '-10% 0px -70% 0px' }
-    );
+  const retryLoad = useCallback(() => {
+    void loadData();
+    void loadCategories();
+    void markTopicRead(true);
+  }, [loadData, loadCategories, markTopicRead]);
 
-    const opEl = document.querySelector('[data-forum-post][data-target-kind="TOPIC"]');
-    if (opEl) observer.observe(opEl);
-
-    replies.forEach((_, idx) => {
-      const el = document.getElementById(`reply-${idx}`);
-      if (el) observer.observe(el);
-    });
-
-    return () => observer.disconnect();
-  }, [topic, replies]);
+  const navigation = useThreadNavigation({
+    scopeKey: contentKey, replies,
+    hasMore: Boolean(repliesCursor), loadReplies: loadMoreReplies,
+  });
 
   const getAuthorHandle = (authorId: string | null | undefined): string | undefined => {
     if (!authorId) return undefined;
@@ -348,15 +355,6 @@ function TopicDetailContent({
       setTimeout(() => setCopiedLink(false), 2000);
     } catch {
       // Ignore clipboard error
-    }
-  };
-
-  const handleJumpToPost = (postNumber: number) => {
-    if (postNumber === 1) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
-      const el = document.getElementById(`reply-${postNumber - 2}`);
-      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 
@@ -377,7 +375,7 @@ function TopicDetailContent({
         <p className="mt-2 text-sm text-muted-foreground">{loadError}</p>
         <button
           type="button"
-          onClick={() => void loadData()}
+          onClick={retryLoad}
           className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground shadow-xs transition hover:bg-muted"
         >
           {forum('retry')}
@@ -408,13 +406,13 @@ function TopicDetailContent({
 
   return (
     <MemberCardProvider cards={memberCards}>
-      <div className="space-y-6">
+      <div ref={navigation.postsRef} className="space-y-6">
         {loadError && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">
             <span>{loadError}</span>
             <button
               type="button"
-              onClick={() => void loadData()}
+              onClick={retryLoad}
               className="rounded-xl border border-destructive/30 px-3 py-1 font-semibold transition hover:bg-destructive/15"
             >
               {forum('retry')}
@@ -520,6 +518,7 @@ function TopicDetailContent({
             {/* Original Post (OP) */}
             <article
               data-forum-post
+              data-thread-post-number={1}
               data-target-kind="TOPIC"
               data-target-id={topic.id}
               data-author-handle={getAuthorHandle(topic.authorId)}
@@ -567,6 +566,7 @@ function TopicDetailContent({
                     key={reply.id}
                     id={`reply-${idx}`}
                     data-forum-post
+                    data-thread-post-number={idx + 2}
                     data-target-kind="REPLY"
                     data-target-id={reply.id}
                     data-author-handle={getAuthorHandle(reply.authorId)}
@@ -607,6 +607,9 @@ function TopicDetailContent({
               </div>
             )}
 
+            {navigation.navigationIncomplete && (
+              <p role="status" className="text-sm text-muted-foreground">{forum('morePostsToEnd')}</p>
+            )}
             {repliesCursor && (
               <button
                 type="button"
@@ -642,13 +645,14 @@ function TopicDetailContent({
           </div>
 
           {/* Timeline Scroller */}
-          {repliesTotal > 0 && (
+          {(replies.length > 0 || repliesCursor) && (
             <div className="hidden xl:block">
               <div className="sticky top-20">
                 <TimelineScroller
-                  currentPost={currentPost}
-                  totalPosts={repliesTotal + 1}
-                  onJumpToPost={handleJumpToPost}
+                  currentPost={navigation.currentPost}
+                  totalPosts={threadPostTotal(replies.length, repliesTotal, Boolean(repliesCursor))}
+                  onJumpToPost={navigation.jumpToPost}
+                  isNavigating={navigation.isNavigating || loadingReplies}
                 />
               </div>
             </div>

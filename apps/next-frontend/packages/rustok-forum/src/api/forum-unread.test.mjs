@@ -8,7 +8,7 @@ test('the unread tab requests the owner-filtered page, not every read-state-enri
   const feed = readFileSync(new URL('../components/topic-feed.tsx', import.meta.url), 'utf8');
   const query = api.match(/const STOREFRONT_UNREAD_TOPICS_QUERY = `([^`]+)`;/)?.[1];
   assert.ok(query);
-  assert.match(query, /forumStorefrontUnreadTopics\([^)]*unreadOnly: true\)/);
+  assert.match(query, /forumStorefrontUnreadTopics\([^)]*unreadOnly: true(?:,|\))/);
   assert.match(section, /activeTab === 'unread' && token\s*\? await fetchStorefrontUnreadTopics/);
   assert.match(feed, /activeTab === 'unread' && topics.length === 0 \? \(/);
   assert.match(feed, /forum\('noUnreadTopics'\)/);
