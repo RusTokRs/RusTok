@@ -9,3 +9,6 @@ description = "Fluid Backend Architecture contracts for RusToK module boundaries
 rustok-api.workspace = true
 serde.workspace = true
 
+[dev-dependencies]
+serde_json.workspace = true
+
