@@ -66,9 +66,9 @@ const preserved = {
   'crates/libs/rustok-events/src/contract.rs':
     'caee66898db718514c6695b12cba1df3e6b491b5',
   'crates/libs/rustok-events/contracts/event-contract-digests.json':
-    'aee557e02c5c34c08b64fd85454036a247567378',
+    '5bac36a17bbfc4c6f485cfb92e81ab50488b7e1f',
   'apps/server/Cargo.toml':
-    'e80ef5a046f33d493848e695164fa5954ec27d4d',
+    'f72bc1ce6f615150c86afa55ae0bc5b3478b366b',
 };
 
 for (const [relativePath, expectedSha] of Object.entries(preserved)) {

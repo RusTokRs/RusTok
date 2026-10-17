@@ -32,6 +32,25 @@ use crate::services::{is_post_visible_for_channel, post::storage_to_status, rbac
 const TARGET_TYPE_BLOG_POST: &str = "blog_post";
 const PUBLIC_COMMENTS_PORT_ACTOR: &str = "rustok-blog.public-comments";
 
+/// Which target boundary a comment write has to satisfy.
+///
+/// The public boundary is a *publication* rule: the owning Blog post must be
+/// publicly visible in the current channel, and the tenant's public comments mode
+/// must allow the write. The owner boundary is a *ownership* rule: the target must
+/// be a Blog post of the tenant, and a draft, an archived post or a post that is
+/// hidden from the storefront channels are valid targets.
+///
+/// The two boundaries must not be mixed: a write that satisfies the public rule and
+/// then re-validates it would be committed to the Comments owner first and
+/// compensated away afterwards, so the comment would never survive the command.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CommentTargetPolicy {
+    /// Browser-facing write: the post must be publicly visible in the channel.
+    Public,
+    /// Owner-facing write: the post must exist in the tenant.
+    Owner,
+}
+
 pub struct CommentService {
     db: DatabaseConnection,
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
@@ -122,10 +141,25 @@ impl CommentService {
         self.ensure_public_comment_creation_allowed(tenant_id, post_id, public_channel_slug)
             .await?;
 
-        self.create_comment_internal(tenant_id, security, post_id, public_channel_slug, input)
-            .await
+        self.create_comment_internal(
+            tenant_id,
+            security,
+            post_id,
+            public_channel_slug,
+            CommentTargetPolicy::Public,
+            input,
+        )
+        .await
     }
 
+    /// Creates a comment for an owner-facing actor.
+    ///
+    /// The target only has to be a Blog post of the tenant: a draft, an archived
+    /// post and a post that is hidden from the storefront channels are valid
+    /// targets here. The public publication/channel boundary and the public
+    /// comments mode belong to [`Self::create_public_comment`]; applying them here
+    /// would write the comment to the Comments owner and then compensate it away,
+    /// so the comment would never survive the command.
     #[instrument(skip(self, security, input))]
     pub async fn create_comment(
         &self,
@@ -134,8 +168,15 @@ impl CommentService {
         post_id: Uuid,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
-        self.create_comment_internal(tenant_id, security, post_id, None, input)
-            .await
+        self.create_comment_internal(
+            tenant_id,
+            security,
+            post_id,
+            None,
+            CommentTargetPolicy::Owner,
+            input,
+        )
+        .await
     }
 
     async fn create_comment_internal(
@@ -144,6 +185,7 @@ impl CommentService {
         security: SecurityContext,
         post_id: Uuid,
         public_channel_slug: Option<&str>,
+        target_policy: CommentTargetPolicy,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
         enforce_scope(&security, Resource::Comments, Action::Create)?;
@@ -194,6 +236,13 @@ impl CommentService {
         // external write was in flight, compensate the already-created comment with a
         // fresh idempotent delete command. The terminal TargetDeleted event remains the
         // durable cross-owner cleanup backstop for the deletion case.
+        //
+        // An owner-facing write has no public boundary to revalidate: its target is
+        // the Blog post itself, which was checked for existence before the write.
+        if target_policy == CommentTargetPolicy::Owner {
+            return Self::map_comment_record(record);
+        }
+
         match self
             .ensure_public_comment_creation_allowed(tenant_id, post_id, public_channel_slug)
             .await

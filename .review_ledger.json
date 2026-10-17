@@ -217,11 +217,11 @@
       "name": "rustok-blog",
       "path": "crates/modules/rustok-blog",
       "category": "modules",
-      "files": 158,
-      "loc": 41150,
+      "files": 159,
+      "loc": 41141,
       "completed": false,
       "completed_at": null,
-      "notes": "Audited 2026-10-17 (docs/audits/rustok-blog-engineering-audit-2026-10-17.md): 4 High client-contract defects remediated with a new transport<->schema parity gate; 6 Medium and 9 Low findings open. Not marked completed: open findings and scoped verification pending.",
+      "notes": "Audited 2026-10-17 (docs/audits/rustok-blog-engineering-audit-2026-10-17.md): 4 High, 8 Medium, 8 Low and 1 governance finding; all remediated (phase 1: 4 High + transport<->schema parity gate; phase 2: 8 Medium, 8 Low, verifier-suite repair). Blog verifier suite 66 passed / 0 failed, 23 verifier self-test suites pass. Not marked completed: scoped cargo check/test/clippy verification is still outstanding.",
       "last_audited": "2026-10-17"
     },
     "crates/modules/rustok-blog/admin": {
@@ -229,10 +229,10 @@
       "path": "crates/modules/rustok-blog/admin",
       "category": "modules",
       "files": 18,
-      "loc": 6393,
+      "loc": 6400,
       "completed": false,
       "completed_at": null,
-      "notes": "Audited 2026-10-17: empty-slug save failure remediated; category/featured-image/SEO/channel/schedule capability gap still open and undocumented. FFA boundary check passed.",
+      "notes": "Audited 2026-10-17: empty-slug save failure remediated; the category/featured-image/SEO/channel/schedule capability gap is now documented in the module README Known Limitations (L-7). FFA boundary check passed.",
       "last_audited": "2026-10-17"
     },
     "crates/modules/rustok-blog/storefront": {
@@ -1954,7 +1954,7 @@
       "loc": 2122,
       "completed": false,
       "completed_at": null,
-      "notes": "Audited 2026-10-17: the category and tag surfaces were non-functional (GraphQL documents requested fields the Blog schema never exposed); remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs.",
+      "notes": "Audited 2026-10-17: the category and tag surfaces were non-functional (GraphQL documents requested fields the Blog schema never exposed); remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs. All findings of the 2026-10-17 Blog audit are remediated.",
       "last_audited": "2026-10-17"
     },
     "apps/next-admin/packages/cache": {
@@ -2075,7 +2075,7 @@
       "loc": 1678,
       "completed": false,
       "completed_at": null,
-      "notes": "Audited 2026-10-17: invalid category query with a swallowed error remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs.",
+      "notes": "Audited 2026-10-17: invalid category query with a swallowed error remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs. All findings of the 2026-10-17 Blog audit are remediated.",
       "last_audited": "2026-10-17"
     },
     "apps/next-frontend/packages/rustok-comments": {

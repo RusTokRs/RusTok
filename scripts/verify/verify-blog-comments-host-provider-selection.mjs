@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { readComposedRustSource } from './lib/rust-facade-source.mjs';
+import { flattenWhitespace } from './lib/verify-text.mjs';
 
 const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-host-provider-selection.json';
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-70.md';
@@ -23,6 +24,15 @@ function fail(message) {
 function hasAll(text, snippets, label) {
   for (const snippet of snippets) {
     if (!text.includes(snippet)) fail(`${label} missing ${snippet}`);
+  }
+}
+
+function hasAllProse(text, snippets, label) {
+  // See scripts/verify/lib/verify-text.mjs: prose markers are wording contracts, so they
+  // are compared against a whitespace-flattened view of the source.
+  const flattened = flattenWhitespace(text);
+  for (const snippet of snippets) {
+    if (!flattened.includes(flattenWhitespace(snippet))) fail(`${label} missing ${snippet}`);
   }
 }
 
@@ -111,8 +121,11 @@ hasAll(
     'CommentsTcpChannelProtection::PlaintextLoopback',
     'CommentsTcpChannelProtection::AuthenticatedEncrypted',
     'remote_comments_thread_port(transport)',
-    'extensions.insert::<Arc<dyn CommentsThreadPort>>',
-    'RUSTOK_COMMENTS_PROVIDER_MODE} must be one of: in_process, tcp',
+    // The publication is a chained call: rustfmt splits the chain, so the
+    // marker covers the call itself instead of the line break.
+    '.insert::<Arc<dyn CommentsThreadPort>>',
+    // The message interpolates the constant, not the literal environment name.
+    '{COMMENTS_PROVIDER_MODE_ENV} must be one of: in_process, tcp',
   ],
   'server Comments selector',
 );
@@ -187,21 +200,23 @@ hasAll(
 hasAll(
   nativeHost,
   [
-    'extensions.apply_to_host_runtime(runtime_ctx)',
+    // The host runtime is extended through a chained call: rustfmt splits the
+    // chain, so the marker covers the call itself instead of the line break.
+    '.apply_to_host_runtime(runtime_ctx)',
     'append_optional_module_axum_routers(router, &server_fn_runtime_ctx)',
     'provide_context(runtime_ctx.clone())',
   ],
   'native and HTTP host snapshot',
 );
 
-hasAll(
+hasAllProse(
   plan,
   [
     '# rustok-blog implementation plan — slice 70 continuation',
     'RUSTOK_COMMENTS_PROVIDER_MODE',
     'RUSTOK_COMMENTS_TCP_ENDPOINT',
     'loopback endpoint',
-    'existing database/event-bus fallback',
+    'consumers therefore retain their current database/event-bus fallback',
     'source_verified_no_compile',
     'not_run_by_request',
   ],

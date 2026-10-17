@@ -108,7 +108,7 @@ impl BlogQuery {
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = PostService::new(db.clone(), event_bus.clone());
-        let post = service
+        let post = match service
             .get_post_by_slug_with_locale_fallback(
                 tenant_id,
                 request_security_context(ctx),
@@ -117,7 +117,17 @@ impl BlogQuery {
                 Some(tenant.default_locale.as_str()),
             )
             .await
-            .map_err(crate::error::public::to_graphql_error)?;
+        {
+            Ok(post) => post,
+            Err(BlogError::PostNotFound(_))
+            | Err(BlogError::Content(rustok_content::ContentError::NodeNotFound(_))) => {
+                return Ok(None);
+            }
+            // A public reader must not learn that a post exists but is not
+            // readable for them: the slug lookup answers with "no post".
+            Err(BlogError::Forbidden(_)) if is_public_request(ctx) => return Ok(None),
+            Err(err) => return Err(crate::error::public::to_graphql_error(err)),
+        };
 
         if let Some(post) = post.filter(|post| {
             is_post_visible_for_request(
@@ -190,7 +200,9 @@ impl BlogQuery {
                     author_id: filter.author_id,
                     locale: Some(locale.clone()),
                     after: filter.after.clone(),
-                    per_page: Some(filter.per_page.unwrap_or(20) as u32),
+                    // The clamped limit is the executed limit: the reported
+                    // budget metric and the query must not disagree.
+                    per_page: Some(effective_limit as u32),
                     sort_by: Some(filter.sort_by.map(Into::into).unwrap_or_default()),
                     sort_order: Some(filter.sort_order.map(Into::into).unwrap_or_default()),
                 },
