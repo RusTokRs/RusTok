@@ -61,6 +61,8 @@ const productSqliteIdentityMigrationPath =
   "crates/modules/rustok-product/src/migrations/m20261017_000036_add_sqlite_tenant_identity_keys.rs";
 const productWriteTransactionPath =
   "crates/modules/rustok-product/src/services/write_transaction.rs";
+const productSchemaWritePortPath =
+  "crates/modules/rustok-product/src/catalog_schema_write_port.rs";
 const productSchemaAttributesPath =
   "crates/modules/rustok-product/src/services/catalog_schema_service/attributes.rs";
 const productTranslationTargetPath = "crates/modules/rustok-product/src/translation_target.rs";
@@ -106,6 +108,7 @@ for (const relative of [
   bundlesCreateMigrationPath,
   productSqliteIdentityMigrationPath,
   productWriteTransactionPath,
+  productSchemaWritePortPath,
   productSchemaAttributesPath,
   productTranslationTargetPath,
   productVariantTranslationTargetPath,
@@ -163,6 +166,7 @@ const productSqliteIdentityMigrationUp = slice(
   "async fn down",
 );
 const productWriteTransaction = read(productWriteTransactionPath);
+const productSchemaWritePort = read(productSchemaWritePortPath);
 const productSchemaAttributes = read(productSchemaAttributesPath);
 const productTranslationTarget = read(productTranslationTargetPath);
 const productVariantTranslationTarget = read(productVariantTranslationTargetPath);
@@ -282,6 +286,21 @@ for (const marker of [
 ]) {
   need(outboxIdempotency, marker, "shared caller-key scoping primitive");
 }
+for (const marker of [
+  "This deployed Product namespace deliberately retains its original digest framing",
+  "let mut digest = Sha256::new();",
+  "digest.update(tenant_id.as_bytes());",
+  "digest.update(user_id.as_bytes());",
+  "digest.update(operation.as_bytes());",
+  "digest.update(caller_key.trim().as_bytes());",
+]) {
+  need(productSchemaWritePort, marker, "deployed Product receipt key compatibility");
+}
+forbid(
+  productSchemaWritePort,
+  "idempotency::scoped_caller_idempotency_key(",
+  "deployed Product receipt key compatibility",
+);
 for (const [source, namespace, label] of [
   [relationsLib, 'RELATION_CALLER_IDEMPOTENCY_NAMESPACE: &str = "commerce-graphql-relation"', "relations receipt key owner"],
   [bundlesLib, 'BUNDLE_CALLER_IDEMPOTENCY_NAMESPACE: &str = "commerce-graphql-bundle"', "bundles receipt key owner"],
@@ -1021,6 +1040,11 @@ for (const marker of [
   "ProductRelationCommandContext::new(",
   "relation_command_error_copy(&error)",
   "fn relation_error_copy(",
+  "fn relation_receipt_error_copy(",
+  "ProductRelationCommandError::Receipt(error) => relation_receipt_error_copy(error)",
+  "outbox.operation_receipt_in_progress",
+  "still being processed",
+  "Product relation operation is temporarily unavailable",
   "ProductRelationError::Database(db_err)",
   "Internal database error",
   "Internal processing error",
@@ -1034,6 +1058,11 @@ for (const marker of [
 forbid(
   relationsAdapter,
   "ProductRelationCommandError::Domain(other) => other.to_string()",
+  "relations native adapter",
+);
+forbid(
+  relationsAdapter,
+  "error.message.clone()",
   "relations native adapter",
 );
 for (const marker of [
@@ -1052,6 +1081,11 @@ for (const marker of [
   "BundleCommandContext::new(",
   "bundle_command_error_copy(&error)",
   "fn bundle_error_copy(",
+  "fn bundle_receipt_error_copy(",
+  "BundleCommandError::Receipt(error) => bundle_receipt_error_copy(error)",
+  "outbox.operation_receipt_in_progress",
+  "still being processed",
+  "Product bundle operation is temporarily unavailable",
   "BundleError::Database(db_err)",
   "Internal database error",
   "Internal processing error",
@@ -1065,6 +1099,11 @@ for (const marker of [
 forbid(
   bundlesAdapter,
   "BundleCommandError::Domain(error) => error.to_string()",
+  "bundles native adapter",
+);
+forbid(
+  bundlesAdapter,
+  "error.message.clone()",
   "bundles native adapter",
 );
 for (const [source, label, plainCalls] of [

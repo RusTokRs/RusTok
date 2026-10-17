@@ -32,6 +32,7 @@ const verifierInputs = [
   "crates/modules/rustok-product-bundles/src/migrations/m20260916_000001_create_bundles.rs",
   "crates/modules/rustok-product/src/migrations/m20261017_000036_add_sqlite_tenant_identity_keys.rs",
   "crates/modules/rustok-product/src/services/write_transaction.rs",
+  "crates/modules/rustok-product/src/catalog_schema_write_port.rs",
   "crates/modules/rustok-product/src/services/catalog_schema_service/attributes.rs",
   "crates/modules/rustok-product/src/translation_target.rs",
   "crates/modules/rustok-product/src/variant_translation_target.rs",
@@ -470,6 +471,23 @@ test("caller-key scoping must length-frame untrusted caller bytes", () => {
   );
 });
 
+test("deployed Product receipt keys cannot silently switch to the framed key formula", () => {
+  const relative = "crates/modules/rustok-product/src/catalog_schema_write_port.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "    digest.update(caller_key.trim().as_bytes());",
+      "    hash_scoped_key_component(&mut digest, caller_key.trim().as_bytes());",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /deployed Product receipt key compatibility: missing digest\.update\(caller_key\.trim\(\)\.as_bytes\(\)\);/,
+  );
+});
+
 test("Bundle GraphQL must preserve an explicit null owner clear", () => {
   const relative = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";
   const fixtureRoot = writeFixture({
@@ -505,6 +523,41 @@ test("Bundle native commands cannot expose raw database errors", () => {
   );
 });
 
+test("Relation native receipt errors cannot expose raw storage detail", () => {
+  const relative =
+    "crates/modules/rustok-product-relations/admin/src/transport/native_server_adapter.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "ProductRelationCommandError::Receipt(error) => relation_receipt_error_copy(error)",
+      "ProductRelationCommandError::Receipt(error) => error.message.clone()",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /relations native adapter: forbidden error\.message\.clone\(\)/,
+  );
+});
+
+test("Bundle native receipt errors cannot expose raw storage detail", () => {
+  const relative =
+    "crates/modules/rustok-product-bundles/admin/src/transport/native_server_adapter.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "BundleCommandError::Receipt(error) => bundle_receipt_error_copy(error)",
+      "BundleCommandError::Receipt(error) => error.message.clone()",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /bundles native adapter: forbidden error\.message\.clone\(\)/,
+  );
+});
 
 test("a GraphQL adapter cannot coerce an unknown relation type to RELATED", () => {
   const relative =

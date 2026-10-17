@@ -95,7 +95,9 @@ impl OwnerOperationScope {
 /// under a different authorization or command meaning, while allowing native and remote adapters
 /// to reach the same owner receipt for one logical command. Every component is length-delimited
 /// and the optional subject has an explicit presence tag, so untrusted caller bytes cannot be
-/// concatenated into another command identity.
+/// concatenated into another command identity. Do not substitute this framing for a deployed
+/// namespace in place: durable receipts require an explicit dual-key migration to preserve
+/// retries across the upgrade.
 pub fn scoped_caller_idempotency_key(
     namespace: &str,
     tenant_id: Uuid,

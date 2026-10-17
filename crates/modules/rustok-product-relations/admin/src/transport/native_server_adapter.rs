@@ -294,14 +294,60 @@ fn relation_error_copy(error: &rustok_product_relations::ProductRelationError) -
 }
 
 #[cfg(feature = "ssr")]
+/// Bounded operator copy for one owner-receipt failure.
+///
+/// Receipt errors cross a database boundary, so their internal messages can contain driver or
+/// storage detail. Native server functions are public operator transports and must never forward
+/// that text verbatim.
+fn relation_receipt_error_copy(error: &rustok_api::PortError) -> String {
+    tracing::error!(
+        internal_code = %error.code,
+        retryable = error.retryable,
+        %error,
+        "Product relations receipt error"
+    );
+
+    match (&error.kind, error.code.as_str()) {
+        (
+            rustok_api::PortErrorKind::Unavailable | rustok_api::PortErrorKind::Timeout,
+            "outbox.operation_receipt_in_progress",
+        ) => {
+            "The same product relation operation is still being processed; retry with the same idempotency key"
+                .to_owned()
+        }
+        (rustok_api::PortErrorKind::Unavailable | rustok_api::PortErrorKind::Timeout, _) => {
+            "Product relation operation is temporarily unavailable; retry with the same idempotency key"
+                .to_owned()
+        }
+        (rustok_api::PortErrorKind::Validation, "outbox.operation_receipt_identity_invalid") => {
+            "Idempotency key is invalid".to_owned()
+        }
+        (rustok_api::PortErrorKind::Validation, _) => "Invalid product relation request".to_owned(),
+        (rustok_api::PortErrorKind::Conflict, "outbox.operation_receipt_conflict") => {
+            "This idempotency key is already associated with a different product relation request"
+                .to_owned()
+        }
+        (rustok_api::PortErrorKind::Conflict, _) => {
+            "Product relation request conflicts with current state".to_owned()
+        }
+        (
+            rustok_api::PortErrorKind::NotFound
+            | rustok_api::PortErrorKind::Forbidden
+            | rustok_api::PortErrorKind::InvariantViolation,
+            _,
+        ) => {
+            "Product relation operation could not be completed safely; retry with the same idempotency key"
+                .to_owned()
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
 /// Bounded operator copy for one failed idempotent Product relation command.
 fn relation_command_error_copy(error: &ProductRelationCommandError) -> String {
     match error {
         ProductRelationCommandError::Domain(error) => relation_error_copy(error),
-        ProductRelationCommandError::Receipt(port_err) => {
-            tracing::error!(%port_err, "Product relations receipt error");
-            port_err.message.clone()
-        }
+        ProductRelationCommandError::Receipt(error) => relation_receipt_error_copy(error),
     }
 }
 
@@ -356,4 +402,25 @@ fn scoped_relation_command_key(
 #[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
     uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new(format!("Invalid {field}")))
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::relation_receipt_error_copy;
+
+    #[test]
+    fn receipt_storage_errors_keep_driver_detail_out_of_native_copy() {
+        let internal_message = "database driver detail for internal-db.example is unavailable";
+        let error =
+            rustok_api::PortError::timeout("outbox.operation_receipt_timeout", internal_message);
+        assert_eq!(error.message, internal_message);
+        let copy = relation_receipt_error_copy(&error);
+
+        assert_eq!(
+            copy,
+            "Product relation operation is temporarily unavailable; retry with the same idempotency key"
+        );
+        assert!(!copy.contains("internal-db.example"));
+        assert!(!copy.contains("driver detail"));
+    }
 }

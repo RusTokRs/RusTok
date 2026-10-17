@@ -3,6 +3,7 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_outbox::idempotency;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::CommerceError;
@@ -26,7 +27,11 @@ pub const PRODUCT_CALLER_IDEMPOTENCY_NAMESPACE: &str = "commerce-graphql-product
 /// Derives the owner idempotency key for a caller-supplied key.
 ///
 /// The digest binds tenant, actor, operation, optional product, and the trimmed caller key.
-/// Callers must validate the caller key (non-empty, bounded length) before calling this.
+/// This deployed Product namespace deliberately retains its original digest framing: receipt keys
+/// are durable, so changing their formula would orphan in-flight and replayable Product receipts
+/// after an upgrade. A transition to a new framing must support both receipt identities atomically,
+/// rather than silently replacing this formula. Callers must validate the caller key (non-empty,
+/// bounded length) before calling this.
 pub fn scoped_caller_idempotency_key(
     tenant_id: Uuid,
     user_id: Uuid,
@@ -34,13 +39,17 @@ pub fn scoped_caller_idempotency_key(
     product_id: Option<Uuid>,
     caller_key: &str,
 ) -> String {
-    idempotency::scoped_caller_idempotency_key(
-        PRODUCT_CALLER_IDEMPOTENCY_NAMESPACE,
-        tenant_id,
-        user_id,
-        operation,
-        product_id,
-        caller_key,
+    let mut digest = Sha256::new();
+    digest.update(tenant_id.as_bytes());
+    digest.update(user_id.as_bytes());
+    digest.update(operation.as_bytes());
+    if let Some(product_id) = product_id {
+        digest.update(product_id.as_bytes());
+    }
+    digest.update(caller_key.trim().as_bytes());
+    format!(
+        "{PRODUCT_CALLER_IDEMPOTENCY_NAMESPACE}:{operation}:{}",
+        hex::encode(digest.finalize())
     )
 }
 
@@ -778,5 +787,27 @@ fn schema_error_code(error: &CommerceError) -> &'static str {
         CommerceError::CannotDeleteOnlyVariant => "product.cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "product.lifecycle_conflict",
         CommerceError::Core(_) => "product.schema_invariant_violation",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scoped_caller_idempotency_key;
+    use uuid::Uuid;
+
+    #[test]
+    fn deployed_product_receipt_key_formula_stays_stable() {
+        let key = scoped_caller_idempotency_key(
+            Uuid::from_u128(0x11111111111111111111111111111111),
+            Uuid::from_u128(0x22222222222222222222222222222222),
+            "create_attribute",
+            Some(Uuid::from_u128(0x33333333333333333333333333333333)),
+            " retry-123 ",
+        );
+
+        assert_eq!(
+            key,
+            "commerce-graphql-product:create_attribute:2944f9218adc8b670e2dab5a8cfd2d0f5427aaa576a158be49be5143b9cc5e5c"
+        );
     }
 }
