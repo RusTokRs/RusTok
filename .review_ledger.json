@@ -221,7 +221,8 @@
       "loc": 41150,
       "completed": false,
       "completed_at": null,
-      "notes": ""
+      "notes": "Audited 2026-10-17 (docs/audits/rustok-blog-engineering-audit-2026-10-17.md): 4 High client-contract defects remediated with a new transport<->schema parity gate; 6 Medium and 9 Low findings open. Not marked completed: open findings and scoped verification pending.",
+      "last_audited": "2026-10-17"
     },
     "crates/modules/rustok-blog/admin": {
       "name": "admin",
@@ -231,7 +232,8 @@
       "loc": 6393,
       "completed": false,
       "completed_at": null,
-      "notes": ""
+      "notes": "Audited 2026-10-17: empty-slug save failure remediated; category/featured-image/SEO/channel/schedule capability gap still open and undocumented. FFA boundary check passed.",
+      "last_audited": "2026-10-17"
     },
     "crates/modules/rustok-blog/storefront": {
       "name": "storefront",
@@ -241,7 +243,8 @@
       "loc": 3289,
       "completed": false,
       "completed_at": null,
-      "notes": ""
+      "notes": "Audited 2026-10-17: no defect found; FFA boundary check passed; known retired-slug redirect gap (M-12) remains documented in the module README.",
+      "last_audited": "2026-10-17"
     },
     "crates/modules/rustok-brand": {
       "name": "rustok-brand",
@@ -1951,7 +1954,8 @@
       "loc": 2122,
       "completed": false,
       "completed_at": null,
-      "notes": ""
+      "notes": "Audited 2026-10-17: the category and tag surfaces were non-functional (GraphQL documents requested fields the Blog schema never exposed); remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs.",
+      "last_audited": "2026-10-17"
     },
     "apps/next-admin/packages/cache": {
       "name": "cache",
@@ -2071,7 +2075,8 @@
       "loc": 1678,
       "completed": false,
       "completed_at": null,
-      "notes": ""
+      "notes": "Audited 2026-10-17: invalid category query with a swallowed error remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs.",
+      "last_audited": "2026-10-17"
     },
     "apps/next-frontend/packages/rustok-comments": {
       "name": "rustok-comments",
