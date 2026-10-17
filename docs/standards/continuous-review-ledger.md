@@ -70,14 +70,14 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules
-*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (5/24 completed)
+*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (6/24 completed)
 
 - [x] **[`crates/modules/rustok-tenant`](../../crates/modules/rustok-tenant)** (28 files, 4,305 LOC) — Tenant lifecycle, provisioning, slug/domain resolution, locale policy aggregate, input sanitization, and settings schema. Audited via CodeGraph; verified transactional outbox publishing on mutations, SHA-256 idempotency receipts for locale policy CAS updates, settings schema validation, and fail-closed tenant resolution. 24/24 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-tenant/admin`](../../crates/modules/rustok-tenant/admin)** (8 files, 835 LOC) — FFA Leptos admin UI components for tenant provisioning, domain management, and locale settings. Audited via CodeGraph; verified strict FFA separation (pure Rust view models/state in `core.rs`, no domain logic in Leptos components), transport isolation with tenant authorization boundary, and catalog i18n diagnostics. 7/7 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-auth`](../../crates/modules/rustok-auth)** (50 files, 12,952 LOC) — Argon2/SHA256 credentials hashing, JWT encode/decode, token rotation, password reset, bootstrap user provisioning, and auth command models. Audited via CodeGraph; verified RFC 7519 JWT validation, RS256/HS256 key pair isolation, Argon2id salting, sensitive secret redaction in debug logs, and cross-tenant OAuth relational integrity. 64/64 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-auth/admin`](../../crates/modules/rustok-auth/admin)** (18 files, 6,501 LOC) — FFA admin UI components for user management, password reset requests, session revocation, and security policies. Audited via CodeGraph; verified FFA view models and form validation in `core.rs`, OAuth app lifecycle defaults, credential protection, and tenant scoping in transport adapters. 24/24 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-auth/cli`](../../crates/modules/rustok-auth/cli)** (1 files, 333 LOC) — CLI maintenance commands for auth administration, token generation, and superadmin provisioning. Audited via CodeGraph; verified explicit tenant scoping on development app creation, input identity validation, and expired session cleanup. 4/4 tests passed, 0 clippy warnings, gate passed.
-- [ ] **[`crates/modules/rustok-rbac`](../../crates/modules/rustok-rbac)** (56 files, 13,518 LOC) — RBAC domain service, role assignment, policy evaluation, permissions matrix, and runtime cache invalidation.
+- [x] **[`crates/modules/rustok-rbac`](../../crates/modules/rustok-rbac)** (56 files, 13,518 LOC) — RBAC domain service, role assignment, policy evaluation, permissions matrix, and runtime cache invalidation. Audited via CodeGraph; verified fail-closed hierarchy and tenant scope enforcement, super-admin removal protection, generation-checked permission cache invalidation, and independent multi-tenant scoped projections. 103/103 tests passed, 0 clippy warnings, gate passed.
 - [ ] **[`crates/modules/rustok-rbac/admin`](../../crates/modules/rustok-rbac/admin)** (8 files, 952 LOC) — FFA admin UI components for role management, permission matrices, and user role assignment.
 - [ ] **[`crates/modules/rustok-rbac/cli`](../../crates/modules/rustok-rbac/cli)** (1 files, 243 LOC) — CLI maintenance commands for RBAC policy inspection and role assignment.
 - [ ] **[`crates/modules/rustok-cache`](../../crates/modules/rustok-cache)** (46 files, 15,917 LOC) — Distributed caching, Redis/in-memory backends, stampede protection, and durable invalidation consumer.
@@ -549,7 +549,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-profiles-api](../../crates/modules/rustok-profiles-api) | `modules` | 3 | 132 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 9 | 1,463 | None |  |
-| [ ] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 56 | 13,518 | None |  |
+| [x] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 56 | 13,518 | 2026-10-17 03:33 | Audited and cleaned. |
 | [ ] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 8 | 952 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 1 | 243 | None |  |
 | [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 8 | 2,961 | None |  |
