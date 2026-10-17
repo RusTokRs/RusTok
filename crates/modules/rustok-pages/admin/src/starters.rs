@@ -615,6 +615,7 @@ fn escape_html(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fly::{RegistrySet, ValidationLimits, validate_project};
     use std::collections::HashSet;
 
     #[test]
