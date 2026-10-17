@@ -103,8 +103,7 @@ impl ProductRelationService {
         let txn = self.database().begin().await?;
         match create_relation_in_tx(&txn, context.tenant_id, input).await {
             Ok(relation) => {
-                idempotency::complete(&txn, lease, &relation).await?;
-                txn.commit().await?;
+                complete_relation_operation(txn, context, lease, &relation).await?;
                 Ok(relation)
             }
             Err(error) => {
@@ -139,8 +138,7 @@ impl ProductRelationService {
         let txn = self.database().begin().await?;
         match update_relation_in_tx(&txn, context.tenant_id, relation_id, input).await {
             Ok(relation) => {
-                idempotency::complete(&txn, lease, &relation).await?;
-                txn.commit().await?;
+                complete_relation_operation(txn, context, lease, &relation).await?;
                 Ok(relation)
             }
             Err(error) => {
@@ -173,8 +171,7 @@ impl ProductRelationService {
         let txn = self.database().begin().await?;
         match delete_relation_in_tx(&txn, context.tenant_id, relation_id).await {
             Ok(()) => {
-                idempotency::complete(&txn, lease, &()).await?;
-                txn.commit().await?;
+                complete_relation_operation(txn, context, lease, &()).await?;
                 Ok(())
             }
             Err(error) => {
@@ -207,8 +204,7 @@ impl ProductRelationService {
         let txn = self.database().begin().await?;
         match reorder_relations_in_tx(&txn, context.tenant_id, input).await {
             Ok(relations) => {
-                idempotency::complete(&txn, lease, &relations).await?;
-                txn.commit().await?;
+                complete_relation_operation(txn, context, lease, &relations).await?;
                 Ok(relations)
             }
             Err(error) => {
@@ -235,6 +231,27 @@ async fn admit_relation_operation<T: serde::Serialize>(
         request,
     )
     .await
+}
+
+/// Completes a successful owner receipt and commits its mutation atomically.
+///
+/// Receipt completion can fail after the domain mutation has staged writes (for example, when a
+/// stale lease is detected). Roll back explicitly before returning that error: SeaORM's drop path
+/// schedules rollback asynchronously, which is too weak at this receipt boundary because a
+/// competing lease holder must not observe a still-open owner transaction.
+async fn complete_relation_operation<T: serde::Serialize>(
+    txn: DatabaseTransaction,
+    context: ProductRelationCommandContext<'_>,
+    lease: idempotency::Lease,
+    response: &T,
+) -> Result<(), ProductRelationCommandError> {
+    if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {
+        rollback_relation_operation(txn, context, lease).await?;
+        return Err(receipt_error.into());
+    }
+
+    txn.commit().await?;
+    Ok(())
 }
 
 /// Rolls back the owner mutation before a separate connection finalizes a terminal receipt.
@@ -363,4 +380,67 @@ fn decode_unit_receipt(value: serde_json::Value) -> Result<(), ProductRelationCo
         )
         .into()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_outbox::SysEventsMigration;
+    use sea_orm::{
+        ConnectionTrait, Database, DatabaseBackend, Statement, TransactionTrait, TryGetable,
+    };
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn receipt_completion_failure_rolls_back_staged_relation_mutation() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database should connect");
+        SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration should apply");
+        database
+            .execute_unprepared("CREATE TABLE relation_receipt_probe (id INTEGER PRIMARY KEY)")
+            .await
+            .expect("probe table should exist");
+
+        let transaction = database.begin().await.expect("transaction should begin");
+        transaction
+            .execute_unprepared("INSERT INTO relation_receipt_probe (id) VALUES (1)")
+            .await
+            .expect("probe mutation should stage");
+
+        let error = complete_relation_operation(
+            transaction,
+            ProductRelationCommandContext::new(Uuid::new_v4(), None, "receipt-key"),
+            idempotency::Lease {
+                operation_id: Uuid::new_v4(),
+                token: Uuid::new_v4(),
+            },
+            &serde_json::json!({"ok": true}),
+        )
+        .await
+        .expect_err("an unknown receipt lease must reject completion");
+        assert!(matches!(
+            error,
+            ProductRelationCommandError::Receipt(ref error)
+                if error.code == "outbox.operation_receipt_state_invalid"
+        ));
+
+        let row = database
+            .query_one(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM relation_receipt_probe".to_owned(),
+            ))
+            .await
+            .expect("probe count should query")
+            .expect("probe count row should exist");
+        let count: i64 = row.try_get("", "count").expect("probe count should decode");
+        assert_eq!(
+            count, 0,
+            "completion failure must await transaction rollback"
+        );
+    }
 }

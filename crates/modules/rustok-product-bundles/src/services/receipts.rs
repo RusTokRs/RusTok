@@ -101,8 +101,7 @@ impl BundleService {
         let txn = self.database().begin().await?;
         match create_bundle_in_tx(&txn, context.tenant_id, input).await {
             Ok(bundle) => {
-                idempotency::complete(&txn, lease, &bundle).await?;
-                txn.commit().await?;
+                complete_bundle_operation(txn, context, lease, &bundle).await?;
                 Ok(bundle)
             }
             Err(error) => {
@@ -136,8 +135,7 @@ impl BundleService {
         let txn = self.database().begin().await?;
         match add_bundle_item_in_tx(&txn, context.tenant_id, bundle_id, item).await {
             Ok(created_item) => {
-                idempotency::complete(&txn, lease, &created_item).await?;
-                txn.commit().await?;
+                complete_bundle_operation(txn, context, lease, &created_item).await?;
                 Ok(created_item)
             }
             Err(error) => {
@@ -170,8 +168,7 @@ impl BundleService {
         let txn = self.database().begin().await?;
         match update_bundle_in_tx(&txn, context.tenant_id, bundle_id, input).await {
             Ok(bundle) => {
-                idempotency::complete(&txn, lease, &bundle).await?;
-                txn.commit().await?;
+                complete_bundle_operation(txn, context, lease, &bundle).await?;
                 Ok(bundle)
             }
             Err(error) => {
@@ -202,8 +199,7 @@ impl BundleService {
         let txn = self.database().begin().await?;
         match delete_bundle_in_tx(&txn, context.tenant_id, bundle_id).await {
             Ok(()) => {
-                idempotency::complete(&txn, lease, &()).await?;
-                txn.commit().await?;
+                complete_bundle_operation(txn, context, lease, &()).await?;
                 Ok(())
             }
             Err(error) => {
@@ -238,8 +234,7 @@ impl BundleService {
         let txn = self.database().begin().await?;
         match remove_bundle_item_in_tx(&txn, context.tenant_id, bundle_id, item_id).await {
             Ok(()) => {
-                idempotency::complete(&txn, lease, &()).await?;
-                txn.commit().await?;
+                complete_bundle_operation(txn, context, lease, &()).await?;
                 Ok(())
             }
             Err(error) => {
@@ -266,6 +261,27 @@ async fn admit_bundle_operation<T: serde::Serialize>(
         request,
     )
     .await
+}
+
+/// Completes a successful owner receipt and commits its mutation atomically.
+///
+/// Receipt completion can fail after the domain mutation has staged writes (for example, when a
+/// stale lease is detected). Roll back explicitly before returning that error: SeaORM's drop path
+/// schedules rollback asynchronously, which is too weak at this receipt boundary because a
+/// competing lease holder must not observe a still-open owner transaction.
+async fn complete_bundle_operation<T: serde::Serialize>(
+    txn: DatabaseTransaction,
+    context: BundleCommandContext<'_>,
+    lease: idempotency::Lease,
+    response: &T,
+) -> Result<(), BundleCommandError> {
+    if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {
+        rollback_bundle_operation(txn, context, lease).await?;
+        return Err(receipt_error.into());
+    }
+
+    txn.commit().await?;
+    Ok(())
 }
 
 /// Rolls back the owner mutation before a separate connection finalizes a terminal receipt.
@@ -410,5 +426,63 @@ mod tests {
         assert_eq!(error.kind, PortErrorKind::Conflict);
         assert_eq!(error.code, "product_bundle.concurrent_conflict");
         assert!(!error.retryable);
+    }
+    #[tokio::test]
+    async fn receipt_completion_failure_rolls_back_staged_bundle_mutation() {
+        use rustok_outbox::SysEventsMigration;
+        use sea_orm::{
+            ConnectionTrait, Database, DatabaseBackend, Statement, TransactionTrait, TryGetable,
+        };
+        use sea_orm_migration::{MigrationTrait, SchemaManager};
+        use uuid::Uuid;
+
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database should connect");
+        SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration should apply");
+        database
+            .execute_unprepared("CREATE TABLE bundle_receipt_probe (id INTEGER PRIMARY KEY)")
+            .await
+            .expect("probe table should exist");
+
+        let transaction = database.begin().await.expect("transaction should begin");
+        transaction
+            .execute_unprepared("INSERT INTO bundle_receipt_probe (id) VALUES (1)")
+            .await
+            .expect("probe mutation should stage");
+
+        let error = complete_bundle_operation(
+            transaction,
+            BundleCommandContext::new(Uuid::new_v4(), None, "receipt-key"),
+            idempotency::Lease {
+                operation_id: Uuid::new_v4(),
+                token: Uuid::new_v4(),
+            },
+            &serde_json::json!({"ok": true}),
+        )
+        .await
+        .expect_err("an unknown receipt lease must reject completion");
+        assert!(matches!(
+            error,
+            BundleCommandError::Receipt(ref error)
+                if error.code == "outbox.operation_receipt_state_invalid"
+        ));
+
+        let row = database
+            .query_one(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM bundle_receipt_probe".to_owned(),
+            ))
+            .await
+            .expect("probe count should query")
+            .expect("probe count row should exist");
+        let count: i64 = row.try_get("", "count").expect("probe count should decode");
+        assert_eq!(
+            count, 0,
+            "completion failure must await transaction rollback"
+        );
     }
 }

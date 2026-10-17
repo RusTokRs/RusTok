@@ -94,13 +94,17 @@ test("canonical receipt-bound relations and bundles pass", () => {
 test("a receipt that is never completed fails the contract", () => {
   const relative = "crates/modules/rustok-product-relations/src/services/receipts.rs";
   const fixtureRoot = writeFixture({
-    [relative]: replaceRequired(relative, "idempotency::complete(&txn, lease, &relation).await?;", ""),
+    [relative]: replaceRequired(
+      relative,
+      "complete_relation_operation(txn, context, lease, &relation).await?;",
+      "",
+    ),
   });
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);
   assert.match(
     result.output,
-    /create_relation_idempotent receipt command: missing idempotency::complete\(&txn, lease, &relation\)\.await\?;/,
+    /create_relation_idempotent receipt command: missing complete_relation_operation\(txn, context, lease, &relation\)\.await\?;/,
   );
 });
 
@@ -202,8 +206,8 @@ test("a terminal relation failure must await rollback before finalizing its rece
   const fixtureRoot = writeFixture({
     [relative]: replaceRequired(
       relative,
-      "rollback_relation_operation(txn, context, lease).await?;",
-      "drop(txn);",
+      "Err(error) => {\n                rollback_relation_operation(txn, context, lease).await?;",
+      "Err(error) => {\n                drop(txn);",
     ),
   });
   const result = runVerifier(fixtureRoot);
@@ -211,6 +215,40 @@ test("a terminal relation failure must await rollback before finalizing its rece
   assert.match(
     result.output,
     /create_relation_idempotent receipt command: missing rollback_relation_operation\(txn, context, lease\)\.await\?;/,
+  );
+});
+
+test("a receipt completion error must await rollback before returning", () => {
+  const relative = "crates/modules/rustok-product-relations/src/services/receipts.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {\n        rollback_relation_operation(txn, context, lease).await?;",
+      "if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {\n        drop(txn);",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /relations successful receipt completion: missing rollback_relation_operation\(txn, context, lease\)\.await\?;/,
+  );
+});
+
+test("a bundle receipt completion error must await rollback before returning", () => {
+  const relative = "crates/modules/rustok-product-bundles/src/services/receipts.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {\n        rollback_bundle_operation(txn, context, lease).await?;",
+      "if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {\n        drop(txn);",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /bundles successful receipt completion: missing rollback_bundle_operation\(txn, context, lease\)\.await\?;/,
   );
 });
 

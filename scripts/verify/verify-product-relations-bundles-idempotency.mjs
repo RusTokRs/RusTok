@@ -232,6 +232,9 @@ for (const marker of [
   "idempotency::Admission::Run(lease) => lease,",
   "idempotency::Admission::Replay(value) => return decode_relation_receipt(value),",
   "idempotency::fail(",
+  "async fn complete_relation_operation<T: serde::Serialize>(",
+  "if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {",
+  "rollback_relation_operation(txn, context, lease).await?;",
   "async fn rollback_relation_operation(",
   "txn.rollback().await",
   "async fn finish_failed_relation_operation(",
@@ -241,6 +244,19 @@ for (const marker of [
 ]) {
   need(relationsReceipts, marker, "relations receipts");
 }
+const relationReceiptCompletion = slice(
+  relationsReceipts,
+  "async fn complete_relation_operation<T: serde::Serialize>(",
+  "/// Rolls back the owner mutation",
+);
+for (const marker of [
+  "if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {",
+  "rollback_relation_operation(txn, context, lease).await?;",
+  "txn.commit().await?;",
+]) {
+  need(relationReceiptCompletion, marker, "relations successful receipt completion");
+}
+forbid(relationReceiptCompletion, "drop(txn);", "relations successful receipt completion");
 need(
   relationsService,
   "pub(crate) async fn create_relation_in_tx(",
@@ -299,7 +315,7 @@ const relationReceiptCommands = [
     "pub async fn update_relation_idempotent(",
     "admit_relation_operation(self, context, CREATE_RELATION_OPERATION, &request)",
     "create_relation_in_tx(&txn, context.tenant_id, input)",
-    "idempotency::complete(&txn, lease, &relation).await?;",
+    "complete_relation_operation(txn, context, lease, &relation).await?;",
   ],
   [
     "update_relation_idempotent",
@@ -307,7 +323,7 @@ const relationReceiptCommands = [
     "pub async fn delete_relation_idempotent(",
     "admit_relation_operation(self, context, UPDATE_RELATION_OPERATION, &request)",
     "update_relation_in_tx(&txn, context.tenant_id, relation_id, input)",
-    "idempotency::complete(&txn, lease, &relation).await?;",
+    "complete_relation_operation(txn, context, lease, &relation).await?;",
   ],
   [
     "delete_relation_idempotent",
@@ -315,7 +331,7 @@ const relationReceiptCommands = [
     "pub async fn reorder_relations_idempotent(",
     "admit_relation_operation(self, context, DELETE_RELATION_OPERATION, &request)",
     "delete_relation_in_tx(&txn, context.tenant_id, relation_id)",
-    "idempotency::complete(&txn, lease, &()).await?;",
+    "complete_relation_operation(txn, context, lease, &()).await?;",
   ],
   [
     "reorder_relations_idempotent",
@@ -323,7 +339,7 @@ const relationReceiptCommands = [
     "async fn admit_relation_operation",
     "admit_relation_operation(self, context, REORDER_RELATIONS_OPERATION, &request)",
     "reorder_relations_in_tx(&txn, context.tenant_id, input)",
-    "idempotency::complete(&txn, lease, &relations).await?;",
+    "complete_relation_operation(txn, context, lease, &relations).await?;",
   ],
 ];
 for (const [name, start, end, admission, write, completion] of relationReceiptCommands) {
@@ -367,6 +383,9 @@ for (const marker of [
   "pub struct BundleCommandContext<'a>",
   "idempotency::admit(",
   "idempotency::fail(service.database(), lease, &port_error)",
+  "async fn complete_bundle_operation<T: serde::Serialize>(",
+  "if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {",
+  "rollback_bundle_operation(txn, context, lease).await?;",
   "async fn rollback_bundle_operation(",
   "txn.rollback().await",
   "async fn finish_failed_bundle_operation(",
@@ -379,6 +398,19 @@ for (const marker of [
 ]) {
   need(bundlesReceipts, marker, "bundles receipts");
 }
+const bundleReceiptCompletion = slice(
+  bundlesReceipts,
+  "async fn complete_bundle_operation<T: serde::Serialize>(",
+  "/// Rolls back the owner mutation",
+);
+for (const marker of [
+  "if let Err(receipt_error) = idempotency::complete(&txn, lease, response).await {",
+  "rollback_bundle_operation(txn, context, lease).await?;",
+  "txn.commit().await?;",
+]) {
+  need(bundleReceiptCompletion, marker, "bundles successful receipt completion");
+}
+forbid(bundleReceiptCompletion, "drop(txn);", "bundles successful receipt completion");
 for (const marker of [
   "pub(crate) async fn create_bundle_in_tx(",
   "pub(crate) async fn add_bundle_item_in_tx(",
@@ -508,7 +540,7 @@ const bundleReceiptCommands = [
     "pub async fn add_bundle_item_idempotent(",
     "admit_bundle_operation(self, context, CREATE_BUNDLE_OPERATION, &request)",
     "create_bundle_in_tx(&txn, context.tenant_id, input)",
-    "idempotency::complete(&txn, lease, &bundle).await?;",
+    "complete_bundle_operation(txn, context, lease, &bundle).await?;",
   ],
   [
     "add_bundle_item_idempotent",
@@ -516,7 +548,7 @@ const bundleReceiptCommands = [
     "pub async fn update_bundle_idempotent(",
     "admit_bundle_operation(self, context, ADD_BUNDLE_ITEM_OPERATION, &request)",
     "add_bundle_item_in_tx(&txn, context.tenant_id, bundle_id, item)",
-    "idempotency::complete(&txn, lease, &created_item).await?;",
+    "complete_bundle_operation(txn, context, lease, &created_item).await?;",
   ],
   [
     "update_bundle_idempotent",
@@ -524,7 +556,7 @@ const bundleReceiptCommands = [
     "pub async fn delete_bundle_idempotent(",
     "admit_bundle_operation(self, context, UPDATE_BUNDLE_OPERATION, &request)",
     "update_bundle_in_tx(&txn, context.tenant_id, bundle_id, input)",
-    "idempotency::complete(&txn, lease, &bundle).await?;",
+    "complete_bundle_operation(txn, context, lease, &bundle).await?;",
   ],
   [
     "delete_bundle_idempotent",
@@ -532,7 +564,7 @@ const bundleReceiptCommands = [
     "pub async fn remove_bundle_item_idempotent(",
     "admit_bundle_operation(self, context, DELETE_BUNDLE_OPERATION, &request)",
     "delete_bundle_in_tx(&txn, context.tenant_id, bundle_id)",
-    "idempotency::complete(&txn, lease, &()).await?;",
+    "complete_bundle_operation(txn, context, lease, &()).await?;",
   ],
   [
     "remove_bundle_item_idempotent",
@@ -540,7 +572,7 @@ const bundleReceiptCommands = [
     "async fn admit_bundle_operation",
     "admit_bundle_operation(",
     "remove_bundle_item_in_tx(&txn, context.tenant_id, bundle_id, item_id)",
-    "idempotency::complete(&txn, lease, &()).await?;",
+    "complete_bundle_operation(txn, context, lease, &()).await?;",
   ],
 ];
 for (const [name, start, end, admission, write, completion] of bundleReceiptCommands) {
