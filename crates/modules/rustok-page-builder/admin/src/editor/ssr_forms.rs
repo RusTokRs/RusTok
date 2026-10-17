@@ -169,7 +169,7 @@ impl AdminCanvasController {
     ) -> Result<UiIntent, String> {
         let component_id = required(&request.component_id, "component id")?;
         let name = required(&request.name, "property name")?;
-        ensure_component_exists(self, component_id)?;
+        ensure_component_editable(self, component_id)?;
         if name == "id" || name == "components" {
             return Err(format!(
                 "property `{name}` cannot be edited through the SSR inspector"
@@ -401,6 +401,28 @@ fn ensure_component_exists(
         .is_none()
     {
         return Err(format!("component `{component_id}` does not exist"));
+    }
+    Ok(())
+}
+
+fn ensure_component_editable(
+    controller: &AdminCanvasController,
+    component_id: &str,
+) -> Result<(), String> {
+    let component = controller
+        .editor()
+        .document()
+        .component(component_id)
+        .ok_or_else(|| format!("component `{component_id}` does not exist"))?;
+    if component
+        .attributes
+        .get("data-fly-locked")
+        .and_then(Value::as_str)
+        == Some("true")
+    {
+        return Err(format!(
+            "component `{component_id}` is locked by the layout template and cannot be edited in page view"
+        ));
     }
     Ok(())
 }
