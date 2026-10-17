@@ -157,6 +157,11 @@ const bundlesService = read(bundlesServicePath);
 const bundlesDto = read(bundlesDtoPath);
 const bundlesMigrations = read(bundlesMigrationsPath);
 const bundlesLocaleMigration = read(bundlesLocaleMigrationPath);
+const bundlesLocaleMigrationTransaction = slice(
+  bundlesLocaleMigration,
+  "impl MigrationTrait for Migration {",
+  "async fn up",
+);
 const bundlesIntegrityMigration = read(bundlesIntegrityMigrationPath);
 const bundlesCreateMigration = read(bundlesCreateMigrationPath);
 const productSqliteIdentityMigration = read(productSqliteIdentityMigrationPath);
@@ -756,6 +761,12 @@ for (const marker of [
   "?1 WHERE id = ?2",
 ]) {
   need(bundlesLocaleMigration, marker, "bundles locale migration");
+}
+for (const marker of [
+  "fn use_transaction(&self) -> Option<bool>",
+  "Some(true)",
+]) {
+  need(bundlesLocaleMigrationTransaction, marker, "bundles locale migration transaction");
 }
 for (const marker of [
   "fn use_transaction(&self) -> Option<bool>",

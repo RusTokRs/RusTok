@@ -725,6 +725,17 @@ test("relation delete cannot silently accept a zero-row mutation", () => {
   assert.match(result.output, /relation mutation lock and delete result: missing if delete\.rows_affected != 1/);
 });
 
+test("Bundle locale normalization must be atomic on SQLite", () => {
+  const relative =
+    "crates/modules/rustok-product-bundles/src/migrations/m20261017_000002_normalize_bundle_translation_locales.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(relative, "Some(true)", "Some(false)"),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /bundles locale migration transaction: missing Some\(true\)/);
+});
+
 test("Bundle tenant integrity cannot be left only in a rewritten historical migration", () => {
   const relative =
     "crates/modules/rustok-product-bundles/src/migrations/m20261017_000004_enforce_bundle_tenant_integrity.rs";

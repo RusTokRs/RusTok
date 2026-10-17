@@ -17,6 +17,12 @@ struct BundleTranslationRow {
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
+    fn use_transaction(&self) -> Option<bool> {
+        // SeaORM leaves SQLite migrations unwrapped by default. A locale normalization rewrites
+        // multiple rows, so a storage failure must not leave a Bundle half-normalized.
+        Some(true)
+    }
+
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let connection = manager.get_connection();
         let backend = connection.get_database_backend();
@@ -103,6 +109,15 @@ ORDER BY bundle_id, locale, id
 #[cfg(test)]
 mod tests {
     use rustok_api::normalize_locale_tag;
+    use sea_orm_migration::MigrationTrait;
+
+    use super::Migration;
+
+    #[test]
+    fn locale_normalization_is_transactional_on_sqlite() {
+        let migration = Migration;
+        assert_eq!(migration.use_transaction(), Some(true));
+    }
 
     #[test]
     fn locale_normalization_uses_the_shared_platform_contract() {
