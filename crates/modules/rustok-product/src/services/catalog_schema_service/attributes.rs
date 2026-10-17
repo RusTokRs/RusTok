@@ -118,7 +118,7 @@ impl ProductCatalogSchemaService {
             code: input.code,
             value_type: input.value_type,
         };
-        record_product_operation_result(&result)?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         Ok(result)
     }
@@ -193,7 +193,7 @@ impl ProductCatalogSchemaService {
             attribute_id: input.attribute_id,
             code: input.code,
         };
-        record_product_operation_result(&result)?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         Ok(result)
     }

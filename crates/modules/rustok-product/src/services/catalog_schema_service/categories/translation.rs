@@ -435,7 +435,7 @@ ON CONFLICT (group_id, locale) DO UPDATE SET label = EXCLUDED.label
             target_revision,
             target,
         };
-        record_product_operation_result(&receipt)?;
+        record_product_operation_result(&receipt);
         txn.commit().await?;
         Ok(receipt)
     }

@@ -31,6 +31,7 @@ const verifierInputs = [
   "crates/modules/rustok-product-bundles/src/migrations/m20261017_000004_enforce_bundle_tenant_integrity.rs",
   "crates/modules/rustok-product-bundles/src/migrations/m20260916_000001_create_bundles.rs",
   "crates/modules/rustok-product/src/migrations/m20261017_000036_add_sqlite_tenant_identity_keys.rs",
+  "crates/modules/rustok-product/src/services/write_transaction.rs",
   "crates/modules/rustok-product-bundles/src/services/mod.rs",
   "crates/modules/rustok-product-bundles/src/lib.rs",
   "crates/modules/rustok-product-bundles/Cargo.toml",
@@ -88,7 +89,7 @@ test("canonical receipt-bound relations and bundles pass", () => {
   const fixtureRoot = writeFixture();
   const result = runVerifier(fixtureRoot);
   assert.equal(result.status, 0, result.output);
-  assert.match(result.output, /write through tenant-scoped owner receipts/);
+  assert.match(result.output, /complete tenant-scoped owner receipts/);
 });
 
 test("a receipt that is never completed fails the contract", () => {
@@ -201,6 +202,23 @@ test("an undocumented write boundary fails the contract", () => {
   assert.match(result.output, /write boundary doc: missing/);
 });
 
+test("the Product receipt rollback boundary must remain documented", () => {
+  const relative = "crates/modules/rustok-product/docs/write-boundary.md";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "receipt-result encoding, a missing result, or completion failure awaits transaction rollback",
+      "receipt finalization behavior is unspecified",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /write boundary doc: missing receipt-result encoding, a missing result, or completion failure awaits transaction rollback/,
+  );
+});
+
 test("a terminal relation failure must await rollback before finalizing its receipt", () => {
   const relative = "crates/modules/rustok-product-relations/src/services/receipts.rs";
   const fixtureRoot = writeFixture({
@@ -232,6 +250,74 @@ test("a receipt completion error must await rollback before returning", () => {
   assert.match(
     result.output,
     /relations successful receipt completion: missing rollback_relation_operation\(txn, context, lease\)\.await\?;/,
+  );
+});
+
+test("a Product owner receipt completion error must await rollback before returning", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "        return rollback_product_receipt_failure(\n            transaction,\n            receipt.lease,\n            CommerceError::Database(DbErr::Custom(format!(\n                \"product owner receipt completion failed: {}\",\n                error.code\n            ))),\n        )\n        .await;",
+      "        drop(transaction);\n        return Err(CommerceError::Database(DbErr::Custom(format!(\n            \"product owner receipt completion failed: {}\",\n            error.code\n        ))));",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product owner receipt completion: forbidden drop\(transaction\);/,
+  );
+});
+
+test("a Product receipt result encoding failure must remain deferred to commit", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "*slot = Some(response_json);",
+      "*slot = None;",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product owner receipt result recording: missing \*slot = Some\(response_json\);/,
+  );
+});
+
+test("a Product owner receipt completion cannot return without rollback", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "        return rollback_product_receipt_failure(\n            transaction,\n            receipt.lease,\n            CommerceError::Database(DbErr::Custom(format!(\n                \"product owner receipt completion failed: {}\",\n                error.code\n            ))),\n        )\n        .await;",
+      "        return Err(CommerceError::Database(DbErr::Custom(format!(\n            \"product owner receipt completion failed: {}\",\n            error.code\n        ))));",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product owner receipt completion failure: missing return rollback_product_receipt_failure\(/,
+  );
+});
+
+test("a missing Product receipt result cannot return without rollback", () => {
+  const relative = "crates/modules/rustok-product/src/services/write_transaction.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "return rollback_product_receipt_failure(transaction, receipt.lease, error).await;",
+      "return Err(error);",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.output,
+    /product owner receipt result failure: missing return rollback_product_receipt_failure\(transaction, receipt\.lease, error\)\.await;/,
   );
 });
 

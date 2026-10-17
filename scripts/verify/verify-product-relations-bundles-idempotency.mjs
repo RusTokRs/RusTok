@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 //
-// PROD-IDEM-001 guard: Product relations and bundles are write-like owner commands, so every
-// external entry point must carry a caller-owned idempotency key and complete a durable owner
-// receipt inside the same transaction as the write.
+// PROD-IDEM-001 guard: Product owner mutations, Product relations, and Product bundles are
+// write-like owner commands, so every external entry point must carry a caller-owned idempotency
+// key and complete a durable owner receipt inside the same transaction as the write.
 //
-// The guard pins the receipt protocol of both owner crates, the transaction cores the receipt-bound
-// commands share with the plain port methods, the required GraphQL/native arguments, and the
-// rejection of any parallel receipt ledger.
+// The guard pins the Product transaction wrapper and the receipt protocol of both owner crates,
+// the transaction cores the receipt-bound commands share with the plain port methods, the required
+// GraphQL/native arguments, and the rejection of any parallel receipt ledger.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -59,6 +59,8 @@ const bundlesCreateMigrationPath =
   "crates/modules/rustok-product-bundles/src/migrations/m20260916_000001_create_bundles.rs";
 const productSqliteIdentityMigrationPath =
   "crates/modules/rustok-product/src/migrations/m20261017_000036_add_sqlite_tenant_identity_keys.rs";
+const productWriteTransactionPath =
+  "crates/modules/rustok-product/src/services/write_transaction.rs";
 const bundlesServicesModPath = "crates/modules/rustok-product-bundles/src/services/mod.rs";
 const bundlesLibPath = "crates/modules/rustok-product-bundles/src/lib.rs";
 const bundlesManifestPath = "crates/modules/rustok-product-bundles/Cargo.toml";
@@ -96,6 +98,7 @@ for (const relative of [
   bundlesIntegrityMigrationPath,
   bundlesCreateMigrationPath,
   productSqliteIdentityMigrationPath,
+  productWriteTransactionPath,
   bundlesServicesModPath,
   bundlesLibPath,
   bundlesManifestPath,
@@ -147,6 +150,32 @@ const productSqliteIdentityMigrationUp = slice(
   productSqliteIdentityMigration,
   "async fn up",
   "async fn down",
+);
+const productWriteTransaction = read(productWriteTransactionPath);
+const productReceiptResultRecord = slice(
+  productWriteTransaction,
+  "pub(crate) fn record_product_operation_result",
+  "/// Owns one product write transaction",
+);
+const productReceiptRollback = slice(
+  productWriteTransaction,
+  "async fn rollback_product_receipt_failure",
+  "/// Completes a Product owner receipt",
+);
+const productReceiptCompletion = slice(
+  productWriteTransaction,
+  "async fn complete_product_receipt_and_commit",
+  "impl ProductWriteTransaction",
+);
+const productReceiptResultFailure = slice(
+  productReceiptCompletion,
+  "let response_json = match response_json {",
+  "if let Err(error) = idempotency::complete",
+);
+const productReceiptCompletionFailure = slice(
+  productReceiptCompletion,
+  "if let Err(error) = idempotency::complete",
+  "transaction.commit().await?;",
 );
 const bundlesServicesMod = read(bundlesServicesModPath);
 const bundlesLib = read(bundlesLibPath);
@@ -221,6 +250,59 @@ for (const marker of [
 ]) {
   need(outboxIdempotency, marker, "shared failure receipt finalization");
 }
+
+// ── Product owner receipt finalization ────────────────────────────────────────────────────────
+// Receipt failure must synchronously undo a staged Product mutation before a caller can reclaim
+// the same owner operation. SeaORM's transaction Drop only starts rollback asynchronously.
+for (const marker of [
+  "async fn complete_product_receipt_and_commit(",
+  "async fn rollback_product_receipt_failure(",
+  "return complete_product_receipt_and_commit(transaction, receipt).await;",
+  "receipt_completion_failure_rolls_back_staged_product_mutation",
+  "receipt_result_encoding_failure_rolls_back_staged_product_mutation",
+  "missing_receipt_result_rolls_back_staged_product_mutation",
+]) {
+  need(productWriteTransaction, marker, "product owner receipt completion");
+}
+for (const marker of [
+  "let _ = PRODUCT_OPERATION_RECEIPT.try_with(|receipt| {",
+  "let response_json = serde_json::to_value(value).map_err(|error| error.to_string());",
+  "*slot = Some(response_json);",
+  "poisoned.into_inner()",
+]) {
+  need(productReceiptResultRecord, marker, "product owner receipt result recording");
+}
+forbid(
+  productReceiptResultRecord,
+  "CommerceResult",
+  "product owner receipt result recording",
+);
+need(
+  productReceiptRollback,
+  "transaction.rollback().await",
+  "product owner receipt rollback",
+);
+for (const marker of [
+  "return rollback_product_receipt_failure(transaction, receipt.lease, error).await;",
+  "transaction.commit().await?;",
+]) {
+  need(productReceiptCompletion, marker, "product owner receipt completion");
+}
+need(
+  productReceiptCompletionFailure,
+  "return rollback_product_receipt_failure(\n            transaction,",
+  "product owner receipt completion failure",
+);
+need(
+  productReceiptResultFailure,
+  "return rollback_product_receipt_failure(transaction, receipt.lease, error).await;",
+  "product owner receipt result failure",
+);
+forbid(
+  productReceiptCompletion,
+  "drop(transaction);",
+  "product owner receipt completion",
+);
 
 // ── Relations receipt protocol ───────────────────────────────────────────────────────────────
 for (const marker of [
@@ -962,6 +1044,7 @@ for (const marker of [
   "is not an allowed integration path",
   "extending this document",
   "scoped_caller_idempotency_key",
+  "receipt-result encoding, a missing result, or completion failure awaits transaction rollback",
 ]) {
   need(boundaryDoc, marker, "write boundary doc");
 }
@@ -976,5 +1059,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "[verify-product-relations-bundles-idempotency] relations and bundles write through tenant-scoped owner receipts completed inside the write transaction, replay their stored result, expose a required idempotency key on GraphQL and the native admin transports, and keep the write boundary documented",
+  "[verify-product-relations-bundles-idempotency] Product owner writes, relations, and bundles complete tenant-scoped owner receipts inside their write transaction, replay stored results, expose required idempotency keys on GraphQL and native admin transports, and keep the write boundary documented",
 );

@@ -32,7 +32,9 @@ use uuid::Uuid;
 #[derive(Clone)]
 struct ProductOperationReceipt {
     lease: idempotency::Lease,
-    response_json: Arc<Mutex<Option<Value>>>,
+    // Encoding happens before `commit`, but encoding failure must still cross the transaction
+    // boundary so `commit` can await rollback before reporting it to the caller.
+    response_json: Arc<Mutex<Option<Result<Value, String>>>>,
 }
 
 tokio::task_local! {
@@ -71,28 +73,26 @@ pub(crate) fn current_product_operation_id() -> Option<Uuid> {
 
 /// Record the actual owner result that must be committed into the active receipt.
 ///
-/// Direct internal Product callers have no receipt scope, so this is intentionally a
-/// no-op for them. Receipt-scoped callers must record one result before transaction
-/// commit; a missing or poisoned result slot fails closed and rolls back the owner write.
-pub(crate) fn record_product_operation_result<T: Serialize>(value: &T) -> CommerceResult<()> {
-    let response_json = serde_json::to_value(value).map_err(|error| {
-        CommerceError::Database(DbErr::Custom(format!(
-            "product owner receipt result encoding failed: {error}"
-        )))
-    })?;
-
-    match PRODUCT_OPERATION_RECEIPT.try_with(|receipt| {
-        let mut slot = receipt.response_json.lock().map_err(|_| {
-            CommerceError::Database(DbErr::Custom(
-                "product owner receipt result slot is unavailable".to_string(),
-            ))
-        })?;
+/// Direct internal Product callers have no receipt scope, so this is intentionally a no-op for
+/// them. Receipt-scoped callers defer encoding failures to `ProductWriteTransaction::commit`:
+/// every caller still owns a live transaction there, allowing it to await rollback before the
+/// error escapes. Returning an encoding or poisoned-slot error here would drop that transaction
+/// asynchronously through SeaORM's `Drop` path.
+pub(crate) fn record_product_operation_result<T: Serialize>(value: &T) {
+    let _ = PRODUCT_OPERATION_RECEIPT.try_with(|receipt| {
+        let response_json = serde_json::to_value(value).map_err(|error| error.to_string());
+        let mut slot = match receipt.response_json.lock() {
+            Ok(slot) => slot,
+            Err(poisoned) => {
+                tracing::error!(
+                    operation_id = %receipt.lease.operation_id,
+                    "Product owner receipt result slot was poisoned; replacing its pending result"
+                );
+                poisoned.into_inner()
+            }
+        };
         *slot = Some(response_json);
-        Ok(())
-    }) {
-        Ok(result) => result,
-        Err(_) => Ok(()),
-    }
+    });
 }
 
 /// Owns one product write transaction and its transactional outbox publisher.
@@ -107,6 +107,81 @@ pub(crate) struct ProductWriteTransaction {
     transaction: DatabaseTransaction,
     event_bus: TransactionalEventBus,
     operation_receipt: Option<ProductOperationReceipt>,
+}
+
+/// Rolls back an owner mutation synchronously when receipt finalization cannot proceed.
+///
+/// SeaORM's transaction drop path starts rollback asynchronously. That is not sufficient after a
+/// receipt lease was rejected: a reclaimed caller may begin the same owner operation immediately,
+/// so the failed owner transaction must release its writes and locks before this function returns.
+async fn rollback_product_receipt_failure(
+    transaction: DatabaseTransaction,
+    lease: idempotency::Lease,
+    error: CommerceError,
+) -> CommerceResult<()> {
+    transaction.rollback().await.map_err(|rollback_error| {
+        tracing::error!(
+            operation_id = %lease.operation_id,
+            %rollback_error,
+            "failed to roll back Product owner transaction after receipt finalization failure"
+        );
+        CommerceError::Database(DbErr::Custom(
+            "product owner transaction rollback failed after receipt finalization failure"
+                .to_owned(),
+        ))
+    })?;
+    Err(error)
+}
+
+/// Completes a Product owner receipt and commits the owner transaction as one atomic outcome.
+async fn complete_product_receipt_and_commit(
+    transaction: DatabaseTransaction,
+    receipt: ProductOperationReceipt,
+) -> CommerceResult<()> {
+    let response_json = receipt
+        .response_json
+        .lock()
+        .map_err(|_| {
+            CommerceError::Database(DbErr::Custom(
+                "product owner receipt result slot is unavailable".to_string(),
+            ))
+        })
+        .and_then(|slot| match slot.clone() {
+            Some(Ok(response_json)) => Ok(response_json),
+            Some(Err(error)) => Err(CommerceError::Database(DbErr::Custom(format!(
+                "product owner receipt result encoding failed: {error}"
+            )))),
+            None => Err(CommerceError::Database(DbErr::Custom(
+                "product owner receipt result was not recorded before commit".to_string(),
+            ))),
+        });
+    let response_json = match response_json {
+        Ok(response_json) => response_json,
+        Err(error) => {
+            return rollback_product_receipt_failure(transaction, receipt.lease, error).await;
+        }
+    };
+
+    if let Err(error) = idempotency::complete(&transaction, receipt.lease, &response_json).await {
+        tracing::error!(
+            operation_id = %receipt.lease.operation_id,
+            internal_code = %error.code,
+            retryable = error.retryable,
+            "Product owner receipt completion failed inside write transaction"
+        );
+        return rollback_product_receipt_failure(
+            transaction,
+            receipt.lease,
+            CommerceError::Database(DbErr::Custom(format!(
+                "product owner receipt completion failed: {}",
+                error.code
+            ))),
+        )
+        .await;
+    }
+
+    transaction.commit().await?;
+    Ok(())
 }
 
 impl ProductWriteTransaction {
@@ -361,37 +436,17 @@ impl ProductWriteTransaction {
     }
 
     pub(crate) async fn commit(self) -> CommerceResult<()> {
-        if let Some(receipt) = self.operation_receipt.as_ref() {
-            let response_json = receipt
-                .response_json
-                .lock()
-                .map_err(|_| {
-                    CommerceError::Database(DbErr::Custom(
-                        "product owner receipt result slot is unavailable".to_string(),
-                    ))
-                })?
-                .clone()
-                .ok_or_else(|| {
-                    CommerceError::Database(DbErr::Custom(
-                        "product owner receipt result was not recorded before commit".to_string(),
-                    ))
-                })?;
-            idempotency::complete(&self.transaction, receipt.lease, &response_json)
-                .await
-                .map_err(|error| {
-                    tracing::error!(
-                        operation_id = %receipt.lease.operation_id,
-                        internal_code = %error.code,
-                        retryable = error.retryable,
-                        "Product owner receipt completion failed inside write transaction"
-                    );
-                    CommerceError::Database(DbErr::Custom(format!(
-                        "product owner receipt completion failed: {}",
-                        error.code
-                    )))
-                })?;
+        let ProductWriteTransaction {
+            transaction,
+            operation_receipt,
+            ..
+        } = self;
+
+        if let Some(receipt) = operation_receipt {
+            return complete_product_receipt_and_commit(transaction, receipt).await;
         }
-        self.transaction.commit().await?;
+
+        transaction.commit().await?;
         Ok(())
     }
 }
@@ -489,6 +544,140 @@ fn product_variant_translation_change_target(event: &DomainEvent) -> Option<(Uui
             product_id,
         } => Some((*product_id, Some(*variant_id))),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        PRODUCT_OPERATION_RECEIPT, ProductOperationReceipt, complete_product_receipt_and_commit,
+        record_product_operation_result, with_product_operation_receipt,
+    };
+    use crate::CommerceError;
+    use rustok_outbox::{SysEventsMigration, idempotency};
+    use sea_orm::{
+        ConnectionTrait, Database, DatabaseBackend, Statement, TransactionTrait, TryGetable,
+    };
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use serde::{Serialize, Serializer};
+    use serde_json::json;
+    use std::sync::{Arc, Mutex};
+    use uuid::Uuid;
+
+    async fn receipt_probe_database() -> sea_orm::DatabaseConnection {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database should connect");
+        SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration should apply");
+        database
+            .execute_unprepared("CREATE TABLE product_receipt_probe (id INTEGER PRIMARY KEY)")
+            .await
+            .expect("probe table should exist");
+        database
+    }
+
+    async fn assert_probe_is_rolled_back(database: &sea_orm::DatabaseConnection) {
+        let row = database
+            .query_one(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM product_receipt_probe".to_owned(),
+            ))
+            .await
+            .expect("probe count should query")
+            .expect("probe count row should exist");
+        let count: i64 = row.try_get("", "count").expect("probe count should decode");
+        assert_eq!(
+            count, 0,
+            "receipt finalization failure must await transaction rollback"
+        );
+    }
+
+    struct FailingReceiptResponse;
+
+    impl Serialize for FailingReceiptResponse {
+        fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            Err(serde::ser::Error::custom(
+                "forced Product receipt response encoding failure",
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn receipt_completion_failure_rolls_back_staged_product_mutation() {
+        let database = receipt_probe_database().await;
+        let transaction = database.begin().await.expect("transaction should begin");
+        transaction
+            .execute_unprepared("INSERT INTO product_receipt_probe (id) VALUES (1)")
+            .await
+            .expect("probe mutation should stage");
+        let receipt = ProductOperationReceipt {
+            lease: idempotency::Lease {
+                operation_id: Uuid::new_v4(),
+                token: Uuid::new_v4(),
+            },
+            response_json: Arc::new(Mutex::new(Some(Ok(json!({"ok": true}))))),
+        };
+
+        let error = complete_product_receipt_and_commit(transaction, receipt)
+            .await
+            .expect_err("an unknown receipt lease must reject completion");
+        assert!(matches!(error, CommerceError::Database(_)));
+        assert_probe_is_rolled_back(&database).await;
+    }
+
+    #[tokio::test]
+    async fn receipt_result_encoding_failure_rolls_back_staged_product_mutation() {
+        let database = receipt_probe_database().await;
+        let transaction = database.begin().await.expect("transaction should begin");
+        transaction
+            .execute_unprepared("INSERT INTO product_receipt_probe (id) VALUES (1)")
+            .await
+            .expect("probe mutation should stage");
+        let lease = idempotency::Lease {
+            operation_id: Uuid::new_v4(),
+            token: Uuid::new_v4(),
+        };
+
+        let error = with_product_operation_receipt(lease, async move {
+            record_product_operation_result(&FailingReceiptResponse);
+            let receipt = PRODUCT_OPERATION_RECEIPT
+                .try_with(Clone::clone)
+                .expect("receipt scope should remain active");
+            complete_product_receipt_and_commit(transaction, receipt).await
+        })
+        .await
+        .expect_err("a receipt result encoding failure must reject commit");
+        assert!(matches!(error, CommerceError::Database(_)));
+        assert_probe_is_rolled_back(&database).await;
+    }
+
+    #[tokio::test]
+    async fn missing_receipt_result_rolls_back_staged_product_mutation() {
+        let database = receipt_probe_database().await;
+        let transaction = database.begin().await.expect("transaction should begin");
+        transaction
+            .execute_unprepared("INSERT INTO product_receipt_probe (id) VALUES (1)")
+            .await
+            .expect("probe mutation should stage");
+        let receipt = ProductOperationReceipt {
+            lease: idempotency::Lease {
+                operation_id: Uuid::new_v4(),
+                token: Uuid::new_v4(),
+            },
+            response_json: Arc::new(Mutex::new(None)),
+        };
+
+        let error = complete_product_receipt_and_commit(transaction, receipt)
+            .await
+            .expect_err("a missing receipt result must reject commit");
+        assert!(matches!(error, CommerceError::Database(_)));
+        assert_probe_is_rolled_back(&database).await;
     }
 }
 

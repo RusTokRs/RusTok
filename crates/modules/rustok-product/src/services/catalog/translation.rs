@@ -347,7 +347,7 @@ impl CatalogService {
             target_revision,
             target,
         };
-        record_product_operation_result(&receipt)?;
+        record_product_operation_result(&receipt);
         txn.commit().await?;
 
         Ok(receipt)
