@@ -12,11 +12,11 @@ export interface BlogCategory {
   slug: string;
   description: string | null;
   parentId: string | null;
-  postsCount: number;
-  displayOrder: number;
-  isActive: boolean;
+  /** Canonical sibling position owned by the Taxonomy Category projection. */
+  position: number;
   createdAt: string;
-  updatedAt: string;
+  /** Absent when the list projection has no update timestamp. */
+  updatedAt: string | null;
 }
 
 export interface BlogCategoryListResponse {
@@ -26,8 +26,6 @@ export interface BlogCategoryListResponse {
 
 export interface BlogCategoriesFilter {
   locale?: string;
-  parentId?: string;
-  isActive?: boolean;
   page?: number;
   perPage?: number;
 }
@@ -38,8 +36,8 @@ export interface CreateBlogCategoryInput {
   slug?: string;
   description?: string;
   parentId?: string;
-  displayOrder?: number;
-  isActive?: boolean;
+  /** Canonical sibling position; the owner clamps it to the sibling count. */
+  position?: number;
 }
 
 export interface UpdateBlogCategoryInput {
@@ -47,15 +45,14 @@ export interface UpdateBlogCategoryInput {
   name?: string;
   slug?: string;
   description?: string;
-  parentId?: string;
-  displayOrder?: number;
-  isActive?: boolean;
 }
 
 export interface BlogTag {
+  id: string;
   name: string;
   slug: string;
-  postsCount: number;
+  /** Maintained usage counter of the Blog tag projection. */
+  useCount: number;
 }
 
 export interface BlogTagListResponse {
@@ -82,9 +79,7 @@ query BlogCategories($tenantId: UUID, $filter: BlogCategoriesFilter) {
       slug
       description
       parentId
-      postsCount
-      displayOrder
-      isActive
+      position
       createdAt
       updatedAt
     }
@@ -103,9 +98,7 @@ query BlogCategory($tenantId: UUID, $id: UUID!) {
     slug
     description
     parentId
-    postsCount
-    displayOrder
-    isActive
+    position
     createdAt
     updatedAt
   }
@@ -134,9 +127,10 @@ export const BLOG_TAGS_QUERY = `
 query BlogTags($tenantId: UUID, $filter: BlogTagsFilter) {
   blogTags(tenantId: $tenantId, filter: $filter) {
     items {
+      id
       name
       slug
-      postsCount
+      useCount
     }
     total
   }

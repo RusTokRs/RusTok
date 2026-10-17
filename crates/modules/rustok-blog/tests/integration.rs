@@ -15,7 +15,7 @@ use rustok_blog::dto::{
     CreateCategoryInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
     ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery, UpdateCommentInput,
 };
-use rustok_blog::state_machine::{BlogPost, BlogPostStatus, CommentStatus, ToBlogPostStatus};
+use rustok_blog::state_machine::{BlogPostStatus, CommentStatus};
 use rustok_blog::{BlogError, BlogModule};
 use rustok_blog::{CategoryService, CommentService, PostService, TagService};
 use rustok_comments::{CommentsModule, in_process_comments_thread_port};
@@ -1496,29 +1496,14 @@ mod unit_tests {
     use super::*;
 
     #[test]
-    fn test_blog_post_state_machine() {
-        let id = Uuid::new_v4();
-        let tenant_id = Uuid::new_v4();
-        let author_id = Uuid::new_v4();
+    fn test_blog_post_transition_table() {
+        assert!(BlogPostStatus::Draft.can_transition_to(BlogPostStatus::Published));
+        assert!(BlogPostStatus::Published.can_transition_to(BlogPostStatus::Draft));
+        assert!(BlogPostStatus::Published.can_transition_to(BlogPostStatus::Archived));
+        assert!(BlogPostStatus::Archived.can_transition_to(BlogPostStatus::Draft));
 
-        let post = BlogPost::new_draft(
-            id,
-            tenant_id,
-            author_id,
-            "Test Post".to_string(),
-            "test-post".to_string(),
-            "en".to_string(),
-        );
-        assert_eq!(post.to_status(), BlogPostStatus::Draft);
-
-        let post = post.publish();
-        assert_eq!(post.to_status(), BlogPostStatus::Published);
-
-        let post = post.archive("Outdated".to_string());
-        assert_eq!(post.to_status(), BlogPostStatus::Archived);
-
-        let post = post.restore_to_draft();
-        assert_eq!(post.to_status(), BlogPostStatus::Draft);
+        assert!(!BlogPostStatus::Draft.can_transition_to(BlogPostStatus::Archived));
+        assert!(!BlogPostStatus::Archived.can_transition_to(BlogPostStatus::Published));
     }
 
     #[test]

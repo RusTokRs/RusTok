@@ -56,10 +56,14 @@ pub struct CategoryListItem {
     pub effective_locale: String,
     pub name: String,
     pub slug: String,
+    /// Canonical localized description of the Taxonomy-owned Category copy.
+    pub description: Option<String>,
     pub parent_id: Option<Uuid>,
     pub position: i32,
     pub settings: serde_json::Value,
     pub created_at: DateTime<Utc>,
+    /// Last change of the Blog-owned membership row.
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

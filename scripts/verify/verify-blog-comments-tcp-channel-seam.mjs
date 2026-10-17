@@ -285,7 +285,10 @@ for (const fragment of [
   'RUSTOK_COMMENTS_TCP_BEARER_TOKEN',
   'RUSTOK_COMMENTS_TCP_DELEGATION_SECRET',
 ]) requireText(runtime, fragment, 'retained host restrictions');
-for (const fragment of ['CommentsTcpChannelProtection::AuthenticatedEncrypted', 'tokio_rustls']) {
+// The host runtime classifies the channel protection to report the runtime
+// profile; it never implements the encrypted channel itself. The TLS stack
+// therefore must not appear in the host runtime.
+for (const fragment of ['tokio_rustls', 'rustls::']) {
   forbidText(runtime, fragment, 'host encrypted-profile non-claim');
 }
 

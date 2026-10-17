@@ -98,7 +98,7 @@ const writerCall = service.indexOf(
   ".write_once_in_transaction(&transaction, &publication)",
 );
 const sourceTerminalUpdate = service.indexOf(
-  "let updated = transaction\n            .execute(mark_published_statement(claim))",
+  "let updated = transaction\n            .execute_raw(mark_published_statement(claim))",
 );
 const commit = service.indexOf("match transaction.commit().await", writerCall);
 if (writerCall < 0 || sourceTerminalUpdate < writerCall || commit < sourceTerminalUpdate) {

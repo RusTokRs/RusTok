@@ -3,12 +3,16 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { flattenWhitespace } from "./lib/verify-text.mjs";
+
 const root = process.cwd();
 const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
 
 const workerPath =
   "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_worker.rs";
+const sourceRetryWorkerPath =
+  "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_worker_source_retry.rs";
 const runtimePath = "apps/server/src/services/comments_provider_runtime.rs";
 const bootstrapPath = "apps/server/src/services/server_bootstrap.rs";
 const ownerPath =
@@ -19,6 +23,7 @@ const evidencePath =
 
 for (const file of [
   workerPath,
+  sourceRetryWorkerPath,
   runtimePath,
   bootstrapPath,
   ownerPath,
@@ -31,6 +36,10 @@ for (const file of [
 }
 
 const worker = read(workerPath);
+const sourceRetryWorker = read(sourceRetryWorkerPath);
+// The worker was split into the canonical worker and its durable source-retry
+// composition. The runtime facade mounts both, so the guard reads them together.
+const workerSource = [worker, sourceRetryWorker].join("\n");
 const runtime = read(runtimePath);
 const bootstrap = read(bootstrapPath);
 const owner = read(ownerPath);
@@ -41,6 +50,17 @@ const evidence = JSON.parse(evidenceText);
 function requireAll(label, text, markers) {
   for (const marker of markers) {
     if (!text.includes(marker)) {
+      throw new Error(`${label} is missing required marker: ${marker}`);
+    }
+  }
+}
+
+function requireAllProse(label, text, markers) {
+  // See scripts/verify/lib/verify-text.mjs: prose markers are wording contracts, so they
+  // are compared against a whitespace-flattened view of the source.
+  const flattened = flattenWhitespace(text);
+  for (const marker of markers) {
+    if (!flattened.includes(flattenWhitespace(marker))) {
       throw new Error(`${label} is missing required marker: ${marker}`);
     }
   }
@@ -70,21 +90,21 @@ requireAll("worker configuration", worker, [
   "parsed.is_nil() || parsed.to_string() != value",
 ]);
 
-requireAll("worker lifecycle", worker, [
+requireAll("worker lifecycle", workerSource, [
   "pub struct CommentsTcpDelegationScheduleAuditHandoffWorkerHandle",
   "CommentsTcpDelegationScheduleAuditHandoffWorkerLifecycleReservation",
-  "pub fn start_comments_tcp_delegation_schedule_audit_handoff_worker_if_enabled",
+  "pub fn start_comments_tcp_delegation_schedule_audit_handoff_worker_with_source_retry_if_enabled",
   "runtime.runs_background_workers()",
   "shared_insert_if_absent",
   "shared_take::<CommentsTcpDelegationScheduleAuditHandoffWorkerLifecycleReservation>",
   "let stop_handle = ensure_stop_handle(runtime_ctx)",
   "let stop_rx = stop_handle.subscribe()",
-  "tokio::spawn(run_handoff_worker",
+  "tokio::spawn(run_source_retry_handoff_worker",
 ]);
 
-requireAll("bounded worker loop", worker, [
+requireAll("bounded worker loop", workerSource, [
   "while outcome.calls < max_claims_per_cycle",
-  "match handoff.publish_next().await",
+  "match handoff.publish_claimed(claim).await",
   "CommentsTcpDelegationScheduleAuditHandoffError::Conflict",
   "CommentsTcpDelegationScheduleAuditHandoffError::Unavailable",
   "config.retry_delay",
@@ -94,14 +114,29 @@ requireAll("bounded worker loop", worker, [
   "stop_rx.changed()",
 ]);
 
-const cycleStart = worker.indexOf("async fn run_handoff_cycle");
-const publishNext = worker.indexOf("handoff.publish_next().await", cycleStart);
-const cycleEnd = worker.indexOf("fn ensure_stop_handle", cycleStart);
-if (cycleStart < 0 || publishNext < cycleStart || cycleEnd < publishNext) {
-  throw new Error("bounded cycle does not call the slice-90 publish_next owner");
+function functionBody(text, signature) {
+  const start = text.indexOf(signature);
+  if (start < 0) return null;
+  const open = text.indexOf("{", start);
+  if (open < 0) return null;
+  let depth = 0;
+  for (let index = open; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === "{") depth += 1;
+    else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(open, index);
+    }
+  }
+  return null;
 }
 
-forbidAll("worker ownership", worker, [
+const cycleBody = functionBody(workerSource, "async fn run_source_retry_handoff_cycle");
+if (!cycleBody || !cycleBody.includes("handoff.publish_claimed(claim).await")) {
+  throw new Error("bounded cycle does not call the slice-90 publish_claimed owner");
+}
+
+forbidAll("worker ownership", workerSource, [
   "OutboxRelay::",
   "OutboxTransport::",
   "INSERT INTO sys_events",
@@ -142,7 +177,7 @@ requireAll("slice-90 owner preserved", owner, [
   ".write_once_in_transaction(&transaction, &publication)",
 ]);
 
-requireAll("plan", plan, [
+requireAllProse("plan", plan, [
   "# rustok-blog implementation plan — slice 91 continuation",
   "canonical_handoff_runner_source_ready_maintainer_execution_pending",
   "shared `StopHandle`",

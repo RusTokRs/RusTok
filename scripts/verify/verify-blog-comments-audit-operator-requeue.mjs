@@ -98,7 +98,10 @@ requireAll("recovery store", recovery, [
   "handoff_claim_token IS NULL",
   "handoff_claim_expires_at IS NULL",
   "handoff_next_attempt_at IS NULL",
-  "handoff_dead_letter_reason = 'attempt_budget_exhausted'",
+  // The dead-letter reason is a named constant instead of an inline literal.
+  "DEAD_LETTER_REASON_ATTEMPT_BUDGET_EXHAUSTED: &str = \"attempt_budget_exhausted\"",
+  "handoff_dead_letter_reason = '{dead_letter_reason}'",
+  "dead_letter_reason = DEAD_LETTER_REASON_ATTEMPT_BUDGET_EXHAUSTED",
   "handoff_attempt_count = 0",
   "handoff_recovery_epoch = $4",
   "handoff_last_failure_at = NULL",

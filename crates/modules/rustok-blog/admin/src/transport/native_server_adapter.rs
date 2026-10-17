@@ -365,7 +365,11 @@ async fn blog_admin_update_post_native(
                     excerpt: optional_text(draft.excerpt)
                         .map(rustok_api::Patch::Set)
                         .unwrap_or(rustok_api::Patch::Clear),
-                    slug: Some(draft.slug),
+                    // An empty slug must not be sent: the owner treats a present
+                    // but blank slug as a validation error instead of
+                    // regenerating it from the title, so a cleared field would
+                    // block the save.
+                    slug: optional_text(draft.slug),
                     tags: Some(draft.tags),
                     category_id: rustok_api::Patch::Keep,
                     featured_image_url: rustok_api::Patch::Keep,

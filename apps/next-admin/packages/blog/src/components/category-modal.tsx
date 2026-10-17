@@ -15,7 +15,7 @@ import {
 } from '@/shared/ui/shadcn/dialog';
 import { Button } from '@/components/ui/button';
 import { Form } from '@/shared/ui/shadcn/form';
-import { FormInput, FormTextarea, FormSwitch } from '@/shared/ui/forms';
+import { FormInput, FormTextarea } from '@/shared/ui/forms';
 
 import type { BlogCategory, GqlOpts } from '../api/categories';
 import { createBlogCategory, updateBlogCategory } from '../api/categories';
@@ -24,8 +24,8 @@ const categorySchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
   slug: z.string().optional(),
   description: z.string().optional(),
-  displayOrder: z.coerce.number().default(0),
-  isActive: z.boolean().default(true)
+  /** Canonical sibling position; the owner clamps it to the sibling count. */
+  position: z.coerce.number().int().min(0).default(0)
 });
 
 type CategoryFormValues = z.infer<typeof categorySchema>;
@@ -55,8 +55,7 @@ export function CategoryModal({
       name: '',
       slug: '',
       description: '',
-      displayOrder: 0,
-      isActive: true
+      position: 0
     }
   });
 
@@ -67,16 +66,14 @@ export function CategoryModal({
           name: category.name,
           slug: category.slug,
           description: category.description ?? '',
-          displayOrder: category.displayOrder,
-          isActive: category.isActive
+          position: category.position
         });
       } else {
         form.reset({
           name: '',
           slug: '',
           description: '',
-          displayOrder: 0,
-          isActive: true
+          position: 0
         });
       }
     }
@@ -85,14 +82,14 @@ export function CategoryModal({
   async function onSubmit(values: CategoryFormValues) {
     try {
       if (isEditing && category) {
+        // The owner exposes the canonical sibling position through a dedicated
+        // move command, not through the update command, so it is not sent here.
         await updateBlogCategory(
           category.id,
           {
             name: values.name,
             slug: values.slug || undefined,
             description: values.description || undefined,
-            displayOrder: values.displayOrder,
-            isActive: values.isActive,
             locale
           },
           gqlOpts
@@ -104,8 +101,7 @@ export function CategoryModal({
             name: values.name,
             slug: values.slug || undefined,
             description: values.description || undefined,
-            displayOrder: values.displayOrder,
-            isActive: values.isActive,
+            position: values.position,
             locale
           },
           gqlOpts
@@ -159,15 +155,15 @@ export function CategoryModal({
             config={{ rows: 3 }}
           />
 
-          <FormInput
-            control={form.control}
-            name='displayOrder'
-            label='Display Order'
-            type='number'
-            placeholder='0'
-          />
-
-          <FormSwitch control={form.control} name='isActive' label='Active' />
+          {!isEditing && (
+            <FormInput
+              control={form.control}
+              name='position'
+              label='Position'
+              type='number'
+              placeholder='0'
+            />
+          )}
 
           <DialogFooter className='pt-4'>
             <Button

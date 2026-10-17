@@ -115,6 +115,15 @@ export default function PostForm({
   });
   const contentLocale = form.watch('locale');
   const featuredImageUrl = form.watch('featuredImageUrl');
+  const publishNow = form.watch('publish');
+
+  // The owner rejects a schedule together with `publish: true`, so the date is
+  // cleared as soon as the switch is turned on.
+  useEffect(() => {
+    if (publishNow) {
+      form.setValue('scheduledAt', '');
+    }
+  }, [publishNow, form]);
 
   async function onSubmit(values: FormValues) {
     const tags = values.tags
@@ -130,6 +139,19 @@ export default function PostForm({
           .map((s) => s.trim())
           .filter(Boolean)
       : [];
+
+    // The owner accepts a schedule only on a draft and rejects a schedule
+    // together with `publish: true`, so a schedule is sent only where it is
+    // valid. Everywhere else the key is omitted and the stored value is kept.
+    const scheduleValue = values.scheduledAt
+      ? new Date(values.scheduledAt).toISOString()
+      : undefined;
+    const updateSchedule = initialData
+      ? initialData.status === 'DRAFT'
+        ? (scheduleValue ?? null)
+        : undefined
+      : undefined;
+    const createSchedule = values.publish ? undefined : scheduleValue;
 
     const validation = validateRichTextDocument(
       content,
@@ -157,9 +179,7 @@ export default function PostForm({
             seoTitle: values.seoTitle || undefined,
             seoDescription: values.seoDescription || undefined,
             version: initialData.version,
-            scheduledAt: values.scheduledAt
-              ? new Date(values.scheduledAt).toISOString()
-              : null
+            scheduledAt: updateSchedule
           },
           gqlOpts
         );
@@ -179,9 +199,7 @@ export default function PostForm({
             featuredImageUrl: values.featuredImageUrl || undefined,
             seoTitle: values.seoTitle || undefined,
             seoDescription: values.seoDescription || undefined,
-            scheduledAt: values.scheduledAt
-              ? new Date(values.scheduledAt).toISOString()
-              : undefined
+            scheduledAt: createSchedule
           },
           gqlOpts
         );
@@ -326,7 +344,7 @@ export default function PostForm({
               type='datetime-local'
               className='border-input bg-background w-full rounded-md border px-3 py-2 text-sm'
               {...form.register('scheduledAt')}
-              disabled={form.watch('publish')}
+              disabled={publishNow}
             />
             <p className='text-muted-foreground mt-1 text-xs'>
               Leave empty to save as draft. Set a future date to schedule

@@ -11,6 +11,7 @@ mod comment_projection;
 pub(crate) mod post;
 pub(crate) mod preview_token;
 mod rbac;
+pub mod search_projection;
 #[cfg(feature = "runtime")]
 pub(crate) mod scheduler;
 pub(crate) mod tag;

@@ -251,10 +251,12 @@ impl CategoryService {
                 effective_locale: canonical.effective_locale,
                 name: canonical.name,
                 slug: canonical.slug,
+                description: canonical.description,
                 parent_id: canonical.parent_id,
                 position: canonical.position,
                 settings: category.settings,
                 created_at: category.created_at.into(),
+                updated_at: category.updated_at.into(),
             })
             .collect();
 
