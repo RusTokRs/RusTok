@@ -2890,17 +2890,30 @@ impl From<GqlRelationType> for rustok_product_relations::dto::RelationType {
     }
 }
 
-impl From<rustok_product_relations::dto::RelationType> for GqlRelationType {
-    fn from(t: rustok_product_relations::dto::RelationType) -> Self {
-        match t {
-            rustok_product_relations::dto::RelationType::CrossSell => GqlRelationType::CrossSell,
-            rustok_product_relations::dto::RelationType::UpSell => GqlRelationType::UpSell,
-            rustok_product_relations::dto::RelationType::Related => GqlRelationType::Related,
-            rustok_product_relations::dto::RelationType::Accessory => GqlRelationType::Accessory,
-            rustok_product_relations::dto::RelationType::Alternative => {
-                GqlRelationType::Alternative
+impl TryFrom<rustok_product_relations::dto::RelationType> for GqlRelationType {
+    type Error = rustok_product_relations::ProductRelationError;
+
+    fn try_from(
+        relation_type: rustok_product_relations::dto::RelationType,
+    ) -> Result<Self, Self::Error> {
+        match relation_type {
+            rustok_product_relations::dto::RelationType::CrossSell => {
+                Ok(GqlRelationType::CrossSell)
             }
-            rustok_product_relations::dto::RelationType::Custom(_) => GqlRelationType::Related,
+            rustok_product_relations::dto::RelationType::UpSell => Ok(GqlRelationType::UpSell),
+            rustok_product_relations::dto::RelationType::Related => Ok(GqlRelationType::Related),
+            rustok_product_relations::dto::RelationType::Accessory => {
+                Ok(GqlRelationType::Accessory)
+            }
+            rustok_product_relations::dto::RelationType::Alternative => {
+                Ok(GqlRelationType::Alternative)
+            }
+            rustok_product_relations::dto::RelationType::Custom(_) => Err(
+                rustok_product_relations::ProductRelationError::InvalidInput(
+                    "custom relation types are unavailable through the GraphQL enum contract"
+                        .to_owned(),
+                ),
+            ),
         }
     }
 }
@@ -2917,18 +2930,20 @@ pub struct GqlProductRelation {
     pub updated_at: String,
 }
 
-impl From<rustok_product_relations::dto::ProductRelationDto> for GqlProductRelation {
-    fn from(r: rustok_product_relations::dto::ProductRelationDto) -> Self {
-        Self {
+impl TryFrom<rustok_product_relations::dto::ProductRelationDto> for GqlProductRelation {
+    type Error = rustok_product_relations::ProductRelationError;
+
+    fn try_from(r: rustok_product_relations::dto::ProductRelationDto) -> Result<Self, Self::Error> {
+        Ok(Self {
             id: r.id,
             product_id: r.product_id,
             related_product_id: r.related_product_id,
-            relation_type: r.relation_type.into(),
+            relation_type: r.relation_type.try_into()?,
             position: r.position,
             metadata: Json(r.metadata),
             created_at: r.created_at.to_rfc3339(),
             updated_at: r.updated_at.to_rfc3339(),
-        }
+        })
     }
 }
 
@@ -3133,6 +3148,7 @@ pub struct GqlBundleFilter {
     pub search: Option<String>,
     pub status: Option<String>,
     pub bundle_type: Option<String>,
+    /// Restricts to the Bundle owned by this root Product; it does not search component items.
     pub product_id: Option<Uuid>,
 }
 
@@ -3151,15 +3167,20 @@ pub struct CreateBundleInputGql {
 
 #[derive(InputObject, Clone, Default)]
 pub struct UpdateBundleInputGql {
-    pub bundle_product_id: Option<Uuid>,
+    /// Omitted keeps the current owner Product; explicit `null` clears it.
+    pub bundle_product_id: MaybeUndefined<Uuid>,
     pub slug: Option<String>,
-    pub name: Option<String>,
-    pub description: Option<String>,
+    /// Omitted keeps the localized name; explicit `null` is rejected because a translation name
+    /// is required.
+    pub name: MaybeUndefined<String>,
+    /// Omitted keeps the localized description; explicit `null` clears it.
+    pub description: MaybeUndefined<String>,
     pub bundle_type: Option<String>,
     pub status: Option<String>,
     pub discount_type: Option<String>,
     pub discount_value: Option<Decimal>,
-    pub metadata: Option<Json<serde_json::Value>>,
+    /// Omitted keeps metadata; explicit `null` resets it to the empty object.
+    pub metadata: MaybeUndefined<Json<serde_json::Value>>,
 }
 
 #[derive(InputObject, Clone)]

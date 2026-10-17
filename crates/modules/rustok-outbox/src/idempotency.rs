@@ -88,6 +88,31 @@ impl OwnerOperationScope {
     }
 }
 
+/// Derives an owner-facing receipt key from an untrusted caller key.
+///
+/// Transport adapters use one stable namespace owned by their bounded context. Binding tenant,
+/// actor, operation, and an optional aggregate subject prevents one caller key from being replayed
+/// under a different authorization or command meaning, while allowing native and remote adapters
+/// to reach the same owner receipt for one logical command.
+pub fn scoped_caller_idempotency_key(
+    namespace: &str,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    operation: &str,
+    subject_id: Option<Uuid>,
+    caller_key: &str,
+) -> String {
+    let mut digest = Sha256::new();
+    digest.update(tenant_id.as_bytes());
+    digest.update(actor_id.as_bytes());
+    digest.update(operation.as_bytes());
+    if let Some(subject_id) = subject_id {
+        digest.update(subject_id.as_bytes());
+    }
+    digest.update(caller_key.trim().as_bytes());
+    format!("{namespace}:{operation}:{}", hex::encode(digest.finalize()))
+}
+
 /// Atomically admits an owner-scoped idempotent operation or returns its
 /// stored terminal result. The same explicit owner scope, owner, and key
 /// cannot be rebound to another operation or request payload.
@@ -206,7 +231,7 @@ where
         )
     })?;
     let now = Utc::now().fixed_offset();
-    entity::Entity::update_many()
+    let update = entity::Entity::update_many()
         .col_expr(
             entity::Column::Status,
             sea_orm::sea_query::Expr::value(STATUS_FAILED),
@@ -229,6 +254,16 @@ where
         .exec(connection)
         .await
         .map_err(database_error)?;
+
+    if update.rows_affected != 1 {
+        // A stale worker must not report a terminal domain error after another worker reclaimed
+        // the lease or finalized the receipt. The outcome is unknown to this caller, so preserve
+        // retryability and let a later admission replay or reclaim the durable receipt.
+        return Err(PortError::unavailable(
+            "outbox.operation_receipt_state_invalid",
+            "owner operation receipt was not processing during failure finalization",
+        ));
+    }
     Ok(())
 }
 
@@ -404,6 +439,87 @@ mod tests {
     use sea_orm_migration::{MigrationTrait, SchemaManager};
 
     use crate::SysEventsMigration;
+
+    #[test]
+    fn caller_key_scope_is_stable_and_binds_command_identity() {
+        let tenant_id = Uuid::from_u128(0x11111111111111111111111111111111);
+        let actor_id = Uuid::from_u128(0x22222222222222222222222222222222);
+        let subject_id = Uuid::from_u128(0x33333333333333333333333333333333);
+
+        let key = scoped_caller_idempotency_key(
+            "commerce-graphql-relation",
+            tenant_id,
+            actor_id,
+            "remove_product_relation",
+            Some(subject_id),
+            " retry-123 ",
+        );
+        assert_eq!(
+            key,
+            "commerce-graphql-relation:remove_product_relation:910d14268f409657a0d2f5d857858af7badc74b70f1cc0ee07c9eeb460cabd61",
+        );
+        assert_eq!(
+            key,
+            scoped_caller_idempotency_key(
+                "commerce-graphql-relation",
+                tenant_id,
+                actor_id,
+                "remove_product_relation",
+                Some(subject_id),
+                "retry-123",
+            )
+        );
+        assert_ne!(
+            key,
+            scoped_caller_idempotency_key(
+                "commerce-graphql-relation",
+                tenant_id,
+                actor_id,
+                "reorder_product_relations",
+                Some(subject_id),
+                "retry-123",
+            )
+        );
+        assert_ne!(
+            key,
+            scoped_caller_idempotency_key(
+                "commerce-graphql-relation",
+                tenant_id,
+                Uuid::from_u128(0x44444444444444444444444444444444),
+                "remove_product_relation",
+                Some(subject_id),
+                "retry-123",
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_receipt_finalization_rejects_a_lost_lease() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database should connect");
+        SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration should apply");
+
+        let error = fail(
+            &database,
+            Lease {
+                operation_id: Uuid::new_v4(),
+                token: Uuid::new_v4(),
+            },
+            &PortError::validation("test.terminal", "terminal test failure"),
+        )
+        .await
+        .expect_err("failure finalization must reject an unknown or reclaimed lease");
+
+        assert_eq!(error.code, "outbox.operation_receipt_state_invalid");
+        assert!(
+            error.retryable,
+            "lost receipt ownership must remain retryable"
+        );
+    }
 
     #[tokio::test]
     async fn completed_receipts_replay_and_keys_remain_owner_scoped() {

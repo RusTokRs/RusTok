@@ -71,6 +71,11 @@ pub struct Migrator;
 pub struct SqliteTestMigrator;
 
 const SQLITE_INCOMPATIBLE_MIGRATIONS: &[&str] = &[
+    // Product Relations deliberately has a PostgreSQL-only migration chain.
+    "m20260914_000001_create_product_relations",
+    "m20260921_000002_enforce_product_foreign_keys",
+    "m20261017_000003_enforce_relation_positions",
+    "m20261017_000005_remove_redundant_product_tenant_key",
     "m20260711_000001_product_status_enum",
     "m20260711_000002_enforce_product_tenant_integrity",
     "m20260711_000003_enforce_catalog_value_invariants",
@@ -232,6 +237,14 @@ static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
     ModuleMigrationSource {
         slug: "product",
         source: &rustok_product::ProductModule,
+    },
+    ModuleMigrationSource {
+        slug: "product_relations",
+        source: &rustok_product_relations::ProductRelationsModule,
+    },
+    ModuleMigrationSource {
+        slug: "product_bundles",
+        source: &rustok_product_bundles::ProductBundlesModule,
     },
     ModuleMigrationSource {
         slug: "region",
@@ -476,6 +489,12 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_cart::migrations::migrations());
         all.extend(rustok_customer::migrations::migrations());
         all.extend(rustok_product::migrations::migrations());
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_product_relations::ProductRelationsModule,
+        ));
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_product_bundles::ProductBundlesModule,
+        ));
         all.extend(rustok_region::migrations::migrations());
         all.extend(rustok_pricing::migrations::migrations());
         all.extend(rustok_inventory::migrations::migrations());
@@ -585,6 +604,29 @@ mod sqlite_test_migrator_tests {
             SQLITE_INCOMPATIBLE_MIGRATIONS.len(),
             "SQLite test migrator must retain every migration not declared PostgreSQL-only"
         );
+
+        for migration_name in [
+            "m20260914_000001_create_product_relations",
+            "m20260921_000002_enforce_product_foreign_keys",
+            "m20261017_000003_enforce_relation_positions",
+            "m20261017_000005_remove_redundant_product_tenant_key",
+        ] {
+            assert!(
+                !sqlite_names.contains(migration_name),
+                "PostgreSQL-only Product Relation migration {migration_name} must not enter SQLite tests"
+            );
+        }
+        for migration_name in [
+            "m20261017_000036_add_sqlite_tenant_identity_keys",
+            "m20260916_000001_create_bundles",
+            "m20261017_000002_normalize_bundle_translation_locales",
+            "m20261017_000004_enforce_bundle_tenant_integrity",
+        ] {
+            assert!(
+                sqlite_names.contains(migration_name),
+                "the portable SQLite schema must include {migration_name}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -1010,6 +1052,82 @@ mod tests {
                     "migration {name} must run after dependency {dependency}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn migrator_includes_product_relation_and_bundle_migrations() {
+        let names = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+
+        for migration in [
+            "m20260914_000001_create_product_relations",
+            "m20260921_000002_enforce_product_foreign_keys",
+            "m20261017_000003_enforce_relation_positions",
+            "m20261017_000005_remove_redundant_product_tenant_key",
+            "m20260916_000001_create_bundles",
+            "m20261017_000002_normalize_bundle_translation_locales",
+            "m20261017_000004_enforce_bundle_tenant_integrity",
+        ] {
+            assert!(
+                names.iter().any(|name| name == migration),
+                "server migrator must include Product-family migration {migration}"
+            );
+        }
+
+        let position = |migration: &str| {
+            names
+                .iter()
+                .position(|name| name == migration)
+                .expect("required Product-family migration must be present")
+        };
+        assert!(
+            position("m20250130_000012_create_commerce_products")
+                < position("m20260914_000001_create_product_relations"),
+            "Product Relations must run after the Product schema exists"
+        );
+        assert!(
+            position("m20260701_000002_add_product_catalog_tenant_consistency_constraints")
+                < position("m20260916_000001_create_bundles"),
+            "Product Bundles must run after PostgreSQL tenant-scoped Product keys exist"
+        );
+        assert!(
+            position("m20260916_000001_create_bundles")
+                < position("m20261017_000002_normalize_bundle_translation_locales"),
+            "Product Bundle locale normalization must run after the Bundle schema exists"
+        );
+        assert!(
+            position("m20261017_000002_normalize_bundle_translation_locales")
+                < position("m20261017_000004_enforce_bundle_tenant_integrity"),
+            "Product Bundle tenant integrity must run after locale normalization"
+        );
+        assert!(
+            position("m20261017_000036_add_sqlite_tenant_identity_keys")
+                < position("m20261017_000004_enforce_bundle_tenant_integrity"),
+            "Product Bundle tenant integrity must run after portable parent identity keys"
+        );
+        assert!(
+            position("m20260914_000001_create_product_relations")
+                < position("m20260921_000002_enforce_product_foreign_keys"),
+            "Product Relation foreign keys must run after their table exists"
+        );
+        assert!(
+            position("m20261017_000003_enforce_relation_positions")
+                < position("m20261017_000005_remove_redundant_product_tenant_key"),
+            "Product Relation tenant-key cleanup must run after Relation constraints"
+        );
+    }
+
+    #[test]
+    fn migrator_collects_product_family_migration_sources() {
+        let sources = super::module_migration_sources();
+        for slug in ["product_relations", "product_bundles"] {
+            assert!(
+                sources.iter().any(|source| source.slug == slug),
+                "server migrator must collect migration dependencies for {slug}"
+            );
         }
     }
 

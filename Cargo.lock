@@ -15912,6 +15912,8 @@ dependencies = [
  "rustok-payment",
  "rustok-pricing",
  "rustok-product",
+ "rustok-product-bundles",
+ "rustok-product-relations",
  "rustok-profiles",
  "rustok-rbac",
  "rustok-region",

@@ -71,13 +71,15 @@ async fn product_relations_list_native(
         let rtype = filters
             .relation_type
             .as_deref()
-            .and_then(|s| RelationType::from_str(s).ok());
+            .map(RelationType::from_str)
+            .transpose()
+            .map_err(|error| ServerFnError::new(relation_error_copy(&error)))?;
 
         let service = ProductRelationService::new(runtime.db_clone());
         let list = service
             .list_relations(tenant.id, product_id, rtype)
             .await
-            .map_err(|e| ServerFnError::new(e.to_string()))?;
+            .map_err(|error| ServerFnError::new(relation_error_copy(&error)))?;
 
         Ok(list
             .into_iter()
@@ -112,7 +114,7 @@ async fn product_relations_command_native(
         use leptos::prelude::expect_context;
         use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
         use rustok_product_relations::{
-            ProductRelationCommandContext, ProductRelationService, ProductRelationsPort,
+            ProductRelationCommandContext, ProductRelationService,
             dto::{CreateProductRelationInput, RelationType, ReorderProductRelationsInput},
         };
         use std::str::FromStr;
@@ -134,14 +136,21 @@ async fn product_relations_command_native(
                 let p_id = parse_uuid(&draft.product_id, "product_id")?;
                 let rel_p_id = parse_uuid(&draft.related_product_id, "related_product_id")?;
                 let rtype = RelationType::from_str(&draft.relation_type)
-                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                    .map_err(|error| ServerFnError::new(relation_error_copy(&error)))?;
+                let receipt_key = scoped_relation_command_key(
+                    tenant.id,
+                    auth.user_id,
+                    "add_product_relation",
+                    None,
+                    &idempotency_key,
+                )?;
 
                 let created = service
                     .create_relation_idempotent(
                         ProductRelationCommandContext::new(
                             tenant.id,
                             Some(auth.user_id),
-                            idempotency_key.as_str(),
+                            receipt_key.as_str(),
                         ),
                         CreateProductRelationInput {
                             product_id: p_id,
@@ -152,7 +161,7 @@ async fn product_relations_command_native(
                         },
                     )
                     .await
-                    .map_err(map_product_relation_command_error)?;
+                    .map_err(|error| ServerFnError::new(relation_command_error_copy(&error)))?;
 
                 Ok(ProductRelationsAdminCommandResult {
                     item: Some(ProductRelationItem {
@@ -171,10 +180,24 @@ async fn product_relations_command_native(
             }
             ProductRelationsAdminCommand::Remove { id } => {
                 let rel_id = parse_uuid(&id, "relation_id")?;
+                let receipt_key = scoped_relation_command_key(
+                    tenant.id,
+                    auth.user_id,
+                    "remove_product_relation",
+                    Some(rel_id),
+                    &idempotency_key,
+                )?;
                 service
-                    .delete_relation(tenant.id, Some(auth.user_id), rel_id)
+                    .delete_relation_idempotent(
+                        ProductRelationCommandContext::new(
+                            tenant.id,
+                            Some(auth.user_id),
+                            receipt_key.as_str(),
+                        ),
+                        rel_id,
+                    )
                     .await
-                    .map_err(map_product_relation_error)?;
+                    .map_err(|error| ServerFnError::new(relation_command_error_copy(&error)))?;
 
                 Ok(ProductRelationsAdminCommandResult {
                     item: None,
@@ -189,16 +212,26 @@ async fn product_relations_command_native(
             } => {
                 let p_id = parse_uuid(&product_id, "product_id")?;
                 let rtype = RelationType::from_str(&relation_type)
-                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                    .map_err(|error| ServerFnError::new(relation_error_copy(&error)))?;
                 let o_ids = ordered_ids
                     .into_iter()
                     .map(|id| parse_uuid(&id, "ordered_id"))
                     .collect::<Result<Vec<_>, _>>()?;
+                let receipt_key = scoped_relation_command_key(
+                    tenant.id,
+                    auth.user_id,
+                    "reorder_product_relations",
+                    Some(p_id),
+                    &idempotency_key,
+                )?;
 
                 let reordered = service
-                    .reorder_relations(
-                        tenant.id,
-                        Some(auth.user_id),
+                    .reorder_relations_idempotent(
+                        ProductRelationCommandContext::new(
+                            tenant.id,
+                            Some(auth.user_id),
+                            receipt_key.as_str(),
+                        ),
                         ReorderProductRelationsInput {
                             product_id: p_id,
                             relation_type: rtype,
@@ -206,7 +239,7 @@ async fn product_relations_command_native(
                         },
                     )
                     .await
-                    .map_err(map_product_relation_error)?;
+                    .map_err(|error| ServerFnError::new(relation_command_error_copy(&error)))?;
 
                 Ok(ProductRelationsAdminCommandResult {
                     item: None,
@@ -241,29 +274,33 @@ async fn product_relations_command_native(
 use rustok_product_relations::ProductRelationCommandError;
 
 #[cfg(feature = "ssr")]
-fn map_product_relation_error(
-    error: rustok_product_relations::ProductRelationError,
-) -> ServerFnError {
+/// Bounded operator copy for one Product relation domain failure.
+fn relation_error_copy(error: &rustok_product_relations::ProductRelationError) -> String {
     match error {
         rustok_product_relations::ProductRelationError::Database(db_err) => {
             tracing::error!(%db_err, "Product relations database operation failed");
-            ServerFnError::new("Internal database error")
+            "Internal database error".to_owned()
         }
         rustok_product_relations::ProductRelationError::Outbox(outbox_err) => {
             tracing::error!(%outbox_err, "Product relations outbox operation failed");
-            ServerFnError::new("Internal processing error")
+            "Internal processing error".to_owned()
         }
-        other => ServerFnError::new(other.to_string()),
+        rustok_product_relations::ProductRelationError::InvalidRelationType(_)
+        | rustok_product_relations::ProductRelationError::InvalidInput(_) => {
+            "Invalid product relation request".to_owned()
+        }
+        other => other.to_string(),
     }
 }
 
 #[cfg(feature = "ssr")]
-fn map_product_relation_command_error(error: ProductRelationCommandError) -> ServerFnError {
+/// Bounded operator copy for one failed idempotent Product relation command.
+fn relation_command_error_copy(error: &ProductRelationCommandError) -> String {
     match error {
-        ProductRelationCommandError::Domain(domain_err) => map_product_relation_error(domain_err),
+        ProductRelationCommandError::Domain(error) => relation_error_copy(error),
         ProductRelationCommandError::Receipt(port_err) => {
             tracing::error!(%port_err, "Product relations receipt error");
-            ServerFnError::new(port_err.message)
+            port_err.message.clone()
         }
     }
 }
@@ -274,6 +311,9 @@ fn ensure_tenant(
     tenant: &rustok_api::TenantContext,
     required_permission: rustok_api::Permission,
 ) -> Result<(), ServerFnError> {
+    if auth.tenant_id.is_nil() || auth.user_id.is_nil() || tenant.id.is_nil() {
+        return Err(ServerFnError::new("Authentication required"));
+    }
     if auth.tenant_id != tenant.id {
         return Err(ServerFnError::new("Permission denied: tenant mismatch"));
     }
@@ -284,6 +324,33 @@ fn ensure_tenant(
         )));
     }
     Ok(())
+}
+
+#[cfg(feature = "ssr")]
+fn scoped_relation_command_key(
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+    operation: &str,
+    subject_id: Option<uuid::Uuid>,
+    caller_key: &str,
+) -> Result<String, ServerFnError> {
+    const MAX_CALLER_IDEMPOTENCY_KEY_LENGTH: usize = 191;
+
+    let caller_key = caller_key.trim();
+    if caller_key.is_empty() {
+        return Err(ServerFnError::new(
+            "Product relation command idempotency key must not be empty",
+        ));
+    }
+    if caller_key.len() > MAX_CALLER_IDEMPOTENCY_KEY_LENGTH {
+        return Err(ServerFnError::new(format!(
+            "Product relation command idempotency key must contain at most {MAX_CALLER_IDEMPOTENCY_KEY_LENGTH} bytes"
+        )));
+    }
+
+    Ok(rustok_product_relations::scoped_caller_idempotency_key(
+        tenant_id, user_id, operation, subject_id, caller_key,
+    ))
 }
 
 #[cfg(feature = "ssr")]

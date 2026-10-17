@@ -3,7 +3,6 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_outbox::idempotency;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::CommerceError;
@@ -35,17 +34,13 @@ pub fn scoped_caller_idempotency_key(
     product_id: Option<Uuid>,
     caller_key: &str,
 ) -> String {
-    let mut digest = Sha256::new();
-    digest.update(tenant_id.as_bytes());
-    digest.update(user_id.as_bytes());
-    digest.update(operation.as_bytes());
-    if let Some(product_id) = product_id {
-        digest.update(product_id.as_bytes());
-    }
-    digest.update(caller_key.trim().as_bytes());
-    format!(
-        "{PRODUCT_CALLER_IDEMPOTENCY_NAMESPACE}:{operation}:{}",
-        hex::encode(digest.finalize())
+    idempotency::scoped_caller_idempotency_key(
+        PRODUCT_CALLER_IDEMPOTENCY_NAMESPACE,
+        tenant_id,
+        user_id,
+        operation,
+        product_id,
+        caller_key,
     )
 }
 

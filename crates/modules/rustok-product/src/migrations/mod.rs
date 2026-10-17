@@ -59,6 +59,7 @@ mod m20260916_000032_clean_product_category_canonical_taxonomy;
 mod m20260918_000033_create_variant_axes_and_invariants;
 mod m20260927_000034_normalize_product_translation_locales;
 mod m20261007_000035_add_product_revision;
+mod m20261017_000036_add_sqlite_tenant_identity_keys;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -126,6 +127,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260918_000033_create_variant_axes_and_invariants::Migration),
         Box::new(m20260927_000034_normalize_product_translation_locales::Migration),
         Box::new(m20261007_000035_add_product_revision::Migration),
+        Box::new(m20261017_000036_add_sqlite_tenant_identity_keys::Migration),
     ]
 }
 
@@ -175,6 +177,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
                 "m20260711_000002_enforce_product_tenant_integrity",
                 "m20260711_000003_enforce_catalog_value_invariants",
             ],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261017_000036_add_sqlite_tenant_identity_keys",
+            vec!["m20260701_000002_add_product_catalog_tenant_consistency_constraints"],
         ),
     ]
 }
