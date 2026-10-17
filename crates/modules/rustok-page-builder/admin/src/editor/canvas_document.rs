@@ -89,7 +89,7 @@ fn escape_html(value: &str) -> String {
 }
 
 fn canvas_styles() -> &'static str {
-    r#"html{box-sizing:border-box;background:#fff;color:#111827;font-family:Inter,ui-sans-serif,system-ui,sans-serif}*,*:before,*:after{box-sizing:inherit}body{margin:0;min-height:100vh}#fly-canvas-root{min-height:100vh}[data-fly-component-id]{position:relative;min-height:20px;outline:1px solid transparent;outline-offset:2px}[data-fly-component-id]:hover{outline-color:rgba(59,130,246,.45)}[data-fly-selected]{outline:2px solid #2563eb!important}img,video{max-width:100%}input,textarea,select,button{font:inherit}.fly-empty{display:grid;min-height:320px;place-items:center;border:1px dashed #94a3b8;border-radius:12px;color:#64748b}"#
+    r#"html{box-sizing:border-box;background:#fff;color:#111827;font-family:Inter,ui-sans-serif,system-ui,sans-serif}*,*:before,*:after{box-sizing:inherit}body{margin:0;min-height:100vh}#fly-canvas-root{min-height:100vh}[data-fly-component-id]{position:relative;min-height:20px;outline:1px solid transparent;outline-offset:2px}[data-fly-component-id]:hover{outline-color:rgba(59,130,246,.45)}[data-fly-selected]{outline:2px solid #2563eb!important}[data-fly-locked="true"]{outline:1px dashed #cbd5e1!important;position:relative}[data-fly-locked="true"]::before{content:"🔒 Layout (" attr(data-fly-layout-slot) ")";position:absolute;top:2px;right:6px;font-size:10px;font-weight:600;color:#64748b;background:rgba(241,245,249,.9);padding:1px 6px;border-radius:4px;pointer-events:none;z-index:10}img,video{max-width:100%}input,textarea,select,button{font:inherit}.fly-empty{display:grid;min-height:320px;place-items:center;border:1px dashed #94a3b8;border-radius:12px;color:#64748b}"#
 }
 
 #[cfg(test)]
