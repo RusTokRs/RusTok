@@ -14,13 +14,13 @@
 
 Every audit iteration targets exactly **one primary production crate/package** and executes the strict closed-loop protocol defined by `AGENTS.md` §2.1 and `CONTINUOUS_CODE_REVIEW.md`:
 
-1. **Discovery pass (CodeGraph & Call Flow):** read the complete in-scope crate end-to-end, including domain model, persistence/migrations, writers/readers, events/outbox, transports, context/tenancy/auth, failure paths, and adjacent boundaries.
-2. **Invariant map:** verify business rules, multi-tenancy (`WHERE tenant_id = ?`), transaction atomicity, outbox in-tx publishing (`publish_in_tx`), TOCTOU concurrency guards, and type safety (Newtypes, typed `thiserror` enums).
+1. **Exhaustive Discovery Pass (No Surface Skimming):** Read the complete in-scope crate tree end-to-end across all source files in `src/`, not merely 1-2 files flagged by a scanner. Understand the crate's purpose, public API, domain model, persistence, handlers, and dependency contracts.
+2. **Behavioral & Logical Verification (6 Universal Dimensions):** Verify preconditions and extreme bounds (0, negative, empty, overflow), branch completeness & anti-swallowing (no silent `let _ =` or fake `Ok(())` suppression), state transition integrity, side-effect completeness (DB mutation <-> outbox <-> cache <-> balances), calculation precision (money, cursor `<` vs `<=`), and concurrency guards (TOCTOU elimination).
 3. **Zero AI Slop:** eliminate `include!("...")` macros, phantom facades, nested pyramid `match`/`if let` blocks, redundant `.clone()`, and captain-obvious comments.
-4. **Atomic Remediation:** fix root causes in the owning crate in the same change set. Never leave a known defect as a follow-up.
+4. **Exhaustive Remediation to Zero Defects ("Косяков нет — теперь иду дальше"):** Fix ALL discovered defects across the entire crate in the same change set. Never advance to the next component while known defects or unverified files remain in the current crate. Add pure unit tests for verified logic branches.
 5. **FFA Boundary Integrity (for UI packages):** verify framework-agnostic `core/` contains 0 UI framework imports and pure unit tests; verify `ui/leptos` and `ui/dioxus` contain 0 domain or validation logic.
 6. **Scoped Verification:** run crate-targeted checks (`cargo check -p <crate>`, `cargo test -p <crate>`); run `python scripts/verify/verify-remediation-gate.py` on modified files.
-7. **Commit & Ledger Update:** commit cleanly, update this ledger, and mark the component completed in `.review_ledger.json`.
+7. **Commit & Ledger Update:** commit cleanly, record the specific verified logic chains and remediated defects in this ledger, and mark the component completed in `.review_ledger.json`.
 
 ### Canonical Trigger
 The single canonical trigger to continue this audit sequence is:
