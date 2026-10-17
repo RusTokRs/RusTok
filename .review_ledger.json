@@ -938,7 +938,7 @@
       "path": "crates/modules/rustok-outbox",
       "category": "modules",
       "files": 26,
-      "loc": 4834,
+      "loc": 4889,
       "completed": true,
       "completed_at": "2026-10-17 08:43",
       "notes": "Audited and cleaned."
@@ -948,10 +948,10 @@
       "path": "crates/modules/rustok-outbox/admin",
       "category": "modules",
       "files": 8,
-      "loc": 493,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 548,
+      "completed": true,
+      "completed_at": "2026-10-17 09:49",
+      "notes": "Audited and cleaned."
     },
     "crates/modules/rustok-page-builder": {
       "name": "rustok-page-builder",
@@ -988,7 +988,7 @@
       "path": "crates/modules/rustok-pages",
       "category": "modules",
       "files": 197,
-      "loc": 56535,
+      "loc": 56484,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -998,7 +998,7 @@
       "path": "crates/modules/rustok-pages/admin",
       "category": "modules",
       "files": 26,
-      "loc": 7442,
+      "loc": 7390,
       "completed": false,
       "completed_at": null,
       "notes": ""

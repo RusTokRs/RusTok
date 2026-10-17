@@ -16359,6 +16359,7 @@ dependencies = [
  "rustok-ui-i18n",
  "sea-orm",
  "serde",
+ "serde_json",
  "tracing",
  "uuid",
 ]
