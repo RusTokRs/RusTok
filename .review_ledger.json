@@ -268,7 +268,7 @@
       "path": "crates/modules/rustok-cache",
       "category": "modules",
       "files": 46,
-      "loc": 15931,
+      "loc": 15982,
       "completed": true,
       "completed_at": "2026-10-17 04:30",
       "notes": "Audited and cleaned."
@@ -1478,7 +1478,7 @@
       "path": "crates/ui/fly",
       "category": "ui",
       "files": 111,
-      "loc": 42927,
+      "loc": 42922,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2168,10 +2168,10 @@
       "path": "crates/modules/rustok-cache/admin",
       "category": "modules",
       "files": 7,
-      "loc": 926,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 977,
+      "completed": true,
+      "completed_at": "2026-10-17 04:47",
+      "notes": "Audited and cleaned."
     },
     "crates/modules/rustok-comments-api": {
       "name": "rustok-comments-api",

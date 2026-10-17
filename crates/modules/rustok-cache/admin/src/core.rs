@@ -255,4 +255,55 @@ mod tests {
         assert_eq!(payload["redis_password"], "secret");
         assert_eq!(payload["redis_db"], 2);
     }
+
+    #[test]
+    fn test_parse_cache_settings_json() {
+        assert!(parse_cache_settings_json("not valid json").is_none());
+
+        let empty_json = "{}";
+        let parsed_default = parse_cache_settings_json(empty_json).expect("parsed default");
+        assert_eq!(parsed_default.mode, "in-memory");
+        assert_eq!(parsed_default.redis_host, "127.0.0.1");
+
+        let full_json = r#"{
+            "mode": "hybrid",
+            "redis_host": "cache.internal",
+            "redis_port": 6385,
+            "redis_password": "redis_secure_pass",
+            "redis_db": 3,
+            "redis_url": "redis://cache.internal:6385/3"
+        }"#;
+        let parsed = parse_cache_settings_json(full_json).expect("parsed full");
+        assert_eq!(parsed.mode, "hybrid");
+        assert_eq!(parsed.redis_host, "cache.internal");
+        assert_eq!(parsed.redis_port, "6385");
+        assert_eq!(parsed.redis_password, "redis_secure_pass");
+        assert_eq!(parsed.redis_db, "3");
+        assert_eq!(parsed.redis_url, "redis://cache.internal:6385/3");
+    }
+
+    #[test]
+    fn test_diagnostics_view_model_from_payload() {
+        let payload = CacheHealthPayload {
+            redis_configured: true,
+            redis_healthy: false,
+            redis_error: Some("connection timed out".to_string()),
+            backend: "redis".to_string(),
+        };
+        let vm = CacheDiagnosticsViewModel::from_payload(&payload);
+        assert_eq!(vm.backend_name, "redis");
+        assert!(vm.is_redis_configured);
+        assert!(!vm.is_redis_healthy);
+        assert_eq!(vm.error_message.as_deref(), Some("connection timed out"));
+    }
+
+    #[test]
+    fn test_labels_resolution() {
+        let labels_en = CacheAdminLabels::resolve(Some("en"));
+        assert_eq!(labels_en.title, "Cache Management");
+        assert_eq!(labels_en.mode_inmemory, "In-Memory (Local RAM)");
+
+        let labels_default = CacheAdminLabels::resolve(None);
+        assert_eq!(labels_default.title, "Cache Management");
+    }
 }
