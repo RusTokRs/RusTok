@@ -29,13 +29,16 @@ pub fn restrict_permissions_to_scopes(
 
     for permission in permissions {
         if permission.action == Action::Manage {
-            if scopes_allow_permission(scopes, permission) && seen.insert(*permission) {
-                restricted.push(*permission);
-            }
-            for action in SCOPABLE_ACTIONS {
-                let concrete = Permission::new(permission.resource, action);
-                if scopes_allow_permission(scopes, &concrete) && seen.insert(concrete) {
-                    restricted.push(concrete);
+            if scopes_allow_permission(scopes, permission) {
+                if seen.insert(*permission) {
+                    restricted.push(*permission);
+                }
+            } else {
+                for action in SCOPABLE_ACTIONS {
+                    let concrete = Permission::new(permission.resource, action);
+                    if scopes_allow_permission(scopes, &concrete) && seen.insert(concrete) {
+                        restricted.push(concrete);
+                    }
                 }
             }
         } else if scopes_allow_permission(scopes, permission) && seen.insert(*permission) {
@@ -90,7 +93,10 @@ fn scope_allows_permission(scope: &str, permission: &Permission) -> bool {
                 Resource::Workflows | Resource::WorkflowExecutions
             );
         }
-        "storefront:*" => return is_storefront_resource(permission.resource),
+        "storefront:*" => {
+            return is_storefront_resource(permission.resource)
+                && permission.action != Action::Manage;
+        }
         _ => {}
     }
 

@@ -38,7 +38,7 @@ impl PageInfo {
     }
 }
 
-#[derive(InputObject, Debug, Clone, Default)]
+#[derive(InputObject, Debug, Clone)]
 pub struct PaginationInput {
     #[graphql(default = 0)]
     pub offset: i64,
@@ -48,6 +48,19 @@ pub struct PaginationInput {
     pub last: Option<i64>,
     pub after: Option<String>,
     pub before: Option<String>,
+}
+
+impl Default for PaginationInput {
+    fn default() -> Self {
+        Self {
+            offset: 0,
+            limit: 20,
+            first: None,
+            last: None,
+            after: None,
+            before: None,
+        }
+    }
 }
 
 impl PaginationInput {
