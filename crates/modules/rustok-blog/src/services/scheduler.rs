@@ -443,14 +443,18 @@ fn dangling_route_condition() -> Condition {
     let tenant_post_ids = blog_post::Entity::find()
         .select_only()
         .column(blog_post::Column::Id)
-        .filter(blog_post::Column::Id.eq(Expr::col((
-            blog_post_route::Entity,
-            blog_post_route::Column::TargetId,
-        ))))
-        .filter(blog_post::Column::TenantId.eq(Expr::col((
-            blog_post_route::Entity,
-            blog_post_route::Column::TenantId,
-        ))))
+        .filter(
+            Expr::col((blog_post::Entity, blog_post::Column::Id)).eq(Expr::col((
+                blog_post_route::Entity,
+                blog_post_route::Column::TargetId,
+            ))),
+        )
+        .filter(
+            Expr::col((blog_post::Entity, blog_post::Column::TenantId)).eq(Expr::col((
+                blog_post_route::Entity,
+                blog_post_route::Column::TenantId,
+            ))),
+        )
         .into_query();
 
     Condition::all()

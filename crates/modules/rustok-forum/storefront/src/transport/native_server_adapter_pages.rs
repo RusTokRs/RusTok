@@ -210,9 +210,9 @@ async fn storefront_forum_reply_page_native(
     #[cfg(feature = "ssr")]
     {
         use rustok_api::{
-            HostRuntimeContext, OptionalAuthContext, Permission, RequestContext,
+            HostRuntimeContext, OptionalAuthContext, RequestContext,
             SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
-            TenantContext, has_any_effective_permission,
+            TenantContext,
         };
         use rustok_core::SecurityContext;
         use rustok_forum::{
