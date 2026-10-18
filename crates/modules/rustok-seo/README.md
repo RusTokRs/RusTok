@@ -15,6 +15,9 @@
 - normalize JSON-LD into typed `SeoStructuredDataBlock` records with schema kind, source state, and `@graph` expansion
 - manage manual redirects and canonical overrides
 - generate sitemap files, serve `robots.txt`, and submit sitemap indexes via runtime adapters with per-endpoint aggregation and bounded partial-failure summaries; public sitemap responses use `no-store`. If a target owner can narrow visibility between operator jobs (Forum settings and audience policy), the public index/pages always rebuild from current owner candidates without writing a new operator job. Monitor this per-request read cost on large catalogs. Forum's public bulk SEO pages also derive cursors from audience-visible categories/topics rather than forwarding raw target cursors; selective policies can make these reads scan more raw candidates than a single page.
+- gate public sitemap/robots availability on **any** enabled sitemap-capable owner module: disabled owners are skipped by candidate collection and refresh probes instead of hiding every owner's routes (previously one disabled module 404'd the whole public surface)
+- compose AI smart fill inside the generation repository (`services::ai_seo::ai_smart_fill_meta`): only textual fields are refreshed; explicit robots directives, canonical URL, structured data, and the locale's explicit `og:image` are preserved, and generation snapshots (generated/frozen canonical, hardcoded robots) are never materialized as explicit overrides. Smart fill is a write and therefore requires stacked `seo:update` **and** `seo:generate` grants — generation alone can never persist
+- apply canonical-rename auto redirects (deactivate the new URL's live capture set, create `old→new`, flatten inbound chains) in one transaction with per-row domain events; reject cycle-closing active manual redirects at the write boundary while always allowing deactivation; suppress stored self-loops and two-hop cycles at runtime with a warning instead of failing the route with 5xx
 - prepare Phase D productionization seams for typed SEO events, outbox emission/idempotency, and SEO→index integration without breaking existing public contracts
 - expose a headless REST read path for `SeoPageContext` at `/api/seo/page-context`, reusing canonical request locale/channel context
 - keep REST handlers on narrow `SeoHttpRuntime` state with explicit DB/event bus/runtime extension handles; controller state is isolated to the Axum adapter
@@ -89,3 +92,27 @@ Current wave (`D7..D9`) is grouped into large end-to-end milestones (`A..E`):
 - `E`: docs/runbooks/readiness closeout
 
 See `docs/implementation-plan.md` for the authoritative milestone checklist and status.
+
+## Known limitations / pending implementation
+
+Tracked from [`docs/audits/seo-module-product-logic-audit-2026-10-18.md`](../../../docs/audits/seo-module-product-logic-audit-2026-10-18.md)
+(source of truth for open findings):
+
+- **Route-family contract (audit P1-2) — needs ADR first.** Canonical/hreflang route-family
+  resolution differs across target families and the Next storefront adapts sitemap URLs but not
+  head tags. Implementation is blocked on an ADR update for `DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`.
+- **Manual redirect target chains (audit P2-10 remainder).** Cycle creation is rejected and
+  stored cycles are suppressed at runtime, but a manual redirect whose target is itself a
+  registry-owned alias still costs a second hop; flattening it requires target-side alias
+  resolution design (operator destination intent must win when the target is a live page).
+- **Next storefront redirect parity (audit P2-13)** — `redirectDecision` covers a subset of
+  backend routes and module routes 404 without Next rewrites; `apps/next-frontend` work pending.
+- **Diagnostics vs render drift (P2-5), bulk row-level gate/materialization (P2-6), OG
+  all-or-nothing merge (P2-7), title suffix-before-truncate (P2-8), locale path double-prefix
+  (P2-9), diagnostics N+1 reads (P2-11), category SEO dual-store (P2-12), write-only settings
+  without admin consumers (P2-14), admin surface split (P2-15)** — open; evidence and file:line
+  references live in the audit report.
+- **Rust compile/test evidence is host-dependent:** the canonical scoped commands are
+  `cargo check -p rustok-seo` / `cargo test -p rustok-seo` (see `docs/verification/README.md`).
+  Static verification for this module runs via `npm run verify:seo:admin-boundary`,
+  `npm run verify:seo:fba`, and `scripts/verify/verify-seo-*.mjs`.

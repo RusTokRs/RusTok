@@ -55,7 +55,33 @@ impl SeoService {
     ) -> SeoResult<Option<SeoPageContext>> {
         if let Some(redirect) = self.match_redirect(tenant.id, route).await? {
             if redirect.target_url == route {
-                return Err(SeoError::validation("redirect loop detected"));
+                // A stored self-loop must not 5xx the storefront route: serve the
+                // page context without the redirect decision. Writes reject new
+                // cycles up front; legacy rows stay observable via this warning.
+                tracing::warn!(
+                    tenant_id = %tenant.id,
+                    route,
+                    redirect_id = %redirect.id,
+                    "SEO redirect self-loop suppressed at runtime"
+                );
+                return Ok(context);
+            }
+
+            // A stored two-hop cycle (A -> B -> A) would spin the browser:
+            // suppress the redirect instead of forwarding into the loop.
+            if let Some(next) = self
+                .match_redirect(tenant.id, redirect.target_url.as_str())
+                .await?
+                && (next.target_url == route || next.target_url == redirect.target_url)
+            {
+                tracing::warn!(
+                    tenant_id = %tenant.id,
+                    route,
+                    redirect_target = %redirect.target_url,
+                    next_target = %next.target_url,
+                    "SEO redirect two-hop cycle suppressed at runtime"
+                );
+                return Ok(context);
             }
 
             if redirect.target_url.starts_with('/')
