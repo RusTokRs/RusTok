@@ -472,9 +472,9 @@
       "category": "modules",
       "files": 6,
       "loc": 278,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-18 03:00",
+      "notes": "Audited; relocated to apps/next-admin/packages/events, FFA model extracted, Fluent {  } fixed, 7 tests passed."
     },
     "crates/modules/rustok-forum": {
       "name": "rustok-forum",
@@ -2454,9 +2454,9 @@
       "category": "apps",
       "files": 6,
       "loc": 350,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-18 03:00",
+      "notes": "Audited in FS-03; FFA model extracted, Fluent {  } fixed, 7 tests passed, gate passed."
     },
     "apps/next-admin/packages/forum": {
       "name": "forum",
