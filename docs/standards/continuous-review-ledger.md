@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules  
-**Next pending component:** [`crates/modules/rustok-workflow`](../../crates/modules/rustok-workflow) (52 files, 7,328 LOC)  
-**Current main SHA:** `88db57cc4`  
+**Next pending component:** [`crates/modules/rustok-workflow/admin`](../../crates/modules/rustok-workflow/admin) (14 files, 1,434 LOC)  
+**Current main SHA:** `17cd54267`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -169,7 +169,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[`crates/modules/rustok-events-module`](../../crates/modules/rustok-events-module)** (9 files, 580 LOC) — Host runtime adapter for event subscriptions and module event bridge. Audited; verified cycle-free dependency decoupling between `rustok-core` and `rustok-events`, core registration metadata, outbox dependency binding, standard trait implementations (Debug, Clone, Copy, Default, PartialEq, Eq), and fail-safe degraded health deferral to host runtime. 3/3 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-events-module/admin`](../../crates/modules/rustok-events-module/admin)** (8 files, 515 LOC) — FFA admin UI for system event monitoring and subscription inspection. Audited; verified strict FFA boundary (`core.rs` has 0 UI framework imports, pure Rust view-models `EventDeliverySummaryViewModel`, profile selection state machine `evaluate_profile_selection`, and localized label resolver `EventsAdminLabels`), complete bilingual Fluent coverage (`en.ftl`, `ru.ftl`), and dual-path transport isolation (GraphQL / ServerFn). 6/6 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`apps/next-admin/packages/events`](../../apps/next-admin/packages/events)** (8 files, 450 LOC) — Next.js admin package for event stream visualization and DLQ management (formerly `crates/modules/rustok-events-module/next-admin`). Audited; decoupled FFA pure view-model (`events-model.ts`), fixed Fluent named parameter `{ $mode }` in bilingual translations (`en.ftl`, `ru.ftl`), eliminated `as any` casting slop, added 7 Node unit tests, gate passed.
-- [ ] **[`crates/modules/rustok-workflow`](../../crates/modules/rustok-workflow)** (52 files, 7,328 LOC) — Workflow automation engine, state machine transitions, event triggers, and action execution.
+- [x] **[`crates/modules/rustok-workflow`](../../crates/modules/rustok-workflow)** (52 files, 7,328 LOC) — Workflow automation engine, state machine transitions, event triggers, and action execution. Audited; remediated backoff integer overflow with saturating math and capped retries, fixed UTF-8 slicing boundary panic, fixed StepContext set() dropped mutations on empty contexts, added operator aliases (equals/==, not_equals/!=) and on_false support in ConditionStep, aligned delay step with duration_seconds, replaced dummy nil UUID masks with typed VersionNotFound and TemplateNotFound errors, unified permission denial status to 403 Forbidden across all workflow controllers, added 15 new unit tests (23 total), 0 clippy warnings, gate passed.
 - [ ] **[`crates/modules/rustok-workflow/admin`](../../crates/modules/rustok-workflow/admin)** (14 files, 1,434 LOC) — FFA admin UI for workflow rule authoring, trigger configuration, and execution logs.
 - [ ] **[`crates/modules/rustok-email`](../../crates/modules/rustok-email)** (6 files, 784 LOC) — Transactional email sending, SMTP/API provider integration, template rendering, and delivery tracking.
 - [ ] **[`crates/modules/rustok-accounting`](../../crates/modules/rustok-accounting)** (13 files, 417 LOC) — General ledger, double-entry journal entries, chart of accounts, and financial audit records.
@@ -654,7 +654,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 81 | 45,996 | None |  |
 | [ ] | [rustok-translation-targets](../../crates/modules/rustok-translation-targets) | `modules` | 3 | 1,729 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 9 | 14,236 | None |  |
-| [ ] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 52 | 7,328 | None |  |
+| [x] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 52 | 7,328 | 2026-10-18 05:00 | Audited and cleaned. |
 | [ ] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 14 | 1,434 | None |  |
 | [ ] | [fly](../../crates/ui/fly) | `ui` | 111 | 43,169 | None |  |
 | [ ] | [fly-browser](../../crates/ui/fly-browser) | `ui` | 9 | 816 | None |  |
