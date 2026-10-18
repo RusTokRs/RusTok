@@ -110,7 +110,8 @@ fn new_user_onboarding() -> WorkflowTemplate {
             },
             TemplateStep {
                 step_type: StepType::Delay,
-                config: json!({ "duration_seconds": 86400 }),
+                // Inline delay compliant with MAX_INLINE_DELAY_MS (60s)
+                config: json!({ "duration_seconds": 60 }),
                 on_error: OnError::Skip,
                 timeout_ms: None,
             },

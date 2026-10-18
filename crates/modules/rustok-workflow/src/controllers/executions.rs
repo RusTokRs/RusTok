@@ -24,6 +24,13 @@ fn map_workflow_execution_error(
             "Workflow was not found",
             "workflow_not_found",
         ),
+        WorkflowError::VersionNotFound(_, _)
+        | WorkflowError::TemplateNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "workflow_not_found",
+            "Workflow entity was not found",
+            "not_found",
+        ),
         WorkflowError::StepNotFound(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "workflow_execution_failed",
@@ -155,7 +162,7 @@ fn ensure_execution_permission(
     message: &str,
 ) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "workflow_permission_denied",
             message.to_string(),
         ));

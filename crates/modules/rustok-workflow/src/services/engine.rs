@@ -218,7 +218,8 @@ impl WorkflowEngine {
                                 .config
                                 .get("max_retries")
                                 .and_then(Value::as_u64)
-                                .unwrap_or(3) as u32;
+                                .unwrap_or(3)
+                                .min(10) as u32;
                             let retry_base_ms = step
                                 .config
                                 .get("retry_base_ms")
@@ -229,7 +230,8 @@ impl WorkflowEngine {
                             let mut succeeded = false;
 
                             for attempt in 1..=max_retries {
-                                let backoff = retry_base_ms * (2u64.pow(attempt - 1));
+                                let multiplier = 2u64.checked_pow(attempt.saturating_sub(1)).unwrap_or(u64::MAX);
+                                let backoff = retry_base_ms.saturating_mul(multiplier).min(300_000);
                                 warn!(
                                     step_id = %step.id,
                                     attempt = attempt,

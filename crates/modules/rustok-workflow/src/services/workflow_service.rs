@@ -587,7 +587,7 @@ impl WorkflowService {
             .filter(workflow_version::Column::Version.eq(version))
             .one(&self.db)
             .await?
-            .ok_or_else(|| WorkflowError::StepNotFound(Uuid::nil()))?;
+            .ok_or_else(|| WorkflowError::VersionNotFound(workflow_id, version))?;
 
         Ok(WorkflowVersionDetail {
             id: ver.id,
@@ -616,7 +616,7 @@ impl WorkflowService {
             .filter(workflow_version::Column::Version.eq(version))
             .one(&transaction)
             .await?
-            .ok_or_else(|| WorkflowError::StepNotFound(Uuid::nil()))?;
+            .ok_or_else(|| WorkflowError::VersionNotFound(workflow_id, version))?;
 
         let snapshot = ver.snapshot.clone();
 
@@ -704,7 +704,7 @@ impl WorkflowService {
         let template = crate::templates::BUILTIN_TEMPLATES
             .iter()
             .find(|t| t.id == template_id)
-            .ok_or_else(|| WorkflowError::NotFound(Uuid::nil()))?;
+            .ok_or_else(|| WorkflowError::TemplateNotFound(template_id.to_string()))?;
 
         let workflow_id = self
             .create(
