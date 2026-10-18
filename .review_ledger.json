@@ -218,7 +218,7 @@
       "path": "crates/modules/rustok-blog",
       "category": "modules",
       "files": 162,
-      "loc": 41138,
+      "loc": 41141,
       "completed": false,
       "completed_at": null,
       "notes": "Audited 2026-10-17 (docs/audits/rustok-blog-engineering-audit-2026-10-17.md): 4 High, 8 Medium, 10 Low and 1 governance finding; all remediated (phase 1: 4 High + transport<->schema parity gate; phase 2: 8 Medium, 8 Low, verifier-suite repair). Blog verifier suite 66 passed / 0 failed, 23 verifier self-test suites pass, and the canonical module layout/reference-contract verifiers pass again. Not marked completed: scoped cargo check/test/clippy verification is still outstanding.",
@@ -351,7 +351,7 @@
       "path": "crates/modules/rustok-commerce",
       "category": "modules",
       "files": 297,
-      "loc": 132631,
+      "loc": 132898,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -451,10 +451,10 @@
       "path": "crates/modules/rustok-events-module",
       "category": "modules",
       "files": 9,
-      "loc": 571,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 592,
+      "completed": true,
+      "completed_at": "2026-10-18 00:34",
+      "notes": "Audited; cycle-free runtime adapter, standard traits added, 3/3 tests passed, gate passed."
     },
     "crates/modules/rustok-events-module/admin": {
       "name": "admin",
@@ -480,8 +480,8 @@
       "name": "rustok-forum",
       "path": "crates/modules/rustok-forum",
       "category": "modules",
-      "files": 628,
-      "loc": 175016,
+      "files": 629,
+      "loc": 176318,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -491,7 +491,7 @@
       "path": "crates/modules/rustok-forum/admin",
       "category": "modules",
       "files": 35,
-      "loc": 13457,
+      "loc": 13460,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -501,7 +501,7 @@
       "path": "crates/modules/rustok-forum/storefront",
       "category": "modules",
       "files": 26,
-      "loc": 7472,
+      "loc": 7795,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -941,7 +941,7 @@
       "path": "crates/modules/rustok-outbox",
       "category": "modules",
       "files": 26,
-      "loc": 4889,
+      "loc": 5092,
       "completed": true,
       "completed_at": "2026-10-17 08:43",
       "notes": "Audited and cleaned."
@@ -961,7 +961,7 @@
       "path": "crates/modules/rustok-page-builder",
       "category": "modules",
       "files": 116,
-      "loc": 36080,
+      "loc": 36246,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -991,7 +991,7 @@
       "path": "crates/modules/rustok-pages",
       "category": "modules",
       "files": 197,
-      "loc": 56496,
+      "loc": 56545,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1001,7 +1001,7 @@
       "path": "crates/modules/rustok-pages/admin",
       "category": "modules",
       "files": 26,
-      "loc": 7389,
+      "loc": 7438,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1080,8 +1080,8 @@
       "name": "rustok-product",
       "path": "crates/modules/rustok-product",
       "category": "modules",
-      "files": 190,
-      "loc": 81078,
+      "files": 191,
+      "loc": 81881,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1110,8 +1110,8 @@
       "name": "rustok-product-bundles",
       "path": "crates/modules/rustok-product-bundles",
       "category": "modules",
-      "files": 23,
-      "loc": 4602,
+      "files": 25,
+      "loc": 6983,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1121,7 +1121,7 @@
       "path": "crates/modules/rustok-product-bundles/admin",
       "category": "modules",
       "files": 9,
-      "loc": 2617,
+      "loc": 2922,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1140,8 +1140,8 @@
       "name": "rustok-product-relations",
       "path": "crates/modules/rustok-product-relations",
       "category": "modules",
-      "files": 22,
-      "loc": 2720,
+      "files": 24,
+      "loc": 3995,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1151,7 +1151,7 @@
       "path": "crates/modules/rustok-product-relations/admin",
       "category": "modules",
       "files": 9,
-      "loc": 1527,
+      "loc": 1682,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1291,7 +1291,7 @@
       "path": "crates/modules/rustok-search",
       "category": "modules",
       "files": 99,
-      "loc": 34372,
+      "loc": 34711,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1311,7 +1311,7 @@
       "path": "crates/modules/rustok-search/storefront",
       "category": "modules",
       "files": 11,
-      "loc": 4042,
+      "loc": 3970,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1481,7 +1481,7 @@
       "path": "crates/ui/fly",
       "category": "ui",
       "files": 111,
-      "loc": 43009,
+      "loc": 43169,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1711,7 +1711,7 @@
       "path": "crates/utils/rustok-migrations",
       "category": "utils",
       "files": 70,
-      "loc": 15966,
+      "loc": 16084,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1941,7 +1941,7 @@
       "path": "apps/next-admin",
       "category": "apps",
       "files": 540,
-      "loc": 82499,
+      "loc": 84173,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1951,7 +1951,7 @@
       "path": "apps/next-admin/packages/blog",
       "category": "apps",
       "files": 15,
-      "loc": 2122,
+      "loc": 2113,
       "completed": false,
       "completed_at": null,
       "notes": "Audited 2026-10-17: the category and tag surfaces were non-functional (GraphQL documents requested fields the Blog schema never exposed); remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs. All findings of the 2026-10-17 Blog audit are remediated.",
@@ -2022,7 +2022,7 @@
       "path": "apps/next-admin/packages/rustok-product",
       "category": "apps",
       "files": 37,
-      "loc": 11066,
+      "loc": 11120,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2061,8 +2061,8 @@
       "name": "next-frontend",
       "path": "apps/next-frontend",
       "category": "apps",
-      "files": 151,
-      "loc": 24872,
+      "files": 154,
+      "loc": 25261,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2072,7 +2072,7 @@
       "path": "apps/next-frontend/packages/rustok-blog",
       "category": "apps",
       "files": 16,
-      "loc": 1678,
+      "loc": 1676,
       "completed": false,
       "completed_at": null,
       "notes": "Audited 2026-10-17: invalid category query with a swallowed error remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs. All findings of the 2026-10-17 Blog audit are remediated.",
@@ -2463,7 +2463,7 @@
       "path": "apps/next-admin/packages/forum",
       "category": "apps",
       "files": 19,
-      "loc": 4844,
+      "loc": 4900,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2492,8 +2492,8 @@
       "name": "rustok-forum",
       "path": "apps/next-frontend/packages/rustok-forum",
       "category": "apps",
-      "files": 20,
-      "loc": 4414,
+      "files": 23,
+      "loc": 4775,
       "completed": false,
       "completed_at": null,
       "notes": ""
