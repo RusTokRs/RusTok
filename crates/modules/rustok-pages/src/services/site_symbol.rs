@@ -65,7 +65,7 @@ impl SiteSymbolService {
         security: &SecurityContext,
         locale: &str,
     ) -> PagesResult<Vec<SiteSymbolRecord>> {
-        require_scope(security, Action::Read)?;
+        require_all(security, Action::Manage)?;
         let locale = normalize_locale(locale)?;
         site_symbol::Entity::find()
             .filter(site_symbol::Column::TenantId.eq(tenant_id))
@@ -86,7 +86,7 @@ impl SiteSymbolService {
         symbol_id: &str,
         locale: &str,
     ) -> PagesResult<Option<SiteSymbolRecord>> {
-        require_scope(security, Action::Read)?;
+        require_all(security, Action::Manage)?;
         let locale = normalize_locale(locale)?;
         let symbol_id = normalize_id(symbol_id)?;
         site_symbol::Entity::find_by_id((tenant_id, locale, symbol_id))
@@ -193,7 +193,7 @@ impl SiteSymbolService {
             .one(&tx)
             .await?;
         if existing.is_none() {
-            return Err(PagesError::not_found("Site symbol not found"));
+            return Err(PagesError::validation("Site symbol not found"));
         }
 
         let template_refs =
@@ -218,7 +218,7 @@ impl SiteSymbolService {
             .await?;
 
         if deleted.rows_affected != 1 {
-            return Err(PagesError::not_found("Site symbol not found during deletion"));
+            return Err(PagesError::validation("Site symbol not found during deletion"));
         }
 
         tx.commit().await?;
@@ -226,14 +226,6 @@ impl SiteSymbolService {
     }
 }
 
-fn require_scope(security: &SecurityContext, action: Action) -> PagesResult<()> {
-    if security.get_scope(Resource::Pages, action) == PermissionScope::None {
-        return Err(PagesError::forbidden(
-            "Access to site symbol catalog requires Pages permission",
-        ));
-    }
-    Ok(())
-}
 
 fn require_all(security: &SecurityContext, action: Action) -> PagesResult<()> {
     if security.get_scope(Resource::Pages, action) != PermissionScope::All {

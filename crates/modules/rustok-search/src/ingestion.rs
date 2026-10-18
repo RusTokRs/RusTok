@@ -16,6 +16,7 @@ use crate::SearchProjectionSource;
 use crate::blog_projector::BlogSearchProjector;
 use crate::forum_inbox::{ForumProjectionInbox, ForumProjectionScope};
 use crate::forum_projector::ForumSearchProjector;
+use crate::docs_projector::DocsSearchProjector;
 use crate::pages_projector::PagesSearchProjector;
 use crate::projector::SearchProjector;
 
@@ -31,6 +32,8 @@ pub struct SearchIngestionHandler {
     forum_inbox: Option<ForumProjectionInbox>,
     pages_projector: Option<PagesSearchProjector>,
     pages_source: Option<Arc<dyn SearchProjectionSource>>,
+    docs_projector: Option<DocsSearchProjector>,
+    docs_source: Option<Arc<dyn SearchProjectionSource>>,
 }
 
 impl SearchIngestionHandler {
@@ -50,7 +53,7 @@ impl SearchIngestionHandler {
         blog_source: Option<Arc<dyn SearchProjectionSource>>,
         forum_source: Option<Arc<dyn SearchProjectionSource>>,
     ) -> Self {
-        Self::with_all_projection_sources(db, blog_source, forum_source, None)
+        Self::with_all_projection_sources(db, blog_source, forum_source, None, None)
     }
 
     pub fn with_all_projection_sources(
@@ -58,6 +61,7 @@ impl SearchIngestionHandler {
         blog_source: Option<Arc<dyn SearchProjectionSource>>,
         forum_source: Option<Arc<dyn SearchProjectionSource>>,
         pages_source: Option<Arc<dyn SearchProjectionSource>>,
+        docs_source: Option<Arc<dyn SearchProjectionSource>>,
     ) -> Self {
         let forum_projector =
             forum_source.map(|source| ForumSearchProjector::new(db.clone(), source));
@@ -66,6 +70,8 @@ impl SearchIngestionHandler {
             .map(|_| ForumProjectionInbox::new(db.clone()));
         let pages_projector =
             pages_source.clone().map(|source| PagesSearchProjector::new(db.clone(), source));
+        let docs_projector =
+            docs_source.clone().map(|source| DocsSearchProjector::new(db.clone(), source));
         Self {
             projector: SearchProjector::new(db.clone()),
             blog_projector: BlogSearchProjector::new(db),
@@ -74,6 +80,8 @@ impl SearchIngestionHandler {
             forum_inbox,
             pages_projector,
             pages_source,
+            docs_projector,
+            docs_source,
         }
     }
 
@@ -85,6 +93,10 @@ impl SearchIngestionHandler {
         self.pages_source.as_ref()
     }
 
+    pub fn docs_source(&self) -> Option<&Arc<dyn SearchProjectionSource>> {
+        self.docs_source.as_ref()
+    }
+
     async fn rebuild_tenant(&self, tenant_id: Uuid) -> HandlerResult {
         self.projector.rebuild_tenant(tenant_id).await?;
         self.blog_projector.rebuild_tenant(tenant_id).await?;
@@ -92,6 +104,9 @@ impl SearchIngestionHandler {
             projector.rebuild_tenant(tenant_id).await?;
         }
         if let Some(projector) = &self.pages_projector {
+            projector.rebuild_tenant(tenant_id).await?;
+        }
+        if let Some(projector) = &self.docs_projector {
             projector.rebuild_tenant(tenant_id).await?;
         }
         Ok(())
@@ -125,12 +140,35 @@ impl SearchIngestionHandler {
                 }
                 Ok(())
             }
+            ("docs" | "doc" | "doc_page", Some(doc_id)) => {
+                if let Some(projector) = &self.docs_projector {
+                    projector.refresh_entity(tenant_id, "doc_page", doc_id).await?;
+                }
+                Ok(())
+            }
+            ("docs" | "doc" | "doc_page", None) => {
+                if let Some(projector) = &self.docs_projector {
+                    projector.rebuild_tenant(tenant_id).await?;
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
 
     async fn handle_pages_module_toggle(&self, tenant_id: Uuid, enabled: bool) -> HandlerResult {
         let Some(projector) = &self.pages_projector else {
+            return Ok(());
+        };
+        if enabled {
+            projector.rebuild_tenant(tenant_id).await
+        } else {
+            projector.delete_tenant(tenant_id).await
+        }
+    }
+
+    async fn handle_docs_module_toggle(&self, tenant_id: Uuid, enabled: bool) -> HandlerResult {
+        let Some(projector) = &self.docs_projector else {
             return Ok(());
         };
         if enabled {
@@ -276,6 +314,7 @@ impl EventHandler for SearchIngestionHandler {
                 module_slug == "blog"
                     || (module_slug == "forum" && self.forum_projector.is_some())
                     || (module_slug == "pages" && self.pages_projector.is_some())
+                    || (module_slug == "docs" && self.docs_projector.is_some())
             }
             DomainEvent::ReindexRequested { target_type, .. } => {
                 target_type == "search"
@@ -289,6 +328,8 @@ impl EventHandler for SearchIngestionHandler {
                         ))
                     || (self.pages_projector.is_some()
                         && matches!(target_type.as_str(), "pages" | "page"))
+                    || (self.docs_projector.is_some()
+                        && matches!(target_type.as_str(), "docs" | "doc" | "doc_page"))
             }
             _ => false,
         }
@@ -453,6 +494,14 @@ impl EventHandler for SearchIngestionHandler {
                     ..
                 } if module_slug == "pages" => {
                     self.handle_pages_module_toggle(envelope.tenant_id, *enabled)
+                        .await
+                }
+                DomainEvent::TenantModuleToggled {
+                    module_slug,
+                    enabled,
+                    ..
+                } if module_slug == "docs" => {
+                    self.handle_docs_module_toggle(envelope.tenant_id, *enabled)
                         .await
                 }
                 DomainEvent::LocaleEnabled { .. }

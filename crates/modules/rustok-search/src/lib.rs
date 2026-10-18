@@ -25,6 +25,7 @@ pub mod graphql;
 pub mod ingestion;
 pub mod migrations;
 pub mod models;
+pub(crate) mod docs_projector;
 pub(crate) mod pages_projector;
 pub mod pg_engine;
 pub mod ports;
@@ -178,11 +179,15 @@ impl RusToKModule for SearchModule {
         let pages_source = sources
             .as_ref()
             .and_then(|s| s.build_with_extensions("pages", ctx.db.clone(), ctx.extensions));
+        let docs_source = sources
+            .as_ref()
+            .and_then(|s| s.build_with_extensions("docs", ctx.db.clone(), ctx.extensions));
         registry.register(SearchIngestionHandler::with_all_projection_sources(
             ctx.db.clone(),
             blog_source,
             forum_source,
             pages_source,
+            docs_source,
         ));
     }
 

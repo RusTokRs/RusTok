@@ -13,6 +13,10 @@ const PAGES_SOURCE_MODULE: &str = "pages";
 const PAGE_ENTITY_TYPE: &str = "page";
 const PAGES_STOREFRONT_ROUTE: &str = "/modules/pages";
 const MAX_PAGE_SLUG_LEN: usize = 255;
+const DOCS_SOURCE_MODULE: &str = "docs";
+const DOC_PAGE_ENTITY_TYPE: &str = "doc_page";
+const DOCS_STOREFRONT_ROUTE: &str = "/modules/docs";
+const MAX_DOC_SLUG_LEN: usize = 255;
 const FORUM_SOURCE_MODULE: &str = "forum";
 const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
 const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic";
@@ -147,6 +151,9 @@ pub fn canonical_search_result_url(value: &SearchResultItem) -> Option<String> {
         PAGE_ENTITY_TYPE if value.source_module == PAGES_SOURCE_MODULE => {
             canonical_page_result_url(&value.payload)
         }
+        DOC_PAGE_ENTITY_TYPE if value.source_module == DOCS_SOURCE_MODULE => {
+            canonical_doc_result_url(&value.payload)
+        }
         FORUM_CATEGORY_ENTITY_TYPE | FORUM_TOPIC_ENTITY_TYPE | FORUM_REPLY_ENTITY_TYPE
             if value.source_module == FORUM_SOURCE_MODULE =>
         {
@@ -204,6 +211,23 @@ fn valid_page_slug(slug: &str) -> bool {
         && slug
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '/' | '.'))
+}
+
+fn canonical_doc_result_url(payload: &serde_json::Value) -> Option<String> {
+    let slug = payload.get("slug")?.as_str()?.trim();
+    if !valid_doc_slug(slug) {
+        return None;
+    }
+
+    Some(format!("{DOCS_STOREFRONT_ROUTE}?slug={slug}"))
+}
+
+fn valid_doc_slug(slug: &str) -> bool {
+    !slug.is_empty()
+        && slug.len() <= MAX_DOC_SLUG_LEN
+        && slug
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '/'))
 }
 
 fn canonical_forum_projected_result_url(value: &SearchResultItem) -> Option<String> {
@@ -709,6 +733,30 @@ mod tests {
         assert_eq!(canonical_search_result_url(&empty_slug), None);
 
         let missing_slug = item("page", "pages", json!({}));
+        assert_eq!(canonical_search_result_url(&missing_slug), None);
+    }
+
+    #[test]
+    fn canonical_url_preserves_doc_contract() {
+        let valid_doc = item("doc_page", "docs", json!({ "slug": "getting-started" }));
+        assert_eq!(
+            canonical_search_result_url(&valid_doc).as_deref(),
+            Some("/modules/docs?slug=getting-started")
+        );
+
+        let nested_doc = item("doc_page", "docs", json!({ "slug": "architecture/crdt" }));
+        assert_eq!(
+            canonical_search_result_url(&nested_doc).as_deref(),
+            Some("/modules/docs?slug=architecture/crdt")
+        );
+
+        let invalid_slug = item("doc_page", "docs", json!({ "slug": "doc?inject=1" }));
+        assert_eq!(canonical_search_result_url(&invalid_slug), None);
+
+        let empty_slug = item("doc_page", "docs", json!({ "slug": "" }));
+        assert_eq!(canonical_search_result_url(&empty_slug), None);
+
+        let missing_slug = item("doc_page", "docs", json!({}));
         assert_eq!(canonical_search_result_url(&missing_slug), None);
     }
 }

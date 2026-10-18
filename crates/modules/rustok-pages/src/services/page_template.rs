@@ -76,6 +76,50 @@ impl PageTemplateService {
             .collect()
     }
 
+    /// Retrieve a single template by key. The `default` key returns the virtual empty layout.
+    pub async fn get(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        key: &str,
+        locale: &str,
+    ) -> PagesResult<Option<PageTemplateRecord>> {
+        require_all(security, Action::Manage)?;
+        let locale = normalize_locale(locale)?;
+        if key == "default" {
+            return Ok(Some(PageTemplateRecord {
+                key: "default".to_string(),
+                locale,
+                header_symbol_ids: Vec::new(),
+                footer_symbol_ids: Vec::new(),
+                revision: 0,
+            }));
+        }
+        let key = normalize_key(key)?;
+        let row = page_template::Entity::find_by_id((tenant_id, locale, key))
+            .one(&self.db)
+            .await?;
+        row.map(TryInto::try_into).transpose()
+    }
+
+    /// List available template keys for a tenant/locale, always including the virtual `default` key.
+    pub async fn list_keys(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        locale: &str,
+    ) -> PagesResult<Vec<String>> {
+        require_all(security, Action::Manage)?;
+        let mut keys = vec!["default".to_string()];
+        let items = self.list(tenant_id, security, locale).await?;
+        for item in items {
+            if item.key != "default" && !keys.contains(&item.key) {
+                keys.push(item.key);
+            }
+        }
+        Ok(keys)
+    }
+
     /// Preview a selected layout against a supplied Fly document without saving
     /// or modifying a published artifact. The canonical symbol catalog wins;
     /// static publish sanitization is applied before returning the projection.
@@ -275,6 +319,7 @@ impl PageTemplateService {
         Ok(())
     }
 }
+
 
 fn require_all(security: &SecurityContext, action: Action) -> PagesResult<()> {
     if security.get_scope(Resource::Pages, action) != PermissionScope::All {
