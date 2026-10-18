@@ -246,3 +246,28 @@ pub struct PageMetadataPatch {
     pub template: Option<String>,
     pub channel_slugs: Vec<String>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageTemplateSummary {
+    pub key: String,
+    pub locale: String,
+    #[serde(rename = "headerSymbolIds", default)]
+    pub header_symbol_ids: Vec<String>,
+    #[serde(rename = "footerSymbolIds", default)]
+    pub footer_symbol_ids: Vec<String>,
+    pub revision: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SiteSymbolSummary {
+    #[serde(rename = "symbolId")]
+    pub symbol_id: String,
+    pub locale: String,
+    pub name: Option<String>,
+    #[serde(rename = "contentJson")]
+    pub content_json: String,
+    #[serde(rename = "createdAt", default)]
+    pub created_at: String,
+    #[serde(rename = "updatedAt", default)]
+    pub updated_at: String,
+}

@@ -5,7 +5,8 @@ use std::error::Error;
 
 use chrono::Utc;
 use rustok_core::{MigrationSource, SecurityContext};
-use rustok_pages::entities::{page_body, page_template};
+use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
+use rustok_pages::entities::page_body;
 use rustok_pages::{
     PageTemplateService, PagesModule, SaveSiteSymbolInput, SiteSymbolService,
 };
@@ -270,7 +271,7 @@ async fn deletion_reference_protection() -> TestResult<()> {
         page_id: Set(page_id),
         locale: Set("en".into()),
         content: Set(body_content),
-        format: Set("builder_document".into()),
+        format: Set(PAGE_BUILDER_DOCUMENT_FORMAT.into()),
         updated_at: Set(Utc::now().into()),
     }
     .insert(&db)

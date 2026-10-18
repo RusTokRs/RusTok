@@ -43,6 +43,7 @@ pub fn PagesAdmin() -> impl IntoView {
         .locale
         .clone()
         .unwrap_or_else(|| "en".to_string());
+    let templates_locale = default_locale.clone();
 
     let list_token = token;
     let list_tenant = tenant;
@@ -116,6 +117,8 @@ pub fn PagesAdmin() -> impl IntoView {
         "Failed to load the selected page workspace",
     );
 
+    let main_tab = RwSignal::new("pages");
+
     view! {
         <div class="space-y-6">
             <header class="rounded-2xl border border-border bg-card p-6 shadow-sm">
@@ -124,17 +127,52 @@ pub fn PagesAdmin() -> impl IntoView {
                         <h1 class="text-2xl font-semibold text-card-foreground">{title}</h1>
                         <p class="mt-2 max-w-3xl text-sm text-muted-foreground">{subtitle}</p>
                     </div>
-                    <button
-                        type="button"
-                        class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
-                        on:click=move |_| clear_writer.clear_key(AdminQueryKey::PageId.as_str())
-                    >
-                        "New page"
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button
+                            type="button"
+                            class=move || {
+                                let is_active = main_tab.get() == "pages";
+                                if is_active {
+                                    "rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm"
+                                } else {
+                                    "rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted text-muted-foreground"
+                                }
+                            }
+                            on:click=move |_| main_tab.set("pages")
+                        >
+                            "Pages"
+                        </button>
+                        <button
+                            type="button"
+                            class=move || {
+                                let is_active = main_tab.get() == "templates";
+                                if is_active {
+                                    "rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm"
+                                } else {
+                                    "rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted text-muted-foreground"
+                                }
+                            }
+                            on:click=move |_| main_tab.set("templates")
+                        >
+                            "Templates & Symbols"
+                        </button>
+                        {move || (main_tab.get() == "pages").then(|| {
+                            let writer = clear_writer.clone();
+                            view! {
+                                <button
+                                    type="button"
+                                    class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
+                                    on:click=move |_| writer.clear_key(AdminQueryKey::PageId.as_str())
+                                >
+                                    "New page"
+                                </button>
+                            }
+                        })}
+                    </div>
                 </div>
             </header>
 
-            <div class="grid gap-6 xl:grid-cols-[20rem_minmax(0,1fr)]">
+            <div class=move || if main_tab.get() == "pages" { "grid gap-6 xl:grid-cols-[20rem_minmax(0,1fr)]" } else { "hidden" }>
                 <aside class="space-y-4">
                     <CreatePageCard refresh_generation default_locale=default_locale.clone() />
                     <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
@@ -201,6 +239,10 @@ pub fn PagesAdmin() -> impl IntoView {
                     </Suspense>
                 </main>
             </div>
+
+            <div class=move || if main_tab.get() == "templates" { "block" } else { "hidden" }>
+                <crate::templates_admin::TemplatesAdmin default_locale=templates_locale />
+            </div>
         </div>
     }
 }
@@ -216,8 +258,23 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
     let locale = RwSignal::new(default_locale);
     let channel_slugs = RwSignal::new(String::new());
     let selected_starter_id = RwSignal::new("blank".to_string());
+    let selected_template = RwSignal::new("default".to_string());
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
+
+    let template_token = token;
+    let template_tenant = tenant;
+    let template_locale = locale;
+    let template_keys = LocalResource::new(move || {
+        let token = template_token.get();
+        let tenant = template_tenant.get();
+        let locale = template_locale.get();
+        async move {
+            transport::fetch_template_keys(token, tenant, locale)
+                .await
+                .unwrap_or_else(|_| vec!["default".to_string()])
+        }
+    });
 
     let submit = move |event: SubmitEvent| {
         event.prevent_default();
@@ -235,6 +292,7 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
         let locale_value = core::ui_text_or_default(&locale.get_untracked());
         let channels_value = channel_slugs.get_untracked();
         let starter_id_value = selected_starter_id.get_untracked();
+        let template_value = selected_template.get_untracked();
         let draft = core::build_create_page_draft_with_starter(
             core::PageDraftFormInput {
                 locale: &locale_value,
@@ -242,6 +300,7 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
                 slug: &slug_value,
                 channel_slugs: &channels_value,
                 starter_id: Some(&starter_id_value),
+                template: Some(&template_value),
             },
         );
         if let Some(field) = core::missing_required_page_field(&draft) {
@@ -262,6 +321,7 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
                     slug_touched.set(false);
                     channel_slugs.set(String::new());
                     selected_starter_id.set("blank".to_string());
+                    selected_template.set("default".to_string());
                     refresh_generation
                         .update(|generation| *generation = generation.wrapping_add(1));
                     writer.replace_value(AdminQueryKey::PageId.as_str(), page.id);
@@ -326,6 +386,33 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
                     />
                     </label>
                 </div>
+                <label class="block text-sm font-medium text-card-foreground">
+                    "Layout Template"
+                    <select
+                        class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                        prop:value=move || selected_template.get()
+                        on:change=move |event| selected_template.set(event_target_value(&event))
+                    >
+                        <Suspense fallback=|| view! { <option value="default">"default (loading...)"</option> }>
+                            {move || {
+                                let keys = template_keys.get().unwrap_or_else(|| vec!["default".to_string()]);
+                                keys.into_iter().map(|key| {
+                                    let label = if key == "default" {
+                                        "default (Canvas Only)".to_string()
+                                    } else {
+                                        key.clone()
+                                    };
+                                    let is_selected_key = key.clone();
+                                    view! {
+                                        <option value=key.clone() selected=move || selected_template.get() == is_selected_key>
+                                            {label}
+                                        </option>
+                                    }
+                                }).collect_view()
+                            }}
+                        </Suspense>
+                    </select>
+                </label>
                 <div class="space-y-1.5 pt-1">
                     <span class="block text-xs font-semibold text-card-foreground">
                         "Starter Template"

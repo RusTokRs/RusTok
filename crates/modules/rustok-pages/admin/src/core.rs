@@ -52,6 +52,7 @@ pub struct PageDraftFormInput<'a> {
     pub slug: &'a str,
     pub channel_slugs: &'a str,
     pub starter_id: Option<&'a str>,
+    pub template: Option<&'a str>,
 }
 
 pub fn build_create_page_draft(
@@ -63,7 +64,7 @@ pub fn build_create_page_draft(
         title: ui_text_or_default(input.title),
         slug: ui_text_or_default(input.slug),
         document: project_data,
-        template: Some("default".to_string()),
+        template: input.template.and_then(optional_ui_text).or_else(|| Some("default".to_string())),
         channel_slugs: parse_channel_slugs(input.channel_slugs),
     }
 }
@@ -234,4 +235,112 @@ mod tests {
         let err = parse_project_data("[\"array\"]").unwrap_err();
         assert_eq!(err, ProjectDataParseError::RootNotObject);
     }
+
+    #[test]
+    fn template_key_validation() {
+        assert_eq!(validate_template_key("landing").unwrap(), "landing");
+        assert_eq!(validate_template_key("MAIN_PAGE").unwrap(), "main_page");
+        assert_eq!(validate_template_key("with-dash_123").unwrap(), "with-dash_123");
+        assert_eq!(validate_template_key("").unwrap_err(), TemplateValidationError::EmptyKey);
+        assert_eq!(validate_template_key("bad key!").unwrap_err(), TemplateValidationError::InvalidCharacters);
+    }
+
+    #[test]
+    fn parse_symbol_id_list_splits_and_normalizes() {
+        assert_eq!(
+            parse_symbol_id_list("header, footer, nav-bar "),
+            vec!["header".to_string(), "footer".to_string(), "nav-bar".to_string()]
+        );
+    }
+
+    #[test]
+    fn symbol_id_and_content_validation() {
+        assert_eq!(validate_symbol_id("site-header").unwrap(), "site-header");
+        assert_eq!(validate_symbol_id("").unwrap_err(), SymbolValidationError::EmptyId);
+        assert_eq!(validate_symbol_id("bad symbol!").unwrap_err(), SymbolValidationError::InvalidCharacters);
+
+        let valid_json = r#"{"type": "section", "components": []}"#;
+        assert!(validate_symbol_content_json(valid_json).is_ok());
+        assert!(matches!(
+            validate_symbol_content_json("not json").unwrap_err(),
+            SymbolValidationError::InvalidJson(_)
+        ));
+        assert_eq!(
+            validate_symbol_content_json("[1, 2, 3]").unwrap_err(),
+            SymbolValidationError::RootNotObject
+        );
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TemplateValidationError {
+    EmptyKey,
+    InvalidCharacters,
+    KeyTooLong,
+}
+
+pub fn validate_template_key(key: &str) -> Result<String, TemplateValidationError> {
+    let trimmed = key.trim();
+    if trimmed.is_empty() {
+        return Err(TemplateValidationError::EmptyKey);
+    }
+    if trimmed.len() > 64 {
+        return Err(TemplateValidationError::KeyTooLong);
+    }
+    if !trimmed.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') {
+        return Err(TemplateValidationError::InvalidCharacters);
+    }
+    Ok(trimmed.to_ascii_lowercase())
+}
+
+pub fn parse_symbol_id_list(input: &str) -> Vec<String> {
+    parse_ui_csv(input)
+        .into_iter()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SymbolValidationError {
+    EmptyId,
+    IdTooLong,
+    InvalidCharacters,
+    InvalidJson(String),
+    RootNotObject,
+}
+
+pub fn validate_symbol_id(id: &str) -> Result<String, SymbolValidationError> {
+    let trimmed = id.trim();
+    if trimmed.is_empty() {
+        return Err(SymbolValidationError::EmptyId);
+    }
+    if trimmed.len() > 64 {
+        return Err(SymbolValidationError::IdTooLong);
+    }
+    if !trimmed.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') {
+        return Err(SymbolValidationError::InvalidCharacters);
+    }
+    Ok(trimmed.to_ascii_lowercase())
+}
+
+pub fn validate_symbol_content_json(content: &str) -> Result<Value, SymbolValidationError> {
+    let trimmed = content.trim();
+    let parsed: Value = serde_json::from_str(trimmed)
+        .map_err(|e| SymbolValidationError::InvalidJson(e.to_string()))?;
+    if !parsed.is_object() {
+        return Err(SymbolValidationError::RootNotObject);
+    }
+    Ok(parsed)
+}
+
+pub fn default_symbol_content_json(name: &str) -> String {
+    let label = if name.trim().is_empty() {
+        "Symbol Component"
+    } else {
+        name.trim()
+    };
+    format!(
+        "{{\n  \"type\": \"section\",\n  \"classes\": [\"site-symbol-wrapper\"],\n  \"components\": [\n    {{\n      \"type\": \"text\",\n      \"content\": \"{label}\"\n    }}\n  ]\n}}"
+    )
 }
