@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules  
-**Next pending component:** [`crates/modules/rustok-email`](../../crates/modules/rustok-email) (6 files, 784 LOC)  
-**Current main SHA:** `9b0f7086b`  
+**Next pending component:** [`crates/modules/rustok-accounting`](../../crates/modules/rustok-accounting) (13 files, 417 LOC)  
+**Current main SHA:** `f5498fa7d`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -171,7 +171,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[`apps/next-admin/packages/events`](../../apps/next-admin/packages/events)** (8 files, 450 LOC) — Next.js admin package for event stream visualization and DLQ management (formerly `crates/modules/rustok-events-module/next-admin`). Audited; decoupled FFA pure view-model (`events-model.ts`), fixed Fluent named parameter `{ $mode }` in bilingual translations (`en.ftl`, `ru.ftl`), eliminated `as any` casting slop, added 7 Node unit tests, gate passed.
 - [x] **[`crates/modules/rustok-workflow`](../../crates/modules/rustok-workflow)** (52 files, 7,328 LOC) — Workflow automation engine, state machine transitions, event triggers, and action execution. Audited; remediated backoff integer overflow with saturating math and capped retries, fixed UTF-8 slicing boundary panic, fixed StepContext set() dropped mutations on empty contexts, added operator aliases (equals/==, not_equals/!=) and on_false support in ConditionStep, aligned delay step with duration_seconds, replaced dummy nil UUID masks with typed VersionNotFound and TemplateNotFound errors, unified permission denial status to 403 Forbidden across all workflow controllers, added 15 new unit tests (23 total), 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-workflow/admin`](../../crates/modules/rustok-workflow/admin)** (14 files, 1,434 LOC) — FFA admin UI for workflow rule authoring, trigger configuration, and execution logs. Audited; added user action error feedback banner in TemplateGallery, added missing bilingual Fluent keys (table-clear, table-selected, search-placeholder, total, error-createTemplate) in en.ftl and ru.ftl, made status filter equality exact to prevent accidental substring collisions, normalized route_segment to prevent double /modules prefix, mapped typed VersionNotFound and TemplateNotFound errors in native server adapter, added tests in core/presentation, core/command, and core/navigation, 13/13 tests passed, 0 clippy warnings, gate passed.
-- [ ] **[`crates/modules/rustok-email`](../../crates/modules/rustok-email)** (6 files, 784 LOC) — Transactional email sending, SMTP/API provider integration, template rendering, and delivery tracking.
+- [x] **[`crates/modules/rustok-email`](../../crates/modules/rustok-email)** (6 files, 784 LOC) — Transactional email sending, SMTP/API provider integration, template rendering, and delivery tracking. Audited; added recipient mailbox syntax and CRLF injection validation to delivery request port, handled null Tera vars gracefully as empty context, normalized password_reset_url query separator with trailing delimiter support, implemented standard derives on EmailModule, EmailConfig, SmtpConfig, PasswordResetEmail, and RenderedEmail, added 5 new unit tests (16 total), 0 clippy warnings, gate passed.
 - [ ] **[`crates/modules/rustok-accounting`](../../crates/modules/rustok-accounting)** (13 files, 417 LOC) — General ledger, double-entry journal entries, chart of accounts, and financial audit records.
 
 ---
@@ -541,7 +541,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [admin](../../crates/modules/rustok-customer/admin) | `modules` | 9 | 2,779 | None |  |
 | [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 34 | 15,716 | None |  |
 | [ ] | [rustok-docs](../../crates/modules/rustok-docs) | `modules` | 21 | 2,957 | None |  |
-| [ ] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 6 | 784 | None |  |
+| [x] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 6 | 784 | 2026-10-18 06:00 | Audited and cleaned. |
 | [x] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 9 | 838 | 2026-10-18 00:34 | Audited; cycle-free runtime adapter, standard traits added, 3/3 tests passed, gate passed. |
 | [x] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 8 | 754 | 2026-10-18 02:01 | Audited; FFA boundary verified, view-models and full Fluent localization, 6/6 tests passed, gate passed. |
 | [x] | [next-admin](../../apps/next-admin/packages/events) | `modules` | 8 | 450 | 2026-10-18 03:00 | Audited; relocated to apps/next-admin/packages/events, FFA model extracted, Fluent { $mode } fixed, 7 tests passed. |

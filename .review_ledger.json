@@ -442,9 +442,9 @@
       "category": "modules",
       "files": 6,
       "loc": 784,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-18T06:00:00Z",
+      "notes": "Added recipient mailbox syntax and CRLF injection validation to delivery request port, handled null Tera vars gracefully as empty context, normalized password_reset_url query separator with trailing delimiter support, implemented standard derives on EmailModule, EmailConfig, SmtpConfig, PasswordResetEmail, and RenderedEmail, added 5 new unit tests (16 total), 0 clippy warnings, gate passed."
     },
     "crates/modules/rustok-events-module": {
       "name": "rustok-events-module",
