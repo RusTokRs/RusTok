@@ -451,7 +451,7 @@
       "path": "crates/modules/rustok-events-module",
       "category": "modules",
       "files": 9,
-      "loc": 592,
+      "loc": 838,
       "completed": true,
       "completed_at": "2026-10-18 00:34",
       "notes": "Audited; cycle-free runtime adapter, standard traits added, 3/3 tests passed, gate passed."
@@ -461,10 +461,10 @@
       "path": "crates/modules/rustok-events-module/admin",
       "category": "modules",
       "files": 8,
-      "loc": 508,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 754,
+      "completed": true,
+      "completed_at": "2026-10-18 02:01",
+      "notes": "Audited; FFA boundary verified, view-models and full Fluent localization, 6/6 tests passed, gate passed."
     },
     "crates/modules/rustok-events-module/next-admin": {
       "name": "next-admin",

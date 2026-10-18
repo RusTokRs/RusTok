@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules  
-**Next pending component:** [`crates/modules/rustok-events-module/admin`](../../crates/modules/rustok-events-module/admin) (8 files, 508 LOC)  
-**Current main SHA:** `3bb9be8e1`  
+**Next pending component:** [`crates/modules/rustok-events-module/next-admin`](../../crates/modules/rustok-events-module/next-admin) (6 files, 278 LOC)  
+**Current main SHA:** `c8bb75f51`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -111,7 +111,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 
 - [x] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (1/1 completed)
 - [x] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (10/10 completed)
-- [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (18/24 completed)
+- [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (19/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (0/39 completed)
 - [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (0/26 completed)
@@ -147,7 +147,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules
-*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (18/24 completed)
+*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (19/24 completed)
 
 - [x] **[`crates/modules/rustok-tenant`](../../crates/modules/rustok-tenant)** (28 files, 4,305 LOC) — Tenant lifecycle, provisioning, slug/domain resolution, locale policy aggregate, input sanitization, and settings schema. Audited via CodeGraph; verified transactional outbox publishing on mutations, SHA-256 idempotency receipts for locale policy CAS updates, settings schema validation, and fail-closed tenant resolution. 24/24 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-tenant/admin`](../../crates/modules/rustok-tenant/admin)** (8 files, 835 LOC) — FFA Leptos admin UI components for tenant provisioning, domain management, and locale settings. Audited via CodeGraph; verified strict FFA separation (pure Rust view models/state in `core.rs`, no domain logic in Leptos components), transport isolation with tenant authorization boundary, and catalog i18n diagnostics. 7/7 tests passed, 0 clippy warnings, gate passed.
@@ -167,7 +167,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[`crates/modules/rustok-modules/cli`](../../crates/modules/rustok-modules/cli)** (1 files, 1,813 LOC) — CLI tool for module scaffolding, manifest verification, and lifecycle management. Audited via CodeGraph; verified standalone module authoring commands (init, build, inspect, publish), path traversal rejection, dry-run safety, and tenant command context UUID verification. 6/6 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-modules-translation`](../../crates/modules/rustok-modules-translation)** (1 files, 822 LOC) — Module descriptor translation target bindings and localized manifest metadata. Audited via CodeGraph; verified neutral Translation target SPI mapping for static settings, conservative field descriptors, separate source/target clocks, structured rejection without owner mutations, and tenant context isolation. 9/9 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-events-module`](../../crates/modules/rustok-events-module)** (9 files, 580 LOC) — Host runtime adapter for event subscriptions and module event bridge. Audited; verified cycle-free dependency decoupling between `rustok-core` and `rustok-events`, core registration metadata, outbox dependency binding, standard trait implementations (Debug, Clone, Copy, Default, PartialEq, Eq), and fail-safe degraded health deferral to host runtime. 3/3 tests passed, 0 clippy warnings, gate passed.
-- [ ] **[`crates/modules/rustok-events-module/admin`](../../crates/modules/rustok-events-module/admin)** (8 files, 508 LOC) — FFA admin UI for system event monitoring and subscription inspection.
+- [x] **[`crates/modules/rustok-events-module/admin`](../../crates/modules/rustok-events-module/admin)** (8 files, 515 LOC) — FFA admin UI for system event monitoring and subscription inspection. Audited; verified strict FFA boundary (`core.rs` has 0 UI framework imports, pure Rust view-models `EventDeliverySummaryViewModel`, profile selection state machine `evaluate_profile_selection`, and localized label resolver `EventsAdminLabels`), complete bilingual Fluent coverage (`en.ftl`, `ru.ftl`), and dual-path transport isolation (GraphQL / ServerFn). 6/6 tests passed, 0 clippy warnings, gate passed.
 - [ ] **[`crates/modules/rustok-events-module/next-admin`](../../crates/modules/rustok-events-module/next-admin)** (6 files, 278 LOC) — Next.js admin package for event stream visualization and DLQ management.
 - [ ] **[`crates/modules/rustok-workflow`](../../crates/modules/rustok-workflow)** (52 files, 7,328 LOC) — Workflow automation engine, state machine transitions, event triggers, and action execution.
 - [ ] **[`crates/modules/rustok-workflow/admin`](../../crates/modules/rustok-workflow/admin)** (14 files, 1,434 LOC) — FFA admin UI for workflow rule authoring, trigger configuration, and execution logs.
@@ -542,8 +542,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 34 | 15,716 | None |  |
 | [ ] | [rustok-docs](../../crates/modules/rustok-docs) | `modules` | 21 | 2,957 | None |  |
 | [ ] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 6 | 784 | None |  |
-| [x] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 9 | 592 | 2026-10-18 00:34 | Audited; cycle-free runtime adapter, standard traits added, 3/3 tests passed, gate passed. |
-| [ ] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 8 | 508 | None |  |
+| [x] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 9 | 838 | 2026-10-18 00:34 | Audited; cycle-free runtime adapter, standard traits added, 3/3 tests passed, gate passed. |
+| [x] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 8 | 754 | 2026-10-18 02:01 | Audited; FFA boundary verified, view-models and full Fluent localization, 6/6 tests passed, gate passed. |
 | [ ] | [next-admin](../../crates/modules/rustok-events-module/next-admin) | `modules` | 6 | 278 | None |  |
 | [ ] | [rustok-forms](../../crates/modules/rustok-forms) | `modules` | 17 | 1,877 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forms/admin) | `modules` | 4 | 274 | None |  |
