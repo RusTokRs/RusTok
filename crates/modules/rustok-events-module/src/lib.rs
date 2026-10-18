@@ -10,6 +10,7 @@ use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModul
 use sea_orm_migration::MigrationTrait;
 
 /// Core runtime module for the platform event capability.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct EventsModule;
 
 impl MigrationSource for EventsModule {
@@ -71,5 +72,13 @@ mod tests {
         assert!(!module.description().is_empty());
         assert!(!module.version().is_empty());
         assert!(module.migrations().is_empty());
+    }
+
+    #[test]
+    fn events_module_implements_standard_traits() {
+        let module: EventsModule = Default::default();
+        let cloned = module;
+        assert_eq!(module, cloned);
+        assert_eq!(format!("{module:?}"), "EventsModule");
     }
 }
