@@ -326,7 +326,11 @@ impl SeoService {
         Ok(None)
     }
 
-    async fn merge_page_context(
+    /// Builds the effective page context for one target. This is the single
+    /// formula for render, diagnostics, and previews: canonical host/slash/
+    /// protocol normalization, metadata suffix/limits, OG settings, hreflang
+    /// gating, and rich-snippet gating all live here so consumers cannot drift.
+    pub(super) async fn merge_page_context(
         &self,
         tenant: &TenantContext,
         state: TargetState,

@@ -11,7 +11,7 @@
 - keep public forum topic SEO resolution channel-aware when a topic is restricted by forum channel access
 - resolve effective metadata through explicit SEO > template-generated SEO > domain/entity fallback
 - run bulk remediation with safe apply modes for preview, missing-only materialization, generated-only overwrite, and explicit-force overwrite
-- expose diagnostics with readiness scoring, issue aggregates, hreflang gap detection, canonical redirect chain/loop detection, `cross_link_gap` hints, and image descriptor quality checks (`missing_image_alt`, `missing_image_size`) for SEO-critical targets
+- expose diagnostics with readiness scoring, issue aggregates, hreflang gap detection, canonical redirect chain/loop detection, `cross_link_gap` hints, and image descriptor quality checks (`missing_image_alt`, `missing_image_size`) for SEO-critical targets; diagnostics page contexts are built by the shared render formula (`services::routing::merge_page_context`) so reported canonical/title/alternates/schema always equal public output
 - normalize JSON-LD into typed `SeoStructuredDataBlock` records with schema kind, source state, and `@graph` expansion
 - manage manual redirects and canonical overrides
 - generate sitemap files, serve `robots.txt`, and submit sitemap indexes via runtime adapters with per-endpoint aggregation and bounded partial-failure summaries; public sitemap responses use `no-store`. If a target owner can narrow visibility between operator jobs (Forum settings and audience policy), the public index/pages always rebuild from current owner candidates without writing a new operator job. Monitor this per-request read cost on large catalogs. Forum's public bulk SEO pages also derive cursors from audience-visible categories/topics rather than forwarding raw target cursors; selective policies can make these reads scan more raw candidates than a single page.
@@ -116,8 +116,12 @@ Tracked from [`docs/audits/seo-module-product-logic-audit-2026-10-18.md`](../../
   resolution design (operator destination intent must win when the target is a live page).
 - **Next storefront redirect parity (audit P2-13)** — `redirectDecision` covers a subset of
   backend routes and module routes 404 without Next rewrites; `apps/next-frontend` work pending.
-- **Diagnostics vs render drift (P2-5), bulk row-level gate/materialization (P2-6),
-  locale path double-prefix (P2-9), diagnostics N+1 reads (P2-11),
+- **Authoring-record preview drift (audit P2-5 remainder) — deferred with design note.**
+  Diagnostics page contexts now share the render formula (`merge_page_context`), but the editable
+  `SeoMetaRecord` projection (`seo_meta` and the diagnostics meta record) still shows raw stored
+  values; the fix is additive display-only `effective_*` fields computed by a shared canonical
+  resolver, because editable fields must stay raw for admin round-trips. See the audit report.
+- **Bulk row-level gate/materialization (P2-6), diagnostics N+1 reads (P2-11),
   category SEO dual-store (P2-12), write-only settings without admin consumers (P2-14),
   admin surface split (P2-15)** — open; evidence and file:line
   references live in the audit report.

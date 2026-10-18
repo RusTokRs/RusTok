@@ -14,18 +14,12 @@ use crate::dto::{
     SeoDiagnosticCountRecord, SeoDiagnosticIssueRecord, SeoDiagnosticSeverity,
     SeoDiagnosticsSummaryRecord, SeoDocumentEffectiveState, SeoFieldSource, SeoFieldState,
     SeoImageAsset, SeoMetaRecord, SeoMetaTranslationRecord, SeoModuleSettings, SeoPageContext,
-    SeoRedirectMatchType, SeoRouteContext,
+    SeoRedirectMatchType,
 };
 use crate::entities::{self as seo_meta, meta_translation};
 use crate::{SeoError, SeoResult};
 
-use super::robots::{
-    apply_robots, build_document, first_open_graph_image_url, merge_open_graph,
-    robots_from_directives, schema_blocks_from_value,
-};
-use super::routing::{
-    canonical_url_for_locale, locale_prefixed_path, resolve_open_graph_text, with_x_default,
-};
+use super::robots::{first_open_graph_image_url, schema_blocks_from_value};
 use super::templates::{generated_translation, render_generated_record, source_label};
 use super::{LoadedMeta, SeoService, TargetState, trimmed_option};
 
@@ -173,8 +167,16 @@ impl SeoService {
                 ) else {
                     continue;
                 };
-                let page_context = route_state
-                    .map(|state| build_diagnostics_page_context(tenant, state, explicit, settings));
+                let page_context = match route_state {
+                    // Share the render formula: diagnostics must report exactly
+                    // what the public page would emit (canonical normalization,
+                    // suffix/limits, OG settings, hreflang/rich-snippet gates).
+                    Some(state) => Some(
+                        self.merge_page_context(tenant, state, explicit)
+                            .await?,
+                    ),
+                    None => None,
+                };
                 let effective_canonical = page_context
                     .as_ref()
                     .map(|context| context.route.canonical_url.clone())
@@ -926,290 +928,6 @@ fn build_diagnostics_meta_record(
             })
         }
         (None, None) => None,
-    }
-}
-
-fn build_diagnostics_page_context(
-    tenant: &TenantContext,
-    state: TargetState,
-    explicit: Option<LoadedMeta>,
-    settings: &SeoModuleSettings,
-) -> SeoPageContext {
-    let requested_locale = state.requested_locale.clone();
-    if let Some(explicit) = explicit {
-        let translation = resolve_by_locale_with_fallback(
-            explicit.translations.as_slice(),
-            state.effective_locale.as_str(),
-            Some(tenant.default_locale.as_str()),
-            |item| item.locale.as_str(),
-        );
-        let effective_translation = translation.item.cloned();
-        let generated = render_generated_record(
-            &state,
-            &settings.template_defaults,
-            settings.template_overrides.get(state.target_kind.as_str()),
-        );
-
-        let explicit_title = effective_translation
-            .as_ref()
-            .and_then(|item| trimmed_option(item.title.clone()));
-        let (title, title_source) = if let Some(title) = explicit_title {
-            (title, SeoFieldSource::Explicit)
-        } else if let Some(title) = generated.title.clone() {
-            (title, SeoFieldSource::Generated)
-        } else {
-            (state.title.clone(), SeoFieldSource::Fallback)
-        };
-
-        let explicit_description = effective_translation
-            .as_ref()
-            .and_then(|item| trimmed_option(item.description.clone()));
-        let (description, description_source) = if let Some(description) = explicit_description {
-            (Some(description), SeoFieldSource::Explicit)
-        } else if let Some(description) = generated.description.clone() {
-            (Some(description), SeoFieldSource::Generated)
-        } else {
-            (state.description.clone(), SeoFieldSource::Fallback)
-        };
-
-        let effective_locale = translation.effective_locale;
-
-        let explicit_canonical = explicit
-            .meta
-            .canonical_url
-            .clone()
-            .filter(|value| !value.trim().is_empty());
-        let (canonical_url, canonical_source) = if let Some(value) = explicit_canonical {
-            (
-                canonical_url_for_locale(effective_locale.as_str(), value.as_str()),
-                SeoFieldSource::Explicit,
-            )
-        } else if let Some(value) = generated.canonical_url.as_deref() {
-            (
-                canonical_url_for_locale(effective_locale.as_str(), value),
-                SeoFieldSource::Generated,
-            )
-        } else {
-            (
-                locale_prefixed_path(effective_locale.as_str(), state.canonical_path.as_str()),
-                SeoFieldSource::Fallback,
-            )
-        };
-
-        let explicit_og_title = effective_translation
-            .as_ref()
-            .and_then(|item| trimmed_option(item.og_title.clone()));
-        let explicit_og_desc = effective_translation
-            .as_ref()
-            .and_then(|item| trimmed_option(item.og_description.clone()));
-        let explicit_og_image = effective_translation
-            .as_ref()
-            .and_then(|item| trimmed_option(item.og_image.clone()));
-        let (og_title, og_desc, og_image, og_source) = resolve_open_graph_text(
-            explicit_og_title,
-            explicit_og_desc,
-            explicit_og_image,
-            generated.og_title.clone(),
-            generated.og_description.clone(),
-        );
-
-        let open_graph = merge_open_graph(
-            &state.open_graph,
-            og_title,
-            og_desc,
-            og_image,
-            canonical_url.as_str(),
-            effective_locale.as_str(),
-        );
-
-        let (keywords, keywords_source) = if let Some(k) = effective_translation
-            .as_ref()
-            .and_then(|item| trimmed_option(item.keywords.clone()))
-        {
-            (Some(k), SeoFieldSource::Explicit)
-        } else if let Some(k) = generated.keywords.clone() {
-            (Some(k), SeoFieldSource::Generated)
-        } else {
-            (None, SeoFieldSource::Fallback)
-        };
-
-        let (structured_data, structured_data_source) =
-            if let Some(value) = explicit.meta.structured_data.clone() {
-                (value, SeoFieldSource::Explicit)
-            } else {
-                (state.structured_data, SeoFieldSource::Fallback)
-            };
-        let structured_data_present = !structured_data.is_null();
-
-        return SeoPageContext {
-            route: SeoRouteContext {
-                target_kind: Some(state.target_kind),
-                target_id: Some(state.target_id),
-                requested_locale,
-                effective_locale: effective_locale.clone(),
-                canonical_url: canonical_url.clone(),
-                redirect: None,
-                alternates: with_x_default(
-                    state.alternates,
-                    settings.x_default_locale.as_deref(),
-                    tenant.default_locale.as_str(),
-                ),
-            },
-            document: build_document(
-                title,
-                description.clone(),
-                apply_robots(
-                    explicit.meta.no_index,
-                    explicit.meta.no_follow,
-                    settings.default_robots.as_slice(),
-                ),
-                Some(open_graph),
-                structured_data,
-                keywords.clone(),
-                canonical_url.as_str(),
-                effective_locale.as_str(),
-                SeoDocumentEffectiveState {
-                    title: diagnostic_field_state(title_source, true),
-                    description: diagnostic_field_state(
-                        description_source,
-                        description.is_some(),
-                    ),
-                    canonical_url: diagnostic_field_state(canonical_source, true),
-                    keywords: diagnostic_field_state(keywords_source, keywords.is_some()),
-                    robots: diagnostic_field_state(SeoFieldSource::Explicit, true),
-                    open_graph: diagnostic_field_state(og_source, true),
-                    twitter: diagnostic_field_state(
-                        if generated.twitter_title.is_some()
-                            || generated.twitter_description.is_some()
-                        {
-                            SeoFieldSource::Generated
-                        } else {
-                            SeoFieldSource::Explicit
-                        },
-                        true,
-                    ),
-                    structured_data: diagnostic_field_state(
-                        structured_data_source,
-                        structured_data_present,
-                    ),
-                },
-                generated.twitter_title,
-                generated.twitter_description,
-            ),
-        };
-    }
-
-    let generated = render_generated_record(
-        &state,
-        &settings.template_defaults,
-        settings.template_overrides.get(state.target_kind.as_str()),
-    );
-    let title_source = if generated.title.is_some() {
-        SeoFieldSource::Generated
-    } else {
-        SeoFieldSource::Fallback
-    };
-    let effective_title = generated
-        .title
-        .clone()
-        .unwrap_or_else(|| state.title.clone());
-    let desc_source = if generated.description.is_some() {
-        SeoFieldSource::Generated
-    } else {
-        SeoFieldSource::Fallback
-    };
-    let effective_description = generated
-        .description
-        .clone()
-        .or_else(|| state.description.clone());
-    let canonical_source = if generated.canonical_url.is_some() {
-        SeoFieldSource::Generated
-    } else {
-        SeoFieldSource::Fallback
-    };
-    let canonical_url = generated
-        .canonical_url
-        .as_deref()
-        .map(|value| canonical_url_for_locale(state.effective_locale.as_str(), value))
-        .unwrap_or_else(|| {
-            locale_prefixed_path(
-                state.effective_locale.as_str(),
-                state.canonical_path.as_str(),
-            )
-        });
-    let og_source = if generated.og_title.is_some() || generated.og_description.is_some() {
-        SeoFieldSource::Generated
-    } else {
-        SeoFieldSource::Fallback
-    };
-    let open_graph = merge_open_graph(
-        &state.open_graph,
-        generated.og_title.clone(),
-        generated.og_description.clone(),
-        None,
-        canonical_url.as_str(),
-        state.effective_locale.as_str(),
-    );
-    let keywords_source = if generated.keywords.is_some() {
-        SeoFieldSource::Generated
-    } else {
-        SeoFieldSource::Fallback
-    };
-    let robots_source = if generated.robots.is_some() {
-        SeoFieldSource::Generated
-    } else {
-        SeoFieldSource::Fallback
-    };
-    let twitter_source = if generated.twitter_title.is_some()
-        || generated.twitter_description.is_some()
-    {
-        SeoFieldSource::Generated
-    } else {
-        SeoFieldSource::Fallback
-    };
-    SeoPageContext {
-        route: SeoRouteContext {
-            target_kind: Some(state.target_kind),
-            target_id: Some(state.target_id),
-            requested_locale,
-            effective_locale: state.effective_locale.clone(),
-            canonical_url: canonical_url.clone(),
-            redirect: None,
-            alternates: with_x_default(
-                state.alternates,
-                settings.x_default_locale.as_deref(),
-                tenant.default_locale.as_str(),
-            ),
-        },
-        document: build_document(
-            effective_title,
-            effective_description.clone(),
-            generated
-                .robots
-                .as_deref()
-                .map(robots_from_directives)
-                .unwrap_or_else(|| robots_from_directives(settings.default_robots.as_slice())),
-            Some(open_graph),
-            state.structured_data,
-            generated.keywords.clone(),
-            canonical_url.as_str(),
-            state.effective_locale.as_str(),
-            SeoDocumentEffectiveState {
-                title: diagnostic_field_state(title_source, true),
-                description: diagnostic_field_state(desc_source, effective_description.is_some()),
-                canonical_url: diagnostic_field_state(canonical_source, true),
-                keywords: diagnostic_field_state(keywords_source, generated.keywords.is_some()),
-                robots: diagnostic_field_state(robots_source, true),
-                open_graph: diagnostic_field_state(og_source, true),
-                twitter: diagnostic_field_state(
-                    twitter_source,
-                    generated.twitter_title.is_some() || generated.twitter_description.is_some(),
-                ),
-                structured_data: diagnostic_field_state(SeoFieldSource::Fallback, true),
-            },
-            generated.twitter_title,
-            generated.twitter_description,
-        ),
     }
 }
 

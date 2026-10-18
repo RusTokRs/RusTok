@@ -13,6 +13,7 @@ const failures = [];
 
 const wrapper = read('crates/modules/rustok-seo/src/services/diagnostics.rs');
 const batch = read('crates/modules/rustok-seo/src/services/diagnostics_batch.rs');
+const routing = read('crates/modules/rustok-seo/src/services/routing.rs');
 
 const requireText = (content, value, label) => {
   if (!content.includes(value)) failures.push(`${label}: missing ${value}`);
@@ -47,10 +48,19 @@ for (const [value, label] of [
   ['load_target_state(', 'authoring target projection'],
   ['load_route_target_state(', 'public route projection'],
   ['build_diagnostics_meta_record(', 'metadata projection'],
-  ['build_diagnostics_page_context(', 'page-context projection'],
+  ['self.merge_page_context(', 'shared page-context projection'],
 ]) {
   requireText(batch, value, label);
 }
+
+// The diagnostics page context must be the shared render formula itself, not a
+// parallel copy: canonical normalization, suffix/limits, OG settings, and
+// hreflang/rich-snippet gates live only in routing's merge_page_context.
+requireText(
+  routing,
+  'pub(super) async fn merge_page_context(',
+  'shared render formula projection',
+);
 
 for (const [value, label] of [
   ['.seo_meta(', 'per-target metadata service call'],

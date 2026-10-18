@@ -151,15 +151,19 @@ moves to `Accepted`.
 
 ---
 
-#### P2-5 · Diagnostics and admin preview compute "effective" values with a different formula than the public render — **OPEN**
+#### P2-5 · Diagnostics and admin preview compute "effective" values with a different formula than the public render — **PARTIAL (page-context half fixed)**
 
 **Chain:** C6 vs C1, C2 vs C1.
 
-**Evidence:** `build_diagnostics_page_context` duplicates `merge_page_context` but omits: (1) `canonical_host_allowed`, (2) `apply_canonical_trailing_slash` / `apply_canonical_protocol`, (3) the `hreflang_enabled`/`submodule_hreflang_enabled` gate for alternates (diagnostics stays silent while public hreflang is off), (4) `rich_snippets_enabled` when counting schema blocks (false `missing_schema` with the submodule off). The authoring read-model `seo_meta` additionally omits `apply_metadata_settings` (suffix/limits), locale-prefix/host/slash canonical normalization, and returns `canonical_url: None` where the render always emits one.
+**Evidence at base:** `build_diagnostics_page_context` duplicated `merge_page_context` but omitted: (1) `canonical_host_allowed`, (2) `apply_canonical_trailing_slash` / `apply_canonical_protocol`, (3) the `hreflang_enabled`/`submodule_hreflang_enabled` gate for alternates, (4) `rich_snippets_enabled` when counting schema blocks — plus (not in the original list) `apply_metadata_settings` (title suffix/limits) and `apply_open_graph_settings` (site name/default OG image). The authoring read-model `seo_meta` additionally omits suffix/limits, canonical normalization, and returns `canonical_url: None` where the render always emits one.
 
-**Product effect:** operators edit and see one value, crawlers receive another; diagnostics is "green" with options disabled and "red" over un-normalized canonicals.
+**Applied fix — page-context half (this branch):**
+1. `merge_page_context` is now `pub(super)` and documented as **the single formula** for render, diagnostics, and previews; diagnostics calls it directly (`self.merge_page_context(...)` in the batch loop) instead of its own copy.
+2. The entire parallel `build_diagnostics_page_context` (284 lines) was deleted (zero-legacy); dead imports removed.
+3. Verification contract evolved with the code: `verify-seo-diagnostics-batch-reads.mjs` now requires the shared `self.merge_page_context(` projection in the batch file **and** `pub(super) async fn merge_page_context(` in routing, keeping all batching/forbidden-read guards.
+4. Behavior consequence: duplicate-canonical detection and redirect-chain checks now see host/slash-normalized canonicals exactly as rendered; schema/hreflang counts respect submodule gates; titles carry suffix/limits.
 
-**Fix:** extract one `build_effective_page_context(state, explicit, settings)` shared by render, diagnostics, `seo_meta` preview, and bulk preview; minimum — port the four missing checks and expose `effective_*` next to `explicit_*` in the authoring record.
+**Remaining — authoring-record half (OPEN):** `seo_meta` (meta.rs) and `build_diagnostics_meta_record` (diagnostics) still build the authoring `SeoMetaRecord` projection with their own formula. Design note: the editable fields must stay **raw** (admin round-trips `canonical_url` back through `upsert_meta`; storing the render-normalized value would pin a locale into the target-level column), so the fix is additive display-only `effective_*` fields (e.g. `effective_canonical_url`) computed by a shared pure canonical resolver next to the raw ones — DTO addition, no GraphQL schema snapshot exists to update (`verify-api-surface-contract` is marker-based, additive-safe). The two record builders should then share that resolver.
 
 ---
 
@@ -279,7 +283,7 @@ moves to `Accepted`.
 | 3 | **P1-1:** any-owner gate for public sitemap/robots + disabled-owner handling in `requires_refresh` | Tenants without forum/blog currently have no sitemap at all | test: tenant with 1 of 5 modules gets a sitemap from the enabled ones — **gate DONE (test pending `cargo`)** |
 | 4 | **P2-4:** one transaction + events for all auto-redirect mutations | Cross-replica divergence after renames | cross-replica test without waiting for TTL — **DONE (test pending `cargo`)** |
 | 5 | **P2-10:** write-time cycles + runtime fail-safe (+ alias 1-hop remainder) | Live traffic must never 5xx on a loop | tests: A↔B rejected on write; storefront never errors on legacy loops — **DONE except alias 1-hop (design)** |
-| 6 | **P2-5:** shared effective-context builder for render/diagnostics/preview | Removes the whole "diagnostics lies" class | identical canonical/title/alternates across three consumers on the same data — **OPEN** |
+| 6 | **P2-5:** shared effective-context builder for render/diagnostics/preview | Removes the whole "diagnostics lies" class | identical canonical/title/alternates across three consumers on the same data — **page-context half DONE** (diagnostics delegates to `merge_page_context`, verifier contract updated); **authoring-record half open** (additive `effective_*` fields, see design note) |
 | 7 | **P2-6:** field-level bulk guards + skipped counter + Null→None | "Safe" modes stop alarming and stop freezing fallback | partial-explicit row tests — **OPEN** |
 | 8 | **P2-13:** one Next redirect hook on all pages | Host parity | route matrix: redirects applied 16/16 — **OPEN** |
 | 9 | **P2-7/8/9:** OG per-field fallback, suffix/truncate order, foreign locale prefix | Targeted render defects | unit tests per item — **P2-7 DONE** (shared `resolve_open_graph_text` + tests), **P2-8 DONE** (reserve-before-truncate + test), **P2-9 open** (see design note: needs `TenantLocalePolicyPort`, no sound syntactic shortcut) |
@@ -314,6 +318,10 @@ Executed on this branch (static, Node-based):
 - `scripts/verify/run-seo-full-suite.sh` — **exit 127**: `cargo` unavailable (durable evidence in `target/verification/seo-full-suite/summary.txt`). Rust compile/tests **not executed**; unit tests added for P1-3/P2-4/P2-7/P2-8 helpers await a Rust-capable host.
 - ADR governance: `npm run verify:adrs` and `npm run verify:docs` retain their **pre-existing** failure sets (12 and 19 errors, all in unrelated 2026-10-16 ADRs and `docs/standards/continuous-review-ledger.md`); adding `DECISIONS/2026-10-18-seo-canonical-hreflang-route-family.md` + registry row produced **zero new errors** (error sets diffed identical before/after).
 - The full SEO static battery (§ above) was re-run after the P2-7/P2-8 changes and the ADR: **all PASS**.
+- After the P2-5 page-context delegation: `verify-seo-diagnostics-batch-reads.mjs` (contract updated to
+  require the shared `merge_page_context` projection in both files), `verify-seo-hardening-suite` (7 checks),
+  and the entire SEO battery re-run: **all PASS**; `verify-api-surface-contract` PASS (marker-based,
+  unaffected); `verify-product-category-seo-seam` remains the known pre-existing failure.
 
 Not run / environment-dependent:
 
