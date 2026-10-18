@@ -46,4 +46,48 @@ impl Related<super::stock_location::Entity> for Entity {
     }
 }
 
+impl Model {
+    /// Returns true if reservation item is active (not soft-deleted and has positive quantity).
+    #[inline]
+    pub fn is_active(&self) -> bool {
+        self.deleted_at.is_none() && self.quantity > 0
+    }
+}
+
 impl ActiveModelBehavior for ActiveModel {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    #[test]
+    fn test_reservation_item_is_active() {
+        let active = Model {
+            id: Uuid::new_v4(),
+            inventory_item_id: Uuid::new_v4(),
+            location_id: Uuid::new_v4(),
+            quantity: 3,
+            line_item_id: None,
+            description: None,
+            external_id: None,
+            metadata: serde_json::json!({}),
+            created_at: Utc::now().into(),
+            updated_at: Utc::now().into(),
+            deleted_at: None,
+        };
+        assert!(active.is_active());
+
+        let deleted = Model {
+            deleted_at: Some(Utc::now().into()),
+            ..active.clone()
+        };
+        assert!(!deleted.is_active());
+
+        let zero_qty = Model {
+            quantity: 0,
+            ..active
+        };
+        assert!(!zero_qty.is_active());
+    }
+}

@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-04 — Commerce, Financial & Marketplace Domain Modules  
-**Next pending component:** [`crates/modules/rustok-commerce-foundation`](../../crates/modules/rustok-commerce-foundation) (19 files, 1,106 LOC)  
-**Current main SHA:** `a5c76626e`  
+**Next pending component:** [`crates/modules/rustok-commerce`](../../crates/modules/rustok-commerce) (297 files, 132,631 LOC)  
+**Current main SHA:** `b67a399b0`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -177,9 +177,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-04 — Commerce, Financial & Marketplace Domain Modules
-*Cart, checkout pipeline, orders, payments, pricing, inventory reservations, fulfillment, marketplace multi-vendor economics, seller balances, and commissions.* (0/37 completed)
+*Cart, checkout pipeline, orders, payments, pricing, inventory reservations, fulfillment, marketplace multi-vendor economics, seller balances, and commissions.* (1/37 completed)
 
-- [ ] **[`crates/modules/rustok-commerce-foundation`](../../crates/modules/rustok-commerce-foundation)** (19 files, 1,106 LOC) — Shared commerce error taxonomy, common DTOs, search contracts, and pricing/inventory input validation.
+- [x] **[`crates/modules/rustok-commerce-foundation`](../../crates/modules/rustok-commerce-foundation)** (19 files, 1,106 LOC) — Shared commerce error taxonomy, common DTOs, search contracts, and pricing/inventory input validation. Audited; added invariant validations for CreateVariantInput, UpdateVariantInput, PriceInput, AdjustInventoryInput, sale and discount calculations on PriceResponse, stock and currency lookup helpers on VariantResponse, domain logic helpers on inventory_level, product, product_variant, region, reservation_item, shipping_profile, stock_location models, bounded search query with localized search condition, 20/20 tests passed, 0 clippy warnings, gate passed.
 - [ ] **[`crates/modules/rustok-commerce`](../../crates/modules/rustok-commerce)** (297 files, 132,631 LOC) — Checkout operation orchestration, stage pipeline, inventory reservation journal, multi-stage compensation sweeps, marketplace paid/reversal inboxes, fulfillment recovery, and REST/GraphQL adapters.
 - [ ] **[`crates/modules/rustok-commerce/admin`](../../crates/modules/rustok-commerce/admin)** (21 files, 5,889 LOC) — FFA admin UI for checkout operations, manual order adjustment, and fulfillment management.
 - [ ] **[`crates/modules/rustok-commerce/storefront`](../../crates/modules/rustok-commerce/storefront)** (16 files, 2,022 LOC) — Storefront UI components for checkout flow, address input, and order confirmation.
@@ -532,7 +532,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 8 | 1,382 | None |  |
 | [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 297 | 132,898 | None |  |
-| [ ] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 19 | 1,106 | None |  |
+| [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 19 | 1,106 | 2026-10-18 20:30 | Audited and cleaned. Added invariant validations for CreateVariantInput, UpdateVariantInput, PriceInput, AdjustInventoryInput, sale calculations on PriceResponse, stock helpers on VariantResponse, domain logic helpers on inventory_level, product, product_variant, region, reservation_item, shipping_profile, stock_location models, bounded search query with localized search condition, 20/20 tests passed. |
 | [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 21 | 5,889 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 16 | 2,022 | None |  |
 | [ ] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 45 | 6,014 | None |  |

@@ -41,4 +41,45 @@ impl Related<super::reservation_item::Entity> for Entity {
     }
 }
 
+impl Model {
+    /// Returns true if stock location is active (not soft-deleted).
+    #[inline]
+    pub fn is_active(&self) -> bool {
+        self.deleted_at.is_none()
+    }
+}
+
 impl ActiveModelBehavior for ActiveModel {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    #[test]
+    fn test_stock_location_is_active() {
+        let active = Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            code: Some("WH-01".into()),
+            address_line1: None,
+            address_line2: None,
+            city: None,
+            province: None,
+            postal_code: None,
+            country_code: Some("RU".into()),
+            phone: None,
+            metadata: serde_json::json!({}),
+            created_at: Utc::now().into(),
+            updated_at: Utc::now().into(),
+            deleted_at: None,
+        };
+        assert!(active.is_active());
+
+        let deleted = Model {
+            deleted_at: Some(Utc::now().into()),
+            ..active
+        };
+        assert!(!deleted.is_active());
+    }
+}

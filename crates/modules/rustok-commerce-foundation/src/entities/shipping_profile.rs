@@ -17,4 +17,38 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
+impl Model {
+    /// Returns true if the shipping profile is active and usable for checkout.
+    #[inline]
+    pub fn is_usable(&self) -> bool {
+        self.active
+    }
+}
+
 impl ActiveModelBehavior for ActiveModel {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    #[test]
+    fn test_shipping_profile_is_usable() {
+        let profile = Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            slug: "default".into(),
+            active: true,
+            metadata: serde_json::json!({}),
+            created_at: Utc::now().into(),
+            updated_at: Utc::now().into(),
+        };
+        assert!(profile.is_usable());
+
+        let inactive = Model {
+            active: false,
+            ..profile
+        };
+        assert!(!inactive.is_usable());
+    }
+}
