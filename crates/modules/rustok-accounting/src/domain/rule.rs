@@ -2,6 +2,11 @@ use crate::error::{AccountingError, AccountingResult};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+pub const MAX_RULE_DOC_LEN: usize = 64;
+pub const MAX_RULE_OP_LEN: usize = 64;
+pub const MAX_RULE_CODE_LEN: usize = 64;
+pub const MAX_RULE_TEMPLATE_LEN: usize = 1024;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct PostingRule {
     pub document_type: String,
@@ -19,12 +24,22 @@ impl PostingRule {
                 "Posting rule document_type cannot be empty".to_string(),
             ));
         }
+        if trimmed_doc.len() > MAX_RULE_DOC_LEN {
+            return Err(AccountingError::Validation(format!(
+                "Posting rule document_type exceeds maximum length of {MAX_RULE_DOC_LEN} characters"
+            )));
+        }
 
         let trimmed_op = self.operation_type.trim();
         if trimmed_op.is_empty() {
             return Err(AccountingError::Validation(
                 "Posting rule operation_type cannot be empty".to_string(),
             ));
+        }
+        if trimmed_op.len() > MAX_RULE_OP_LEN {
+            return Err(AccountingError::Validation(format!(
+                "Posting rule operation_type exceeds maximum length of {MAX_RULE_OP_LEN} characters"
+            )));
         }
 
         let trimmed_debit = self.debit_account_code.trim();
@@ -33,6 +48,11 @@ impl PostingRule {
                 "Posting rule debit_account_code cannot be empty".to_string(),
             ));
         }
+        if trimmed_debit.len() > MAX_RULE_CODE_LEN {
+            return Err(AccountingError::Validation(format!(
+                "Posting rule debit_account_code exceeds maximum length of {MAX_RULE_CODE_LEN} characters"
+            )));
+        }
 
         let trimmed_credit = self.credit_account_code.trim();
         if trimmed_credit.is_empty() {
@@ -40,10 +60,25 @@ impl PostingRule {
                 "Posting rule credit_account_code cannot be empty".to_string(),
             ));
         }
+        if trimmed_credit.len() > MAX_RULE_CODE_LEN {
+            return Err(AccountingError::Validation(format!(
+                "Posting rule credit_account_code exceeds maximum length of {MAX_RULE_CODE_LEN} characters"
+            )));
+        }
 
         if trimmed_debit == trimmed_credit {
             return Err(AccountingError::Validation(format!(
                 "Posting rule cannot have identical debit and credit account codes: {trimmed_debit}"
+            )));
+        }
+
+        if self
+            .description_template
+            .as_ref()
+            .is_some_and(|tmpl| tmpl.trim().len() > MAX_RULE_TEMPLATE_LEN)
+        {
+            return Err(AccountingError::Validation(format!(
+                "Posting rule description_template exceeds maximum length of {MAX_RULE_TEMPLATE_LEN} characters"
             )));
         }
 

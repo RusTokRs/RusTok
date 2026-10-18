@@ -31,11 +31,14 @@ impl PostingDirection {
     }
 }
 
+pub const MAX_TRANSACTION_LINES: usize = 1000;
+
 /// Validates that within a single journal transaction:
 /// 1. The transaction contains at least two postings (at least one debit and one credit).
 /// 2. For every currency involved, total debits equal total credits.
 /// 3. All posting amounts are strictly positive integers in currency minor units.
-/// 4. Currency codes are valid non-empty strings.
+/// 4. Currency codes are valid 3-10 alphanumeric characters.
+/// 5. The total line count does not exceed MAX_TRANSACTION_LINES.
 pub fn validate_transaction_balance<'a, I>(lines: I) -> AccountingResult<()>
 where
     I: IntoIterator<Item = (&'a str, PostingDirection, i64)>,
@@ -52,6 +55,14 @@ where
             return Err(AccountingError::InvalidCurrency(
                 "Posting currency code cannot be empty".to_string(),
             ));
+        }
+        if trimmed_currency.len() < crate::domain::MIN_CURRENCY_CODE_LEN
+            || trimmed_currency.len() > crate::domain::MAX_CURRENCY_CODE_LEN
+            || !trimmed_currency.chars().all(|ch| ch.is_ascii_alphanumeric())
+        {
+            return Err(AccountingError::InvalidCurrency(format!(
+                "Posting currency code must be 3-10 alphanumeric characters, got `{trimmed_currency}`"
+            )));
         }
 
         if amount <= 0 {
@@ -81,6 +92,11 @@ where
         return Err(AccountingError::Validation(
             "Journal transaction must contain at least two postings (at least one debit and one credit)".to_string(),
         ));
+    }
+    if line_count > MAX_TRANSACTION_LINES {
+        return Err(AccountingError::Validation(format!(
+            "Journal transaction lines ({line_count}) exceeds maximum allowed of {MAX_TRANSACTION_LINES}"
+        )));
     }
 
     for (currency, (debits, credits)) in sums {

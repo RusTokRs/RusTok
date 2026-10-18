@@ -3,9 +3,9 @@
 ## Deep Full-Stack Audit Cycle — Round 1 (Fresh Start from Scratch)
 
 **Status:** ACTIVE  
-**Active phase:** Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules  
-**Next pending component:** [`crates/modules/rustok-accounting`](../../crates/modules/rustok-accounting) (13 files, 417 LOC)  
-**Current main SHA:** `f5498fa7d`  
+**Active phase:** Phase FS-04 — Commerce, Financial & Marketplace Domain Modules  
+**Next pending component:** [`crates/modules/rustok-commerce-foundation`](../../crates/modules/rustok-commerce-foundation) (19 files, 1,106 LOC)  
+**Current main SHA:** `a5c76626e`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -147,7 +147,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules
-*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (20/24 completed)
+*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (24/24 completed)
 
 - [x] **[`crates/modules/rustok-tenant`](../../crates/modules/rustok-tenant)** (28 files, 4,305 LOC) — Tenant lifecycle, provisioning, slug/domain resolution, locale policy aggregate, input sanitization, and settings schema. Audited via CodeGraph; verified transactional outbox publishing on mutations, SHA-256 idempotency receipts for locale policy CAS updates, settings schema validation, and fail-closed tenant resolution. 24/24 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-tenant/admin`](../../crates/modules/rustok-tenant/admin)** (8 files, 835 LOC) — FFA Leptos admin UI components for tenant provisioning, domain management, and locale settings. Audited via CodeGraph; verified strict FFA separation (pure Rust view models/state in `core.rs`, no domain logic in Leptos components), transport isolation with tenant authorization boundary, and catalog i18n diagnostics. 7/7 tests passed, 0 clippy warnings, gate passed.
@@ -172,7 +172,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[`crates/modules/rustok-workflow`](../../crates/modules/rustok-workflow)** (52 files, 7,328 LOC) — Workflow automation engine, state machine transitions, event triggers, and action execution. Audited; remediated backoff integer overflow with saturating math and capped retries, fixed UTF-8 slicing boundary panic, fixed StepContext set() dropped mutations on empty contexts, added operator aliases (equals/==, not_equals/!=) and on_false support in ConditionStep, aligned delay step with duration_seconds, replaced dummy nil UUID masks with typed VersionNotFound and TemplateNotFound errors, unified permission denial status to 403 Forbidden across all workflow controllers, added 15 new unit tests (23 total), 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-workflow/admin`](../../crates/modules/rustok-workflow/admin)** (14 files, 1,434 LOC) — FFA admin UI for workflow rule authoring, trigger configuration, and execution logs. Audited; added user action error feedback banner in TemplateGallery, added missing bilingual Fluent keys (table-clear, table-selected, search-placeholder, total, error-createTemplate) in en.ftl and ru.ftl, made status filter equality exact to prevent accidental substring collisions, normalized route_segment to prevent double /modules prefix, mapped typed VersionNotFound and TemplateNotFound errors in native server adapter, added tests in core/presentation, core/command, and core/navigation, 13/13 tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-email`](../../crates/modules/rustok-email)** (6 files, 784 LOC) — Transactional email sending, SMTP/API provider integration, template rendering, and delivery tracking. Audited; added recipient mailbox syntax and CRLF injection validation to delivery request port, handled null Tera vars gracefully as empty context, normalized password_reset_url query separator with trailing delimiter support, implemented standard derives on EmailModule, EmailConfig, SmtpConfig, PasswordResetEmail, and RenderedEmail, added 5 new unit tests (16 total), 0 clippy warnings, gate passed.
-- [ ] **[`crates/modules/rustok-accounting`](../../crates/modules/rustok-accounting)** (13 files, 417 LOC) — General ledger, double-entry journal entries, chart of accounts, and financial audit records.
+- [x] **[`crates/modules/rustok-accounting`](../../crates/modules/rustok-accounting)** (13 files, 417 LOC) — General ledger, double-entry journal entries, chart of accounts, and financial audit records. Audited; added canonical standard/Russian Chart of Accounts constants, bounds and character validation on codes/names/templates/currencies (3..=10 uppercase alphanumeric), max 1000 lines limit per transaction, line count balance guards, storno reversal transaction generation (`create_storno_input`), multi-currency trial balance validation (`turnovers_by_currency`, `is_balanced_by_currency`), opening/closing balance verification, outbox domain events (`JournalTransactionPostedEvent`, `AccountCreatedEvent`, `AccountUpdatedEvent`), added 18 new unit tests (27 total), 0 clippy warnings, gate passed.
 
 ---
 
@@ -503,7 +503,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-web](../../crates/libs/rustok-web) | `libs` | 2 | 742 | 2026-10-17 01:44 | Audited and cleaned. |
 | [ ] | [alloy](../../crates/modules/alloy) | `modules` | 77 | 25,206 | None |  |
 | [ ] | [flex](../../crates/modules/flex) | `modules` | 51 | 17,159 | None |  |
-| [ ] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 13 | 417 | None |  |
+| [x] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 13 | 417 | 2026-10-18 20:00 | Audited and cleaned. Standard chart of accounts, bounds and character validation, 1000 lines limit, storno generation, multi-currency trial balance, outbox events, 27/27 tests passed. |
 | [ ] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 74 | 42,418 | None |  |
 | [ ] | [rustok-ai-alloy](../../crates/modules/rustok-ai-alloy) | `modules` | 1 | 384 | None |  |
 | [ ] | [rustok-ai-athanor](../../crates/modules/rustok-ai-athanor) | `modules` | 2 | 548 | None |  |
