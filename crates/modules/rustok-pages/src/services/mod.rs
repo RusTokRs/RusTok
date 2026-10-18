@@ -5,6 +5,7 @@ pub mod page_starter;
 pub mod page_template;
 mod rbac;
 pub mod scenario_baseline;
+pub mod site_symbol;
 
 pub use page::{
     AuditPageArtifactsInput, DEFAULT_PAGE_ARTIFACT_AUDIT_RECORDS,
@@ -48,3 +49,4 @@ pub use scenario_baseline::{
     PageBuilderScenarioBaselineRecord, PageBuilderScenarioBaselineService,
     SaveIfCurrentScenarioBaselineRequest,
 };
+pub use site_symbol::{SaveSiteSymbolInput, SiteSymbolRecord, SiteSymbolService};

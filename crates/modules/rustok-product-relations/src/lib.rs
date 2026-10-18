@@ -1,7 +1,39 @@
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
+//! # RusToK Product Relations Module
+//!
+//! Merchandising product associations for cross-sells, up-sells, related products,
+//! accessories, alternatives, and custom relationship types.
+//!
+//! ## Responsibilities & Guarantees
+//!
+//! - **Directed associations**: Directed links between source and target catalog products in the
+//!   `product_relations` table.
+//! - **Tenant isolation**: Enforces tenant scoping and tenant-coupled foreign keys to source and
+//!   target products; self-relations are rejected.
+//! - **Contiguous ordering**: Maintains a complete, non-negative contiguous ordering `0..N` per
+//!   `(tenant_id, product_id, relation_type)`. Reordering requests must supply the complete group.
+//! - **Durable receipts**: Create, update, delete, and reorder commands complete durable owner
+//!   receipts inside the same transaction as the write, replaying stored responses on retries.
+//! - **Deadlock-free locking**: Concurrent writes take pessimistic product locks ordered by UUID
+//!   and reload models to eliminate check-then-act race conditions.
+//!
+//! ## Entry Points
+//!
+//! - [`ProductRelationsPort`]: Primary port trait for reading, creating, updating, deleting,
+//!   and reordering product relations.
+//! - [`ProductRelationService`]: Domain application service orchestrating transactions,
+//!   validation, pessimistic locking, and receipt logging.
+//! - [`ProductRelationsModule`]: Platform module lifecycle and migration provider descriptor.
+
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -9,11 +41,16 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+mod module;
 pub mod ports;
 pub mod services;
 
-pub use dto::*;
+pub use dto::{
+    CreateProductRelationInput, ProductRelationDto, RelationType, ReorderProductRelationsInput,
+    UpdateProductRelationInput, MAX_RELATION_TYPE_LEN,
+};
 pub use error::{ProductRelationError, ProductRelationResult};
+pub use module::ProductRelationsModule;
 pub use ports::ProductRelationsPort;
 pub use services::{
     CREATE_RELATION_OPERATION, DELETE_RELATION_OPERATION, PRODUCT_RELATION_OWNER_SLUG,
@@ -53,45 +90,6 @@ pub fn scoped_caller_idempotency_key(
         "{RELATION_CALLER_IDEMPOTENCY_NAMESPACE}:{operation}:{}",
         hex::encode(digest.finalize())
     )
-}
-
-pub struct ProductRelationsModule;
-
-#[async_trait]
-impl RusToKModule for ProductRelationsModule {
-    fn slug(&self) -> &'static str {
-        "product_relations"
-    }
-
-    fn name(&self) -> &'static str {
-        "Product Relations"
-    }
-
-    fn description(&self) -> &'static str {
-        "Product relations, merchandising associations (cross-sells, up-sells, related, accessories, alternatives) and reordering"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["product"]
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![Permission::PRODUCTS_READ, Permission::PRODUCTS_UPDATE]
-    }
-}
-
-impl MigrationSource for ProductRelationsModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-
-    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
-        migrations::migration_dependencies()
-    }
 }
 
 #[cfg(test)]

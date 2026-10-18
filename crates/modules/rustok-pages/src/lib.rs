@@ -120,7 +120,8 @@ pub use services::{
     PageRouteHistoryImportItem, PageRouteHistoryImportResult, PageRouteHistoryImportService,
     PageRouteResolution, PageRouteService, PageService, PageStarterRecord, PageStarterService,
     PageTemplateRecord, PageTemplateService, PublishedLandingArtifact,
-    SaveIfCurrentScenarioBaselineRequest, SavePageStarterInput, inline_edit_context_mismatch,
+    SaveIfCurrentScenarioBaselineRequest, SavePageStarterInput, SaveSiteSymbolInput,
+    SiteSymbolRecord, SiteSymbolService, inline_edit_context_mismatch,
     page_inline_edit_keyring_from_environment,
 };
 pub use translation_target::PagesMetadataTranslationTargetProvider;
