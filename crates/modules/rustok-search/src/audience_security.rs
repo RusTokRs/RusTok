@@ -187,12 +187,11 @@ pub async fn resolve_audience_eligible_candidates(
             "Search audience candidate resolution requires a valid tenant ID",
         ));
     }
-    if locale.trim().is_empty() {
-        return Err(PortError::validation(
-            "search.audience.locale_required",
-            "Search audience candidate resolution requires a locale",
-        ));
-    }
+    let effective_locale = if locale.trim().is_empty() {
+        "en"
+    } else {
+        locale.trim()
+    };
 
     if candidates.iter().any(|candidate| candidate.document_id.is_nil()) {
         return Err(PortError::validation(
@@ -229,7 +228,7 @@ pub async fn resolve_audience_eligible_candidates(
 
             let request = SearchAudienceRequest {
                 tenant_id,
-                locale: locale.to_string(),
+                locale: effective_locale.to_string(),
                 candidates: module_candidates,
                 auth: auth.clone(),
                 request_context: request_context.clone(),
@@ -342,6 +341,11 @@ pub async fn execute_audience_eligible_search(
     let tenant_id = search_query
         .tenant_id
         .ok_or_else(|| Error::Validation("storefront search requires tenant_id".to_string()))?;
+    if tenant_id.is_nil() {
+        return Err(Error::Validation(
+            "storefront search requires a valid tenant ID".to_string(),
+        ));
+    }
 
     if search_query.query.trim().is_empty() {
         return Ok(SearchResult {
@@ -365,7 +369,12 @@ pub async fn execute_audience_eligible_search(
                     let allowed = registry
                         .public_discovery_allowed(module, tenant_id)
                         .await
-                        .unwrap_or(true);
+                        .map_err(|e| {
+                            Error::Validation(format!(
+                                "Preflight discovery check failed for `{module}`: {}",
+                                e.message
+                            ))
+                        })?;
                     if allowed {
                         allowed_modules.push(module.clone());
                     } else {
@@ -396,7 +405,12 @@ pub async fn execute_audience_eligible_search(
                 let allowed = registry
                     .public_discovery_allowed(&module, tenant_id)
                     .await
-                    .unwrap_or(true);
+                    .map_err(|e| {
+                        Error::Validation(format!(
+                            "Preflight discovery check failed for `{module}`: {}",
+                            e.message
+                        ))
+                    })?;
                 if !allowed {
                     blocked_modules.insert(module);
                 }
@@ -541,10 +555,17 @@ pub async fn execute_audience_eligible_search(
         })
         .collect();
 
+    let effective_locale = search_query
+        .locale
+        .as_deref()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .unwrap_or("en");
+
     let allowed_ids = resolve_audience_eligible_candidates(
         registry,
         tenant_id,
-        search_query.locale.as_deref().unwrap_or_default(),
+        effective_locale,
         &descriptors,
         auth,
         request_context,

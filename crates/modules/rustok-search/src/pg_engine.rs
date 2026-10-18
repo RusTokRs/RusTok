@@ -174,8 +174,10 @@ fn build_filter_clause(
         clauses.push("source_module <> 'forum'".to_string());
     }
     for excluded in excluded_modules {
-        if excluded != "forum"
-            && !excluded.is_empty()
+        if exclude_forum && excluded == "forum" {
+            continue;
+        }
+        if !excluded.is_empty()
             && excluded.len() <= 64
             && excluded.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         {
@@ -977,6 +979,19 @@ mod tests {
         );
         assert!(clause.clause.contains("source_module <> 'events'"));
         assert!(clause.clause.contains("source_module <> 'private_docs'"));
+    }
+
+    #[test]
+    fn filter_clause_excludes_forum_when_passed_in_excluded_modules_even_if_exclude_forum_flag_is_false() {
+        let clause = build_filter_clause(
+            &query_with_categories(vec![]),
+            4,
+            None,
+            false,
+            &["forum".to_string(), "courses".to_string()],
+        );
+        assert!(clause.clause.contains("source_module <> 'forum'"));
+        assert!(clause.clause.contains("source_module <> 'courses'"));
     }
 
     #[test]

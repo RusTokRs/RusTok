@@ -473,39 +473,23 @@ impl SearchQueryRoot {
             sort_desc: input.sort_desc,
         };
 
-        let audience_registry = ctx.data_opt::<crate::SearchAudienceRegistry>();
-        let result = if let Some(registry) = audience_registry {
-            if !registry.is_empty() {
-                let auth = ctx.data_opt::<AuthContext>().cloned();
-                let request_context = ctx.data_opt::<RequestContext>().cloned();
-                run_audience_storefront_search_with_dictionaries(
-                    db,
-                    &engine,
-                    search_query.clone(),
-                    &trusted_channel,
-                    registry,
-                    auth,
-                    request_context,
-                )
-                .await
-            } else {
-                run_storefront_search_with_dictionaries(
-                    db,
-                    &engine,
-                    search_query.clone(),
-                    &trusted_channel,
-                )
-                .await
-            }
-        } else {
-            run_storefront_search_with_dictionaries(
-                db,
-                &engine,
-                search_query.clone(),
-                &trusted_channel,
-            )
-            .await
-        };
+        let default_registry = crate::SearchAudienceRegistry::new();
+        let registry = ctx
+            .data_opt::<crate::SearchAudienceRegistry>()
+            .unwrap_or(&default_registry);
+        let auth = ctx.data_opt::<AuthContext>().cloned();
+        let request_context = ctx.data_opt::<RequestContext>().cloned();
+        let result = crate::execute_audience_eligible_search(
+            db,
+            &engine,
+            search_query.clone(),
+            &trusted_channel,
+            registry,
+            auth,
+            request_context,
+            crate::StorefrontSearchTransport::Graphql,
+        )
+        .await;
         finalize_search_result(
             db,
             policy.surface,
@@ -1095,39 +1079,7 @@ async fn run_search_with_dictionaries(
     SearchDictionaryService::apply_query_rules(db, &search_query, result).await
 }
 
-async fn run_storefront_search_with_dictionaries(
-    db: &sea_orm::DatabaseConnection,
-    engine: &PgSearchEngine,
-    search_query: SearchQuery,
-    channel: &TrustedStorefrontChannel,
-) -> rustok_core::Result<crate::SearchResult> {
-    let result = engine
-        .search_storefront(search_query.clone(), channel)
-        .await?;
-    SearchDictionaryService::apply_storefront_query_rules(db, &search_query, result, channel).await
-}
 
-async fn run_audience_storefront_search_with_dictionaries(
-    db: &sea_orm::DatabaseConnection,
-    engine: &PgSearchEngine,
-    search_query: SearchQuery,
-    channel: &TrustedStorefrontChannel,
-    registry: &crate::SearchAudienceRegistry,
-    auth: Option<AuthContext>,
-    request_context: Option<RequestContext>,
-) -> rustok_core::Result<crate::SearchResult> {
-    crate::execute_audience_eligible_search(
-        db,
-        engine,
-        search_query,
-        channel,
-        registry,
-        auth,
-        request_context,
-        crate::StorefrontSearchTransport::Graphql,
-    )
-    .await
-}
 
 fn classify_search_error(error: &rustok_core::Error) -> &'static str {
     match error {

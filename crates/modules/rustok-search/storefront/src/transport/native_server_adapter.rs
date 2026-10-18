@@ -161,54 +161,26 @@ async fn storefront_search_native(
         };
 
         let engine = PgSearchEngine::new(db.clone());
+        let default_registry = rustok_search::SearchAudienceRegistry::new();
         let audience_registry = runtime_ctx.shared_get::<rustok_search::SearchAudienceRegistry>();
-        let result = if let Some(registry) = audience_registry.as_ref() {
-            if !registry.is_empty() {
-                let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
-                    .await
-                    .map_err(ServerFnError::new)?
-                    .0;
-
-                rustok_search::execute_audience_eligible_search(
-                    &db,
-                    &engine,
-                    search_query.clone(),
-                    &trusted_channel,
-                    registry,
-                    auth,
-                    Some(request_context.clone()),
-                    rustok_search::StorefrontSearchTransport::NativeServer,
-                )
-                .await
-                .map_err(server_error)?
-            } else {
-                let res = engine
-                    .search_storefront(search_query.clone(), &trusted_channel)
-                    .await
-                    .map_err(server_error)?;
-                SearchDictionaryService::apply_storefront_query_rules(
-                    &db,
-                    &search_query,
-                    res,
-                    &trusted_channel,
-                )
-                .await
-                .map_err(server_error)?
-            }
-        } else {
-            let res = engine
-                .search_storefront(search_query.clone(), &trusted_channel)
-                .await
-                .map_err(server_error)?;
-            SearchDictionaryService::apply_storefront_query_rules(
-                &db,
-                &search_query,
-                res,
-                &trusted_channel,
-            )
+        let registry = audience_registry.as_deref().unwrap_or(&default_registry);
+        let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
-            .map_err(server_error)?
-        };
+            .map_err(ServerFnError::new)?
+            .0;
+
+        let result = rustok_search::execute_audience_eligible_search(
+            &db,
+            &engine,
+            search_query.clone(),
+            &trusted_channel,
+            registry,
+            auth,
+            Some(request_context.clone()),
+            rustok_search::StorefrontSearchTransport::NativeServer,
+        )
+        .await
+        .map_err(server_error)?;
         let query_log_id = rustok_search::SearchAnalyticsService::record_query(
             &db,
             SearchQueryLogRecord {
