@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use rustok_api::TenantContext;
+use rustok_content::resolve_by_locale_with_fallback;
 use rustok_seo_targets::{SeoTargetBulkListRequest, SeoTargetSlug};
 
 use crate::dto::{
@@ -20,13 +21,13 @@ use crate::dto::{
     SeoBulkExportInput, SeoBulkFieldPatchMode, SeoBulkImportInput, SeoBulkJobOperationKind,
     SeoBulkJobRecord, SeoBulkJobStatus, SeoBulkJsonFieldPatch, SeoBulkListInput,
     SeoBulkMetaPatchInput, SeoBulkSelectionInput, SeoBulkSelectionMode,
-    SeoBulkSelectionPreviewRecord, SeoBulkSource, SeoBulkStringFieldPatch, SeoMetaInput,
-    SeoMetaRecord, SeoMetaTranslationInput,
+    SeoBulkSelectionPreviewRecord, SeoBulkSource, SeoBulkStringFieldPatch, SeoFieldSource,
+    SeoMetaInput, SeoMetaRecord, SeoMetaTranslationInput,
 };
 use crate::entities::{seo_bulk_job, seo_bulk_job_artifact, seo_bulk_job_item};
 use crate::{SeoError, SeoResult};
 
-use super::SeoService;
+use super::{SeoService, trimmed_option};
 use super::robots::is_valid_structured_data_payload;
 
 const CSV_MIME_TYPE: &str = "text/csv; charset=utf-8";
@@ -312,6 +313,7 @@ fn map_bulk_job_model(
         processed_count: model.processed_count,
         succeeded_count: model.succeeded_count,
         failed_count: model.failed_count,
+        skipped_count: model.skipped_count,
         artifact_count: model.artifact_count,
         last_error: model.last_error,
         created_at: DateTime::<Utc>::from(model.created_at),
@@ -907,6 +909,210 @@ mod tests {
         assert_eq!(parsed[0].description.as_deref(), Some("+12345"));
         assert_eq!(parsed[0].keywords.as_deref(), Some("-keyword"));
     }
+
+    fn string_mode(mode: SeoBulkFieldPatchMode) -> Option<SeoBulkFieldPatchMode> {
+        Some(mode)
+    }
+
+    #[test]
+    fn plan_bulk_field_preserves_explicit_fields_in_safe_modes() {
+        use crate::dto::SeoFieldSource;
+        // A Set targeting an operator-authored field is preserved per field instead of
+        // failing the row, and Keep never disturbs it either.
+        assert_eq!(
+            plan_bulk_field(
+                SeoBulkApplyMode::ApplyMissingOnly,
+                SeoFieldSource::Explicit,
+                true,
+                BulkFieldClass::TemplateText,
+                string_mode(SeoBulkFieldPatchMode::Set),
+                "title",
+            )
+            .expect("explicit field must not fail the row"),
+            BulkFieldPlan::Preserve
+        );
+        assert_eq!(
+            plan_bulk_field(
+                SeoBulkApplyMode::ApplyMissingOnly,
+                SeoFieldSource::Explicit,
+                true,
+                BulkFieldClass::TemplateText,
+                string_mode(SeoBulkFieldPatchMode::Keep),
+                "title",
+            )
+            .expect("explicit field must stay untouched"),
+            BulkFieldPlan::Preserve
+        );
+        assert_eq!(
+            plan_bulk_field(
+                SeoBulkApplyMode::ApplyMissingSchemaOnly,
+                SeoFieldSource::Explicit,
+                true,
+                BulkFieldClass::CanonicalOrSchema,
+                string_mode(SeoBulkFieldPatchMode::Set),
+                "structured_data",
+            )
+            .expect("explicit schema must not fail the row"),
+            BulkFieldPlan::Preserve
+        );
+    }
+
+    #[test]
+    fn plan_bulk_field_materializes_only_template_fields_on_keep() {
+        use crate::dto::SeoFieldSource;
+        // Missing-only materializes template text (its purpose) ...
+        assert_eq!(
+            plan_bulk_field(
+                SeoBulkApplyMode::ApplyMissingOnly,
+                SeoFieldSource::Generated,
+                false,
+                BulkFieldClass::TemplateText,
+                string_mode(SeoBulkFieldPatchMode::Keep),
+                "title",
+            )
+            .expect("template text materializes"),
+            BulkFieldPlan::Materialize
+        );
+        // ... but never canonical or structured data without an explicit patch, so
+        // materialization can no longer freeze derived routes or legacy payloads.
+        assert_eq!(
+            plan_bulk_field(
+                SeoBulkApplyMode::ApplyMissingOnly,
+                SeoFieldSource::Generated,
+                false,
+                BulkFieldClass::CanonicalOrSchema,
+                string_mode(SeoBulkFieldPatchMode::Keep),
+                "canonical_url",
+            )
+            .expect("canonical stays raw-absent"),
+            BulkFieldPlan::Preserve
+        );
+        assert_eq!(
+            plan_bulk_field(
+                SeoBulkApplyMode::OverwriteGeneratedOnly,
+                SeoFieldSource::Fallback,
+                false,
+                BulkFieldClass::TemplateText,
+                string_mode(SeoBulkFieldPatchMode::Keep),
+                "title",
+            )
+            .expect("generated-only leaves fallback text alone"),
+            BulkFieldPlan::Preserve
+        );
+        assert_eq!(
+            plan_bulk_field(
+                SeoBulkApplyMode::OverwriteGeneratedOnly,
+                SeoFieldSource::Generated,
+                false,
+                BulkFieldClass::TemplateText,
+                string_mode(SeoBulkFieldPatchMode::Keep),
+                "title",
+            )
+            .expect("generated template text materializes"),
+            BulkFieldPlan::Materialize
+        );
+    }
+
+    #[test]
+    fn plan_bulk_field_applies_operator_intent_for_absent_fields() {
+        use crate::dto::SeoFieldSource;
+        // Set/Clear are operator intent: they apply to non-explicit fields in safe modes.
+        assert_eq!(
+            plan_bulk_field(
+                SeoBulkApplyMode::ApplyMissingOnly,
+                SeoFieldSource::Fallback,
+                false,
+                BulkFieldClass::CanonicalOrSchema,
+                string_mode(SeoBulkFieldPatchMode::Set),
+                "canonical_url",
+            )
+            .expect("explicit Set applies"),
+            BulkFieldPlan::Applied
+        );
+        assert_eq!(
+            plan_bulk_field(
+                SeoBulkApplyMode::ApplyMissingOnly,
+                SeoFieldSource::Generated,
+                false,
+                BulkFieldClass::TemplateText,
+                string_mode(SeoBulkFieldPatchMode::Clear),
+                "description",
+            )
+            .expect("explicit Clear applies"),
+            BulkFieldPlan::Applied
+        );
+        // ForceOverwriteExplicit keeps whole-record semantics: every field writes.
+        assert_eq!(
+            plan_bulk_field(
+                SeoBulkApplyMode::ForceOverwriteExplicit,
+                SeoFieldSource::Explicit,
+                true,
+                BulkFieldClass::TemplateText,
+                string_mode(SeoBulkFieldPatchMode::Keep),
+                "title",
+            )
+            .expect("force materializes"),
+            BulkFieldPlan::Materialize
+        );
+        assert_eq!(
+            plan_bulk_field(
+                SeoBulkApplyMode::ForceOverwriteExplicit,
+                SeoFieldSource::Explicit,
+                true,
+                BulkFieldClass::CanonicalOrSchema,
+                string_mode(SeoBulkFieldPatchMode::Set),
+                "canonical_url",
+            )
+            .expect("force applies"),
+            BulkFieldPlan::Applied
+        );
+    }
+
+    #[test]
+    fn plan_bulk_field_generated_only_still_loud_for_non_generated_targets() {
+        use crate::dto::SeoFieldSource;
+        let error = plan_bulk_field(
+            SeoBulkApplyMode::OverwriteGeneratedOnly,
+            SeoFieldSource::Fallback,
+            false,
+            BulkFieldClass::TemplateText,
+            string_mode(SeoBulkFieldPatchMode::Set),
+            "title",
+        )
+        .expect_err("setting a fallback field in generated-only mode must fail loudly");
+        assert!(
+            error.to_string().contains("requires generated SEO"),
+            "unexpected error: {error}"
+        );
+        // Preview never writes.
+        plan_bulk_field(
+            SeoBulkApplyMode::PreviewOnly,
+            SeoFieldSource::Generated,
+            false,
+            BulkFieldClass::TemplateText,
+            None,
+            "title",
+        )
+        .expect_err("preview mode must not write SEO records");
+    }
+
+    #[test]
+    fn resolve_bulk_json_preserves_raw_absence_over_invalid_effective() {
+        // A Keep/preserve decision keeps raw absence, healing legacy JSON `null` payloads
+        // instead of re-persisting the unrenderable serving value.
+        let effective = Some(Value::Null);
+        let resolved = resolve_bulk_json(BulkFieldPlan::Preserve, None, effective, None)
+            .expect("preserve resolves");
+        assert_eq!(resolved, None);
+        let materialized = resolve_bulk_json(
+            BulkFieldPlan::Materialize,
+            None,
+            Some(json!({"@type": "WebPage"})),
+            None,
+        )
+        .expect("materialize resolves");
+        assert_eq!(materialized, Some(json!({"@type": "WebPage"})));
+    }
 }
 
 #[allow(dead_code)]
@@ -945,6 +1151,123 @@ struct BulkImportRow {
     structured_data: Option<Value>,
     noindex: bool,
     nofollow: bool,
+}
+
+/// Which class of SEO field a bulk field patch is deciding over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BulkFieldClass {
+    TemplateText,
+    Robots,
+    CanonicalOrSchema,
+}
+
+/// The decision for one field of one bulk apply row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BulkFieldPlan {
+    /// Keep the stored operator value exactly as it is (absent stays absent).
+    Preserve,
+    /// Materialize the merged serving value into the explicit row.
+    Materialize,
+    /// Apply the operator's Set/Clear patch on top of the merged serving value.
+    Applied,
+}
+
+/// Result of applying one bulk patch row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BulkApplyOutcome {
+    Written { published_revision: Option<i32> },
+    Skipped,
+}
+
+/// Decides one field of one bulk apply row under the active apply mode.
+///
+/// Safe modes never overwrite operator-authored values: a Set/Clear targeting an already
+/// explicit field preserves just that field instead of failing the whole row, while every
+/// other field of the row still receives the patch. Keep decisions only materialize template
+/// fields (title/description/keywords/og_* and robots defaults); canonical_url and
+/// structured_data stay raw-absent unless the operator supplied an explicit patch, so safe
+/// materialization can never freeze derived routes or invalid legacy payloads.
+fn plan_bulk_field(
+    mode: SeoBulkApplyMode,
+    source: SeoFieldSource,
+    raw_present: bool,
+    class: BulkFieldClass,
+    patch_mode: Option<SeoBulkFieldPatchMode>,
+    field_name: &str,
+) -> SeoResult<BulkFieldPlan> {
+    if mode == SeoBulkApplyMode::PreviewOnly {
+        return Err(SeoError::validation(
+            "bulk apply mode `preview_only` does not write SEO records",
+        ));
+    }
+    let patch_mode = patch_mode.unwrap_or(SeoBulkFieldPatchMode::Keep);
+    if patch_mode != SeoBulkFieldPatchMode::Keep {
+        if mode == SeoBulkApplyMode::ForceOverwriteExplicit {
+            return Ok(BulkFieldPlan::Applied);
+        }
+        if raw_present {
+            // Operator-authored values survive every safe mode: preserve this field only.
+            return Ok(BulkFieldPlan::Preserve);
+        }
+        if mode == SeoBulkApplyMode::OverwriteGeneratedOnly && source != SeoFieldSource::Generated
+        {
+            return Err(SeoError::validation(format!(
+                "bulk apply mode `overwrite_generated_only` field `{field_name}` requires generated SEO, got `{}`",
+                source.as_str()
+            )));
+        }
+        return Ok(BulkFieldPlan::Applied);
+    }
+    if mode == SeoBulkApplyMode::ForceOverwriteExplicit {
+        return Ok(BulkFieldPlan::Materialize);
+    }
+    if raw_present {
+        return Ok(BulkFieldPlan::Preserve);
+    }
+    let materializes = match (mode, class) {
+        (
+            SeoBulkApplyMode::ApplyMissingOnly,
+            BulkFieldClass::TemplateText | BulkFieldClass::Robots,
+        ) => true,
+        (
+            SeoBulkApplyMode::OverwriteGeneratedOnly,
+            BulkFieldClass::TemplateText | BulkFieldClass::Robots,
+        ) => source == SeoFieldSource::Generated,
+        _ => false,
+    };
+    Ok(if materializes {
+        BulkFieldPlan::Materialize
+    } else {
+        BulkFieldPlan::Preserve
+    })
+}
+
+/// Resolves a string field of one bulk apply row from its plan.
+fn resolve_bulk_string(
+    plan: BulkFieldPlan,
+    raw: Option<String>,
+    effective: Option<String>,
+    patch: Option<&SeoBulkStringFieldPatch>,
+) -> SeoResult<Option<String>> {
+    match plan {
+        BulkFieldPlan::Preserve => Ok(raw),
+        BulkFieldPlan::Materialize => Ok(effective),
+        BulkFieldPlan::Applied => apply_string_patch(effective, patch),
+    }
+}
+
+/// Resolves the structured data field of one bulk apply row from its plan.
+fn resolve_bulk_json(
+    plan: BulkFieldPlan,
+    raw: Option<Value>,
+    effective: Option<Value>,
+    patch: Option<&SeoBulkJsonFieldPatch>,
+) -> SeoResult<Option<Value>> {
+    match plan {
+        BulkFieldPlan::Preserve => Ok(raw),
+        BulkFieldPlan::Materialize => Ok(effective),
+        BulkFieldPlan::Applied => apply_json_patch(effective, patch),
+    }
 }
 
 #[allow(dead_code)]
@@ -989,6 +1312,7 @@ impl SeoService {
             processed_count: Set(0),
             succeeded_count: Set(0),
             failed_count: Set(0),
+            skipped_count: Set(0),
             artifact_count: Set(0),
             last_error: Set(None),
             created_by: Set(created_by),
@@ -1033,6 +1357,7 @@ impl SeoService {
             processed_count: Set(0),
             succeeded_count: Set(0),
             failed_count: Set(0),
+            skipped_count: Set(0),
             artifact_count: Set(0),
             last_error: Set(None),
             created_by: Set(created_by),
@@ -1084,6 +1409,7 @@ impl SeoService {
             processed_count: Set(0),
             succeeded_count: Set(0),
             failed_count: Set(0),
+            skipped_count: Set(0),
             artifact_count: Set(0),
             last_error: Set(None),
             created_by: Set(created_by),
@@ -1317,6 +1643,7 @@ impl SeoService {
             .await?;
         let mut succeeded = 0_i32;
         let mut failed = 0_i32;
+        let mut skipped = 0_i32;
         let mut preview_rows = Vec::<Vec<String>>::new();
         let mut failure_rows = Vec::new();
 
@@ -1387,10 +1714,14 @@ impl SeoService {
                 )
                 .await
             {
-                Ok(revision) => {
+                Ok(BulkApplyOutcome::Written { published_revision }) => {
                     succeeded += 1;
-                    self.insert_bulk_job_item(job, target_id, None, revision)
+                    self.insert_bulk_job_item(job, target_id, None, published_revision)
                         .await?;
+                }
+                Ok(BulkApplyOutcome::Skipped) => {
+                    skipped += 1;
+                    self.insert_bulk_skipped_job_item(job, target_id).await?;
                 }
                 Err(error) => {
                     failed += 1;
@@ -1435,7 +1766,15 @@ impl SeoService {
             artifacts += 1;
         }
 
-        self.finish_bulk_job(job, succeeded + failed, succeeded, failed, artifacts, None)
+        self.finish_bulk_job(
+            job,
+            succeeded + failed + skipped,
+            succeeded,
+            failed,
+            skipped,
+            artifacts,
+            None,
+        )
             .await
     }
 
@@ -1456,6 +1795,7 @@ impl SeoService {
 
         let mut succeeded = 0_i32;
         let mut failed = 0_i32;
+        let skipped = 0_i32;
         let mut artifacts = 0_i32;
         let mut failure_rows = Vec::new();
 
@@ -1561,7 +1901,15 @@ impl SeoService {
             artifacts += 1;
         }
 
-        self.finish_bulk_job(job, succeeded + failed, succeeded, failed, artifacts, None)
+        self.finish_bulk_job(
+            job,
+            succeeded + failed + skipped,
+            succeeded,
+            failed,
+            skipped,
+            artifacts,
+            None,
+        )
             .await
     }
 
@@ -1582,6 +1930,7 @@ impl SeoService {
         )?;
         let mut succeeded = 0_i32;
         let mut failed = 0_i32;
+        let skipped = 0_i32;
         let mut artifacts = 0_i32;
         let mut failure_rows = Vec::new();
 
@@ -1628,7 +1977,15 @@ impl SeoService {
             artifacts += 1;
         }
 
-        self.finish_bulk_job(job, succeeded + failed, succeeded, failed, artifacts, None)
+        self.finish_bulk_job(
+            job,
+            succeeded + failed + skipped,
+            succeeded,
+            failed,
+            skipped,
+            artifacts,
+            None,
+        )
             .await
     }
 
@@ -1643,77 +2000,234 @@ impl SeoService {
         patch: &SeoBulkMetaPatchInput,
         apply_mode: SeoBulkApplyMode,
         publish_after_write: bool,
-    ) -> SeoResult<Option<i32>> {
+    ) -> SeoResult<BulkApplyOutcome> {
+        if apply_mode == SeoBulkApplyMode::PreviewOnly {
+            return Err(SeoError::validation(
+                "bulk apply mode `preview_only` does not write SEO records",
+            ));
+        }
         let current = self
             .seo_meta(tenant, target_kind.clone(), target_id, Some(locale))
             .await?
             .ok_or(SeoError::NotFound)?;
-        let current_source =
-            map_bulk_source(current.source.as_str()).unwrap_or(SeoBulkSource::Fallback);
-        match apply_mode {
-            SeoBulkApplyMode::PreviewOnly => {
-                return Err(SeoError::validation(
-                    "bulk apply mode `preview_only` does not write SEO records",
-                ));
-            }
-            SeoBulkApplyMode::ApplyMissingOnly if current_source == SeoBulkSource::Explicit => {
-                return Err(SeoError::validation(
-                    "bulk apply mode `apply_missing_only` does not overwrite explicit SEO",
-                ));
-            }
-            SeoBulkApplyMode::ApplyMissingSchemaOnly
-                if current.effective_state.structured_data.source
-                    == crate::dto::SeoFieldSource::Explicit =>
-            {
-                return Err(SeoError::validation(
-                    "bulk apply mode `apply_missing_schema_only` does not overwrite explicit structured_data",
-                ));
-            }
-            SeoBulkApplyMode::OverwriteGeneratedOnly
-                if current_source != SeoBulkSource::Generated =>
-            {
-                return Err(SeoError::validation(format!(
-                    "bulk apply mode `overwrite_generated_only` requires generated SEO, got `{}`",
-                    current_source.as_str()
-                )));
-            }
-            SeoBulkApplyMode::ApplyMissingOnly
-            | SeoBulkApplyMode::ApplyMissingSchemaOnly
-            | SeoBulkApplyMode::OverwriteGeneratedOnly
-            | SeoBulkApplyMode::ForceOverwriteExplicit => {}
+
+        // Raw operator-authored values drive the per-field preservation rules. They are read
+        // from the stored record so a missing (NULL/absent) column stays absent even when the
+        // merged serving value carries generated or fallback content for that field.
+        let explicit = self
+            .load_explicit_meta(tenant.id, target_kind.clone(), target_id)
+            .await?;
+        let explicit_row = explicit.is_some();
+        let raw_translation = explicit.as_ref().and_then(|loaded| {
+            resolve_by_locale_with_fallback(
+                loaded.translations.as_slice(),
+                locale,
+                Some(tenant.default_locale.as_str()),
+                |item| item.locale.as_str(),
+            )
+            .item
+            .cloned()
+        });
+        let raw_title = raw_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.title.clone()));
+        let raw_description = raw_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.description.clone()));
+        let raw_keywords = raw_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.keywords.clone()));
+        let raw_og_title = raw_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.og_title.clone()));
+        let raw_og_description = raw_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.og_description.clone()));
+        let raw_og_image = raw_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.og_image.clone()));
+        let raw_canonical = explicit
+            .as_ref()
+            .and_then(|loaded| trimmed_option(loaded.meta.canonical_url.clone()));
+        // Invalid legacy payloads (for example JSON `null`) count as absent so safe modes
+        // heal them to NULL instead of re-persisting an unrenderable value.
+        let raw_structured_data = explicit
+            .as_ref()
+            .and_then(|loaded| loaded.meta.structured_data.clone())
+            .filter(|value| is_valid_structured_data_payload(value));
+        let effective_structured_data = current
+            .structured_data
+            .as_ref()
+            .map(|value| value.0.clone())
+            .filter(|value| is_valid_structured_data_payload(value));
+
+        let title_plan = plan_bulk_field(
+            apply_mode,
+            current.effective_state.title.source,
+            raw_title.is_some(),
+            BulkFieldClass::TemplateText,
+            patch.title.as_ref().map(|value| value.mode),
+            "title",
+        )?;
+        let description_plan = plan_bulk_field(
+            apply_mode,
+            current.effective_state.description.source,
+            raw_description.is_some(),
+            BulkFieldClass::TemplateText,
+            patch.description.as_ref().map(|value| value.mode),
+            "description",
+        )?;
+        let keywords_plan = plan_bulk_field(
+            apply_mode,
+            current.effective_state.keywords.source,
+            raw_keywords.is_some(),
+            BulkFieldClass::TemplateText,
+            patch.keywords.as_ref().map(|value| value.mode),
+            "keywords",
+        )?;
+        let og_title_plan = plan_bulk_field(
+            apply_mode,
+            current.effective_state.open_graph.source,
+            raw_og_title.is_some(),
+            BulkFieldClass::TemplateText,
+            patch.og_title.as_ref().map(|value| value.mode),
+            "og_title",
+        )?;
+        let og_description_plan = plan_bulk_field(
+            apply_mode,
+            current.effective_state.open_graph.source,
+            raw_og_description.is_some(),
+            BulkFieldClass::TemplateText,
+            patch.og_description.as_ref().map(|value| value.mode),
+            "og_description",
+        )?;
+        let og_image_plan = plan_bulk_field(
+            apply_mode,
+            current.effective_state.open_graph.source,
+            raw_og_image.is_some(),
+            BulkFieldClass::TemplateText,
+            patch.og_image.as_ref().map(|value| value.mode),
+            "og_image",
+        )?;
+        let canonical_plan = plan_bulk_field(
+            apply_mode,
+            current.effective_state.canonical_url.source,
+            raw_canonical.is_some(),
+            BulkFieldClass::CanonicalOrSchema,
+            patch.canonical_url.as_ref().map(|value| value.mode),
+            "canonical_url",
+        )?;
+        let structured_data_plan = plan_bulk_field(
+            apply_mode,
+            current.effective_state.structured_data.source,
+            raw_structured_data.is_some(),
+            BulkFieldClass::CanonicalOrSchema,
+            patch.structured_data.as_ref().map(|value| value.mode),
+            "structured_data",
+        )?;
+        // Robots are row-level booleans: raw presence means the explicit row exists.
+        let noindex_plan = plan_bulk_field(
+            apply_mode,
+            current.effective_state.robots.source,
+            explicit_row,
+            BulkFieldClass::Robots,
+            patch.noindex.as_ref().map(|value| value.mode),
+            "noindex",
+        )?;
+        let nofollow_plan = plan_bulk_field(
+            apply_mode,
+            current.effective_state.robots.source,
+            explicit_row,
+            BulkFieldClass::Robots,
+            patch.nofollow.as_ref().map(|value| value.mode),
+            "nofollow",
+        )?;
+
+        // A row is written only when at least one field is patched or materialized. Robots
+        // defaults alone never create a row; they ride along with another written field.
+        let mut row_written = [
+            title_plan,
+            description_plan,
+            keywords_plan,
+            og_title_plan,
+            og_description_plan,
+            og_image_plan,
+            canonical_plan,
+            structured_data_plan,
+        ]
+        .iter()
+        .any(|plan| *plan != BulkFieldPlan::Preserve);
+        row_written = row_written
+            || noindex_plan == BulkFieldPlan::Applied
+            || nofollow_plan == BulkFieldPlan::Applied;
+        if !row_written {
+            return Ok(BulkApplyOutcome::Skipped);
         }
+
         let input = SeoMetaInput {
             target_kind: target_kind.clone(),
             target_id,
-            noindex: apply_bool_patch(current.noindex, patch.noindex.as_ref())?,
-            nofollow: apply_bool_patch(current.nofollow, patch.nofollow.as_ref())?,
-            canonical_url: apply_string_patch(current.canonical_url, patch.canonical_url.as_ref())?,
-            structured_data: apply_json_patch(
-                current.structured_data.map(|value| value.0),
+            noindex: match noindex_plan {
+                BulkFieldPlan::Applied => {
+                    apply_bool_patch(current.noindex, patch.noindex.as_ref())?
+                }
+                BulkFieldPlan::Preserve | BulkFieldPlan::Materialize => current.noindex,
+            },
+            nofollow: match nofollow_plan {
+                BulkFieldPlan::Applied => {
+                    apply_bool_patch(current.nofollow, patch.nofollow.as_ref())?
+                }
+                BulkFieldPlan::Preserve | BulkFieldPlan::Materialize => current.nofollow,
+            },
+            canonical_url: resolve_bulk_string(
+                canonical_plan,
+                raw_canonical,
+                current.canonical_url.clone(),
+                patch.canonical_url.as_ref(),
+            )?,
+            structured_data: resolve_bulk_json(
+                structured_data_plan,
+                raw_structured_data,
+                effective_structured_data,
                 patch.structured_data.as_ref(),
             )?
             .map(Json),
             translations: vec![SeoMetaTranslationInput {
                 locale: locale.to_string(),
-                title: apply_string_patch(current.translation.title, patch.title.as_ref())?,
-                description: apply_string_patch(
-                    current.translation.description,
+                title: resolve_bulk_string(
+                    title_plan,
+                    raw_title,
+                    current.translation.title.clone(),
+                    patch.title.as_ref(),
+                )?,
+                description: resolve_bulk_string(
+                    description_plan,
+                    raw_description,
+                    current.translation.description.clone(),
                     patch.description.as_ref(),
                 )?,
-                keywords: apply_string_patch(
-                    current.translation.keywords,
+                keywords: resolve_bulk_string(
+                    keywords_plan,
+                    raw_keywords,
+                    current.translation.keywords.clone(),
                     patch.keywords.as_ref(),
                 )?,
-                og_title: apply_string_patch(
-                    current.translation.og_title,
+                og_title: resolve_bulk_string(
+                    og_title_plan,
+                    raw_og_title,
+                    current.translation.og_title.clone(),
                     patch.og_title.as_ref(),
                 )?,
-                og_description: apply_string_patch(
-                    current.translation.og_description,
+                og_description: resolve_bulk_string(
+                    og_description_plan,
+                    raw_og_description,
+                    current.translation.og_description.clone(),
                     patch.og_description.as_ref(),
                 )?,
-                og_image: apply_string_patch(
-                    current.translation.og_image,
+                og_image: resolve_bulk_string(
+                    og_image_plan,
+                    raw_og_image,
+                    current.translation.og_image.clone(),
                     patch.og_image.as_ref(),
                 )?,
             }],
@@ -1730,10 +2244,14 @@ impl SeoService {
                     Some(format!("bulk job {} apply", job_id)),
                 )
                 .await?;
-            return Ok(Some(revision.revision));
+            return Ok(BulkApplyOutcome::Written {
+                published_revision: Some(revision.revision),
+            });
         }
 
-        Ok(None)
+        Ok(BulkApplyOutcome::Written {
+            published_revision: None,
+        })
     }
 
     async fn import_bulk_row(
@@ -1816,9 +2334,12 @@ impl SeoService {
         processed_count: i32,
         succeeded_count: i32,
         failed_count: i32,
+        skipped_count: i32,
         artifact_count: i32,
         last_error: Option<String>,
     ) -> SeoResult<()> {
+        // Skipped rows are processed but untouched: they never count as failures, so a run over
+        // already-explicit targets finishes `completed`, not `failed`.
         let status = if failed_count == 0 {
             SeoBulkJobStatus::Completed
         } else if succeeded_count == 0 {
@@ -1833,6 +2354,7 @@ impl SeoService {
         active.processed_count = Set(processed_count);
         active.succeeded_count = Set(succeeded_count);
         active.failed_count = Set(failed_count);
+        active.skipped_count = Set(skipped_count);
         active.artifact_count = Set(artifact_count);
         active.last_error = Set(last_error.map(limit_job_message));
         active.completed_at = Set(Some(now));
@@ -1866,17 +2388,39 @@ impl SeoService {
         error_message: Option<String>,
         published_revision: Option<i32>,
     ) -> SeoResult<()> {
+        let status = if error_message.is_some() {
+            "failed"
+        } else {
+            "completed"
+        };
+        self.insert_bulk_job_item_with_status(job, target_id, status, error_message, published_revision)
+            .await
+    }
+
+    async fn insert_bulk_skipped_job_item(
+        &self,
+        job: &seo_bulk_job::Model,
+        target_id: Uuid,
+    ) -> SeoResult<()> {
+        self.insert_bulk_job_item_with_status(job, target_id, "skipped", None, None)
+            .await
+    }
+
+    async fn insert_bulk_job_item_with_status(
+        &self,
+        job: &seo_bulk_job::Model,
+        target_id: Uuid,
+        status: &str,
+        error_message: Option<String>,
+        published_revision: Option<i32>,
+    ) -> SeoResult<()> {
         let now = Utc::now().fixed_offset();
         seo_bulk_job_item::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(job.tenant_id),
             job_id: Set(job.id),
             target_id: Set(target_id),
-            status: Set(if error_message.is_some() {
-                "failed".to_string()
-            } else {
-                "completed".to_string()
-            }),
+            status: Set(status.to_string()),
             error_message: Set(error_message.map(limit_job_message)),
             published_revision: Set(published_revision),
             created_at: Set(now),

@@ -77,6 +77,7 @@ impl SeoService {
             processed_count: Set(0),
             succeeded_count: Set(0),
             failed_count: Set(0),
+            skipped_count: Set(0),
             artifact_count: Set(0),
             last_error: Set(None),
             created_by: Set(created_by),
@@ -146,6 +147,7 @@ impl SeoService {
             processed_count: Set(0),
             succeeded_count: Set(0),
             failed_count: Set(0),
+            skipped_count: Set(0),
             artifact_count: Set(0),
             last_error: Set(None),
             created_by: Set(created_by),
@@ -257,6 +259,7 @@ impl SeoService {
                     progress.processed,
                     progress.succeeded,
                     progress.failed,
+                    progress.skipped,
                     progress.artifacts,
                     None,
                 )
@@ -355,6 +358,7 @@ impl SeoService {
                 progress.processed,
                 progress.succeeded,
                 progress.failed,
+                progress.skipped,
                 progress.artifacts,
                 None,
             )
@@ -387,6 +391,7 @@ impl SeoService {
                     progress.processed,
                     progress.succeeded,
                     progress.failed,
+                    progress.skipped,
                     progress.artifacts,
                     None,
                 )
@@ -457,6 +462,7 @@ impl SeoService {
                 progress.processed,
                 progress.succeeded,
                 progress.failed,
+                progress.skipped,
                 progress.artifacts,
                 None,
             )
@@ -546,6 +552,7 @@ impl SeoService {
         active.processed_count = Set(progress.processed);
         active.succeeded_count = Set(progress.succeeded);
         active.failed_count = Set(progress.failed);
+        active.skipped_count = Set(progress.skipped);
         active.artifact_count = Set(progress.artifacts);
         active.last_error = Set(None);
         active.completed_at = Set(None);

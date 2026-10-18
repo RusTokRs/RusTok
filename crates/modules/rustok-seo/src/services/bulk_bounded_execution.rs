@@ -12,6 +12,7 @@ struct BulkJobProgress {
     processed: i32,
     succeeded: i32,
     failed: i32,
+    skipped: i32,
     artifacts: i32,
 }
 
@@ -80,6 +81,7 @@ impl SeoService {
             processed_count: Set(0),
             succeeded_count: Set(0),
             failed_count: Set(0),
+            skipped_count: Set(0),
             artifact_count: Set(0),
             last_error: Set(None),
             created_by: Set(created_by),
@@ -125,6 +127,7 @@ impl SeoService {
             processed_count: Set(0),
             succeeded_count: Set(0),
             failed_count: Set(0),
+            skipped_count: Set(0),
             artifact_count: Set(0),
             last_error: Set(None),
             created_by: Set(created_by),
@@ -255,6 +258,7 @@ impl SeoService {
                     progress.processed,
                     progress.succeeded,
                     progress.failed,
+                    progress.skipped,
                     progress.artifacts,
                     None,
                 )
@@ -324,9 +328,12 @@ impl SeoService {
                     )
                     .await
                 {
-                    Ok(revision) => {
-                        self.insert_bulk_job_item(job, target_id, None, revision)
+                    Ok(BulkApplyOutcome::Written { published_revision }) => {
+                        self.insert_bulk_job_item(job, target_id, None, published_revision)
                             .await?;
+                    }
+                    Ok(BulkApplyOutcome::Skipped) => {
+                        self.insert_bulk_skipped_job_item(job, target_id).await?;
                     }
                     Err(error) => {
                         let message = error.to_string();
@@ -381,6 +388,7 @@ impl SeoService {
                 progress.processed,
                 progress.succeeded,
                 progress.failed,
+                progress.skipped,
                 progress.artifacts,
                 None,
             )
@@ -429,6 +437,10 @@ impl SeoService {
             .filter(|item| item.status == "completed")
             .count() as i32;
         let failed = items.iter().filter(|item| item.status == "failed").count() as i32;
+        let skipped = items
+            .iter()
+            .filter(|item| item.status == "skipped")
+            .count() as i32;
         let artifacts = seo_bulk_job_artifact::Entity::find()
             .filter(seo_bulk_job_artifact::Column::JobId.eq(job_id))
             .all(&self.db)
@@ -438,6 +450,7 @@ impl SeoService {
             processed: items.len() as i32,
             succeeded,
             failed,
+            skipped,
             artifacts,
         })
     }
@@ -455,6 +468,7 @@ impl SeoService {
         active.processed_count = Set(progress.processed);
         active.succeeded_count = Set(progress.succeeded);
         active.failed_count = Set(progress.failed);
+        active.skipped_count = Set(progress.skipped);
         active.artifact_count = Set(progress.artifacts);
         active.last_error = Set(None);
         active.completed_at = Set(None);
@@ -516,7 +530,7 @@ impl SeoService {
         )
         .await?;
 
-        self.finish_bulk_job(job, rows.len() as i32, rows.len() as i32, 0, 1, None)
+        self.finish_bulk_job(job, rows.len() as i32, rows.len() as i32, 0, 0, 1, None)
             .await
     }
 }

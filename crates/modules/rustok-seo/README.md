@@ -10,7 +10,7 @@
 - consume registry-backed SEO target providers through `rustok-seo-targets` and the shared runtime extensions store
 - keep public forum topic SEO resolution channel-aware when a topic is restricted by forum channel access
 - resolve effective metadata through explicit SEO > template-generated SEO > domain/entity fallback
-- run bulk remediation with safe apply modes for preview, missing-only materialization, generated-only overwrite, and explicit-force overwrite
+- run bulk remediation with safe apply modes for preview, missing-only materialization, generated-only overwrite, and explicit-force overwrite; bulk apply gates **per field** — safe modes never overwrite operator-authored values, materialization never freezes canonical/structured data without an explicit patch, and rows with nothing left to change finish as `skipped` (reported via `skipped_count`), never `failed`
 - expose diagnostics with readiness scoring, issue aggregates, hreflang gap detection, canonical redirect chain/loop detection, `cross_link_gap` hints, and image descriptor quality checks (`missing_image_alt`, `missing_image_size`) for SEO-critical targets; diagnostics page contexts are built by the shared render formula (`services::routing::merge_page_context`) so reported canonical/title/alternates/schema always equal public output
 - normalize JSON-LD into typed `SeoStructuredDataBlock` records with schema kind, source state, and `@graph` expansion
 - manage manual redirects and canonical overrides
@@ -121,8 +121,8 @@ Tracked from [`docs/audits/seo-module-product-logic-audit-2026-10-18.md`](../../
   `SeoMetaRecord` projection (`seo_meta` and the diagnostics meta record) still shows raw stored
   values; the fix is additive display-only `effective_*` fields computed by a shared canonical
   resolver, because editable fields must stay raw for admin round-trips. See the audit report.
-- **Bulk row-level gate/materialization (P2-6), diagnostics N+1 reads (P2-11),
-  category SEO dual-store (P2-12), write-only settings without admin consumers (P2-14),
+- **Diagnostics N+1 reads (P2-11), category SEO dual-store (P2-12),
+  write-only settings without admin consumers (P2-14),
   admin surface split (P2-15)** — open; evidence and file:line
   references live in the audit report.
 - **Rust compile/test evidence is host-dependent:** the canonical scoped commands are

@@ -167,13 +167,13 @@ moves to `Accepted`.
 
 ---
 
-#### P2-6 · Bulk modes gate per-row by record `source` while precedence is declared per-field; "safe" modes mark rows as failed — **OPEN**
+#### P2-6 · Bulk modes gate per-row by record `source` while precedence is declared per-field; "safe" modes mark rows as failed — **FIXED**
 
 **Chain:** C5.
 
 **Evidence:** `apply_missing_only` rejects a row when `source == "explicit"` and `overwrite_generated_only` when `source != generated"`, but `source="explicit"` is set when **any** explicit row exists even if every field is still generated — with `source=Any` (default) "safe" modes send hundreds of rows to `failed` instead of `skipped`. Materialization modes write the **merged** state back to explicit (freezing fallback schema/generated canonical — the P1-3 disease at scale). A provider returning `Json(Null)` for `structured_data` would fail validation on **every** row of any writing mode.
 
-**Fix:** field-level guards in `apply_*_patch` (never touch `SeoFieldSource::Explicit` fields in missing-only/generated-only modes); a `skipped` counter distinct from `failed`; normalize `Null` → `None` in the read-model; materialization must not touch canonical/structured data without an explicit patch.
+**Applied fix (this branch):** `apply_bulk_patch_to_target` now plans every field independently through a pure `plan_bulk_field(mode, source, raw_present, class, patch_mode, field)` decision (`Preserve` / `Materialize` / `Applied`) driven by the **raw stored value** (`load_explicit_meta`), not by the row-level `source` group: safe modes (`apply_missing_only`, `overwrite_generated_only`, `apply_missing_schema_only`) never overwrite operator-authored fields — a Set/Clear targeting an explicit field preserves just that field while the rest of the row still receives the patch — and rows where nothing would change return a tri-state `BulkApplyOutcome::Skipped` instead of an error. Keep-decisions materialize only template fields (title/description/keywords/og_* and robots defaults); `canonical_url` and `structured_data` stay raw-absent without an explicit patch, so materialization can no longer freeze derived routes (P1-3 at scale). Invalid legacy payloads (`Json(Null)`) count as absent on both the raw and effective side and heal to `NULL` on write instead of failing every row. `overwrite_generated_only` stays loud (field-named validation error) for Set/Clear on non-generated, non-explicit fields; `preview_only` keeps its row-level guard. Skips are persisted as job-item status `"skipped"` (progress derives from items) and surfaced through a new `skipped_count` column (`m20261018_000013_add_seo_bulk_job_skipped_count`), `SeoBulkJobRecord`/`SeoBulkJobStatusRecord.skipped_count`, GraphQL (`skippedCount`), the admin bulk panel (`ok= | failed= | skipped= | artifacts=`), and both `next-admin` GraphQL queries; `finish_bulk_job` takes the skipped counter and a skipped-only run finishes `completed` (skips never count as failures). Six unit tests pin the per-field table (explicit preservation, template-only materialization, applied operator intent, loud generated-only, preview guard, JSON `Null` healing).
 
 ---
 
@@ -284,7 +284,7 @@ moves to `Accepted`.
 | 4 | **P2-4:** one transaction + events for all auto-redirect mutations | Cross-replica divergence after renames | cross-replica test without waiting for TTL — **DONE (test pending `cargo`)** |
 | 5 | **P2-10:** write-time cycles + runtime fail-safe (+ alias 1-hop remainder) | Live traffic must never 5xx on a loop | tests: A↔B rejected on write; storefront never errors on legacy loops — **DONE except alias 1-hop (design)** |
 | 6 | **P2-5:** shared effective-context builder for render/diagnostics/preview | Removes the whole "diagnostics lies" class | identical canonical/title/alternates across three consumers on the same data — **page-context half DONE** (diagnostics delegates to `merge_page_context`, verifier contract updated); **authoring-record half open** (additive `effective_*` fields, see design note) |
-| 7 | **P2-6:** field-level bulk guards + skipped counter + Null→None | "Safe" modes stop alarming and stop freezing fallback | partial-explicit row tests — **OPEN** |
+| 7 | **P2-6:** field-level bulk guards + skipped counter + Null→None | "Safe" modes stop alarming and stop freezing fallback | partial-explicit row tests — **DONE** |
 | 8 | **P2-13:** one Next redirect hook on all pages | Host parity | route matrix: redirects applied 16/16 — **OPEN** |
 | 9 | **P2-7/8/9:** OG per-field fallback, suffix/truncate order, foreign locale prefix | Targeted render defects | unit tests per item — **P2-7 DONE** (shared `resolve_open_graph_text` + tests), **P2-8 DONE** (reserve-before-truncate + test), **P2-9 open** (see design note: needs `TenantLocalePolicyPort`, no sound syntactic shortcut) |
 | 10 | **P2-11/12/14/15, P3** | Perf/categories/settings/UI matrix | per matching contract verifiers — **OPEN** |
@@ -322,6 +322,11 @@ Executed on this branch (static, Node-based):
   require the shared `merge_page_context` projection in both files), `verify-seo-hardening-suite` (7 checks),
   and the entire SEO battery re-run: **all PASS**; `verify-api-surface-contract` PASS (marker-based,
   unaffected); `verify-product-category-seo-seam` remains the known pre-existing failure.
+- After P2-6 (per-field bulk gates + `skipped_count`): `verify-seo-bulk-batch-reads.mjs` marker set
+  re-checked (all markers intact, including `progress.artifacts == 0` and the forbidden
+  `.seo_meta(` in the IO worker), `verify-api-surface-contract` PASS (additive `skippedCount`),
+  and the full SEO battery re-run: **all PASS**. Six new unit tests pin the field-plan table;
+  like the other Rust tests on this branch they await a Rust-capable host (cargo unavailable).
 
 Not run / environment-dependent:
 

@@ -70,6 +70,7 @@ interface SeoBulkJobRecord {
   processedCount: number;
   succeededCount: number;
   failedCount: number;
+  skippedCount: number;
   artifactCount: number;
   publishAfterWrite: boolean;
   startedAt: string | null;
@@ -424,6 +425,7 @@ query SeoBulkJobs($limit: Int) {
     processedCount
     succeededCount
     failedCount
+    skippedCount
     artifactCount
     publishAfterWrite
     startedAt
@@ -455,6 +457,7 @@ query SeoBulkJob($jobId: UUID!) {
     processedCount
     succeededCount
     failedCount
+    skippedCount
     artifactCount
     publishAfterWrite
     startedAt
