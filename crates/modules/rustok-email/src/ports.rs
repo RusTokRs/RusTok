@@ -101,6 +101,18 @@ fn validate_delivery_request(request: &EmailDeliveryRequest) -> Result<(), PortE
             "email delivery requires a non-empty recipient",
         ));
     }
+    if request.to.contains('\r') || request.to.contains('\n') {
+        return Err(PortError::validation(
+            "email.recipient_invalid",
+            "email delivery recipient contains invalid control characters",
+        ));
+    }
+    if request.to.parse::<lettre::message::Mailbox>().is_err() {
+        return Err(PortError::validation(
+            "email.recipient_invalid",
+            "email delivery recipient is not a valid email address",
+        ));
+    }
     Ok(())
 }
 
@@ -206,5 +218,29 @@ mod tests {
         assert_eq!(error.kind, PortErrorKind::Validation);
         assert_eq!(error.code, "email.template_id_empty");
         assert!(!error.retryable);
+
+        // Test invalid recipient email syntax
+        let mut request = delivery_request();
+        request.to = "not-an-email".to_string();
+        let error = EmailDeliveryPort::send_transactional_email(
+            &crate::EmailService::Disabled,
+            write_context(),
+            request,
+        )
+        .await
+        .expect_err("invalid email syntax must be rejected");
+        assert_eq!(error.code, "email.recipient_invalid");
+
+        // Test CRLF injection rejection
+        let mut request = delivery_request();
+        request.to = "user@example.test\r\nBcc: evil@example.test".to_string();
+        let error = EmailDeliveryPort::send_transactional_email(
+            &crate::EmailService::Disabled,
+            write_context(),
+            request,
+        )
+        .await
+        .expect_err("crlf injection must be rejected");
+        assert_eq!(error.code, "email.recipient_invalid");
     }
 }

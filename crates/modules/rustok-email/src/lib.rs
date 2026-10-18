@@ -18,6 +18,7 @@ use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModul
 use sea_orm_migration::MigrationTrait;
 
 /// Core email module — SMTP transport, templates, email lifecycle.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct EmailModule;
 
 impl MigrationSource for EmailModule {
@@ -59,10 +60,23 @@ impl RusToKModule for EmailModule {
 #[cfg(test)]
 mod tests {
     use super::EmailModule;
-    use rustok_core::module::{HealthStatus, RusToKModule};
+    use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 
     #[tokio::test]
     async fn email_module_health_defers_to_host_readiness() {
-        assert_eq!(EmailModule.health().await, HealthStatus::Degraded);
+        let module = EmailModule;
+        assert_eq!(module.health().await, HealthStatus::Degraded);
+        assert_eq!(module.slug(), "email");
+        assert_eq!(module.name(), "Email");
+        assert_eq!(module.kind(), ModuleKind::Core);
+        assert!(module.migrations().is_empty());
+    }
+
+    #[test]
+    #[allow(clippy::default_constructed_unit_structs)]
+    fn email_module_traits() {
+        let m1 = EmailModule;
+        let m2 = EmailModule::default();
+        assert_eq!(m1, m2);
     }
 }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EmailConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -12,7 +12,7 @@ pub struct EmailConfig {
     pub reset_base_url: String,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SmtpConfig {
     #[serde(default = "default_smtp_host")]
     pub host: String,
