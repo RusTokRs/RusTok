@@ -31,6 +31,11 @@ import {
   type EventDeliveryConfiguration,
   type EventsStatus
 } from '../api/events';
+import {
+  evaluateProfileSelection,
+  formatSaveOutcomeKey,
+  isRestartRequired
+} from './events-model';
 
 interface EventsFormProps {
   status: EventsStatus;
@@ -57,11 +62,19 @@ export function EventsForm({
     { value: 'outbox', label: t('transport.outbox') },
     { value: 'outbox_iggy', label: t('transport.outboxIggy') }
   ];
-  const restartRequired =
-    profile !== configuration.activeProfile || configuration.restartRequired;
+  const restartRequired = isRestartRequired(
+    profile,
+    configuration.activeProfile,
+    configuration.restartRequired
+  );
 
   function selectProfile(nextProfile: string) {
-    if (nextProfile === 'outbox_iggy' && !configuration.iggyConfigured) {
+    const outcome = evaluateProfileSelection(nextProfile, {
+      activeProfile: configuration.activeProfile,
+      iggyConfigured: configuration.iggyConfigured,
+      serverRestartRequired: configuration.restartRequired
+    });
+    if (outcome.showIggyConfiguration) {
       setShowIggyConfiguration(true);
       return;
     }
@@ -75,9 +88,10 @@ export function EventsForm({
           token,
           tenantSlug
         });
+        const outcomeKey = formatSaveOutcomeKey(saved.restartRequired);
         setResult({
           ok: true,
-          msg: saved.restartRequired ? t('saved') : undefined
+          msg: t(outcomeKey)
         });
       } catch (error) {
         setResult({ ok: false, msg: String(error) });
@@ -112,10 +126,7 @@ export function EventsForm({
           )}
           {profile === 'outbox_iggy' && (
             <p className='text-sm text-amber-700 dark:text-amber-300'>
-              {t(
-                'transport.iggyDeployment' as any,
-                { mode: configuration.iggyMode } as any
-              )}
+              {t('transport.iggyDeployment', { mode: configuration.iggyMode })}
             </p>
           )}
         </CardContent>

@@ -13,6 +13,7 @@
     "typegen:i18n": "next-fluent typegen -i messages/en.ftl -o src/types/i18n.d.ts",
     "typecheck": "npm run typegen:i18n && next typegen && tsc --noEmit",
     "test:pages": "node --experimental-strip-types --test packages/pages/src/pages-admin.test.mjs",
+    "test:events": "node --experimental-strip-types --test packages/events/src/events-admin.test.mjs",
     "lint:fix": "eslint src --fix && prettier --write src",
     "lint:strict": "eslint src --max-warnings=0",
     "test:e2e": "playwright test",
