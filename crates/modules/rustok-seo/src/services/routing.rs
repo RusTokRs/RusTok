@@ -414,22 +414,19 @@ impl SeoService {
             let explicit_og_image = effective_translation
                 .as_ref()
                 .and_then(|item| super::trimmed_option(item.og_image.clone()));
-            let (og_title, og_desc, og_source) = if explicit_og_title.is_some()
-                || explicit_og_desc.is_some()
-                || explicit_og_image.is_some()
-            {
-                (explicit_og_title, explicit_og_desc, SeoFieldSource::Explicit)
-            } else if generated.og_title.is_some() || generated.og_description.is_some() {
-                (generated.og_title.clone(), generated.og_description.clone(), SeoFieldSource::Generated)
-            } else {
-                (None, None, SeoFieldSource::Fallback)
-            };
+            let (og_title, og_desc, og_image, og_source) = resolve_open_graph_text(
+                explicit_og_title,
+                explicit_og_desc,
+                explicit_og_image,
+                generated.og_title.clone(),
+                generated.og_description.clone(),
+            );
 
             let open_graph = merge_open_graph(
                 &state.open_graph,
                 og_title,
                 og_desc,
-                explicit_og_image,
+                og_image,
                 canonical_url.as_str(),
                 effective_locale.as_str(),
             );
@@ -674,6 +671,43 @@ fn apply_rich_snippets_setting(mut document: SeoDocument, enabled: bool) -> SeoD
     document
 }
 
+/// Per-field OpenGraph text precedence shared by public render and
+/// diagnostics: `explicit → generated → state` for title and description
+/// independently, so a lone explicit `og:image` no longer switches the text
+/// pair away from the generated template. The group source keeps its existing
+/// semantics: any explicit OG input marks the group Explicit; otherwise any
+/// generated text marks it Generated.
+pub(super) fn resolve_open_graph_text(
+    explicit_og_title: Option<String>,
+    explicit_og_description: Option<String>,
+    explicit_og_image: Option<String>,
+    generated_og_title: Option<String>,
+    generated_og_description: Option<String>,
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    SeoFieldSource,
+) {
+    let og_title = explicit_og_title
+        .clone()
+        .or_else(|| generated_og_title.clone());
+    let og_description = explicit_og_description
+        .clone()
+        .or_else(|| generated_og_description.clone());
+    let og_source = if explicit_og_title.is_some()
+        || explicit_og_description.is_some()
+        || explicit_og_image.is_some()
+    {
+        SeoFieldSource::Explicit
+    } else if og_title.is_some() || og_description.is_some() {
+        SeoFieldSource::Generated
+    } else {
+        SeoFieldSource::Fallback
+    };
+    (og_title, og_description, explicit_og_image, og_source)
+}
+
 fn apply_open_graph_settings(
     mut open_graph: SeoOpenGraph,
     settings: &SeoModuleSettings,
@@ -700,14 +734,21 @@ fn apply_metadata_settings(
     description: Option<String>,
     settings: &SeoModuleSettings,
 ) -> (String, Option<String>) {
+    let max_length = settings.meta_title_max_length.max(1) as usize;
     if let Some(suffix) = settings.title_suffix.as_deref() {
         let suffix = suffix.trim();
         if !suffix.is_empty() && !title.ends_with(suffix) {
-            title.push_str(settings.title_separator.as_str());
+            let separator = settings.title_separator.as_str();
+            // Reserve room for the separator and suffix before truncating the
+            // base so a long (often generated) title can never silently drop or
+            // cut the suffix; truncation happens only on the base.
+            let reserved = separator.chars().count() + suffix.chars().count();
+            title = truncate_chars(title, max_length.saturating_sub(reserved));
+            title.push_str(separator);
             title.push_str(suffix);
         }
     }
-    title = truncate_chars(title, settings.meta_title_max_length.max(1) as usize);
+    title = truncate_chars(title, max_length);
     let description = description
         .map(|value| truncate_chars(value, settings.meta_description_max_length.max(1) as usize));
     (title, description)
@@ -893,6 +934,76 @@ mod tests {
             super::locale_prefixed_path("en", "https://example.test/en/about"),
             "https://example.test/en/about"
         );
+    }
+
+    #[test]
+    fn open_graph_text_resolves_per_field_with_explicit_image_preserved() {
+        use crate::dto::SeoFieldSource;
+
+        // A lone explicit og:image must not switch the text pair off the template.
+        let (title, description, image, source) = super::resolve_open_graph_text(
+            None,
+            None,
+            Some("/images/og.png".to_string()),
+            Some("Generated title".to_string()),
+            Some("Generated description".to_string()),
+        );
+        assert_eq!(title.as_deref(), Some("Generated title"));
+        assert_eq!(description.as_deref(), Some("Generated description"));
+        assert_eq!(image.as_deref(), Some("/images/og.png"));
+        assert_eq!(source, SeoFieldSource::Explicit);
+
+        // Explicit title with no explicit description falls through per field.
+        let (title, description, image, source) = super::resolve_open_graph_text(
+            Some("Explicit title".to_string()),
+            None,
+            None,
+            Some("Generated title".to_string()),
+            Some("Generated description".to_string()),
+        );
+        assert_eq!(title.as_deref(), Some("Explicit title"));
+        assert_eq!(description.as_deref(), Some("Generated description"));
+        assert_eq!(image, None);
+        assert_eq!(source, SeoFieldSource::Explicit);
+
+        // Fully generated text reports Generated; empty inputs report Fallback.
+        let (title, _, _, source) = super::resolve_open_graph_text(
+            None,
+            None,
+            None,
+            Some("Generated title".to_string()),
+            None,
+        );
+        assert_eq!(title.as_deref(), Some("Generated title"));
+        assert_eq!(source, SeoFieldSource::Generated);
+
+        let (_, _, _, source) = super::resolve_open_graph_text(None, None, None, None, None);
+        assert_eq!(source, SeoFieldSource::Fallback);
+    }
+
+    #[test]
+    fn title_suffix_survives_truncation() {
+        let mut settings = crate::dto::SeoModuleSettings::default();
+        settings.title_separator = " | ".to_string();
+        settings.title_suffix = Some("Example Site".to_string());
+        settings.meta_title_max_length = 40;
+
+        let base = "A".repeat(60);
+        let (title, _) = super::apply_metadata_settings(base, None, &settings);
+        assert_eq!(
+            title.chars().count(),
+            40,
+            "truncated title keeps the reserved separator+suffix tail"
+        );
+        assert!(
+            title.ends_with(" | Example Site"),
+            "suffix and separator must survive truncation whole: {title}"
+        );
+
+        // Without a suffix, plain truncation is unchanged.
+        let (title, _) = super::apply_metadata_settings("B".repeat(100), None, &settings);
+        assert_eq!(title.chars().count(), 40);
+        assert!(title.starts_with("BBB"));
     }
 
     #[test]

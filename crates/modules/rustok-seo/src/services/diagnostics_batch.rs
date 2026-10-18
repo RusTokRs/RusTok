@@ -23,7 +23,9 @@ use super::robots::{
     apply_robots, build_document, first_open_graph_image_url, merge_open_graph,
     robots_from_directives, schema_blocks_from_value,
 };
-use super::routing::{canonical_url_for_locale, locale_prefixed_path, with_x_default};
+use super::routing::{
+    canonical_url_for_locale, locale_prefixed_path, resolve_open_graph_text, with_x_default,
+};
 use super::templates::{generated_translation, render_generated_record, source_label};
 use super::{LoadedMeta, SeoService, TargetState, trimmed_option};
 
@@ -1003,26 +1005,19 @@ fn build_diagnostics_page_context(
         let explicit_og_image = effective_translation
             .as_ref()
             .and_then(|item| trimmed_option(item.og_image.clone()));
-        let (og_title, og_desc, og_source) = if explicit_og_title.is_some()
-            || explicit_og_desc.is_some()
-            || explicit_og_image.is_some()
-        {
-            (explicit_og_title, explicit_og_desc, SeoFieldSource::Explicit)
-        } else if generated.og_title.is_some() || generated.og_description.is_some() {
-            (
-                generated.og_title.clone(),
-                generated.og_description.clone(),
-                SeoFieldSource::Generated,
-            )
-        } else {
-            (None, None, SeoFieldSource::Fallback)
-        };
+        let (og_title, og_desc, og_image, og_source) = resolve_open_graph_text(
+            explicit_og_title,
+            explicit_og_desc,
+            explicit_og_image,
+            generated.og_title.clone(),
+            generated.og_description.clone(),
+        );
 
         let open_graph = merge_open_graph(
             &state.open_graph,
             og_title,
             og_desc,
-            explicit_og_image,
+            og_image,
             canonical_url.as_str(),
             effective_locale.as_str(),
         );

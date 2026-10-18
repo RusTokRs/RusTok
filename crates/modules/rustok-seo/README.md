@@ -18,6 +18,10 @@
 - gate public sitemap/robots availability on **any** enabled sitemap-capable owner module: disabled owners are skipped by candidate collection and refresh probes instead of hiding every owner's routes (previously one disabled module 404'd the whole public surface)
 - compose AI smart fill inside the generation repository (`services::ai_seo::ai_smart_fill_meta`): only textual fields are refreshed; explicit robots directives, canonical URL, structured data, and the locale's explicit `og:image` are preserved, and generation snapshots (generated/frozen canonical, hardcoded robots) are never materialized as explicit overrides. Smart fill is a write and therefore requires stacked `seo:update` **and** `seo:generate` grants — generation alone can never persist
 - apply canonical-rename auto redirects (deactivate the new URL's live capture set, create `old→new`, flatten inbound chains) in one transaction with per-row domain events; reject cycle-closing active manual redirects at the write boundary while always allowing deactivation; suppress stored self-loops and two-hop cycles at runtime with a warning instead of failing the route with 5xx
+- render metadata with per-field precedence: OpenGraph title/description fall back
+  `explicit → generated → state` independently in public render **and** diagnostics (a lone explicit
+  `og:image` no longer bypasses the generated template), and `title_suffix` reserves its separator and
+  suffix before title truncation so a long generated title can never drop the suffix
 - prepare Phase D productionization seams for typed SEO events, outbox emission/idempotency, and SEO→index integration without breaking existing public contracts
 - expose a headless REST read path for `SeoPageContext` at `/api/seo/page-context`, reusing canonical request locale/channel context
 - keep REST handlers on narrow `SeoHttpRuntime` state with explicit DB/event bus/runtime extension handles; controller state is isolated to the Axum adapter
@@ -98,19 +102,24 @@ See `docs/implementation-plan.md` for the authoritative milestone checklist and 
 Tracked from [`docs/audits/seo-module-product-logic-audit-2026-10-18.md`](../../../docs/audits/seo-module-product-logic-audit-2026-10-18.md)
 (source of truth for open findings):
 
-- **Route-family contract (audit P1-2) — needs ADR first.** Canonical/hreflang route-family
-  resolution differs across target families and the Next storefront adapts sitemap URLs but not
-  head tags. Implementation is blocked on an ADR update for `DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`.
+- **Route-family contract (audit P1-2) — ADR proposed, implementation blocked.**
+  `DECISIONS/2026-10-18-seo-canonical-hreflang-route-family.md` (`Proposed`) defines one
+  owner-declared canonical route family per target, locale-qualified hrefs, and a single
+  SEO output adapter; head/sitemap unification waits for the ADR to be accepted.
+- **Locale-aware path prefixing (audit P2-9) — deferred with design note.** Stripping a stored
+  foreign locale prefix (`/ru/about` under `en`) needs the tenant locale policy
+  (`rustok_tenant::TenantLocalePolicyPort`) inside SEO; syntactic locale-tag detection is unsound
+  (slug-shaped segments parse as BCP-47 language tags). See the audit report design note.
 - **Manual redirect target chains (audit P2-10 remainder).** Cycle creation is rejected and
   stored cycles are suppressed at runtime, but a manual redirect whose target is itself a
   registry-owned alias still costs a second hop; flattening it requires target-side alias
   resolution design (operator destination intent must win when the target is a live page).
 - **Next storefront redirect parity (audit P2-13)** — `redirectDecision` covers a subset of
   backend routes and module routes 404 without Next rewrites; `apps/next-frontend` work pending.
-- **Diagnostics vs render drift (P2-5), bulk row-level gate/materialization (P2-6), OG
-  all-or-nothing merge (P2-7), title suffix-before-truncate (P2-8), locale path double-prefix
-  (P2-9), diagnostics N+1 reads (P2-11), category SEO dual-store (P2-12), write-only settings
-  without admin consumers (P2-14), admin surface split (P2-15)** — open; evidence and file:line
+- **Diagnostics vs render drift (P2-5), bulk row-level gate/materialization (P2-6),
+  locale path double-prefix (P2-9), diagnostics N+1 reads (P2-11),
+  category SEO dual-store (P2-12), write-only settings without admin consumers (P2-14),
+  admin surface split (P2-15)** — open; evidence and file:line
   references live in the audit report.
 - **Rust compile/test evidence is host-dependent:** the canonical scoped commands are
   `cargo check -p rustok-seo` / `cargo test -p rustok-seo` (see `docs/verification/README.md`).

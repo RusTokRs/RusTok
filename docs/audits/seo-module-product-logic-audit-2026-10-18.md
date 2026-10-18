@@ -75,9 +75,15 @@
 
 ---
 
-#### P1-2 · Canonical/hreflang head tags point to Next-404 module routes while the sitemap adapts to different URLs — **NEEDS ADR**
+#### P1-2 · Canonical/hreflang head tags point to Next-404 module routes while the sitemap adapts to different URLs — **ADR PROPOSED (implementation blocked pending acceptance)**
 
 **Chain:** C1 (merge canonical) → C10 (Next metadata) vs C4 (sitemap).
+
+**ADR:** `DECISIONS/2026-10-18-seo-canonical-hreflang-route-family.md` (Decision status: `Proposed`,
+Implementation status: `Not started`) — one owner-declared canonical route family per target, every
+public href locale-qualified, one shared adapter for canonical/hreflang/redirect/sitemap outputs,
+hosts obligated to serve their declared families. Implementation must not start before the ADR
+moves to `Accepted`.
 
 **Evidence:**
 - Owner canonical families are heterogeneous:
@@ -167,27 +173,27 @@
 
 ---
 
-#### P2-7 · OpenGraph precedence is all-or-nothing while title/description fall back per-field — **OPEN**
+#### P2-7 · OpenGraph precedence is all-or-nothing while title/description fall back per-field — **FIXED**
 
-**Evidence:** if **any** explicit OG field is set, `og_title`/`og_description` come only from explicit (`None` → provider state), skipping the generated template; title/description use strict per-field `explicit → generated → state`.
+**Evidence at base:** if **any** explicit OG field was set, `og_title`/`og_description` came only from explicit (`None` → provider state), skipping the generated template; title/description use strict per-field `explicit → generated → state`.
 
-**Fix:** independent per-field `explicit → generated → state` for `og_title`/`og_description`/`og_image`.
-
----
-
-#### P2-8 · `title_suffix` is appended before truncation at `meta_title_max_length = 60` — **OPEN**
-
-**Evidence:** suffix push happens first, then `truncate_chars(title, 60)` — a 60-char generated title loses the suffix entirely or gets cut mid-suffix.
-
-**Fix:** truncate the base with a reserve of `suffix.len() + separator.len()`, then append; raise the default limit; test "suffix is always whole".
+**Applied fix (this branch):** extracted one pure `resolve_open_graph_text` helper in `routing.rs`, used by both public render (`merge_page_context`) and diagnostics (`build_diagnostics_page_context`): per-field `explicit → generated → state` for OG title/description, explicit `og:image` preserved, group source semantics unchanged (any explicit input → Explicit). Unit tests cover the image-only, explicit-title, generated-only, and fallback cases.
 
 ---
 
-#### P2-9 · `locale_prefixed_path` is idempotent only for the requested locale — double prefixes like `/en/ru/about` — **OPEN**
+#### P2-8 · `title_suffix` is appended before truncation at `meta_title_max_length = 60` — **FIXED**
+
+**Evidence at base:** the suffix push happened first, then `truncate_chars(title, 60)` — a 60-char generated title lost the suffix entirely or got cut mid-suffix.
+
+**Applied fix (this branch):** `apply_metadata_settings` now reserves `separator.chars() + suffix.chars()` **before** truncating the base, then appends the separator and suffix, then applies the final hard cap (a suffix longer than the cap itself is the only case still cut). Unit test `title_suffix_survives_truncation` pins "suffix always whole" and unchanged no-suffix truncation.
+
+---
+
+#### P2-9 · `locale_prefixed_path` is idempotent only for the requested locale — double prefixes like `/en/ru/about` — **OPEN (design note)**
 
 **Evidence:** a redirect target or explicit canonical stored as `/ru/about` renders as `/en/ru/about` under `en`. Next `site.ts` strips **any** known locale prefix; the backend does not.
 
-**Fix:** strip any tenant-locale prefix before prefixing (shared repository function used by both stores), or reject foreign locale prefixes at validation with a clear error.
+**Design note (deferred deliberately):** the sound fix requires the tenant's authoritative locale list inside `locale_prefixed_path`'s callers. Purely syntactic detection is unsound here: ICU/BCP-47 parsing accepts slug-shaped segments (`faq`, `modules`, `about` all parse as language subtags), so a strip-on-shape heuristic would corrupt legitimate targets. The authoritative source exists — `rustok_tenant::TenantLocalePolicyPort::read_locale_policy` (entity `tenant_locale`, projection `locales + default_locale`), already used by the server locale middleware — and `rustok-seo` already depends on `rustok-tenant` at the Cargo level with `PortContext`/port-call precedent (`targets.rs` media port). Consuming it from SEO (optional injected port with cached reads, threading `&[String]` locales through `locale_prefixed_path` at the 4 call sites, fallback to today's own-locale idempotency when the port is absent) is a boundary-consuming change and should be reviewed alongside the P1-2 ADR acceptance rather than smuggled in as a heuristic.
 
 ---
 
@@ -268,7 +274,7 @@
 
 | Step | What | Why first | Acceptance |
 |---|---|---|---|
-| 1 | **P1-2:** canonical/hreflang route-family contract + adapter for all outputs; fix blog/product alternates | Direct SEO-traffic damage on Next (canonical → 404, contradicts sitemap) | verifier: canonical/hreflang/sitemap of each target resolve (200) on both storefronts; fixtures updated — **ADR first** |
+| 1 | **P1-2:** canonical/hreflang route-family contract + adapter for all outputs; fix blog/product alternates | Direct SEO-traffic damage on Next (canonical → 404, contradicts sitemap) | verifier: canonical/hreflang/sitemap of each target resolve (200) on both storefronts; fixtures updated — **ADR proposed** (`DECISIONS/2026-10-18-seo-canonical-hreflang-route-family.md`, `Proposed`; implementation blocked until `Accepted`) |
 | 2 | **P1-3:** safe AI-fill | Mass noindex loss — indexing of drafts | tests: noindex preserved; canonical not materialized; GENERATE without UPDATE cannot write — **DONE (unit tests; integration tests pending `cargo`)** |
 | 3 | **P1-1:** any-owner gate for public sitemap/robots + disabled-owner handling in `requires_refresh` | Tenants without forum/blog currently have no sitemap at all | test: tenant with 1 of 5 modules gets a sitemap from the enabled ones — **gate DONE (test pending `cargo`)** |
 | 4 | **P2-4:** one transaction + events for all auto-redirect mutations | Cross-replica divergence after renames | cross-replica test without waiting for TTL — **DONE (test pending `cargo`)** |
@@ -276,7 +282,7 @@
 | 6 | **P2-5:** shared effective-context builder for render/diagnostics/preview | Removes the whole "diagnostics lies" class | identical canonical/title/alternates across three consumers on the same data — **OPEN** |
 | 7 | **P2-6:** field-level bulk guards + skipped counter + Null→None | "Safe" modes stop alarming and stop freezing fallback | partial-explicit row tests — **OPEN** |
 | 8 | **P2-13:** one Next redirect hook on all pages | Host parity | route matrix: redirects applied 16/16 — **OPEN** |
-| 9 | **P2-7/8/9:** OG per-field fallback, suffix/truncate order, foreign locale prefix | Targeted render defects | unit tests per item — **OPEN** |
+| 9 | **P2-7/8/9:** OG per-field fallback, suffix/truncate order, foreign locale prefix | Targeted render defects | unit tests per item — **P2-7 DONE** (shared `resolve_open_graph_text` + tests), **P2-8 DONE** (reserve-before-truncate + test), **P2-9 open** (see design note: needs `TenantLocalePolicyPort`, no sound syntactic shortcut) |
 | 10 | **P2-11/12/14/15, P3** | Perf/categories/settings/UI matrix | per matching contract verifiers — **OPEN** |
 
 ---
@@ -305,7 +311,9 @@ Executed on this branch (static, Node-based):
 - `scripts/verify/verify-forum-public-discovery-seo.mjs`, `verify-forum-canonical-route-seo-policy.mjs` — **PASS**
 - `scripts/verify/verify-seo-bulk-batch-reads.mjs`, `verify-seo-bulk-cursor-pagination.mjs`, `verify-seo-diagnostics-batch-reads.mjs`, `verify-seo-index-repair-background-worker.mjs` — **PASS**
 - `scripts/verify/verify-rust-constructor-arity.mjs`, `verify-module-source-layout.mjs`, `verify-storefront-module-routes.mjs` — **PASS**
-- `scripts/verify/run-seo-full-suite.sh` — **exit 127**: `cargo` unavailable (durable evidence in `target/verification/seo-full-suite/summary.txt`). Rust compile/tests **not executed**; unit tests added for P1-3/P2-4 helpers await a Rust-capable host.
+- `scripts/verify/run-seo-full-suite.sh` — **exit 127**: `cargo` unavailable (durable evidence in `target/verification/seo-full-suite/summary.txt`). Rust compile/tests **not executed**; unit tests added for P1-3/P2-4/P2-7/P2-8 helpers await a Rust-capable host.
+- ADR governance: `npm run verify:adrs` and `npm run verify:docs` retain their **pre-existing** failure sets (12 and 19 errors, all in unrelated 2026-10-16 ADRs and `docs/standards/continuous-review-ledger.md`); adding `DECISIONS/2026-10-18-seo-canonical-hreflang-route-family.md` + registry row produced **zero new errors** (error sets diffed identical before/after).
+- The full SEO static battery (§ above) was re-run after the P2-7/P2-8 changes and the ADR: **all PASS**.
 
 Not run / environment-dependent:
 
