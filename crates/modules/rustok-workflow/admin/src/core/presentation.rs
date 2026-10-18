@@ -150,7 +150,7 @@ pub fn matches_workflow_filter(workflow: &WorkflowRowViewModel, filters: &Column
             }
             ("status", FilterValue::Select(s)) => {
                 let status_label = workflow.status.fallback_label.to_lowercase();
-                if !status_label.contains(&s.to_lowercase()) {
+                if status_label != s.trim().to_lowercase() {
                     return false;
                 }
             }
@@ -271,6 +271,22 @@ mod tests {
             "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
         );
         assert_eq!(
+            template_category_class_name("commerce"),
+            "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+        );
+        assert_eq!(
+            template_category_class_name("auth"),
+            "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+        );
+        assert_eq!(
+            template_category_class_name("reporting"),
+            "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300"
+        );
+        assert_eq!(
+            template_category_class_name("integrations"),
+            "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+        );
+        assert_eq!(
             template_category_class_name("custom"),
             "bg-muted text-muted-foreground"
         );
@@ -320,5 +336,14 @@ mod tests {
         let res = filter_workflows(&list, &filters, None);
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].id, "2");
+
+        // Combined search and status filter: match
+        let res = filter_workflows(&list, &filters, Some("user"));
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].id, "2");
+
+        // Combined search and status filter: conflict returns empty
+        let res = filter_workflows(&list, &filters, Some("order"));
+        assert_eq!(res.len(), 0);
     }
 }

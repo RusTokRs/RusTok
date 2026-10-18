@@ -9,12 +9,9 @@ pub fn workflow_admin_nav_view_model(
     route_segment: Option<&str>,
     showing_templates: bool,
 ) -> WorkflowAdminNavViewModel {
-    let route_segment = route_segment.unwrap_or("workflow").trim_matches('/');
-    let route_segment = if route_segment.is_empty() {
-        "workflow"
-    } else {
-        route_segment
-    };
+    let raw = route_segment.unwrap_or("workflow").trim_matches('/');
+    let clean = raw.strip_prefix("modules/").unwrap_or(raw);
+    let route_segment = if clean.is_empty() { "workflow" } else { clean };
     let module_href = format!("/modules/{route_segment}");
     let template_href = format!("{module_href}/templates");
     let toggle_href = if showing_templates {
@@ -45,5 +42,8 @@ mod tests {
 
         let defaulted = workflow_admin_nav_view_model(Some(""), false);
         assert_eq!(defaulted.module_href, "/modules/workflow");
+
+        let with_modules_prefix = workflow_admin_nav_view_model(Some("/modules/workflow/"), false);
+        assert_eq!(with_modules_prefix.module_href, "/modules/workflow");
     }
 }
