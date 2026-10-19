@@ -76,9 +76,14 @@ pub(crate) fn parse_optional_uuid_string(
         return Ok(None);
     };
 
-    uuid::Uuid::parse_str(value.as_str())
-        .map(|_| Some(value))
-        .map_err(|_| StorefrontPricingQueryError::InvalidUuid { field_name })
+    let parsed = uuid::Uuid::parse_str(value.as_str())
+        .map_err(|_| StorefrontPricingQueryError::InvalidUuid { field_name })?;
+
+    if parsed.is_nil() {
+        return Err(StorefrontPricingQueryError::InvalidUuid { field_name });
+    }
+
+    Ok(Some(value))
 }
 
 pub(crate) fn sanitize_channel_slug(channel_slug: Option<String>) -> Option<String> {
@@ -656,6 +661,57 @@ mod tests {
             error,
             StorefrontPricingQueryError::InvalidUuid {
                 field_name: "channel_id"
+            }
+        );
+
+        let nil_channel_error = sanitize_resolution_context(
+            None,
+            None,
+            None,
+            Some(uuid::Uuid::nil().to_string()),
+            None,
+            None,
+        )
+        .expect_err("nil channel_id should be rejected");
+
+        assert_eq!(
+            nil_channel_error,
+            StorefrontPricingQueryError::InvalidUuid {
+                field_name: "channel_id"
+            }
+        );
+
+        let nil_region_error = sanitize_resolution_context(
+            Some("USD".to_string()),
+            Some(uuid::Uuid::nil().to_string()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect_err("nil region_id should be rejected");
+
+        assert_eq!(
+            nil_region_error,
+            StorefrontPricingQueryError::InvalidUuid {
+                field_name: "region_id"
+            }
+        );
+
+        let nil_price_list_error = sanitize_resolution_context(
+            Some("USD".to_string()),
+            None,
+            Some(uuid::Uuid::nil().to_string()),
+            None,
+            None,
+            None,
+        )
+        .expect_err("nil price_list_id should be rejected");
+
+        assert_eq!(
+            nil_price_list_error,
+            StorefrontPricingQueryError::InvalidUuid {
+                field_name: "price_list_id"
             }
         );
     }
