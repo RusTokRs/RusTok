@@ -3,8 +3,8 @@ use crate::services::write_transaction::record_product_operation_result;
 use rustok_api::TenantLocale;
 
 #[derive(Debug, FromQueryResult)]
-struct VariantOwnerRow {
-    product_id: Uuid,
+pub(super) struct VariantOwnerRow {
+    pub(super) product_id: Uuid,
 }
 
 impl ProductCatalogSchemaService {
@@ -141,17 +141,18 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<Vec<ProductAttributeValueRecord>> {
         let locale = canonical_variant_value_locale(locale)?;
         validate_uuid("variant_id", variant_id)?;
-        let owner = load_variant_owner(&self.db, tenant_id, variant_id).await?;
-        let product = load_product_primary_category(&self.db, tenant_id, owner.product_id).await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        let owner = load_variant_owner_for_update(&txn, tenant_id, variant_id).await?;
+        let product = load_product_primary_category(&txn, tenant_id, owner.product_id).await?;
         let Some(primary_category_id) = product.primary_category_id else {
             return Err(CommerceError::Validation(
                 "variant product must have a primary structural category before attribute values can be saved"
                     .into(),
             ));
         };
-        let form = self
-            .load_effective_form_for_category(tenant_id, primary_category_id, &[])
-            .await?;
+        let form =
+            Self::load_effective_form_for_category_in(&txn, tenant_id, primary_category_id, &[])
+                .await?;
         let effective_attribute_ids = form
             .attributes
             .iter()
@@ -169,7 +170,7 @@ impl ProductCatalogSchemaService {
             .map(|patch| patch.attribute_id)
             .collect::<Vec<_>>();
         let definitions =
-            load_variant_patch_definitions(&self.db, tenant_id, &patch_attribute_ids).await?;
+            load_variant_patch_definitions(&txn, tenant_id, &patch_attribute_ids).await?;
         let selected_option_ids = patches
             .iter()
             .flat_map(|patch| match &patch.value {
@@ -178,7 +179,7 @@ impl ProductCatalogSchemaService {
                 _ => Vec::new(),
             })
             .collect::<Vec<_>>();
-        let options = load_variant_patch_options(&self.db, tenant_id, &selected_option_ids).await?;
+        let options = load_variant_patch_options(&txn, tenant_id, &selected_option_ids).await?;
 
         let no_rules = Value::Object(Default::default());
         let mut seen = HashSet::new();
@@ -208,17 +209,10 @@ impl ProductCatalogSchemaService {
             validate_variant_value_patch(definition, patch, &options, validation)?;
         }
 
-        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
-        let locked_owner = load_variant_owner_for_update(&txn, tenant_id, variant_id).await?;
-        if locked_owner.product_id != owner.product_id {
-            return Err(CommerceError::Validation(
-                "variant owner changed while attribute values were being saved".into(),
-            ));
-        }
         reject_configured_variant_axis_attribute_changes(
             &txn,
             tenant_id,
-            locked_owner.product_id,
+            owner.product_id,
             patch_attribute_ids.as_slice(),
         )
         .await?;
@@ -267,9 +261,10 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<Vec<ProductAttributeValueRecord>> {
         let locale = canonical_variant_value_locale(locale)?;
         validate_uuid("variant_id", variant_id)?;
-        let owner = load_variant_owner(&self.db, tenant_id, variant_id).await?;
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        let owner = load_variant_owner_for_update(&txn, tenant_id, variant_id).await?;
         let current = self
-            .load_variant_attribute_values(tenant_id, variant_id, locale.as_str())
+            .load_variant_attribute_values_in(&txn, tenant_id, variant_id, locale.as_str())
             .await?;
         let detached_attribute_ids = current
             .iter()
@@ -298,18 +293,11 @@ impl ProductCatalogSchemaService {
             attribute_ids
         };
 
-        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
-        let locked_owner = load_variant_owner_for_update(&txn, tenant_id, variant_id).await?;
-        if locked_owner.product_id != owner.product_id {
-            return Err(CommerceError::Validation(
-                "variant owner changed while detached attribute values were being cleared".into(),
-            ));
-        }
         if !target_attribute_ids.is_empty() {
             reject_configured_variant_axis_attribute_changes(
                 &txn,
                 tenant_id,
-                locked_owner.product_id,
+                owner.product_id,
                 target_attribute_ids.as_slice(),
             )
             .await?;
@@ -401,22 +389,35 @@ where
     .ok_or(CommerceError::VariantNotFound(variant_id))
 }
 
-async fn load_variant_owner_for_update<C>(
-    conn: &C,
+// Product is always locked before Variant, matching catalog update/delete/axis commands.
+// The first read discovers the lock key only; no category/schema decision uses it.
+pub(super) async fn load_variant_owner_for_update(
+    conn: &DatabaseTransaction,
     tenant_id: Uuid,
     variant_id: Uuid,
-) -> CommerceResult<VariantOwnerRow>
-where
-    C: ConnectionTrait,
-{
-    VariantOwnerRow::find_by_statement(Statement::from_sql_and_values(
+) -> CommerceResult<VariantOwnerRow> {
+    let observed = load_variant_owner(conn, tenant_id, variant_id).await?;
+    super::lock_product_for_update_in_tx(conn, tenant_id, observed.product_id).await?;
+    let sql = match conn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            "SELECT product_id FROM product_variants WHERE tenant_id = $1 AND id = $2 FOR UPDATE"
+        }
+        _ => "SELECT product_id FROM product_variants WHERE tenant_id = $1 AND id = $2",
+    };
+    let locked = VariantOwnerRow::find_by_statement(Statement::from_sql_and_values(
         conn.get_database_backend(),
-        "SELECT product_id FROM product_variants WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
+        sql,
         vec![tenant_id.into(), variant_id.into()],
     ))
     .one(conn)
     .await?
-    .ok_or(CommerceError::VariantNotFound(variant_id))
+    .ok_or(CommerceError::VariantNotFound(variant_id))?;
+    if locked.product_id != observed.product_id {
+        return Err(CommerceError::Validation(
+            "variant owner changed while acquiring attribute write locks".into(),
+        ));
+    }
+    Ok(locked)
 }
 
 async fn touch_variant_owner<C>(conn: &C, tenant_id: Uuid, variant_id: Uuid) -> CommerceResult<()>

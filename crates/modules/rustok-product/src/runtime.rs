@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
+use rustok_api::PortError;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
 use crate::{
     CatalogService, ProductCatalogCommandPort, ProductCatalogReadPort,
     ProductCatalogSchemaReadPort, ProductCatalogSchemaService, ProductCatalogSchemaWritePort,
-    ProductMediaAssetReadPort, ProductMediaReferencePolicy, ProductMediaValidatedCommandPort,
+    ProductMediaMaintenancePort, ProductMediaReferencePolicy, ProductMediaReferencePort,
     ProductStorefrontHttpReadPort, ProductStorefrontTagReadPort,
 };
 
@@ -135,7 +136,9 @@ impl ProductCatalogCommandProfile {
 pub struct ProductCatalogCommandRuntime {
     command_port: Arc<dyn ProductCatalogCommandPort>,
     schema_write_port: Option<Arc<dyn ProductCatalogSchemaWritePort>>,
-    media_asset_read_port: Option<Arc<dyn ProductMediaAssetReadPort>>,
+    media_reference_port: Option<Arc<dyn ProductMediaReferencePort>>,
+    embedded_catalog: Option<CatalogService>,
+    media_maintenance_port: Option<Arc<dyn ProductMediaMaintenancePort>>,
     profile: ProductCatalogCommandProfile,
 }
 
@@ -147,17 +150,23 @@ impl ProductCatalogCommandRuntime {
         Self {
             command_port,
             schema_write_port: None,
-            media_asset_read_port: None,
+            media_reference_port: None,
+            embedded_catalog: None,
+            media_maintenance_port: None,
             profile,
         }
     }
 
     pub fn in_process(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self::new(
-            Arc::new(CatalogService::new(db.clone(), event_bus.clone())),
+        let catalog = CatalogService::new(db.clone(), event_bus.clone());
+        let mut runtime = Self::new(
+            Arc::new(catalog.clone()),
             ProductCatalogCommandProfile::EmbeddedNative,
         )
-        .with_schema_write_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)))
+        .with_schema_write_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)));
+        runtime.media_maintenance_port = Some(Arc::new(catalog.clone()));
+        runtime.embedded_catalog = Some(catalog);
+        runtime
     }
 
     pub fn external(command_port: Arc<dyn ProductCatalogCommandPort>) -> Self {
@@ -180,33 +189,101 @@ impl ProductCatalogCommandRuntime {
         self.schema_write_port.clone()
     }
 
-    /// Composes the Product-owned Media asset validation boundary over the current command port.
-    ///
-    /// Image writes validate the canonical Media UUID before the owner transaction runs, so an
-    /// unknown or cross-tenant asset can never reach `product_images`. Hosts call this after a
-    /// Media provider is available; without it Product keeps
-    /// [`ProductMediaReferencePolicy::OpaqueReferences`].
-    pub fn with_media_asset_read_port(
+    /// The consumer boundary is installed inside the embedded owner, never in a
+    /// decorator in front of receipt replay. An external owner enforces its own policy.
+    pub fn with_media_reference_port(
         mut self,
-        media_asset_read_port: Arc<dyn ProductMediaAssetReadPort>,
+        port: Arc<dyn ProductMediaReferencePort>,
+    ) -> Result<Self, PortError> {
+        let catalog = self.embedded_catalog.take().ok_or_else(|| {
+            PortError::validation(
+                "product.media_owner_configuration_invalid",
+                "Media retention must be configured inside the Product owner",
+            )
+        })?;
+        let catalog = catalog.with_media_reference_port(port.clone());
+        self.command_port = Arc::new(catalog.clone());
+        self.media_maintenance_port = Some(Arc::new(catalog.clone()));
+        self.media_reference_port = catalog.media_reference_port.clone();
+        self.embedded_catalog = Some(catalog);
+        Ok(self)
+    }
+
+    /// Installs policy inside the receipt-owning CatalogService, never around its port.
+    /// A remote Product owner must compose its own Shipping Profile authority.
+    pub fn with_shipping_profile_port(
+        mut self,
+        port: Arc<dyn crate::ProductShippingProfilePort>,
+    ) -> Result<Self, PortError> {
+        let catalog = self
+            .embedded_catalog
+            .take()
+            .ok_or_else(|| {
+                PortError::validation(
+                    "product.shipping_owner_configuration_invalid",
+                    "Shipping Profile admission must be configured inside the Product owner",
+                )
+            })?
+            .with_shipping_profile_port(port);
+        self.command_port = Arc::new(catalog.clone());
+        self.media_maintenance_port = Some(Arc::new(catalog.clone()));
+        self.embedded_catalog = Some(catalog);
+        Ok(self)
+    }
+    pub fn shipping_profile_port(&self) -> Option<Arc<dyn crate::ProductShippingProfilePort>> {
+        self.embedded_catalog
+            .as_ref()
+            .and_then(|catalog| catalog.shipping_profile_port.clone())
+    }
+
+    /// An external owner may publish its own maintenance adapter; the host must
+    /// not substitute local persistence for that owner's capability.
+    pub fn with_media_maintenance_port(
+        mut self,
+        port: Arc<dyn ProductMediaMaintenancePort>,
     ) -> Self {
-        self.command_port = Arc::new(ProductMediaValidatedCommandPort::new(
-            self.command_port.clone(),
-            media_asset_read_port.clone(),
-        ));
-        self.media_asset_read_port = Some(media_asset_read_port);
+        self.media_maintenance_port = Some(port);
         self
     }
 
-    pub fn media_asset_read_port(&self) -> Option<Arc<dyn ProductMediaAssetReadPort>> {
-        self.media_asset_read_port.clone()
+    pub fn media_maintenance_port(&self) -> Option<Arc<dyn ProductMediaMaintenancePort>> {
+        self.media_maintenance_port.clone()
+    }
+
+    pub fn media_reference_port(&self) -> Option<Arc<dyn ProductMediaReferencePort>> {
+        self.media_reference_port.clone()
+    }
+
+    /// Trusted background delivery on the exact owner snapshot used for commands.
+    /// Never combine a host-default database with a separately published Media port.
+    /// External Product owners deliver their own obligations; there is no local fallback.
+    pub async fn process_media_releases(
+        &self,
+        batch_limit: u64,
+    ) -> Result<crate::ProductMediaReleaseReport, PortError> {
+        let catalog = self
+            .embedded_catalog
+            .as_ref()
+            .filter(|_| self.profile == ProductCatalogCommandProfile::EmbeddedNative)
+            .ok_or_else(|| {
+                PortError::unavailable(
+                    "product.media_delivery_owner_unavailable",
+                    "Product Media release delivery requires the embedded owner",
+                )
+            })?;
+        catalog
+            .process_media_releases(batch_limit)
+            .await
+            .map_err(crate::media_reference::maintenance_error)
     }
 
     pub const fn media_reference_policy(&self) -> ProductMediaReferencePolicy {
-        if self.media_asset_read_port.is_some() {
-            ProductMediaReferencePolicy::ValidatedByMediaOwner
+        if matches!(self.profile, ProductCatalogCommandProfile::External) {
+            ProductMediaReferencePolicy::ExternalOwner
+        } else if self.media_reference_port.is_some() {
+            ProductMediaReferencePolicy::DurableRetention
         } else {
-            ProductMediaReferencePolicy::OpaqueReferences
+            ProductMediaReferencePolicy::Unavailable
         }
     }
 

@@ -141,6 +141,7 @@ async fn capture_payment_collection_for_refund(
 
 fn create_product_input() -> CreateProductInput {
     CreateProductInput {
+        attribute_values: Default::default(),
         translations: vec![
             ProductTranslationInput {
                 locale: "en".to_string(),

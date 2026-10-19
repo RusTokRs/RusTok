@@ -155,9 +155,13 @@ for (const [block, label] of [
 for (const marker of [
   '#[path = "source/rustok_pricing_shim.rs"]',
   'mod rustok_pricing_shim;',
-  'use self::rustok_pricing_shim as rustok_pricing;',
-  'include!("../query.rs");',
+  '#[path = "../query.rs"]',
+  'mod query_impl;',
+  'pub(crate) use query_impl::CommerceQuery;',
 ]) requireText(safeSource, marker, `${paths.safeSource}: mounted pricing facade`);
+requireText(query, 'rustok_pricing_shim as rustok_pricing,', 'query module consumes canonical alias');
+forbidText(safeSource, 'include!("../query.rs")', 'no textual query inclusion');
+requireText(pricingShim, 'let retryable = retryable || self.error.retryable;', 'preserve owner retryability');
 
 for (const marker of [
   'use ::rustok_pricing::PricingReadPort as OwnerPricingReadPort;',

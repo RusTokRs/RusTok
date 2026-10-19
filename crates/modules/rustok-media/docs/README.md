@@ -97,3 +97,12 @@ These commands are maintainer-run and were not executed while publishing this sl
 - [Admin package](../admin/README.md)
 - [gRPC transport](../../rustok-media-transport/docs/README.md)
 - [Manifest layer contract](../../../../docs/modules/manifest.md)
+
+## Atomic consumer control-port selection (2026-10-18)
+
+`MediaAssetPorts::new(Arc<Owner>)` groups read/write capabilities from the same
+owner instance, including `GrpcMediaProvider`. Consumers requiring durable reference
+retention must not combine an unrelated read provider with an embedded write fallback.
+The Product consumer uses receipt-bound retain-before-commit and a Product-owned durable
+release queue; see its [workflow and open runtime gates](../../rustok-product/docs/media-reference-retention.md).
+This does not advance Media transport readiness or certify a new remote deployment.

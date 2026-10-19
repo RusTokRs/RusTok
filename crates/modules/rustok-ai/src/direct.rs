@@ -620,6 +620,7 @@ impl DirectTaskHandler for ProductCopyHandler {
                 operator.user_id,
                 product.id,
                 UpdateProductInput {
+                    attribute_values: Default::default(),
                     translations: Some(translations),
                     seller_id: Patch::Keep,
                     vendor: Patch::Keep,

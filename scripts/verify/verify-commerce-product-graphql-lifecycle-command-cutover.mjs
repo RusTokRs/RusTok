@@ -67,7 +67,7 @@ for (const required of [
   "CURRENT_COMMERCE_PRODUCT_CATALOG_COMMAND_RUNTIME",
   "runtime_data.product_catalog_command_runtime()",
   "product_catalog_command_runtime_for_current_graphql_scope(",
-  "ProductCatalogCommandRuntime::in_process(db, event_bus)",
+  "ProductCatalogCommandRuntime::in_process(db.clone(), event_bus)",
   "product_catalog_command_runtime: ProductCatalogCommandRuntime",
   "pub fn product_catalog_command_runtime(&self) -> ProductCatalogCommandRuntime",
   ".shared_get::<ProductCatalogCommandRuntime>()",
@@ -185,15 +185,11 @@ for (const [slice, operation, permission, portCall, productIdentity] of [
 }
 
 for (const required of [
-  "validate_product_shipping_profile_input(",
-  "input.shipping_profile_slug.as_deref()",
   "convert_create_product_input(input)?",
 ]) {
   requireText(create, required, "create Product compatibility semantics");
 }
 for (const required of [
-  "validate_product_shipping_profile_input(",
-  "MaybeUndefined::Value(slug) => Some(slug.as_str())",
   "metadata: input.custom_fields.map(|cf| cf.0)",
   "status: input.status.map(Into::into)",
   "expected_revision: input.revision",
@@ -241,3 +237,6 @@ if (failures.length) {
 }
 
 console.log("✔ Product GraphQL lifecycle SDL requires explicit caller idempotency; mounted schema writes retain the typed owner boundary with no direct Product schema service construction");
+
+import {run as verifyShippingAdmission} from "./verify-product-shipping-admission.mjs";
+verifyShippingAdmission();

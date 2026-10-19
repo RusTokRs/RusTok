@@ -14,7 +14,7 @@ use crate::services::{
     CreateProductAttributeSchemaInput, ProductAttributeGroupRecord, ProductAttributeOptionRecord,
     ProductAttributeRecord, ProductAttributeSchemaRecord, ProductAttributeValuePatch,
     ProductAttributeValueRecord, ProductCatalogSchemaService, SetCategorySchemaModeInput,
-    with_product_operation_receipt,
+    is_terminal_product_failure, with_product_operation_receipt,
 };
 
 /// Namespace of caller-scoped owner idempotency keys for Product mutations.
@@ -539,7 +539,7 @@ async fn finish_receipted_schema_write<T>(
         Ok(value) => Ok(value),
         Err(error) => {
             let port_error = schema_write_error(context, operation, error);
-            if !port_error.retryable {
+            if is_terminal_product_failure(&port_error) {
                 if let Err(receipt_error) = service
                     .fail_schema_operation_receipt(lease, &port_error)
                     .await
@@ -570,12 +570,11 @@ fn decode_schema_receipt<T: DeserializeOwned>(
     operation: &'static str,
     value: serde_json::Value,
 ) -> Result<T, PortError> {
-    serde_json::from_value(value).map_err(|error| {
+    serde_json::from_value(value).map_err(|_| {
         tracing::error!(
             correlation_id = %context.correlation_id,
             tenant_id = %context.tenant_id,
             operation,
-            error = %error,
             "failed to decode Product schema owner receipt replay"
         );
         PortError::invariant_violation(
@@ -757,9 +756,10 @@ fn schema_write_error(
             "product.lifecycle_conflict",
             "product operation conflicts with the current state",
         ),
-        CommerceError::Core(_) => PortError::invariant_violation(
-            "product.schema_invariant_violation",
-            "product schema operation could not be completed safely",
+        CommerceError::Core(error) => crate::error::core_port_error(&error),
+        CommerceError::Conflict(_) => PortError::conflict(
+            "product.conflict",
+            "product request conflicts with the current state",
         ),
     }
 }
@@ -777,6 +777,7 @@ fn schema_error_kind(error: &CommerceError) -> &'static str {
         CommerceError::CannotDeleteOnlyVariant => "cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "lifecycle_conflict",
         CommerceError::Core(_) => "core",
+        CommerceError::Conflict(_) => "conflict",
     }
 }
 
@@ -792,7 +793,8 @@ fn schema_error_code(error: &CommerceError) -> &'static str {
         CommerceError::NoVariants => "product.no_variants",
         CommerceError::CannotDeleteOnlyVariant => "product.cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "product.lifecycle_conflict",
-        CommerceError::Core(_) => "product.schema_invariant_violation",
+        CommerceError::Core(error) => crate::error::core_error_code(error),
+        CommerceError::Conflict(_) => "product.conflict",
     }
 }
 

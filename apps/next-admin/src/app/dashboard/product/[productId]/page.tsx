@@ -16,14 +16,16 @@ import {
   fetchProductDetail,
   fetchProductAttributeValues,
   fetchProductRelations,
-  fetchActivePriceLists,
   fetchProductBundles,
   listCatalogCategories,
   getCategoryEffectiveForm,
-  ProductEditorPage
+  ProductEditorPage,
+  isProductEditorIntent,
+  PRODUCT_EDITOR_INTENT_QUERY_KEY
 } from '@rustok/product-admin';
 import {
   saveProductAction,
+  changeProductStatusAction,
   deleteProductAction,
   addVariantAction,
   updateVariantAction,
@@ -47,11 +49,18 @@ export const metadata = {
   title: 'RusTok Admin: Product Editor'
 };
 
-type PageProps = { params: Promise<{ productId: string }> };
+type PageProps = {
+  params: Promise<{ productId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
 
-export default async function ProductDetailPage({ params }: PageProps) {
+export default async function ProductDetailPage({
+  params,
+  searchParams
+}: PageProps) {
   const { productId } = await params;
   const session = await auth();
+  const editorIntent = (await searchParams)[PRODUCT_EDITOR_INTENT_QUERY_KEY];
 
   const opts = {
     graphql: graphqlRequest,
@@ -61,6 +70,17 @@ export default async function ProductDetailPage({ params }: PageProps) {
   };
 
   const isNew = productId === 'new';
+  const writeScope = {
+    tenantId: session?.user?.tenantId ?? '',
+    actorId: session?.user?.id ?? ''
+  };
+
+  const editorKey = JSON.stringify([
+    writeScope.tenantId,
+    writeScope.actorId,
+    productId,
+    editorIntent ?? null
+  ]);
 
   // Load category taxonomy
   let categories: Awaited<ReturnType<typeof listCatalogCategories>> = [];
@@ -70,14 +90,6 @@ export default async function ProductDetailPage({ params }: PageProps) {
     console.error('Failed to load catalog categories for product editor:', err);
   }
 
-  // Load active price lists
-  let activePriceLists: Awaited<ReturnType<typeof fetchActivePriceLists>> = [];
-  try {
-    activePriceLists = await fetchActivePriceLists(opts);
-  } catch (err) {
-    console.error('Failed to pre-load active price lists:', err);
-  }
-
   if (isNew) {
     return (
       <PageContainer
@@ -85,10 +97,13 @@ export default async function ProductDetailPage({ params }: PageProps) {
         pageDescription='Configure catalog product entity, primary category, pricing, and specifications.'
       >
         <ProductEditorPage
+          key={editorKey}
+          resourceId={productId}
+          writeScope={writeScope}
           isNew={true}
           categories={categories}
-          activePriceLists={activePriceLists}
           onSaveProduct={saveProductAction}
+          onChangeStatus={changeProductStatusAction}
           fetchEffectiveForm={fetchEffectiveFormAction}
         />
       </PageContainer>
@@ -104,7 +119,23 @@ export default async function ProductDetailPage({ params }: PageProps) {
   }
 
   if (!product) {
-    notFound();
+    if (!isProductEditorIntent(editorIntent)) notFound();
+    // A delete may have committed before its response was lost. Do not hide the
+    // caller's durable recovery behind a read-side 404; no editable draft here.
+    return (
+      <PageContainer pageTitle='Recover Product operation'>
+        <ProductEditorPage
+          key={editorKey}
+          resourceId={productId}
+          writeScope={writeScope}
+          recoveryOnly
+          categories={[]}
+          onSaveProduct={saveProductAction}
+          onChangeStatus={changeProductStatusAction}
+          onDeleteProduct={deleteProductAction}
+        />
+      </PageContainer>
+    );
   }
 
   // Pre-load effective form and attribute values if category is assigned
@@ -151,18 +182,19 @@ export default async function ProductDetailPage({ params }: PageProps) {
       pageDescription='RusTok product catalog editor, variant matrix, media gallery, relations, bundles, and effective specifications.'
     >
       <ProductEditorPage
+        key={editorKey}
+        resourceId={productId}
+        writeScope={writeScope}
         isNew={false}
         initialProduct={product}
         categories={categories}
         initialEffectiveForm={effectiveForm}
         initialAttributeValues={attributeValues}
         initialRelations={relations}
-        activePriceLists={activePriceLists}
         initialBundles={bundles}
         onSaveProduct={saveProductAction}
-        onDeleteProduct={async (id) => {
-          await deleteProductAction(id);
-        }}
+        onChangeStatus={changeProductStatusAction}
+        onDeleteProduct={deleteProductAction}
         onAddVariant={async (pid, v) => {
           await addVariantAction(pid, v);
         }}

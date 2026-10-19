@@ -1,3 +1,4 @@
+import { CombinedGraphQLErrors } from '@apollo/client/errors';
 import {
   ApolloClient,
   gql,
@@ -18,20 +19,19 @@ interface GraphqlRequest<V> {
 
 interface GraphqlResponse<T> {
   data?: T;
-  errors?: Array<{ message: string; extensions?: { code?: string } }>;
+  errors?: Array<{
+    message: string;
+    extensions?: {
+      code?: string;
+      retryable?: boolean;
+      outcome?: 'rejected' | 'unknown';
+    };
+  }>;
 }
-
-type ApolloGraphqlError = {
-  message: string;
-  extensions?: { code?: string };
-};
 
 type ApolloExecutionResult<T> = {
   data?: T | null;
-  error?: {
-    message?: string;
-    graphQLErrors?: ReadonlyArray<ApolloGraphqlError>;
-  };
+  error?: unknown;
 };
 
 export interface GraphqlRequestOptions {
@@ -57,10 +57,19 @@ export interface GqlOpts {
 
 export class GraphqlError extends Error {
   public readonly code?: string;
-  constructor(message: string, code?: string) {
+  public readonly retryable?: boolean;
+  public readonly outcome?: 'rejected' | 'unknown';
+  constructor(
+    message: string,
+    code?: string,
+    retryable?: boolean,
+    outcome?: 'rejected' | 'unknown'
+  ) {
     super(message);
     this.name = 'GraphqlError';
     this.code = code;
+    this.retryable = retryable;
+    this.outcome = outcome;
   }
 }
 
@@ -189,11 +198,13 @@ export async function graphqlRequest<V, T>(
     isMutation
       ? await client.mutate<T>({
           mutation: document,
+          errorPolicy: 'all',
           variables: apolloVariables,
           context
         })
       : await client.query<T>({
           query: document,
+          errorPolicy: 'all',
           variables: apolloVariables,
           context
         })
@@ -201,14 +212,17 @@ export async function graphqlRequest<V, T>(
 
   const json: GraphqlResponse<T> = {
     data: result.data ?? undefined,
-    errors: result.error?.graphQLErrors?.map((error) => ({
+    errors: (CombinedGraphQLErrors.is(result.error)
+      ? result.error.errors
+      : undefined
+    )?.map((error) => ({
       message: error.message,
       extensions: error.extensions
     }))
   };
 
   if (result.error && (!json.errors || json.errors.length === 0)) {
-    throw new GraphqlError(result.error.message ?? 'GraphQL request failed');
+    throw new GraphqlError('GraphQL request failed');
   }
 
   if (json.errors && json.errors.length > 0) {
@@ -220,7 +234,12 @@ export async function graphqlRequest<V, T>(
     ) {
       throw new GraphqlError(err.message, 'UNAUTHORIZED');
     }
-    throw new GraphqlError(err.message, code);
+    throw new GraphqlError(
+      err.message,
+      code,
+      err.extensions?.retryable,
+      err.extensions?.outcome
+    );
   }
 
   if (!json.data) {

@@ -10,7 +10,9 @@
 
 'use strict';
 
+import type { UpdateVariantInput } from '../../api/products';
 import * as React from 'react';
+import { parsePriceAmount, salePercent, discountedPrice } from '../../money';
 import {
   Card,
   CardContent,
@@ -56,17 +58,12 @@ import {
   Globe,
   Coins
 } from 'lucide-react';
-import type {
-  ProductVariant,
-  ProductVariantPrice,
-  ActivePriceList
-} from '../../api/types';
+import type { ProductVariant, ProductVariantPrice } from '../../api/types';
 
 interface PriceRowDraft {
   currencyCode: string;
   amount: string;
   compareAtAmount: string;
-  priceListId?: string;
 }
 
 const SUPPORTED_CURRENCIES = [
@@ -85,26 +82,25 @@ interface ProductVariantsCardProps {
   onAddVariant?: (variant: Omit<ProductVariant, 'id'>) => Promise<void>;
   onUpdateVariant?: (
     id: string,
-    variant: Partial<ProductVariant>
+    variant: UpdateVariantInput
   ) => Promise<void>;
   onDeleteVariant?: (id: string) => Promise<void>;
   isNew: boolean;
-  activePriceLists?: ActivePriceList[];
   onNewVariantDraftChange?: (draft: {
     sku: string;
     barcode: string;
-    priceAmount: number;
+    priceAmount: string;
     currencyCode: string;
-    compareAtAmount?: number | null;
+    compareAtAmount?: string | null;
     inventoryQuantity: number;
     inventoryPolicy: string;
   }) => void;
   newVariantDraft?: {
     sku: string;
     barcode: string;
-    priceAmount: number;
+    priceAmount: string;
     currencyCode: string;
-    compareAtAmount?: number | null;
+    compareAtAmount?: string | null;
     inventoryQuantity: number;
     inventoryPolicy: string;
   };
@@ -117,7 +113,6 @@ export function ProductVariantsCard({
   onUpdateVariant,
   onDeleteVariant,
   isNew,
-  activePriceLists = [],
   onNewVariantDraftChange,
   newVariantDraft,
   disabled = false
@@ -126,6 +121,7 @@ export function ProductVariantsCard({
   const [editingVariant, setEditingVariant] =
     React.useState<ProductVariant | null>(null);
   const [isBusy, setIsBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   // Dialog form fields
   const [formSku, setFormSku] = React.useState('');
@@ -137,6 +133,7 @@ export function ProductVariantsCard({
   const [formPolicy, setFormPolicy] = React.useState('deny');
 
   const openAddDialog = () => {
+    setError(null);
     setEditingVariant(null);
     setFormSku('');
     setFormBarcode('');
@@ -149,6 +146,7 @@ export function ProductVariantsCard({
   };
 
   const openEditDialog = (variant: ProductVariant) => {
+    setError(null);
     setEditingVariant(variant);
     setFormSku(variant.sku || '');
     setFormBarcode(variant.barcode || '');
@@ -157,17 +155,12 @@ export function ProductVariantsCard({
       setFormPrices(
         variant.prices.map((p) => ({
           currencyCode: p.currencyCode,
-          amount: (p.amount / 100).toFixed(2),
-          compareAtAmount: p.compareAtAmount
-            ? (p.compareAtAmount / 100).toFixed(2)
-            : '',
-          priceListId: p.priceListId || undefined
+          amount: p.amount,
+          compareAtAmount: p.compareAtAmount ?? ''
         }))
       );
     } else {
-      setFormPrices([
-        { currencyCode: 'USD', amount: '0.00', compareAtAmount: '' }
-      ]);
+      setFormPrices([]);
     }
 
     setFormStock(variant.inventoryQuantity.toString());
@@ -188,21 +181,19 @@ export function ProductVariantsCard({
   };
 
   const handleApplyDiscountPercent = (index: number, percent: number) => {
-    setFormPrices((prev) => {
-      const next = [...prev];
-      const row = next[index];
-      const base = parseFloat(row.compareAtAmount || row.amount);
-      if (Number.isFinite(base) && base > 0) {
-        const compareAt = row.compareAtAmount ? base : parseFloat(row.amount);
-        const discounted = compareAt * (1 - percent / 100);
-        next[index] = {
-          ...row,
-          compareAtAmount: compareAt.toFixed(2),
-          amount: Math.max(0, discounted).toFixed(2)
-        };
-      }
-      return next;
-    });
+    try {
+      const row = formPrices[index];
+      const base = parsePriceAmount(row.compareAtAmount || row.amount);
+      const amount = discountedPrice(base, percent);
+      setFormPrices((prev) =>
+        prev.map((price, i) =>
+          i === index ? { ...price, compareAtAmount: base, amount } : price
+        )
+      );
+      setError(null);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Invalid price.');
+    }
   };
 
   const handleAddPriceRow = () => {
@@ -217,47 +208,41 @@ export function ProductVariantsCard({
   };
 
   const handleRemovePriceRow = (index: number) => {
-    if (formPrices.length <= 1) return;
     setFormPrices((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSaveDialog = async () => {
-    const qty = parseInt(formStock, 10) || 0;
+    const qty = Number(formStock);
+    if (
+      !/^\d+$/.test(formStock) ||
+      !Number.isInteger(qty) ||
+      qty > 2147483647
+    ) {
+      setError('Inventory must be a non-negative 32-bit integer.');
+      return;
+    }
 
-    const mappedPrices: ProductVariantPrice[] = formPrices.map((p) => {
-      const priceRaw = parseFloat(p.amount);
-      const amount =
-        Number.isFinite(priceRaw) && priceRaw > 0
-          ? Math.round(priceRaw * 100)
-          : 0;
-      const compareRaw = parseFloat(p.compareAtAmount);
-      const compareAtAmount =
-        Number.isFinite(compareRaw) && compareRaw > 0
-          ? Math.round(compareRaw * 100)
-          : null;
-      const onSale = Boolean(compareAtAmount && compareAtAmount > amount);
-      const discountPercent = onSale
-        ? Math.round(
-            ((compareAtAmount! - amount) / compareAtAmount!) * 100
-          ).toString()
-        : null;
-
-      return {
-        currencyCode: p.currencyCode,
-        amount,
-        compareAtAmount,
-        discountPercent,
-        onSale,
-        priceListId: p.priceListId || null
-      };
-    });
+    let mappedPrices: ProductVariantPrice[];
+    try {
+      mappedPrices = formPrices.map((price) => ({
+        currencyCode: price.currencyCode,
+        amount: parsePriceAmount(price.amount),
+        compareAtAmount: price.compareAtAmount.trim()
+          ? parsePriceAmount(price.compareAtAmount)
+          : null
+      }));
+      setError(null);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Invalid price.');
+      return;
+    }
 
     setIsBusy(true);
     try {
       if (editingVariant && onUpdateVariant) {
         await onUpdateVariant(editingVariant.id, {
-          sku: formSku || null,
-          barcode: formBarcode || null,
+          sku: formSku.trim() || null,
+          barcode: formBarcode.trim() || null,
           inventoryQuantity: qty,
           inventoryPolicy: formPolicy,
           prices: mappedPrices
@@ -274,17 +259,17 @@ export function ProductVariantsCard({
         });
       }
       setDialogOpen(false);
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : 'Failed to save variant.'
+      );
     } finally {
       setIsBusy(false);
     }
   };
 
-  const formatPrice = (amount: number, currency: string) => {
-    return (amount / 100).toLocaleString(undefined, {
-      style: 'currency',
-      currency: currency || 'USD'
-    });
-  };
+  const formatPrice = (amount: string, currency: string) =>
+    `${amount} ${currency}`;
 
   return (
     <Card className='border-border rounded-2xl shadow-sm'>
@@ -330,7 +315,7 @@ export function ProductVariantsCard({
                     ...(newVariantDraft || {
                       sku: '',
                       barcode: '',
-                      priceAmount: 0,
+                      priceAmount: '0',
                       currencyCode: 'USD',
                       inventoryQuantity: 0,
                       inventoryPolicy: 'deny'
@@ -355,7 +340,7 @@ export function ProductVariantsCard({
                     ...(newVariantDraft || {
                       sku: '',
                       barcode: '',
-                      priceAmount: 0,
+                      priceAmount: '0',
                       currencyCode: 'USD',
                       inventoryQuantity: 0,
                       inventoryPolicy: 'deny'
@@ -376,27 +361,19 @@ export function ProductVariantsCard({
                 <Input
                   id='new-price'
                   type='number'
-                  step='0.01'
-                  value={
-                    newVariantDraft?.priceAmount
-                      ? (newVariantDraft.priceAmount / 100).toFixed(2)
-                      : '0.00'
-                  }
+                  step='any'
+                  value={newVariantDraft?.priceAmount ?? '0'}
                   onChange={(e) => {
-                    const val = parseFloat(e.target.value);
                     onNewVariantDraftChange?.({
                       ...(newVariantDraft || {
                         sku: '',
                         barcode: '',
-                        priceAmount: 0,
+                        priceAmount: '0',
                         currencyCode: 'USD',
                         inventoryQuantity: 0,
                         inventoryPolicy: 'deny'
                       }),
-                      priceAmount:
-                        Number.isFinite(val) && val > 0
-                          ? Math.round(val * 100)
-                          : 0
+                      priceAmount: e.target.value
                     });
                   }}
                   className='h-9 rounded-xl font-mono text-xs'
@@ -418,7 +395,7 @@ export function ProductVariantsCard({
                     ...(newVariantDraft || {
                       sku: '',
                       barcode: '',
-                      priceAmount: 0,
+                      priceAmount: '0',
                       currencyCode: 'USD',
                       inventoryPolicy: 'deny'
                     }),
@@ -451,18 +428,13 @@ export function ProductVariantsCard({
                 {variants.map((v) => {
                   const primaryPrice = v.prices[0];
                   const additionalPrices = v.prices.slice(1);
-                  const isOnSale = Boolean(
-                    primaryPrice?.compareAtAmount &&
-                    primaryPrice.compareAtAmount > primaryPrice.amount
-                  );
-                  const discountPct = isOnSale
-                    ? Math.round(
-                        ((primaryPrice!.compareAtAmount! -
-                          primaryPrice!.amount) /
-                          primaryPrice!.compareAtAmount!) *
-                          100
+                  const discountPct = primaryPrice
+                    ? salePercent(
+                        primaryPrice.amount,
+                        primaryPrice.compareAtAmount
                       )
                     : null;
+                  const isOnSale = discountPct !== null;
 
                   return (
                     <TableRow key={v.id} className='hover:bg-accent/40 group'>
@@ -695,12 +667,13 @@ export function ProductVariantsCard({
               {/* Price Rows */}
               <div className='space-y-2.5'>
                 {formPrices.map((row, idx) => {
-                  const amt = parseFloat(row.amount) || 0;
-                  const comp = parseFloat(row.compareAtAmount) || 0;
-                  const hasDiscount = comp > amt && amt > 0;
-                  const discountPct = hasDiscount
-                    ? Math.round(((comp - amt) / comp) * 100)
-                    : 0;
+                  let discountPct: string | null = null;
+                  try {
+                    discountPct = salePercent(row.amount, row.compareAtAmount);
+                  } catch {
+                    /* Incomplete input is validated on save. */
+                  }
+                  const hasDiscount = discountPct !== null;
 
                   return (
                     <div
@@ -743,7 +716,7 @@ export function ProductVariantsCard({
                           </Label>
                           <Input
                             type='number'
-                            step='0.01'
+                            step='any'
                             value={row.amount}
                             onChange={(e) =>
                               handlePriceChange(idx, 'amount', e.target.value)
@@ -771,7 +744,7 @@ export function ProductVariantsCard({
                           </div>
                           <Input
                             type='number'
-                            step='0.01'
+                            step='any'
                             value={row.compareAtAmount}
                             onChange={(e) =>
                               handlePriceChange(
@@ -812,40 +785,6 @@ export function ProductVariantsCard({
                           </Badge>
                         )}
                       </div>
-
-                      {/* Optional Price List Association */}
-                      {activePriceLists.length > 0 && (
-                        <div className='pt-1'>
-                          <Select
-                            value={row.priceListId || 'base'}
-                            onValueChange={(val) =>
-                              handlePriceChange(
-                                idx,
-                                'priceListId',
-                                val === 'base' ? '' : val
-                              )
-                            }
-                          >
-                            <SelectTrigger className='h-7 rounded-lg text-[10px]'>
-                              <SelectValue placeholder='Прайс-лист' />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value='base' className='text-xs'>
-                                Базовая цена (Все покупатели)
-                              </SelectItem>
-                              {activePriceLists.map((pl) => (
-                                <SelectItem
-                                  key={pl.id}
-                                  value={pl.id}
-                                  className='text-xs'
-                                >
-                                  {pl.name} ({pl.listType})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -929,6 +868,11 @@ export function ProductVariantsCard({
             </div>
           </div>
 
+          {error && (
+            <p role='alert' className='text-destructive text-sm'>
+              {error}
+            </p>
+          )}
           <DialogFooter className='gap-2 pt-2 sm:gap-0'>
             <Button
               type='button'

@@ -20,7 +20,8 @@ The Pricing wrapper now projects retained request context to closed facts:
 
 The event keeps exact owner code, typed owner kind, owner retryability, and only owner-message shape and byte length. Its error field uses `PricingOwnerDiagnosticError`, whose `Debug` implementation always emits `redacted`.
 
-The original `PortError` is intentionally not consumed because the wrapper must return it unchanged to the existing `cart_port_error` mapper. It remains available only for downstream public-policy mapping and is never formatted by the Pricing owner event.
+The original `PortError` is borrowed through `Result::inspect_err`, not consumed or replaced,
+because the wrapper must return it unchanged to the existing `cart_port_error` mapper. It remains available only for downstream public-policy mapping and is never formatted by the Pricing owner event.
 
 ## Preserved behavior
 
@@ -74,3 +75,19 @@ The broad ecommerce correlation-safe mapper cleanup remains open.
 ## Validation disclosure
 
 No tests, Node verifiers, formatting, Cargo commands, mounted GraphQL scenarios, workflows, or CI were run. No compile or runtime status is claimed.
+
+
+## Pricing mutation continuation (2026-10-18)
+
+The separate `mutations/pricing.rs::pricing_port_graphql_error` now delegates public copy and
+retryability to the [Pricing-owned policy](../../rustok-pricing/docs/pricing-owner-port-error-safety.md#nested-error-and-public-consumer-continuation-2026-10-18).
+It no longer logs Debug PortError, raw owner code, tenant, or caller correlation values, and
+never copies a dynamic validation message into GraphQL. Diagnostics retain typed kind,
+retryability, operation, field lengths/presence, and the fresh public UUID reference returned
+in GraphQL extensions. The seven mutation/error-context handoffs, including two existing
+Cart promotion calls using this envelope, remain intact. Context/key construction, business
+writes, receipt semantics, and cart public mapping outside this helper are not certified here.
+The owner diagnostic source guard now verifies the actual non-transforming `inspect_err`
+helper rather than the retired identity `map_err` closure. Standalone pricing mutation/owner
+source guards run; no tests, compilation, or mounted
+runtime evidence are claimed. Earlier source evidence remains historical.

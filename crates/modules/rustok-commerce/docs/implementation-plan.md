@@ -1281,3 +1281,41 @@ Source inspection is not execution evidence.
 - [Seller balance transfer contract](../../rustok-marketplace-ledger/contracts/seller-balance-transfer-v1.json)
 - [Marketplace seller plan](../../rustok-marketplace-seller/docs/implementation-plan.md)
 - [Marketplace listing plan](../../rustok-marketplace-listing/docs/implementation-plan.md)
+
+
+## 2026-10-18 diagnostic guard and authenticated-scope continuation
+
+The three outstanding Product HTTP / GraphQL helper source guards now follow current
+owner boundaries instead of removed Commerce umbrella variants/direct command calls.
+Typed shared Product reads and mounted Product read/command ports have separate bounded
+mapper assertions. Mapper-body extraction no longer accidentally includes idempotency
+hashing and treats its formatting as an error-payload leak. Archive and current request/
+header delegation are included. Product error-policy checks target rustok-product errors;
+Order helper checks target PortError rather than the owner's internal error enum.
+
+Source review also fixed actual production defects rather than only changing guards:
+
+- Product shared/mounted handlers check tenant/auth/request principal agreement before IO
+  and receipt admission; command/delegated routes retain permissions and retry identity.
+  Media maintenance delegates to that same scope rule, preserving its existing public code.
+- Mounted Product read contexts preserve upstream correlation IDs. Storefront Order
+  context carries request correlation/locale/channel and permission claims, with a fresh
+  opaque correlation only when no RequestContext exists, not an order-UUID-derived value.
+- Storefront Order helper rejects mismatched authenticated dimensions before customer and
+  owner reads; Forbidden is distinct from validation at the GraphQL public boundary.
+  Missing trusted tenant context returns a static unavailable envelope, not framework detail.
+- Shipping-option profile validation returns static public policy text. Owner validation
+  detail, raw error Debug/UUID/slug fields were removed from that helper's mapper log.
+  This does not affect Product's receipt-aware Shipping Profile admission.
+
+Executed: all three corrected standalone source guards, Product shipping admission,
+catalog schema/receipts and Media retention guards pass. Four changed Rust sources
+pass WASM formatting/idempotence checks; this is not a Rust build or cargo fmt check.
+Four added Rust unit scenario sources cover mixed authenticated scope, sanitized HTTP
+owner error envelopes, static Shipping validation messages and distinct Order Forbidden.
+They are unrun. No test suite was executed per maintainer instruction; cargo/rustc,
+mounted extractors, real owner/database/transport execution and CI remain unverified.
+Diagnostic evidence metadata records source execution separately from runtime proof.
+Broader ecommerce mapper cleanup, authorization revocation fencing and pending-request
+recovery are not claimed complete. Finish correlation-safe mapper cleanup remains a
+separate tracked gate.

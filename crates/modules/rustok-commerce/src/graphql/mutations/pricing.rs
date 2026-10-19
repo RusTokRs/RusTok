@@ -1,8 +1,7 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::Permission;
 use rustok_api::{
-    PortActor, PortContext, PortError, PortErrorKind, TenantContext,
-    graphql::require_module_enabled,
+    PortActor, PortContext, PortError, TenantContext, graphql::require_module_enabled,
 };
 use uuid::Uuid;
 
@@ -81,57 +80,26 @@ fn pricing_port_graphql_error(
     operation: &'static str,
     error: PortError,
 ) -> async_graphql::Error {
+    let public = rustok_pricing::map_pricing_port_error(&error);
     tracing::error!(
-        error = ?error,
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
+        owner = "rustok_pricing",
+        boundary = "commerce_graphql_pricing_mutation",
+        correlation_id = %public.correlation_id,
+        tenant_id_length = context.tenant_id.chars().count(),
+        request_correlation_present = !context.correlation_id.is_empty(),
         operation,
-        owner_code = %error.code,
         owner_kind = ?error.kind,
         owner_retryable = error.retryable,
+        owner_code_length = error.code.chars().count(),
+        owner_message_length = error.message.chars().count(),
+        public_code = public.code,
+        retryable = public.retryable,
         "commerce GraphQL pricing owner port failed"
     );
-
-    let (code, message, retryable) = match &error.kind {
-        PortErrorKind::Validation => (
-            "PRICING_REQUEST_INVALID",
-            if error.message.is_empty() {
-                "Pricing request is invalid".to_string()
-            } else {
-                error.message.clone()
-            },
-            false,
-        ),
-        PortErrorKind::NotFound => (
-            "PRICING_RESOURCE_NOT_FOUND",
-            "Pricing resource was not found".to_string(),
-            false,
-        ),
-        PortErrorKind::Conflict => (
-            "PRICING_STATE_CONFLICT",
-            "Pricing operation conflicts with the current state".to_string(),
-            false,
-        ),
-        PortErrorKind::Forbidden => (
-            "PRICING_ACCESS_DENIED",
-            "Pricing operation is not permitted".to_string(),
-            false,
-        ),
-        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
-            "PRICING_TEMPORARILY_UNAVAILABLE",
-            "Pricing is temporarily unavailable".to_string(),
-            true,
-        ),
-        PortErrorKind::InvariantViolation => (
-            "PRICING_OPERATION_FAILED",
-            "Pricing operation could not be completed safely".to_string(),
-            false,
-        ),
-    };
-
-    async_graphql::Error::new(message).extend_with(|_, extensions| {
-        extensions.set("code", code);
-        extensions.set("retryable", retryable);
+    async_graphql::Error::new(public.message).extend_with(|_, extensions| {
+        extensions.set("code", public.code);
+        extensions.set("retryable", public.retryable);
+        extensions.set("correlation_id", public.correlation_id.to_string());
     })
 }
 

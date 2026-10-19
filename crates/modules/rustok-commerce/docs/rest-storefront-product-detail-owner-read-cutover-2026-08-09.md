@@ -4,6 +4,8 @@ Status: `source_complete_unvalidated`
 
 Date: 2026-08-09
 
+Current contract update: [2026-10-19 HTTP policy continuation](./public-port-error-safety.md#storefront-product-http-policy-continuation-2026-10-19) intentionally replaces the original Forbidden/Conflict 500 collapse with 403/409 and resource-bound correlation with fresh opaque owner-call UUIDs. Earlier slice scope/validation statements below describe the original cutover, not current execution evidence.
+
 ## Scope
 
 This bounded slice removes concrete Product service construction from the mounted
@@ -41,19 +43,20 @@ Commerce handler and Product service:
 
 The request still passes the storefront channel admission guard before the owner read.
 The owner `PortContext` uses a stable Commerce service actor, request locale, normalized
-public channel when available, a Product-bound correlation id, and a two-second deadline.
+public channel when available, a fresh opaque per-owner-call UUID correlation id, and a two-second deadline.
 
 ## Error boundary
 
-Product owner `PortError` values are mapped to the existing public REST families:
+Product owner `PortError` values are mapped to the current public REST families (403/409 supersede the original 500 collapse):
 
 - validation -> `400 commerce_store_product_invalid`;
 - not found -> `404 commerce_store_not_found`;
 - unavailable/timeout -> `503 commerce_store_product_unavailable`;
-- unexpected conflict/forbidden/invariant failures -> fail closed with
-  `500 commerce_store_product_failed`.
+- forbidden -> `403 commerce_product_access_denied`;
+- conflict -> `409 commerce_store_product_conflict`;
+- invariant -> `500 commerce_store_product_failed`.
 
-The new owner-port mapper logs correlation id, owner error kind, retryability, and
+The new owner-port mapper logs correlation length, owner error kind, retryability, and
 owner-code length. It does not log or expose `PortError.message` or another raw
 backend/owner message.
 
@@ -72,7 +75,7 @@ The canonical ecommerce topology item remains open. This slice removes one mount
 Product concrete-service construction, but other mounted Product/Order/Payment/
 Fulfillment consumer and orchestration paths still require audit/cutover.
 
-## Validation status
+## Original cutover validation status
 
 Per maintainer instruction, no tests, Cargo commands, Node verifiers, formatter,
 REST scenarios, workflows, CI reruns, database scenarios, provider calls, restart

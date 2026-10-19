@@ -11,6 +11,9 @@ mod marketplace_financial;
 #[derive(OpenApi)]
 #[openapi(
     paths(
+        crate::controllers::admin::product_media::audit,
+        crate::controllers::admin::product_media::backfill,
+        crate::controllers::admin::product_media::releases,
         crate::controllers::store::list_products,
         crate::controllers::store::show_product,
         crate::controllers::store::list_regions,
@@ -85,6 +88,14 @@ mod marketplace_financial;
     ),
     components(
         schemas(
+            rustok_product::ProductMediaAuditIssue,
+            rustok_product::ProductMediaAuditPage,
+            rustok_product::ProductMediaBackfillPage,
+            rustok_product::ProductMediaReleaseStatus,
+            rustok_product::ProductMediaReleasePage,
+            crate::controllers::admin::product_media::AuditQuery,
+            crate::controllers::admin::product_media::BackfillInput,
+            crate::controllers::admin::product_media::ReleasesQuery,
             rustok_product::dto::CreateProductInput,
             rustok_product::dto::UpdateProductInput,
             rustok_product::dto::ProductResponse,

@@ -112,6 +112,8 @@ mod-flex      = ["dep:rustok-translation-targets", "rustok-distribution/mod-flex
 mod-docs      = ["dep:rustok-docs", "mod-flex", "rustok-distribution/mod-docs"]
 mod-messenger = ["dep:rustok-messenger", "rustok-messenger/graphql", "rustok-distribution/mod-messenger"]
 mod-media     = ["dep:rustok-media", "dep:rustok-translation-targets", "rustok-distribution/mod-media"]
+# Whole-owner Media control ports must not require the unrelated Profiles module.
+media-grpc = ["mod-media", "dep:rustok-media-transport"]
 mod-translation = [
   "dep:rustok-translation",
   "dep:rustok-modules-translation",
@@ -213,7 +215,7 @@ rustok-workflow  = { workspace = true, optional = true }
 
 tokio.workspace = true
 tonic = { workspace = true, features = ["tls-ring"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-stream = { version = "0.1", features = ["sync", "net"] }
 axum.workspace = true
 tower = { workspace = true, features = ["limit"] }
 leptos.workspace = true

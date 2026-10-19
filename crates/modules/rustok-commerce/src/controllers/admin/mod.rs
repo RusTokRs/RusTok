@@ -7,6 +7,7 @@ pub mod orders;
 pub mod payments;
 pub mod post_order_commands;
 pub mod post_order_reads;
+pub mod product_media;
 pub mod products;
 pub mod returns;
 pub mod shipping;
@@ -157,6 +158,18 @@ pub struct ListShippingProfilesParams {
 
 pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
     axum::Router::new()
+        .route(
+            "/products/media-references/releases",
+            axum::routing::get(product_media::releases),
+        )
+        .route(
+            "/products/media-references/audit",
+            axum::routing::get(product_media::audit),
+        )
+        .route(
+            "/products/media-references/backfill",
+            axum::routing::post(product_media::backfill),
+        )
         .route(
             "/products",
             axum::routing::get(products::list_products).post(products::create_product),

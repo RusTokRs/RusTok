@@ -529,6 +529,7 @@ fn localized_attribute() -> CreateProductAttributeInput {
 
 fn source_product(category_id: Uuid) -> CreateProductInput {
     CreateProductInput {
+        attribute_values: Default::default(),
         translations: vec![ProductTranslationInput {
             locale: "en".into(),
             title: "Attribute Value Evidence Product".into(),

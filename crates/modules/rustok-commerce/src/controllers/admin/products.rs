@@ -14,186 +14,13 @@ use super::super::{
     products::{
         AdminProductErrorContext, ListProductsParams, ProductListItem,
         admin_product_command_context, admin_product_command_idempotency_key,
-        map_admin_product_port_error,
+        ensure_admin_product_scope, map_admin_product_port_error,
     },
 };
 use crate::{
-    CommerceError, ShippingProfileService,
     dto::{CreateProductInput, ProductResponse, UpdateProductInput},
     storefront_shipping::normalize_shipping_profile_slug,
 };
-
-const ADMIN_PRODUCT_SHIPPING_PROFILE_OWNER: &str = "rustok_commerce.shipping_profile";
-const ADMIN_PRODUCT_SHIPPING_PROFILE_BOUNDARY: &str =
-    "commerce_admin_product_shipping_profile_http";
-
-type AdminProductShippingProfileHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
-
-#[derive(Clone, Copy)]
-struct AdminProductShippingProfileErrorContext {
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    product_id: Option<Uuid>,
-    shipping_profile_id: Option<Uuid>,
-    operation: &'static str,
-}
-
-impl AdminProductShippingProfileErrorContext {
-    fn new(
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        product_id: Option<Uuid>,
-        operation: &'static str,
-    ) -> Self {
-        Self {
-            tenant_id,
-            actor_id,
-            product_id,
-            shipping_profile_id: None,
-            operation,
-        }
-    }
-}
-
-struct AdminProductShippingProfileDiagnosticContext {
-    tenant_id: &'static str,
-    actor_id: &'static str,
-    product_id: &'static str,
-    shipping_profile_id: &'static str,
-    operation: &'static str,
-}
-
-impl From<&AdminProductShippingProfileErrorContext>
-    for AdminProductShippingProfileDiagnosticContext
-{
-    fn from(context: &AdminProductShippingProfileErrorContext) -> Self {
-        Self {
-            tenant_id: uuid_shape(context.tenant_id),
-            actor_id: uuid_shape(context.actor_id),
-            product_id: optional_uuid_shape(context.product_id),
-            shipping_profile_id: optional_uuid_shape(context.shipping_profile_id),
-            operation: context.operation,
-        }
-    }
-}
-
-struct AdminProductShippingProfileDiagnosticError;
-
-impl std::fmt::Debug for AdminProductShippingProfileDiagnosticError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("redacted")
-    }
-}
-
-fn uuid_shape(value: Uuid) -> &'static str {
-    if value.is_nil() { "nil" } else { "non_nil" }
-}
-
-fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
-    match value {
-        None => "absent",
-        Some(value) if value.is_nil() => "present_nil",
-        Some(_) => "present_non_nil",
-    }
-}
-
-fn admin_product_shipping_profile_error_policy(
-    error: &CommerceError,
-) -> AdminProductShippingProfileHttpPolicy {
-    match error {
-        CommerceError::ShippingProfileNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        CommerceError::DuplicateShippingProfileSlug(_) => (
-            StatusCode::CONFLICT,
-            "commerce_admin_shipping_profile_conflict",
-            "A shipping profile with this slug already exists",
-            "duplicate_slug",
-        ),
-        CommerceError::Validation(_) => (
-            StatusCode::BAD_REQUEST,
-            "commerce_admin_shipping_profile_invalid",
-            "Shipping profile request is invalid",
-            "validation",
-        ),
-        CommerceError::Database(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_shipping_profile_storage_unavailable",
-            "Shipping profile storage is temporarily unavailable",
-            "database",
-        ),
-        CommerceError::ProductNotFound(_)
-        | CommerceError::VariantNotFound(_)
-        | CommerceError::DuplicateHandle { .. }
-        | CommerceError::DuplicateSku(_)
-        | CommerceError::InvalidPrice(_)
-        | CommerceError::InsufficientInventory { .. }
-        | CommerceError::InvalidOptionCombination
-        | CommerceError::NoVariants
-        | CommerceError::CannotDeletePublished
-        | CommerceError::Rich(_)
-        | CommerceError::Core(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_shipping_profile_failed",
-            "Shipping profile operation could not be completed safely",
-            "unexpected_commerce_error",
-        ),
-    }
-}
-
-fn adopt_admin_product_shipping_profile_error_identity(
-    context: &mut AdminProductShippingProfileErrorContext,
-    error: &CommerceError,
-) {
-    if let CommerceError::ShippingProfileNotFound(id) = error {
-        context.shipping_profile_id = Some(*id);
-    }
-}
-
-fn map_admin_product_shipping_profile_error(
-    mut context: AdminProductShippingProfileErrorContext,
-    error: CommerceError,
-) -> HttpError {
-    adopt_admin_product_shipping_profile_error_identity(&mut context, &error);
-    let (status, code, message, error_kind) = admin_product_shipping_profile_error_policy(&error);
-    let context = AdminProductShippingProfileDiagnosticContext::from(&context);
-    let error = AdminProductShippingProfileDiagnosticError;
-    tracing::error!(
-        error = ?error,
-        owner = ADMIN_PRODUCT_SHIPPING_PROFILE_OWNER,
-        tenant_id = %context.tenant_id,
-        actor_id = %context.actor_id,
-        product_id = %context.product_id,
-        shipping_profile_id = %context.shipping_profile_id,
-        operation = %context.operation,
-        error_kind,
-        public_code = code,
-        status = %status,
-        boundary = ADMIN_PRODUCT_SHIPPING_PROFILE_BOUNDARY,
-        "commerce admin product shipping-profile validation failed"
-    );
-    HttpError::new(status, code, message)
-}
-
-async fn validate_admin_product_shipping_profile_input(
-    db: &sea_orm::DatabaseConnection,
-    context: AdminProductShippingProfileErrorContext,
-    shipping_profile_slug: Option<&str>,
-) -> HttpResult<()> {
-    let Some(slug) = shipping_profile_slug.and_then(normalize_shipping_profile_slug) else {
-        return Ok(());
-    };
-
-    ShippingProfileService::new(db.clone())
-        .ensure_shipping_profile_slug_exists(context.tenant_id, &slug)
-        .await
-        .map_err(|error| map_admin_product_shipping_profile_error(context, error))?;
-
-    Ok(())
-}
 
 /// List admin ecommerce products
 #[utoipa::path(
@@ -218,8 +45,12 @@ pub async fn list_products(
         &[Permission::PRODUCTS_LIST],
         "Permission denied: products:list required",
     )?;
+    ensure_admin_product_scope(&tenant, &auth, &request_context)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = "commerce_admin_product_http",
@@ -251,11 +82,7 @@ pub async fn list_products(
         tenant.id.to_string(),
         rustok_api::PortActor::user(auth.user_id.to_string()),
         locale.as_str(),
-        format!(
-            "commerce-admin-product:list:{}:{}",
-            pagination.page,
-            pagination.limit()
-        ),
+        request_context.correlation_id.clone(),
     )
     .with_deadline(std::time::Duration::from_secs(2));
     let port_context = match request_context.channel_slug.as_deref() {
@@ -350,8 +177,12 @@ pub async fn create_product(
         &[Permission::PRODUCTS_CREATE],
         "Permission denied: products:create required",
     )?;
+    ensure_admin_product_scope(&tenant, &auth, &request_context)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = "commerce_admin_product_http",
@@ -360,18 +191,6 @@ pub async fn create_product(
         actor_id = %auth.user_id,
         "handling create_product"
     );
-
-    validate_admin_product_shipping_profile_input(
-        runtime.db(),
-        AdminProductShippingProfileErrorContext::new(
-            tenant.id,
-            auth.user_id,
-            None,
-            "create_product_shipping_profile_validation",
-        ),
-        input.shipping_profile_slug.as_deref(),
-    )
-    .await?;
 
     let idempotency_key = admin_product_command_idempotency_key(&headers)?;
     let port_context = admin_product_command_context(
@@ -420,11 +239,18 @@ pub async fn show_product(
         &[Permission::PRODUCTS_READ],
         "Permission denied: products:read required",
     )?;
+    ensure_admin_product_scope(&tenant, &auth, &request_context)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_product_id",
+            "Product ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = "commerce_admin_product_http",
@@ -439,7 +265,7 @@ pub async fn show_product(
         tenant.id.to_string(),
         rustok_api::PortActor::user(auth.user_id.to_string()),
         request_context.locale.as_str(),
-        format!("commerce-admin-product:show:{id}"),
+        request_context.correlation_id.clone(),
     )
     .with_deadline(std::time::Duration::from_secs(2));
     let port_context = match request_context.channel_slug.as_deref() {
@@ -497,11 +323,18 @@ pub async fn update_product(
         &[Permission::PRODUCTS_UPDATE],
         "Permission denied: products:update required",
     )?;
+    ensure_admin_product_scope(&tenant, &auth, &request_context)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_product_id",
+            "Product ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = "commerce_admin_product_http",
@@ -511,21 +344,6 @@ pub async fn update_product(
         product_id = %id,
         "handling update_product"
     );
-
-    validate_admin_product_shipping_profile_input(
-        runtime.db(),
-        AdminProductShippingProfileErrorContext::new(
-            tenant.id,
-            auth.user_id,
-            Some(id),
-            "update_product_shipping_profile_validation",
-        ),
-        match &input.shipping_profile_slug {
-            rustok_api::Patch::Set(slug) => Some(slug.as_str()),
-            rustok_api::Patch::Keep | rustok_api::Patch::Clear => None,
-        },
-    )
-    .await?;
 
     let idempotency_key = admin_product_command_idempotency_key(&headers)?;
     let port_context = admin_product_command_context(

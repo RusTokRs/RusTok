@@ -152,10 +152,8 @@ export async function upsertVariantPrice(
   const raw = data.updateAdminPricingVariantPrice;
   return {
     currencyCode: raw.currencyCode,
-    amount: Math.round(parseFloat(raw.amount) * 100),
-    compareAtAmount: raw.compareAtAmount
-      ? Math.round(parseFloat(raw.compareAtAmount) * 100)
-      : null,
+    amount: raw.amount,
+    compareAtAmount: raw.compareAtAmount ?? null,
     discountPercent: raw.discountPercent,
     onSale: raw.onSale,
     priceListId: raw.priceListId,

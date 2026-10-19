@@ -24,6 +24,7 @@ export type {
   StorefrontProductListItem,
   StorefrontProductListResponse,
   StorefrontProductPrice,
+  StorefrontProductPricing,
   StorefrontProductTranslation,
   StorefrontProductVariant,
 } from "./api/types";

@@ -125,6 +125,9 @@ for (const marker of [
   'Some(_) => "present_non_nil"',
 ]) requireText(optionalShape, marker, `${paths.source}: optional UUID shape`);
 
+requireText(source, '"commerce_admin_product_failed"', 'static internal fallback code');
+requireText(source, 'rustok_product::error::core_port_error(error).kind', 'Core policy must use canonical owner classification');
+
 const policy = blockBetween(
   source,
   "fn product_error_policy(",
@@ -138,14 +141,15 @@ for (const marker of [
   "CommerceError::DuplicateSku(_)",
   "CommerceError::Validation(_) | CommerceError::NoVariants",
   "CommerceError::CannotDeletePublished",
-  "CommerceError::Core(_)",
+  "CommerceError::Core(error)",
+  "CommerceError::Conflict(_)",
   '"commerce_admin_product_storage_unavailable"',
   '"commerce_admin_not_found"',
   '"commerce_admin_product_handle_conflict"',
   '"commerce_admin_product_sku_conflict"',
   '"commerce_admin_product_invalid"',
   '"commerce_admin_product_state_conflict"',
-  '"commerce_admin_product_failed"',
+
 ]) requireText(policy, marker, `${paths.source}: preserved product policy`);
 
 const identity = blockBetween(
@@ -162,7 +166,7 @@ for (const marker of [
 const mapper = blockBetween(
   source,
   "pub(crate) fn map_admin_product_error(",
-  "/// Shared admin product list handler.",
+  "pub(crate) fn admin_product_command_idempotency_key(",
   "admin product mapper",
 );
 requireOrder(
@@ -194,8 +198,8 @@ for (const forbidden of ["error.to_string()", "error.message", "format!("]) {
   forbidText(mapper, forbidden, `${paths.source}: raw product diagnostic payload`);
 }
 
-requireCount(source, "map_admin_product_error(", 9, "one mapper and eight shared callsites");
-requireCount(adminSource, "map_admin_product_error(", 2, "two admin write callsites");
+requireCount(source, "map_admin_product_error(", 6, "typed read mapper and five shared read failures");
+requireCount(adminSource, "map_admin_product_port_error(", 4, "four mounted read/write owner-port failures");
 for (const marker of [
   "Permission::PRODUCTS_LIST",
   "Permission::PRODUCTS_READ",
@@ -210,9 +214,9 @@ for (const marker of [
   '"publish_product"',
   '"unpublish_product"',
   ".get_product_with_locale_fallback(",
-  ".delete_product(tenant.id, auth.user_id, id)",
-  ".publish_product(tenant.id, auth.user_id, id)",
-  ".unpublish_product(tenant.id, auth.user_id, id)",
+  ".delete_product(port_context.clone(), id)",
+  ".publish_product(port_context.clone(), id)",
+  ".unpublish_product(port_context.clone(), id)",
   "product_translation_title_search_condition(",
   "metrics::record_read_path_query(",
   "metrics::record_read_path_budget(",
@@ -229,10 +233,25 @@ for (const marker of [
   'admin_product_command_context(',
   '.product_catalog_command_port()',
   'map_admin_product_port_error(',
-  "validate_admin_product_shipping_profile_input(",
-  "map_admin_product_shipping_profile_error(",
 ]) requireText(adminSource, marker, `${paths.adminSource}: preserved admin wrapper contract`);
 
+const portMapper = blockBetween(source,
+  "pub(crate) fn map_admin_product_port_error(", "/// Shared admin product list handler.", "owner-port mapper");
+for (const marker of ["AdminProductDiagnosticContext::from(&context)",
+  "owner_code_length", "error.code.chars().count()", "PortErrorKind::Forbidden",
+  "StatusCode::FORBIDDEN", "PortErrorKind::Unavailable | PortErrorKind::Timeout",
+  "correlation_id = %port_context.correlation_id", "HttpError::new(status, code, message)"]) {
+  requireText(portMapper, marker, "bounded owner-port diagnostics");
+}
+for (const marker of ["error = ?error", "error.message", "error.to_string()",
+  "owner_code = %error.code", "tenant_id = %context.tenant_id", "actor_id = %context.actor_id"]) {
+  forbidText(portMapper, marker, "raw owner-port diagnostic payload");
+}
+requireCount(adminSource, "request_context.correlation_id.clone()", 2,
+  "both mounted Product reads preserve upstream correlation");
+for (const marker of ['format!("commerce-admin-product:show:', '"commerce-admin-product:list:']) {
+  forbidText(adminSource, marker, "resource-derived read correlation");
+}
 if (
   evidence.status !==
   "commerce_admin_product_diagnostic_safety_source_reviewed_unvalidated"
@@ -250,10 +269,12 @@ for (const [key, expected] of Object.entries({
   typed_policy_selection_precedes_shadowing: true,
   product_error_policy_preserved: true,
   http_envelopes_preserved: true,
-  ten_shared_mapper_callsites_preserved: true,
+  typed_read_and_port_command_mappers: true,
+  authenticated_scope_before_io: true,
+  request_correlation_preserved: true,
   permissions_preserved: true,
   filters_locale_metrics_pagination_preserved: true,
-  shipping_profile_validation_mapper_unchanged: true,
+  shipping_profile_admission_behind_receipts: true,
   broad_ecommerce_cleanup_closed: false,
   runtime_evidence_claimed: false,
 })) {
@@ -264,8 +285,6 @@ for (const [key, expected] of Object.entries({
 for (const key of [
   "tests_run",
   "cargo_run",
-  "format_run",
-  "verifiers_run",
   "workflow_checks_run",
   "ci_run",
   "compile_proven",
@@ -295,5 +314,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Commerce admin product diagnostics are bounded while typed identity adoption, ten owner callsites, permissions, filters, metrics, and HTTP policies remain unchanged; execution validation remains open",
+  "Commerce admin Product typed-read and owner-port diagnostics are bounded; receipt-bound commands and runtime execution gates remain explicit",
 );

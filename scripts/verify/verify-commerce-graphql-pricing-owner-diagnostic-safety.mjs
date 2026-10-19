@@ -158,7 +158,16 @@ const projectionIndex = pricingBoundary.indexOf(
 const ownerFactsIndex = pricingBoundary.indexOf('let owner_code = error.code.clone();');
 const tokenIndex = pricingBoundary.indexOf('let diagnostic_error = PricingOwnerDiagnosticError;');
 const eventIndex = pricingBoundary.indexOf('tracing::error!(');
-const returnIndex = pricingBoundary.indexOf('\n            error\n        })', eventIndex);
+const retention = between(
+  pricingBoundary, 'fn retain_pricing_owner_context<T>(',
+  'struct ContextualPricingReadPort {', 'pricing inspection helper',
+);
+requireText(retention, 'result.inspect_err(|error| {', 'non-transforming owner error inspection');
+forbidText(retention, '.map_err(', 'inspection must not replace the original owner error');
+const endMatch = /\}\)\s*\}\s*$/.exec(retention);
+const returnIndex = endMatch
+  ? pricingBoundary.indexOf(retention) + endMatch.index
+  : -1;
 if (
   !(
     projectionIndex >= 0 &&
@@ -168,7 +177,7 @@ if (
     eventIndex < returnIndex
   )
 ) {
-  failures.push('pricing owner error must be projected, redacted, diagnosed, and returned in order');
+  failures.push('pricing owner error must be projected, redacted, diagnosed, and preserved by inspect_err in order');
 }
 
 for (const [value, label] of [

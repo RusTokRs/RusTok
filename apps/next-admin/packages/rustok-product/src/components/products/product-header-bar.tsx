@@ -37,6 +37,7 @@ interface ProductHeaderBarProps {
   status: string;
   isNew: boolean;
   isSaving: boolean;
+  disabled?: boolean;
   onSave: () => void;
   onStatusChange?: (status: string) => void;
   onDelete?: () => void;
@@ -47,6 +48,7 @@ export function ProductHeaderBar({
   status,
   isNew,
   isSaving,
+  disabled = false,
   onSave,
   onStatusChange,
   onDelete
@@ -116,7 +118,7 @@ export function ProductHeaderBar({
                 variant='outline'
                 size='sm'
                 className='h-9 gap-1.5 rounded-xl text-xs'
-                disabled={isSaving}
+                disabled={isSaving || disabled}
               >
                 <span>Status: {normStatus}</span>
                 <ChevronDown className='h-3.5 w-3.5 opacity-60' />
@@ -124,6 +126,7 @@ export function ProductHeaderBar({
             </DropdownMenuTrigger>
             <DropdownMenuContent align='end' className='w-48'>
               <DropdownMenuItem
+                disabled={isSaving || disabled}
                 onClick={() => onStatusChange('ACTIVE')}
                 className='cursor-pointer gap-2 text-xs font-medium text-emerald-600 dark:text-emerald-400'
               >
@@ -131,6 +134,7 @@ export function ProductHeaderBar({
                 <span>Publish (Active)</span>
               </DropdownMenuItem>
               <DropdownMenuItem
+                disabled={isSaving || disabled}
                 onClick={() => onStatusChange('DRAFT')}
                 className='cursor-pointer gap-2 text-xs font-medium'
               >
@@ -138,6 +142,7 @@ export function ProductHeaderBar({
                 <span>Move to Draft</span>
               </DropdownMenuItem>
               <DropdownMenuItem
+                disabled={isSaving || disabled}
                 onClick={() => onStatusChange('ARCHIVED')}
                 className='cursor-pointer gap-2 text-xs font-medium'
               >
@@ -148,6 +153,7 @@ export function ProductHeaderBar({
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
+                    disabled={isSaving || disabled}
                     onClick={onDelete}
                     className='text-destructive cursor-pointer gap-2 text-xs font-medium'
                   >
@@ -162,7 +168,7 @@ export function ProductHeaderBar({
 
         <Button
           onClick={onSave}
-          disabled={isSaving}
+          disabled={isSaving || disabled}
           className='h-9 gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-sm'
         >
           {isSaving ? (

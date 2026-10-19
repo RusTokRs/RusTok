@@ -1,15 +1,15 @@
 //! Port-boundary diagnostics: structured logging, error mapping, context
 //! validation and telemetry guards for product catalog owner operations.
 //!
-//! All helpers are `pub(super)` so they stay internal to `ports/` while being
-//! shared by port submodules without exposing telemetry internals.
+//! Fact projections are crate-visible for sibling owner read adapters. Other helpers
+//! stay internal to ports; telemetry is not part of the public module API.
 
 use rustok_api::{PortContext, PortError};
 use uuid::Uuid;
 
 // ── Context fact extraction ─────────────────────────────────────────
 
-pub(super) struct ProductPortContextFacts {
+pub(crate) struct ProductPortContextFacts {
     pub correlation_id_length: usize,
     pub tenant_id_length: usize,
     pub actor_kind: &'static str,
@@ -28,7 +28,7 @@ pub(super) struct ProductPortContextFacts {
     pub deadline_ms: Option<u64>,
 }
 
-pub(super) fn product_port_context_facts(context: &PortContext) -> ProductPortContextFacts {
+pub(crate) fn product_port_context_facts(context: &PortContext) -> ProductPortContextFacts {
     let actor_kind = match &context.actor.kind {
         rustok_api::PortActorKind::User => "user",
         rustok_api::PortActorKind::Service => "service",
@@ -65,7 +65,7 @@ pub(super) fn product_port_context_facts(context: &PortContext) -> ProductPortCo
 
 // ── Owner error fact extraction ─────────────────────────────────────
 
-pub(super) struct ProductOwnerErrorFacts {
+pub(crate) struct ProductOwnerErrorFacts {
     pub error_variant: &'static str,
     pub text_field_count: usize,
     pub text_total_length: usize,
@@ -110,7 +110,7 @@ impl ProductOwnerErrorFacts {
     }
 }
 
-pub(super) fn product_owner_error_facts(
+pub(crate) fn product_owner_error_facts(
     error: &crate::error::CommerceError,
 ) -> ProductOwnerErrorFacts {
     use crate::error::CommerceError;
@@ -147,6 +147,7 @@ pub(super) fn product_owner_error_facts(
             ProductOwnerErrorFacts::empty("cannot_delete_published")
         }
         CommerceError::Core(_) => ProductOwnerErrorFacts::opaque("core"),
+        CommerceError::Conflict(_) => ProductOwnerErrorFacts::opaque("conflict"),
     }
 }
 
@@ -349,7 +350,8 @@ fn product_error_code(error: &crate::error::CommerceError) -> &'static str {
         }
         CommerceError::NoVariants => "product.no_variants",
         CommerceError::CannotDeletePublished => "product.cannot_delete_published",
-        CommerceError::Core(_) => "product.invariant_violation",
+        CommerceError::Core(error) => crate::error::core_error_code(error),
+        CommerceError::Conflict(_) => "product.conflict",
     }
 }
 
@@ -408,9 +410,10 @@ pub(super) fn product_error_to_port_error(
             "product.cannot_delete_published",
             "cannot delete a published product",
         ),
-        CommerceError::Core(_) => PortError::invariant_violation(
-            "product.invariant_violation",
-            "product operation could not be completed safely",
+        CommerceError::Core(error) => crate::error::core_port_error(&error),
+        CommerceError::Conflict(_) => PortError::conflict(
+            "product.conflict",
+            "product request conflicts with the current state",
         ),
     }
 }

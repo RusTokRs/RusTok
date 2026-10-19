@@ -241,7 +241,7 @@ for (const marker of [
 ]) {
   requireText(lifecycle, marker, `${paths.lifecycle}: idempotent lifecycle GraphQL contract`);
 }
-for (const marker of [
+for (const obsolete of [
   "const CREATE_PRODUCT_MUTATION",
   "const UPDATE_PRODUCT_MUTATION",
   "const DELETE_PRODUCT_MUTATION",
@@ -249,11 +249,8 @@ for (const marker of [
   "pub(super) async fn update_product(",
   "pub(super) async fn change_product_status(",
   "pub(super) async fn delete_product(",
-  "build_create_product_input(draft)",
-  "status: Some(status.to_string())",
-  "extra: ProductIdVariables { id }",
 ]) {
-  requireText(graphql, marker, `${paths.graphql}: preserved mutation contract`);
+  forbidText(graphql, obsolete, `${paths.graphql}: obsolete unkeyed lifecycle gateway`);
 }
 for (const marker of [
   "pub enum GraphqlHttpError",

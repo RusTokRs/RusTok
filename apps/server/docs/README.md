@@ -579,3 +579,15 @@ resolution to `rustok-rbac`; that read alone is not a revocation or write fence.
 - [Manifest layer contracts](../../../docs/modules/manifest.md)
 - [Runbook retry/compensation lifecycle hook failures](./module-lifecycle-retry-compensation-runbook.md)
 - [Documentation map](../../../docs/index.md)
+
+
+## Product Media release delivery
+
+The background-worker role starts Product Media delivery with `mod-product`, independently
+of the embedded `mod-media` adapter. Lifecycle reservation is atomic before spawn. Each
+batch reads one selected `ProductCatalogCommandRuntime` and drains through that owner's
+embedded CatalogService; it never pairs the host-default database with a separately shared
+Media reference port. Absent capability or an external Product profile does not authorize
+local fallback. Pending owner replacement requires an explicit drain/cutover, not hot
+repointing. See the [Product retention runbook](../../../crates/modules/rustok-product/docs/media-reference-retention.md)
+for caller identity, bounded IO, operator permissions and unexecuted runtime gates.

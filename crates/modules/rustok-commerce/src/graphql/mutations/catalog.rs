@@ -112,6 +112,37 @@ fn product_schema_write_context(
     product_command_context(ctx, actor, product_id, idempotency_key, operation)
 }
 
+/// These domain codes are returned by the catalog owner only after its
+/// deterministic failure is durably finalized (or replayed). Admission/context
+/// errors must not be confused with a decision about an earlier uncertain write.
+fn product_command_error_outcome(error: &PortError) -> &'static str {
+    if !error.retryable
+        && matches!(
+            error.kind,
+            PortErrorKind::Validation | PortErrorKind::NotFound | PortErrorKind::Conflict
+        )
+        && matches!(
+            error.code.as_str(),
+            "product.validation"
+                | "product.conflict"
+                | "product.dependency_not_found"
+                | "product.duplicate_handle"
+                | "product.duplicate_sku"
+                | "product.revision_conflict"
+                | "product.no_variants"
+                | "product.lifecycle_conflict"
+                | "product.cannot_delete_only_variant"
+                | "product.product_not_found"
+                | "product.variant_not_found"
+                | "product.image_not_found"
+        )
+    {
+        "rejected"
+    } else {
+        "unknown"
+    }
+}
+
 fn product_command_port_error(
     context: &PortContext,
     error: PortError,
@@ -121,6 +152,14 @@ fn product_command_port_error(
         (PortErrorKind::Unavailable | PortErrorKind::Timeout, _) => (
             "Product data is temporarily unavailable",
             "PRODUCT_TEMPORARILY_UNAVAILABLE",
+        ),
+        (PortErrorKind::NotFound, "product.dependency_not_found") => (
+            "Referenced product resource was not found",
+            "PRODUCT_DEPENDENCY_NOT_FOUND",
+        ),
+        (PortErrorKind::Conflict, "product.conflict") => (
+            "Product request conflicts with the current state",
+            "PRODUCT_CONFLICT",
         ),
         (PortErrorKind::NotFound, "product.variant_not_found") => {
             ("Product variant was not found", "PRODUCT_VARIANT_NOT_FOUND")
@@ -177,6 +216,7 @@ fn product_command_port_error(
     async_graphql::Error::new(message).extend_with(|_, extensions| {
         extensions.set("code", code);
         extensions.set("retryable", error.retryable);
+        extensions.set("outcome", product_command_error_outcome(&error));
         extensions.set("correlation_id", context.correlation_id.clone());
     })
 }
@@ -373,13 +413,6 @@ impl CommerceCatalogMutation {
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        validate_product_shipping_profile_input(
-            db,
-            tenant_id,
-            input.shipping_profile_slug.as_deref(),
-        )
-        .await?;
         let domain_input = convert_create_product_input(input)?;
         let port_context = product_command_context(
             ctx,
@@ -412,13 +445,8 @@ impl CommerceCatalogMutation {
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let shipping_profile_slug = match &input.shipping_profile_slug {
-            MaybeUndefined::Value(slug) => Some(slug.as_str()),
-            MaybeUndefined::Undefined | MaybeUndefined::Null => None,
-        };
-        validate_product_shipping_profile_input(db, tenant_id, shipping_profile_slug).await?;
         let domain_input = crate::dto::UpdateProductInput {
+            attribute_values: convert_product_attribute_batches(input.attribute_values)?,
             translations: input.translations.map(|translations| {
                 translations
                     .into_iter()
@@ -639,13 +667,6 @@ impl CommerceCatalogMutation {
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        validate_product_shipping_profile_input(
-            db,
-            tenant_id,
-            input.shipping_profile_slug.as_deref(),
-        )
-        .await?;
         let domain_input = convert_create_variant_input(input)?;
         let port_context = product_command_context(
             ctx,
@@ -680,11 +701,6 @@ impl CommerceCatalogMutation {
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
-        if let Some(shipping_profile_slug) = input.shipping_profile_slug.as_deref() {
-            let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-            validate_product_shipping_profile_input(db, tenant_id, Some(shipping_profile_slug))
-                .await?;
-        }
         let domain_input = convert_update_variant_input(input)?;
         let port_context = product_command_context(
             ctx,
@@ -1941,7 +1957,7 @@ mod bundle_update_tests {
     }
 }
 
-fn parse_product_attribute_value_patch(
+pub(super) fn parse_product_attribute_value_patch(
     input: ProductAttributeValuePatchInput,
 ) -> Result<rustok_product::services::ProductAttributeValuePatch> {
     use rustok_product::services::ProductAttributeValuePatchValue as Value;
@@ -2032,4 +2048,73 @@ fn parse_category_attribute_binding_kind(
 ) -> Result<rustok_product::services::CategoryAttributeBindingKind> {
     rustok_product::services::CategoryAttributeBindingKind::from_storage(value.trim())
         .map_err(invalid_catalog_input)
+}
+
+#[cfg(test)]
+mod product_error_outcome_tests {
+    use super::product_command_error_outcome;
+    use rustok_api::{PortError, PortErrorKind};
+
+    #[test]
+    fn dependency_conflict_and_not_found_are_definitive_only_with_domain_classes() {
+        assert_eq!(
+            product_command_error_outcome(&PortError::conflict("product.conflict", "bounded")),
+            "rejected"
+        );
+        assert_eq!(
+            product_command_error_outcome(&PortError::not_found(
+                "product.dependency_not_found",
+                "bounded"
+            )),
+            "rejected"
+        );
+        assert_eq!(
+            product_command_error_outcome(&PortError::forbidden("product.forbidden", "bounded")),
+            "unknown"
+        );
+        assert_eq!(
+            product_command_error_outcome(&PortError::forbidden("product.conflict", "bounded")),
+            "unknown"
+        );
+    }
+
+    #[test]
+    fn only_receipt_finalized_domain_refusals_are_definitive() {
+        for code in [
+            "product.validation",
+            "product.revision_conflict",
+            "product.duplicate_handle",
+        ] {
+            assert_eq!(
+                product_command_error_outcome(&PortError::validation(code, "bounded")),
+                "rejected"
+            );
+            assert_eq!(
+                product_command_error_outcome(&PortError::new(
+                    PortErrorKind::Validation,
+                    code,
+                    "bounded",
+                    true,
+                )),
+                "unknown"
+            );
+        }
+        for code in [
+            "product.idempotency_invalid",
+            "product.idempotency_conflict",
+            "product.tenant_id_invalid",
+            "product.actor_id_invalid",
+            "product.revision_required",
+            "product.receipt_corrupt",
+            "product.receipt_invariant",
+            "product.receipt_forbidden",
+            "product.receipt_unavailable",
+            "port.deadline_required",
+        ] {
+            assert_eq!(
+                product_command_error_outcome(&PortError::validation(code, "bounded")),
+                "unknown"
+            );
+        }
+    }
 }

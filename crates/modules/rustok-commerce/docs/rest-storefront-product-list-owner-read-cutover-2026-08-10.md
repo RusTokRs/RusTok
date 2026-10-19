@@ -4,6 +4,8 @@ Status: `source_complete_unvalidated`
 
 Date: 2026-08-10
 
+Current contract update: [2026-10-19 HTTP policy continuation](./public-port-error-safety.md#storefront-product-http-policy-continuation-2026-10-19) intentionally replaces the original Forbidden/Conflict 500 collapse with 403/409 and resource-bound correlation with fresh opaque owner-call UUIDs. Earlier slice scope/validation statements below describe the original cutover, not current execution evidence.
+
 ## Scope
 
 This bounded slice moves mounted `GET /store/products` behind a Product-owned,
@@ -60,22 +62,24 @@ The mounted handler creates a read `PortContext` with:
 - stable Commerce storefront Product service actor;
 - effective request/list locale;
 - normalized public channel when present;
-- page-bound correlation id;
+- fresh opaque per-owner-call UUID correlation id;
 - two-second deadline.
 
-Product owner failures are mapped to the existing public REST families:
+Product owner failures are mapped to the current public REST families (403/409 supersede the original 500 collapse):
 
 - validation -> `400 commerce_store_product_invalid`;
 - not found -> `404 commerce_store_not_found`;
 - unavailable/timeout -> `503 commerce_store_product_unavailable`;
-- conflict/forbidden/invariant -> `500 commerce_store_product_failed`.
+- forbidden -> `403 commerce_product_access_denied`;
+- conflict -> `409 commerce_store_product_conflict`;
+- invariant -> `500 commerce_store_product_failed`.
 
 If an external `ProductCatalogReadRuntime` has not explicitly installed the optional HTTP
 list capability, Commerce fails closed with `503 commerce_store_product_unavailable` and
 does not construct an embedded fallback.
 
 Diagnostics at the mounted boundary contain bounded owner kind, code length,
-retryability, correlation, tenant-presence and public-envelope facts. Raw owner/backend
+retryability, correlation length, tenant-presence and public-envelope facts. Raw owner/backend
 messages are not logged or returned by the new boundary.
 
 ## Mounted topology
@@ -98,7 +102,7 @@ Product, Order, Payment, and Fulfillment concrete service construction behind
 host-composed owner ports remains open. This slice only removes the mounted storefront
 Product list violation.
 
-## Validation status
+## Original cutover validation status
 
 Per maintainer instruction, no tests, Cargo commands, Node verifiers, formatter, REST
 scenarios, workflows, CI reruns, database scenarios, provider calls, restart scenarios,

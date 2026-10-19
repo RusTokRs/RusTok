@@ -59,27 +59,6 @@ pub struct PriceInput {
     pub compare_at_amount: Option<Decimal>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
-pub struct UpdateVariantInput {
-    #[validate(length(max = 100, message = "SKU must be max 100 characters"))]
-    pub sku: Option<String>,
-    #[validate(length(max = 100, message = "Barcode must be max 100 characters"))]
-    pub barcode: Option<String>,
-    #[validate(length(
-        max = 100,
-        message = "Shipping profile slug must be max 100 characters"
-    ))]
-    pub shipping_profile_slug: Option<String>,
-    #[validate(nested)]
-    pub prices: Option<Vec<PriceInput>>,
-    pub inventory_quantity: Option<i32>,
-    #[validate(length(max = 32, message = "Inventory policy must be max 32 characters"))]
-    pub inventory_policy: Option<String>,
-    pub weight: Option<Decimal>,
-    #[validate(length(max = 16, message = "Weight unit must be max 16 characters"))]
-    pub weight_unit: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct VariantResponse {
     pub id: Uuid,
@@ -129,7 +108,10 @@ impl PriceInput {
                 "compare_at_amount cannot be negative: {compare_at}",
             )));
         }
-        if self.channel_id.is_some_and(|channel_id| channel_id.is_nil()) {
+        if self
+            .channel_id
+            .is_some_and(|channel_id| channel_id.is_nil())
+        {
             return Err(crate::error::CommerceError::validation(
                 "channel_id must not be nil UUID",
             ));

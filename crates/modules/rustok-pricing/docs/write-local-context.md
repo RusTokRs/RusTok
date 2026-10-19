@@ -98,5 +98,18 @@ cargo check -p rustok-pricing --lib
 cargo check -p rustok-commerce --lib
 ```
 
-No test, verifier, formatter, Cargo, workflow, CI, or mounted runtime command was executed
-for this source contract.
+The original source snapshot claimed no test, verifier, formatter, Cargo, workflow, CI, or
+mounted runtime execution. See the dated continuation below for current source-only checks;
+historical evidence is not current execution evidence.
+
+
+## Owner classification continuation (2026-10-18)
+
+The wrapper remains a bounded delegated context adapter, not a second Foundation classifier.
+The [owner continuation](./pricing-owner-port-error-safety.md#nested-error-and-public-consumer-continuation-2026-10-18)
+now classifies nested Core/Rich errors by kind. Existing recognized outcomes keep their local
+operation labels; new owner codes pass through unchanged when not recognized, without a new
+local event. The canonical owner still emits its bounded payload facts. Wrapper delegation,
+context, request shape, and mutation/persistence semantics are unchanged. Standalone source
+verification was run for this continuation; tests, compilation and mounted evidence remain open.
+Historical evidence is not upgraded.

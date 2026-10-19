@@ -94,17 +94,23 @@ for (const value of [
   'show_product_inventory',
 ]) forbidText(detail, value, 'stale concrete Product detail path');
 
+const sharedPolicySource = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
+const sharedPolicy = between(sharedPolicySource, 'pub(super) fn storefront_product_port_http_policy(', 'fn map_storefront_product_port_error(', 'shared HTTP policy');
 for (const [value, label] of [
   ['PortErrorKind::Validation', 'validation mapping'],
   ['PortErrorKind::NotFound', 'not-found mapping'],
   ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'unavailable mapping'],
-  ['PortErrorKind::Conflict | PortErrorKind::Forbidden | PortErrorKind::InvariantViolation', 'fail-closed mapping'],
   ['"commerce_store_product_invalid"', 'validation code'],
   ['"commerce_store_not_found"', 'not-found code'],
   ['"commerce_store_product_unavailable"', 'unavailable code'],
   ['"commerce_store_product_failed"', 'fail-closed code'],
+  ['StatusCode::FORBIDDEN', 'permission outcome'],
+  ['StatusCode::CONFLICT', 'conflict outcome'],
+]) requireText(sharedPolicy, value, label);
+for (const [value, label] of [
+  ['storefront_product_port_http_policy(&error.kind)', 'canonical HTTP policy delegation'],
   ['owner = "rustok_product"', 'owner identity diagnostic'],
-  ['correlation_id = %context.correlation_id', 'correlation diagnostic'],
+  ['correlation_id_length = context.correlation_id.chars().count()', 'correlation diagnostic'],
   ['owner_error_kind = ?error.kind', 'owner error kind diagnostic'],
   ['owner_code_length = error.code.chars().count()', 'bounded owner code diagnostic'],
   ['retryable = error.retryable', 'retryable diagnostic'],

@@ -571,3 +571,50 @@ fn shipping_profile_translation_search_condition(
         vec![Value::from(pattern)],
     ))
 }
+
+/// Trusted owner adapter for Product's explicit profile admission. Receipt replay
+/// belongs to Product; this provider never inspects foreign receipt persistence.
+#[async_trait::async_trait]
+impl rustok_product::ProductShippingProfilePort for ShippingProfileService {
+    async fn validate(
+        &self,
+        context: rustok_api::PortContext,
+        slugs: Vec<String>,
+    ) -> Result<(), rustok_api::PortError> {
+        use rustok_api::{PortCallPolicy, PortError};
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant = Uuid::parse_str(&context.tenant_id)
+            .ok()
+            .filter(|id| !id.is_nil())
+            .ok_or_else(|| {
+                PortError::validation("commerce.shipping_scope_invalid", "Invalid shipping scope")
+            })?;
+        if slugs.len() > 100
+            || slugs.iter().any(|slug| {
+                slug.is_empty()
+                    || slug.len() > 100
+                    || normalize_shipping_profile_slug(slug).as_deref() != Some(slug.as_str())
+            })
+        {
+            return Err(PortError::validation(
+                "commerce.shipping_selection_invalid",
+                "Invalid shipping selection",
+            ));
+        }
+        for slug in slugs {
+            self.ensure_shipping_profile_slug_exists(tenant, &slug)
+                .await
+                .map_err(|error| match error {
+                    CommerceError::Validation(_) => PortError::not_found(
+                        "commerce.shipping_profile_not_active",
+                        "Shipping profile is unknown or inactive",
+                    ),
+                    _ => PortError::unavailable(
+                        "commerce.shipping_profile_unavailable",
+                        "Shipping profile lookup is unavailable",
+                    ),
+                })?;
+        }
+        Ok(())
+    }
+}

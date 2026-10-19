@@ -185,3 +185,25 @@ test("admin panel view stays a function of the URL", () => {
     assert.ok(panelUi.includes(marker), `panel view is missing ${marker}`);
   }
 });
+
+
+// Source scenarios only; intentionally unrun during the no-tests remediation session.
+test("both native catalog reads propagate trusted context rejection before owner reads", () => {
+  const blocks = adminNative.split(/async fn product_admin_catalog_(?:list|facets)_native\(/).slice(1);
+  assert.equal(blocks.length, 2);
+  for (const [index, block] of blocks.entries()) {
+    const operation = index === 0 ? "admin_catalog_list" : "admin_catalog_facets";
+    assert.ok(block.includes(`require_request_context("${operation}").await?;`));
+    assert.ok(block.indexOf("require_request_context(") < block.indexOf("CatalogService::new("));
+    assert.ok(block.includes("requested_tenant_id != tenant.id || auth.tenant_id != tenant.id"));
+    assert.ok(block.includes(".unwrap_or(request_context.locale)"));
+    assert.ok(!block.includes(".ok()"));
+  }
+});
+test("admin context rejection diagnostics use only static fields and fresh owner reference", () => {
+  const helper = adminNative.slice(adminNative.indexOf("async fn require_request_context("), adminNative.indexOf("fn map_product_service_error("));
+  assert.ok(helper.includes(".map_err(|_|"));
+  assert.ok(helper.includes("ProductPublicError::internal()"));
+  assert.ok(helper.includes("correlation_id = %public.correlation_id"));
+  assert.ok(!/error = [?%]error|context\.correlation_id|\.ok\(\)/.test(helper));
+});

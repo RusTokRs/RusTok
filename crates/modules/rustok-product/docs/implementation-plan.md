@@ -404,3 +404,583 @@ Per `docs/backend/module-backend-implementation.md`, `src/ports/` is organized i
 - `ports/types.rs`: Request and projection DTOs (`ProductProjectionRequest`, `PublishedProductsRequest`, etc.) and pagination bounds validation.
 - `ports/diagnostics.rs`: Structured telemetry, bounded context/error facts, tenant parsing, and stable error mapping without consumer type coupling.
 - `ports/catalog_read.rs`: `ProductCatalogReadPort` trait definition and `CatalogService` adapter implementation.
+
+## Workflow remediation (2026-10-17)
+
+Base: `bc1046c10f51fab070f7ad7c0417dca648a13e16`; implementation branch:
+`arena/8161797f-rustok`. Status: **incomplete; not runtime certified**.
+
+Implemented in this slice:
+
+- Validate Product updates against the persisted candidate category/translations within the same
+  transaction, including edits that remain Active; failed requirements roll back the document.
+- Lock Product before reading category/form/definitions/options for typed product-value patches;
+  validate Active completeness after writing patches and before committing.
+- Make repeated dedicated lifecycle commands no-ops without moving revision or timestamps.
+- Preserve all supplied translations, SEO, category, shipping profile, barcode, compare-at price,
+  inventory policy, and explicit zero prices in the Next create adapter.
+- Fence stale category/locale form responses and clear obsolete forms on selection/error.
+
+Verification:
+
+- Four executable Next create-adapter tests in `product-create.test.mjs` pass, using the actual
+  adapter and its injected executor (not a reimplementation of the payload mapping).
+- The existing lifecycle-event source guard and its seven mutation tests pass. These prove source
+  contract wiring, not runtime transaction, event-count, or PostgreSQL concurrency behavior.
+- `verify-product-next-data-table-host.mjs` passes. The separate
+  `verify-commerce-product-command-port.mjs` fails two pre-existing exact-text assertions in the
+  unchanged Commerce HTTP controller sources (create header documentation and a multiline
+  `headers.get` lookup). This guard is **not green**; no controller or guard was altered to mask it.
+- The remediation gate with `--skip-cargo` passed diff invariants but failed its architecture
+  dependency step because that step still requires `cargo metadata`. The gate did not pass.
+  Frontend formatting was run with the application's formatting options but without the unavailable
+  Tailwind plugin. Full Next typechecking, mounted UI tests, Rust formatting/compilation and
+  PostgreSQL tests remain unverified.
+- Added `repeated_lifecycle_commands_preserve_revision_and_timestamps` and
+  `category_change_validates_candidate_before_publishing_or_remaining_active` to the established
+  Commerce catalog service fixture. They have **not** run: this sandbox has no Cargo/Rust compiler.
+  Maintainer gate: `cargo test -p rustok-commerce --test catalog_service_test`, followed by the
+  scoped Product checks and PostgreSQL concurrency coverage. No full-workspace suite was run.
+
+Remaining before closing the original workflow audit:
+
+1. Execute the source-implemented atomic catalog document/category/typed-value/publication command
+   against the database and mounted clients (see the atomic editorial follow-up below).
+2. Retain immutable Next logical-attempt keys through ambiguous outcomes; verify replay and revision
+   refresh. The compensating-delete editor workflow has been removed, not treated as atomicity.
+3. Review nullable Variant patch semantics across all writers/readers before adopting `Patch<T>`.
+4. Implement Media durable retention only after resolving the Proposed Product-image ADR through
+   its owner contract; include stable relation identity, receipt/retry behavior, release and reconciliation.
+5. Remove unresolved catalog-price fallback from Next storefront in favor of Pricing-owned context
+   resolution, with mounted unavailable/no-price behavior tests.
+6. Exercise concurrent category/value/schema edits on PostgreSQL; the Product lock does not by
+   itself serialize independent schema administration or provide a repeatable-read schema snapshot.
+
+Audit correction: the optional owner-internal document revision is explicitly documented in
+`dto/product.rs`; external document transport checks, not a blanket prohibition of internal
+unconditional writes, own its admission. No change to that accepted boundary was made here.
+
+### Deeper workflow follow-up
+
+Additional source changes in the same unintegrated slice:
+
+- Product detached-value clearing now resolves detachment after the Product write lock, not
+  before it. A category change can no longer invalidate the preflight between validation/deletion.
+- Variant patch and detached clear now lock Product then Variant before resolving the form,
+  definitions, options or detachment. The helper rechecks observed Variant ownership and uses
+  backend-aware locking so SQLite does not execute unsupported `FOR UPDATE`.
+- Exact-locale Product/Variant attribute-value Translation apply paths previously locked the
+  value first and touched its owner afterward, which conflicts with catalog/value commands.
+  They now discover owner identity without using that read for validation, acquire Product
+  (then Variant where applicable), and finally lock the value with owner-identity predicates.
+  Snapshot/CAS checks still run after those locks, and receipt completion remains in the same
+  transaction. PostgreSQL Translation-target execution remains required.
+- The Next status action no longer passes a partial document to `saveProductAction` (which
+  converted omitted vendor/seller/shipping fields to null). A dedicated callback submits only
+  `{status, revision}` through the existing Product update API, with status acknowledged on
+  success only. Unsaved document fields and dirty attribute patches are untouched by status actions.
+- Same-status lifecycle-only `update_product` is a no-op after predecessor validation, matching
+  dedicated publish/unpublish/archive commands.
+
+Verification: `npm test --prefix apps/next-admin/packages/rustok-product` passes 11 tests (four
+create adapter and seven lifecycle action/handler tests). These execute extracted production
+functions with injected dependencies; they are not mounted React or real GraphQL execution.
+The attribute-validation verifier passes, with 17 fixture/mutation tests including seven new
+lock/read-order regressions. The lifecycle verifier and its seven fixture tests also pass.
+Two additional Rust service regressions cover same-status predecessor validation and rejection
+of clearing reattached Product/Variant values; all four new Rust tests remain unexecuted because
+Cargo is absent. PostgreSQL concurrent interleavings and schema-administration races remain open.
+`verify-product-catalog-schema.mjs` currently fails an exact-text assertion for
+`publish_in_tx_with_envelope_id(&self.transaction` in unchanged `write_transaction.rs`; this is
+not evidence of a passing storage gate and was not bypassed.
+
+Further confirmed blockers:
+
+- **Next money transport mismatch:** Commerce GraphQL `PriceInput.amount` and
+  `compare_at_amount` are decimal `String` fields, and `GqlPrice` serializes Decimal with
+  `to_string()`. Next create/variant inputs currently send numbers; the variant editor uses
+  fixed two-decimal integer presentation (`* 100` / `/ 100`) while catalog responses are returned
+  without an explicit boundary conversion. A displayed 12.50 becomes the number 1250 in a write
+  payload instead of the required decimal string `"12.50"`; real GraphQL scalar validation must
+  reject the numeric String input. Read-side strings can also fail numeric rendering. The four
+  create mock tests certify field preservation only, not schema admission or money correctness.
+  Fix this through one canonical decimal money contract and audit both directions, currency
+  precision, compare-at values, pricing previews and zero/invalid values; do not add another
+  implicit `/100` at a random caller.
+- **Price replacement scope:** catalog `update_variant(prices: Some(...))` deletes all price
+  rows for the Variant and bootstraps rows without price-list/region/quantity context. The Next
+  editor preserves only currency/amount/compare-at in its mutation payload. Before allowing that
+  path to edit an already context-priced Variant, define Pricing-owned replacement/upsert semantics
+  so saving SKU with a price payload cannot erase channel/list-specific rows.
+- **Lifecycle receipts:** the existing [write boundary](./write-boundary.md) explicitly records
+  caller-key validation without durable lifecycle replay. Responses are projected after commit.
+  Atomic editor save must resolve this pre-commit response/receipt gap and the intentionally
+  separate EAV receipt boundary; wrapping the existing two services does not provide atomicity.
+- **Both editors:** Leptos `admin/src/ui/leptos.rs` also saves the Product first and typed values
+  afterward. Atomic-save remediation must migrate that path as well as Next, not create a Next-only
+  owner contract. Current `reference-hardening-current.md` was synchronized with implemented
+  Product patches/revisions without marking aggregate concurrency complete.
+
+### Decimal money and catalog base-price scope follow-up
+
+This source slice supersedes the money-mismatch/destructive-replacement findings above; backend
+execution is still required before they can be considered runtime-certified.
+
+- Next Admin create, Variant create/update, reads, drafts and host actions use decimal strings in
+  major units. The Pricing adapter no longer coerces returned amounts through `parseFloat` or
+  `*100`. Compare-at zero and null are distinct. `decimal.js-light` is a **direct** module dependency
+  with its host lockfile record updated; the editor uses exact decimal arithmetic for draft
+  discounts, validates supported Decimal range, and rejects invalid input rather than writing zero.
+  It contains no currency exponent table or currency rounding policy.
+- Variant editing starts with no price rows if the owner returned none, permits clearing the last
+  base row, keeps the dialog/draft on owner errors, and validates integer inventory independently.
+  The discarded price-list selector is removed rather than claiming unsupported scoped writes.
+- Pricing persistence now owns a shared base-row predicate for catalog reads/replacement: all
+  list/channel/channel-slug/region/quantity context columns must be null. Catalog replacement uses
+  this predicate inside the existing owner transaction; full deletion remains for actual entity
+  deletion. Scoped input on Variant update is a validation error. Catalog snapshots return only
+  round-trippable base prices, not anonymous mixtures of contextual rows.
+- Next Product and Pricing storefront amount **and discount-percent** DTOs agree with GraphQL
+  strings. Product detail displays exact strings and trusts owner `onSale`; it no longer calls
+  `.toFixed` on strings or compares decimal strings lexically. Nullable SKUs match GraphQL and are
+  never overlay join keys. Pricing contributes only prices/effective-price by ID, never inventory.
+  Missing/empty Pricing cannot fall back to catalog prices, and unavailable prices disable add.
+  This is not proof of complete currency/region/quantity context selection or Cart money hardening.
+
+Evidence for this follow-up:
+
+- `npm test --prefix apps/next-admin/packages/rustok-product`: **22/22** (six create, seven lifecycle,
+  three exact-money and six Variant dialog/Pricing adapter tests). Adapter/dialog tests execute
+  production functions with injected dependencies; they are not mounted React tests.
+- `node --test apps/next-frontend/packages/rustok-product/src/catalog/pricing.test.mjs`: **4/4**;
+  runtime overlay tests plus a source rendering assertion, not mounted unavailable-state evidence.
+- Targeted TypeScript checks pass for the money helper/Admin DTOs and storefront pricing merge/API
+  DTO dependency closure. The latter uses a temporary standalone TS 5.9.3/Apollo 4.0.9 toolchain,
+  not the application's locked full build. Full app/React typechecking remains open.
+- Added two Rust persistence regressions for base replacement/clear, each of six independent
+  contexts, another Variant, and refusal before deletion; added actual `PriceInput::parse` GraphQL
+  scalar-admission regression. **None has run**: Cargo/rustc are absent. They do not certify
+  PostgreSQL concurrency or physical schema/migration compatibility.
+
+Required owner commands once a Rust toolchain is available:
+`cargo test -p rustok-pricing-persistence`,
+`cargo test -p rustok-commerce --lib price_input_requires_major_unit_decimal_strings_at_graphql_admission`,
+and `cargo test -p rustok-commerce --test catalog_service_test`, followed by PostgreSQL/context
+integration coverage. Pre-commit public projections, durable lifecycle replay and atomic editor
+save across both frontends remain the next major implementation boundary, not completed work.
+
+### Catalog pre-commit projection and receipt follow-up
+
+This follow-up supersedes the earlier source-level lifecycle-receipt-gap findings, without claiming
+runtime readiness or atomic editor save.
+
+- Every concrete catalog mutation now records its actual public result before commit: Product,
+  Variant, Image, axes, unit deletion/reorder results and all four same-status branches. Public
+  Product/Variant projections accept the write connection; no response query runs after commit.
+- Tag relations and localized Taxonomy names now use that connection too, so newly created terms
+  are visible before commit without reading Taxonomy persistence from Product. The existing
+  Taxonomy read method delegates to the same owner implementation on its ordinary connection.
+  Image update projects localized alt text and translations from its transaction, including
+  position-only edits, instead of presenting omitted input as the actual stored alt text.
+- All fourteen `ProductCatalogCommandPort` operations admit tenant-scoped receipts under owner
+  `product`. Request hashes bind actor/locale/IDs/input; successful and deterministic-error retries
+  replay the stored result. Shared transaction completion/failure finalization is reused rather
+  than implementing a second ledger or persisting success after commit. Product/Variant root
+  create IDs use their operation UUID. Existing transport key derivation is unchanged.
+- Media retention remains Proposed. The existing live Media validation decorator may reject an
+  image attempt before it reaches owner replay; this is explicitly not receipt-aware Media
+  workflow/retention certification. Its ordering must be settled with the accepted Media contract.
+- Next logical-attempt key retention, preflight transport reads on replay, nullable Variant patches
+  and database concurrency evidence remain. Atomic editorial source was subsequently cut over below.
+
+Evidence: `verify:product:catalog-receipts` passes, with eleven source mutation tests. These check
+wiring and ordering only. Added four Commerce Rust regressions for original-snapshot replay,
+changed-request refusal, delete/error replay, image-localization snapshot and projection-failure rollback; added a Taxonomy
+transaction/tenant/rollback regression. They have **not run**, because Cargo/rustc are absent.
+Tree-sitter parses the changed Rust files without syntax errors; that is not compilation, type
+checking, rustfmt or database execution. Maintainer commands:
+
+- `cargo test -p rustok-commerce --test catalog_service_test catalog_`
+- `cargo test -p rustok-taxonomy --test owner_read`
+- `cargo test -p rustok-product --lib services::write_transaction`
+- the existing Pricing/money regressions and scoped PostgreSQL tests.
+
+
+## Atomic editorial follow-up (2026-10-17)
+
+Canonical create/update DTOs now carry typed locale/patch batches. Catalog owner transactions apply
+all batches after persisting the candidate document/category and before final Active validation,
+receipt encoding and commit. Canonical duplicate locales, duplicate attributes in a batch, and
+cross-locale edits of the same nonlocalized attribute are refused; there is no silent batch-order
+last-write-wins. EAV-only catalog edits count as document edits and require a predecessor revision
+at the command port. Standalone Product EAV save/clear and exact-locale Translation writes advance
+that revision; the embedded writer does not create another receipt, transaction or revision.
+
+Next sends one catalog command and never compensates a receipted create with deletion. Its create
+selection now uses actual `GqlProduct` fields (`id`, `revision`), not list-only `title`/`handle` fields.
+The mounted Leptos `ui/product_editor.rs` now binds typed fields to the document draft for both new
+and existing products; its shared section no longer has an independent value-save button. The
+non-mounted reference composition was migrated too. Both Rust lifecycle input mapping and the
+standalone schema adapter share GraphQL enum normalization, including textual editor kinds.
+The unreachable unkeyed lifecycle implementation in `graphql_adapter.rs` was deleted. Value
+refreshes preserve dirty drafts until catalog acknowledgement. Redundant sequential status save
+was removed; a rejected document save cannot proceed to Variant side effects.
+
+This scope is **document/category/Product EAV/publication**, not every operation visible on the
+screen. At that intermediate slice the mounted Leptos editor still saved its existing default
+Variant in a second command and reported partial success. The explicit-action cutover below
+supersedes that flow without claiming whole-screen atomicity. Mounted save/status/delete logical-attempt identity and typed Server Action outcomes were
+subsequently implemented below; browser-journal recovery is implemented in the next follow-up,
+while child mutation identity remains open. Media retention is Proposed.
+
+Added five Commerce regressions for required-locale create/publish/replay, aggregate update with
+one revision, late-batch rollback, invalid-create cleanup, and stale document refusal after an
+independent value edit; two Admin Rust tests cover GraphQL enum normalization and dirty-state
+refresh/acknowledgement. All seven are **unrun**: Cargo/rustc are absent. Source/mutation guards and
+Node adapter tests do not replace them. Maintainer gates include:
+
+- `cargo test -p rustok-commerce --test catalog_service_test atomic_editor`
+- `cargo test -p rustok-commerce --test catalog_service_test standalone_attribute_write`
+- `cargo test -p rustok-product-admin --lib`
+- the existing scoped Product Translation PostgreSQL tests and failure/commit-ambiguity injection.
+
+`verify:product:atomic-save` and its mutation tests pin the shared writer, final publication order,
+revision participation and both mounted editor cutovers; they are source checks only. Targeted TS
+checks cover actual Product API files and the create adapter extracted from its UI barrel with
+real host/Apollo declarations; this is not a full application or mounted React build.
+
+
+## Next editorial retry follow-up (2026-10-17)
+
+Mounted Next save/status/delete now share a synchronous attempt lock. A retained request is cloned
+and frozen with its caller UUID, tenant/actor scope, predecessor, translations, initial Variant and
+EAV patches. Repeating an unknown request uses that same snapshot, never current control state.
+An in-flight double click does no IO; an unresolved command cannot be replaced by another operation.
+An acknowledged create/delete cannot execute again during delayed navigation. Native fields and
+portal mutation callbacks are guarded while the editorial attempt is unresolved.
+
+Canonical create/update/delete adapters forward the supplied key unchanged. Server Actions require
+a valid caller UUID, compare captured scope with one live authenticated session, and return explicit
+confirmed/rejected/unknown values. Unknown/redacted/network errors preserve the key. Failed cache
+invalidation after owner acknowledgement does not undo success. Initial price/compare-at/inventory
+scalar admission happens before the request is retained; dirty fields are not silently rebased to a
+new predecessor merely because server props refresh.
+
+Apollo 4 error handling now preserves `code`, `retryable` and `outcome` through its actual
+`CombinedGraphQLErrors.errors` shape. The Commerce Product error mapper marks only bounded,
+nonretryable, receipt-finalized domain codes as `outcome: rejected`. Context/admission failures can
+map to the same public `PRODUCT_VALIDATION` code, so `retryable: false` alone never releases a key.
+Other errors, auth refusals, missing metadata and receipt conflicts remain unknown. No legacy
+`graphQLErrors` fallback or arbitrary exception-message classification remains in that executor.
+
+Evidence: 56 Product Admin Node tests pass, including actual extracted save/status handlers,
+canonical adapters and Server Action control flow with injected IO; 57 source/mutation guard tests
+and four storefront tests pass. Targeted strict TS covers actual Product API/attempt/outcome files,
+the create adapter extracted from its UI barrel, and real host/Apollo declarations. The actual
+cached Apollo 4.0.9 executor was also checked with mocked HTTP for owner refusal metadata and
+successful data. This is not a full host build, mounted React execution, actual manifest-version
+runtime attestation, live backend commit-ambiguity test, or Rust compilation. A Commerce Rust unit
+test for domain-vs-admission outcome classification was added but is **unrun** without Cargo/rustc.
+
+The mounted-only limit of this intermediate slice is superseded by the browser-journal cutover
+below. Child callback identity, preflight replay liveness, Leptos secondary Variant saves and the
+Proposed Media ADR are not certified by this evidence.
+
+## Next browser recovery follow-up (2026-10-17)
+
+The canonical `write-journal.ts` persists a strictly validated Product request before owner IO,
+scoped by tenant/actor/resource and the URL `editor_intent` UUID. `write-attempt.ts` restores that
+snapshot, serializes duplicated URLs with Web Locks and settles them with a body-free tombstone.
+There is no production in-memory fallback or automatic record expiry. Explicit recovery bypasses
+current-field validation and uses the original operation, caller UUID, scope and predecessor.
+Lost/corrupt live identity and storage/lock failures fail closed. Clearing/evicting browser data,
+receipt expiry and cross-device recovery are outside this browser projection's guarantee.
+
+The editor starts disabled until initialization, fences portal callbacks synchronously, displays
+pending/settled/error recovery controls and deliberately starts a new intent only after a terminal
+decision. A confirmed existing editor opens a fresh document rather than reusing stale fields.
+A rejected draft can explicitly begin a new intent preserving its old predecessor and fields.
+Missing Product reads with a valid intent mount a recovery-only screen so an uncertain delete
+can still replay; no replacement draft or authority is inferred from the URL. Route mount keys
+include scope/resource/intent, and native query changes cannot send an old mounted intent.
+
+Evidence: 86 Product Admin Node tests cover canonical journal validation, persistence-before-send,
+reload recovery for all three commands, duplicate-tab lock simulation, tombstone reuse refusal,
+terminal-storage failure, scope/resource/intent corruption, invalid JSON coercion and browser
+factory/URL admission (including the asynchronously acquired lock).
+Extracted production editor handlers/initialization execute with injected IO; they are not mounted
+React tests. The actual host route JSX also passed six new/existing/recovery-only/invalid-intent
+cases in an injected-read smoke (not browser or backend execution). Scoped strict TypeScript
+7.0.2 (the host manifest version) passes for the actual editor and its transitive UI dependencies,
+plus the API/controller/outcome/host executor scope; cached Next is the declared 16.4.0 and Apollo
+resolves within the manifest range to 4.3.4. This is not a whole-host build or live Apollo/backend
+runtime attestation. Source/mutation guards and storefront pricing tests are separate evidence.
+
+Remaining: real browser reload/history/duplicate-tab/disabled-storage execution against owner
+receipts, backend failure injection and Rust/PostgreSQL verification; retained identities and
+acknowledgements for Variant/Image/axes/Relation/Bundle/Pricing callbacks; preflight receipt-replay
+liveness; Leptos pending-request recovery and nullable Variant patches. The secondary-Variant
+Save behavior is superseded by the explicit-action cutover below. Media
+retention ADR remains **Proposed**; neither module readiness nor the sequential audit cursor advances.
+
+
+## Leptos explicit Variant action follow-up (2026-10-18)
+
+Existing Product document Save no longer invokes `update_product_variant` or reports a partially
+applied multi-command save. Price/SKU/barcode/stock controls have an independent operator action,
+show the exact Variant ID hydrated into the controls and keep that target even when a Product
+acknowledgement returns a reordered Variant list. Missing targets refuse sending rather than
+silently editing a different first row. Ordinary edit Save uses selected status instead of
+implicitly publishing every edit; creation Publish remains explicit.
+
+Variant controls are captured before bootstrap/IO, with a synchronous shared busy guard and a
+disabled editor fieldset. Each successful action updates its own confirmed snapshot rather than
+triggering a full-editor reload over unrelated dirty document/EAV or Variant fields. Invalid
+money/inventory scalars are refused locally; blank amount leaves prices untouched instead of
+creating a free USD row. Unsupported nullable SKU/barcode clears are refused explicitly, not
+reported as successful no-ops. Full nullable patch transport is still open. SKU/stock controls are visible in the same Variant
+card for every product kind, and mounted initial creation now forwards its selected inventory policy
+instead of hardcoding Deny.
+
+Evidence: the atomic-save gate now has 22 source/mutation tests, including ten new regressions
+for hidden Variant commands, dirty-field refetch, post-IO signal reads, retargeting, missing local
+admission/action, lost document acknowledgement, forced publication and stale invalid inventory. The scoped combined
+source/mutation suite has 67 passing tests. Product Admin Node (86) and storefront pricing (4)
+remain separate evidence. Tree-sitter parses the four changed Rust sources, but Cargo/rustc/rustfmt
+are absent: five new Rust tests, compilation, formatting and mounted/database behavior are
+**unrun**, not replaced by source checks. Maintainer: `cargo test -p rustok-product-admin --lib` plus the scoped SSR/hydrate checks and mounted dirty-draft/action scenarios.
+
+Replay trace: direct delete reaches owner admission without a live Product lookup. Confirmed
+remaining barriers are Commerce GraphQL Product/Variant Shipping Profile preflight, REST Product
+Shipping Profile preflight, and the Media validation decorator. Simply deleting checks or querying
+owner receipt tables from foreign adapters is not a fix. Composed receipt-aware policy admission,
+Leptos immutable retry snapshots and child-command browser recovery remain open. Media retention
+ADR stays **Proposed**; module readiness and audit integration status do not advance.
+
+## 2026-10-18: accepted Product image / Media retention implementation
+
+This entry supersedes older `Media remains Proposed` / read-only-decorator statements in
+historical slices above. The explicit implementation request accepts the Product-image ADR;
+its implementation status remains **In progress**, not Completed or runtime certified.
+
+Source changes:
+
+- Removed the read-only outer command decorator and opaque image-write fallback. The
+  Product-owned consumer port is installed inside `CatalogService` after owner admission;
+  completed receipts replay without Media. Stable receipt operation UUIDs allocate image IDs
+  before retain; direct trusted internal execution still generates its own ID.
+- Host adapts Media's public read/write controls, using an atomic `MediaAssetPorts` pair
+  from one owner instance. A remote read cannot be mixed with an embedded writer. Supported
+  gRPC control-client composition has an independent `media-grpc` host feature, without
+  requiring Profiles. No new remote Product command deployment is declared verified.
+- Retain + current-hold confirmation precede the local Product transaction; parent existence
+  is rechecked under the Product lock. Image, provisioning coverage, event and receipt commit
+  together. Failure/unknown commit never compensates a hold.
+- Image/Product deletion atomically stores exact committed release work with removal/event/
+  receipt. A role-gated bounded worker uses stable keys, bounded fresh delivery deadlines,
+  backoff, current-absence acknowledgement, restart-safe queue rows and StopHandle cancellation.
+  Postcommit release failure never changes the committed Product response into an error.
+- Additive transactional migration 000037 creates the release queue, FK-cascading per-image
+  provisioning coverage and sealed per-tenant readiness. Legacy backfill preserves IDs;
+  incomplete readiness is retryable/unavailable, not a terminal caller validation error.
+  Steady-state admission uses a readiness point lookup. Rollback refuses undrained obligations.
+- Privileged bounded owner maintenance ports and Commerce HTTP/OpenAPI expose diagnostic-only
+  audit, explicit backfill and queue status. Status does not require live Media capability.
+  Native operator permissions use effective Product permissions; HTTP rejects mismatched
+  tenant/actor request context. REST now propagates authenticated claims and request correlation.
+- Product remains independent of Media crates/persistence. Its new consumer registry declares
+  both Media contracts, no fallback profiles, and `source_implemented_runtime_pending`.
+  Media and Ecommerce FBA metadata source checks pass; no runtime attestation was fabricated.
+- Existing lifecycle/source guards and fixtures no longer require the removed decorator. The
+  historical category migration test now pins its intended migration by name, not moving head.
+
+Executed in this workspace:
+
+- Seven workflow guard/mutation suites: **134 PASS** (including **19** new retention cases).
+- All seven corresponding standalone source guards plus six Admin source checks: **PASS**.
+- Media, SEO and Ecommerce FBA metadata/source checks: **PASS**.
+- Product Admin Node suite: **86 PASS**; storefront pricing suite: **4 PASS**.
+- Two scoped TypeScript **7.0.2** configurations: **PASS** (Admin product transport/domain and
+  reachable editor dependencies). These do not certify the whole host.
+- **28** touched Rust files parsed with tree-sitter: **PASS**; source formatting through
+  `@scalar/rust-fmt` **0.3.0** (WASM rustfmt) is idempotent. Neither is Rust typechecking or a
+  repository-toolchain `cargo fmt --check` run.
+- `git diff --check`: **PASS**.
+
+Added **20 Rust tests**, all **unrun**: seven Catalog owner transaction/replay cases; four
+owner context/permission/deadline/error cases; two real SQLite/PostgreSQL local protocol fixtures
+(with a consumer-port fake, not Media GC proof); seven host/key/projection/composition cases
+(including a feature-gated gRPC client pair construction check, not live RPC).
+
+Open gates: Rust **1.96** compilation and supported feature matrices; execution of SQLite and
+PostgreSQL fixtures; real Product→native/remote Media GC fences; ambiguous commit/lease reclaim;
+process crash/restart and multi-replica queue delivery; authenticated mounted operator routes
+and both admin image-command transports. `cargo`, `rustc`, PostgreSQL and mounted backend execution
+are not available here. Do not promote the ADR/module readiness, advance the sequential audit
+cursor, or treat source/mutation tests as runtime evidence.
+
+The [workflow/cutover runbook](./media-reference-retention.md) records the mandatory legacy-writer
+and Media-delete/cleanup maintenance window, bounded backfill/retry procedure, queue inspection,
+rollback constraints, and maintainer execution commands. This slice does not fix the independent
+Shipping Profile preflight, nullable Variant patch semantics, or child-editor durable retries.
+
+
+### 2026-10-18 continuation: release replica race and real-owner integration sources
+
+The release worker now conditionally updates failure metadata by image ID and original
+attempt count. A stale failure cannot resurrect acknowledged work, overwrite a newer
+retry/backoff, or abort delivery of the remainder of the batch. Two deterministic
+SQLite queue regressions cover both interleavings; the isolated PostgreSQL protocol
+fixture invokes both scenarios as well. Their Media port remains a controlled fake.
+
+New server integration sources exercise actual MediaService, migrations and local PNG
+storage against separate Product/Media databases, natively and via live loopback gRPC
+with fixed trusted-tenant authority and an explicit operation allowlist. Scenarios cover
+cross-tenant refusal, GC/delete fences, stale retain and release receipts after repair,
+live-image release refusal, and eventual queue draining/final deletion. Product image
+rows and deletion intents are fixture-seeded: this does **not** certify mounted Product
+commands/receipt transactions, PostgreSQL Media, generic remote deployment, or crashes.
+The fixture pins migration 000037 by name, rather than a moving migration head.
+
+Freshly executed evidence for this continuation:
+
+- Seven workflow source/mutation suites: **137 PASS**, including **22** retention cases;
+  all seven corresponding standalone source guards pass.
+- Additional gRPC authentication source/mutation suite: **8 PASS**.
+- Catalog-schema verifier was found to pin pre-refactor category-only preflight,
+  out-of-transaction projection and old transaction helper signatures. It now locks
+  transaction-aware validation/projection/event/commit markers instead; the fixture
+  suite passes, including four new removal mutations for these replacements.
+- Four changed Rust sources formatted with WASM rustfmt, with an idempotence check;
+  this is not typechecking. Changed JSON/TOML parse and `git diff --check` pass.
+
+There are now **24 added Rust tests, all unrun** (previous 20 plus two queue race tests,
+actual native Media owner and live loopback gRPC owner tests). The earlier 86 Admin,
+four storefront, scoped TypeScript and 28-file parser results remain historical, not
+reruns in this continuation. No cargo/rustc is available. ADR stays **Accepted / In progress**;
+all runtime/feature-matrix/unknown-commit/restart/mounted-client gates above remain open.
+
+
+### 2026-10-18 implementation continuation (maintainer executes tests later)
+
+Source review identified and fixed further production wiring gaps:
+
+- Delivery now calls `ProductCatalogCommandRuntime::process_media_releases`, using the
+  exact embedded CatalogService snapshot for its database and Media capability. The
+  worker no longer combines a host database and independently resolved shared port.
+  External Product profiles fail closed rather than draining a local queue.
+- Release delivery/lifecycle compiles with `mod-product` alone. It requires a composed
+  neutral Media port at runtime, not an embedded `mod-media` feature. Missing capability
+  skips delivery and preserves obligations; supplying a provider later is observed on
+  subsequent ticks. This does not provision or certify a new remote deployment.
+- Worker lifecycle is atomically reserved before spawn, replacing check-then-insert.
+  No automatic owner handover, queue migration or fleet fence is claimed.
+- Native maintenance permission denial now returns Forbidden before storage IO; HTTP
+  preserves it as 403. OpenAPI advertises validation/authentication/authorization failures.
+- Audit resolves each bounded Media hold page with one tenant-scoped Product query,
+  removing its N+1 local database roundtrips without inventing a distributed snapshot.
+- Restored the missing `PortError` import in the command runtime during source review.
+
+Existing native/loopback scenario sources now exercise runtime-owned delivery and native
+maintenance permission classification. Six new source-mutation cases lock the wiring
+changes. No new Rust test functions were added: the 24 previously added tests remain
+unrun. Per maintainer request, no test suite was executed in this continuation. Only
+source guards, syntax/formatting and whitespace checks were run; the earlier 146 Node
+passes are historical and do not certify these edits. Rust compilation, runtime/feature
+matrix, database, restart, replica and mounted-client gates remain with the maintainer.
+
+
+### 2026-10-18 Shipping Profile receipt-admission continuation
+
+The confirmed transport-preflight gap now has a source implementation. Product consumes
+its own read-only ProductShippingProfilePort; Commerce supplies an owner adapter. Four
+CatalogService create/update Product/Variant methods validate explicit assignments before
+transaction start, including all initial Variant overrides on Product create. Command
+receipt admission/replay precedes service execution, so completed success/failure replay
+never reads mutable profile state. Trusted internal service writes validate as well.
+
+Normalization/deduplication, bounded selection and whole-read deadlines prevent unbounded
+cross-owner IO. Missing provider, outage, authorization and uncertain outcomes remain
+retryable; only nonretryable authoritative NotFound is finalized as Product validation.
+Absent/clear/inherited fields require no provider lookup. No distributed active-at-commit
+or permanent-reference guarantee is claimed. Existing nullable Variant patch semantics
+are unchanged. See the updated write-boundary contract.
+
+Composition is installed inside the selected embedded owner, preserves explicit providers
+and external Product owners, and supports neutral provider injection without mod-commerce.
+Commerce's embedded HTTP/GraphQL fallback runtimes also compose their native provider.
+REST/GraphQL no longer perform mutable profile preflights; obsolete Product-specific
+transport validators/mappers were removed. Permissions/module/tenant/actor checks stay.
+
+Two added owner receipt test sources cover normalized initial Variant overrides,
+completed replay during outage, fail-closed missing capability and finalized rejection
+replay after provider recovery. Existing round-trip fixture now explicitly supplies its
+policy fake. Total added tests in the broader slice: 26, all unrun. No test suites were
+run in this continuation, as requested; no cargo/rustc is present.
+
+Executed source checks: shipping admission, catalog receipts, catalog schema, Media
+retention, atomic save, attribute validation and GraphQL lifecycle cutover guards pass.
+Fifteen changed Rust sources pass WASM formatter/idempotence checks; this is not Rust
+typechecking. Changed JSON/relative documentation links and git diff --check pass.
+Historical diagnostic source guards for
+GraphQL order helpers, HTTP route error-context and HTTP diagnostic safety still fail
+on older owner/error/route assumptions outside this shipping cutover; they are not
+reported as passing. Their shipping-preflight expectations were updated, not their
+unrelated historical contracts. Old shipping-specific mapper verifier CLI entrypoints
+now delegate to the replacement receipt-aware shipping guard; historical mutation
+fixtures for those retired preflight contracts require maintainer migration.
+
+Still required: compilation/feature matrices; all four real command/provider paths;
+SQLite/PostgreSQL transaction/receipt execution; authenticated mounted transports;
+provider outage/lease reclaim, unknown commit, restart and concurrent profile lifecycle
+changes. No runtime certification or module-readiness advancement is asserted.
+
+
+### 2026-10-18 diagnostic continuation superseding the three guard failures
+
+The three historical HTTP diagnostic/route and GraphQL helper source guards reported
+above now pass against current owner ports. This supersedes their failure status only,
+not the unrun build/runtime gates. Review fixed real Shipping-option message/log detail
+leaks, preserved Order Forbidden, and added authenticated Product/Order scope checks
+before IO plus trusted request correlation propagation. See the Commerce plan and
+current Product diagnostic contract for scope. Four new Rust unit scenario sources
+remain unrun; no test suite was executed. Source checks/formatting are not runtime proof.
+
+
+## Nullable Variant patches (2026-10-18)
+
+The [nullable Variant update contract](./variant-nullable-patches.md) supersedes earlier notes
+that Variant nullable updates still conflate missing and null. Product now owns Keep/Clear/Set
+for all five nullable fields, with Set-only Shipping admission, GraphQL exact-decimal mapping,
+Next command-shaped callback/action forwarding, separate Leptos create/update drafts and
+complete-draft retry intent. The unused foundation update DTO is removed. Source verification
+and WASM formatting are not compilation or runtime proof. Ten new Rust regression scenario
+sources are unrun, existing editor validation sources are migrated, and no test suite was run.
+Mounted transports, database/concurrency/rollback and actual UI gates remain open; this does not
+close durable child-command retry or whole-screen Variant atomicity gaps or advance readiness.
+
+
+## Flex/error/receipt boundary (2026-10-18)
+
+Flex conversion is exhaustive and payload-safe; fixed Product entity registration rejection is
+internal rather than client validation. Storage class is preserved. Catalog command and receipt
+replay-decode diagnostics no longer render raw owner/serde errors. The shared catalog/schema/
+Translation failure finalizer persists only non-retryable Validation/NotFound/Conflict; an invariant
+or permission failure is not terminal merely because `retryable=false`. See the
+[current diagnostic contract and open runtime gates](./product-public-error-diagnostic-safety.md#flex-and-receipt-failure-continuation-2026-10-18).
+Six new Rust scenario sources are unrun; no test suite was executed. Broader Core/Taxonomy
+classification, mounted runtime and lease-reclaim execution remain open. Readiness is unchanged.
+
+
+## Taxonomy and Core error continuation (2026-10-18)
+
+The [current error boundary](./product-public-error-diagnostic-safety.md#taxonomy-and-nested-core-continuation-2026-10-18)
+now distinguishes Taxonomy write refusals from read-projection corruption and centrally classifies
+nested Core failures across Product read/write/Translation and shared public/HTTP adapters.
+Generic conflicts have an owner Conflict variant rather than Validation text. GraphQL definitive
+outcomes require a known domain code and actual domain kind; the shared receipt allowlist and
+existing stored receipts remain unchanged. The three category source guards now track current
+same-ID/all-backend owner composition rather than retired donor/binding/closure compatibility.
+Seven new Rust scenarios and strengthened existing hierarchy scenarios are unrun. Sixteen standalone
+source guards and WASM formatting/idempotence of 27 Rust files pass; these do not prove compilation,
+mounted behavior, rollback/replay/reclaim or privacy at runtime. No test suites or CI were run.

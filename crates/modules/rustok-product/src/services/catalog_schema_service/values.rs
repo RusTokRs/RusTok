@@ -32,6 +32,21 @@ async fn lock_product_for_update_in_tx(
     product.ok_or(CommerceError::ProductNotFound(product_id))
 }
 
+/// Standalone value commands invalidate document drafts too. Catalog composition
+/// does not call this helper: the enclosing document command advances once.
+async fn advance_product_value_revision_in_tx(
+    txn: &DatabaseTransaction,
+    product: &entities::product::Model,
+) -> CommerceResult<()> {
+    let mut active: entities::product::ActiveModel = product.clone().into();
+    active.revision = sea_orm::Set(crate::services::catalog::concurrency::next_revision(
+        product.revision,
+    )?);
+    active.updated_at = sea_orm::Set(chrono::Utc::now().into());
+    sea_orm::ActiveModelTrait::update(active, txn).await?;
+    Ok(())
+}
+
 impl ProductCatalogSchemaService {
     pub async fn load_product_attribute_values(
         &self,
@@ -320,27 +335,28 @@ impl ProductCatalogSchemaService {
         )))
     }
 
-    pub async fn save_product_attribute_values(
+    /// The caller owns the transaction and final publication/receipt boundary.
+    /// Shared by standalone value writes and atomic catalog create/update.
+    pub(crate) async fn apply_product_attribute_values_in_tx(
         &self,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
-        actor_id: Uuid,
         product_id: Uuid,
         locale: &str,
-        patches: Vec<ProductAttributeValuePatch>,
-    ) -> CommerceResult<Vec<ProductAttributeValueRecord>> {
+        patches: &[ProductAttributeValuePatch],
+        seen_nonlocalized: &mut HashSet<Uuid>,
+    ) -> CommerceResult<()> {
         let locale = canonical_value_locale(locale)?;
-        validate_uuid("product_id", product_id)?;
-
-        let product = load_product_primary_category(&self.db, tenant_id, product_id).await?;
+        let product = lock_product_for_update_in_tx(txn, tenant_id, product_id).await?;
         let Some(primary_category_id) = product.primary_category_id else {
             return Err(CommerceError::Validation(
                 "product must have a primary structural category before attribute values can be saved"
                     .into(),
             ));
         };
-        let form = self
-            .load_effective_form_for_category(tenant_id, primary_category_id, &[])
-            .await?;
+        let form =
+            Self::load_effective_form_for_category_in(txn, tenant_id, primary_category_id, &[])
+                .await?;
         let effective_attribute_ids = form
             .attributes
             .iter()
@@ -363,14 +379,14 @@ impl ProductCatalogSchemaService {
             let (placeholders, values) = uuid_filter_values(tenant_id, &patch_attribute_ids);
             ProductAttributeWriteDefinitionRow::find_by_statement(
                 Statement::from_sql_and_values(
-                    self.db.get_database_backend(),
+                    txn.get_database_backend(),
                     format!(
                         "SELECT id, value_type, scope, is_localized, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
                     ),
                     values,
                 ),
             )
-            .all(&self.db)
+            .all(txn)
             .await?
             .into_iter()
             .map(|row| (row.id, row))
@@ -390,13 +406,13 @@ impl ProductCatalogSchemaService {
         } else {
             let (placeholders, values) = uuid_filter_values(tenant_id, &selected_option_ids);
             ProductAttributeOptionWriteRow::find_by_statement(Statement::from_sql_and_values(
-                self.db.get_database_backend(),
+                txn.get_database_backend(),
                 format!(
                     "SELECT id, attribute_id FROM product_attribute_options WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
                 ),
                 values,
             ))
-            .all(&self.db)
+            .all(txn)
             .await?
             .into_iter()
             .map(|row| (row.id, row.attribute_id))
@@ -405,7 +421,7 @@ impl ProductCatalogSchemaService {
 
         let no_rules = Value::Object(Default::default());
         let mut seen = HashSet::new();
-        for patch in &patches {
+        for patch in patches {
             validate_uuid("attribute_id", patch.attribute_id)?;
             if !seen.insert(patch.attribute_id) {
                 return Err(CommerceError::Validation(format!(
@@ -425,20 +441,23 @@ impl ProductCatalogSchemaService {
                     patch.attribute_id
                 ))
             })?;
+            if !definition.is_localized && !seen_nonlocalized.insert(patch.attribute_id) {
+                return Err(CommerceError::Validation(
+                    "nonlocalized attribute occurs in more than one locale batch".into(),
+                ));
+            }
             let validation = validation_by_attribute
                 .get(&patch.attribute_id)
                 .unwrap_or(&no_rules);
             validate_product_value_patch(definition, patch, &options, validation)?;
         }
 
-        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
-        lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
-        for patch in &patches {
+        for patch in patches {
             let definition = definitions
                 .get(&patch.attribute_id)
                 .expect("validated attribute definition must exist");
             write_product_value_patch(
-                &txn,
+                txn,
                 tenant_id,
                 product_id,
                 locale.as_str(),
@@ -447,7 +466,62 @@ impl ProductCatalogSchemaService {
             )
             .await?;
         }
+        Ok(())
+    }
+
+    pub(crate) async fn apply_product_attribute_batches_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        batches: &[crate::dto::ProductAttributeValueBatch],
+    ) -> CommerceResult<bool> {
+        let mut seen_locales = HashSet::new();
+        let mut seen_nonlocalized = HashSet::new();
+        let mut changed = false;
+        for batch in batches {
+            let locale = canonical_value_locale(&batch.locale)?;
+            if !seen_locales.insert(locale.clone()) {
+                return Err(CommerceError::Validation(
+                    "attribute value locale occurs more than once in one catalog command".into(),
+                ));
+            }
+            self.apply_product_attribute_values_in_tx(
+                txn, tenant_id, product_id, &locale, &batch.patches, &mut seen_nonlocalized,
+            ).await?;
+            changed |= !batch.patches.is_empty();
+        }
+        Ok(changed)
+    }
+
+    pub async fn save_product_attribute_values(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        product_id: Uuid,
+        locale: &str,
+        patches: Vec<ProductAttributeValuePatch>,
+    ) -> CommerceResult<Vec<ProductAttributeValueRecord>> {
+        let locale = canonical_value_locale(locale)?;
+        validate_uuid("product_id", product_id)?;
+
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        let product = lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        self.apply_product_attribute_values_in_tx(
+            &txn,
+            tenant_id,
+            product_id,
+            &locale,
+            &patches,
+            &mut HashSet::new(),
+        )
+        .await?;
+        if product.status == crate::entities::product::ProductStatus::Active {
+            self.validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+                .await?;
+        }
         if !patches.is_empty() {
+            advance_product_value_revision_in_tx(&txn, &product).await?;
             txn.publish(
                 tenant_id,
                 Some(actor_id),
@@ -473,21 +547,23 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<Vec<ProductAttributeValueRecord>> {
         let locale = canonical_value_locale(locale)?;
         validate_uuid("product_id", product_id)?;
-        ensure_product(&self.db, tenant_id, product_id).await?;
-        let detached_attribute_ids = match self
-            .load_effective_form_for_product(tenant_id, product_id)
-            .await?
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        let product = lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        let detached_attribute_ids = match Self::load_effective_form_for_product_in(
+            &txn, tenant_id, product_id,
+        )
+        .await?
         {
             Some(form) => form
                 .detached_attribute_ids
                 .into_iter()
                 .collect::<HashSet<_>>(),
             None => AttributeIdRow::find_by_statement(Statement::from_sql_and_values(
-                self.db.get_database_backend(),
+                txn.get_database_backend(),
                 "SELECT attribute_id FROM product_attribute_values WHERE tenant_id = $1 AND product_id = $2",
                 vec![tenant_id.into(), product_id.into()],
             ))
-            .all(&self.db)
+            .all(&txn)
             .await?
             .into_iter()
             .map(|row| row.attribute_id)
@@ -515,8 +591,6 @@ impl ProductCatalogSchemaService {
             attribute_ids
         };
 
-        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
-        lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         if !target_attribute_ids.is_empty() {
             let (placeholders, mut values) = uuid_filter_values(tenant_id, &target_attribute_ids);
             let product_placeholder = format!("${}", values.len() + 1);
@@ -534,6 +608,7 @@ impl ProductCatalogSchemaService {
                 values,
             ))
             .await?;
+            advance_product_value_revision_in_tx(&txn, &product).await?;
             txn.publish(
                 tenant_id,
                 Some(actor_id),

@@ -36,5 +36,7 @@
     "compile_proven": false,
     "runtime_proven": false
   },
-  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed.",
+  "historical_only": true,
+  "superseded_by": "crates/modules/rustok-product/docs/write-boundary.md#receipt-aware-shipping-profile-admission"
 }

@@ -105,29 +105,23 @@ assertContains(
 );
 assertContains(
   editor,
-  "let status_result = catalog_transport::change_product_status(",
-  `${editorPath}: the save flow must consume the status transition result`
+  "status: Some(target_status.clone())",
+  `${editorPath}: lifecycle intent must be part of the same catalog save`
 );
-assertContains(
-  editor,
-  "variant_result = Some(",
-  `${editorPath}: the save flow must consume the variant update result`
-);
-assertContains(
-  editor,
-  "the status was not changed: {err}",
-  `${editorPath}: a failed status transition must be reported as a partial save`
-);
-assertContains(
-  editor,
-  "the variant was not saved: {err}",
-  `${editorPath}: a failed variant update must be reported as a partial save`
-);
-assertContains(
-  editor,
-  "The product was saved, but not everything was applied",
-  `${editorPath}: partial saves must not be reported as a plain success`
-);
+assertContains(editor, "attribute_values: if attribute_patches.is_empty()",
+  `${editorPath}: typed values must be part of the same catalog save`);
+const documentSave = editor.slice(editor.indexOf("let save_product ="), editor.indexOf("let save_variant ="));
+const variantSave = editor.slice(editor.indexOf("let save_variant ="), editor.indexOf("let page_title ="));
+assert(!documentSave.includes("catalog_transport::update_product_variant("),
+  `${editorPath}: document Save/Publish must not silently submit a second Variant command`);
+assertContains(variantSave, "catalog_transport::update_product_variant(",
+  `${editorPath}: the explicit Variant action must use the canonical gateway`);
+assertContains(variantSave, "Err(error) => set_error_msg.set(Some(error.to_string()))",
+  `${editorPath}: an independent Variant failure must reach the operator`);
+assertContains(editor, "Product document saved. Variant changes are saved separately.",
+  `${editorPath}: document acknowledgement must state the separate Variant scope`);
+assertContains(editor, "Save only this variant",
+  `${editorPath}: the independent Variant command must be operator-visible`);
 assertCount(
   editor,
   '<Show when=move || error_msg.get().is_some()>',
@@ -232,10 +226,13 @@ for (const marker of [
   );
 }
 
+if (editor.includes("let status_result = catalog_transport::change_product_status(")) {
+  failures.push(`${editorPath}: document save must not issue a second status command`);
+}
 const leptosAdapter = readRepo(`${uiDir}/leptos.rs`);
 for (const marker of [
-  "pub fn ProductAttributeValuesSection(",
-  "catalog_transport::save_product_attribute_values(",
+  "pub(crate) fn ProductAttributeValuesSection(",
+  "state.refresh_values(values)",
   "catalog_transport::clear_detached_product_attribute_values(",
   "TypedProductAttributeField",
 ]) {

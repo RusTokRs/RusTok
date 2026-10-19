@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::entities::{product, product_translation};
 use crate::ports::{LegacyStorefrontProductList, LegacyStorefrontProductListItem};
+use crate::ports::{product_owner_error_facts, product_port_context_facts};
 use crate::{CatalogService, CommerceError};
 
 const MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100;
@@ -75,11 +76,15 @@ fn validate_request(
     request: &LegacyStorefrontHttpProductsRequest,
 ) -> Result<(), PortError> {
     if request.page == 0 {
+        let context_facts = product_port_context_facts(context);
         tracing::warn!(
             operation = LIST_LEGACY_STOREFRONT_HTTP_PRODUCTS_OPERATION,
-            correlation_id = %context.correlation_id,
-            page = request.page,
-            per_page = request.per_page,
+            correlation_id_length = context_facts.correlation_id_length,
+            tenant_id_length = context_facts.tenant_id_length,
+            page_zero = request.page == 0,
+            per_page_zero = request.per_page == 0,
+            per_page_exceeds_limit =
+                request.per_page > MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE,
             code = "product.page_invalid",
             "legacy storefront HTTP product page validation failed"
         );
@@ -89,11 +94,15 @@ fn validate_request(
         ));
     }
     if !(1..=MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE).contains(&request.per_page) {
+        let context_facts = product_port_context_facts(context);
         tracing::warn!(
             operation = LIST_LEGACY_STOREFRONT_HTTP_PRODUCTS_OPERATION,
-            correlation_id = %context.correlation_id,
-            page = request.page,
-            per_page = request.per_page,
+            correlation_id_length = context_facts.correlation_id_length,
+            tenant_id_length = context_facts.tenant_id_length,
+            page_zero = request.page == 0,
+            per_page_zero = request.per_page == 0,
+            per_page_exceeds_limit =
+                request.per_page > MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE,
             max_per_page = MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE,
             code = "product.per_page_invalid",
             "legacy storefront HTTP product page-size validation failed"
@@ -292,6 +301,34 @@ fn product_title_search_condition(
 }
 
 fn map_product_error(context: &PortContext, error: CommerceError) -> PortError {
+    let context_facts = product_port_context_facts(context);
+    let error_facts = product_owner_error_facts(&error);
+    let classified = match &error {
+        CommerceError::Core(error) => Some(crate::error::core_port_error(error)),
+        CommerceError::Conflict(_) => Some(PortError::conflict(
+            "product.conflict",
+            "product request conflicts with the current state",
+        )),
+        _ => None,
+    };
+    if let Some(port) = classified {
+        tracing::error!(
+            owner = "rustok_product",
+            operation = LIST_LEGACY_STOREFRONT_HTTP_PRODUCTS_OPERATION,
+            correlation_id_length = context_facts.correlation_id_length,
+            tenant_id_length = context_facts.tenant_id_length,
+            owner_error_variant = error_facts.error_variant,
+            text_field_count = error_facts.text_field_count,
+            text_total_length = error_facts.text_total_length,
+            uuid_field_count = error_facts.uuid_field_count,
+            uuid_non_nil_count = error_facts.uuid_non_nil_count,
+            opaque_payload_present = error_facts.opaque_payload_present,
+            public_code = %port.code,
+            retryable = port.retryable,
+            "storefront HTTP product dependency read failed"
+        );
+        return port;
+    }
     let (kind, code, message, retryable, variant) = match error {
         CommerceError::Database(_) => (
             "unavailable",
@@ -325,8 +362,15 @@ fn map_product_error(context: &PortContext, error: CommerceError) -> PortError {
     tracing::error!(
         owner = "rustok_product",
         operation = LIST_LEGACY_STOREFRONT_HTTP_PRODUCTS_OPERATION,
-        correlation_id = %context.correlation_id,
+        correlation_id_length = context_facts.correlation_id_length,
+        tenant_id_length = context_facts.tenant_id_length,
         error_variant = variant,
+        owner_error_variant = error_facts.error_variant,
+        text_field_count = error_facts.text_field_count,
+        text_total_length = error_facts.text_total_length,
+        uuid_field_count = error_facts.uuid_field_count,
+        uuid_non_nil_count = error_facts.uuid_non_nil_count,
+        opaque_payload_present = error_facts.opaque_payload_present,
         public_code = code,
         retryable,
         "legacy storefront HTTP product owner read failed"
@@ -336,5 +380,99 @@ fn map_product_error(context: &PortContext, error: CommerceError) -> PortError {
         "not_found" => PortError::not_found(code, message),
         "validation" => PortError::validation(code, message),
         _ => PortError::invariant_violation(code, message),
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_policy_tests {
+    use super::*;
+    use rustok_api::{PortActor, PortErrorKind};
+
+    fn context() -> PortContext {
+        PortContext::new(
+            "private-tenant",
+            PortActor::system(),
+            "private-locale",
+            "private-correlation",
+        )
+    }
+
+    #[test]
+    fn pagination_admission_keeps_bounds_codes_and_safe_public_copy() {
+        let mut request = LegacyStorefrontHttpProductsRequest {
+            locale: None,
+            fallback_locale: None,
+            public_channel_slug: None,
+            vendor: None,
+            product_type: None,
+            search: None,
+            page: 1,
+            per_page: 1,
+        };
+        for size in [1, MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE] {
+            request.per_page = size;
+            assert!(validate_request(&context(), &request).is_ok());
+        }
+        for (page, size, code) in [
+            (0, 10, "product.page_invalid"),
+            (1, 0, "product.per_page_invalid"),
+            (
+                1,
+                MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE + 1,
+                "product.per_page_invalid",
+            ),
+            (1, u64::MAX, "product.per_page_invalid"),
+        ] {
+            request.page = page;
+            request.per_page = size;
+            let error = validate_request(&context(), &request).unwrap_err();
+            assert_eq!(error.kind, PortErrorKind::Validation);
+            assert_eq!(error.code, code);
+            assert!(!error.retryable);
+            assert!(!error.message.contains("private-"));
+        }
+    }
+
+    #[test]
+    fn http_owner_errors_preserve_nested_policy_retryability_and_privacy() {
+        use rustok_core::error::Error as CoreError;
+        for (error, kind, retryable, code) in [
+            (
+                CommerceError::Core(CoreError::Cache("private-source".into())),
+                PortErrorKind::Unavailable,
+                true,
+                "product.dependency_unavailable",
+            ),
+            (
+                CommerceError::Core(CoreError::Forbidden("private-source".into())),
+                PortErrorKind::Forbidden,
+                false,
+                "product.forbidden",
+            ),
+            (
+                CommerceError::Conflict("private-source".into()),
+                PortErrorKind::Conflict,
+                false,
+                "product.conflict",
+            ),
+            (
+                CommerceError::Validation("private-source".into()),
+                PortErrorKind::Validation,
+                false,
+                "product.validation",
+            ),
+            (
+                CommerceError::ProductNotFound(Uuid::new_v4()),
+                PortErrorKind::NotFound,
+                false,
+                "product.product_not_found",
+            ),
+        ] {
+            let mapped = map_product_error(&context(), error);
+            assert_eq!(mapped.kind, kind);
+            assert_eq!(mapped.retryable, retryable);
+            assert_eq!(mapped.code, code);
+            assert!(!format!("{mapped}").contains("private-"));
+        }
     }
 }

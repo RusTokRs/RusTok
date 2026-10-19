@@ -24,10 +24,11 @@ import {
   ShoppingCart,
   Sparkles,
 } from "lucide-react";
+import { mergeProductPricing } from "../catalog/pricing";
 import { useCart } from "@rustok/cart-frontend";
 import type {
   StorefrontProductDetail,
-  StorefrontProductVariant,
+  StorefrontProductPricing,
 } from "../api/types";
 import {
   buildProductSpecificationLabels,
@@ -36,7 +37,7 @@ import {
 
 interface ProductDetailViewProps {
   product: StorefrontProductDetail;
-  pricingVariants?: StorefrontProductVariant[];
+  pricingVariants?: StorefrontProductPricing[];
   locale: string;
 }
 
@@ -50,17 +51,10 @@ export function ProductDetailView({
     product.productType?.toLowerCase() === "bundle" ||
     product.tags.some((t) => t.toLowerCase() === "bundle");
 
-  // Merge variants with pricing details if available
-  const variants = useMemo(() => {
-    return product.variants.map((v) => {
-      const pricing = pricingVariants.find((pv) => pv.id === v.id || pv.sku === v.sku);
-      return {
-        ...v,
-        effectivePrice: pricing?.effectivePrice || v.effectivePrice,
-        prices: pricing?.prices?.length ? pricing.prices : v.prices,
-      };
-    });
-  }, [product.variants, pricingVariants]);
+  const variants = useMemo(
+    () => mergeProductPricing(product.variants, pricingVariants),
+    [product.variants, pricingVariants],
+  );
 
   const { addItem, openCart } = useCart();
 
@@ -134,7 +128,7 @@ export function ProductDetailView({
   }, [selectedVariant]);
 
   const handleAddToCart = async () => {
-    if (!selectedVariant) return;
+    if (!selectedVariant || !priceInfo || isAdding) return;
     setIsAdding(true);
     try {
       const ok = await addItem(selectedVariant.id, quantity);
@@ -282,14 +276,14 @@ export function ProductDetailView({
           {priceInfo ? (
             <div className="flex items-baseline gap-3">
               <span className="text-3xl font-extrabold tracking-tight text-foreground">
-                {priceInfo.amount.toFixed(2)} {priceInfo.currency}
+                {priceInfo.amount} {priceInfo.currency}
               </span>
-              {priceInfo.compareAt && priceInfo.compareAt > priceInfo.amount && (
+              {priceInfo.onSale && priceInfo.compareAt != null && (
                 <span className="text-lg text-muted-foreground line-through">
-                  {priceInfo.compareAt.toFixed(2)} {priceInfo.currency}
+                  {priceInfo.compareAt} {priceInfo.currency}
                 </span>
               )}
-              {priceInfo.discountPercent && (
+              {priceInfo.onSale && priceInfo.discountPercent != null && (
                 <span className="rounded-full bg-destructive/15 px-2.5 py-0.5 text-xs font-bold text-destructive">
                   -{priceInfo.discountPercent}%
                 </span>
@@ -374,11 +368,11 @@ export function ProductDetailView({
             <button
               type="button"
               onClick={() => void handleAddToCart()}
-              disabled={!inStock || isAdding}
+              disabled={!inStock || !priceInfo || isAdding}
               className={`flex-1 h-11 inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold transition shadow-xs ${
                 isAdded
                   ? "bg-emerald-600 text-white"
-                  : inStock
+                  : inStock && priceInfo
                   ? "bg-primary text-primary-foreground hover:bg-primary/90"
                   : "bg-muted text-muted-foreground cursor-not-allowed"
               }`}

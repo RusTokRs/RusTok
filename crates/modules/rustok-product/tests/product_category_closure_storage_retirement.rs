@@ -53,11 +53,14 @@ async fn run_product_category_closure_storage_lifecycle() -> Result<(), Box<dyn 
         let db = connect_postgres(&target_url).await?;
         create_product_migration_prerequisites(&db).await?;
 
-        let migration_count = rustok_product::migrations::migrations().len();
-        if migration_count < 2 {
-            return Err("Product migration plan must contain CAT-33 and CAT-34".into());
-        }
-        ProductMigrator::up(&db, Some((migration_count - 1) as u32))
+        // Pin this historical step by identity, not by today's moving migration head.
+        let retirement_index = rustok_product::migrations::migrations()
+            .iter()
+            .position(|migration| {
+                migration.name() == "m20260829_000020_retire_product_category_closure_storage"
+            })
+            .ok_or("Product plan must contain CAT-34")?;
+        ProductMigrator::up(&db, Some(retirement_index as u32))
             .await
             .map_err(|error| format!("Product migrations through CAT-33 failed: {error}"))?;
         assert_cat33_storage(&db).await?;
@@ -74,16 +77,17 @@ async fn run_product_category_closure_storage_lifecycle() -> Result<(), Box<dyn 
         assert_cat33_storage(&db).await?;
         assert_reconstructed_closure(&db).await?;
         let pending = ProductMigrator::get_pending_migrations(&db).await?;
-        if pending.len() != 1
-            || pending[0].name() != "m20260829_000020_retire_product_category_closure_storage"
+        if pending.first().map(|migration| migration.name())
+            != Some("m20260829_000020_retire_product_category_closure_storage")
         {
             let names = pending
                 .iter()
                 .map(|migration| migration.name().to_string())
                 .collect::<Vec<_>>();
-            return Err(
-                format!("CAT-34 rollback must expose only CAT-34 as pending: {names:?}").into(),
-            );
+            return Err(format!(
+                "CAT-34 rollback must expose CAT-34 as the next pending migration: {names:?}"
+            )
+            .into());
         }
 
         ProductMigrator::up(&db, Some(1))
@@ -91,13 +95,15 @@ async fn run_product_category_closure_storage_lifecycle() -> Result<(), Box<dyn 
             .map_err(|error| format!("CAT-34 reapply failed: {error}"))?;
         assert_cat34_head(&db).await?;
         let pending = ProductMigrator::get_pending_migrations(&db).await?;
-        if !pending.is_empty() {
+        if pending.iter().any(|migration| {
+            migration.name() == "m20260829_000020_retire_product_category_closure_storage"
+        }) {
             let names = pending
                 .iter()
                 .map(|migration| migration.name().to_string())
                 .collect::<Vec<_>>();
             return Err(format!(
-                "CAT-34 reapply must leave no pending Product migrations: {names:?}"
+                "CAT-34 reapply must remove CAT-34 from pending migrations: {names:?}"
             )
             .into());
         }

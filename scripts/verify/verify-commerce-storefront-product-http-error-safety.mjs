@@ -95,24 +95,44 @@ for (const value of [
   'product_translation_title_search_condition(',
 ]) forbidText(listHandler, value, 'mounted list foreign Product storage/service access');
 
+const portPolicy = between(legacyProducts,
+  'pub(super) fn storefront_product_port_http_policy(',
+  'fn map_storefront_product_port_error(', 'shared Product port HTTP policy');
+for (const marker of [
+  'PortErrorKind::Validation', 'PortErrorKind::NotFound',
+  'PortErrorKind::Unavailable | PortErrorKind::Timeout', 'PortErrorKind::InvariantViolation',
+  'PortErrorKind::Conflict', 'PortErrorKind::Forbidden',
+  'StatusCode::CONFLICT', 'StatusCode::FORBIDDEN',
+  '"commerce_store_product_invalid"', '"commerce_store_not_found"',
+  '"commerce_store_product_unavailable"', '"commerce_store_product_failed"',
+  '"commerce_store_product_conflict"', '"commerce_product_access_denied"',
+]) requireText(portPolicy, marker, 'shared static Product HTTP outcome');
+for (const [kind, status, code] of [
+  ['Conflict', 'CONFLICT', 'commerce_store_product_conflict'],
+  ['Forbidden', 'FORBIDDEN', 'commerce_product_access_denied'],
+]) requireText(portPolicy.replace(/\s/g, ''), `PortErrorKind::${kind}=>(StatusCode::${status},"${code}",`, 'typed refusal must retain its correct HTTP status/code');
+forbidText(portPolicy, 'PortErrorKind::Conflict | PortErrorKind::Forbidden', 'domain refusal must not collapse to invariant');
+forbidText(portPolicy, '_ =>', 'HTTP policy must remain exhaustive');
 for (const [mapper, prefix] of [[listMapper, 'list'], [detailMapper, 'detail']]) {
-  for (const [value, label] of [
-    ['PortErrorKind::Validation', `${prefix} validation mapping`],
-    ['PortErrorKind::NotFound', `${prefix} not-found mapping`],
-    ['PortErrorKind::Unavailable | PortErrorKind::Timeout', `${prefix} unavailable mapping`],
-    ['PortErrorKind::Conflict | PortErrorKind::Forbidden | PortErrorKind::InvariantViolation', `${prefix} fail-closed mapping`],
-    ['"commerce_store_product_invalid"', `${prefix} validation code`],
-    ['"commerce_store_not_found"', `${prefix} not-found code`],
-    ['"commerce_store_product_unavailable"', `${prefix} unavailable code`],
-    ['"commerce_store_product_failed"', `${prefix} fail-closed code`],
-    ['owner_error_kind = ?error.kind', `${prefix} bounded owner kind`],
-    ['owner_code_length = error.code.chars().count()', `${prefix} bounded owner code`],
-    ['retryable = error.retryable', `${prefix} retryability diagnostic`],
-  ]) requireText(mapper, value, label);
-  for (const value of ['error = ?error', 'error.message', 'error.to_string()', 'err.to_string()']) {
-    forbidText(mapper, value, `${prefix} raw Product owner diagnostic`);
+  for (const marker of [
+    'storefront_product_port_http_policy(&error.kind)',
+    'owner_error_kind = ?error.kind', 'owner_code_length = error.code.chars().count()',
+    'retryable = error.retryable', 'correlation_id_length = context.correlation_id.chars().count()',
+    'HttpError::new(status, code, message)',
+  ]) requireText(mapper, marker, `${prefix}: shared policy and bounded diagnostics`);
+  for (const value of ['match &error.kind', 'error = ?error', 'error.message', 'error.to_string()',
+    'err.to_string()', 'correlation_id = %context.correlation_id']) {
+    forbidText(mapper, value, `${prefix}: raw payload or parallel classifier`);
   }
 }
+const listContext = between(mountedList, 'fn storefront_product_list_port_context(', 'fn storefront_product_list_unavailable(', 'list context factory');
+const detailContext = between(legacyProducts, 'fn storefront_product_port_context(', 'pub(super) fn storefront_product_port_http_policy(', 'detail context factory');
+for (const [source, label] of [[listContext, 'list'], [detailContext, 'detail']]) {
+  requireText(source, 'Uuid::new_v4().to_string()', `${label}: fresh opaque owner correlation`);
+  forbidText(source, 'format!(', `${label}: do not encode page/resource identity in correlation`);
+}
+forbidText(detailHandler, 'tenant_id = %tenant.id', 'bounded mounted detail diagnostic');
+forbidText(detailHandler, 'product_id = %id', 'bounded mounted detail diagnostic');
 
 for (const [value, label] of [
   ['ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;', 'detail channel guard'],
@@ -137,7 +157,8 @@ for (const [value, label] of [
   ['product::Column::PublishedAt.is_not_null()', 'owner published filter'],
   ['rustok_inventory::is_metadata_visible_for_public_channel(', 'owner channel visibility'],
   ['let total = visible_products.len() as u64;', 'owner visible total'],
-  ['.skip(offset as usize)', 'owner pagination offset'],
+  ['usize::try_from(offset)', 'owner checked pagination offset conversion'],
+  ['.skip(offset_usize)', 'owner pagination offset'],
   ['.take(per_page as usize)', 'owner pagination limit'],
   ['.unwrap_or_default()', 'owner empty missing translation'],
   ['shipping_profile_slug_from_metadata(&product.metadata)', 'owner metadata-only shipping profile'],
@@ -174,4 +195,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log('✔ mounted storefront Product list/detail use bounded owner reads and stable public envelopes');
+console.log('✔ mounted storefront Product list/detail use shared typed HTTP outcomes and bounded owner diagnostics');

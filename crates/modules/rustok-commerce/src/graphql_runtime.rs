@@ -329,7 +329,13 @@ pub(crate) fn product_catalog_command_runtime_for_current_graphql_scope(
 ) -> ProductCatalogCommandRuntime {
     CURRENT_COMMERCE_PRODUCT_CATALOG_COMMAND_RUNTIME
         .try_with(Clone::clone)
-        .unwrap_or_else(|_| ProductCatalogCommandRuntime::in_process(db, event_bus))
+        .unwrap_or_else(|_| {
+            ProductCatalogCommandRuntime::in_process(db.clone(), event_bus)
+                .with_shipping_profile_port(std::sync::Arc::new(
+                    crate::ShippingProfileService::new(db),
+                ))
+                .expect("embedded Product owner accepts Shipping Profile admission")
+        })
 }
 
 /// Host-composed owner capabilities available to mounted Commerce GraphQL resolvers.

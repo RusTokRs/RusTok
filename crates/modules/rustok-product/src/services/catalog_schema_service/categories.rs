@@ -24,8 +24,8 @@ use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 use rustok_taxonomy::{
-    SyncModuleCategoryInput, TaxonomyError, TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader,
-    TaxonomyScopeType, sync_module_category_in_tx,
+    SyncModuleCategoryInput, TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
+    sync_module_category_in_tx,
 };
 
 const PRODUCT_TAXONOMY_SCOPE: &str = "product";
@@ -351,7 +351,7 @@ async fn list_categories_from_taxonomy(
             Some(PLATFORM_FALLBACK_LOCALE),
         )
         .await
-        .map_err(map_taxonomy_category_read_error)?;
+        .map_err(super::map_taxonomy_read_error)?;
 
     compose_taxonomy_category_list_records(rows, owners)
 }
@@ -375,31 +375,27 @@ fn compose_taxonomy_category_list_records(
     rows.into_iter()
         .map(|row| {
             let owner = owners.remove(&row.id).ok_or_else(|| {
-                CommerceError::Validation(format!(
-                    "Product category {} is missing its Taxonomy owner projection",
-                    row.id
-                ))
+                super::taxonomy_projection_error(
+                    "Product category is missing its Taxonomy owner projection",
+                )
             })?;
             let expected_key = canonical_key_for_product_category(row.id);
             if owner.canonical_key != expected_key {
-                return Err(CommerceError::Validation(format!(
-                    "Product category {} has incompatible Taxonomy canonical key {}",
-                    row.id, owner.canonical_key
-                )));
+                return Err(super::taxonomy_projection_error(
+                    "Product category has incompatible Taxonomy canonical key",
+                ));
             }
             if owner.scope_type != TaxonomyScopeType::Module
                 || owner.scope_value.as_deref() != Some(PRODUCT_TAXONOMY_SCOPE)
             {
-                return Err(CommerceError::Validation(format!(
-                    "Product category {} has incompatible Taxonomy scope",
-                    row.id
-                )));
+                return Err(super::taxonomy_projection_error(
+                    "Product category has incompatible Taxonomy scope",
+                ));
             }
             if owner.available_locales.is_empty() {
-                return Err(CommerceError::Validation(format!(
-                    "Product category {} has no canonical Taxonomy localized copy",
-                    row.id
-                )));
+                return Err(super::taxonomy_projection_error(
+                    "Product category has no canonical Taxonomy localized copy",
+                ));
             }
 
             CatalogCategoryListRow {
@@ -424,10 +420,9 @@ fn taxonomy_category_hierarchy_order(
 
     for owner in owners.values() {
         if owner.position < 0 {
-            return Err(CommerceError::Validation(format!(
-                "Product category {} has a negative Taxonomy sibling position",
-                owner.id
-            )));
+            return Err(super::taxonomy_projection_error(
+                "Product category has a negative Taxonomy sibling position",
+            ));
         }
         match owner.parent_id {
             Some(parent_id) if owners.contains_key(&parent_id) => {
@@ -477,8 +472,8 @@ fn taxonomy_category_hierarchy_order(
         append_subtree(root_id, &children_by_parent, &mut ordered);
     }
     if ordered.len() != owners.len() {
-        return Err(CommerceError::Validation(
-            "Product Category Taxonomy hierarchy projection contains a cycle".into(),
+        return Err(super::taxonomy_projection_error(
+            "Product Category Taxonomy hierarchy projection contains a cycle",
         ));
     }
     Ok(ordered)
@@ -546,7 +541,7 @@ async fn sync_created_category_to_taxonomy_in_tx(
             },
         )
         .await
-        .map_err(map_taxonomy_category_sync_error)?;
+        .map_err(super::map_taxonomy_sync_error)?;
     }
 
     Ok(())
@@ -576,24 +571,6 @@ fn validate_taxonomy_category_route(slug: &str, position: i32) -> CommerceResult
         )));
     }
     Ok(())
-}
-
-fn map_taxonomy_category_sync_error(error: TaxonomyError) -> CommerceError {
-    match error {
-        TaxonomyError::Database(error) => CommerceError::Database(error),
-        other => CommerceError::Validation(format!(
-            "Product Category Taxonomy synchronization failed: {other}"
-        )),
-    }
-}
-
-fn map_taxonomy_category_read_error(error: TaxonomyError) -> CommerceError {
-    match error {
-        TaxonomyError::Database(error) => CommerceError::Database(error),
-        other => CommerceError::Validation(format!(
-            "Product Category Taxonomy read projection failed: {other}"
-        )),
-    }
 }
 
 fn normalize_category_translations(
@@ -809,6 +786,10 @@ mod tests {
         let id = Uuid::new_v4();
         let error = compose_taxonomy_category_list_records(vec![taxonomy_read_row(id)], Vec::new())
             .expect_err("missing Taxonomy owner must fail closed");
+        assert!(matches!(
+            &error,
+            CommerceError::Core(rustok_core::error::Error::Internal(_))
+        ));
         assert!(
             error
                 .to_string()

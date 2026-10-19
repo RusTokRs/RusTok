@@ -94,7 +94,7 @@ for (const required of [
   ".rollback_deferred_transactions()",
   ".map_err(E::from)?",
   "receipt_scoped_early_error_awaits_owner_transaction_rollback",
-  "if error.retryable {",
+  "if !is_terminal_product_failure(error) {",
 ]) {
   requireText(transaction, required, "Product write transaction receipt fence");
 }

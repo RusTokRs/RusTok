@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ColumnTrait, Condition, ConnectionTrait, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 
 pub mod entities;
@@ -94,6 +94,62 @@ impl BootstrapService {
             .await
     }
 
+    /// Catalog snapshots intentionally omit contextual prices: the catalog DTO has
+    /// no context identity and cannot safely round-trip those rows.
+    pub async fn load_catalog_base_prices_for_variants<C>(
+        conn: &C,
+        variant_ids: &[Uuid],
+    ) -> Result<Vec<price::Model>, sea_orm::DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if variant_ids.iter().any(|id| id.is_nil()) {
+            return Err(sea_orm::DbErr::Custom(
+                "variant_ids must not contain a nil UUID".into(),
+            ));
+        }
+        if variant_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        price::Entity::find()
+            .filter(price::Column::VariantId.is_in(variant_ids.iter().copied()))
+            .filter(catalog_base_scope())
+            .all(conn)
+            .await
+    }
+
+    /// Replace only the catalog's unscoped base prices. Price lists, channels,
+    /// regions and quantity tiers belong to Pricing and survive this operation.
+    /// The caller must hold the Product/Variant owner lock in its transaction.
+    pub async fn replace_catalog_base_prices_in_tx<C>(
+        conn: &C,
+        variant_id: Uuid,
+        prices: Vec<InitialPrice>,
+    ) -> Result<(), sea_orm::DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if variant_id.is_nil()
+            || prices.iter().any(|price| {
+                price.variant_id != variant_id
+                    || price.channel_id.is_some()
+                    || price.channel_slug.is_some()
+                    || price.amount < Decimal::ZERO
+                    || price.compare_at_amount.is_some_and(|amount| amount < Decimal::ZERO)
+            })
+        {
+            return Err(sea_orm::DbErr::Custom(
+                "Catalog price replacement accepts only this variant's unscoped base prices; use Pricing for contextual prices".into(),
+            ));
+        }
+        price::Entity::delete_many()
+            .filter(price::Column::VariantId.eq(variant_id))
+            .filter(catalog_base_scope())
+            .exec(conn)
+            .await?;
+        Self::create_initial_prices_in_tx(conn, prices).await
+    }
+
     pub async fn delete_prices_for_variants_in_tx<C>(
         conn: &C,
         variant_ids: &[Uuid],
@@ -119,6 +175,16 @@ impl BootstrapService {
     }
 }
 
+fn catalog_base_scope() -> Condition {
+    Condition::all()
+        .add(price::Column::PriceListId.is_null())
+        .add(price::Column::ChannelId.is_null())
+        .add(price::Column::ChannelSlug.is_null())
+        .add(price::Column::RegionId.is_null())
+        .add(price::Column::MinQuantity.is_null())
+        .add(price::Column::MaxQuantity.is_null())
+}
+
 /// Exponent of the retained two-decimal pricing mirror columns.
 pub const LEGACY_AMOUNT_EXPONENT: u8 = 2;
 
@@ -137,6 +203,120 @@ pub fn legacy_amount_units(amount: Decimal) -> Option<i64> {
 mod tests {
     use super::*;
     use sea_orm::Database;
+
+    async fn test_price_db() -> sea_orm::DatabaseConnection {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let backend = db.get_database_backend();
+        let table = sea_orm::Schema::new(backend).create_table_from_entity(price::Entity);
+        db.execute(backend.build(&table)).await.unwrap();
+        db
+    }
+
+    fn initial_price(variant_id: Uuid, amount: i64) -> InitialPrice {
+        InitialPrice {
+            variant_id,
+            channel_id: None,
+            channel_slug: None,
+            currency_code: "USD".into(),
+            amount: Decimal::new(amount, 2),
+            compare_at_amount: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn catalog_base_replace_and_clear_preserve_every_context_and_other_variant() {
+        use sea_orm::{ActiveModelTrait, TransactionTrait};
+
+        let db = test_price_db().await;
+        let variant_id = rustok_core::generate_id();
+        let other_variant_id = rustok_core::generate_id();
+        BootstrapService::create_initial_prices_in_tx(
+            &db,
+            vec![initial_price(variant_id, 1000), initial_price(other_variant_id, 500)],
+        )
+        .await
+        .unwrap();
+        let base = BootstrapService::load_catalog_base_prices_for_variants(&db, &[variant_id])
+            .await
+            .unwrap()
+            .remove(0);
+        let mut contextual = Vec::new();
+        for context in 0..6 {
+            let mut model: price::ActiveModel = base.clone().into();
+            model.id = Set(rustok_core::generate_id());
+            match context {
+                0 => model.price_list_id = Set(Some(rustok_core::generate_id())),
+                1 => model.channel_id = Set(Some(rustok_core::generate_id())),
+                2 => model.channel_slug = Set(Some("web".into())),
+                3 => model.region_id = Set(Some(rustok_core::generate_id())),
+                4 => model.min_quantity = Set(Some(1)),
+                _ => model.max_quantity = Set(Some(10)),
+            }
+            contextual.push(model.insert(&db).await.unwrap());
+        }
+        let txn = db.begin().await.unwrap();
+        BootstrapService::replace_catalog_base_prices_in_tx(
+            &txn,
+            variant_id,
+            vec![initial_price(variant_id, 1250)],
+        )
+        .await
+        .unwrap();
+        txn.commit().await.unwrap();
+        let base_prices = BootstrapService::load_catalog_base_prices_for_variants(&db, &[variant_id])
+            .await
+            .unwrap();
+        assert_eq!(base_prices.len(), 1);
+        assert_eq!(base_prices[0].amount, Decimal::new(1250, 2));
+
+        let txn = db.begin().await.unwrap();
+        BootstrapService::replace_catalog_base_prices_in_tx(&txn, variant_id, vec![])
+            .await
+            .unwrap();
+        txn.commit().await.unwrap();
+        assert!(BootstrapService::load_catalog_base_prices_for_variants(&db, &[variant_id])
+            .await
+            .unwrap()
+            .is_empty());
+        let remaining = BootstrapService::load_prices_for_variants(&db, &[variant_id])
+            .await
+            .unwrap();
+        assert_eq!(remaining.len(), contextual.len());
+        for expected in contextual {
+            assert!(remaining.contains(&expected), "contextual price was changed or deleted");
+        }
+        let other = BootstrapService::load_catalog_base_prices_for_variants(&db, &[other_variant_id])
+            .await
+            .unwrap();
+        assert_eq!(other.len(), 1);
+        assert_eq!(other[0].amount, Decimal::new(500, 2));
+    }
+
+    #[tokio::test]
+    async fn catalog_replace_refuses_context_and_foreign_variant_before_deleting() {
+        let db = test_price_db().await;
+        let variant_id = rustok_core::generate_id();
+        BootstrapService::create_initial_prices_in_tx(&db, vec![initial_price(variant_id, 1000)])
+            .await
+            .unwrap();
+        for invalid in 0..4 {
+            let mut input = initial_price(variant_id, 1250);
+            match invalid {
+                0 => input.channel_slug = Some("web".into()),
+                1 => input.channel_id = Some(rustok_core::generate_id()),
+                2 => input.variant_id = rustok_core::generate_id(),
+                _ => input.amount = Decimal::new(-1, 0),
+            }
+            assert!(BootstrapService::replace_catalog_base_prices_in_tx(&db, variant_id, vec![input])
+                .await
+                .is_err());
+            let prices = BootstrapService::load_catalog_base_prices_for_variants(&db, &[variant_id])
+                .await
+                .unwrap();
+            assert_eq!(prices.len(), 1);
+            assert_eq!(prices[0].amount, Decimal::new(1000, 2));
+        }
+    }
 
     #[test]
     fn test_legacy_amount_units() {

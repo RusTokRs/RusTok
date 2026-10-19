@@ -32,6 +32,61 @@ use super::catalog_schema::{
 };
 use super::write_transaction::ProductWriteTransaction;
 
+/// Sync accepts user intent; its authoritative domain refusals retain their class.
+fn map_taxonomy_sync_error(error: rustok_taxonomy::TaxonomyError) -> CommerceError {
+    use rustok_core::error::Error as CoreError;
+    use rustok_taxonomy::TaxonomyError;
+    match error {
+        TaxonomyError::Database(error) => CommerceError::Database(error),
+        TaxonomyError::Internal(_) => CommerceError::Core(CoreError::Internal(
+            "Taxonomy category synchronization failed".into(),
+        )),
+        TaxonomyError::Forbidden(_) => CommerceError::Core(CoreError::Forbidden(
+            "Taxonomy category access is denied".into(),
+        )),
+        TaxonomyError::TermNotFound(_) => CommerceError::Core(CoreError::NotFound(
+            "Referenced Taxonomy category was not found".into(),
+        )),
+        TaxonomyError::DuplicateCanonicalKey(_)
+        | TaxonomyError::DuplicateSlug(_)
+        | TaxonomyError::DuplicateAlias(_)
+        | TaxonomyError::Conflict(_)
+        | TaxonomyError::TranslationRevisionExhausted { .. } => {
+            CommerceError::Conflict("Taxonomy category conflicts with current state".into())
+        }
+        TaxonomyError::Validation(_) => {
+            CommerceError::Validation("Taxonomy category request is invalid".into())
+        }
+    }
+}
+
+/// A read projection does not accept a Taxonomy mutation: domain-shaped read failures
+/// other than permission denial indicate broken owner/projection state, not invalid user input.
+fn map_taxonomy_read_error(error: rustok_taxonomy::TaxonomyError) -> CommerceError {
+    use rustok_core::error::Error as CoreError;
+    use rustok_taxonomy::TaxonomyError;
+    match error {
+        TaxonomyError::Database(error) => CommerceError::Database(error),
+        TaxonomyError::Forbidden(_) => CommerceError::Core(CoreError::Forbidden(
+            "Taxonomy category access is denied".into(),
+        )),
+        TaxonomyError::Internal(_)
+        | TaxonomyError::TermNotFound(_)
+        | TaxonomyError::DuplicateCanonicalKey(_)
+        | TaxonomyError::DuplicateSlug(_)
+        | TaxonomyError::DuplicateAlias(_)
+        | TaxonomyError::Conflict(_)
+        | TaxonomyError::TranslationRevisionExhausted { .. }
+        | TaxonomyError::Validation(_) => {
+            taxonomy_projection_error("Taxonomy category projection could not be read safely")
+        }
+    }
+}
+
+fn taxonomy_projection_error(message: &'static str) -> CommerceError {
+    CommerceError::Core(rustok_core::error::Error::Internal(message.into()))
+}
+
 /// Upper bound on tenant-wide schema administration lists.
 ///
 /// Lists fetch one extra row, so an over-limit tenant fails explicitly instead of receiving an
@@ -428,7 +483,7 @@ pub struct BindCategoryAttributeInput {
     pub metadata: Value,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum ProductAttributeValuePatchValue {
     Clear,
@@ -443,7 +498,7 @@ pub enum ProductAttributeValuePatchValue {
     Json(Value),
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ProductAttributeValuePatch {
     pub attribute_id: Uuid,
     pub value: ProductAttributeValuePatchValue,
@@ -509,8 +564,6 @@ struct ProductAttributeWriteDefinitionRow {
     value_type: String,
     scope: String,
     is_localized: bool,
-    #[allow(dead_code)]
-    validation: Value,
 }
 
 #[derive(FromQueryResult)]
@@ -1468,5 +1521,91 @@ mod tests {
     fn bounded_json_object_requires_an_object() {
         assert!(validate_bounded_json_object("metadata", &Value::Array(Vec::new())).is_err());
         assert!(validate_bounded_json_object("metadata", &serde_json::json!({})).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod dependency_error_tests {
+    use super::*;
+    use rustok_taxonomy::TaxonomyError;
+
+    fn taxonomy_cases() -> Vec<(TaxonomyError, &'static str)> {
+        vec![
+            (
+                TaxonomyError::Database(sea_orm::DbErr::Custom("private-marker".into())),
+                "PRODUCT_TEMPORARILY_UNAVAILABLE",
+            ),
+            (
+                TaxonomyError::Internal("private-marker".into()),
+                "PRODUCT_OPERATION_FAILED",
+            ),
+            (
+                TaxonomyError::Forbidden("private-marker".into()),
+                "PRODUCT_ACCESS_DENIED",
+            ),
+            (
+                TaxonomyError::TermNotFound(Uuid::new_v4()),
+                "PRODUCT_DEPENDENCY_NOT_FOUND",
+            ),
+            (
+                TaxonomyError::DuplicateCanonicalKey("private-marker".into()),
+                "PRODUCT_CONFLICT",
+            ),
+            (
+                TaxonomyError::DuplicateSlug("private-marker".into()),
+                "PRODUCT_CONFLICT",
+            ),
+            (
+                TaxonomyError::DuplicateAlias("private-marker".into()),
+                "PRODUCT_CONFLICT",
+            ),
+            (
+                TaxonomyError::Conflict("private-marker".into()),
+                "PRODUCT_CONFLICT",
+            ),
+            (
+                TaxonomyError::TranslationRevisionExhausted {
+                    term_id: Uuid::new_v4(),
+                    locale: "private-marker".into(),
+                },
+                "PRODUCT_CONFLICT",
+            ),
+            (
+                TaxonomyError::Validation("private-marker".into()),
+                "PRODUCT_VALIDATION",
+            ),
+        ]
+    }
+
+    #[test]
+    fn taxonomy_sync_preserves_all_dependency_classes_without_payload_copy() {
+        for (error, expected) in taxonomy_cases() {
+            let mapped = map_taxonomy_sync_error(error);
+            let public = crate::map_product_public_error(&mapped, "test", "taxonomy_sync");
+            assert_eq!(public.code, expected);
+            if !matches!(&mapped, CommerceError::Database(_)) {
+                assert!(!mapped.to_string().contains("private-marker"));
+            }
+            assert!(!public.to_string().contains("private-marker"));
+        }
+    }
+
+    #[test]
+    fn taxonomy_read_distinguishes_outage_and_forbidden_from_projection_failure() {
+        for (error, sync_code) in taxonomy_cases() {
+            let expected = match sync_code {
+                "PRODUCT_TEMPORARILY_UNAVAILABLE" | "PRODUCT_ACCESS_DENIED" => sync_code,
+                _ => "PRODUCT_OPERATION_FAILED",
+            };
+            let mapped = map_taxonomy_read_error(error);
+            let public = crate::map_product_public_error(&mapped, "test", "taxonomy_read");
+            assert_eq!(public.code, expected);
+            if let CommerceError::Core(error) = &mapped {
+                assert!(!crate::services::is_terminal_product_failure(
+                    &crate::error::core_port_error(error)
+                ));
+            }
+            assert!(!public.to_string().contains("private-marker"));
+        }
     }
 }

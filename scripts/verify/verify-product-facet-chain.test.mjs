@@ -519,10 +519,10 @@ async fn product_admin_catalog_facets_native(
     if requested_tenant_id != tenant.id || auth.tenant_id != tenant.id {
         return Err(ServerFnError::new("tenant_id does not match current tenant"));
     }
+    let request_context = require_request_context("admin_catalog_facets").await?;
     let requested_locale = locale
         .map(|value| value.trim().to_string())
-        .or_else(|| request_context.map(|context| context.locale))
-        .unwrap_or_else(|| tenant.default_locale.clone());
+        .unwrap_or(request_context.locale);
     let list_query = AdminProductListQuery::try_from_transport_with_attribute_filters(
         search,
         status,

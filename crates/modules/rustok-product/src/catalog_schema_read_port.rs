@@ -4,6 +4,8 @@ use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
+use crate::ports::{product_owner_error_facts, product_port_context_facts};
+
 use crate::services::{
     AttributeValueType, CatalogCategoryListRecord, EffectiveAttributeSource,
     ProductAttributeFilter, ProductAttributeListRecord, ProductAttributeOptionListRecord,
@@ -252,10 +254,11 @@ impl ProductCatalogSchemaReadPort for ProductCatalogSchemaService {
         let mut attributes = Vec::with_capacity(form.attributes.len());
         for binding in form.attributes {
             let Some(definition) = definitions.get(&binding.attribute_id) else {
+                let context_facts = product_port_context_facts(&context);
                 tracing::error!(
-                    internal_attribute_id = %binding.attribute_id,
-                    correlation_id = %context.correlation_id,
-                    tenant_id = %context.tenant_id,
+                    attribute_id_non_nil = !binding.attribute_id.is_nil(),
+                    correlation_id_length = context_facts.correlation_id_length,
+                    tenant_id_length = context_facts.tenant_id_length,
                     operation = owner_operation,
                     code = "product.attribute_definition_missing",
                     "effective Product form references a missing attribute definition"
@@ -360,13 +363,14 @@ fn require_schema_read_context(
     context
         .require_policy(PortCallPolicy::read())
         .map_err(|error| {
+            let context_facts = product_port_context_facts(context);
             tracing::warn!(
-                internal_code = %error.code,
-                internal_message = %error.message,
+                owner_code_length = error.code.chars().count(),
+                owner_message_length = error.message.chars().count(),
                 kind = ?error.kind,
                 retryable = error.retryable,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
+                correlation_id_length = context_facts.correlation_id_length,
+                tenant_id_length = context_facts.tenant_id_length,
                 operation = owner_operation,
                 code = "product.schema_context_invalid",
                 "Product catalog schema read context was rejected"
@@ -398,12 +402,11 @@ fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        let context_facts = product_port_context_facts(context);
         tracing::warn!(
-            error = ?error,
-            internal_tenant_id = %context.tenant_id,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
+            correlation_id_length = context_facts.correlation_id_length,
+            tenant_id_length = context_facts.tenant_id_length,
             operation = owner_operation,
             code = "product.tenant_id_invalid",
             "Product catalog schema tenant context is invalid"
@@ -422,17 +425,26 @@ fn schema_error_to_port_error(
 ) -> PortError {
     use crate::CommerceError;
 
+    let error_facts = product_owner_error_facts(&error);
     let code = match &error {
         CommerceError::Database(_) => "product.database_unavailable",
         CommerceError::Validation(_) => "product.validation",
         CommerceError::ProductNotFound(_) => "product.product_not_found",
         CommerceError::VariantNotFound(_) => "product.variant_not_found",
+        CommerceError::Core(error) => crate::error::core_error_code(error),
+        CommerceError::Conflict(_) => "product.conflict",
         _ => "product.invariant_violation",
     };
+    let context_facts = product_port_context_facts(context);
     tracing::error!(
-        error = ?error,
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
+        error_variant = error_facts.error_variant,
+        text_field_count = error_facts.text_field_count,
+        text_total_length = error_facts.text_total_length,
+        uuid_field_count = error_facts.uuid_field_count,
+        uuid_non_nil_count = error_facts.uuid_non_nil_count,
+        opaque_payload_present = error_facts.opaque_payload_present,
+        correlation_id_length = context_facts.correlation_id_length,
+        tenant_id_length = context_facts.tenant_id_length,
         operation = owner_operation,
         code,
         "Product catalog schema owner read failed"
@@ -452,9 +464,69 @@ fn schema_error_to_port_error(
         CommerceError::VariantNotFound(_) => {
             PortError::not_found("product.variant_not_found", "product variant was not found")
         }
+        CommerceError::Core(error) => crate::error::core_port_error(&error),
+        CommerceError::Conflict(_) => PortError::conflict(
+            "product.conflict",
+            "product request conflicts with the current state",
+        ),
         _ => PortError::invariant_violation(
             "product.invariant_violation",
             "product operation could not be completed safely",
         ),
+    }
+}
+
+#[cfg(test)]
+mod dependency_policy_tests {
+    use super::*;
+    #[test]
+    fn schema_context_rejection_keeps_deadline_and_tenant_policy_without_payload() {
+        let context = PortContext::new(
+            "private-invalid-tenant",
+            rustok_api::PortActor::system(),
+            "private-locale",
+            "private-correlation",
+        );
+        let deadline = require_schema_read_context(&context, "scenario").unwrap_err();
+        assert_eq!(deadline.kind, PortErrorKind::Timeout);
+        assert!(deadline.retryable);
+        assert!(!deadline.message.contains("private-"));
+        let context = context.with_deadline(std::time::Duration::from_secs(1));
+        assert!(require_schema_read_context(&context, "scenario").is_ok());
+        let tenant = parse_tenant_id(&context, "scenario").unwrap_err();
+        assert_eq!(tenant.kind, PortErrorKind::Validation);
+        assert_eq!(tenant.code, "product.tenant_id_invalid");
+        assert!(!tenant.retryable);
+        assert!(!tenant.message.contains("private-"));
+    }
+
+    #[test]
+    fn schema_reads_do_not_mask_nested_permission_or_storage_failures() {
+        use rustok_core::error::Error as CoreError;
+        let context = PortContext::new(
+            "tenant",
+            rustok_api::PortActor::service("test"),
+            "en",
+            "corr",
+        );
+        for (error, expected) in [
+            (
+                CoreError::Forbidden("private-marker".into()),
+                PortErrorKind::Forbidden,
+            ),
+            (
+                CoreError::External("private-marker".into()),
+                PortErrorKind::Unavailable,
+            ),
+            (
+                CoreError::Internal("private-marker".into()),
+                PortErrorKind::InvariantViolation,
+            ),
+        ] {
+            let port =
+                schema_error_to_port_error(&context, "test", crate::CommerceError::Core(error));
+            assert_eq!(port.kind, expected);
+            assert!(!port.message.contains("private-marker"));
+        }
     }
 }

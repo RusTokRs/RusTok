@@ -29,45 +29,22 @@ fn map_runtime_dependency_error(dependency: &'static str) -> ServerFnError {
 }
 
 #[cfg(feature = "ssr")]
-fn record_optional_request_context_error<E: std::fmt::Debug>(error: E) {
-    tracing::warn!(
-        error = ?error,
+fn map_tenant_context_error(request_context: &rustok_api::RequestContext) -> ServerFnError {
+    tracing::error!(
         owner = PRODUCT_STOREFRONT_CATALOG_OWNER,
         owner_operation = PRODUCT_STOREFRONT_CATALOG_OPERATION,
-        code = "product.storefront_catalog_request_context_unavailable",
+        request_context_present = true,
+        correlation_id_length = request_context.correlation_id.chars().count(),
+        channel_id_present = request_context.channel_id.is_some(),
+        channel_slug_length = request_context
+            .channel_slug
+            .as_deref()
+            .map_or(0, |value| value.chars().count()),
+        locale_length = request_context.locale.chars().count(),
+        code = "product.storefront_catalog_tenant_context_unavailable",
         boundary = PRODUCT_STOREFRONT_CATALOG_BOUNDARY,
-        "optional product storefront catalog request context extraction failed"
+        "product storefront tenant context extraction failed"
     );
-}
-
-#[cfg(feature = "ssr")]
-fn map_tenant_context_error<E: std::fmt::Debug>(
-    request_context: Option<&rustok_api::RequestContext>,
-    error: E,
-) -> ServerFnError {
-    if let Some(request_context) = request_context {
-        tracing::error!(
-            error = ?error,
-            owner = PRODUCT_STOREFRONT_CATALOG_OWNER,
-            owner_operation = PRODUCT_STOREFRONT_CATALOG_OPERATION,
-            correlation_id = %request_context.correlation_id,
-            channel_id = ?request_context.channel_id,
-            channel_slug = ?request_context.channel_slug,
-            locale = %request_context.locale,
-            code = "product.storefront_catalog_tenant_context_unavailable",
-            boundary = PRODUCT_STOREFRONT_CATALOG_BOUNDARY,
-            "product storefront catalog tenant context extraction failed"
-        );
-    } else {
-        tracing::error!(
-            error = ?error,
-            owner = PRODUCT_STOREFRONT_CATALOG_OWNER,
-            owner_operation = PRODUCT_STOREFRONT_CATALOG_OPERATION,
-            code = "product.storefront_catalog_tenant_context_unavailable",
-            boundary = PRODUCT_STOREFRONT_CATALOG_BOUNDARY,
-            "product storefront catalog tenant context extraction failed without request context"
-        );
-    }
     ServerFnError::new("Product catalog context is unavailable")
 }
 
@@ -185,26 +162,21 @@ async fn storefront_catalog_list_native(
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| map_runtime_dependency_error("TransactionalEventBus"))?;
-        let request_context = match leptos_axum::extract::<rustok_api::RequestContext>().await {
-            Ok(request_context) => Some(request_context),
-            Err(error) => {
-                record_optional_request_context_error(error);
-                None
-            }
-        };
+        let request_context = super::native_server_adapter::require_request_context(
+            PRODUCT_STOREFRONT_CATALOG_OPERATION,
+            PRODUCT_STOREFRONT_CATALOG_BOUNDARY,
+        )
+        .await?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(|error| map_tenant_context_error(request_context.as_ref(), error))?;
+            .map_err(|_| map_tenant_context_error(&request_context))?;
         let requested_locale = crate::core::resolve_requested_locale(
             locale,
-            request_context
-                .as_ref()
-                .map(|context| context.locale.as_str()),
+            Some(request_context.locale.as_str()),
             tenant.default_locale.as_str(),
         );
-        let public_channel_slug = request_context
-            .as_ref()
-            .and_then(|context| normalize_public_channel_slug(context.channel_slug.as_deref()));
+        let public_channel_slug =
+            normalize_public_channel_slug(request_context.channel_slug.as_deref());
         let list_query = StorefrontProductListQuery::try_from_transport_with_attribute_filters(
             search,
             category_id,

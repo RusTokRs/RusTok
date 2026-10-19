@@ -51,6 +51,7 @@ pub(crate) async fn setup_with_transport() -> (
 
 pub(crate) async fn create_test_product(catalog: &CatalogService, tenant_id: Uuid) -> (Uuid, Uuid) {
     let input = CreateProductInput {
+        attribute_values: Default::default(),
         translations: vec![ProductTranslationInput {
             locale: "en".to_string(),
             title: "Test Product".to_string(),
@@ -104,6 +105,7 @@ pub(crate) async fn create_test_product_with_seller(
     seller_id: &str,
 ) -> Uuid {
     let input = CreateProductInput {
+        attribute_values: Default::default(),
         translations: vec![ProductTranslationInput {
             locale: "en".to_string(),
             title: "Seller Product".to_string(),

@@ -2505,6 +2505,14 @@ fn map_product_catalog_error(error: rustok_product::CommerceError) -> CommerceEr
         rustok_product::CommerceError::ImageNotFound(id) => {
             CommerceError::Validation(format!("product image not found: {id}"))
         }
+        rustok_product::CommerceError::Conflict(_) => {
+            let error = rustok_core::error::RichError::new(
+                rustok_core::error::ErrorKind::Conflict,
+                "Product request conflicts with the current state",
+            )
+            .with_error_code("PRODUCT_CONFLICT");
+            CommerceError::from(error)
+        }
         rustok_product::CommerceError::Core(error) => CommerceError::Core(error),
     }
 }

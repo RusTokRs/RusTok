@@ -7,7 +7,8 @@ use rustok_ui_core::UiRouteContext;
 use super::leptos::{ProductAttributeValuesSection, ProductVariantAxesSection};
 use crate::catalog_transport;
 use crate::core::{
-    ProductKind, build_product_image_view_models, build_variant_row_view_models, slugify,
+    ProductAttributeEditorState, ProductKind, build_product_image_view_models,
+    build_variant_row_view_models, slugify, validate_editor_variant_draft,
 };
 use crate::model::{
     CatalogCategorySummary, ProductDetail, ProductDraft, ProductEffectiveForm, ProductImageDraft,
@@ -52,6 +53,10 @@ pub fn ProductEditorPage(
     let (tag_input, set_tag_input) = signal(String::new());
     let (tags, set_tags) = signal(Vec::<String>::new());
 
+    // Variant fields retain the exact identity hydrated into these controls.
+    // A later document acknowledgement must not retarget them to another first row.
+    let (variant_target_id, set_variant_target_id) = signal(Option::<String>::None);
+
     // Pricing
     let (currency_code, set_currency_code) = signal("USD".to_string());
     let (amount, set_amount) = signal("0.00".to_string());
@@ -61,6 +66,7 @@ pub fn ProductEditorPage(
     let (sku, set_sku) = signal(String::new());
     let (barcode, set_barcode) = signal(String::new());
     let (inventory_quantity, set_inventory_quantity) = signal(0_i32);
+    let (inventory_quantity_valid, set_inventory_quantity_valid) = signal(true);
     let (inventory_policy, set_inventory_policy) = signal("DENY".to_string());
 
     // Variable Product Specific
@@ -86,6 +92,7 @@ pub fn ProductEditorPage(
 
     // Product state in edit mode
     let (loaded_product, set_loaded_product) = signal(Option::<ProductDetail>::None);
+    let attribute_editor_state = RwSignal::new(ProductAttributeEditorState::default());
 
     // Categories list resource
     let cat_locale = locale.clone();
@@ -196,11 +203,16 @@ pub fn ProductEditorPage(
                     set_active_kind.set(ProductKind::parse(kind_str));
                 }
 
-                // First variant for simple product pricing & stock
+                // Explicitly display/save this exact variant, not a later first row.
+                set_variant_target_id
+                    .set(detail.variants.first().map(|variant| variant.id.clone()));
+                set_amount.set(String::new());
+                set_compare_at_amount.set(String::new());
                 if let Some(variant) = detail.variants.first() {
                     set_sku.set(variant.sku.clone().unwrap_or_default());
                     set_barcode.set(variant.barcode.clone().unwrap_or_default());
                     set_inventory_quantity.set(variant.inventory_quantity);
+                    set_inventory_quantity_valid.set(variant.inventory_quantity >= 0);
                     set_inventory_policy.set(variant.inventory_policy.clone());
                     if let Some(price) = variant.prices.first() {
                         set_currency_code.set(price.currency_code.clone());
@@ -378,6 +390,15 @@ pub fn ProductEditorPage(
     let save_locale = locale.clone();
 
     let save_product = move |target_status: Option<&'static str>| {
+        if is_busy.get_untracked() {
+            return;
+        }
+        if !is_editing && !inventory_quantity_valid.get_untracked() {
+            set_error_msg.set(Some(
+                "Inventory must be a non-negative 32-bit integer.".to_string(),
+            ));
+            return;
+        }
         let t_val = title.get_untracked().trim().to_string();
         if t_val.is_empty() {
             set_error_msg.set(Some(
@@ -400,6 +421,27 @@ pub fn ProductEditorPage(
             .map(|s| s.to_string())
             .unwrap_or_else(|| status.get_untracked());
 
+        let attribute_types = effective_form_resource
+            .get_untracked()
+            .and_then(Result::ok)
+            .flatten()
+            .map(|form| {
+                form.attributes
+                    .into_iter()
+                    .map(|attribute| (attribute.attribute_id, attribute.value_type))
+                    .collect::<std::collections::HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        let attribute_patches = match attribute_editor_state
+            .get_untracked()
+            .patches(save_locale.as_deref(), &attribute_types)
+        {
+            Ok(patches) => patches,
+            Err(message) => {
+                set_error_msg.set(Some(message));
+                return;
+            }
+        };
         set_is_busy.set(true);
         set_error_msg.set(None);
         set_success_msg.set(None);
@@ -417,8 +459,17 @@ pub fn ProductEditorPage(
         let tg = tags.get_untracked();
         let target_status = current_status_val.clone();
 
+        let value_locale = loc.unwrap_or_else(|| "en".to_string());
         let draft = ProductDraft {
-            locale: loc.unwrap_or_else(|| "en".to_string()),
+            attribute_values: if attribute_patches.is_empty() {
+                Vec::new()
+            } else {
+                vec![crate::model::ProductAttributeValueBatchDraft {
+                    locale: value_locale.clone(),
+                    patches: attribute_patches,
+                }]
+            },
+            locale: value_locale,
             title: t_val,
             handle: h_val,
             description: description.get_untracked(),
@@ -435,6 +486,7 @@ pub fn ProductEditorPage(
             amount: amount.get_untracked(),
             compare_at_amount: compare_at_amount.get_untracked(),
             inventory_quantity: inventory_quantity.get_untracked(),
+            inventory_policy: inventory_policy.get_untracked(),
             publish_now: target_status.to_uppercase() == "ACTIVE",
             status: Some(target_status.clone()),
             meta_title: if mt.is_empty() { None } else { Some(mt) },
@@ -454,7 +506,6 @@ pub fn ProductEditorPage(
             };
 
             if let Some(pid) = edit_id_opt {
-                let status_to_change = target_status.clone();
                 let res = catalog_transport::update_product(
                     tok.clone(),
                     ten.clone(),
@@ -465,118 +516,22 @@ pub fn ProductEditorPage(
                 )
                 .await;
 
-                // Also update status to ensure state transition is persisted
-                let status_result = catalog_transport::change_product_status(
-                    tok.clone(),
-                    ten.clone(),
-                    bootstrap.current_tenant.id.clone(),
-                    bootstrap.me.id.clone(),
-                    pid.clone(),
-                    &status_to_change,
-                )
-                .await;
-
-                // Update default variant pricing, stock, SKU, and barcode
-                let mut variant_result = None;
-                if let Some(detail) = loaded_product.get_untracked()
-                    && let Some(variant) = detail.variants.first()
-                {
-                    let cur_sku = sku.get_untracked();
-                    let cur_bc = barcode.get_untracked();
-                    let cur_qty = inventory_quantity.get_untracked();
-                    let cur_cur = currency_code.get_untracked();
-                    let cur_amt = amount.get_untracked();
-                    let cur_comp = compare_at_amount.get_untracked();
-
-                    let v_draft = crate::model::VariantDraft {
-                        sku: if cur_sku.trim().is_empty() {
-                            None
-                        } else {
-                            Some(cur_sku)
-                        },
-                        barcode: if cur_bc.trim().is_empty() {
-                            None
-                        } else {
-                            Some(cur_bc)
-                        },
-                        shipping_profile_slug: None,
-                        axis_values: Vec::new(),
-                        prices: vec![crate::model::VariantPriceDraft {
-                            currency_code: if cur_cur.trim().is_empty() {
-                                "USD".to_string()
-                            } else {
-                                cur_cur
-                            },
-                            amount: if cur_amt.trim().is_empty() {
-                                "0.00".to_string()
-                            } else {
-                                cur_amt
-                            },
-                            compare_at_amount: if cur_comp.trim().is_empty() {
-                                None
-                            } else {
-                                Some(cur_comp)
-                            },
-                        }],
-                        inventory_quantity: Some(cur_qty),
-                        inventory_policy: Some(inventory_policy.get_untracked()),
-                    };
-
-                    variant_result = Some(
-                        catalog_transport::update_product_variant(
-                            tok,
-                            ten,
-                            bootstrap.current_tenant.id,
-                            bootstrap.me.id,
-                            variant.id.clone(),
-                            v_draft,
-                        )
-                        .await,
-                    );
-                }
-
                 set_is_busy.set(false);
                 match res {
-                    Ok(_) => {
-                        let mut secondary_failures = Vec::new();
-                        if let Err(err) = &status_result {
-                            secondary_failures.push(if is_ru {
-                                format!("статус не изменён: {err}")
+                    Ok(saved) => {
+                        // Only the document transaction is acknowledged here. Keep the
+                        // independent Variant controls and their target identity intact.
+                        set_loaded_product.set(Some(saved));
+                        set_status.set(target_status);
+                        attribute_editor_state.update(|state| state.acknowledge());
+                        set_success_msg.set(Some(
+                            if is_ru {
+                                "Документ товара сохранён. Вариант сохраняется отдельно."
                             } else {
-                                format!("the status was not changed: {err}")
-                            });
-                        }
-                        if let Some(Err(err)) = &variant_result {
-                            secondary_failures.push(if is_ru {
-                                format!("вариант не сохранён: {err}")
-                            } else {
-                                format!("the variant was not saved: {err}")
-                            });
-                        }
-
-                        if secondary_failures.is_empty() {
-                            set_success_msg.set(Some(
-                                if is_ru {
-                                    "Товар успешно сохранён"
-                                } else {
-                                    "Product saved successfully"
-                                }
-                                .to_string(),
-                            ));
-                        } else {
-                            set_error_msg.set(Some(if is_ru {
-                                format!(
-                                    "Товар сохранён, но не всё применилось — {}",
-                                    secondary_failures.join("; ")
-                                )
-                            } else {
-                                format!(
-                                    "The product was saved, but not everything was applied — {}",
-                                    secondary_failures.join("; ")
-                                )
-                            }));
-                        }
-                        set_refresh_nonce.update(|n| *n += 1);
+                                "Product document saved. Variant changes are saved separately."
+                            }
+                            .to_string(),
+                        ));
                     }
                     Err(err) => set_error_msg.set(Some(err.to_string())),
                 }
@@ -598,6 +553,113 @@ pub fn ProductEditorPage(
                     }
                     Err(err) => set_error_msg.set(Some(err.to_string())),
                 }
+            }
+        });
+    };
+
+    // Independent command: never invoked by document Save/Publish. Snapshot every
+    // control and the exact target before bootstrap/network IO; do not refetch and
+    // overwrite a dirty Product/EAV draft after this acknowledgement.
+    let save_variant = move |_| {
+        if is_busy.get_untracked() || !is_editing {
+            return;
+        }
+        if !inventory_quantity_valid.get_untracked() {
+            set_error_msg.set(Some(
+                "Inventory must be a non-negative 32-bit integer.".to_string(),
+            ));
+            return;
+        }
+        let Some(target_id) = variant_target_id.get_untracked() else {
+            return;
+        };
+        let target_exists = loaded_product.get_untracked().is_some_and(|product| {
+            product
+                .variants
+                .iter()
+                .any(|variant| variant.id == target_id)
+        });
+        if !target_exists {
+            set_error_msg.set(Some(
+                "The displayed variant is no longer available. Reload the editor.".to_string(),
+            ));
+            return;
+        }
+        let variant_amount = amount.get_untracked();
+        let variant_compare = compare_at_amount.get_untracked();
+        if variant_amount.trim().is_empty() && !variant_compare.trim().is_empty() {
+            set_error_msg.set(Some(
+                "A compare-at amount requires a base price.".to_string(),
+            ));
+            return;
+        }
+        let draft = crate::model::VariantUpdateDraft {
+            sku: crate::model::VariantUpdateDraft::edited_text(sku.get_untracked()),
+            barcode: crate::model::VariantUpdateDraft::edited_text(barcode.get_untracked()),
+            axis_values: Vec::new(),
+            prices: if variant_amount.trim().is_empty() {
+                Vec::new()
+            } else {
+                vec![crate::model::VariantPriceDraft {
+                    currency_code: currency_code.get_untracked(),
+                    amount: variant_amount,
+                    compare_at_amount: Some(variant_compare)
+                        .filter(|value| !value.trim().is_empty()),
+                }]
+            },
+            inventory_quantity: Some(inventory_quantity.get_untracked()),
+            inventory_policy: Some(inventory_policy.get_untracked()),
+            ..Default::default()
+        };
+        if let Err(message) = validate_editor_variant_draft(&draft) {
+            set_error_msg.set(Some(message));
+            return;
+        }
+        let tok = token.get_untracked();
+        let ten = tenant.get_untracked();
+        set_is_busy.set(true);
+        set_error_msg.set(None);
+        set_success_msg.set(None);
+        spawn_local(async move {
+            let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await
+            else {
+                set_is_busy.set(false);
+                set_error_msg.set(Some("Failed to authenticate bootstrap".to_string()));
+                return;
+            };
+            let result = catalog_transport::update_product_variant(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                bootstrap.me.id,
+                target_id,
+                draft,
+            )
+            .await;
+            set_is_busy.set(false);
+            match result {
+                Ok(saved) => {
+                    set_loaded_product.update(|product| {
+                        if let Some(product) = product {
+                            if let Some(variant) = product
+                                .variants
+                                .iter_mut()
+                                .find(|variant| variant.id == saved.id)
+                            {
+                                *variant = saved;
+                            }
+                        }
+                    });
+                    set_success_msg.set(Some(
+                        if is_ru {
+                            "Вариант сохранён. Документ товара не отправлялся."
+                        } else {
+                            "Variant saved. The Product document was not submitted."
+                        }
+                        .to_string(),
+                    ));
+                }
+                Err(error) => set_error_msg.set(Some(error.to_string())),
             }
         });
     };
@@ -662,16 +724,16 @@ pub fn ProductEditorPage(
                         disabled=move || is_busy.get()
                         on:click=move |_| save_product_cb_draft(Some("DRAFT"))
                     >
-                        {if is_ru { "Сохранить черновик" } else { "Save as Draft" }}
+                        {if is_ru { "Сохранить документ как черновик" } else { "Save document as Draft" }}
                     </button>
                     <button
                         type="button"
                         class="h-9 px-4 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition shadow-sm disabled:opacity-50"
                         disabled=move || is_busy.get()
-                        on:click=move |_| save_product_cb_active(Some("ACTIVE"))
+                        on:click=move |_| save_product_cb_active(if is_editing { None } else { Some("ACTIVE") })
                     >
                         {if is_editing {
-                            if is_ru { "Сохранить изменения" } else { "Save Changes" }
+                            if is_ru { "Сохранить документ" } else { "Save document" }
                         } else {
                             if is_ru { "Опубликовать товар" } else { "Publish Product" }
                         }}
@@ -739,6 +801,7 @@ pub fn ProductEditorPage(
             </div>
 
             // Main Two-Column Layout
+            <fieldset class="contents" disabled=move || is_busy.get()>
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                 // Left Column (2 cols)
                 <div class="lg:col-span-2 flex flex-col gap-6">
@@ -826,61 +889,10 @@ pub fn ProductEditorPage(
                             let axes_parent_locale = locale.clone();
                             move || match active_kind.get() {
                             ProductKind::Simple => view! {
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div class="space-y-1.5">
-                                        <label class="text-xs font-medium text-foreground">
-                                            {if is_ru { "Артикул (SKU)" } else { "SKU" }}
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="SKU-1001"
-                                            prop:value=move || sku.get()
-                                            on:input=move |ev| set_sku.set(event_target_value(&ev))
-                                            class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
-                                        />
-                                    </div>
-                                    <div class="space-y-1.5">
-                                        <label class="text-xs font-medium text-foreground">
-                                            {if is_ru { "Штрихкод (Barcode)" } else { "Barcode" }}
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="4600000000000"
-                                            prop:value=move || barcode.get()
-                                            on:input=move |ev| set_barcode.set(event_target_value(&ev))
-                                            class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
-                                        />
-                                    </div>
-                                    <div class="space-y-1.5">
-                                        <label class="text-xs font-medium text-foreground">
-                                            {if is_ru { "Количество на складе" } else { "Stock Quantity" }}
-                                        </label>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            prop:value=move || inventory_quantity.get()
-                                            on:input=move |ev| {
-                                                if let Ok(num) = event_target_value(&ev).parse::<i32>() {
-                                                    set_inventory_quantity.set(num);
-                                                }
-                                            }
-                                            class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
-                                        />
-                                    </div>
-                                    <div class="space-y-1.5">
-                                        <label class="text-xs font-medium text-foreground">
-                                            {if is_ru { "Политика списания" } else { "Inventory Policy" }}
-                                        </label>
-                                        <select
-                                            prop:value=move || inventory_policy.get()
-                                            on:change=move |ev| set_inventory_policy.set(event_target_value(&ev))
-                                            class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
-                                        >
-                                            <option value="DENY">{if is_ru { "Запретить заказ при отсутствии" } else { "Deny when out of stock" }}</option>
-                                            <option value="CONTINUE">{if is_ru { "Разрешить предзаказ" } else { "Allow backorders" }}</option>
-                                        </select>
-                                    </div>
-                                </div>
+                                <p class="text-xs text-muted-foreground">
+                                    {if is_ru { "SKU, остаток и базовые цены находятся в блоке варианта ниже." }
+                                     else { "SKU, stock and base prices are in the Variant card below." }}
+                                </p>
                             }.into_any(),
 
                             ProductKind::Variable => view! {
@@ -1065,8 +1077,79 @@ pub fn ProductEditorPage(
                     // Pricing Card
                     <div class="bg-card rounded-2xl border border-border p-5 shadow-sm space-y-4">
                         <h2 class="text-sm font-semibold text-foreground border-b border-border pb-2.5">
-                            {if is_ru { "Цены и валюта" } else { "Pricing & Valuation" }}
+                            {if is_ru { "Вариант: SKU, остаток и базовые цены" } else { "Variant SKU, Stock & Base Prices" }}
                         </h2>
+                        {is_editing.then(|| view! {
+                            <div class="space-y-2 text-xs text-muted-foreground">
+                                <p>{if is_ru { "Цены, SKU, штрихкод и остаток сохраняются отдельной командой, не кнопками документа. Пустая цена оставляет базовые цены без изменений." }
+                                    else { "Price, SKU, barcode and stock use a separate command, not document Save/Publish. An empty price leaves base prices unchanged." }}</p>
+                                <p>{if is_ru { "Вариант: " } else { "Variant target: " }}
+                                    <code>{move || variant_target_id.get().unwrap_or_else(|| "—".to_string())}</code>
+                                </p>
+                                <button type="button"
+                                    class="h-9 px-3 rounded-xl border border-border text-foreground disabled:opacity-50"
+                                    disabled=move || is_busy.get() || variant_target_id.get().is_none()
+                                    on:click=save_variant>
+                                    {if is_ru { "Сохранить только этот вариант" } else { "Save only this variant" }}
+                                </button>
+                            </div>
+                        })}
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="space-y-1.5">
+                                <label class="text-xs font-medium text-foreground">
+                                    {if is_ru { "Артикул (SKU)" } else { "SKU" }}
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="SKU-1001"
+                                    prop:value=move || sku.get()
+                                    on:input=move |ev| set_sku.set(event_target_value(&ev))
+                                    class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
+                                />
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="text-xs font-medium text-foreground">
+                                    {if is_ru { "Штрихкод (Barcode)" } else { "Barcode" }}
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="4600000000000"
+                                    prop:value=move || barcode.get()
+                                    on:input=move |ev| set_barcode.set(event_target_value(&ev))
+                                    class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
+                                />
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="text-xs font-medium text-foreground">
+                                    {if is_ru { "Количество на складе" } else { "Stock Quantity" }}
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    prop:value=move || inventory_quantity.get()
+                                    on:input=move |ev| {
+                                        if let Ok(num) = event_target_value(&ev).parse::<i32>() {
+                                            set_inventory_quantity.set(num);
+                                        }
+                                    }
+                                    class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
+                                />
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="text-xs font-medium text-foreground">
+                                    {if is_ru { "Политика списания" } else { "Inventory Policy" }}
+                                </label>
+                                <select
+                                    prop:value=move || inventory_policy.get()
+                                    on:change=move |ev| set_inventory_policy.set(event_target_value(&ev))
+                                    class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
+                                >
+                                    <option value="DENY">{if is_ru { "Запретить заказ при отсутствии" } else { "Deny when out of stock" }}</option>
+                                    <option value="CONTINUE">{if is_ru { "Разрешить предзаказ" } else { "Allow backorders" }}</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div class="space-y-1.5">
                                 <label class="text-xs font-medium text-foreground">
@@ -1322,19 +1405,17 @@ pub fn ProductEditorPage(
                             }}
                         </div>
 
-                        {current_edit_id.clone().map(|pid| {
-                            let section_locale = locale.clone();
-                            let refresh_after_attributes = set_refresh_nonce;
-                            view! {
-                                <div class="md:col-span-2">
-                                    <ProductAttributeValuesSection
-                                        product_id=pid
-                                        locale=section_locale
-                                        on_saved=Callback::new(move |_| refresh_after_attributes.update(|n| *n += 1))
-                                    />
-                                </div>
-                            }
-                        })}
+                        <div class="md:col-span-2">
+                            <ProductAttributeValuesSection
+                                product_id=current_edit_id.clone()
+                                locale=locale.clone()
+                                effective_form=effective_form_resource
+                                editor_state=attribute_editor_state
+                                owner_busy=is_busy
+                                owner_refresh_nonce=refresh_nonce
+                                on_saved=Callback::new(move |_| set_refresh_nonce.update(|n| *n += 1))
+                            />
+                        </div>
 
                         <div class="space-y-1.5">
                             <label class="text-xs font-medium text-foreground">
@@ -1477,6 +1558,7 @@ pub fn ProductEditorPage(
                     </div>
                 </div>
             </div>
+            </fieldset>
         </div>
     }
 }

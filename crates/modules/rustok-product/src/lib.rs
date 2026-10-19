@@ -23,13 +23,14 @@ pub mod error;
 pub mod fulfillment;
 mod image_translation_progress_target;
 mod image_translation_target;
-mod media_asset_read_port;
+mod media_reference;
 pub mod migrations;
 pub mod ports;
 mod public_error;
 mod runtime;
 mod seo_targets;
 pub mod services;
+mod shipping_profile;
 mod storefront_http_read_port;
 mod storefront_tag_read_port;
 mod translation_target;
@@ -50,10 +51,11 @@ pub use catalog_schema_write_port::{
 pub use error::{CommerceError, CommerceResult};
 pub use fulfillment::ProductFulfillmentRequirement;
 pub use image_translation_progress_target::ProductImageTranslationTargetProvider;
-pub use media_asset_read_port::{
-    ENSURE_PRODUCT_IMAGE_MEDIA_ASSET_OPERATION, PRODUCT_MEDIA_ASSET_VALIDATION_DEADLINE,
-    ProductMediaAssetReadPort, ProductMediaReferencePolicy, ProductMediaValidatedCommandPort,
-    product_media_asset_validation_context,
+pub use media_reference::{
+    ProductMediaAuditIssue, ProductMediaAuditPage, ProductMediaBackfillPage,
+    ProductMediaMaintenancePort, ProductMediaReference, ProductMediaReferencePage,
+    ProductMediaReferencePolicy, ProductMediaReferencePort, ProductMediaReleasePage,
+    ProductMediaReleaseReport, ProductMediaReleaseStatus, process_product_media_releases,
 };
 pub use ports::*;
 pub use public_error::{ProductPublicError, map_product_public_error};
@@ -105,6 +107,7 @@ pub use services::{
     product_attribute_localized_text_expr, product_attribute_localized_text_term,
     product_attribute_option_term, product_attribute_text_term,
 };
+pub use shipping_profile::ProductShippingProfilePort;
 pub use storefront_http_read_port::{
     LegacyStorefrontHttpProductsRequest, ProductStorefrontHttpReadPort,
 };

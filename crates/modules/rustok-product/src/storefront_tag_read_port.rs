@@ -6,6 +6,8 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::ports::{product_owner_error_facts, product_port_context_facts};
+
 use crate::{CatalogService, CommerceError, entities};
 
 const HYDRATE_STOREFRONT_PRODUCT_TAGS_OPERATION: &str = "hydrate_storefront_product_tags";
@@ -66,11 +68,12 @@ impl ProductStorefrontTagReadPort for CatalogService {
                 tag_error_to_port_error(&context, owner_operation, CommerceError::Database(error))
             })?;
         if products.len() != request.product_ids.len() {
+            let context_facts = product_port_context_facts(&context);
             tracing::error!(
                 requested = request.product_ids.len(),
                 found = products.len(),
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
+                correlation_id_length = context_facts.correlation_id_length,
+                tenant_id_length = context_facts.tenant_id_length,
                 operation = owner_operation,
                 code = "product.storefront_tag_product_missing",
                 "Storefront tag hydration Product page contains an owner-missing identity"
@@ -153,13 +156,14 @@ fn require_tag_read_context(
     context
         .require_policy(PortCallPolicy::read())
         .map_err(|error| {
+            let context_facts = product_port_context_facts(context);
             tracing::warn!(
-                internal_code = %error.code,
-                internal_message = %error.message,
+                owner_code_length = error.code.chars().count(),
+                owner_message_length = error.message.chars().count(),
                 kind = ?error.kind,
                 retryable = error.retryable,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
+                correlation_id_length = context_facts.correlation_id_length,
+                tenant_id_length = context_facts.tenant_id_length,
                 operation = owner_operation,
                 code = "product.storefront_tag_context_invalid",
                 "Product Storefront tag read context was rejected"
@@ -191,11 +195,11 @@ fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        let context_facts = product_port_context_facts(context);
         tracing::warn!(
-            error = ?error,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
+            correlation_id_length = context_facts.correlation_id_length,
+            tenant_id_length = context_facts.tenant_id_length,
             operation = owner_operation,
             code = "product.tenant_id_invalid",
             "Product Storefront tag tenant context is invalid"
@@ -213,9 +217,10 @@ fn tag_validation_error(
     code: &'static str,
     message: &'static str,
 ) -> PortError {
+    let context_facts = product_port_context_facts(context);
     tracing::warn!(
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
+        correlation_id_length = context_facts.correlation_id_length,
+        tenant_id_length = context_facts.tenant_id_length,
         operation = owner_operation,
         code,
         "Product Storefront tag hydration request was rejected"
@@ -228,16 +233,25 @@ fn tag_error_to_port_error(
     owner_operation: &'static str,
     error: CommerceError,
 ) -> PortError {
+    let error_facts = product_owner_error_facts(&error);
     let code = match &error {
         CommerceError::Database(_) => "product.database_unavailable",
         CommerceError::Validation(_) => "product.validation",
         CommerceError::ProductNotFound(_) => "product.product_not_found",
+        CommerceError::Core(error) => crate::error::core_error_code(error),
+        CommerceError::Conflict(_) => "product.conflict",
         _ => "product.invariant_violation",
     };
+    let context_facts = product_port_context_facts(context);
     tracing::error!(
-        error = ?error,
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
+        error_variant = error_facts.error_variant,
+        text_field_count = error_facts.text_field_count,
+        text_total_length = error_facts.text_total_length,
+        uuid_field_count = error_facts.uuid_field_count,
+        uuid_non_nil_count = error_facts.uuid_non_nil_count,
+        opaque_payload_present = error_facts.opaque_payload_present,
+        correlation_id_length = context_facts.correlation_id_length,
+        tenant_id_length = context_facts.tenant_id_length,
         operation = owner_operation,
         code,
         "Product Storefront tag owner read failed"
@@ -254,9 +268,78 @@ fn tag_error_to_port_error(
         CommerceError::ProductNotFound(_) => {
             PortError::not_found("product.product_not_found", "product was not found")
         }
+        CommerceError::Core(error) => crate::error::core_port_error(&error),
+        CommerceError::Conflict(_) => PortError::conflict(
+            "product.conflict",
+            "product request conflicts with the current state",
+        ),
         _ => PortError::invariant_violation(
             "product.invariant_violation",
             "product tag projection could not be completed safely",
         ),
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_policy_tests {
+    use super::*;
+
+    #[test]
+    fn tag_context_rejection_keeps_deadline_and_tenant_policy_without_payload() {
+        let context = PortContext::new(
+            "private-invalid-tenant",
+            rustok_api::PortActor::system(),
+            "private-locale",
+            "private-correlation",
+        );
+        let deadline = require_tag_read_context(&context, "scenario").unwrap_err();
+        assert_eq!(deadline.kind, PortErrorKind::Timeout);
+        assert!(deadline.retryable);
+        assert!(!deadline.message.contains("private-"));
+        let context = context.with_deadline(std::time::Duration::from_secs(1));
+        assert!(require_tag_read_context(&context, "scenario").is_ok());
+        let tenant = parse_tenant_id(&context, "scenario").unwrap_err();
+        assert_eq!(tenant.kind, PortErrorKind::Validation);
+        assert_eq!(tenant.code, "product.tenant_id_invalid");
+        assert!(!tenant.retryable);
+        assert!(!tenant.message.contains("private-"));
+    }
+
+    #[test]
+    fn tag_owner_errors_keep_nested_classification_retryability_and_safe_copy() {
+        use rustok_core::error::Error as CoreError;
+        let context = PortContext::new(
+            "private-tenant",
+            rustok_api::PortActor::system(),
+            "private-locale",
+            "private-correlation",
+        );
+        for (error, kind, retryable) in [
+            (
+                CommerceError::Core(CoreError::External("private-payload".into())),
+                PortErrorKind::Unavailable,
+                true,
+            ),
+            (
+                CommerceError::Core(CoreError::Forbidden("private-payload".into())),
+                PortErrorKind::Forbidden,
+                false,
+            ),
+            (
+                CommerceError::Core(CoreError::Internal("private-payload".into())),
+                PortErrorKind::InvariantViolation,
+                false,
+            ),
+            (
+                CommerceError::Conflict("private-payload".into()),
+                PortErrorKind::Conflict,
+                false,
+            ),
+        ] {
+            let mapped = tag_error_to_port_error(&context, "scenario", error);
+            assert_eq!(mapped.kind, kind);
+            assert_eq!(mapped.retryable, retryable);
+            assert!(!format!("{mapped}").contains("private-"));
+        }
     }
 }

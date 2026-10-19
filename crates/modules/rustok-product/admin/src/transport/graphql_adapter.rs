@@ -1,12 +1,9 @@
-#![allow(dead_code)]
-
 use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql, graphql_url};
-use rustok_ui_core::normalize_ui_text as optional_text;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
     CatalogCategoryList, ProductAdminBootstrap, ProductAttributeList, ProductAttributeSchemaList,
-    ProductAttributeValueItem, ProductDetail, ProductDraft, ProductEffectiveForm, ProductList,
+    ProductAttributeValueItem, ProductDetail, ProductEffectiveForm, ProductList,
     ProductPricingDetail, ShippingProfileList,
 };
 
@@ -23,10 +20,6 @@ const CATALOG_CATEGORIES_QUERY: &str = "query ProductAdminCatalogCategories($ten
 const ATTRIBUTE_SCHEMAS_QUERY: &str = "query ProductAdminAttributeSchemas($tenantId: UUID!, $locale: String!) { productAttributeSchemas(tenantId: $tenantId, locale: $locale) { total items { id code name } } }";
 const EFFECTIVE_FORM_QUERY: &str = "query ProductAdminEffectiveForm($tenantId: UUID!, $productId: UUID, $categoryId: UUID, $locale: String!) { productEffectiveForm(tenantId: $tenantId, productId: $productId, categoryId: $categoryId, locale: $locale) { categoryId detachedAttributeIds attributes { attributeId code label valueType isLocalized options { id code label position } groupCode groupLabel isRequired isDisabled position source variantAxisPolicy defaultVariantAxis } } }";
 const ATTRIBUTE_VALUES_QUERY: &str = "query ProductAdminAttributeValues($tenantId: UUID!, $productId: UUID!, $locale: String!) { productAttributeValues(tenantId: $tenantId, productId: $productId, locale: $locale) { attributeId kind text integer decimal boolean date datetime optionId optionIds json detached } }";
-const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($input: CreateProductInput!) { createProduct(input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } } }";
-const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($id: UUID!, $input: UpdateProductInput!) { updateProduct(id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } } }";
-const DELETE_PRODUCT_MUTATION: &str =
-    "mutation ProductAdminDeleteProduct($id: UUID!) { deleteProduct(id: $id) }";
 
 #[derive(Debug, Deserialize)]
 struct BootstrapResponse {
@@ -87,38 +80,10 @@ struct AttributeValuesResponse {
     product_attribute_values: Vec<ProductAttributeValueItem>,
 }
 
-#[derive(Debug, Deserialize)]
-struct CreateProductResponse {
-    #[serde(rename = "createProduct")]
-    create_product: ProductDetail,
-}
-
-#[derive(Debug, Deserialize)]
-struct UpdateProductResponse {
-    #[serde(rename = "updateProduct")]
-    update_product: ProductDetail,
-}
-
-#[derive(Debug, Deserialize)]
-struct DeleteProductResponse {
-    #[serde(rename = "deleteProduct")]
-    delete_product: bool,
-}
-
 #[derive(Debug, Serialize)]
 struct TenantScopedVariables<T> {
     #[serde(rename = "tenantId")]
     tenant_id: String,
-    #[serde(flatten)]
-    extra: T,
-}
-
-#[derive(Debug, Serialize)]
-struct TenantUserScopedVariables<T> {
-    #[serde(rename = "tenantId")]
-    tenant_id: String,
-    #[serde(rename = "userId")]
-    user_id: String,
     #[serde(flatten)]
     extra: T,
 }
@@ -171,22 +136,6 @@ struct AttributeValuesVariables {
 }
 
 #[derive(Debug, Serialize)]
-struct ProductIdVariables {
-    id: String,
-}
-
-#[derive(Debug, Serialize)]
-struct CreateProductVariables {
-    input: CreateProductInput,
-}
-
-#[derive(Debug, Serialize)]
-struct UpdateProductVariables {
-    id: String,
-    input: UpdateProductInput,
-}
-
-#[derive(Debug, Serialize)]
 struct ProductsFilter {
     status: Option<String>,
     vendor: Option<String>,
@@ -203,96 +152,6 @@ struct ShippingProfilesFilter {
     page: Option<u64>,
     #[serde(rename = "perPage")]
     per_page: Option<u64>,
-}
-
-#[derive(Debug, Serialize)]
-struct CreateProductInput {
-    translations: Vec<ProductTranslationInput>,
-    #[serde(rename = "variantAxes", skip_serializing_if = "Option::is_none")]
-    variant_axes: Option<Vec<VariantAxisInput>>,
-    variants: Vec<CreateVariantInput>,
-    #[serde(rename = "sellerId")]
-    seller_id: Option<String>,
-    vendor: Option<String>,
-    #[serde(rename = "productType")]
-    product_type: Option<String>,
-    #[serde(rename = "shippingProfileSlug")]
-    shipping_profile_slug: Option<String>,
-    #[serde(rename = "primaryCategoryId")]
-    primary_category_id: Option<String>,
-    tags: Option<Vec<String>>,
-    publish: Option<bool>,
-}
-
-#[derive(Debug, Serialize)]
-struct UpdateProductInput {
-    translations: Option<Vec<ProductTranslationInput>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    revision: Option<i32>,
-    #[serde(rename = "sellerId")]
-    seller_id: Option<String>,
-    vendor: Option<String>,
-    #[serde(rename = "productType")]
-    product_type: Option<String>,
-    #[serde(rename = "shippingProfileSlug")]
-    shipping_profile_slug: Option<String>,
-    #[serde(rename = "primaryCategoryId")]
-    primary_category_id: Option<String>,
-    tags: Option<Vec<String>>,
-    status: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct ProductTranslationInput {
-    locale: String,
-    title: String,
-    handle: Option<String>,
-    description: Option<String>,
-    #[serde(rename = "metaTitle")]
-    meta_title: Option<String>,
-    #[serde(rename = "metaDescription")]
-    meta_description: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct VariantAxisInput {
-    #[serde(rename = "attributeId")]
-    attribute_id: String,
-    position: Option<i32>,
-    #[serde(rename = "allowedOptionIds", skip_serializing_if = "Option::is_none")]
-    allowed_option_ids: Option<Vec<String>>,
-}
-
-#[derive(Debug, Serialize)]
-struct VariantAxisValueInput {
-    #[serde(rename = "attributeId")]
-    attribute_id: String,
-    #[serde(rename = "optionId")]
-    option_id: String,
-}
-
-#[derive(Debug, Serialize)]
-struct CreateVariantInput {
-    sku: Option<String>,
-    barcode: Option<String>,
-    #[serde(rename = "shippingProfileSlug")]
-    shipping_profile_slug: Option<String>,
-    #[serde(rename = "axisValues", skip_serializing_if = "Option::is_none")]
-    axis_values: Option<Vec<VariantAxisValueInput>>,
-    prices: Vec<PriceInput>,
-    #[serde(rename = "inventoryQuantity")]
-    inventory_quantity: Option<i32>,
-    #[serde(rename = "inventoryPolicy")]
-    inventory_policy: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct PriceInput {
-    #[serde(rename = "currencyCode")]
-    currency_code: String,
-    amount: String,
-    #[serde(rename = "compareAtAmount")]
-    compare_at_amount: Option<String>,
 }
 
 async fn request<V, T>(
@@ -539,172 +398,4 @@ pub(super) async fn fetch_product_attribute_values(
     )
     .await?;
     Ok(response.product_attribute_values)
-}
-
-pub(super) async fn create_product(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    draft: ProductDraft,
-) -> Result<ProductDetail, ApiError> {
-    let response: CreateProductResponse = request(
-        CREATE_PRODUCT_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: CreateProductVariables {
-                input: build_create_product_input(draft),
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.create_product)
-}
-
-pub(super) async fn update_product(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    id: String,
-    draft: ProductDraft,
-) -> Result<ProductDetail, ApiError> {
-    let response: UpdateProductResponse = request(
-        UPDATE_PRODUCT_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: UpdateProductVariables {
-                id,
-                input: UpdateProductInput {
-                    translations: Some(vec![build_translation_input(&draft)]),
-                    revision: draft.revision,
-                    seller_id: optional_text(draft.seller_id.as_str()),
-                    vendor: optional_text(draft.vendor.as_str()),
-                    product_type: optional_text(draft.product_type.as_str()),
-                    shipping_profile_slug: draft.shipping_profile_slug.clone(),
-                    primary_category_id: draft.primary_category_id.clone(),
-                    tags: if draft.tags.is_empty() {
-                        None
-                    } else {
-                        Some(draft.tags.clone())
-                    },
-                    status: draft.status.clone(),
-                },
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.update_product)
-}
-
-pub(super) async fn change_product_status(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    id: String,
-    status: &str,
-) -> Result<ProductDetail, ApiError> {
-    let response: UpdateProductResponse = request(
-        UPDATE_PRODUCT_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: UpdateProductVariables {
-                id,
-                input: UpdateProductInput {
-                    translations: None,
-                    revision: None,
-                    seller_id: None,
-                    vendor: None,
-                    product_type: None,
-                    shipping_profile_slug: None,
-                    primary_category_id: None,
-                    tags: None,
-                    status: Some(status.to_string()),
-                },
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.update_product)
-}
-
-pub(super) async fn delete_product(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    id: String,
-) -> Result<bool, ApiError> {
-    let response: DeleteProductResponse = request(
-        DELETE_PRODUCT_MUTATION,
-        Some(TenantUserScopedVariables {
-            tenant_id,
-            user_id,
-            extra: ProductIdVariables { id },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.delete_product)
-}
-
-fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
-    CreateProductInput {
-        translations: vec![build_translation_input(&draft)],
-        variant_axes: None,
-        variants: vec![CreateVariantInput {
-            sku: optional_text(draft.sku.as_str()),
-            barcode: optional_text(draft.barcode.as_str()),
-            shipping_profile_slug: None,
-            axis_values: None,
-            prices: vec![PriceInput {
-                currency_code: if draft.currency_code.trim().is_empty() {
-                    "USD".to_string()
-                } else {
-                    draft.currency_code.trim().to_uppercase()
-                },
-                amount: if draft.amount.trim().is_empty() {
-                    "0.00".to_string()
-                } else {
-                    draft.amount.trim().to_string()
-                },
-                compare_at_amount: optional_text(draft.compare_at_amount.as_str()),
-            }],
-            inventory_quantity: Some(draft.inventory_quantity),
-            inventory_policy: Some("deny".to_string()),
-        }],
-        seller_id: optional_text(draft.seller_id.as_str()),
-        vendor: optional_text(draft.vendor.as_str()),
-        product_type: optional_text(draft.product_type.as_str()),
-        shipping_profile_slug: draft.shipping_profile_slug,
-        primary_category_id: draft.primary_category_id,
-        tags: if draft.tags.is_empty() {
-            None
-        } else {
-            Some(draft.tags.clone())
-        },
-        publish: Some(draft.publish_now),
-    }
-}
-
-fn build_translation_input(draft: &ProductDraft) -> ProductTranslationInput {
-    ProductTranslationInput {
-        locale: draft.locale.clone(),
-        title: draft.title.trim().to_string(),
-        handle: optional_text(draft.handle.as_str()),
-        description: optional_text(draft.description.as_str()),
-        meta_title: draft.meta_title.clone(),
-        meta_description: draft.meta_description.clone(),
-    }
 }

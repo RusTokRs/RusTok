@@ -31,7 +31,7 @@ export interface PricingPrice {
   currencyCode: string;
   amount: string;
   compareAtAmount?: string | null;
-  discountPercent?: number | null;
+  discountPercent?: string | null;
   onSale: boolean;
 }
 
@@ -39,7 +39,7 @@ export interface PricingEffectivePrice {
   currencyCode: string;
   amount: string;
   compareAtAmount?: string | null;
-  discountPercent?: number | null;
+  discountPercent?: string | null;
   onSale: boolean;
   regionId?: string | null;
   priceListId?: string | null;
@@ -52,7 +52,7 @@ export interface PricingEffectivePrice {
 export interface PricingVariant {
   id: string;
   title: string;
-  sku: string;
+  sku: string | null;
   prices: PricingPrice[];
   effectivePrice?: PricingEffectivePrice | null;
 }

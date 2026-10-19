@@ -76,5 +76,5 @@ pub use index_refresh_relay::{
 };
 
 pub(crate) use write_transaction::{
-    fail_product_operation_receipt, with_product_operation_receipt,
+    fail_product_operation_receipt, is_terminal_product_failure, with_product_operation_receipt,
 };

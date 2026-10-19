@@ -111,6 +111,8 @@ impl QueryGraphqlMessage for PricingGraphqlMessage {
                 true,
             ),
         };
+        // Preserve owner retryability even for domain kinds; do not invent a terminal outcome.
+        let retryable = retryable || self.error.retryable;
         let owner_message_present = !self.error.message.is_empty();
         let owner_message_length = self.error.message.chars().count();
         let diagnostic_error = PricingQueryDiagnosticError;

@@ -19,3 +19,7 @@ pub use product_variant::Entity as ProductVariant;
 pub use product_variant_axis::Entity as ProductVariantAxis;
 pub use product_variant_axis_value::Entity as ProductVariantAxisValue;
 pub use variant_translation::Entity as VariantTranslation;
+
+pub mod product_image_media_coverage;
+pub mod product_media_release;
+pub mod product_media_retention_readiness;

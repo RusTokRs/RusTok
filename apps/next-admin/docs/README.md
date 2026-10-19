@@ -109,3 +109,45 @@ Local documentation for `apps/next-admin`.
 - [Deprecated Clerk starter reference](./clerk_setup.md) — not an active RusTok auth contract.
 - [Themes](./themes.md)
 - [Documentation Map](../../../docs/index.md)
+
+### Product editorial transaction
+
+The Product host save action forwards typed locale/value batches in the existing create/update
+input. It must not issue a subsequent value-save request or compensate create with deletion.
+Publication, document/category changes, values and the success receipt belong to one Product owner
+transaction. Source cutover is covered by `verify:product:atomic-save`; browser/backend execution
+remains pending in the Product owner plan. Save/status/delete retain a durable browser-local
+immutable request and key through unknown outcomes;
+Variant/Image/Relation/Bundle callbacks do not yet have that retry lifecycle.
+
+### Product write acknowledgement and Apollo
+
+The shared GraphQL executor uses Apollo 4 `CombinedGraphQLErrors.errors` with `errorPolicy: all`
+and preserves bounded `code`, `retryable` and `outcome` extensions; partial data with an error is
+not success. Product Server Actions serialize confirmed/rejected/unknown outcomes instead of
+relying on exception text surviving production redaction. Only receipt-finalized domain refusals
+marked `outcome: rejected` can release a retained attempt. A generic nonretryable admission or
+context error is not a decision about an earlier uncertain commit.
+
+Editorial attempts bind the authenticated tenant/actor snapshot and a caller UUID. Server-side
+scope changes do not forward a retry under another identity. Successful owner acknowledgement
+survives cache-invalidation failure. The editor keeps its document predecessor until its own
+confirmed write; router prop refreshes do not silently rebase dirty fields. Child/portal callbacks
+are guarded while an editorial attempt is unresolved. Initial money/GraphQL Int admission happens
+before retaining the command, leaving invalid scalar drafts editable.
+
+Recovery uses the module-owned `editor_intent` URL UUID, localStorage journal and exclusive Web
+Locks in a secure context. Requests persist before IO; explicit retry dispatches the original
+operation without validating current fields. Duplicated URLs share an intent and reread its record
+under the lock. Pending requests have no automatic expiry; terminal outcomes retain body-free
+tombstones and cannot silently become new creates. Storage/lock/identity errors fail closed.
+
+The host passes the route resource explicitly, keys mounts by scope/resource/intent and mounts
+recovery-only UI for missing Product reads with a valid intent (including a lost delete response).
+No replacement draft is enabled there. Confirmed continuation opens a fresh document under a new
+intent; a refused draft can explicitly rotate intent without sending or rebasing fields.
+
+This is an origin-local plaintext Product draft projection, never token storage or owner authority.
+Browser clearing/eviction, cross-device recovery and owner receipt retention are not guaranteed;
+never clear storage to resolve an uncertain operation. Actual browser/real-backend execution and
+retained identities for child mutations remain open. See the Product write boundary and owner plan.

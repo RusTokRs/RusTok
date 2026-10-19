@@ -26,8 +26,17 @@ fn validate_tenant_locale(locale: &str) -> Result<(), ValidationError> {
     }
 }
 
+/// Typed value edits composed into the catalog owner transaction, not a nested command.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ProductAttributeValueBatch {
+    pub locale: String,
+    pub patches: Vec<crate::services::ProductAttributeValuePatch>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, Validate)]
 pub struct CreateProductInput {
+    #[serde(default)]
+    pub attribute_values: Vec<ProductAttributeValueBatch>,
     #[validate(length(min = 1, message = "At least one translation required"))]
     #[validate(nested)]
     pub translations: Vec<ProductTranslationInput>,
@@ -75,6 +84,8 @@ pub struct ProductTranslationInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, Validate)]
 pub struct UpdateProductInput {
+    #[serde(default)]
+    pub attribute_values: Vec<ProductAttributeValueBatch>,
     #[validate(nested)]
     pub translations: Option<Vec<ProductTranslationInput>>,
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
@@ -109,7 +120,8 @@ impl UpdateProductInput {
     /// Lifecycle-only writes (`status`) are repeatable state transitions; every other field is an
     /// editorial change and therefore needs the predecessor revision of the document that was read.
     pub fn changes_document(&self) -> bool {
-        self.translations.is_some()
+        !self.attribute_values.is_empty()
+            || self.translations.is_some()
             || self.tags.is_some()
             || self.metadata.is_some()
             || self.seller_id.is_changed()

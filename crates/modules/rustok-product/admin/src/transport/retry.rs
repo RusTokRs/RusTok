@@ -9,7 +9,7 @@ use crate::lifecycle_retry_identity::{
 };
 use crate::model::{
     ProductDetail, ProductDraft, ProductImage, ProductImageDraft, ProductVariant,
-    UpdateProductImageDraft, VariantDraft,
+    UpdateProductImageDraft, VariantDraft, VariantUpdateDraft,
 };
 
 type RetryIdentity = ProductAdminLifecycleRetryIdentity<String>;
@@ -291,20 +291,28 @@ pub(crate) async fn create_product_variant(
     result
 }
 
+fn variant_update_intent(
+    tenant_id: &str,
+    user_id: &str,
+    variant_id: &str,
+    draft: &VariantUpdateDraft,
+) -> String {
+    format!(
+        "operation=update-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?};draft={draft:?}"
+    )
+}
+
 pub(crate) async fn update_product_variant(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
     user_id: String,
     variant_id: String,
-    draft: VariantDraft,
+    draft: VariantUpdateDraft,
 ) -> Result<ProductVariant, GraphqlHttpError> {
     let operation = ProductAdminLifecycleOperation::UpdateVariant;
     let slot = lifecycle_slot(operation, &tenant_id, &user_id, Some(&variant_id));
-    let intent = format!(
-        "operation=update-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?};sku={:?}",
-        draft.sku
-    );
+    let intent = variant_update_intent(&tenant_id, &user_id, &variant_id, &draft);
     let idempotency_key = retained_caller_key(&slot, operation, intent);
     let result = product_lifecycle_graphql::update_product_variant(
         token,
@@ -469,4 +477,57 @@ pub(crate) async fn reorder_product_images(
         mark_lifecycle_succeeded(&slot);
     }
     result
+}
+
+#[cfg(test)]
+mod variant_retry_tests {
+    use super::*;
+    use rustok_api::Patch;
+
+    #[test]
+    fn retries_reuse_identical_intent_but_rotate_for_non_sku_edits_and_clears() {
+        let operation = ProductAdminLifecycleOperation::UpdateVariant;
+        let mut identity = RetryIdentity::default();
+        let mut draft = VariantUpdateDraft::default();
+        let original = variant_update_intent("tenant", "actor", "variant", &draft);
+        let key = identity.idempotency_key_for(operation, &original);
+        assert_eq!(key, identity.idempotency_key_for(operation, &original));
+        draft.barcode = Patch::Clear;
+        let clear = variant_update_intent("tenant", "actor", "variant", &draft);
+        assert_ne!(key, identity.idempotency_key_for(operation, &clear));
+        let previous = clear;
+        draft.shipping_profile_slug = Patch::Set("parcel".into());
+        assert_ne!(
+            previous,
+            variant_update_intent("tenant", "actor", "variant", &draft)
+        );
+        let previous = variant_update_intent("tenant", "actor", "variant", &draft);
+        draft.weight = Patch::Clear;
+        assert_ne!(
+            previous,
+            variant_update_intent("tenant", "actor", "variant", &draft)
+        );
+        let previous = variant_update_intent("tenant", "actor", "variant", &draft);
+        draft.weight_unit = Patch::Set("kg".into());
+        assert_ne!(
+            previous,
+            variant_update_intent("tenant", "actor", "variant", &draft)
+        );
+        let previous = variant_update_intent("tenant", "actor", "variant", &draft);
+        draft.inventory_quantity = Some(3);
+        assert_ne!(
+            previous,
+            variant_update_intent("tenant", "actor", "variant", &draft)
+        );
+        let previous = variant_update_intent("tenant", "actor", "variant", &draft);
+        draft.prices.push(crate::model::VariantPriceDraft {
+            amount: "1".into(),
+            currency_code: "USD".into(),
+            compare_at_amount: None,
+        });
+        assert_ne!(
+            previous,
+            variant_update_intent("tenant", "actor", "variant", &draft)
+        );
+    }
 }

@@ -50,24 +50,35 @@ canonical large-module reference:
    A bounded ownership/public-API migration is required before other modules copy this layout.
 
 2. **Nullable mutation semantics**
-   - `UpdateProductInput` uses `Option<T>` for nullable owner fields such as seller, vendor,
-     product type, shipping profile, and primary category.
-   - Several update branches therefore cannot represent `Keep / Set / Clear` unambiguously.
-   Product must adopt explicit patch semantics before it becomes the large mutation reference.
+   - Product document nullable fields now use `Patch<T>` (`Keep / Set / Clear`).
+   - Variant nullable fields now use owner `Patch<T>` through GraphQL, Next and Leptos update
+     drafts. Keep is omitted, Clear writes NULL, Set preserves values; the obsolete foundation
+     update DTO is removed. See [nullable Variant patches](./variant-nullable-patches.md).
+     Source invariants pass; compilation, mounted UI/GraphQL and SQLite/PostgreSQL gates remain open.
 
 3. **Business optimistic concurrency**
-   - the Product aggregate has no edit predecessor `version`/business revision;
-   - `CatalogService::update_product` loads the current row and performs an unconstrained
-     ActiveModel update;
-   - Product/Variant `index_revision` is an Index source watermark and must not be repurposed as
-     the editor/business CAS token.
-   A dedicated owner revision and predecessor-bound mutation contract are required.
+   - Product now owns an editorial `revision`; document updates compare the caller predecessor
+     after taking the Product lock. External document updates require the revision at ingress.
+   - `None` remains the documented owner-internal unconditional mode; lifecycle-only updates may
+     omit it. A supplied revision is still checked, including before same-status no-ops.
+   - Typed EAV writes remain a distinct receipt-bound surface without an editorial predecessor
+     input; the Next and Leptos document+value save workflows are still multi-command and non-atomic.
+   - Product/Variant `index_revision` remains an Index watermark, never an editor CAS token.
+   This is bounded source hardening, not complete aggregate concurrency certification.
 
 4. **Owner error classification**
-   - the Flex-to-Product error adapter still has a catch-all
-     `other => CommerceError::Validation(other.to_string())`;
-   - dependency/internal classes must be audited so infrastructure or storage failures never
-     collapse into client validation or leak implementation details.
+   - Flex-to-Product conversion now exhaustively classifies all eight variants: storage stays
+     Database, a rejected fixed entity type is Core/Internal, and payload failures use static
+     validation copy. The catch-all and command mapper raw error logging are removed.
+   - Shared Product terminal receipt policy requires non-retryable Validation/NotFound/Conflict;
+     invariant, permission and infrastructure classes remain processing. See the
+     [dated error/receipt continuation](./product-public-error-diagnostic-safety.md#flex-and-receipt-failure-continuation-2026-10-18).
+   - Taxonomy sync/read adapters and nested Core classification are now exhaustive and static-copy:
+     domain conflicts and permission failures retain their kind; corrupt reads are internal, not
+     client Validation. All affected Product/schema/read/Translation/HTTP boundaries delegate the
+     canonical Core policy. See the [Taxonomy/Core continuation](./product-public-error-diagnostic-safety.md#taxonomy-and-nested-core-continuation-2026-10-18).
+   - Seven additional Rust scenario sources are unrun. Compilation, mounted/runtime verification,
+     and broader typed Translation/Index/Pricing error provenance remain open.
 
 ## Required audits not yet classified as defects
 
@@ -115,3 +126,149 @@ requirements remain authoritative.
 7. Audit integrations/FBA and finish Product-specific large-reference machine guards.
 8. Only then mark Product as the canonical large-module reference and continue to Pages, Forum,
    Taxonomy, and remaining modules/libs.
+
+## Catalog receipt implementation follow-up (2026-10-17)
+
+All fourteen catalog commands now record transaction-derived public results before commit, and
+`ProductCatalogCommandPort` admits/replays/finalizes durable owner receipts. The Product/Variant
+projection connection reaches tags, Taxonomy names, metadata, prices, inventory and axes. Eleven
+source guard mutation tests cover this wiring; new Commerce/Taxonomy Rust regressions remain
+unexecuted without Cargo. The subsequent atomic editorial source composes Product document/category/EAV/publication, but
+does not certify database execution, whole-screen Variant atomicity, live reload/child-command Next retry evidence,
+Media admission/replay ordering, nullable Variant or PostgreSQL concurrency gaps, and does not
+promote Product reference status. See the current [write boundary](./write-boundary.md).
+
+
+Next save/status/delete now retain immutable attempt identity in a scoped local browser journal,
+restore requests across reload/navigation, serialize duplicated intent URLs with Web Locks and
+retain terminal tombstones. Missing Product reads can mount recovery-only UI. Receipt-finalized
+domain refusals are distinguished from context/admission failures in GraphQL; nonretryability
+alone is not conclusive. Node simulations and scoped editor typechecking do not certify real
+browser/backend reload/concurrency execution or child-command retries. See the current owner plan.
+
+Leptos Product Save no longer follows its transaction with a hidden Variant write. Variant fields
+now identify a separately saved target; action acknowledgements do not refetch over the other
+block's unsaved fields, and ordinary edit Save no longer implicitly publishes. This is explicit
+transaction separation, not whole-screen atomicity or verified pending-request recovery. Five
+Rust tests and mounted/runtime execution remain unrun; source mutation guards cover the
+wiring. Shipping Profile preflight before Product receipt admission remains a confirmed open gap.
+
+### 2026-10-18 Media retention follow-up
+
+The Product-image ADR is now Accepted on explicit implementation request. Source implementation
+replaces the read-only decorator with receipt-bound retain/current-hold confirmation, Product-owned
+stable image IDs, atomic provisioning coverage, a durable committed-removal release queue, bounded
+background delivery, and operator audit/backfill/status. Product consumes Media through its own
+port and an atomic host-selected Media owner pair; no foreign persistence dependency or opaque
+write path remains. Legacy provisioning gates new image admission; orphan scans never release.
+
+Implementation remains In progress. The continuation reran seven workflow source/mutation
+suites (**137 PASS**, including **22** retention cases), plus gRPC authentication (**8 PASS**)
+and the catalog-schema fixture suite. It fixed stale failure updates across release-worker
+replicas and added real native/loopback Media owner integration sources with separate owner
+databases. Product rows/intents in those fixtures are seeded, not mounted command/receipt proof.
+There are now **24 added Rust tests, all unrun**, including both queue-race scenarios and the
+two real-owner scenarios. Historical 86 Admin/four storefront/two scoped TS checks were not
+rerun in this continuation. Real database/transport/restart execution still requires cargo/rustc. See the [runbook](./media-reference-retention.md)
+and latest owner plan entry. This does not advance module readiness or the Blog-v1 audit cursor,
+certify remote Product commands, or resolve the separate Shipping Profile replay-preflight gap.
+
+
+The subsequent implementation-only continuation binds worker database/Media selection to
+one command-runtime owner snapshot, atomically reserves worker startup, removes the
+embedded-Media feature requirement from neutral delivery, preserves Forbidden at native/HTTP
+maintenance boundaries, and batches local hold-page audit reads. No test suites were rerun;
+updated scenario/mutation sources await maintainer execution. Owner handover/fleet fencing
+and the existing runtime gates are not certified by these source changes.
+
+
+Shipping Profile preflight has now moved behind receipt admission in source. Product's
+four owner methods validate through ProductShippingProfilePort, including initial Variant
+overrides; completed receipts do not call the policy. Missing capability/outages remain
+retryable, and host/embedded Commerce fallback composition supplies the provider without
+adding a Product-to-Commerce dependency. Two new owner scenario sources are unrun. Earlier
+references to this gap above are historical; see the current write-boundary contract and
+latest plan entry for execution gates and remaining historical verifier drift.
+
+
+The following diagnostic continuation supersedes the three historical verifier failures:
+source guards now target typed Product read errors, owner-port commands and Order port
+errors with bounded mapper assertions. It also fixes static Shipping-option public
+messages/log projections, Order Forbidden classification, authenticated scope agreement
+before Product/Order IO, and request correlation propagation. Four unit scenario sources
+were added but not run; build, mounted/runtime and broader recovery gates remain open.
+
+
+### 2026-10-18 Pricing consumer continuation
+
+Product storefront native pricing now consumes the Pricing-owned safe public descriptor
+instead of classifying Foundation wrappers locally or logging raw errors. Pricing canonical
+ports share that classifier, with exhaustive Core11/Rich11 handling. Commerce pricing mutation
+presentation is static and query failures retain owner retryability. Ten Pricing owner entry
+logs are bounded. See the [owner contract](../../rustok-pricing/docs/pricing-owner-port-error-safety.md#nested-error-and-public-consumer-continuation-2026-10-18).
+This does not close complete Pricing-context storefront evidence, the broader diagnostic
+inventory, or the Product/Media/Shipping readiness gates. Five added Rust scenarios are unrun;
+source guards/formatting are not compilation or mounted runtime evidence.
+
+
+### 2026-10-18 Native storefront context admission follow-up
+
+All four native storefront owner-read entrypoints now propagate canonical `RequestContext`
+rejection instead of falling back to an absent context and potentially widening channel scope.
+Valid anonymous and no-channel contexts remain allowed. List/facet tenant-failure events now
+contain bounded shape only; required-context rejection uses the existing safe Product descriptor
+and a fresh reference. See the [current contract](./product-public-error-diagnostic-safety.md#native-storefront-context-admission-continuation-2026-10-18).
+Nine scoped source guard entrypoints and three-file formatting/idempotence checks pass; five
+new negative source scenarios are unrun. No compilation, mounted execution, readiness promotion
+or full Product audit is claimed. Host trusted-locale composition must be verified by the maintainer.
+
+
+### 2026-10-18 Admin catalog context admission follow-up
+
+Native admin list/facets no longer swallow canonical RequestContext rejection as an optional
+locale context. The existing permission and requested/auth/current tenant checks remain intact;
+owner reads only occur after successful context admission. Rejection diagnostics use static
+facts and a fresh safe Product reference. See the [current contract](./product-public-error-diagnostic-safety.md#admin-catalog-context-admission-continuation-2026-10-18).
+This is bounded source work, not a claim that admin queries lacked tenant isolation. Two new
+source scenarios are unrun; compilation, middleware composition and mounted execution remain open.
+
+
+### 2026-10-18 Schema/tag read diagnostic follow-up
+
+Nine schema/tag read diagnostic events now use the existing Product fact projections;
+raw error/message/code/context/attribute identity values are removed without changing
+read policy, public classification, copy or retryability. See the [current contract](./product-public-error-diagnostic-safety.md#schema-and-tag-read-diagnostics-continuation-2026-10-18).
+Eight scoped source guards and four Rust formatting/idempotence checks pass. Three added
+Rust scenarios are unrun; compilation, log capture and mounted execution remain open.
+This is not a full diagnostic inventory closure or readiness promotion.
+
+
+### 2026-10-18 Storefront attribute degradation diagnostics
+
+The two deliberate best-effort skip paths now share one bounded warning helper; stored
+attribute identity/code/type/error payload is removed. Omission, JSON exclusion, locale and
+valid scalar behavior are preserved, not replaced with whole-request failure. See the
+[current contract](./product-public-error-diagnostic-safety.md#storefront-attribute-degradation-diagnostics-continuation-2026-10-18).
+Six scoped source guards and one Rust formatting/idempotence check pass; four added Rust
+scenarios are unrun. No compile, log-capture or mounted runtime evidence, readiness promotion
+or global stored-value integrity certification is claimed.
+
+
+### 2026-10-18 Storefront HTTP read diagnostic follow-up
+
+Four compatibility HTTP read events now use bounded caller context, owner payload shape and
+pagination failure flags. Public mapping, Core/Conflict delegation and checked pagination are
+unchanged. See the [current contract](./product-public-error-diagnostic-safety.md#storefront-http-read-diagnostics-continuation-2026-10-18).
+Six scoped source guards and one Rust formatting/idempotence check pass; two new Rust scenarios
+are unrun. No compilation, tracing capture, mounted HTTP evidence or broader diagnostic closure
+is claimed; readiness and full-stack audit status are unchanged.
+
+
+### 2026-10-19 Catalog command diagnostic follow-up
+
+All seven command-port events share existing bounded context/error projections, including
+write-policy rejection, revision refusal and receipt replay/failure. Public classification,
+write admission and receipt ordering are unchanged. See the [current contract](./product-public-error-diagnostic-safety.md#catalog-command-diagnostics-continuation-2026-10-19).
+Six source guards, one Rust formatting/idempotence and one JS syntax check pass; two Rust
+scenarios remain unrun. No compilation, tracing capture or DB/runtime evidence; no readiness
+or global audit promotion. Main inspected at `4905561ef0b9e81b3fb187efa9f54384442d036e`.

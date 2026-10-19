@@ -1,8 +1,9 @@
 # Product image relations use Product-owned IDs and Media durable reference retention
 
 - Date: 2026-10-17
-- Decision status: Proposed
-- Implementation status: Not started
+- Decision status: Accepted
+- Accepted/amended: 2026-10-18 (explicit implementation request)
+- Implementation status: In progress (source implementation; Rust/database/transport gates open)
 - Owners: rustok-product and rustok-media maintainers
 - Extends: [Forum attachment relations use a Forum-owned CAS set and Media durable reference retention](./2026-09-24-forum-attachment-relations.md)
 - Supersedes: None
@@ -11,7 +12,7 @@
 ## Context
 
 A Product image is a Product-owned relation row in `product_images`; `media_id` identifies a
-Media-owned asset. The current Product command decorator asks Media only for a read-side admission
+Media-owned asset. The pre-cutover Product command decorator asks Media only for a read-side admission
 before `add_product_image` writes the relation. It does not retain a durable Media reference, and
 neither image deletion nor Product deletion releases one. An admitted asset can therefore be
 deleted after the check while its Product image relation still exists.
@@ -156,6 +157,25 @@ owner ports.
 A deterministic reference derived from `(tenant, product, media, position)` is rejected because it
 is unstable under reordering and cannot represent repeated use of the same asset.
 
+## Accepted implementation refinements (2026-10-18)
+
+- Retain executes inside the admitted owner future, never in front of receipt replay.
+  Image IDs derive from the stable operation UUID; caller DTOs are unchanged.
+- Product owns a consumer projection/port and imports no Media crate or persistence.
+  Host composition uses atomic `MediaAssetPorts` from one owner instance, including gRPC.
+- Committed deletions persist a Product-owned durable release queue in the same local
+  transaction as rows/events/receipt. A bounded role-gated worker retries after commit;
+  release failure cannot turn committed deletion into a failure response.
+- Historical retain/release receipt acknowledgements require current owner lookup
+  confirmation before claiming a live hold or acknowledging release work.
+- Absent provider and incomplete legacy backfill fail closed as retryable capability
+  failures. Existing rows use their original IDs in privileged bounded backfill; owner-local
+  provisioning markers gate new image admission and are not a mirror of Media state.
+- Diagnostic orphan scans never release holds. Operator routes expose bounded audit,
+  backfill and release status; rollout requires a maintenance window for legacy protection.
+- Architecture acceptance is not execution certification. Implementation remains In progress
+  until the verification gates execute. See [workflow, cutover and evidence gates](../crates/modules/rustok-product/docs/media-reference-retention.md).
+
 ## Verification
 
 Acceptance requires SQLite and PostgreSQL coverage for retain-before-commit, commit failure,
@@ -166,6 +186,6 @@ local Media service directly.
 
 ## Consequences
 
-The proposal adds an explicit Product image allocation/coordinator boundary and a conservative
+The decision adds an explicit Product image allocation/coordinator boundary and a conservative
 orphan-hold operational workflow. That cost is intentional: a leaked hold delays cleanup, while a
 premature release can delete an asset still referenced by a committed Product image.

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
     sea_query::Expr,
 };
@@ -689,6 +689,20 @@ impl TaxonomyService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> TaxonomyResult<HashMap<Uuid, String>> {
+        self.resolve_term_names_in(&self.db, tenant_id, term_ids, locale, fallback_locale)
+            .await
+    }
+
+    /// Resolve canonical/localized names on the caller's connection, including
+    /// terms created in an aggregate transaction that has not committed yet.
+    pub async fn resolve_term_names_in<C: ConnectionTrait>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        term_ids: &[Uuid],
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> TaxonomyResult<HashMap<Uuid, String>> {
         if term_ids.is_empty() {
             return Ok(HashMap::new());
         }
@@ -697,9 +711,9 @@ impl TaxonomyService {
         let terms = taxonomy_term::Entity::find()
             .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
             .filter(taxonomy_term::Column::Id.is_in(term_ids.to_vec()))
-            .all(&self.db)
+            .all(conn)
             .await?;
-        let translations_by_term = self.load_translations_map(tenant_id, term_ids).await?;
+        let translations_by_term = self.load_translations_map_in(conn, tenant_id, term_ids).await?;
         let mut names = HashMap::new();
         for term in terms {
             let translations = translations_by_term
@@ -802,6 +816,15 @@ impl TaxonomyService {
         tenant_id: Uuid,
         term_ids: &[Uuid],
     ) -> TaxonomyResult<HashMap<Uuid, Vec<taxonomy_term_translation::Model>>> {
+        self.load_translations_map_in(&self.db, tenant_id, term_ids).await
+    }
+
+    async fn load_translations_map_in<C: ConnectionTrait>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        term_ids: &[Uuid],
+    ) -> TaxonomyResult<HashMap<Uuid, Vec<taxonomy_term_translation::Model>>> {
         if term_ids.is_empty() {
             return Ok(HashMap::new());
         }
@@ -809,7 +832,7 @@ impl TaxonomyService {
         for translation in taxonomy_term_translation::Entity::find()
             .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
             .filter(taxonomy_term_translation::Column::TermId.is_in(term_ids.to_vec()))
-            .all(&self.db)
+            .all(conn)
             .await?
         {
             map.entry(translation.term_id)

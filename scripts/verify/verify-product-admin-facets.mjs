@@ -55,6 +55,31 @@ const adminTransport = read("crates/modules/rustok-product/admin/src/catalog_tra
 const adminPanelUi = read("crates/modules/rustok-product/admin/src/ui/catalog_facets.rs");
 const adminGrid = read("crates/modules/rustok-product/admin/src/ui/product_grid.rs");
 
+// Trusted context rejection is not an optional locale fallback, even with an explicit locale.
+const contextHelper = adminNative.slice(adminNative.indexOf('async fn require_request_context('), adminNative.indexOf('fn map_product_service_error('));
+requireAll(contextHelper, [
+  'extract::<rustok_api::RequestContext>()', '.map_err(|_|',
+  'ProductPublicError::internal()', 'request_context_rejected = true',
+  'correlation_id = %public.correlation_id', 'ServerFnError::new(public.to_string())',
+], 'admin trusted context admission');
+reject(contextHelper, ['.ok()', 'error = ?error', 'error = %error', 'context.correlation_id', 'std::fmt::Debug'], 'admin context payload or fallback');
+const contextReads = adminNative.split(/async fn product_admin_catalog_(?:list|facets)_native\(/).slice(1);
+if (contextReads.length !== 2) failures.push('expected two admin catalog context admission paths');
+for (const [index, block] of contextReads.entries()) {
+  const operation = index === 0 ? 'admin_catalog_list' : 'admin_catalog_facets';
+  requireAll(block, [
+    `require_request_context("${operation}").await?;`,
+    'has_any_effective_permission(', 'Permission::PRODUCTS_LIST', 'Permission::PRODUCTS_READ',
+    'requested_tenant_id != tenant.id || auth.tenant_id != tenant.id',
+    '.unwrap_or(request_context.locale)',
+  ], `${operation}: required context and existing authority`);
+  reject(block, ['.ok()', 'request_context.map('], `${operation}: swallowed context rejection`);
+  const authority = block.indexOf('requested_tenant_id != tenant.id || auth.tenant_id != tenant.id');
+  const admission = block.indexOf('require_request_context(');
+  const owner = block.indexOf('CatalogService::new(');
+  if (!(authority >= 0 && authority < admission && admission < owner)) failures.push(`${operation}: admission must precede owner reads`);
+}
+
 // ── Shared panel: framework-free, selection in the `key=value` language ─────
 requireAll(
   gridPanel,

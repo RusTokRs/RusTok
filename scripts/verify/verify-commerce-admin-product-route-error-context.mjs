@@ -45,7 +45,7 @@ const identityAdoption = between(
 const mapper = between(
   products,
   'pub(crate) fn map_admin_product_error(',
-  '/// Shared admin product list handler.',
+  'pub(crate) fn admin_product_command_idempotency_key(',
   'admin product mapper',
 );
 const listRoute = between(
@@ -102,7 +102,6 @@ for (const [value, label] of [
   ['tenant_id: Uuid,', 'tenant context field'],
   ['actor_id: Uuid,', 'actor context field'],
   ['product_id: Option<Uuid>,', 'product identity field'],
-  ['variant_id: Option<Uuid>,', 'variant identity field'],
   ["operation: &'static str,", 'operation field'],
   ['pub(crate) fn new(', 'shared context constructor'],
   ['pub(crate) fn map_admin_product_error(', 'shared typed mapper'],
@@ -114,22 +113,15 @@ for (const [value, label] of [
   ['CommerceError::VariantNotFound(_)', 'variant not-found variant'],
   ['CommerceError::DuplicateHandle { .. }', 'duplicate handle variant'],
   ['CommerceError::DuplicateSku(_)', 'duplicate SKU variant'],
-  ['CommerceError::InvalidPrice(_)', 'invalid price variant'],
-  ['CommerceError::InvalidOptionCombination', 'invalid option combination variant'],
   ['CommerceError::Validation(_)', 'validation variant'],
   ['CommerceError::NoVariants', 'no variants variant'],
-  ['CommerceError::InsufficientInventory { .. }', 'inventory conflict variant'],
   ['CommerceError::CannotDeletePublished', 'published-state variant'],
-  ['CommerceError::ShippingProfileNotFound(_)', 'shipping profile variant'],
-  ['CommerceError::DuplicateShippingProfileSlug(_)', 'shipping profile conflict variant'],
-  ['CommerceError::Rich(_)', 'rich owner variant'],
-  ['CommerceError::Core(_)', 'core owner variant'],
+  ['CommerceError::Core(error)', 'classified core owner variant'],
   ['"commerce_admin_product_storage_unavailable"', 'storage code'],
   ['"commerce_admin_not_found"', 'not-found code'],
   ['"commerce_admin_product_handle_conflict"', 'handle conflict code'],
   ['"commerce_admin_product_sku_conflict"', 'SKU conflict code'],
   ['"commerce_admin_product_invalid"', 'validation code'],
-  ['"commerce_admin_product_inventory_conflict"', 'inventory conflict code'],
   ['"commerce_admin_product_state_conflict"', 'state conflict code'],
   ['"commerce_admin_product_failed"', 'fail-closed code'],
   ['"Product storage is temporarily unavailable"', 'static storage message'],
@@ -138,13 +130,11 @@ for (const [value, label] of [
     '"Product operation could not be completed safely"',
     'static fail-closed message',
   ],
-]) requireText(policy, value, label);
+]) requireText(policy + products.slice(products.indexOf("pub(crate) fn product_core_http_policy("), products.indexOf("fn product_error_policy(")), value, label);
 
 for (const [value, label] of [
   ['CommerceError::ProductNotFound(id)', 'typed product identity variant'],
   ['context.product_id = Some(*id)', 'typed product identity adoption'],
-  ['CommerceError::VariantNotFound(id)', 'typed variant identity variant'],
-  ['context.variant_id = Some(*id)', 'typed variant identity adoption'],
 ]) requireText(identityAdoption, value, label);
 
 for (const [value, label] of [
@@ -153,7 +143,6 @@ for (const [value, label] of [
   ['tenant_id = %context.tenant_id', 'tenant log'],
   ['actor_id = %context.actor_id', 'actor log'],
   ['product_id = ?context.product_id', 'product identity log'],
-  ['variant_id = ?context.variant_id', 'variant identity log'],
   ['operation = %context.operation', 'operation log'],
   ['error_kind,', 'error-kind log'],
   ['public_code = code', 'public-code log'],
@@ -199,7 +188,7 @@ for (const [block, permission, operation, serviceCall, response, label] of [
     deleteRoute,
     'Permission::PRODUCTS_DELETE',
     '"delete_product"',
-    '.delete_product(tenant.id, auth.user_id, id)',
+    '.delete_product(port_context.clone(), id)',
     'Ok(StatusCode::NO_CONTENT)',
     'delete route',
   ],
@@ -207,7 +196,7 @@ for (const [block, permission, operation, serviceCall, response, label] of [
     publishRoute,
     'Permission::PRODUCTS_UPDATE',
     '"publish_product"',
-    '.publish_product(tenant.id, auth.user_id, id)',
+    '.publish_product(port_context.clone(), id)',
     'Ok(Json(product))',
     'publish route',
   ],
@@ -215,7 +204,7 @@ for (const [block, permission, operation, serviceCall, response, label] of [
     unpublishRoute,
     'Permission::PRODUCTS_UPDATE',
     '"unpublish_product"',
-    '.unpublish_product(tenant.id, auth.user_id, id)',
+    '.unpublish_product(port_context.clone(), id)',
     'Ok(Json(product))',
     'unpublish route',
   ],
@@ -224,7 +213,7 @@ for (const [block, permission, operation, serviceCall, response, label] of [
   requireText(block, operation, `${label} operation`);
   requireText(block, 'Some(id)', `${label} product identity`);
   requireText(block, serviceCall, `${label} service contract`);
-  requireText(block, 'map_admin_product_error(', `${label} local mapper`);
+  requireText(block, block === showRoute ? 'map_admin_product_error(' : 'map_admin_product_port_error(', `${label} owner error mapper`);
   requireText(block, response, `${label} response contract`);
 }
 
@@ -249,7 +238,6 @@ for (const [block, permission, operation, productIdentity, serviceCall, response
   ],
 ]) {
   requireText(block, permission, `${label} permission`);
-  requireText(block, 'validate_admin_product_shipping_profile_input(', `${label} shipping validation`);
   requireText(block, operation, `${label} operation`);
   requireText(block, productIdentity, `${label} product identity`);
   requireText(block, 'headers: HeaderMap,', `${label} caller idempotency header`);
@@ -264,49 +252,35 @@ for (const [value, label] of [
   ['AdminProductErrorContext, ListProductsParams, ProductListItem,', 'shared product context imports'],
   ['admin_product_command_context, admin_product_command_idempotency_key,', 'shared Product command helpers'],
   ['map_admin_product_port_error,', 'shared Product owner-port mapper'],
-  [
-    'super::super::products::list_products(state, tenant, auth, request_context, query).await',
-    'list delegation',
-  ],
-  [
-    'super::super::products::show_product(state, tenant, auth, request_context, path).await',
-    'show delegation',
-  ],
-  [
-    'super::super::products::delete_product(state, tenant, auth, path).await',
-    'delete delegation',
-  ],
-  [
-    'super::super::products::publish_product(state, tenant, auth, path).await',
-    'publish delegation',
-  ],
-  [
-    'super::super::products::unpublish_product(state, tenant, auth, path).await',
-    'unpublish delegation',
-  ],
+  ['.list_admin_products(', 'mounted owner list read'],
+  ['.read_product_projection(', 'mounted owner detail read'],
+  ...['delete', 'publish', 'unpublish', 'archive'].map(name => [
+    `super::super::products::${name}_product(state, tenant, auth, request_context, headers, path)`,
+    `${name} delegation with authenticated request and retry identity`,
+  ]),
 ]) requireText(adminProducts, value, label);
 
 const sharedMapperUses =
   products.match(/map_admin_product_error\(\s+AdminProductErrorContext::new\(/g) ?? [];
-if (sharedMapperUses.length !== 8) {
+if (sharedMapperUses.length !== 5) {
   failures.push(
-    `expected eight context-aware shared product mapper callsites, found ${sharedMapperUses.length}`,
+    `expected five context-aware shared read mapper callsites, found ${sharedMapperUses.length}`,
   );
 }
 const wrapperMapperUses =
   adminProducts.match(/map_admin_product_port_error\(\s+AdminProductErrorContext::new\(/g) ?? [];
-if (wrapperMapperUses.length !== 2) {
+if (wrapperMapperUses.length !== 4) {
   failures.push(
-    `expected two active Product owner-port mapper callsites, found ${wrapperMapperUses.length}`,
+    `expected four mounted Product owner-port mapper callsites, found ${wrapperMapperUses.length}`,
   );
 }
 const shippingValidationUses =
   adminProducts.match(
     /validate_admin_product_shipping_profile_input\(\s+runtime\.db\(\),\s+AdminProductShippingProfileErrorContext::new\(/g,
   ) ?? [];
-if (shippingValidationUses.length !== 2) {
+if (shippingValidationUses.length !== 0) {
   failures.push(
-    `expected two context-aware product shipping-profile validation callsites, found ${shippingValidationUses.length}`,
+    `expected no mutable shipping preflight before Product receipts, found ${shippingValidationUses.length}`,
   );
 }
 
@@ -326,6 +300,27 @@ for (const [content, label] of [
   ]) forbidText(content, value, `${label} stale or unsafe mapper`);
 }
 
+// Check actual Product-owner errors, not removed Commerce umbrella variants.
+for (const tag of ['ImageNotFound', 'CannotDeleteOnlyVariant']) {
+  requireText(policy, `CommerceError::${tag}`, 'Product owner exhaustive policy');
+}
+const scope = between(products, 'pub(crate) fn ensure_admin_product_scope(',
+  'pub(crate) fn admin_product_command_context(', 'authenticated scope');
+for (const marker of ['auth.tenant_id != tenant.id', 'request.tenant_id != tenant.id',
+  'request.user_id != Some(auth.user_id)', 'HttpError::forbidden(']) requireText(scope, marker, 'scope enforcement');
+for (const [content,names] of [[products,['list_products','show_product','delete_product','publish_product','unpublish_product','archive_product']],
+  [adminProducts,['list_products','show_product','create_product','update_product']]]) {
+  for (const name of names) {
+    const start = content.indexOf(`pub async fn ${name}(`);
+    const end = content.indexOf('pub async fn ', start + 1);
+    const route = content.slice(start, end < 0 ? undefined : end);
+    requireText(route, 'ensure_admin_product_scope(&tenant, &auth, &request_context)?;', `${name} authenticated scope`);
+    const admission = route.indexOf('ensure_admin_product_scope(');
+    for (const io of ['.product_catalog_command_port()', '.product_catalog_read_port()', 'CatalogService::new(', 'product::Entity::find()']) {
+      if(route.includes(io) && route.indexOf(io) < admission) failures.push(`${name}: ${io} must follow scope admission`);
+    }
+  }
+}
 if (failures.length > 0) {
   console.error('Commerce admin product route error-context verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);

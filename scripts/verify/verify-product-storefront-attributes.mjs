@@ -130,6 +130,25 @@ reject(
   ["is_filterable", "is_searchable", "is_sortable", "is_comparable"],
   "owner storefront attribute projection must not depend on admin facet flags",
 );
+// Deliberate best-effort skips must not serialize stored identity/type/error payload.
+const projectionCode = ownerProjection.split('#[cfg(test)]')[0];
+requireAll(projectionCode, [
+  'let Some(value_type) = parse_storefront_value_type(&row) else',
+  'fn record_attribute_projection_skip(', "reason: &'static str", "expected: &'static str",
+  'attribute_id_non_nil = !row.attribute_id.is_nil()',
+  'attribute_code_length = row.code.chars().count()',
+  'stored_type_length = row.value_type.chars().count()',
+  'record_attribute_projection_skip(row, "missing_scalar", expected)',
+  '"unsupported_type"', '"supported_attribute_type"',
+], 'bounded attribute projection degradation');
+reject(projectionCode, [
+  'attribute_id = %', 'attribute_code = row.code', 'value_type = row.value_type',
+  'error = ?error', 'error = %error', 'error.to_string()',
+], 'attribute projection payload diagnostics');
+if ((projectionCode.match(/tracing::warn!\(/g) ?? []).length !== 1) {
+  failures.push('attribute projection must use one bounded degradation event');
+}
+
 // The flag is merged in Rust (definition default, category override), never filtered in SQL: a
 // category binding may enable a definition-hidden attribute and the other way round. The column is
 // allowed in a selection list and forbidden in a predicate.

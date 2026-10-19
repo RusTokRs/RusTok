@@ -11,6 +11,10 @@
 
 ## Responsibilities
 
+- Exact Product-owned image references with retain-before-commit, durable postcommit
+  release delivery, privileged legacy backfill and diagnostic-only reconciliation.
+  [Accepted workflow / open execution gates](docs/media-reference-retention.md).
+
 - Product entities, translations, variant axes, variants, and product-owned migrations.
 - PostgreSQL target-schema enforcement removes unused compatibility columns,
   requires Media-owned image identifiers, preserves decimal variant weights,
@@ -214,3 +218,51 @@ The canonical architecture for variant identity and configuration is the
 Variants are defined along configured product axes (`product_variant_axes` and `product_variant_axis_values`),
 with combination identity (`combination_identity`) and completeness invariants maintained and verified at the
 database layer. Legacy Shopify-style `option1/2/3` columns and `product_options` tables have been completely eliminated.
+
+
+## Native storefront context admission (2026-10-18)
+
+Catalog list, facets, detail/Pricing and search options now require the canonical trusted
+`RequestContext` before owner reads. Extractor rejection is no longer treated as an absent
+optional context; valid anonymous/no-channel contexts remain allowed. Raw rejection/channel/
+locale/correlation payload is removed from affected context diagnostics. See the
+[current contract](docs/product-public-error-diagnostic-safety.md#native-storefront-context-admission-continuation-2026-10-18).
+This is source-only, unintegrated work: five new negative guard scenarios are unrun;
+compilation, host middleware composition and mounted behavior remain maintainer gates.
+
+
+## Schema/tag read diagnostic continuation (2026-10-18)
+
+Both owner read adapters now reuse bounded Product context/error fact projections instead
+of logging raw errors, admission message/code text or identity values. Existing classification,
+public envelopes and read admission are preserved. See the [current contract](docs/product-public-error-diagnostic-safety.md#schema-and-tag-read-diagnostics-continuation-2026-10-18).
+Eight scoped source guards and four-file formatting/idempotence pass; three new Rust scenarios
+are unrun. Compilation, log capture, runtime and broader Product diagnostics remain open.
+
+
+## Storefront attribute warning safety (2026-10-18)
+
+Unsupported-type/missing-scalar projection warnings now retain bounded shape only, without
+stored identity/code/type/error payload. Existing best-effort omission and valid false/zero/
+localized formatting semantics are preserved. See the [current contract](docs/product-public-error-diagnostic-safety.md#storefront-attribute-degradation-diagnostics-continuation-2026-10-18).
+Six scoped source guards and one-file formatting/idempotence pass; four new Rust scenarios
+are unrun. Compilation, captured tracing and mounted projection execution remain open.
+
+
+## Storefront HTTP read warning safety (2026-10-18)
+
+The compatibility read port now logs bounded context/error shape and pagination failure flags,
+not caller identity strings or exact rejected page inputs. Existing HTTP classification,
+visibility and pagination behavior are preserved. See the [current contract](docs/product-public-error-diagnostic-safety.md#storefront-http-read-diagnostics-continuation-2026-10-18).
+Six scoped source guards and one-file formatting/idempotence pass; two added Rust scenarios
+are unrun. Compilation, captured tracing and mounted HTTP execution remain open.
+
+
+## Catalog command diagnostic safety (2026-10-19)
+
+Seven Product command-boundary events now use canonical context/error facts instead
+of caller correlation/tenant strings, Product UUIDs and raw receipt/admission codes.
+Public mapping, write admission, request fingerprints and receipt replay/finalization
+are preserved. See the [current contract](docs/product-public-error-diagnostic-safety.md#catalog-command-diagnostics-continuation-2026-10-19).
+Six scoped source guards and Rust formatting/idempotence pass; two new Rust scenarios
+are deliberately unrun. Compilation, tracing capture and transaction/runtime gates remain open.

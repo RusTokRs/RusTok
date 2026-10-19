@@ -1,5 +1,99 @@
 # Continuous Full-Stack Review & Architecture Audit Ledger
 
+## Bounded Product/Pricing remediation — 2026-10-18
+
+User-requested continuation on `arena/8161797f-rustok`, main snapshot
+`6716323bc5630dd87939988a4507eaf0fea53827`: **partial, source-only, unintegrated**.
+Pricing canonical ports and Product's native Pricing consumer share one owner Foundation/Core/Rich
+policy; Commerce mutations use static Pricing presentation and bounded logs; query failures
+preserve owner retryability. Ten Pricing operation entry events no longer expose request values.
+See the [local contract](../../crates/modules/rustok-pricing/docs/pricing-owner-port-error-safety.md#nested-error-and-public-consumer-continuation-2026-10-18).
+Scoped standalone source guards and six-file formatter/idempotence checks run; five new Rust
+scenarios are deliberately unrun. Compilation, runtime, owner review, integration and wider
+Pricing/Commerce diagnostic cleanup remain open. No FS cursor, component audit checkbox,
+readiness status, or historical evidence is promoted by this bounded slice.
+
+## Bounded native storefront context continuation — 2026-10-18
+
+Same branch and main snapshot as the bounded Pricing slice above; **source-only, unintegrated**.
+Four Product native storefront read paths now require canonical trusted RequestContext admission;
+extractor rejection no longer silently widens a channel-scoped request. Valid public anonymous
+and no-channel requests remain permitted. List/facet context diagnostics are bounded and no
+longer accept/log raw rejection payload. See the [owner contract](../../crates/modules/rustok-product/docs/product-public-error-diagnostic-safety.md#native-storefront-context-admission-continuation-2026-10-18).
+Nine scoped standalone source guard entrypoints and three Rust formatting/idempotence checks
+passed. Five added negative guard scenarios remain unrun; no tests, compilation, CI or mounted
+runtime evidence. Host locale/auth/channel composition and owner review/integration remain open.
+No sequential FS cursor, component-audit checkbox or readiness status is advanced.
+
+## Bounded admin catalog context continuation — 2026-10-18
+
+Same main snapshot/branch as the bounded Product/Pricing slices above; **source-only/unintegrated**.
+Native Product admin list/facets now propagate canonical RequestContext rejection before owner
+queries, without removing authentication, effective permissions or requested/auth/current tenant
+checks. Valid-read locale precedence is preserved. Rejection logs use only static fields and a
+fresh safe reference. See the [owner contract](../../crates/modules/rustok-product/docs/product-public-error-diagnostic-safety.md#admin-catalog-context-admission-continuation-2026-10-18).
+Scoped standalone source guards and one-file formatting/idempotence run; two added source test
+scenarios are unrun. No compilation, CI or mounted runtime evidence; host locale composition,
+owner review and integration remain open. No FS cursor, audit checkbox or readiness promotion.
+
+## Bounded Product schema/tag read diagnostics — 2026-10-18
+
+Same branch/main snapshot as the bounded Product continuations above; **source-only/unintegrated**.
+Nine schema/tag read events now reuse existing Product fact projections instead of raw owner,
+admission and identity payload. Public classification/copy/retryability and read semantics are
+unchanged. See the [owner contract](../../crates/modules/rustok-product/docs/product-public-error-diagnostic-safety.md#schema-and-tag-read-diagnostics-continuation-2026-10-18).
+Eight scoped source guard entrypoints and four-file Rust formatting/idempotence pass; three
+new Rust scenarios are unrun. No compilation, tests, log capture, CI or mounted execution.
+Other Product diagnostics, owner review and integration remain open. No FS cursor, component
+checkbox or readiness status is advanced.
+
+## Bounded Product attribute projection diagnostics — 2026-10-18
+
+Same branch/main snapshot as the bounded Product continuations above; **source-only/unintegrated**.
+Two intentional storefront attribute omission paths share one bounded warning helper instead
+of logging stored IDs/codes/type text and parser errors. Existing best-effort display semantics
+are preserved. See the [owner contract](../../crates/modules/rustok-product/docs/product-public-error-diagnostic-safety.md#storefront-attribute-degradation-diagnostics-continuation-2026-10-18).
+Six scoped source guard entrypoints and one-file Rust formatting/idempotence pass; four new
+Rust scenarios remain unrun. Tests, compilation, tracing capture, DB/runtime behavior, owner
+review and integration remain open. No FS cursor, audit checkbox or readiness status changes.
+
+## Bounded Product storefront HTTP diagnostics — 2026-10-18
+
+Same branch/main snapshot as the bounded Product continuations above; **source-only/unintegrated**.
+Four compatibility HTTP read events now use bounded context/error shape and rejected-pagination
+flags instead of caller strings/exact page inputs. Public mapping, request/query behavior and
+checked pagination are preserved. See the [owner contract](../../crates/modules/rustok-product/docs/product-public-error-diagnostic-safety.md#storefront-http-read-diagnostics-continuation-2026-10-18).
+Six scoped source guard entrypoints and one-file Rust formatting/idempotence pass; two added
+Rust scenarios are unrun. Compilation, tests, tracing capture, mounted execution, owner review
+and integration remain open. No FS cursor, audit checkbox or readiness change.
+
+## Bounded Commerce storefront Product HTTP policy — 2026-10-19
+
+Same branch/main snapshot as the bounded Product continuations above; **source-only/unintegrated**.
+Mounted list/detail share a Commerce presentation policy; Product retains owner classification.
+**Intentional public error change:** Forbidden403 `commerce_product_access_denied` and
+Conflict409 `commerce_store_product_conflict` replace the prior generic500 collapse.
+Other error families and missing/hidden404 remain; bounded mapper/debug facts and fresh opaque
+owner-call UUIDs replace raw correlation/resource identity at the scoped events/factories.
+See the [contract/migration note](../../crates/modules/rustok-commerce/docs/public-port-error-safety.md#storefront-product-http-policy-continuation-2026-10-19).
+Six scoped source guards, three JS syntax checks, two-file Rust formatter/idempotence and
+diff checks pass; four new Rust scenarios remain unrun. The list cutover guard's stale type,
+formatting, inline policy and unchecked-offset assumptions were migrated to current ownership.
+No tests, compilation, log capture, CI or mounted/runtime execution. Owner review, integration,
+client migration and broader diagnostics remain open. No FS cursor/audit/readiness promotion.
+
+## Bounded Product catalog command diagnostics — 2026-10-19
+
+Main inspected at `4905561ef0b9e81b3fb187efa9f54384442d036e`; same fixed Arena branch,
+**source-only/unintegrated**. Seven command-port events reuse Product context/error facts,
+removing raw caller identity/correlation, Product UUID and receipt/admission string fields.
+Public mapping, policy admission, request fingerprints, pre-commit receipt completion,
+replay and failure finalization remain unchanged. See the [owner contract](../../crates/modules/rustok-product/docs/product-public-error-diagnostic-safety.md#catalog-command-diagnostics-continuation-2026-10-19).
+Six standalone source guards, one Rust formatter/idempotence, one JS syntax and diff check
+pass; two new Rust scenarios remain unrun. No tests, compilation, CI, tracing capture,
+DB replay/rollback or mounted evidence. Broader write/translation diagnostics and owner
+review/integration remain open. No sequential FS cursor, checkbox or readiness promotion.
+
 ## Deep Full-Stack Audit Cycle — Round 1 (Fresh Start from Scratch)
 
 **Status:** ACTIVE  
@@ -190,7 +284,7 @@ The single canonical trigger to continue this audit sequence is:
 ### Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages
 *Product catalog, variants, EAV attributes, categories tree closure, brand taxonomy, navigation menus, dynamic page builder, CMS pages, forms, and docs.* (0/26 completed)
 
-- [ ] **[`crates/modules/rustok-product`](../../crates/modules/rustok-product)** (190 files, 81,078 LOC) — Core product catalog, variant matrix, SKU generation, published state machine, category bindings, and EAV attributes.
+- [ ] **[`crates/modules/rustok-product`](../../crates/modules/rustok-product)** (190 files, 81,078 LOC) — Core product catalog, variant matrix, SKU generation, published state machine, category bindings, and EAV attributes. User-requested workflow remediation on 2026-10-17 is **partial/unintegrated**, based on `bc1046c10f51fab070f7ad7c0417dca648a13e16` on `arena/8161797f-rustok`; this does not advance the sequential FS cursor or mark Product audited. Candidate-state publish checks, lock-before-read typed patches, lifecycle no-ops, and Next create/form fixes are recorded in the [owner plan](../../crates/modules/rustok-product/docs/implementation-plan.md#workflow-remediation-2026-10-17). Eighty-six Next money/adapter/lifecycle/retry/journal tests, four storefront pricing-overlay/render-contract tests, seventeen attribute-rule/lock-order guard tests, and seven lifecycle guard mutation tests pass; Rust execution is blocked by missing Cargo. The deeper pass adds Product/Variant detached-write locking and prevents status actions from clearing document fields; the follow-up implements decimal-string money and base-only catalog price replacement/read scope while preserving Pricing contexts, with backend execution still unverified. All fourteen catalog commands now implement durable owner receipts with pre-commit public projections, guarded by eleven source mutation tests; new Commerce/Taxonomy execution remains blocked by absent Cargo. Atomic document/category/Product EAV/publication save is now source-implemented in Next and mounted Leptos, with twenty-two atomic-save source tests and twelve additional Rust regressions unrun. Next save/status/delete now retain immutable keys/requests in a scoped browser journal with URL intents, exclusive Web Locks, terminal tombstones and recovery-only missing-Product UI; Node reload/lock/storage simulations and scoped editor TypeScript 7.0.2 checks pass (not real browser/backend execution); the GraphQL mapper distinguishes receipt-finalized refusals from admission failures, with one new Rust classification test unrun. Leptos document Save now excludes the hidden secondary Variant command and exposes a separate target-bound action, with local scalar admission and dirty-field-preserving acknowledgements; compilation and mounted behavior remain unverified. Database atomicity evidence, whole-screen multi-aggregate atomicity, live Next unmount/reload/concurrency evidence and child-command attempt recovery, nullable Variant patches, Media retention/replay ordering and complete Pricing-context storefront evidence remain open.
 - [ ] **[`crates/modules/rustok-product/admin`](../../crates/modules/rustok-product/admin)** (29 files, 21,028 LOC) — FFA admin UI for comprehensive product management, variant matrix editor, image gallery, and price rules.
 - [ ] **[`crates/modules/rustok-product/storefront`](../../crates/modules/rustok-product/storefront)** (13 files, 4,612 LOC) — Storefront UI product cards, product detail page (PDP), gallery, variant selectors, and stock badges.
 - [ ] **[`crates/modules/rustok-product-bundles`](../../crates/modules/rustok-product-bundles)** (23 files, 4,602 LOC) — Product bundle configurations, bundle discounts, component item pricing, and inventory constraints.

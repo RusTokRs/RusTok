@@ -41,6 +41,7 @@ async fn event_count(db: &DatabaseConnection, event_type: &str) -> u64 {
 
 fn create_product_input(handle: &str, title: &str, sku: &str) -> CreateProductInput {
     CreateProductInput {
+        attribute_values: Default::default(),
         translations: vec![ProductTranslationInput {
             locale: "en".to_string(),
             title: title.to_string(),
@@ -112,6 +113,7 @@ async fn test_product_update_triggers_event() {
         .unwrap();
 
     let update_input = UpdateProductInput {
+        attribute_values: Default::default(),
         translations: Some(vec![ProductTranslationInput {
             locale: "en".to_string(),
             title: "Updated Product".to_string(),

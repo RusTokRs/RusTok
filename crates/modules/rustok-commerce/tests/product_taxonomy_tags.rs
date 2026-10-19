@@ -39,6 +39,7 @@ fn admin() -> rustok_core::SecurityContext {
 
 fn create_test_product_input(tags: &[&str]) -> CreateProductInput {
     CreateProductInput {
+        attribute_values: Default::default(),
         translations: vec![ProductTranslationInput {
             locale: "en".to_string(),
             title: "Tagged Product".to_string(),
@@ -210,6 +211,7 @@ async fn update_product_tags_resyncs_product_tag_relations_without_metadata_mirr
             actor_id,
             product.id,
             UpdateProductInput {
+                attribute_values: Default::default(),
                 translations: None,
                 seller_id: Patch::Keep,
                 vendor: Patch::Keep,
@@ -290,6 +292,7 @@ async fn update_product_tags_only_preserves_existing_non_tag_metadata() {
             actor_id,
             product.id,
             UpdateProductInput {
+                attribute_values: Default::default(),
                 translations: None,
                 seller_id: Patch::Keep,
                 vendor: Patch::Keep,
@@ -347,6 +350,7 @@ async fn metadata_tags_are_rejected_on_update_without_mutating_canonical_tags() 
             actor_id,
             product.id,
             UpdateProductInput {
+                attribute_values: Default::default(),
                 translations: None,
                 seller_id: Patch::Keep,
                 vendor: Patch::Keep,
