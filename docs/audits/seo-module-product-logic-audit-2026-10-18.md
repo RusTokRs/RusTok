@@ -43,7 +43,7 @@
 - **SEO-OPS-001** — job lists read with SQL `LIMIT`; 90-day retention (`SEO_HISTORY_RETENTION_DAYS`) for bulk/sitemap/index-repair history.
 - **SEO-TENANT-001** — tenant foreign keys (`m20260930_000012`).
 - **SEO-RUNTIME-002** — Next `localizedPath` no longer produces `/en/en/...`.
-- **SEO-RUNTIME-001 (partial)** — Next applies `redirect` from the SEO context on home, `blog/[slug]`, `products/[slug]`; see P2-13.
+- **SEO-RUNTIME-001** — Next applies `redirect` from the SEO context on all 16 storefront route families through the `resolveSeoPageContextForRoute` choke point; see P2-13.
 - Redirect cache: durable cursor + count reconciliation across replicas — implemented and documented in `crates/modules/rustok-seo/docs/implementation-plan.md`.
 
 **Not confirmed / still open:** SEO-SITEMAP-001 (full candidate collection in memory, bounded by `MAX_SITEMAP_URLS=1M`), SEO-ADMIN-001 (partial), SEO-TARGET-001 (transformed into P2-12), SEO-SET-001 remainder (P2-14).
@@ -236,11 +236,11 @@ moves to `Accepted`.
 
 ---
 
-#### P2-13 · Next applies SEO redirects on 3 of 16 route families — **OPEN**
+#### P2-13 · Next applies SEO redirects on 3 of 16 route families — **FIXED**
 
 **Evidence:** only `page.tsx`, `blog/[slug]`, `products/[slug]` consume `redirectDecision`; `pages/[slug]`, lists, `profiles/*`, `orders*`, `account*`, `checkout`, `notifications`, `pricing`, `search` render the redirect context as a noindex page instead of redirecting. Leptos applies redirects everywhere.
 
-**Fix:** one shared `withSeoRedirect()` wrapper (or a server helper inside `resolveSeoPageContextForRoute` that cannot be forgotten) on all server pages; parity test: the same redirect set behaves identically on Leptos and Next.
+**Applied fix (this branch):** the decision now applies inside `resolveSeoPageContextForRoute` itself — the single choke point every Next server page (and `generateMetadata`) already passes through — via `applySeoRouteRedirect`: 301/308 → `permanentRedirect`, anything else → `redirect`. The three hand-rolled per-page blocks (home, `blog/[slug]`, `products/[slug]`) were removed, so no page can re-implement or forget the decision; Next's app-render `errorRecovery` converts `NEXT_REDIRECT` (including from `generateMetadata`) into the decision's status and `Location` header, matching the Leptos storefront's `redirect_response(target, status)` guard on the resolved context. New contract verifier `scripts/verify/verify-seo-next-redirect-parity.mjs` pins the choke point, forbids `route.redirect`/`redirectDecision` reads anywhere under `src/app`, requires `resolveSeoPageContextForRoute` on all 16 route families, and requires the Leptos `resolved.route.redirect.is_some()` → `redirect_response(` guard (negative-tested).
 
 ---
 
@@ -285,7 +285,7 @@ moves to `Accepted`.
 | 5 | **P2-10:** write-time cycles + runtime fail-safe (+ alias 1-hop remainder) | Live traffic must never 5xx on a loop | tests: A↔B rejected on write; storefront never errors on legacy loops — **DONE except alias 1-hop (design)** |
 | 6 | **P2-5:** shared effective-context builder for render/diagnostics/preview | Removes the whole "diagnostics lies" class | identical canonical/title/alternates across three consumers on the same data — **page-context half DONE** (diagnostics delegates to `merge_page_context`, verifier contract updated); **authoring-record half open** (additive `effective_*` fields, see design note) |
 | 7 | **P2-6:** field-level bulk guards + skipped counter + Null→None | "Safe" modes stop alarming and stop freezing fallback | partial-explicit row tests — **DONE** |
-| 8 | **P2-13:** one Next redirect hook on all pages | Host parity | route matrix: redirects applied 16/16 — **OPEN** |
+| 8 | **P2-13:** one Next redirect hook on all pages | Host parity | route matrix: redirects applied 16/16 — **DONE** (choke point in `resolveSeoPageContextForRoute` + `verify-seo-next-redirect-parity.mjs`) |
 | 9 | **P2-7/8/9:** OG per-field fallback, suffix/truncate order, foreign locale prefix | Targeted render defects | unit tests per item — **P2-7 DONE** (shared `resolve_open_graph_text` + tests), **P2-8 DONE** (reserve-before-truncate + test), **P2-9 open** (see design note: needs `TenantLocalePolicyPort`, no sound syntactic shortcut) |
 | 10 | **P2-11/12/14/15, P3** | Perf/categories/settings/UI matrix | per matching contract verifiers — **OPEN** |
 
@@ -327,6 +327,13 @@ Executed on this branch (static, Node-based):
   `.seo_meta(` in the IO worker), `verify-api-surface-contract` PASS (additive `skippedCount`),
   and the full SEO battery re-run: **all PASS**. Six new unit tests pin the field-plan table;
   like the other Rust tests on this branch they await a Rust-capable host (cargo unavailable).
+- After P2-13 (Next redirect choke point): new `scripts/verify/verify-seo-next-redirect-parity.mjs`
+  **PASS** (negative-tested: removing the choke-point invocation fails it); the four edited
+  TypeScript files pass `typescript@5.9` transpile diagnostics (syntax-only — `tsc --noEmit`
+  project checking needs `node_modules`, which is unavailable here); Next.js `canary`
+  `app-render.tsx` was inspected via `gh api`: `renderToStream errorRecovery` classifies
+  `isRedirectError` anywhere in the render pass (including `generateMetadata`) into the
+  decision's status + `location` header; full SEO battery re-run: **all PASS**.
 
 Not run / environment-dependent:
 

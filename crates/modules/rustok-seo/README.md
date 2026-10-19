@@ -14,6 +14,12 @@
 - expose diagnostics with readiness scoring, issue aggregates, hreflang gap detection, canonical redirect chain/loop detection, `cross_link_gap` hints, and image descriptor quality checks (`missing_image_alt`, `missing_image_size`) for SEO-critical targets; diagnostics page contexts are built by the shared render formula (`services::routing::merge_page_context`) so reported canonical/title/alternates/schema always equal public output
 - normalize JSON-LD into typed `SeoStructuredDataBlock` records with schema kind, source state, and `@graph` expansion
 - manage manual redirects and canonical overrides
+- apply `route.redirect` decisions as real HTTP redirects on **every** storefront route family: the
+  Leptos host answers `redirect_response(target, status)` from the resolved context, and the Next
+  host applies the same decision in the single `resolveSeoPageContextForRoute` choke point
+  (301/308 permanent, anything else temporary), so no page can render a redirect decision as a
+  noindex page anymore (audit P2-13); `scripts/verify/verify-seo-next-redirect-parity.mjs` pins
+  the choke point, the 16-family matrix, and the Leptos guard
 - generate sitemap files, serve `robots.txt`, and submit sitemap indexes via runtime adapters with per-endpoint aggregation and bounded partial-failure summaries; public sitemap responses use `no-store`. If a target owner can narrow visibility between operator jobs (Forum settings and audience policy), the public index/pages always rebuild from current owner candidates without writing a new operator job. Monitor this per-request read cost on large catalogs. Forum's public bulk SEO pages also derive cursors from audience-visible categories/topics rather than forwarding raw target cursors; selective policies can make these reads scan more raw candidates than a single page.
 - gate public sitemap/robots availability on **any** enabled sitemap-capable owner module: disabled owners are skipped by candidate collection and refresh probes instead of hiding every owner's routes (previously one disabled module 404'd the whole public surface)
 - compose AI smart fill inside the generation repository (`services::ai_seo::ai_smart_fill_meta`): only textual fields are refreshed; explicit robots directives, canonical URL, structured data, and the locale's explicit `og:image` are preserved, and generation snapshots (generated/frozen canonical, hardcoded robots) are never materialized as explicit overrides. Smart fill is a write and therefore requires stacked `seo:update` **and** `seo:generate` grants — generation alone can never persist
@@ -114,8 +120,10 @@ Tracked from [`docs/audits/seo-module-product-logic-audit-2026-10-18.md`](../../
   stored cycles are suppressed at runtime, but a manual redirect whose target is itself a
   registry-owned alias still costs a second hop; flattening it requires target-side alias
   resolution design (operator destination intent must win when the target is a live page).
-- **Next storefront redirect parity (audit P2-13)** — `redirectDecision` covers a subset of
-  backend routes and module routes 404 without Next rewrites; `apps/next-frontend` work pending.
+- **Next module-route hosting pending** — backend `modules/*` routes still 404 on the Next host
+  without rewrites; that hosting half belongs to the route-family ADR
+  (`DECISIONS/2026-10-18-seo-canonical-hreflang-route-family.md`, `Proposed`). SEO redirect parity
+  itself is implemented on all 16 storefront route families (audit P2-13).
 - **Authoring-record preview drift (audit P2-5 remainder) — deferred with design note.**
   Diagnostics page contexts now share the render formula (`merge_page_context`), but the editable
   `SeoMetaRecord` projection (`seo_meta` and the diagnostics meta record) still shows raw stored

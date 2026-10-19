@@ -1,5 +1,6 @@
 import { cache } from "react";
 import type { MetadataRoute } from "next";
+import { permanentRedirect, redirect } from "next/navigation";
 
 import { resolveLocale } from "../../i18n";
 import { getStorefrontTenantSlug } from "@/shared/api/modules";
@@ -213,6 +214,28 @@ const resolveSeoPageContextCached = cache(
   },
 );
 
+/**
+ * Applies the SEO redirect decision as a real HTTP redirect response.
+ *
+ * This is the single Next storefront choke point for `route.redirect` (audit P2-13): every
+ * server page resolves its SEO context through `resolveSeoPageContextForRoute`, so placing
+ * the decision here makes redirects apply on every route family instead of only on pages
+ * that remember to check. It mirrors the Leptos storefront, which answers with
+ * `redirect_response(target, status)` as soon as the resolved context carries a decision.
+ * Calling `redirect()` (including from `generateMetadata`) propagates `NEXT_REDIRECT` to the
+ * app-render error recovery, which answers with the decision's status and `Location` header.
+ */
+function applySeoRouteRedirect(resolution: SeoPageContextResolution): void {
+  const decision = resolution.context?.route.redirect;
+  if (!decision) {
+    return;
+  }
+  if (decision.statusCode === 301 || decision.statusCode === 308) {
+    permanentRedirect(decision.targetUrl);
+  }
+  redirect(decision.targetUrl);
+}
+
 export async function resolveSeoPageContextForRoute({
   locale,
   route,
@@ -232,7 +255,13 @@ export async function resolveSeoPageContextForRoute({
     query,
   });
 
-  return resolveSeoPageContextCached(resolvedLocale, normalizedRoute, tenantSlug);
+  const resolution = await resolveSeoPageContextCached(
+    resolvedLocale,
+    normalizedRoute,
+    tenantSlug,
+  );
+  applySeoRouteRedirect(resolution);
+  return resolution;
 }
 
 function staticRobotsMetadata(): MetadataRoute.Robots {

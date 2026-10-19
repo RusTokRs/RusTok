@@ -12,7 +12,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { notFound, redirect, permanentRedirect } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { ArrowLeft, Calendar, Clock, MessageSquare, Tag } from "lucide-react";
 import { storefrontGraphql } from "@/shared/lib/graphql";
 import {
@@ -104,13 +104,6 @@ export default async function BlogPostPage({
     locale,
     route: path,
   });
-  const redirectDecision = seoResolution.context?.route.redirect;
-  if (redirectDecision) {
-    if (redirectDecision.statusCode === 308 || redirectDecision.statusCode === 301) {
-      permanentRedirect(redirectDecision.targetUrl);
-    }
-    redirect(redirectDecision.targetUrl);
-  }
 
   const query = (await searchParams) ?? {};
   const isRu = locale === "ru";
