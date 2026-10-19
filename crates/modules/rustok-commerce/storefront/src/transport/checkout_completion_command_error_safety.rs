@@ -113,6 +113,11 @@ fn is_invalid_checkout_request(error: &UiTransportError) -> bool {
         message == CART_ID_UUID_VALIDATION
             || message == IDEMPOTENCY_KEY_VALIDATION
             || message == OWNER_INVALID_CHECKOUT_REQUEST
+            || message == INVALID_CHECKOUT_REQUEST
+            || message.contains(CART_ID_UUID_VALIDATION)
+            || message.contains(IDEMPOTENCY_KEY_VALIDATION)
+            || message.contains(OWNER_INVALID_CHECKOUT_REQUEST)
+            || message.contains(INVALID_CHECKOUT_REQUEST)
     })
 }
 
@@ -129,4 +134,88 @@ fn configured_tenant_slug_length() -> Option<usize> {
             (!value.is_empty()).then_some(value.chars().count())
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_order_storefront::transport::CheckoutCompletionCommandMetadata;
+
+    fn sample_checkout_request() -> CheckoutCompletionCommandRequest {
+        CheckoutCompletionCommandRequest {
+            cart_id: "cart-123".into(),
+            idempotency_key: "idem-key-1".into(),
+            metadata: CheckoutCompletionCommandMetadata {
+                source_module: "rustok_commerce".into(),
+                source_surface: "storefront".into(),
+                command: "complete_checkout".into(),
+                owner_module: "rustok_order".into(),
+                create_fulfillment: true,
+            },
+        }
+    }
+
+    #[test]
+    fn maps_validation_error_on_native_and_graphql() {
+        let req = sample_checkout_request();
+        let ctx = CheckoutCompletionCommandErrorContext::new(&req);
+
+        let err_native = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::NativeServer,
+            native_error: Some("checkout idempotency key must contain 1 to 191 bytes".into()),
+            graphql_error: None,
+            fallback_attempted: false,
+        };
+        match ctx.map_error(err_native) {
+            ApiError::Validation(msg) => assert_eq!(msg, "Invalid checkout request"),
+            other => panic!("expected ApiError::Validation, got {other:?}"),
+        }
+
+        let err_graphql = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::Graphql,
+            native_error: None,
+            graphql_error: Some("Checkout request is invalid".into()),
+            fallback_attempted: false,
+        };
+        match ctx.map_error(err_graphql) {
+            ApiError::Validation(msg) => assert_eq!(msg, "Invalid checkout request"),
+            other => panic!("expected ApiError::Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn maps_transport_errors_to_safe_public_message() {
+        let req = sample_checkout_request();
+        let ctx = CheckoutCompletionCommandErrorContext::new(&req);
+
+        let err_native = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::NativeServer,
+            native_error: Some("connection pool exhausted".into()),
+            graphql_error: None,
+            fallback_attempted: false,
+        };
+        match ctx.map_error(err_native) {
+            ApiError::ServerFn(msg) => {
+                assert_eq!(msg, "Checkout completion is temporarily unavailable");
+            }
+            other => panic!("expected ApiError::ServerFn, got {other:?}"),
+        }
+
+        let err_graphql = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::Graphql,
+            native_error: None,
+            graphql_error: Some("internal server error".into()),
+            fallback_attempted: false,
+        };
+        match ctx.map_error(err_graphql) {
+            ApiError::Graphql(msg) => {
+                assert_eq!(msg, "Checkout completion is temporarily unavailable");
+            }
+            other => panic!("expected ApiError::Graphql, got {other:?}"),
+        }
+    }
 }

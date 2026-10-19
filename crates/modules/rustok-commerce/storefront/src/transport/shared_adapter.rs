@@ -102,14 +102,16 @@ fn fallback_storefront_commerce(
 }
 
 fn is_cart_id_validation_error(error: &rustok_ui_transport::UiTransportError) -> bool {
-    error
-        .native_error
-        .as_deref()
-        .is_some_and(|message| message.contains("cart_id must be a valid UUID"))
-        || error
-            .graphql_error
-            .as_deref()
-            .is_some_and(|message| message.contains("cart_id must be a valid UUID"))
+    [
+        error.native_error.as_deref(),
+        error.graphql_error.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|message| {
+        message.contains("cart_id must be a valid UUID")
+            || message.contains("Invalid cart selection")
+    })
 }
 
 fn map_cart_transport_error(
@@ -256,10 +258,10 @@ pub async fn fetch_storefront_commerce_graphql(
     )
     .await
     .map_err(map_cart_transport_error)?;
-    let payment_collection = if cart_data.cart.is_some() {
+    let payment_collection = if let Some(ref cart) = cart_data.cart {
         rustok_payment_storefront::transport::fetch_payment_collection(
             rustok_payment_storefront::transport::build_payment_collection_fetch_request(
-                cart_data.selected_cart_id.clone().unwrap_or_default(),
+                cart.id.clone(),
             ),
         )
         .await
@@ -274,4 +276,152 @@ pub async fn fetch_storefront_commerce_graphql(
         payment_collection,
     });
     Ok(data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_ui_transport::{UiTransportError, UiTransportPath};
+
+    #[test]
+    fn api_error_displays_correctly() {
+        assert_eq!(
+            ApiError::Graphql("graphql failure".into()).to_string(),
+            "graphql failure"
+        );
+        assert_eq!(
+            ApiError::ServerFn("server fn failure".into()).to_string(),
+            "server fn failure"
+        );
+        assert_eq!(
+            ApiError::Validation("validation failure".into()).to_string(),
+            "validation failure"
+        );
+    }
+
+    #[test]
+    fn normalize_cart_id_trims_and_discards_blank() {
+        assert_eq!(normalize_cart_id(Some("  ".into())), None);
+        assert_eq!(normalize_cart_id(Some(" cart-1 ".into())), Some("cart-1".into()));
+        assert_eq!(normalize_cart_id(None), None);
+    }
+
+    #[test]
+    fn fallback_storefront_commerce_constructs_valid_default() {
+        let data = fallback_storefront_commerce(Some(" cart-1 ".into()), Some(" en ".into()));
+        assert_eq!(data.effective_locale, "en");
+        assert_eq!(data.selected_cart_id.as_deref(), Some("cart-1"));
+        assert!(data.checkout.is_some());
+    }
+
+    #[test]
+    fn fallback_storefront_commerce_without_cart_has_no_checkout_workspace() {
+        let data = fallback_storefront_commerce(None, None);
+        assert_eq!(data.effective_locale, "");
+        assert_eq!(data.selected_cart_id, None);
+        assert!(data.checkout.is_none());
+    }
+
+    #[test]
+    fn is_cart_id_validation_error_detects_all_patterns() {
+        let err1 = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::Graphql,
+            native_error: None,
+            graphql_error: Some("cart_id must be a valid UUID".into()),
+            fallback_attempted: false,
+        };
+        assert!(is_cart_id_validation_error(&err1));
+
+        let err2 = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::NativeServer,
+            native_error: Some("Invalid cart selection".into()),
+            graphql_error: None,
+            fallback_attempted: false,
+        };
+        assert!(is_cart_id_validation_error(&err2));
+
+        let err3 = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::Graphql,
+            native_error: None,
+            graphql_error: Some("network timeout".into()),
+            fallback_attempted: false,
+        };
+        assert!(!is_cart_id_validation_error(&err3));
+    }
+
+    #[test]
+    fn map_cart_checkout_cart_maps_all_fields() {
+        let cart = rustok_cart_storefront::model::StorefrontCart {
+            id: "cart-1".into(),
+            status: "active".into(),
+            currency_code: "USD".into(),
+            subtotal_amount: "100.00".into(),
+            adjustment_total: "0.00".into(),
+            shipping_total: "10.00".into(),
+            total_amount: "110.00".into(),
+            channel_slug: Some("web".into()),
+            email: Some("user@example.com".into()),
+            customer_id: None,
+            region_id: None,
+            country_code: Some("US".into()),
+            locale_code: Some("en".into()),
+            delivery_groups: vec![rustok_cart_storefront::model::StorefrontCartDeliveryGroup {
+                shipping_profile_slug: "standard".into(),
+                seller_id: None,
+                line_item_count: 1,
+                selected_shipping_option_id: Some("opt-1".into()),
+                available_shipping_options: vec![
+                    rustok_cart_storefront::model::StorefrontCartShippingOption {
+                        id: "opt-1".into(),
+                        name: "Standard Ground".into(),
+                        currency_code: "USD".into(),
+                        amount: "10.00".into(),
+                        provider_id: "prov-1".into(),
+                        active: true,
+                    },
+                ],
+                available_option_count: 1,
+            }],
+            line_items: vec![],
+            adjustments: vec![],
+        };
+
+        let mapped = map_cart_checkout_cart(cart);
+        assert_eq!(mapped.id, "cart-1");
+        assert_eq!(mapped.selected_shipping_option_id.as_deref(), Some("opt-1"));
+        assert_eq!(mapped.delivery_group_count, 1);
+        assert_eq!(mapped.delivery_groups[0].shipping_profile_slug, "standard");
+        assert_eq!(mapped.delivery_groups[0].available_shipping_options.len(), 1);
+    }
+
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn ssr_cart_id_and_locale_helpers_work_as_expected() {
+        assert_eq!(
+            resolve_requested_locale(Some(" ru ".into()), Some("en"), "es"),
+            "ru"
+        );
+        assert_eq!(
+            resolve_requested_locale(None, Some("en"), "es"),
+            "en"
+        );
+        assert_eq!(
+            resolve_requested_locale(None, None, "es"),
+            "es"
+        );
+
+        let valid_uuid = "a1a2a3a4-b1b2-c1c2-d1d2-d3d4d5d6d7d8";
+        let parsed = parse_cart_id(Some(valid_uuid.into())).unwrap();
+        assert!(parsed.is_some());
+        assert_eq!(parsed.unwrap().0, valid_uuid);
+
+        let invalid = parse_cart_id(Some("not-a-uuid".into()));
+        assert!(invalid.is_err());
+
+        let empty = parse_cart_id(Some("  ".into())).unwrap();
+        assert!(empty.is_none());
+    }
 }

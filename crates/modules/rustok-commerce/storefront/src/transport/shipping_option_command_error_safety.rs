@@ -124,14 +124,15 @@ fn is_invalid_shipping_selection(error: &UiTransportError) -> bool {
 }
 
 fn is_shipping_selection_validation_message(message: &str) -> bool {
-    matches!(
-        message,
-        CART_ID_UUID_VALIDATION
-            | SELECTED_SHIPPING_OPTION_ID_UUID_VALIDATION
-            | INVALID_SHIPPING_SELECTION
-    ) || (message.starts_with("delivery group `")
-        && message.ends_with(" is not present in the checkout cart"))
-        || (message.starts_with("shipping option ")
+    message == CART_ID_UUID_VALIDATION
+        || message == SELECTED_SHIPPING_OPTION_ID_UUID_VALIDATION
+        || message == INVALID_SHIPPING_SELECTION
+        || message.contains(CART_ID_UUID_VALIDATION)
+        || message.contains(SELECTED_SHIPPING_OPTION_ID_UUID_VALIDATION)
+        || message.contains(INVALID_SHIPPING_SELECTION)
+        || (message.contains("delivery group `")
+            && message.contains(" is not present in the checkout cart"))
+        || (message.contains("shipping option ")
             && message.contains(" is not available for shipping profile "))
 }
 
@@ -148,4 +149,94 @@ fn configured_tenant_slug_length() -> Option<usize> {
             (!value.is_empty()).then_some(value.chars().count())
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_fulfillment_storefront::transport::{
+        SelectShippingOptionRequest as FulfillmentSelectShippingOptionRequest,
+        ShippingSelectionDeliveryGroup,
+    };
+
+    fn sample_shipping_request() -> SelectShippingOptionRequest {
+        SelectShippingOptionRequest {
+            owner_request: FulfillmentSelectShippingOptionRequest {
+                cart_id: "cart-123".into(),
+                delivery_groups: vec![ShippingSelectionDeliveryGroup {
+                    shipping_profile_slug: "standard".into(),
+                    seller_id: Some("seller-1".into()),
+                    selected_shipping_option_id: Some("opt-1".into()),
+                    available_shipping_option_ids: vec!["opt-1".into()],
+                }],
+                shipping_profile_slug: "standard".into(),
+                seller_id: Some("seller-1".into()),
+                shipping_option_id: Some("opt-1".into()),
+            },
+        }
+    }
+
+    #[test]
+    fn maps_validation_error_on_native_and_graphql() {
+        let req = sample_shipping_request();
+        let ctx = ShippingOptionCommandErrorContext::new(&req);
+
+        let err_native = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::NativeServer,
+            native_error: Some("ServerFnError: delivery group `standard`/Some(\"seller-1\") is not present in the checkout cart".into()),
+            graphql_error: None,
+            fallback_attempted: false,
+        };
+        match ctx.map_error(err_native) {
+            ApiError::Validation(msg) => assert_eq!(msg, "Invalid shipping selection"),
+            other => panic!("expected ApiError::Validation, got {other:?}"),
+        }
+
+        let err_graphql = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::Graphql,
+            native_error: None,
+            graphql_error: Some("shipping option opt-9 is not available for shipping profile standard".into()),
+            fallback_attempted: false,
+        };
+        match ctx.map_error(err_graphql) {
+            ApiError::Validation(msg) => assert_eq!(msg, "Invalid shipping selection"),
+            other => panic!("expected ApiError::Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn maps_transport_errors_to_safe_public_message() {
+        let req = sample_shipping_request();
+        let ctx = ShippingOptionCommandErrorContext::new(&req);
+
+        let err_native = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::NativeServer,
+            native_error: Some("fulfillment service unreachable".into()),
+            graphql_error: None,
+            fallback_attempted: false,
+        };
+        match ctx.map_error(err_native) {
+            ApiError::ServerFn(msg) => {
+                assert_eq!(msg, "Shipping selection is temporarily unavailable");
+            }
+            other => panic!("expected ApiError::ServerFn, got {other:?}"),
+        }
+
+        let err_graphql = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::Graphql,
+            native_error: None,
+            graphql_error: Some("timeout".into()),
+            fallback_attempted: false,
+        };
+        match ctx.map_error(err_graphql) {
+            ApiError::Graphql(msg) => {
+                assert_eq!(msg, "Shipping selection is temporarily unavailable");
+            }
+            other => panic!("expected ApiError::Graphql, got {other:?}"),
+        }
+    }
 }
