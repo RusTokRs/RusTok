@@ -595,6 +595,8 @@ fn validate_request(
         || request.payment_collection_id.is_nil()
         || request.payment_reference.trim().is_empty()
         || request.payment_method.trim().is_empty()
+        || request.payment_reference.trim().len() > 100
+        || request.payment_method.trim().len() > 100
     {
         let context_facts = order_payment_settlement_context_facts(context);
         let request_facts = order_payment_settlement_request_facts(request);

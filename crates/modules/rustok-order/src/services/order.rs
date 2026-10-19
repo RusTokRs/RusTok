@@ -587,9 +587,10 @@ impl OrderService {
         if let Some(status) = input
             .status
             .as_ref()
-            .filter(|value| !value.trim().is_empty())
+            .map(|s| s.trim().to_ascii_lowercase())
+            .filter(|s| !s.is_empty())
         {
-            query = query.filter(entities::order::Column::Status.eq(status.trim()));
+            query = query.filter(entities::order::Column::Status.eq(status));
         }
         if let Some(customer_id) = input.customer_id {
             query = query.filter(entities::order::Column::CustomerId.eq(customer_id));
@@ -638,11 +639,25 @@ impl OrderService {
         payment_id: String,
         payment_method: String,
     ) -> OrderResult<OrderResponse> {
-        if payment_id.trim().is_empty() || payment_method.trim().is_empty() {
+        let payment_id = payment_id.trim();
+        let payment_method = payment_method.trim();
+        if payment_id.is_empty() || payment_method.is_empty() {
             return Err(OrderError::Validation(
                 "payment_id and payment_method are required".to_string(),
             ));
         }
+        if payment_id.len() > 100 {
+            return Err(OrderError::Validation(
+                "payment_id must not exceed 100 characters".to_string(),
+            ));
+        }
+        if payment_method.len() > 100 {
+            return Err(OrderError::Validation(
+                "payment_method must not exceed 100 characters".to_string(),
+            ));
+        }
+        let payment_id = payment_id.to_string();
+        let payment_method = payment_method.to_string();
 
         self.transition_order(
             tenant_id,
@@ -667,11 +682,25 @@ impl OrderService {
         tracking_number: String,
         carrier: String,
     ) -> OrderResult<OrderResponse> {
-        if tracking_number.trim().is_empty() || carrier.trim().is_empty() {
+        let tracking_number = tracking_number.trim();
+        let carrier = carrier.trim();
+        if tracking_number.is_empty() || carrier.is_empty() {
             return Err(OrderError::Validation(
                 "tracking_number and carrier are required".to_string(),
             ));
         }
+        if tracking_number.len() > 100 {
+            return Err(OrderError::Validation(
+                "tracking_number must not exceed 100 characters".to_string(),
+            ));
+        }
+        if carrier.len() > 100 {
+            return Err(OrderError::Validation(
+                "carrier must not exceed 100 characters".to_string(),
+            ));
+        }
+        let tracking_number = tracking_number.to_string();
+        let carrier = carrier.to_string();
 
         self.transition_order(
             tenant_id,
@@ -704,6 +733,14 @@ impl OrderService {
         if tenant_id.is_nil() || order_id.is_nil() {
             return Err(OrderError::Validation(
                 "tenant_id and order_id must be valid non-nil UUIDs".to_string(),
+            ));
+        }
+        let delivered_signature = trim_optional_text(delivered_signature);
+        if let Some(ref sig) = delivered_signature
+            && sig.len() > 255
+        {
+            return Err(OrderError::Validation(
+                "delivered_signature must not exceed 255 characters".to_string(),
             ));
         }
 
@@ -768,6 +805,14 @@ impl OrderService {
                 "tenant_id and order_id must be valid non-nil UUIDs".to_string(),
             ));
         }
+        let cancel_reason = trim_optional_text(reason);
+        if let Some(ref r) = cancel_reason
+            && r.len() > 500
+        {
+            return Err(OrderError::Validation(
+                "cancellation reason must not exceed 500 characters".to_string(),
+            ));
+        }
 
         let txn = self.db.begin().await?;
         let existing = find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
@@ -783,7 +828,6 @@ impl OrderService {
         let old_status = existing.status.clone();
         let mut active: entities::order::ActiveModel = existing.into();
         let now = Utc::now();
-        let cancel_reason = reason.filter(|value| !value.trim().is_empty());
         active.status = Set(STATUS_CANCELLED.to_string());
         active.cancellation_reason = Set(cancel_reason.clone());
         active.cancelled_at = Set(Some(now.into()));
