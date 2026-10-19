@@ -1072,9 +1072,9 @@
       "category": "modules",
       "files": 5,
       "loc": 328,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-19 23:05",
+      "notes": "Audited; enforced non-negative compare_at_amount, 3-letter ASCII alphabetic currency code validation, and currency/slug normalization in BootstrapService. 9/9 tests passed."
     },
     "crates/modules/rustok-product": {
       "name": "rustok-product",
