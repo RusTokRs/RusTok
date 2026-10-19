@@ -383,7 +383,7 @@ impl InventoryService {
         let other_available: i32 = all_levels
             .iter()
             .filter(|l| l.id != state.level.id)
-            .map(|l| l.stocked_quantity - l.reserved_quantity)
+            .map(|l| l.stocked_quantity.saturating_sub(l.reserved_quantity))
             .sum();
 
         let target_default_available = quantity - other_available;
@@ -392,7 +392,7 @@ impl InventoryService {
         {
             return Err(CommerceError::InsufficientInventory {
                 requested: -target_default_available,
-                available: state.level.stocked_quantity - state.level.reserved_quantity,
+                available: state.level.stocked_quantity.saturating_sub(state.level.reserved_quantity),
             });
         }
 
@@ -850,7 +850,7 @@ impl InventoryService {
 
         Ok(levels
             .into_iter()
-            .map(|level| level.stocked_quantity - level.reserved_quantity)
+            .map(|level| level.stocked_quantity.saturating_sub(level.reserved_quantity))
             .sum())
     }
 }
