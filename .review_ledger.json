@@ -922,9 +922,9 @@
       "category": "modules",
       "files": 14,
       "loc": 2813,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-19 17:55",
+      "notes": "Audited and cleaned. Enforced FFA boundaries: extracted OrderActionEligibility and order_action_eligibility from UI view into framework-agnostic core policy; enforced schema bounds checks on payment_id (<=100), payment_method (<=100), tracking_number (<=100), carrier (<=100), delivered_signature (<=255), and reason (<=500) with typed FieldTooLong error; normalized status filter lowercasing and bounded pagination on OrderListRequest; fixed whitespace comparisons in DateRange and status filter; reset pagination on grid filter change; 27/27 tests passed, 0 clippy warnings (default + ssr), gate passed."
     },
     "crates/modules/rustok-order/storefront": {
       "name": "storefront",
