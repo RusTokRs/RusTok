@@ -141,6 +141,9 @@ async fn storefront_refund_summary_native(
             })?;
         let order_id = Uuid::parse_str(request.order_id.trim())
             .map_err(|_| ServerFnError::new("order_id must be a valid UUID"))?;
+        if order_id.is_nil() {
+            return Err(ServerFnError::new("order_id must not be a nil UUID"));
+        }
 
         let (items, total) = storefront_checkout_runtime::read_storefront_order_refunds(
             &runtime,
@@ -204,6 +207,9 @@ async fn storefront_payment_collection_native(
             })?;
         let cart_id = Uuid::parse_str(request.cart_id.trim())
             .map_err(|_| ServerFnError::new("cart_id must be a valid UUID"))?;
+        if cart_id.is_nil() {
+            return Err(ServerFnError::new("cart_id must not be a nil UUID"));
+        }
 
         storefront_checkout_runtime::read_storefront_payment_collection(
             &runtime, &tenant, auth, cart_id,
@@ -264,6 +270,9 @@ async fn storefront_payment_create_collection_native(
             })?;
         let cart_id = Uuid::parse_str(request.cart_id.trim())
             .map_err(|_| ServerFnError::new("cart_id must be a valid UUID"))?;
+        if cart_id.is_nil() {
+            return Err(ServerFnError::new("cart_id must not be a nil UUID"));
+        }
         let metadata = request.metadata;
 
         let collection = storefront_checkout_runtime::create_storefront_payment_collection(
