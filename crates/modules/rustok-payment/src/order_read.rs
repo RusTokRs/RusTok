@@ -157,7 +157,7 @@ impl PaymentOrderReadPort for InProcessPaymentOrderReadPort {
                     per_page: request.per_page,
                     payment_collection_id: None,
                     order_id: Some(request.order_id),
-                    status: request.status,
+                    status: request.status.filter(|s| !s.trim().is_empty()),
                 },
             )
             .await

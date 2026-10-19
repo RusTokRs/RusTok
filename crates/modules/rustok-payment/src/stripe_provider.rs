@@ -827,7 +827,7 @@ mod tests {
         }
 
         assert_eq!(to_minor_units(Decimal::from(5), "MGA").unwrap(), 5);
-        assert_eq!(to_minor_units(Decimal::new(15, 1), "KWD").unwrap(), 150);
+        assert_eq!(to_minor_units(Decimal::new(15, 1), "KWD").unwrap(), 1500);
     }
 
     #[test]
