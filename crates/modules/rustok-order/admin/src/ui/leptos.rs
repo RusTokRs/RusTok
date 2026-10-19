@@ -8,11 +8,11 @@ use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    action_hint, filter_orders, format_order_caption, localized_order_status, order_grid_columns,
-    order_list_request, order_status_badge, prepare_cancel_order_command,
-    prepare_deliver_order_command, prepare_mark_paid_command, prepare_ship_order_command,
-    short_order_id, summarize_order_header, summarize_order_lines, summarize_order_timeline,
-    text_or_dash,
+    action_hint, filter_orders, format_order_caption, localized_order_status,
+    order_action_eligibility, order_grid_columns, order_list_request, order_status_badge,
+    prepare_cancel_order_command, prepare_deliver_order_command, prepare_mark_paid_command,
+    prepare_ship_order_command, short_order_id, summarize_order_header, summarize_order_lines,
+    summarize_order_timeline, text_or_dash,
 };
 use crate::helpers::{apply_order_detail, clear_order_detail, handle_action_result};
 use crate::i18n::t;
@@ -413,7 +413,13 @@ pub fn OrderAdmin() -> impl IntoView {
         let tenant_value = tenant.get_untracked();
         let tenant_id = current_tenant.id.clone();
         let user_id = me.id.clone();
-        let deliver_command = prepare_deliver_order_command(delivered_signature.get_untracked());
+        let deliver_command = match prepare_deliver_order_command(delivered_signature.get_untracked()) {
+            Ok(command) => command,
+            Err(error) => {
+                set_error.set(Some(error.to_string()));
+                return;
+            }
+        };
         let submit_error_label = deliver_submit_error_label.clone();
         let load_error_label = deliver_load_order_error_label.clone();
         let not_found_label = deliver_order_not_found_label.clone();
@@ -475,7 +481,13 @@ pub fn OrderAdmin() -> impl IntoView {
         let tenant_value = tenant.get_untracked();
         let tenant_id = current_tenant.id.clone();
         let user_id = me.id.clone();
-        let cancel_command = prepare_cancel_order_command(cancel_reason.get_untracked());
+        let cancel_command = match prepare_cancel_order_command(cancel_reason.get_untracked()) {
+            Ok(command) => command,
+            Err(error) => {
+                set_error.set(Some(error.to_string()));
+                return;
+            }
+        };
         let submit_error_label = cancel_submit_error_label.clone();
         let load_error_label = cancel_load_order_error_label.clone();
         let not_found_label = cancel_order_not_found_label.clone();
@@ -575,6 +587,7 @@ pub fn OrderAdmin() -> impl IntoView {
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
         filters.set(new_filters);
+        pagination.update(|p| p.set_page(1));
     });
 
     let cell_locale = ui_locale.clone();
@@ -775,10 +788,11 @@ pub fn OrderAdmin() -> impl IntoView {
                         let order = detail.order.clone();
                         let payment_collection = detail.payment_collection.clone();
                         let fulfillment = detail.fulfillment.clone();
-                        let mark_paid_disabled = busy.get() || order.status.as_str() != "confirmed";
-                        let ship_disabled = busy.get() || order.status.as_str() != "paid";
-                        let deliver_disabled = busy.get() || order.status.as_str() != "shipped";
-                        let cancel_disabled = busy.get() || matches!(order.status.as_str(), "delivered" | "cancelled");
+                        let eligibility = order_action_eligibility(order.status.as_str());
+                        let mark_paid_disabled = busy.get() || !eligibility.can_mark_paid;
+                        let ship_disabled = busy.get() || !eligibility.can_ship;
+                        let deliver_disabled = busy.get() || !eligibility.can_deliver;
+                        let cancel_disabled = busy.get() || !eligibility.can_cancel;
 
                         view! {
                             <div class="space-y-6">
