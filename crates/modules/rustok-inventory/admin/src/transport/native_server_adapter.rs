@@ -331,8 +331,12 @@ fn inventory_service_from_context(
 
 #[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value.trim())
-        .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))
+    let parsed = uuid::Uuid::parse_str(value.trim())
+        .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))?;
+    if parsed.is_nil() {
+        return Err(ServerFnError::new(format!("{field_name} must not be nil")));
+    }
+    Ok(parsed)
 }
 
 #[cfg(feature = "ssr")]
@@ -863,6 +867,10 @@ async fn inventory_reserve_quantity_native(
         )?;
         assert_requested_tenant(&tenant, &tenant_id)?;
 
+        if quantity < 0 {
+            return Err(ServerFnError::new("Reserve quantity must be non-negative"));
+        }
+
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
         inventory_service_from_context(
             owner_operation,
@@ -923,6 +931,10 @@ async fn inventory_check_availability_native(
             "inventory:read or inventory:update required",
         )?;
         assert_requested_tenant(&tenant, &tenant_id)?;
+
+        if requested_quantity < 0 {
+            return Err(ServerFnError::new("Requested quantity must be non-negative"));
+        }
 
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
         inventory_service_from_context(
@@ -985,6 +997,10 @@ async fn inventory_release_reservation_native(
         )?;
         assert_requested_tenant(&tenant, &tenant_id)?;
 
+        if quantity < 0 {
+            return Err(ServerFnError::new("Release reservation quantity must be non-negative"));
+        }
+
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
         inventory_service_from_context(
             owner_operation,
@@ -1016,5 +1032,34 @@ async fn inventory_release_reservation_native(
         Err(ServerFnError::new(
             "inventory/variant/release-reservation requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::parse_uuid;
+
+    #[test]
+    fn parse_uuid_accepts_valid_uuid_with_whitespace() {
+        let id_str = "  a1a2a3a4-b1b2-c1c2-d1d2-d3d4d5d6d7d8  ";
+        let parsed = parse_uuid(id_str, "variant_id").expect("valid UUID should parse");
+        assert_eq!(
+            parsed,
+            uuid::Uuid::parse_str("a1a2a3a4-b1b2-c1c2-d1d2-d3d4d5d6d7d8").unwrap()
+        );
+    }
+
+    #[test]
+    fn parse_uuid_rejects_nil_uuid() {
+        let err = parse_uuid("00000000-0000-0000-0000-000000000000", "tenant_id")
+            .expect_err("nil UUID should be rejected");
+        assert!(err.to_string().contains("tenant_id must not be nil"));
+    }
+
+    #[test]
+    fn parse_uuid_rejects_malformed_string() {
+        let err = parse_uuid("not-a-uuid", "product_id")
+            .expect_err("invalid UUID string should be rejected");
+        assert!(err.to_string().contains("Invalid product_id"));
     }
 }

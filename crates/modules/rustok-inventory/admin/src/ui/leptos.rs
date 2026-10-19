@@ -9,8 +9,8 @@ use rustok_ui_core::{AdminQueryKey, UiRouteContext, normalize_ui_text};
 use crate::core::{
     InventoryHealthState, apply_variant_quantity_update, apply_variant_reservation_release_update,
     apply_variant_reservation_update, filter_inventory_products, inventory_grid_columns,
-    inventory_health_state, parse_availability_quantity, parse_reserve_quantity,
-    parse_set_quantity, status_badge, summarize_inventory,
+    inventory_health_state, parse_availability_quantity, parse_release_quantity,
+    parse_reserve_quantity, parse_set_quantity, status_badge, summarize_inventory,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -794,7 +794,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                             set_notice.set(None);
                                                                             return;
                                                                         };
-                                                                        let quantity = match parse_reserve_quantity(quantity_input.get_untracked().as_str()) {
+                                                                        let quantity = match parse_release_quantity(quantity_input.get_untracked().as_str()) {
                                                                             Ok(value) => value,
                                                                             Err(_) => {
                                                                                 set_error.set(Some(invalid_release_quantity_label.clone()));

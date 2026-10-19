@@ -282,6 +282,10 @@ pub(crate) fn parse_reserve_quantity(value: &str) -> Result<i32, String> {
     parse_non_negative_quantity(value, "reserve quantity")
 }
 
+pub(crate) fn parse_release_quantity(value: &str) -> Result<i32, String> {
+    parse_non_negative_quantity(value, "release quantity")
+}
+
 pub(crate) fn parse_availability_quantity(value: &str) -> Result<i32, String> {
     parse_non_negative_quantity(value, "availability quantity")
 }
@@ -310,8 +314,7 @@ pub(crate) fn summarize_inventory(variants: &[InventoryVariant]) -> InventorySum
         variant_count: variants.len(),
         total_quantity: variants
             .iter()
-            .map(|variant| variant.inventory_quantity)
-            .sum(),
+            .fold(0_i32, |acc, variant| acc.saturating_add(variant.inventory_quantity)),
         low_stock: health_counts.low_stock,
         backorder: health_counts.backorder,
         out_of_stock: health_counts.out_of_stock,
@@ -499,7 +502,8 @@ pub fn matches_inventory_filter(
                 || item.handle.to_lowercase().contains(&q)
         }
         ("status", FilterValue::Select(val)) => {
-            val.is_empty() || item.status.eq_ignore_ascii_case(val)
+            let trimmed = val.trim();
+            trimmed.is_empty() || item.status.eq_ignore_ascii_case(trimmed)
         }
         ("product_type", FilterValue::Text(query)) => {
             let q = query.trim().to_lowercase();
@@ -534,17 +538,17 @@ pub fn matches_inventory_filter(
                 .split('T')
                 .next()
                 .unwrap_or(&item.created_at);
-            if let Some(f) = from
-                && !f.trim().is_empty()
-                && item_date < f.as_str()
-            {
-                return false;
+            if let Some(f) = from {
+                let trimmed_from = f.trim();
+                if !trimmed_from.is_empty() && item_date < trimmed_from {
+                    return false;
+                }
             }
-            if let Some(t) = to
-                && !t.trim().is_empty()
-                && item_date > t.as_str()
-            {
-                return false;
+            if let Some(t) = to {
+                let trimmed_to = t.trim();
+                if !trimmed_to.is_empty() && item_date > trimmed_to {
+                    return false;
+                }
             }
             true
         }
@@ -956,5 +960,47 @@ mod tests {
         let res5 = filter_inventory_products(&items, &date_filter);
         assert_eq!(res5.len(), 1);
         assert_eq!(res5[0].id, "p2");
+
+        let mut date_filter_whitespace = ColumnFilters::new();
+        date_filter_whitespace.set(
+            "created_at",
+            FilterValue::DateRange {
+                from: Some("  2026-02-01  ".to_string()),
+                to: Some("  2026-04-01  ".to_string()),
+            },
+        );
+        let res6 = filter_inventory_products(&items, &date_filter_whitespace);
+        assert_eq!(res6.len(), 1);
+        assert_eq!(res6[0].id, "p2");
+
+        let mut status_filter_whitespace = ColumnFilters::new();
+        status_filter_whitespace.set("status", FilterValue::Select("  active  ".to_string()));
+        let res7 = filter_inventory_products(&items, &status_filter_whitespace);
+        assert_eq!(res7.len(), 1);
+        assert_eq!(res7[0].id, "p1");
+    }
+
+    #[test]
+    fn parse_release_quantity_accepts_non_negative_and_rejects_negative_or_invalid() {
+        assert_eq!(parse_release_quantity(" 5 "), Ok(5));
+        assert_eq!(parse_release_quantity("0"), Ok(0));
+        assert_eq!(
+            parse_release_quantity("-3"),
+            Err("release quantity must be non-negative".to_string())
+        );
+        assert!(parse_release_quantity("invalid").is_err());
+        assert!(parse_release_quantity("").is_err());
+    }
+
+    #[test]
+    fn summarize_inventory_saturates_on_large_quantities_without_overflow() {
+        let variants = vec![
+            variant(true, "deny", i32::MAX),
+            variant(true, "deny", 100),
+        ];
+
+        let summary = summarize_inventory(&variants);
+        assert_eq!(summary.total_quantity, i32::MAX);
+        assert_eq!(summary.variant_count, 2);
     }
 }
