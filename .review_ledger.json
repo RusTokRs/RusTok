@@ -282,9 +282,9 @@
       "category": "modules",
       "files": 73,
       "loc": 19638,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-19 15:05",
+      "notes": "Audited and cleaned. Updated normalize_locale_code and validate_locale_code to use canonical normalize_locale_tag with length constraint [2..=10] matching the database schema; enforced validate_non_empty_title on AddCartLineItemInput and trimmed title/blank sku on line item addition; normalized email across create_cart and update_context to trim whitespace and collapse empty strings to None; allowed checkout snapshot preparation to adopt request email when cart email is None. 75/75 tests passed, 0 clippy warnings, gate passed."
     },
     "crates/modules/rustok-cart/storefront": {
       "name": "storefront",
