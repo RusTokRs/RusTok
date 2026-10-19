@@ -28,7 +28,7 @@ Root `rustok_pricing::in_process_pricing_read_port` continues to construct
 ## Bounded delegated context
 
 Covered local outcomes retain correlation ID, exact owner and local operation names, and
-the stable `pricing_read_port` boundary. Delegated context is represented only by:
+the stable `pricing_read_port` boundary. The bounded delegated context is represented only by:
 
 - tenant and actor-ID character lengths;
 - a closed actor-kind label;
@@ -46,8 +46,8 @@ are not recorded.
 Request identity is retained only as UUID presence and non-nil state. Product, variant,
 region, channel, price-list, and selected-price-list UUID values are not recorded.
 
-Quantity is represented only by presence, non-zero state, and negative state; exact
-quantity values are not recorded. Currency, slug, locale, fallback-locale, handle, and
+Quantity is represented only by presence, non-zero state, and negative state;
+exact quantity values are not recorded. Currency, slug, locale, fallback-locale, handle, and
 public-channel-slug inputs remain represented by character length only.
 
 Raw storefront handles, channel slugs, currency codes, discount percentages, prices,

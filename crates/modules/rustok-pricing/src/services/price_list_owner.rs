@@ -304,6 +304,13 @@ fn normalize_translations(
             .description
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        if let Some(ref text) = description
+            && text.chars().count() > 10000
+        {
+            return Err(CommerceError::Validation(
+                "price-list translation description must be at most 10000 characters".to_string(),
+            ));
+        }
         if normalized
             .insert(
                 locale.clone(),
@@ -435,5 +442,61 @@ fn translation_change_error_to_commerce_error(
         other => CommerceError::Validation(format!(
             "Pricing translation change journal write failed: {other}"
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_translations_validates_bounds_and_uniqueness() {
+        let valid = vec![PriceListOwnerTranslationInput {
+            locale: "en-US".to_string(),
+            name: "Summer Sale".to_string(),
+            description: Some("Discounts for summer".to_string()),
+        }];
+        assert_eq!(normalize_translations(valid).unwrap().len(), 1);
+
+        let empty = Vec::new();
+        assert!(normalize_translations(empty).is_err());
+
+        let empty_name = vec![PriceListOwnerTranslationInput {
+            locale: "en-US".to_string(),
+            name: "   ".to_string(),
+            description: None,
+        }];
+        assert!(normalize_translations(empty_name).is_err());
+
+        let long_desc = vec![PriceListOwnerTranslationInput {
+            locale: "en-US".to_string(),
+            name: "Summer Sale".to_string(),
+            description: Some("a".repeat(10001)),
+        }];
+        assert!(normalize_translations(long_desc).is_err());
+
+        let duplicate_locale = vec![
+            PriceListOwnerTranslationInput {
+                locale: "en-US".to_string(),
+                name: "Sale 1".to_string(),
+                description: None,
+            },
+            PriceListOwnerTranslationInput {
+                locale: "en-US".to_string(),
+                name: "Sale 2".to_string(),
+                description: None,
+            },
+        ];
+        assert!(normalize_translations(duplicate_locale).is_err());
+    }
+
+    #[test]
+    fn validate_window_rules() {
+        let now = Utc::now();
+        let future = now + chrono::Duration::days(1);
+        assert!(validate_window(Some(&now), Some(&future)).is_ok());
+        assert!(validate_window(Some(&now), None).is_ok());
+        assert!(validate_window(None, Some(&future)).is_ok());
+        assert!(validate_window(Some(&future), Some(&now)).is_err());
     }
 }

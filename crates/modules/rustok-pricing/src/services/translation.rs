@@ -253,6 +253,7 @@ impl PriceListTranslationService {
         let target_locale = canonical_locale(&request.target_locale)?;
         validate_locale_pair(&source_locale, &target_locale)?;
         let target_name = normalize_name(&request.name)?;
+        let target_description = normalize_description(request.description)?;
 
         let txn = self.db.begin().await?;
         let price_list = price_list::Entity::find_by_id(price_list_id)
@@ -290,13 +291,13 @@ impl PriceListTranslationService {
         }
 
         let unchanged = target.is_some_and(|existing| {
-            existing.name == target_name && existing.description == request.description
+            existing.name == target_name && existing.description == target_description
         });
         if !unchanged {
             if let Some(existing) = target.cloned() {
                 let mut active: price_list_translation::ActiveModel = existing.into();
                 active.name = Set(target_name);
-                active.description = Set(request.description);
+                active.description = Set(target_description);
                 active.update(&txn).await?;
             } else {
                 price_list_translation::ActiveModel {
@@ -304,7 +305,7 @@ impl PriceListTranslationService {
                     price_list_id: Set(price_list_id),
                     locale: Set(target_locale.clone()),
                     name: Set(target_name),
-                    description: Set(request.description),
+                    description: Set(target_description),
                 }
                 .insert(&txn)
                 .await?;
@@ -494,6 +495,22 @@ fn normalize_name(name: &str) -> PriceListTranslationExactLocaleResult<String> {
     Ok(name.to_string())
 }
 
+fn normalize_description(
+    description: Option<String>,
+) -> PriceListTranslationExactLocaleResult<Option<String>> {
+    let description = description
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if let Some(ref text) = description
+        && text.chars().count() > 10000
+    {
+        return Err(PriceListTranslationExactLocaleError::Validation(
+            "Price list description must be at most 10000 characters".to_string(),
+        ));
+    }
+    Ok(description)
+}
+
 fn ensure_revision(
     revision: &'static str,
     expected: &str,
@@ -562,4 +579,42 @@ fn digest_revision(payload: &[u8]) -> String {
         write!(&mut revision, "{byte:02x}").expect("writing to String cannot fail");
     }
     revision
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_name_bounds() {
+        assert_eq!(normalize_name("  Wholesale  ").unwrap(), "Wholesale");
+        assert!(normalize_name("").is_err());
+        assert!(normalize_name("   ").is_err());
+        assert!(normalize_name(&"a".repeat(100)).is_ok());
+        assert!(normalize_name(&"a".repeat(101)).is_err());
+    }
+
+    #[test]
+    fn normalize_description_bounds() {
+        assert_eq!(
+            normalize_description(Some("  Bulk pricing tier  ".to_string())).unwrap(),
+            Some("Bulk pricing tier".to_string())
+        );
+        assert_eq!(normalize_description(Some("   ".to_string())).unwrap(), None);
+        assert_eq!(normalize_description(None).unwrap(), None);
+        assert!(normalize_description(Some("a".repeat(10000))).is_ok());
+        assert!(normalize_description(Some("a".repeat(10001))).is_err());
+    }
+
+    #[test]
+    fn validate_locale_pair_rules() {
+        assert!(validate_locale_pair("en-US", "ru-RU").is_ok());
+        assert!(validate_locale_pair("en", "en").is_err());
+    }
+
+    #[test]
+    fn validate_tenant_rules() {
+        assert!(validate_tenant(Uuid::new_v4()).is_ok());
+        assert!(validate_tenant(Uuid::nil()).is_err());
+    }
 }
