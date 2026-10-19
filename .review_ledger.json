@@ -912,9 +912,9 @@
       "category": "modules",
       "files": 85,
       "loc": 22532,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-19 17:05",
+      "notes": "Audited and cleaned. Aligned DB bounds: normalized and trimmed cancellation reason (<=500), delivery signature (<=255), payment ID (<=100), payment method (<=100), tracking number (<=100), carrier (<=100) across services, DTOs, and checkout settlement; enforced case-insensitive status filtering in order listing; added unit & integration tests; 56/56 tests passed, 0 clippy warnings, gate passed."
     },
     "crates/modules/rustok-order/admin": {
       "name": "admin",
