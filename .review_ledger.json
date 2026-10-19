@@ -642,9 +642,9 @@
       "category": "modules",
       "files": 10,
       "loc": 4750,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-20 02:00",
+      "notes": "Audited; enforced non-nil UUID validation across native server adapter, non-negative quantity guards on reserve, availability check, and release endpoints, saturating sum on inventory summary, whitespace normalization for status and date range filters, and dedicated parse_release_quantity. 68/68 tests passed (59 unit + 9 boundary across default & SSR features)."
     },
     "crates/modules/rustok-marketplace": {
       "name": "rustok-marketplace",
