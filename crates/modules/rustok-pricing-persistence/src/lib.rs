@@ -45,26 +45,51 @@ impl BootstrapService {
             if price.amount < Decimal::ZERO {
                 return Err(sea_orm::DbErr::Custom("amount must not be negative".into()));
             }
+            if let Some(compare_at) = price.compare_at_amount
+                && compare_at < Decimal::ZERO
+            {
+                return Err(sea_orm::DbErr::Custom(
+                    "compare_at_amount must not be negative".into(),
+                ));
+            }
+            let trimmed_currency = price.currency_code.trim();
+            if trimmed_currency.len() != 3
+                || !trimmed_currency.chars().all(|ch| ch.is_ascii_alphabetic())
+            {
+                return Err(sea_orm::DbErr::Custom(
+                    "currency_code must be a 3-letter ASCII alphabetic code".into(),
+                ));
+            }
         }
 
         let models = prices
             .into_iter()
-            .map(|price| price::ActiveModel {
-                id: Set(rustok_core::generate_id()),
-                variant_id: Set(price.variant_id),
-                price_list_id: Set(None),
-                channel_id: Set(price.channel_id),
-                channel_slug: Set(price.channel_slug),
-                currency_code: Set(price.currency_code),
-                region_id: Set(None),
-                amount: Set(price.amount),
-                compare_at_amount: Set(price.compare_at_amount),
-                legacy_amount: Set(legacy_amount_units(price.amount)),
-                legacy_compare_at_amount: Set(price
-                    .compare_at_amount
-                    .and_then(legacy_amount_units)),
-                min_quantity: Set(None),
-                max_quantity: Set(None),
+            .map(|price| {
+                let channel_slug = price.channel_slug.and_then(|slug| {
+                    let trimmed = slug.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_ascii_lowercase())
+                    }
+                });
+                price::ActiveModel {
+                    id: Set(rustok_core::generate_id()),
+                    variant_id: Set(price.variant_id),
+                    price_list_id: Set(None),
+                    channel_id: Set(price.channel_id),
+                    channel_slug: Set(channel_slug),
+                    currency_code: Set(price.currency_code.trim().to_ascii_uppercase()),
+                    region_id: Set(None),
+                    amount: Set(price.amount),
+                    compare_at_amount: Set(price.compare_at_amount),
+                    legacy_amount: Set(legacy_amount_units(price.amount)),
+                    legacy_compare_at_amount: Set(price
+                        .compare_at_amount
+                        .and_then(legacy_amount_units)),
+                    min_quantity: Set(None),
+                    max_quantity: Set(None),
+                }
             })
             .collect::<Vec<_>>();
         price::Entity::insert_many(models).exec(conn).await?;
@@ -226,5 +251,95 @@ mod tests {
             err.to_string()
                 .contains("variant_ids must not contain a nil UUID")
         );
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_service_negative_compare_at_amount_guard() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let prices = vec![InitialPrice {
+            variant_id: Uuid::new_v4(),
+            channel_id: None,
+            channel_slug: None,
+            currency_code: "USD".to_string(),
+            amount: Decimal::new(1000, 2),
+            compare_at_amount: Some(Decimal::new(-50, 2)),
+        }];
+        let err = BootstrapService::create_initial_prices_in_tx(&db, prices)
+            .await
+            .expect_err("negative compare_at_amount must be rejected");
+        assert!(err.to_string().contains("compare_at_amount must not be negative"));
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_service_invalid_currency_code_guard() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        for invalid in ["", "US", "USDD", "U$D", "123", "   "] {
+            let prices = vec![InitialPrice {
+                variant_id: Uuid::new_v4(),
+                channel_id: None,
+                channel_slug: None,
+                currency_code: invalid.to_string(),
+                amount: Decimal::new(1000, 2),
+                compare_at_amount: None,
+            }];
+            let err = BootstrapService::create_initial_prices_in_tx(&db, prices)
+                .await
+                .unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("currency_code must be a 3-letter ASCII alphabetic code"),
+                "expected rejection for '{invalid}', got: {err}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_service_normalizes_currency_and_slug() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let schema = sea_orm::Schema::new(sea_orm::DbBackend::Sqlite);
+        let stmt = schema.create_table_from_entity(price::Entity);
+        db.execute(&stmt).await.unwrap();
+
+        let variant_id = Uuid::new_v4();
+        let prices = vec![InitialPrice {
+            variant_id,
+            channel_id: None,
+            channel_slug: Some("  DEFAULT-STORE  ".to_string()),
+            currency_code: " rub ".to_string(),
+            amount: Decimal::new(1250, 2),
+            compare_at_amount: Some(Decimal::new(1500, 2)),
+        }];
+
+        BootstrapService::create_initial_prices_in_tx(&db, prices)
+            .await
+            .expect("should successfully insert initial prices");
+
+        let loaded = BootstrapService::load_prices_for_variants(&db, &[variant_id])
+            .await
+            .expect("should load prices");
+
+        assert_eq!(loaded.len(), 1);
+        let p = &loaded[0];
+        assert_eq!(p.currency_code, "RUB");
+        assert_eq!(p.channel_slug, Some("default-store".to_string()));
+        assert_eq!(p.amount, Decimal::new(1250, 2));
+        assert_eq!(p.compare_at_amount, Some(Decimal::new(1500, 2)));
+        assert_eq!(p.legacy_amount, Some(1250));
+        assert_eq!(p.legacy_compare_at_amount, Some(1500));
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_service_empty_slices_no_op() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        BootstrapService::create_initial_prices_in_tx(&db, vec![])
+            .await
+            .unwrap();
+        let loaded = BootstrapService::load_prices_for_variants(&db, &[])
+            .await
+            .unwrap();
+        assert!(loaded.is_empty());
+        BootstrapService::delete_prices_for_variants_in_tx(&db, &[])
+            .await
+            .unwrap();
     }
 }
