@@ -362,9 +362,9 @@
       "category": "modules",
       "files": 21,
       "loc": 5889,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-19 11:45",
+      "notes": "Audited and cleaned. Enforced FFA separation with framework-agnostic models, normalized promotion form command creation to clear mutually exclusive fields (omits amount on percentage discount, omits discount_percent on fixed discount, omits line_item_id on non-item scopes) and enforce required inputs in core, extended order change resolution summary with preview fallback for cancellation_reason, verified dual-path transport (GraphQL / ServerFn) and SSR adapter error safety. 20/20 unit tests passed, 0 clippy warnings, gate passed."
     },
     "crates/modules/rustok-commerce/storefront": {
       "name": "storefront",

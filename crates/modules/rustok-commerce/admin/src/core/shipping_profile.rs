@@ -37,11 +37,24 @@ pub fn prepare_shipping_profile_draft(
         return None;
     }
 
+    let metadata_trimmed = metadata_json.trim();
+    if !metadata_trimmed.is_empty()
+        && serde_json::from_str::<serde_json::Value>(metadata_trimmed).is_err()
+    {
+        return None;
+    }
+
+    let locale = if locale.trim().is_empty() {
+        "en".to_string()
+    } else {
+        locale.trim().to_string()
+    };
+
     Some(crate::model::ShippingProfileDraft {
         slug,
         name,
         description: description.trim().to_string(),
-        metadata_json: metadata_json.trim().to_string(),
+        metadata_json: metadata_trimmed.to_string(),
         locale,
     })
 }
@@ -91,5 +104,16 @@ mod tests {
         assert_eq!(draft.locale, "en");
         assert!(prepare_shipping_profile_draft("", "Name", "", "", "en".to_string()).is_none());
         assert!(prepare_shipping_profile_draft("slug", " ", "", "", "en".to_string()).is_none());
+        assert!(prepare_shipping_profile_draft("slug", "Name", "", "{not-json", "en".to_string()).is_none());
+
+        let draft_empty_locale = prepare_shipping_profile_draft(
+            "standard",
+            "Standard",
+            "",
+            "",
+            "   ".to_string(),
+        )
+        .expect("fallback locale draft");
+        assert_eq!(draft_empty_locale.locale, "en");
     }
 }
