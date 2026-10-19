@@ -1,12 +1,13 @@
 use uuid::Uuid;
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use rustok_api::{PortActor, PortContext, TenantContext};
 use rustok_media::MediaAssetReadPort;
 use rustok_seo_targets::{
-    SeoLoadedTargetRecord, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetOpenGraphRecord,
-    SeoTargetRuntimeContext, SeoTargetSlug,
+    SeoLoadedTargetRecord, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetLoadTargetsRequest,
+    SeoTargetOpenGraphRecord, SeoTargetRuntimeContext, SeoTargetSlug,
 };
 
 use crate::dto::{SeoAlternateLink, SeoImageAsset, SeoOpenGraph};
@@ -104,6 +105,72 @@ impl SeoService {
             ),
             None => None,
         })
+    }
+
+    /// Batched counterpart of [`Self::load_target_state_with_scope`]: one provider
+    /// call per target kind and scope, returning a state per requested id (absent ids
+    /// are targets the provider does not serve — identical to the single-load `None`
+    /// outcome). Providers default to a per-id walk and override with set-based
+    /// queries (product ships one).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) async fn load_target_states_batch(
+        &self,
+        tenant: &TenantContext,
+        target_kind: SeoTargetSlug,
+        locale: &str,
+        channel_slug: Option<&str>,
+        scope: SeoTargetLoadScope,
+        target_ids: &[Uuid],
+    ) -> SeoResult<HashMap<Uuid, TargetState>> {
+        if target_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let Some(provider) = self.registry.get(&target_kind) else {
+            return Ok(HashMap::new());
+        };
+        if matches!(scope, SeoTargetLoadScope::PublicRoute)
+            && !self
+                .owner_module_enabled(tenant.id, provider.owner_module_slug())
+                .await?
+        {
+            return Ok(HashMap::new());
+        }
+        let records = provider
+            .load_targets(
+                &self.target_runtime(),
+                SeoTargetLoadTargetsRequest {
+                    tenant_id: tenant.id,
+                    default_locale: tenant.default_locale.as_str(),
+                    locale,
+                    target_ids,
+                    scope,
+                    channel_slug,
+                },
+            )
+            .await
+            .map_err(|error| {
+                SeoError::validation(format!(
+                    "SEO target provider `{}` failed to load targets: {error}",
+                    target_kind.as_str()
+                ))
+            })?;
+
+        let mut states = HashMap::with_capacity(records.len());
+        for (target_id, record) in records {
+            if let Some(record) = record {
+                states.insert(
+                    target_id,
+                    map_loaded_target_record(
+                        record,
+                        tenant.id,
+                        locale,
+                        self.media_asset_read_port.as_deref(),
+                    )
+                    .await,
+                );
+            }
+        }
+        Ok(states)
     }
 
     pub(super) fn target_runtime(&self) -> SeoTargetRuntimeContext {

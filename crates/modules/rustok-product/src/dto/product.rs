@@ -207,6 +207,19 @@ pub struct ProductImageTranslationResponse {
     pub alt_text: Option<String>,
 }
 
+/// Lean product read model for SEO consumers (target state loads, bulk summaries,
+/// sitemap candidates): only the fields the SEO projection consumes — identity,
+/// publication flags, translations, and images — so SEO scans never pay for variants,
+/// prices, inventory, or attribute resolution.
+#[derive(Debug, Clone)]
+pub struct ProductSeoProjection {
+    pub id: Uuid,
+    pub status: ProductStatus,
+    pub published_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub translations: Vec<ProductTranslationResponse>,
+    pub images: Vec<ProductImageResponse>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AddProductImageInput {
     pub media_id: Uuid,

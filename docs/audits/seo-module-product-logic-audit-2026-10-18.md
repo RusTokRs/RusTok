@@ -218,11 +218,16 @@ moves to `Accepted`.
 
 ---
 
-#### P2-11 · Diagnostics: cost and blindness of key checks — **OPEN**
+#### P2-11 · Diagnostics: cost and blindness of key checks — **FIXED**
 
 **Evidence:** every call does a full sitemap-candidate scan, a full bulk-summary list, a second scan for cross-links, and **two** provider-state loads per target (N+1 at the provider: product = item + translations + images ×2) — tens of thousands of queries for a 10k catalog. The hreflang check compares locale **sets** only, so identical hrefs for all locales (the P1-2 blog bug) pass green. Readiness scoring counts persistent Info signals (`cross_link_gap` without suggestions, `fallback_only`), compressing every fresh site to "medium".
 
-**Fix:** batch provider state loads (à la `list_bulk_summaries_page`); treat non-unique locale-qualified hrefs as hreflang problems; separate hygienic Info signals from errors in readiness.
+**Applied fix (this branch):**
+- **Batched state loads.** New provider primitive `SeoTargetProvider::load_targets` (default walks `load_target` per id, preserving single-load semantics; batch consumers get one call per target kind) plus `SeoService::load_target_states_batch`. `diagnostics_summary` now issues exactly **one authoring batch + one route batch per provider** instead of two provider loads per target, and the per-target `load_target_state`/`load_route_target_state` calls are forbidden from the batch file by the verifier (contract updated, negative-tested on the issue-code marker).
+- **Lean product SEO projection.** Product's SEO path used `get_product_with_locale_fallback` (product + translations + variants + prices + inventory + variant translations + axes + tags + metadata ≈ 11 query groups) for state loads, bulk summaries, and sitemap candidates. New `CatalogService::get_product_seo_projection(s)` fetches only what SEO mapping consumes — product row, translations, images, image translations — as **four set-based queries per page**, and product overrides `load_targets` with it. Per diagnostics run on a 10k catalog the previous ~2×N full-detail fan-out collapses to a constant number of batched queries per provider/page.
+- **Unique-href hreflang check.** `duplicate_hreflang_locales` flags one href shared by two or more distinct non-x-default locales as `duplicate_hreflang_href` (Warning) — the P1-2 "every locale points at the same URL" shape no longer passes the locale-set check green; x-default intentionally repeating the default URL stays legal.
+- **Defect-only readiness.** `readiness_score(total_targets, errors, warnings)` drops the Info weight: hygienic signals (`fallback_only`, `cross_link_gap`, missing x-default, ...) stay visible in `issue_count` and per-code aggregates but no longer compress a fresh site to "medium" (errors weigh 3, warnings weigh 2, ceiling 6 per target).
+Two unit tests pin the readiness weights and the duplicate-href/x-default rules.
 
 ---
 
@@ -287,7 +292,7 @@ moves to `Accepted`.
 | 7 | **P2-6:** field-level bulk guards + skipped counter + Null→None | "Safe" modes stop alarming and stop freezing fallback | partial-explicit row tests — **DONE** |
 | 8 | **P2-13:** one Next redirect hook on all pages | Host parity | route matrix: redirects applied 16/16 — **DONE** (choke point in `resolveSeoPageContextForRoute` + `verify-seo-next-redirect-parity.mjs`) |
 | 9 | **P2-7/8/9:** OG per-field fallback, suffix/truncate order, foreign locale prefix | Targeted render defects | unit tests per item — **P2-7 DONE** (shared `resolve_open_graph_text` + tests), **P2-8 DONE** (reserve-before-truncate + test), **P2-9 open** (see design note: needs `TenantLocalePolicyPort`, no sound syntactic shortcut) |
-| 10 | **P2-11/12/14/15, P3** | Perf/categories/settings/UI matrix | per matching contract verifiers — **OPEN** |
+| 10 | **P2-11/12/14/15, P3** | Perf/categories/settings/UI matrix | per matching contract verifiers — **OPEN**, **P2-11 DONE** (batched `load_targets` + lean product SEO projection, unique-href hreflang check, defect-only readiness; diagnostics batch verifier updated) |
 
 ---
 
@@ -334,6 +339,12 @@ Executed on this branch (static, Node-based):
   `app-render.tsx` was inspected via `gh api`: `renderToStream errorRecovery` classifies
   `isRedirectError` anywhere in the render pass (including `generateMetadata`) into the
   decision's status + `location` header; full SEO battery re-run: **all PASS**.
+- After P2-11 (diagnostics batching + hreflang + readiness): `verify-seo-diagnostics-batch-reads.mjs`
+  contract extended (batch-loader markers + per-target load forbids) and **negative-tested**
+  (removing the `duplicate_hreflang_href` issue code fails it), full SEO battery re-run:
+  **all PASS**. Two new unit tests (readiness weights, duplicate-href rules) await a
+  Rust-capable host; no `SeoTargetRuntimeContext` fixture exists in `rustok-seo-targets`
+  unit tests, so the default `load_targets` walk is covered by static contract checks only.
 
 Not run / environment-dependent:
 

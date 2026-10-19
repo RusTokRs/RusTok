@@ -3,18 +3,18 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use rustok_api::TenantContext;
 use rustok_content::resolve_by_locale_with_fallback;
 use rustok_seo_targets::{
-    SeoBulkSummaryRecord, SeoTargetBulkListRequest, SeoTargetCapabilityKind, SeoTargetSlug,
-    builtin_slug,
+    SeoBulkSummaryRecord, SeoTargetBulkListRequest, SeoTargetCapabilityKind, SeoTargetLoadScope,
+    SeoTargetSlug, builtin_slug,
 };
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use url::Url;
 use uuid::Uuid;
 
 use crate::dto::{
-    SeoDiagnosticCountRecord, SeoDiagnosticIssueRecord, SeoDiagnosticSeverity,
-    SeoDiagnosticsSummaryRecord, SeoDocumentEffectiveState, SeoFieldSource, SeoFieldState,
-    SeoImageAsset, SeoMetaRecord, SeoMetaTranslationRecord, SeoModuleSettings, SeoPageContext,
-    SeoRedirectMatchType,
+    SeoAlternateLink, SeoDiagnosticCountRecord, SeoDiagnosticIssueRecord,
+    SeoDiagnosticSeverity, SeoDiagnosticsSummaryRecord, SeoDocumentEffectiveState,
+    SeoFieldSource, SeoFieldState, SeoImageAsset, SeoMetaRecord, SeoMetaTranslationRecord,
+    SeoModuleSettings, SeoPageContext, SeoRedirectMatchType,
 };
 use crate::entities::{self as seo_meta, meta_translation};
 use crate::{SeoError, SeoResult};
@@ -136,26 +136,34 @@ impl SeoService {
                     target_ids.as_slice(),
                 )
                 .await?;
+            // One batched provider call per scope replaces the per-target authoring and
+            // public-route loads (product used to fan out the full detail projection —
+            // item, translations, images, variants, prices — twice per target).
+            let mut authoring_states = self
+                .load_target_states_batch(
+                    tenant,
+                    provider.slug(),
+                    locale.as_str(),
+                    None,
+                    SeoTargetLoadScope::Authoring,
+                    target_ids.as_slice(),
+                )
+                .await?;
+            let mut route_states = self
+                .load_target_states_batch(
+                    tenant,
+                    provider.slug(),
+                    locale.as_str(),
+                    None,
+                    SeoTargetLoadScope::PublicRoute,
+                    target_ids.as_slice(),
+                )
+                .await?;
 
             for summary in summaries {
                 let explicit = explicit_by_target.remove(&summary.target_id);
-                let authoring_state = self
-                    .load_target_state(
-                        tenant,
-                        summary.target_kind.clone(),
-                        summary.target_id,
-                        locale.as_str(),
-                    )
-                    .await?;
-                let route_state = self
-                    .load_route_target_state(
-                        tenant,
-                        summary.target_kind.clone(),
-                        summary.target_id,
-                        locale.as_str(),
-                        None,
-                    )
-                    .await?;
+                let authoring_state = authoring_states.remove(&summary.target_id);
+                let route_state = route_states.remove(&summary.target_id);
                 let Some(meta) = build_diagnostics_meta_record(
                     tenant,
                     summary.target_kind.clone(),
@@ -250,6 +258,26 @@ impl SeoService {
                                 SeoDiagnosticSeverity::Info,
                                 &summary,
                                 "Localized target alternates do not expose x-default.",
+                                effective_canonical.clone(),
+                                meta.source.clone(),
+                                locale.as_str(),
+                            ));
+                        }
+                        // Locale-set membership is not enough: identical hrefs for
+                        // distinct locales satisfy the set check while every locale
+                        // serves the same URL (the P1-2 blog shape).
+                        for (href, locales) in
+                            duplicate_hreflang_locales(context.route.alternates.as_slice())
+                        {
+                            issues.push(issue(
+                                "duplicate_hreflang_href",
+                                SeoDiagnosticSeverity::Warning,
+                                &summary,
+                                format!(
+                                    "Hreflang URL `{href}` is shared by locales {}; each locale needs its own locale-qualified URL.",
+                                    locales.join(", ")
+                                )
+                                .as_str(),
                                 effective_canonical.clone(),
                                 meta.source.clone(),
                                 locale.as_str(),
@@ -446,15 +474,7 @@ impl SeoService {
         let issue_counts_by_target_kind =
             count_by_key(issues.iter().map(|issue| issue.target_kind.as_str()));
         let total_targets = total_targets.max(0);
-        let readiness_score = if total_targets == 0 {
-            100
-        } else {
-            let info_count = issues.len() as i32 - error_count - warning_count;
-            let weighted_issues = (error_count * 3) + (warning_count * 2) + info_count;
-            let max_weight = (total_targets * 6).max(1);
-            let penalty = ((weighted_issues * 100) / max_weight).min(100);
-            100 - penalty
-        };
+        let readiness_score = readiness_score(total_targets, error_count, warning_count);
 
         Ok(SeoDiagnosticsSummaryRecord {
             locale,
@@ -931,6 +951,48 @@ fn build_diagnostics_meta_record(
     }
 }
 
+/// Readiness measures defects: errors and warnings only. Hygienic Info signals
+/// (`fallback_only`, `cross_link_gap`, missing x-default, ...) stay visible in issue
+/// counts and aggregates but no longer drag the score — counting them compressed
+/// every fresh site to "medium".
+fn readiness_score(total_targets: i32, error_count: i32, warning_count: i32) -> i32 {
+    if total_targets == 0 {
+        return 100;
+    }
+    let weighted_issues = (error_count * 3) + (warning_count * 2);
+    let max_weight = (total_targets * 6).max(1);
+    let penalty = ((weighted_issues * 100) / max_weight).min(100);
+    100 - penalty
+}
+
+/// Distinct non-x-default locales that share one href. A locale-set check passes for
+/// that shape while hreflang is wrong: every locale would serve the same URL. The
+/// result is sorted for deterministic issue output.
+fn duplicate_hreflang_locales(alternates: &[SeoAlternateLink]) -> Vec<(String, Vec<String>)> {
+    let mut href_locales: HashMap<&str, BTreeSet<&str>> = HashMap::new();
+    for alternate in alternates {
+        if alternate.locale == "x-default" {
+            continue;
+        }
+        href_locales
+            .entry(alternate.href.as_str())
+            .or_default()
+            .insert(alternate.locale.as_str());
+    }
+    let mut duplicates = href_locales
+        .into_iter()
+        .filter(|(_, locales)| locales.len() > 1)
+        .map(|(href, locales)| {
+            (
+                href.to_string(),
+                locales.into_iter().map(str::to_string).collect::<Vec<_>>(),
+            )
+        })
+        .collect::<Vec<_>>();
+    duplicates.sort();
+    duplicates
+}
+
 fn diagnostic_field_state(source: SeoFieldSource, present: bool) -> SeoFieldState {
     SeoFieldState { source, present }
 }
@@ -1160,7 +1222,8 @@ fn count_by_key<'a>(keys: impl Iterator<Item = &'a str>) -> Vec<SeoDiagnosticCou
 mod tests {
     use super::{
         CROSS_LINK_GAP_REMEDIATION_MESSAGE, RedirectTrace, collect_missing_image_descriptor_counts,
-        is_image_seo_critical_target, redirect_lookup_route, trace_redirects,
+        duplicate_hreflang_locales, is_image_seo_critical_target, readiness_score,
+        redirect_lookup_route, trace_redirects,
     };
     use crate::dto::{SeoDocument, SeoImageAsset, SeoOpenGraph, SeoPageContext, SeoTwitterCard};
     use std::collections::HashMap;
@@ -1265,5 +1328,67 @@ mod tests {
     fn cross_link_gap_message_mentions_control_plane_entrypoints() {
         assert!(CROSS_LINK_GAP_REMEDIATION_MESSAGE.contains("seoCrossLinkSuggestions"));
         assert!(CROSS_LINK_GAP_REMEDIATION_MESSAGE.contains("/api/seo/cross-link-suggestions"));
+    }
+    #[test]
+    fn readiness_score_ignores_hygienic_info_signals() {
+        // A fresh site with only Info signals (fallback_only, cross_link_gap, ...)
+        // scores full readiness; only defects count.
+        assert_eq!(readiness_score(10, 0, 0), 100);
+        assert_eq!(readiness_score(0, 0, 0), 100);
+        // errors weigh 3, warnings weigh 2, against a 6-per-target ceiling
+        assert_eq!(readiness_score(10, 1, 0), 95); // 300/60 = 5
+        assert_eq!(readiness_score(10, 0, 1), 97); // 200/60 = 3
+        // penalty clamps at 100 once weighted issues reach the ceiling
+        assert_eq!(readiness_score(1, 2, 0), 0); // 600/60 = 100
+    }
+
+    #[test]
+    fn duplicate_hreflang_locales_flags_shared_hrefs_only() {
+        use crate::dto::SeoAlternateLink;
+        let shared = vec![
+            SeoAlternateLink {
+                locale: "en".to_string(),
+                href: "/about".to_string(),
+                x_default: false,
+            },
+            SeoAlternateLink {
+                locale: "ru".to_string(),
+                href: "/about".to_string(),
+                x_default: false,
+            },
+            SeoAlternateLink {
+                locale: "de".to_string(),
+                href: "/de/about".to_string(),
+                x_default: false,
+            },
+        ];
+        let flagged = duplicate_hreflang_locales(&shared);
+        assert_eq!(
+            flagged,
+            vec![(
+                "/about".to_string(),
+                vec!["en".to_string(), "ru".to_string()]
+            )]
+        );
+
+        let distinct = vec![
+            SeoAlternateLink {
+                locale: "en".to_string(),
+                href: "/about".to_string(),
+                x_default: false,
+            },
+            SeoAlternateLink {
+                locale: "ru".to_string(),
+                href: "/ru/about".to_string(),
+                x_default: false,
+            },
+            // x-default intentionally repeats the default URL: not a defect.
+            SeoAlternateLink {
+                locale: "x-default".to_string(),
+                href: "/about".to_string(),
+                x_default: true,
+            },
+        ];
+        assert!(duplicate_hreflang_locales(&distinct).is_empty());
     }
 }
