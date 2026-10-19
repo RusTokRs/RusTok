@@ -4,9 +4,11 @@ use leptos_ui_routing::read_route_query_value;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    CartDisplayFallbacks, build_cart_fetch_request, build_decrement_line_item_request,
-    build_remove_line_item_request, cart_adjustment_view_model, cart_delivery_group_view_model,
-    cart_line_item_view_model, cart_summary_view_model, error_with_context,
+    CartDisplayFallbacks, CheckoutHandoffFormInput, build_cart_fetch_request,
+    build_decrement_line_item_request, build_remove_line_item_request, calculate_cart_item_count,
+    cart_adjustment_view_model, cart_delivery_group_view_model, cart_line_item_view_model,
+    cart_summary_view_model, error_with_context, format_cart_badge_count,
+    generate_handoff_order_reference, validate_checkout_handoff_form,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -566,27 +568,21 @@ pub fn CartCheckoutHandoffCard(
 
     let submit_cart_id = cart_id.clone();
     let on_submit_click = Callback::new(move |()| {
-        if customer_name.get().trim().is_empty() {
-            set_error_msg.set(Some("Full name is required".to_string()));
-            return;
-        }
-        if customer_email.get().trim().is_empty() {
-            set_error_msg.set(Some("Email address is required".to_string()));
-            return;
-        }
-        if customer_phone.get().trim().is_empty() {
-            set_error_msg.set(Some("Phone number is required".to_string()));
-            return;
-        }
-        if customer_address.get().trim().is_empty() {
-            set_error_msg.set(Some("Address is required".to_string()));
+        let input = CheckoutHandoffFormInput {
+            name: customer_name.get(),
+            email: customer_email.get(),
+            phone: customer_phone.get(),
+            address: customer_address.get(),
+        };
+        if let Err(err) = validate_checkout_handoff_form(&input) {
+            set_error_msg.set(Some(err.default_message().to_string()));
             return;
         }
 
         set_is_submitting.set(true);
         set_error_msg.set(None);
 
-        let generated_order_id = format!("ord-{}", &submit_cart_id[..submit_cart_id.len().min(8)]);
+        let generated_order_id = generate_handoff_order_reference(&submit_cart_id);
         set_order_completed_id.set(Some(generated_order_id));
         set_is_submitting.set(false);
     });
@@ -1222,14 +1218,18 @@ pub fn CartFloatingTrigger() -> impl IntoView {
                     <path d="M16 10a4 4 0 0 1-8 0"/>
                 </svg>
                 {move || {
-                    let count = cart_resource.get().and_then(|res| res.ok()).and_then(|data| data.cart).map(|c| {
-                        c.line_items.iter().map(|item| item.quantity).sum::<i32>()
-                    }).unwrap_or(0);
+                    let count = cart_resource
+                        .get()
+                        .and_then(|res| res.ok())
+                        .and_then(|data| data.cart)
+                        .map(|c| calculate_cart_item_count(&c.line_items))
+                        .unwrap_or(0);
 
                     if count > 0 {
+                        let badge_label = format_cart_badge_count(count);
                         view! {
                             <span class="absolute -top-1.5 -right-1.5 flex h-6 min-w-[24px] items-center justify-center rounded-full border-2 border-background bg-destructive px-1.5 text-xs font-extrabold text-destructive-foreground shadow-md">
-                                {if count > 99 { "99+".to_string() } else { count.to_string() }}
+                                {badge_label}
                             </span>
                         }.into_any()
                     } else {
@@ -1287,14 +1287,18 @@ pub fn CartHeaderTrigger() -> impl IntoView {
                 </svg>
                 <span class="hidden sm:inline">{cart_label}</span>
                 {move || {
-                    let count = cart_resource.get().and_then(|res| res.ok()).and_then(|data| data.cart).map(|c| {
-                        c.line_items.iter().map(|item| item.quantity).sum::<i32>()
-                    }).unwrap_or(0);
+                    let count = cart_resource
+                        .get()
+                        .and_then(|res| res.ok())
+                        .and_then(|data| data.cart)
+                        .map(|c| calculate_cart_item_count(&c.line_items))
+                        .unwrap_or(0);
 
                     if count > 0 {
+                        let badge_label = format_cart_badge_count(count);
                         view! {
                             <span class="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                                {count.to_string()}
+                                {badge_label}
                             </span>
                         }.into_any()
                     } else {
