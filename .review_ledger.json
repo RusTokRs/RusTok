@@ -372,9 +372,9 @@
       "category": "modules",
       "files": 16,
       "loc": 2022,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-19 13:48",
+      "notes": "Audited and cleaned. Enforced FFA separation with framework-agnostic models, aligned PaymentCollection, CheckoutCompletion, and StorefrontCartDeliveryGroup test fixtures, added surface field to UiTransportError initializers across all 4 transport error contexts, ensured completion state resets on retry in Leptos view, verified dual-path transport (GraphQL / ServerFn) and SSR adapter error safety. 32/32 tests passed (client + SSR), 0 clippy warnings, gate passed."
     },
     "crates/modules/rustok-commerce-foundation": {
       "name": "rustok-commerce-foundation",
