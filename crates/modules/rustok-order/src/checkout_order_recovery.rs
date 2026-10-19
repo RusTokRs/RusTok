@@ -493,7 +493,7 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
 }
 
 fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
-    let actor_id = Uuid::parse_str(&context.actor.id).map_err(|_| {
+    Uuid::parse_str(&context.actor.id).map_err(|_| {
         log_checkout_order_recovery_admission_rejection(
             context,
             operation,
@@ -507,26 +507,7 @@ fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid
             "order.actor_id_invalid",
         );
         PortError::validation("order.actor_id_invalid", "order request context is invalid")
-    })?;
-    if actor_id.is_nil() {
-        log_checkout_order_recovery_admission_rejection(
-            context,
-            operation,
-            "actor_id",
-            true,
-            Some(context.actor.id.chars().count()),
-            false,
-            None,
-            None,
-            None,
-            "order.actor_id_nil",
-        );
-        return Err(PortError::validation(
-            "order.actor_id_nil",
-            "order actor_id must not be a nil UUID",
-        ));
-    }
-    Ok(actor_id)
+    })
 }
 
 fn checkout_request_hashes(

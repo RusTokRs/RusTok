@@ -417,7 +417,7 @@ pub async fn list_payment_collections(
         .list_payment_collection_projections(
             context.clone(),
             ListPaymentCollectionProjectionsRequest {
-                page: pagination.page,
+                page: pagination.page(),
                 per_page: pagination.limit(),
                 status: params.status,
                 order_id: params.order_id,
@@ -439,7 +439,7 @@ pub async fn list_payment_collections(
     Ok(Json(PaginatedResponse {
         data: page.items,
         meta: super::super::common::PaginationMeta::new(
-            pagination.page,
+            pagination.page(),
             pagination.limit(),
             page.total,
         ),
@@ -828,7 +828,7 @@ pub async fn list_refunds(
         .list_refund_projections(
             context.clone(),
             ListRefundProjectionsRequest {
-                page: pagination.page,
+                page: pagination.page(),
                 per_page: pagination.limit(),
                 payment_collection_id: params.payment_collection_id,
                 order_id: params.order_id,
@@ -849,7 +849,7 @@ pub async fn list_refunds(
     Ok(Json(PaginatedResponse {
         data: page.items,
         meta: super::super::common::PaginationMeta::new(
-            pagination.page,
+            pagination.page(),
             pagination.limit(),
             page.total,
         ),

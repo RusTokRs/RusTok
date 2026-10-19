@@ -352,9 +352,9 @@
       "category": "modules",
       "files": 297,
       "loc": 132898,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-19 10:25",
+      "notes": "Audited and cleaned. Fixed pagination parameter normalization and string/numeric deserialization for flattened queries in common controller. Corrected overzealous nil-UUID guards on actor_id in rustok-order services and checkout ports to support guest checkout while preserving strict tenant and order invariants. Fixed items_after_test_module clippy lint in catalog GraphQL mutations. All 205 tests pass, 0 clippy warnings, gate passed."
     },
     "crates/modules/rustok-commerce/admin": {
       "name": "admin",

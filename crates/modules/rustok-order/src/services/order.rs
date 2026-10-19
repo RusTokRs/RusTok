@@ -257,9 +257,9 @@ impl OrderService {
             "creating order"
         );
 
-        if tenant_id.is_nil() || actor_id.is_nil() {
+        if tenant_id.is_nil() {
             return Err(OrderError::Validation(
-                "tenant_id and actor_id must be valid non-nil UUIDs".to_string(),
+                "tenant_id must be a valid non-nil UUID".to_string(),
             ));
         }
         if matches!(channel_id, Some(id) if id.is_nil()) {
@@ -701,9 +701,9 @@ impl OrderService {
             order_id = %order_id,
             "delivering order"
         );
-        if tenant_id.is_nil() || actor_id.is_nil() || order_id.is_nil() {
+        if tenant_id.is_nil() || order_id.is_nil() {
             return Err(OrderError::Validation(
-                "tenant_id, actor_id, and order_id must be valid non-nil UUIDs".to_string(),
+                "tenant_id and order_id must be valid non-nil UUIDs".to_string(),
             ));
         }
 
@@ -763,9 +763,9 @@ impl OrderService {
             order_id = %order_id,
             "cancelling order"
         );
-        if tenant_id.is_nil() || actor_id.is_nil() || order_id.is_nil() {
+        if tenant_id.is_nil() || order_id.is_nil() {
             return Err(OrderError::Validation(
-                "tenant_id, actor_id, and order_id must be valid non-nil UUIDs".to_string(),
+                "tenant_id and order_id must be valid non-nil UUIDs".to_string(),
             ));
         }
 
@@ -836,9 +836,9 @@ impl OrderService {
             next_status,
             "transitioning order status"
         );
-        if tenant_id.is_nil() || actor_id.is_nil() || order_id.is_nil() {
+        if tenant_id.is_nil() || order_id.is_nil() {
             return Err(OrderError::Validation(
-                "tenant_id, actor_id, and order_id must be valid non-nil UUIDs".to_string(),
+                "tenant_id and order_id must be valid non-nil UUIDs".to_string(),
             ));
         }
 
