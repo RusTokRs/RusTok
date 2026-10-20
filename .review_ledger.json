@@ -511,7 +511,7 @@
       "path": "crates/modules/rustok-fulfillment",
       "category": "modules",
       "files": 76,
-      "loc": 27050,
+      "loc": 27305,
       "completed": true,
       "completed_at": "2026-10-20 04:35",
       "notes": "Audited; enforced nil-UUID guards on fulfillment_id, order_id, shipping_option_id across service methods, transaction commits, and create/update/list operations; added customer_id nil validation to admin create fulfillment command; trimmed carrier and tracking numbers and delivered notes/cancellation reasons; enabled case-insensitive and whitespace-trimmed status matching in FulfillmentStatusKind::from_raw and list_fulfillments. 167/167 tests passed."
@@ -531,10 +531,10 @@
       "path": "crates/modules/rustok-fulfillment/storefront",
       "category": "modules",
       "files": 12,
-      "loc": 1410,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 1665,
+      "completed": true,
+      "completed_at": "2026-10-20 19:11",
+      "notes": "Audited; enforced non-nil UUID validation across GraphQL adapter and native server functions, symmetric whitespace seller matching and selection clearing in selection plan, data leakage redaction in GraphQL error mapping; 25/25 tests passed (default + SSR), 0 clippy warnings, gate passed."
     },
     "crates/modules/rustok-groups": {
       "name": "rustok-groups",

@@ -98,8 +98,8 @@ review/integration remain open. No sequential FS cursor, checkbox or readiness p
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-04 — Commerce, Financial & Marketplace Domain Modules  
-**Next pending component:** [`crates/modules/rustok-fulfillment/storefront`](../../crates/modules/rustok-fulfillment/storefront) (12 files, 1,252 LOC)  
-**Current main SHA:** `e70ef5a4a`  
+**Next pending component:** [`crates/modules/rustok-distribution`](../../crates/modules/rustok-distribution) (34 files, 15,716 LOC)  
+**Current main SHA:** `ea3859355`  
 **Active branch:** `main`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -205,8 +205,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 
 - [x] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (1/1 completed)
 - [x] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (10/10 completed)
-- [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (20/24 completed)
-- [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (12/37 completed)
+- [x] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (24/24 completed)
+- [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (20/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (0/39 completed)
 - [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (0/26 completed)
 - [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (0/26 completed)
@@ -292,7 +292,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[`crates/modules/rustok-inventory/admin`](../../crates/modules/rustok-inventory/admin)** (10 files, 4,750 LOC) — FFA admin UI for stock adjustments, inventory location tracking, and low-stock alerts. Audited; enforced non-nil UUID validation across native server adapter, non-negative quantity guards on reserve, availability check, and release endpoints, saturating sum on inventory summary, whitespace normalization for status and date range filters, and dedicated parse_release_quantity; 68/68 tests passed (59 unit + 9 boundary across default & SSR features), 0 clippy warnings (default & SSR), gate passed.
 - [x] **[`crates/modules/rustok-fulfillment`](../../crates/modules/rustok-fulfillment)** (76 files, 26,555 LOC) — Fulfillment orders, shipping carrier integration, package manifests, tracking updates, and split fulfillment. Audited; enforced nil-UUID guards on fulfillment_id, order_id, shipping_option_id across service methods, transaction commits, and create/update/list operations; added customer_id nil validation to admin create fulfillment command; trimmed carrier and tracking numbers and delivered notes/cancellation reasons; enabled case-insensitive and whitespace-trimmed status matching in FulfillmentStatusKind::from_raw and list_fulfillments; 167/167 tests passed (117 unit + 50 integration across 9 suites), 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-fulfillment/admin`](../../crates/modules/rustok-fulfillment/admin)** (8 files, 1,916 LOC) — FFA admin UI for shipment creation, packing slip generation, and carrier tracking entry. Audited; extracted FFA view-model and slug helpers to core, added draft validation, normalized filter whitespace and pagination reset on filter change; 16/16 tests passed across default & SSR features, 0 clippy warnings, gate passed.
-- [ ] **[`crates/modules/rustok-fulfillment/storefront`](../../crates/modules/rustok-fulfillment/storefront)** (12 files, 1,252 LOC) — Storefront UI components for shipping option selection and tracking links.
+- [x] **[`crates/modules/rustok-fulfillment/storefront`](../../crates/modules/rustok-fulfillment/storefront)** (12 files, 1,252 LOC) — Storefront UI components for shipping option selection and tracking links. Audited; enforced non-nil UUID validation across GraphQL adapter and native server functions, symmetric whitespace seller matching and selection clearing in selection plan, data leakage redaction in GraphQL error mapping; 25/25 tests passed (default + SSR), 0 clippy warnings, gate passed.
 - [ ] **[`crates/modules/rustok-distribution`](../../crates/modules/rustok-distribution)** (34 files, 15,716 LOC) — Distribution routing, fulfillment center assignment, and carrier API transport adapters.
 - [ ] **[`crates/modules/rustok-customer`](../../crates/modules/rustok-customer)** (26 files, 5,273 LOC) — Customer profile management, addresses, customer groups, and lifetime value analytics.
 - [ ] **[`crates/modules/rustok-customer/admin`](../../crates/modules/rustok-customer/admin)** (9 files, 2,779 LOC) — FFA admin UI for customer directory, address management, and order history view.
@@ -644,9 +644,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 629 | 176,318 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 35 | 13,460 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 26 | 7,795 | None |  |
-| [x] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 76 | 27,050 | 2026-10-20 04:35 | Audited; enforced nil-UUID guards on fulfillment_id, order_id, shipping_option_id across service methods, transaction commits, and create/update/list operations; added customer_id nil validation to admin create fulfillment command; trimmed carrier and tracking numbers and delivered notes/cancellation reasons; enabled case-insensitive and whitespace-trimmed status matching in FulfillmentStatusKind::from_raw and list_fulfillments. 167/167 tests passed. |
+| [x] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 76 | 27,305 | 2026-10-20 04:35 | Audited; enforced nil-UUID guards on fulfillment_id, order_id, shipping_option_id across service methods, transaction commits, and create/update/list operations; added customer_id nil validation to admin create fulfillment command; trimmed carrier and tracking numbers and delivered notes/cancellation reasons; enabled case-insensitive and whitespace-trimmed status matching in FulfillmentStatusKind::from_raw and list_fulfillments. 167/167 tests passed. |
 | [x] | [admin](../../crates/modules/rustok-fulfillment/admin) | `modules` | 8 | 2,057 | 2026-10-20 06:10 | Audited; extracted FFA view-model and slug helpers to core, added draft validation, normalized filter whitespace and pagination reset on filter change; 16/16 tests passed across default & SSR features, 0 clippy warnings, gate passed. |
-| [ ] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 12 | 1,410 | None |  |
+| [x] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 12 | 1,665 | 2026-10-20 19:11 | Audited; enforced non-nil UUID validation across GraphQL adapter and native server functions, symmetric whitespace seller matching and selection clearing in selection plan, data leakage redaction in GraphQL error mapping; 25/25 tests passed (default + SSR), 0 clippy warnings, gate passed. |
 | [ ] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 112 | 31,917 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-groups/admin) | `modules` | 34 | 8,525 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-groups/storefront) | `modules` | 17 | 3,119 | None |  |
