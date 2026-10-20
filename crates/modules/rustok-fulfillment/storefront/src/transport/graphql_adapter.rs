@@ -83,7 +83,11 @@ pub(super) async fn select_shipping_option(
     .await
     .map_err(|error| ShippingSelectionTransportError::Graphql(error.to_string()))?;
 
-    let _ = response.updated_cart.cart.id;
+    if response.updated_cart.cart.id.trim().is_empty() {
+        return Err(ShippingSelectionTransportError::Graphql(
+            "storefront cart response missing cart identity".to_string(),
+        ));
+    }
     Ok(())
 }
 
@@ -91,9 +95,15 @@ fn parse_required_uuid(
     value: &str,
     field_name: &str,
 ) -> Result<Uuid, ShippingSelectionTransportError> {
-    Uuid::parse_str(value.trim()).map_err(|_| {
+    let parsed = Uuid::parse_str(value.trim()).map_err(|_| {
         ShippingSelectionTransportError::Validation(format!("{field_name} must be a valid UUID"))
-    })
+    })?;
+    if parsed.is_nil() {
+        return Err(ShippingSelectionTransportError::Validation(format!(
+            "{field_name} must not be a nil UUID"
+        )));
+    }
+    Ok(parsed)
 }
 
 fn parse_optional_uuid(
@@ -119,4 +129,36 @@ fn configured_tenant_slug() -> Option<String> {
             (!value.is_empty()).then_some(value)
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_required_uuid_validates_and_rejects_nil() {
+        let valid = Uuid::new_v4();
+        assert_eq!(parse_required_uuid(&valid.to_string(), "cart_id").unwrap(), valid);
+
+        let err_invalid = parse_required_uuid("not-a-uuid", "cart_id").unwrap_err();
+        assert!(matches!(err_invalid, ShippingSelectionTransportError::Validation(msg) if msg.contains("must be a valid UUID")));
+
+        let err_nil = parse_required_uuid(&Uuid::nil().to_string(), "cart_id").unwrap_err();
+        assert!(matches!(err_nil, ShippingSelectionTransportError::Validation(msg) if msg.contains("must not be a nil UUID")));
+    }
+
+    #[test]
+    fn parse_optional_uuid_handles_none_empty_and_valid() {
+        assert_eq!(parse_optional_uuid(None, "option_id").unwrap(), None);
+        assert_eq!(parse_optional_uuid(Some("   ".into()), "option_id").unwrap(), None);
+
+        let valid = Uuid::new_v4();
+        assert_eq!(
+            parse_optional_uuid(Some(valid.to_string()), "option_id").unwrap(),
+            Some(valid)
+        );
+
+        let err_nil = parse_optional_uuid(Some(Uuid::nil().to_string()), "option_id").unwrap_err();
+        assert!(matches!(err_nil, ShippingSelectionTransportError::Validation(msg) if msg.contains("must not be a nil UUID")));
+    }
 }
