@@ -20,7 +20,7 @@ use crate::{
     SeoBulkImportInput, SeoBulkJobRecord, SeoBulkJobStatus, SeoBulkListInput, SeoBulkPage,
     SeoCrossLinkSuggestionRecord, SeoDiagnosticsSummaryRecord, SeoError,
     SeoIndexDeliveryStatusRecord, SeoIndexRepairReplayInput, SeoIndexRepairReplayResultRecord,
-    SeoMetaInput, SeoMetaRecord, SeoMetaTranslationInput, SeoPageContext, SeoRedirectInput,
+    SeoMetaInput, SeoMetaRecord, SeoPageContext, SeoRedirectInput,
     SeoRedirectRecord, SeoRevisionRecord, SeoSitemapJobRecord, SeoSitemapStatusRecord,
 };
 
@@ -303,6 +303,14 @@ impl SeoMutation {
             .map_err(map_seo_error)
     }
 
+    /// AI smart fill: persists generated SEO metadata for one locale.
+    ///
+    /// The generation repository owns composition and explicit-state
+    /// preservation (robots/canonical/schema/og:image are never materialized
+    /// from generation snapshots). This mutation only authorizes and forwards.
+    /// Smart fill rewrites stored meta, so it requires the update grant in
+    /// addition to generation: two separate checks, because permission
+    /// matching is any-of within a single call.
     async fn ai_smart_fill_seo_meta(
         &self,
         ctx: &Context<'_>,
@@ -311,71 +319,22 @@ impl SeoMutation {
         locale: Option<String>,
     ) -> Result<SeoMetaRecord> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_seo_permission(
-            ctx,
-            &[Permission::SEO_UPDATE, Permission::SEO_GENERATE],
-            "seo:update or seo:generate required",
-        )?;
+        require_seo_permission(ctx, &[Permission::SEO_UPDATE], "seo:update required")?;
+        require_seo_permission(ctx, &[Permission::SEO_GENERATE], "seo:generate required")?;
         let tenant = ctx.data::<TenantContext>()?;
         let locale_str = resolve_graphql_locale(ctx, locale.as_deref());
         let channel_slug = ctx
             .data_opt::<RequestContext>()
             .and_then(|request| request.channel_slug.as_deref());
-        let generated = seo_service_from_graphql(ctx)?
+        seo_service_from_graphql(ctx)?
             .metadata()
-            .generate_seo_metadata(
+            .ai_smart_fill_meta(
                 tenant,
-                target_kind.clone(),
+                target_kind,
                 target_id,
                 Some(locale_str.as_str()),
                 channel_slug,
             )
-            .await
-            .map_err(map_seo_error)?;
-
-        let existing = seo_service_from_graphql(ctx)?
-            .metadata()
-            .seo_meta(
-                tenant,
-                target_kind.clone(),
-                target_id,
-                Some(locale_str.as_str()),
-            )
-            .await
-            .map_err(map_seo_error)?;
-
-        let (existing_structured_data, existing_og_image) = match existing {
-            Some(record) => (record.structured_data, record.translation.og_image),
-            None => (None, None),
-        };
-
-        let input = SeoMetaInput {
-            target_kind,
-            target_id,
-            noindex: generated
-                .robots
-                .as_deref()
-                .is_some_and(|r| r.contains("noindex")),
-            nofollow: generated
-                .robots
-                .as_deref()
-                .is_some_and(|r| r.contains("nofollow")),
-            canonical_url: generated.canonical_url,
-            structured_data: existing_structured_data,
-            translations: vec![SeoMetaTranslationInput {
-                locale: locale_str,
-                title: generated.meta_title,
-                description: generated.meta_description,
-                keywords: generated.meta_keywords,
-                og_title: generated.og_title,
-                og_description: generated.og_description,
-                og_image: existing_og_image,
-            }],
-        };
-
-        seo_service_from_graphql(ctx)?
-            .metadata()
-            .upsert_meta(tenant, input)
             .await
             .map_err(map_seo_error)
     }

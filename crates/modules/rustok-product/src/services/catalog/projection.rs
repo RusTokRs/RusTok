@@ -187,6 +187,195 @@ pub(crate) fn resolve_image_alt_text(
 }
 
 impl CatalogService {
+    /// SEO projection for one product: product row + translations + images only.
+    /// Four point queries instead of the full detail projection (variants, prices,
+    /// inventory, tags, attributes are invisible to SEO mapping).
+    pub async fn get_product_seo_projection(
+        &self,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        locale: &str,
+        fallback_locale: &str,
+    ) -> CommerceResult<Option<crate::dto::ProductSeoProjection>> {
+        let Some(product) = entities::product::Entity::find_by_id(product_id)
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let translations = entities::product_translation::Entity::find()
+            .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
+            .filter(entities::product_translation::Column::ProductId.eq(product_id))
+            .order_by_asc(entities::product_translation::Column::Locale)
+            .all(&self.db)
+            .await?;
+        let images = entities::product_image::Entity::find()
+            .filter(entities::product_image::Column::ProductId.eq(product_id))
+            .order_by_asc(entities::product_image::Column::Position)
+            .all(&self.db)
+            .await?;
+        let mut image_translations =
+            Self::load_product_image_translation_map(&self.db, &images).await?;
+
+        Ok(Some(Self::assemble_product_seo_projection(
+            product,
+            translations,
+            images,
+            &mut image_translations,
+            locale,
+            fallback_locale,
+        )))
+    }
+
+    /// SEO projections for a page of products: four set-based queries regardless of
+    /// page size, so scans (diagnostics state loads, bulk summaries, sitemap
+    /// candidates) stop paying per-product query fan-out.
+    pub async fn get_product_seo_projections(
+        &self,
+        tenant_id: Uuid,
+        product_ids: &[Uuid],
+        locale: &str,
+        fallback_locale: &str,
+    ) -> CommerceResult<Vec<crate::dto::ProductSeoProjection>> {
+        if product_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let products = entities::product::Entity::find()
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .filter(entities::product::Column::Id.is_in(product_ids.to_vec()))
+            .order_by_asc(entities::product::Column::Id)
+            .all(&self.db)
+            .await?;
+        if products.is_empty() {
+            return Ok(Vec::new());
+        }
+        let loaded_ids = products.iter().map(|product| product.id).collect::<Vec<_>>();
+        let translations = entities::product_translation::Entity::find()
+            .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
+            .filter(entities::product_translation::Column::ProductId.is_in(loaded_ids.clone()))
+            .order_by_asc(entities::product_translation::Column::Locale)
+            .all(&self.db)
+            .await?;
+        let images = entities::product_image::Entity::find()
+            .filter(entities::product_image::Column::ProductId.is_in(loaded_ids))
+            .order_by_asc(entities::product_image::Column::Position)
+            .all(&self.db)
+            .await?;
+        let mut image_translations =
+            Self::load_product_image_translation_map(&self.db, &images).await?;
+
+        let mut translations_by_product: HashMap<Uuid, Vec<entities::product_translation::Model>> =
+            HashMap::new();
+        for translation in translations {
+            translations_by_product
+                .entry(translation.product_id)
+                .or_default()
+                .push(translation);
+        }
+        let mut images_by_product: HashMap<Uuid, Vec<entities::product_image::Model>> =
+            HashMap::new();
+        for image in images {
+            images_by_product.entry(image.product_id).or_default().push(image);
+        }
+
+        let mut projections = Vec::with_capacity(products.len());
+        for product in products {
+            let product_translations = translations_by_product
+                .remove(&product.id)
+                .unwrap_or_default();
+            let product_images = images_by_product.remove(&product.id).unwrap_or_default();
+            projections.push(Self::assemble_product_seo_projection(
+                product,
+                product_translations,
+                product_images,
+                &mut image_translations,
+                locale,
+                fallback_locale,
+            ));
+        }
+        Ok(projections)
+    }
+
+    async fn load_product_image_translation_map(
+        db: &sea_orm::DatabaseConnection,
+        images: &[entities::product_image::Model],
+    ) -> CommerceResult<
+        HashMap<Uuid, Vec<entities::product_image_translation::Model>>,
+    > {
+        if images.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let image_ids = images.iter().map(|image| image.id).collect::<Vec<_>>();
+        let translations = entities::product_image_translation::Entity::find()
+            .filter(
+                entities::product_image_translation::Column::ImageId
+                    .is_in(image_ids),
+            )
+            .order_by_asc(entities::product_image_translation::Column::Locale)
+            .all(db)
+            .await?;
+        let mut by_image: HashMap<Uuid, Vec<entities::product_image_translation::Model>> =
+            HashMap::new();
+        for translation in translations {
+            by_image
+                .entry(translation.image_id)
+                .or_default()
+                .push(translation);
+        }
+        Ok(by_image)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn assemble_product_seo_projection(
+        product: entities::product::Model,
+        translations: Vec<entities::product_translation::Model>,
+        images: Vec<entities::product_image::Model>,
+        image_translations: &mut HashMap<Uuid, Vec<entities::product_image_translation::Model>>,
+        locale: &str,
+        fallback_locale: &str,
+    ) -> crate::dto::ProductSeoProjection {
+        crate::dto::ProductSeoProjection {
+            id: product.id,
+            status: product.status.clone(),
+            published_at: product.published_at.map(Into::into),
+            translations: translations
+                .into_iter()
+                .map(|translation| ProductTranslationResponse {
+                    locale: translation.locale,
+                    title: translation.title,
+                    handle: translation.handle,
+                    description: translation.description,
+                    meta_title: translation.meta_title,
+                    meta_description: translation.meta_description,
+                })
+                .collect(),
+            images: images
+                .into_iter()
+                .map(|image| {
+                    let translations = image_translations
+                        .remove(&image.id)
+                        .unwrap_or_default();
+                    let alt_text = resolve_image_alt_text(&translations, locale, Some(fallback_locale));
+                    ProductImageResponse {
+                        id: image.id,
+                        media_id: image.media_id,
+                        url: format_product_media_url(image.media_id),
+                        alt_text,
+                        position: image.position,
+                        translations: translations
+                            .into_iter()
+                            .map(|translation| ProductImageTranslationResponse {
+                                locale: translation.locale,
+                                alt_text: translation.alt_text,
+                            })
+                            .collect(),
+                    }
+                })
+                .collect(),
+        }
+    }
+
     pub async fn get_product(
         &self,
         tenant_id: Uuid,

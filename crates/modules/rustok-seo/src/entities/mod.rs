@@ -218,6 +218,7 @@ pub mod seo_bulk_job {
         pub processed_count: i32,
         pub succeeded_count: i32,
         pub failed_count: i32,
+        pub skipped_count: i32,
         pub artifact_count: i32,
         pub last_error: Option<String>,
         pub created_by: Option<Uuid>,

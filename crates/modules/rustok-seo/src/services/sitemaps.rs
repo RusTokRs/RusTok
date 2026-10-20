@@ -415,7 +415,7 @@ impl SeoService {
         tenant: &TenantContext,
     ) -> SeoResult<SeoSitemapStatusRecord> {
         let settings = self.load_settings(tenant.id).await?;
-        if !sitemaps_enabled(&settings) || !self.public_sitemap_modules_enabled(tenant.id).await? {
+        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant.id).await? {
             return Ok(disabled_sitemap_status());
         }
 
@@ -494,7 +494,7 @@ impl SeoService {
 
     pub async fn render_robots(&self, tenant: &TenantContext) -> SeoResult<String> {
         let settings = self.load_settings(tenant.id).await?;
-        if !sitemaps_enabled(&settings) || !self.public_sitemap_modules_enabled(tenant.id).await? {
+        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant.id).await? {
             return Ok(render_robots_body_with_settings("", &settings));
         }
         let public_origin = PublicOrigin::resolve(tenant)?;
@@ -513,7 +513,7 @@ impl SeoService {
         let base_url = public_origin.as_str();
 
         let sitemap_available =
-            sitemaps_enabled(&settings) && self.public_sitemap_modules_enabled(tenant.id).await?;
+            sitemaps_enabled(&settings) && self.any_public_sitemap_owner_enabled(tenant.id).await?;
         Ok(SeoRobotsPreviewRecord {
             body: render_robots_body_with_settings(
                 if sitemap_available { base_url } else { "" },
@@ -524,19 +524,27 @@ impl SeoService {
         })
     }
 
-    pub(super) async fn public_sitemap_modules_enabled(&self, tenant_id: Uuid) -> SeoResult<bool> {
+    /// Whether the public sitemap surface is available for this tenant.
+    ///
+    /// Availability matches collection semantics: a public sitemap exists when
+    /// at least one sitemap-capable owner module is enabled, and disabled
+    /// owners are skipped by candidate collection instead of hiding every
+    /// owner's routes. The previous all-or-nothing gate let a single disabled
+    /// module 404 all public sitemap/robots entries, including routes the
+    /// enabled owners still expose. Fails closed when no capable owner exists.
+    pub(super) async fn any_public_sitemap_owner_enabled(&self, tenant_id: Uuid) -> SeoResult<bool> {
         for provider in self
             .registry
             .providers_with_capability(SeoTargetCapabilityKind::Sitemaps)
         {
-            if !self
+            if self
                 .owner_module_enabled(tenant_id, provider.owner_module_slug())
                 .await?
             {
-                return Ok(false);
+                return Ok(true);
             }
         }
-        Ok(true)
+        Ok(false)
     }
 
     /// Serve a public sitemap using current owner visibility when an owner can
@@ -582,6 +590,17 @@ impl SeoService {
         {
             // Evaluate every provider, even after one requested refresh, so a
             // missing privacy reader cannot silently fall back to a stale file.
+            if !self
+                .owner_module_enabled(tenant_id, provider.owner_module_slug())
+                .await?
+            {
+                // A disabled owner contributes no candidates to the live rebuild,
+                // while a stored file may still contain its URLs: force the live
+                // rebuild path (which skips it) instead of probing a module that
+                // is switched off. Privacy-narrowing wins over serving the cache.
+                refresh = true;
+                continue;
+            }
             refresh |= provider
                 .public_sitemap_requires_refresh(&self.target_runtime(), tenant_id)
                 .await
@@ -618,7 +637,7 @@ impl SeoService {
         tenant_id: Uuid,
     ) -> SeoResult<Option<seo_sitemap_file::Model>> {
         let settings = self.load_settings(tenant_id).await?;
-        if !sitemaps_enabled(&settings) || !self.public_sitemap_modules_enabled(tenant_id).await? {
+        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant_id).await? {
             return Ok(None);
         }
         seo_sitemap_file::Entity::find()
@@ -636,7 +655,7 @@ impl SeoService {
         path: &str,
     ) -> SeoResult<Option<seo_sitemap_file::Model>> {
         let settings = self.load_settings(tenant_id).await?;
-        if !sitemaps_enabled(&settings) || !self.public_sitemap_modules_enabled(tenant_id).await? {
+        if !sitemaps_enabled(&settings) || !self.any_public_sitemap_owner_enabled(tenant_id).await? {
             return Ok(None);
         }
         seo_sitemap_file::Entity::find()
