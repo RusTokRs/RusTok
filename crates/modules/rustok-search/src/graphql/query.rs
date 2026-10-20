@@ -8,7 +8,7 @@ use crate::{
     PgSearchEngine, SLOW_QUERY_THRESHOLD_MS, SearchAnalyticsService, SearchAttributeFilter,
     SearchDiagnosticsService, SearchDictionaryService, SearchEngine, SearchFilterPresetService,
     SearchModule, SearchQuery, SearchQueryLogRecord, SearchRankingProfile, SearchSettingsService,
-    SearchSuggestionQuery, SearchSuggestionService, TrustedStorefrontChannel,
+    SearchSuggestionQuery, SearchSuggestionService,
     resolve_trusted_storefront_channel,
 };
 use rustok_api::{

@@ -1,10 +1,9 @@
 use crate::dto::SeoModuleSettings;
 use crate::entities::{self as seo_meta, meta_translation};
-use rustok_content::resolve_by_locale_with_fallback;
 
 use super::robots::first_open_graph_image_url;
 use super::templates::render_generated_record;
-use super::{LoadedMeta, TargetState, trimmed_option};
+use super::{LoadedMeta, TargetState};
 
 const BULK_IO_CHUNK_SIZE: usize = 50;
 const BULK_IO_META_BATCH_SIZE: usize = 256;

@@ -8,7 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use async_trait::async_trait;
+pub use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_seo_targets::register_seo_target_provider;

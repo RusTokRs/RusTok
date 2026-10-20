@@ -26,5 +26,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260911_000010_add_translation_apply_receipts::Migration),
         Box::new(m20260930_000011_add_seo_queue_constraints::Migration),
         Box::new(m20260930_000012_add_seo_tenant_foreign_keys::Migration),
+        Box::new(m20261018_000013_add_seo_bulk_job_skipped_count::Migration),
     ]
 }

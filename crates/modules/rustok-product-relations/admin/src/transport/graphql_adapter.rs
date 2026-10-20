@@ -1,7 +1,5 @@
 use rustok_graphql::{GraphqlRequest, execute as execute_graphql, graphql_url};
-use rustok_product_relations::dto::RelationType;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 
 use crate::model::{
     ProductRelationItem, ProductRelationsAdminCommand, ProductRelationsAdminCommandResult,
@@ -86,15 +84,13 @@ struct ReorderResponse {
 }
 
 fn relation_type_to_gql(rtype: &str) -> Result<&'static str, String> {
-    match RelationType::from_str(rtype).map_err(|_| "Invalid product relation type".to_owned())? {
-        RelationType::CrossSell => Ok("CROSS_SELL"),
-        RelationType::UpSell => Ok("UP_SELL"),
-        RelationType::Related => Ok("RELATED"),
-        RelationType::Accessory => Ok("ACCESSORY"),
-        RelationType::Alternative => Ok("ALTERNATIVE"),
-        RelationType::Custom(_) => {
-            Err("Custom product relation types require the native transport".to_owned())
-        }
+    match rtype.trim().to_ascii_lowercase().as_str() {
+        "cross_sell" => Ok("CROSS_SELL"),
+        "up_sell" => Ok("UP_SELL"),
+        "related" => Ok("RELATED"),
+        "accessory" => Ok("ACCESSORY"),
+        "alternative" => Ok("ALTERNATIVE"),
+        _ => Err("Invalid product relation type or custom type requires the native transport".to_owned()),
     }
 }
 

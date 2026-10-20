@@ -6,7 +6,6 @@ use crate::core::{
     delivery_group_key, format_line_items_label, format_provider_label,
     format_shipping_option_price, is_shipping_option_selected, selection_action_label,
 };
-use crate::i18n::t;
 use crate::model::{StorefrontDeliveryGroup, StorefrontShippingOption};
 
 #[component]
@@ -97,16 +96,20 @@ fn DeliveryGroupCard(
         on_select_shipping_option.run(build_select_shipping_option_request(&group_for_clear, None));
     };
     let stored_group = StoredValue::new(group.clone());
+    let group_label = labels.group_label.clone();
+    let line_items_label = format_line_items_label(&labels.line_items_label, group.line_item_count);
+    let clear_action_label = selection_action_label(selected_id.is_none(), &labels).to_string();
+    let option_labels = labels.clone();
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-5">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{labels.group_label.clone()}</div>
+                    <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{group_label}</div>
                     <h5 class="mt-1 text-base font-semibold text-card-foreground">{group.shipping_profile_slug.clone()}</h5>
                 </div>
                 <div class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-                    {format_line_items_label(&labels.line_items_label, group.line_item_count)}
+                    {line_items_label}
                 </div>
             </div>
             <div class="mt-4 grid gap-3">
@@ -117,7 +120,7 @@ fn DeliveryGroupCard(
                     on:click=select_clear
                 >
                     <span class="font-medium text-card-foreground">{clear_label}</span>
-                    <span class="text-xs text-muted-foreground">{selection_action_label(selected_id.is_none(), &labels)}</span>
+                    <span class="text-xs text-muted-foreground">{clear_action_label}</span>
                 </button>
                 <For
                     each=move || stored_group.with_value(|g| g.available_shipping_options.clone())
@@ -130,7 +133,7 @@ fn DeliveryGroupCard(
                                 group=group_val
                                 option
                                 selected_shipping_option_id=selected_id_opt
-                                labels=labels.clone()
+                                labels=option_labels.clone()
                                 busy
                                 on_select_shipping_option
                             />
@@ -160,6 +163,9 @@ fn ShippingOptionButton(
             Some(option_for_click.id.clone()),
         ));
     };
+    let provider_label = format_provider_label(&labels.provider_label, &option.provider_id);
+    let price_label = format_shipping_option_price(&option.amount, &option.currency_code);
+    let action_label = selection_action_label(is_selected, &labels).to_string();
 
     view! {
         <button
@@ -171,11 +177,11 @@ fn ShippingOptionButton(
             <div class="flex items-start justify-between gap-3">
                 <div>
                     <div class="font-medium text-card-foreground">{option.name}</div>
-                    <div class="mt-1 text-xs text-muted-foreground">{format_provider_label(&labels.provider_label, &option.provider_id)}</div>
+                    <div class="mt-1 text-xs text-muted-foreground">{provider_label}</div>
                 </div>
                 <div class="text-right">
-                    <div class="font-semibold text-card-foreground">{format_shipping_option_price(&option.amount, &option.currency_code)}</div>
-                    <div class="mt-1 text-xs text-muted-foreground">{selection_action_label(is_selected, &labels)}</div>
+                    <div class="font-semibold text-card-foreground">{price_label}</div>
+                    <div class="mt-1 text-xs text-muted-foreground">{action_label}</div>
                 </div>
             </div>
         </button>

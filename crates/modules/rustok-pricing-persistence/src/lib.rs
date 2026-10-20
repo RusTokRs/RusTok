@@ -233,7 +233,7 @@ mod tests {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         let backend = db.get_database_backend();
         let table = sea_orm::Schema::new(backend).create_table_from_entity(price::Entity);
-        db.execute(backend.build(&table)).await.unwrap();
+        db.execute(&table).await.unwrap();
         db
     }
 

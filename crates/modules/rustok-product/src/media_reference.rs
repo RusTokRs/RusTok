@@ -484,7 +484,7 @@ impl CatalogService {
                 .do_nothing()
                 .to_owned(),
         )
-        .do_nothing()
+        .try_insert()
         .exec(txn)
         .await?;
         Ok(())
@@ -506,7 +506,7 @@ impl CatalogService {
             .do_nothing()
             .to_owned(),
         )
-        .do_nothing()
+        .try_insert()
         .exec(txn)
         .await?;
         Ok(())

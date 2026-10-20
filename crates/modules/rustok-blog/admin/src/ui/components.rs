@@ -174,7 +174,7 @@ pub(super) fn BlogPostsTable(
             )
         })
         .collect::<Vec<_>>();
-    let sort_order_options = [core::BlogPostSortOrder::Desc, core::BlogPostSortOrder::Asc]
+    let sort_order_options = core::BLOG_POST_ADMIN_SORT_ORDERS
         .into_iter()
         .map(|order| {
             (
@@ -580,7 +580,7 @@ pub(super) fn BlogPostsPageHeader() -> impl IntoView {
 /// The posts list card header: list copy plus the locale filter that drives the query.
 #[component]
 pub(super) fn BlogPostsListHeader(
-    locale: RwSignal<String>,
+    locale: ReadSignal<String>,
     set_locale: WriteSignal<String>,
     locale_filter_label: String,
 ) -> impl IntoView {

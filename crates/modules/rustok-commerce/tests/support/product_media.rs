@@ -1,8 +1,11 @@
 //! Consumer-port fake for Product transaction tests. This does NOT prove Media
 //! persistence/GC or gRPC behavior; those need real owner integration tests.
-use async_trait::async_trait;
+#![allow(dead_code)]
+
 use rustok_api::{PortContext, PortError};
-use rustok_product::{ProductMediaReference, ProductMediaReferencePage, ProductMediaReferencePort};
+use rustok_product::{
+    ProductMediaReference, ProductMediaReferencePage, ProductMediaReferencePort, async_trait,
+};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{

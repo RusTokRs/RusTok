@@ -1,6 +1,10 @@
+pub mod core;
+mod i18n;
 mod localized_route;
+mod ui;
 
 pub use localized_route::*;
+pub use ui::PageBuilderView;
 
 #[cfg(feature = "inline-edit")]
 mod inline_edit;

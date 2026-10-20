@@ -63,6 +63,7 @@ uuid.workspace = true
 validator.workspace = true
 
 [dev-dependencies]
+async-trait.workspace = true
 rustok-test-utils.workspace = true
 tower.workspace = true
 proptest = "1.11"

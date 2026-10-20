@@ -358,7 +358,7 @@ pub struct UpdateProductImageDraft {
     pub locale: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ProductDraft {
     #[serde(default)]
     pub attribute_values: Vec<ProductAttributeValueBatchDraft>,

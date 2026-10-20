@@ -64,16 +64,13 @@ impl SeoService {
                     redirect_id = %redirect.id,
                     "SEO redirect self-loop suppressed at runtime"
                 );
-                return Ok(context);
-            }
-
-            // A stored two-hop cycle (A -> B -> A) would spin the browser:
-            // suppress the redirect instead of forwarding into the loop.
-            if let Some(next) = self
+            } else if let Some(next) = self
                 .match_redirect(tenant.id, redirect.target_url.as_str())
                 .await?
                 && (next.target_url == route || next.target_url == redirect.target_url)
             {
+                // A stored two-hop cycle (A -> B -> A) would spin the browser:
+                // suppress the redirect instead of forwarding into the loop.
                 tracing::warn!(
                     tenant_id = %tenant.id,
                     route,
@@ -81,10 +78,7 @@ impl SeoService {
                     next_target = %next.target_url,
                     "SEO redirect two-hop cycle suppressed at runtime"
                 );
-                return Ok(context);
-            }
-
-            if redirect.target_url.starts_with('/')
+            } else if redirect.target_url.starts_with('/')
                 && let Some(mut context) = self
                     .resolve_redirect_target_once(
                         tenant,
@@ -99,42 +93,42 @@ impl SeoService {
                     status_code: redirect.status_code,
                 });
                 return Ok(Some(context));
+            } else {
+                return Ok(Some(SeoPageContext {
+                    route: SeoRouteContext {
+                        target_kind: None,
+                        target_id: None,
+                        requested_locale: Some(locale.to_string()),
+                        effective_locale: locale.to_string(),
+                        canonical_url: route.to_string(),
+                        redirect: Some(SeoRedirectDecision {
+                            target_url: if redirect.target_url.starts_with('/') {
+                                locale_prefixed_path(locale, redirect.target_url.as_str())
+                            } else {
+                                redirect.target_url
+                            },
+                            status_code: redirect.status_code,
+                        }),
+                        alternates: Vec::new(),
+                    },
+                    document: SeoDocument {
+                        title: String::new(),
+                        description: None,
+                        robots: robots_from_directives(&[
+                            "noindex".to_string(),
+                            "nofollow".to_string(),
+                        ]),
+                        open_graph: None,
+                        twitter: None,
+                        verification: None,
+                        pagination: None,
+                        structured_data_blocks: Vec::new(),
+                        meta_tags: Vec::new(),
+                        link_tags: Vec::new(),
+                        effective_state: SeoDocumentEffectiveState::default(),
+                    },
+                }));
             }
-
-            return Ok(Some(SeoPageContext {
-                route: SeoRouteContext {
-                    target_kind: None,
-                    target_id: None,
-                    requested_locale: Some(locale.to_string()),
-                    effective_locale: locale.to_string(),
-                    canonical_url: route.to_string(),
-                    redirect: Some(SeoRedirectDecision {
-                        target_url: if redirect.target_url.starts_with('/') {
-                            locale_prefixed_path(locale, redirect.target_url.as_str())
-                        } else {
-                            redirect.target_url
-                        },
-                        status_code: redirect.status_code,
-                    }),
-                    alternates: Vec::new(),
-                },
-                document: SeoDocument {
-                    title: String::new(),
-                    description: None,
-                    robots: robots_from_directives(&[
-                        "noindex".to_string(),
-                        "nofollow".to_string(),
-                    ]),
-                    open_graph: None,
-                    twitter: None,
-                    verification: None,
-                    pagination: None,
-                    structured_data_blocks: Vec::new(),
-                    meta_tags: Vec::new(),
-                    link_tags: Vec::new(),
-                    effective_state: SeoDocumentEffectiveState::default(),
-                },
-            }));
         }
 
         if self

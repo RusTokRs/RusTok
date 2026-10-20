@@ -163,7 +163,7 @@ async fn storefront_search_native(
         let engine = PgSearchEngine::new(db.clone());
         let default_registry = rustok_search::SearchAudienceRegistry::new();
         let audience_registry = runtime_ctx.shared_get::<rustok_search::SearchAudienceRegistry>();
-        let registry = audience_registry.as_deref().unwrap_or(&default_registry);
+        let registry = audience_registry.as_ref().unwrap_or(&default_registry);
         let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
             .map_err(ServerFnError::new)?

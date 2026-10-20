@@ -657,7 +657,7 @@ pub(crate) fn build_product_media_panel_copy(locale: Option<&str>) -> ProductMed
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ProductAttributeEditorState {
+pub struct ProductAttributeEditorState {
     entries: HashMap<String, ProductAttributeEditorEntry>,
 }
 

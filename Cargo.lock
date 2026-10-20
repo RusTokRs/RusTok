@@ -16422,6 +16422,8 @@ dependencies = [
  "fly-leptos",
  "leptos",
  "rustok-page-builder",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
 ]
