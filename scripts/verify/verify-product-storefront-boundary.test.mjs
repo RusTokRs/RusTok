@@ -151,7 +151,18 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/mod.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/mod.rs"), "utf8"));
-  const realCatalogList = readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs"), "utf8");
+  let realCatalogList = readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs"), "utf8");
+  if (options.optionalListContext) {
+    realCatalogList = realCatalogList.replace(/(require_request_context\([\s\S]*?\)\s*\.await)\?;/, "$1.ok();");
+  }
+  if (options.rawTenantDiagnostic) {
+    realCatalogList = realCatalogList.replace("request_context_present = true,", "request_context_present = true, channel_slug = ?request_context.channel_slug,");
+  }
+  let realFacets = readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/catalog_facets_native.rs"), "utf8");
+  if (options.optionalFacetContext) {
+    realFacets = realFacets.replace(/(require_request_context\([\s\S]*?\)\s*\.await)\?;/, "$1.ok();");
+  }
+  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/catalog_facets_native.rs", realFacets);
   writeFixtureFile(
     root,
     "crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs",
@@ -170,7 +181,14 @@ function withFixture(options = {}) {
       : realGqlAdapter,
   );
   writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/graphql_error_safety.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/graphql_error_safety.rs"), "utf8"));
-  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs"), "utf8"));
+  let realNative = readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs"), "utf8");
+  if (options.optionalDetailContext) {
+    realNative = realNative.replace(/(require_request_context\(\s*"storefront_products"[\s\S]*?\)\s*\.await)\?;/, "$1.ok();");
+  }
+  if (options.optionalSearchContext) {
+    realNative = realNative.replace(/(require_request_context\(\s*"storefront_catalog_search_options"[\s\S]*?\)\s*\.await)\?;/, "$1.ok();");
+  }
+  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs", realNative);
   writeFixtureFile(root, "crates/modules/rustok-product/src/services/catalog/queries.rs", catalogQueriesSource());
   writeFixtureFile(root, "crates/modules/rustok-product/storefront/Cargo.toml", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/Cargo.toml"), "utf8"));
   writeFixtureFile(root, "crates/modules/rustok-product/contracts/evidence/storefront-catalog-native-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/contracts/evidence/storefront-catalog-native-error-safety-source.json"), "utf8"));
@@ -306,4 +324,28 @@ test("product storefront boundary verifier rejects legacy api module", () => {
     /legacy api\.rs/,
     "Expected legacy api fixture to fail",
   );
+});
+
+
+// Added for the trusted-context continuation; intentionally unrun in the no-tests work session.
+test("product storefront rejects optional fallback on a rejected list context", () => {
+  assertFixtureFails({ optionalListContext: true }, /required context propagation/,
+    "Rejected list context must not silently widen scope");
+});
+test("product storefront rejects optional fallback on a rejected facet context", () => {
+  assertFixtureFails({ optionalFacetContext: true }, /required context propagation/,
+    "Rejected facet context must not silently widen scope");
+});
+test("product storefront rejects optional fallback on a rejected detail context", () => {
+  assertFixtureFails({ optionalDetailContext: true }, /required context propagation/,
+    "Detail and Pricing reads must retain trusted context admission");
+});
+test("product storefront rejects raw channel diagnostics", () => {
+  assertFixtureFails({ rawTenantDiagnostic: true }, /raw context diagnostic/,
+    "Trusted context is not permission to log request payload");
+});
+
+test("product storefront rejects optional fallback on a rejected search-options context", () => {
+  assertFixtureFails({ optionalSearchContext: true }, /required context propagation/,
+    "Search option owner reads must retain trusted context admission");
 });

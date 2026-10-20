@@ -375,8 +375,35 @@ pub fn attach_commerce_provider_registries(
             });
         match runtime {
             Some(runtime) => {
-                let runtime =
-                    compose_product_catalog_media_asset_validation(runtime, server, &host);
+                let runtime = if runtime.profile()
+                    == rustok_product::ProductCatalogCommandProfile::EmbeddedNative
+                    && runtime.shipping_profile_port().is_none()
+                {
+                    let port = host
+                        .shared_get::<Arc<dyn rustok_product::ProductShippingProfilePort>>()
+                        .or_else(|| {
+                            server
+                                .shared_get::<Arc<dyn rustok_product::ProductShippingProfilePort>>()
+                        });
+                    #[cfg(feature = "mod-commerce")]
+                    let port = port.or_else(|| {
+                        Some(Arc::new(rustok_commerce::ShippingProfileService::new(
+                            server.db_clone(),
+                        ))
+                            as Arc<dyn rustok_product::ProductShippingProfilePort>)
+                    });
+                    match port.map(|port| runtime.clone().with_shipping_profile_port(port)) {
+                        Some(Ok(configured)) => configured,
+                        Some(Err(error)) => {
+                            tracing::error!(code = %error.code, "Product Shipping Profile admission composition failed");
+                            runtime
+                        }
+                        None => runtime, // first explicit assignment fails closed without capability
+                    }
+                } else {
+                    runtime
+                };
+                let runtime = compose_product_catalog_media_references(runtime, server, &host);
                 server.shared_insert(runtime.clone());
                 host.with_shared_value(runtime)
             }
@@ -714,33 +741,29 @@ mod product_catalog_read_port_tests {
     }
 }
 
-/// Composes the Product-owned Media asset validation boundary into the Product command runtime.
-///
-/// `product_images.media_id` holds only a canonical Media asset UUID, so the Media owner must
-/// confirm existence and tenancy before an image row is written. When the deployment has neither a
-/// published Media provider nor initialized durable storage, the runtime keeps the explicit
-/// `opaque_references` policy and the host records why.
+/// Installs the Media read/write pair inside the Product owner. Missing providers
+/// fail closed for new image relations; an external owner enforces its own policy.
 #[cfg(all(feature = "mod-product", feature = "mod-media"))]
-fn compose_product_catalog_media_asset_validation(
+fn compose_product_catalog_media_references(
     runtime: rustok_product::ProductCatalogCommandRuntime,
     server: &ServerRuntimeContext,
     host: &HostRuntimeContext,
 ) -> rustok_product::ProductCatalogCommandRuntime {
-    crate::services::product_media_asset_validation::compose_product_media_asset_validation(
+    crate::services::product_media_reference::compose_product_media_references(
         runtime, server, host,
     )
 }
 
 /// Keeps Product command composition unchanged when the Media module is not part of the deployment.
 #[cfg(all(feature = "mod-product", not(feature = "mod-media")))]
-fn compose_product_catalog_media_asset_validation(
+fn compose_product_catalog_media_references(
     runtime: rustok_product::ProductCatalogCommandRuntime,
     _server: &ServerRuntimeContext,
     _host: &HostRuntimeContext,
 ) -> rustok_product::ProductCatalogCommandRuntime {
     tracing::debug!(
         policy = runtime.media_reference_policy().as_str(),
-        "Media module is not composed; Product image references stay opaque"
+        "Media module is not composed; adding Product images fails closed"
     );
     runtime
 }

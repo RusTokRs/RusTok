@@ -330,7 +330,7 @@ for (const marker of [
   'exact minimum and maximum quantity values are not recorded',
   'public message text is not recorded',
   'Both canonical Pricing wrappers are now source-closed',
-]) requireText(document, marker, `${paths.document}: truthful scope`);
+]) requireText(document.replace(/\s+/g, ' ').toLowerCase(), marker.toLowerCase(), `${paths.document}: truthful scope`);
 
 if (failures.length > 0) {
   console.error('Pricing write local diagnostic-safety verification failed:');

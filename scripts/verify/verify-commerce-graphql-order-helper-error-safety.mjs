@@ -14,7 +14,6 @@ const facadeSource = read('crates/modules/rustok-commerce/src/graphql/mutations/
 const layeredSource = read(
   'crates/modules/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
 );
-const orderErrors = read('crates/modules/rustok-order/src/error.rs');
 const commerceErrors = read('crates/modules/rustok-commerce-foundation/src/error.rs');
 const failures = [];
 
@@ -61,14 +60,8 @@ const shippingMapper = between(
 const orderAccess = between(
   facadeSource,
   'pub(crate) async fn ensure_storefront_order_access(',
-  'pub(crate) async fn validate_product_shipping_profile_input(',
-  'storefront order access helper',
-);
-const productValidation = between(
-  facadeSource,
-  'pub(crate) async fn validate_product_shipping_profile_input(',
   'pub(crate) async fn validate_shipping_option_profile_inputs(',
-  'product shipping-profile helper',
+  'storefront order access helper',
 );
 const optionValidation = facadeSource.slice(
   facadeSource.indexOf('pub(crate) async fn validate_shipping_option_profile_inputs('),
@@ -107,11 +100,9 @@ for (const [value, label] of [
   ['order_id: Option<Uuid>,', 'order identity context'],
   ['order_return_id: Option<Uuid>,', 'order-return identity context'],
   ['order_change_id: Option<Uuid>,', 'order-change identity context'],
-  ['struct ShippingProfileGraphqlErrorContext<\'a> {', 'typed shipping context'],
-  ['requested_slug: Option<&\'a str>,', 'requested slug context'],
+  ['struct ShippingProfileGraphqlErrorContext {', 'typed shipping context'],
   ['requested_profile_count: Option<usize>,', 'requested profile count'],
   ['shipping_profile_id: Option<Uuid>,', 'shipping-profile identity context'],
-  ['fn single(', 'single-profile context constructor'],
   ['fn batch(', 'batch-profile context constructor'],
 ]) requireText(facadeSource, value, label);
 
@@ -121,38 +112,19 @@ for (const [value, label] of [
   ['extensions.set("retryable", retryable)', 'GraphQL retryability extension'],
 ]) requireText(facadeSource, value, label);
 
+for (const value of ['Validation','NotFound','Conflict','Forbidden','Unavailable','Timeout','InvariantViolation']) {
+  requireText(orderPolicy, `PortErrorKind::${value}`, 'Order owner port error policy');
+}
+requireText(orderPolicy, '"FORBIDDEN"', 'authorization classification');
 for (const [value, label] of [
-  ['OrderError::Validation(_)', 'order validation mapping'],
-  ['OrderError::OrderNotFound(order_id)', 'order not-found mapping'],
-  ['context.order_id = Some(*order_id);', 'typed order identity adoption'],
-  ['OrderError::OrderReturnNotFound(order_return_id)', 'order-return mapping'],
-  ['context.order_return_id = Some(*order_return_id);', 'typed return identity adoption'],
-  ['OrderError::OrderChangeNotFound(order_change_id)', 'order-change mapping'],
-  ['context.order_change_id = Some(*order_change_id);', 'typed change identity adoption'],
-  ['OrderError::InvalidTransition { .. }', 'order transition mapping'],
-  ['OrderError::Database(_)', 'order database mapping'],
-  ['OrderError::Core(_)', 'order fallback mapping'],
-  ['"Order request is invalid"', 'order validation message'],
-  ['"ORDER_REQUEST_INVALID"', 'order validation code'],
-  ['"Order resource was not found"', 'order not-found message'],
-  ['"ORDER_RESOURCE_NOT_FOUND"', 'order not-found code'],
-  ['"Order operation conflicts with the current state"', 'order conflict message'],
-  ['"ORDER_STATE_CONFLICT"', 'order conflict code'],
-  ['"Order service is temporarily unavailable"', 'order availability message'],
-  ['"ORDER_TEMPORARILY_UNAVAILABLE"', 'order availability code'],
-  ['"Order operation could not be completed safely"', 'order fallback message'],
-  ['"ORDER_OPERATION_FAILED"', 'order fallback code'],
-]) requireText(orderPolicy, value, label);
-
-for (const [value, label] of [
-  ['error = ?error', 'typed order cause log'],
+  ['owner_error_kind = ?error.kind', 'bounded typed order cause log'],
   ['owner = STOREFRONT_ORDER_GRAPHQL_OWNER', 'order owner log'],
-  ['tenant_id = %context.tenant_id', 'order tenant log'],
-  ['actor_id = %context.actor_id', 'order actor log'],
-  ['customer_id = %context.customer_id', 'order customer log'],
-  ['order_id = ?context.order_id', 'order identity log'],
-  ['order_return_id = ?context.order_return_id', 'return identity log'],
-  ['order_change_id = ?context.order_change_id', 'change identity log'],
+  ['tenant_id_non_nil = !context.tenant_id.is_nil()', 'order tenant log'],
+  ['actor_id_non_nil = !context.actor_id.is_nil()', 'order actor log'],
+  ['customer_id_non_nil = !context.customer_id.is_nil()', 'order customer log'],
+  ['order_id_non_nil = context.order_id.is_some_and', 'order identity log'],
+  ['order_return_id_present = context.order_return_id.is_some()', 'return identity log'],
+  ['order_change_id_present = context.order_change_id.is_some()', 'change identity log'],
   ['operation = %context.operation', 'order operation log'],
   ['error_kind,', 'order error-kind log'],
   ['public_code = code', 'order public-code log'],
@@ -200,12 +172,10 @@ for (const [value, label] of [
 ]) requireText(shippingPolicy, value, label);
 
 for (const [value, label] of [
-  ['error = ?error', 'typed shipping cause log'],
   ['owner = SHIPPING_PROFILE_GRAPHQL_OWNER', 'shipping owner log'],
-  ['tenant_id = %context.tenant_id', 'shipping tenant log'],
-  ['requested_slug = ?context.requested_slug', 'requested slug log'],
+  ['tenant_id_non_nil = !context.tenant_id.is_nil()', 'shipping tenant log'],
   ['requested_profile_count = ?context.requested_profile_count', 'profile count log'],
-  ['shipping_profile_id = ?context.shipping_profile_id', 'shipping identity log'],
+  ['shipping_profile_id_present = context.shipping_profile_id.is_some()', 'shipping identity log'],
   ['operation = %context.operation', 'shipping operation log'],
   ['error_kind,', 'shipping error-kind log'],
   ['public_code = code', 'shipping public-code log'],
@@ -215,11 +185,11 @@ for (const [value, label] of [
 ]) requireText(shippingMapper, value, label);
 
 for (const [value, label] of [
-  ['ctx.data::<AuthContext>()', 'authenticated actor lookup'],
+  ['.data::<AuthContext>()', 'authenticated actor lookup'],
   ['resolve_optional_storefront_customer_id(', 'safe customer lookup reuse'],
   ['Some(auth),', 'authenticated customer context'],
-  ['OrderService::new(db.clone(), event_bus.clone())', 'order service construction'],
-  ['.get_order(tenant_id, order_id)', 'order owner call'],
+  ['order_read_runtime_for_current_graphql_scope(', 'selected Order owner runtime'],
+  ['.read_order_projection(', 'Order owner read port'],
   ['StorefrontOrderGraphqlErrorContext::new(', 'typed order mapper context'],
   ['auth.user_id,', 'actor identity forwarding'],
   ['customer_id,', 'customer identity forwarding'],
@@ -227,15 +197,6 @@ for (const [value, label] of [
   ['order.customer_id != Some(customer_id)', 'ownership comparison'],
   ['GraphQLError>::permission_denied(', 'ownership denial contract'],
 ]) requireText(orderAccess, value, label);
-
-for (const [value, label] of [
-  ['shipping_profile_slug.and_then(normalize_shipping_profile_slug)', 'slug normalization'],
-  ['ShippingProfileService::new(db.clone())', 'shipping service construction'],
-  ['.ensure_shipping_profile_slug_exists(tenant_id, &slug)', 'single slug owner call'],
-  ['ShippingProfileGraphqlErrorContext::single(', 'single shipping context'],
-  ['&slug,', 'normalized slug context'],
-  ['"validate_product_shipping_profile_input"', 'single validation operation'],
-]) requireText(productValidation, value, label);
 
 for (const [value, label] of [
   ['let Some(slugs) = allowed_shipping_profile_slugs else', 'absent batch no-op'],
@@ -247,13 +208,6 @@ for (const [value, label] of [
 ]) requireText(optionValidation, value, label);
 
 for (const [ownerSource, value, label] of [
-  [orderErrors, 'Validation(String)', 'owner order validation variant'],
-  [orderErrors, 'OrderNotFound(Uuid)', 'owner order-not-found variant'],
-  [orderErrors, 'OrderReturnNotFound(Uuid)', 'owner return-not-found variant'],
-  [orderErrors, 'OrderChangeNotFound(Uuid)', 'owner change-not-found variant'],
-  [orderErrors, 'InvalidTransition { from: String, to: String }', 'owner transition variant'],
-  [orderErrors, 'Database(#[from] DbErr)', 'owner order database variant'],
-  [orderErrors, 'Core(#[from] rustok_core::Error)', 'owner order core variant'],
   [commerceErrors, 'ShippingProfileNotFound(Uuid)', 'owner shipping not-found variant'],
   [commerceErrors, 'DuplicateShippingProfileSlug(String)', 'owner shipping conflict variant'],
   [commerceErrors, 'Database(#[from] sea_orm::DbErr)', 'owner commerce database variant'],
@@ -280,14 +234,40 @@ if (orderMapperCalls.length !== 2) {
   failures.push(`expected order mapper definition plus one call, found ${orderMapperCalls.length}`);
 }
 const shippingMapperCalls = facadeSource.match(/shipping_profile_graphql_error\(/g) ?? [];
-if (shippingMapperCalls.length !== 3) {
-  failures.push(`expected shipping mapper definition plus two calls, found ${shippingMapperCalls.length}`);
+if (shippingMapperCalls.length !== 2) {
+  failures.push(`expected shipping mapper definition plus one shipping-option call, found ${shippingMapperCalls.length}`);
 }
 const publicEnvelopeCalls = facadeSource.match(/public_graphql_error\(/g) ?? [];
-if (publicEnvelopeCalls.length !== 3) {
-  failures.push(`expected public envelope definition plus two mapper calls, found ${publicEnvelopeCalls.length}`);
+if (publicEnvelopeCalls.length !== 5) {
+  failures.push(`expected public envelope definition, two mappers, nil-order and missing-tenant refusals, found ${publicEnvelopeCalls.length}`);
 }
 
+for (const [block,label] of [[orderMapper,'Order'], [shippingMapper,'Shipping']]) {
+  for(const marker of ['error = ?error', 'error.to_string()', 'error.message', 'detail.clone()',
+    'tenant_id = %context.tenant_id', 'requested_slug =', 'shipping_profile_id = ?context.shipping_profile_id']) {
+    forbidText(block, marker, `${label}: raw diagnostic payload`);
+  }
+}
+for(const marker of ['detail.clone()', 'CommerceError::Validation(detail)', '(String,', '.to_string()']) {
+  forbidText(shippingPolicy, marker, 'static shipping public policy');
+}
+requireText(shippingPolicy, ') -> StorefrontGraphqlPolicy', 'static shipping policy return type');
+const readContext = between(facadeSource, 'fn storefront_order_read_context(',
+  'fn shipping_profile_graphql_error_policy(', 'Order caller provenance');
+for(const marker of ['request.correlation_id.clone()', 'Uuid::new_v4()',
+  'request.locale.as_str()', 'request.channel_slug.as_deref()', 'with_claim(permission.to_string())']) {
+  requireText(readContext, marker, 'trusted request provenance');
+}
+forbidText(readContext, 'format!(', 'resource-free correlation');
+for(const marker of ['tenant.id != tenant_id', 'auth.tenant_id != tenant_id',
+  'request.tenant_id != tenant_id', 'request.user_id != Some(auth.user_id)']) {
+  requireText(orderAccess, marker, 'authenticated Order scope');
+  if(orderAccess.indexOf(marker) > orderAccess.indexOf('resolve_optional_storefront_customer_id(')) {
+    failures.push('Order authenticated scope must precede customer IO');
+  }
+}
+requireText(orderAccess, '"Order context is temporarily unavailable"', 'missing trusted context sanitization');
+forbidText(orderAccess, 'ctx.data::<TenantContext>()?;', 'raw framework extraction error');
 if (failures.length > 0) {
   console.error('Commerce GraphQL order and shipping helper error safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);

@@ -1,5 +1,9 @@
 {
   "scripts": {
+    "verify:pricing:public-error": "node scripts/verify/verify-pricing-public-error.mjs",
+    "verify:product:error-boundary": "node scripts/verify/verify-product-error-boundary.mjs",
+    "verify:product:variant-patches": "node scripts/verify/verify-product-variant-patches.mjs",
+    "verify:product:shipping-admission": "node scripts/verify/verify-product-shipping-admission.mjs",
     "verify:docs": "node scripts/verify/verify-docs.mjs",
     "verify:manifest": "cargo run -p xtask -- validate-manifest",
     "generate:docs-topology": "node scripts/generate/generate-docs-topology.mjs",
@@ -163,7 +167,7 @@
     "test:verify:product:runtime-fallback-smoke": "node scripts/verify/verify-product-runtime-fallback-smoke.test.mjs",
     "verify:product:grpc-test-attestation": "node scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs",
     "test:verify:product:grpc-test-attestation": "node scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.test.mjs",
-    "verify:ecommerce:fba": "npm run verify:ecommerce:public-port-errors && npm run verify:ecommerce:fba-registries && npm run verify:ecommerce:fba-contract-evidence && npm run verify:ecommerce:fba-runtime-smoke && npm run verify:product:catalog-schema && npm run verify:product:storefront-media-price && npm run verify:product:lifecycle-collaboration && npm run verify:server:ai-optional-dependency && npm run verify:commerce:storefront-transport-errors && npm run verify:product:runtime-fallback-smoke && npm run verify:product:grpc-test-attestation && npm run verify:ecommerce:provider-spi-evidence && npm run verify:payment:refund-identity && npm run verify:payment:provider-outcomes && npm run verify:payment:stripe-runtime && npm run verify:marketplace && npm run verify:product:admin-category-sort && npm run verify:product:admin-read-diagnostics && npm run verify:product:admin-mutation-error-safety && npm run verify:product:admin-operation-results && npm run verify:product:admin-variant-axes && npm run verify:product:admin-schema-authoring && npm run verify:product:attribute-validation-rules && npm run verify:product:lifecycle-events && npm run verify:product:relations-bundles-idempotency",
+    "verify:ecommerce:fba": "npm run verify:ecommerce:public-port-errors && npm run verify:ecommerce:fba-registries && npm run verify:ecommerce:fba-contract-evidence && npm run verify:ecommerce:fba-runtime-smoke && npm run verify:product:catalog-schema && npm run verify:product:storefront-media-price && npm run verify:product:lifecycle-collaboration && npm run verify:server:ai-optional-dependency && npm run verify:commerce:storefront-transport-errors && npm run verify:product:runtime-fallback-smoke && npm run verify:product:grpc-test-attestation && npm run verify:ecommerce:provider-spi-evidence && npm run verify:payment:refund-identity && npm run verify:payment:provider-outcomes && npm run verify:payment:stripe-runtime && npm run verify:marketplace && npm run verify:product:admin-category-sort && npm run verify:product:admin-read-diagnostics && npm run verify:product:admin-mutation-error-safety && npm run verify:product:admin-operation-results && npm run verify:product:admin-variant-axes && npm run verify:product:admin-schema-authoring && npm run verify:product:attribute-validation-rules && npm run verify:product:catalog-receipts && npm run verify:product:atomic-save && npm run verify:product:lifecycle-events && npm run verify:product:relations-bundles-idempotency",
     "test:verify:ecommerce:fba": "npm run test:verify:ecommerce:public-port-errors && npm run test:verify:ecommerce:fba-registries && npm run test:verify:ecommerce:fba-contract-evidence && npm run test:verify:ecommerce:fba-runtime-smoke && npm run test:verify:product:catalog-schema && npm run test:verify:product:runtime-fallback-smoke && npm run test:verify:product:grpc-test-attestation && npm run test:verify:ecommerce:provider-spi-evidence && npm run test:verify:product:admin-category-sort",
     "verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.mjs",
     "test:verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.test.mjs",
@@ -252,7 +256,13 @@
     "verify:product:lifecycle-events": "node scripts/verify/verify-product-lifecycle-events.mjs",
     "test:verify:product:lifecycle-events": "node --test scripts/verify/verify-product-lifecycle-events.test.mjs",
     "verify:product:relations-bundles-idempotency": "node scripts/verify/verify-product-relations-bundles-idempotency.mjs",
-    "test:verify:product:relations-bundles-idempotency": "node --test scripts/verify/verify-product-relations-bundles-idempotency.test.mjs"
+    "test:verify:product:relations-bundles-idempotency": "node --test scripts/verify/verify-product-relations-bundles-idempotency.test.mjs",
+    "verify:product:catalog-receipts": "node scripts/verify/verify-product-catalog-receipts.mjs",
+    "test:verify:product:catalog-receipts": "node --test scripts/verify/verify-product-catalog-receipts.test.mjs",
+    "verify:product:atomic-save": "node scripts/verify/verify-product-atomic-save.mjs",
+    "test:verify:product:atomic-save": "node --test scripts/verify/verify-product-atomic-save.test.mjs",
+    "verify:product:media-retention": "node scripts/verify/verify-product-media-retention.mjs",
+    "test:verify:product:media-retention": "node --test scripts/verify/verify-product-media-retention.test.mjs"
   },
   "dependencies": {
     "sharp": "^0.35.5"

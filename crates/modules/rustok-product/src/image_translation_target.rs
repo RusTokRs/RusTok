@@ -546,9 +546,10 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
                 "Product state conflicts with the requested Image translation mutation",
             )
         }
-        CommerceError::Core(_) => PortError::invariant_violation(
-            "product.image_translation_owner_invariant",
-            "Product Image translation state is invalid",
+        CommerceError::Core(error) => crate::error::core_port_error(&error),
+        CommerceError::Conflict(_) => PortError::conflict(
+            "product.conflict",
+            "product request conflicts with the current state",
         ),
     }
 }

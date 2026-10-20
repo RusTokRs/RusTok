@@ -1,7 +1,7 @@
 use super::{CatalogService, PRODUCT_SCOPE_VALUE, ProductTagState, helpers::normalize_tag_names};
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Set,
 };
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
@@ -74,8 +74,9 @@ impl CatalogService {
         Ok(tags_by_product)
     }
 
-    pub(crate) async fn load_product_tags(
+    pub(crate) async fn load_product_tags_in<C: ConnectionTrait>(
         &self,
+        conn: &C,
         tenant_id: Uuid,
         product_id: Uuid,
         locale: &str,
@@ -85,7 +86,7 @@ impl CatalogService {
             .filter(product_tag::Column::TenantId.eq(tenant_id))
             .filter(product_tag::Column::ProductId.eq(product_id))
             .order_by_asc(product_tag::Column::CreatedAt)
-            .all(&self.db)
+            .all(conn)
             .await?;
 
         if relations.is_empty() {
@@ -97,7 +98,7 @@ impl CatalogService {
             .map(|relation| relation.term_id)
             .collect::<Vec<_>>();
         let names = TaxonomyService::new(self.db.clone())
-            .resolve_term_names(tenant_id, &term_ids, locale, fallback_locale)
+            .resolve_term_names_in(conn, tenant_id, &term_ids, locale, fallback_locale)
             .await
             .map_err(|error| CommerceError::Validation(error.to_string()))?;
 

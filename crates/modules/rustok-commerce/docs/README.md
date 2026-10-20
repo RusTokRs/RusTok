@@ -104,3 +104,41 @@ for checkout, REST/GraphQL transport and split-module integration in addition to
 ## FFA core/transport/ui slice
 
 Slice 10.6 fixes the structural shape `core_transport_ui`: admin and storefront received framework-agnostic `core.rs` helpers, module-owned `transport.rs` facades and explicit Leptos render adapters `admin/src/ui/leptos.rs` / `storefront/src/ui/leptos.rs`. Crate roots now only connect module layers and re-export `CommerceAdmin` / `CommerceView`; covered flows go through the transport facade rather than raw `api::*` functions.
+
+
+## Product Shipping Profile admission
+
+Commerce implements Product's neutral ProductShippingProfilePort using the typed active
+Shipping Profile registry. Product invokes it inside first receipt execution, before its
+write transaction, not as a REST/GraphQL preflight. Completed receipts replay without a
+profile lookup. Initial Variant overrides are included. Provider failures are sanitized;
+unknown/inactive is authoritative NotFound, while storage/configuration is unavailable.
+The selected embedded owner and embedded HTTP/GraphQL fallback runtimes receive this
+capability; external Product owners must implement their own admission. This is not a
+distributed transaction or ongoing reference hold. See the [Product write boundary](../../rustok-product/docs/write-boundary.md#receipt-aware-shipping-profile-admission).
+Runtime/build/mounted transport verification remains open.
+
+
+## Diagnostic and authenticated-scope hardening (2026-10-18)
+
+Product HTTP handlers reject mismatched tenant/auth/request actor scopes before reads,
+receipt admission or writes. Media maintenance delegates to the same rule while retaining
+its existing public denial code. Authenticated Product admin owner-port reads preserve upstream correlation IDs; anonymous storefront Product reads use fresh opaque owner-call UUIDs (see the continuation below).
+Storefront order access similarly validates authenticated scope before customer/owner IO,
+propagates trusted request correlation/locale/channel and permission claims, and never
+uses an order UUID as a diagnostic correlation ID. Forbidden remains authorization denial,
+not validation. Shipping-option profile helper errors use static public messages and
+bounded identifier-presence/count diagnostics; owner validation detail and raw causes do
+not reach the public envelope or the mapper log. These are source contracts, not runtime
+certification. Source guards track current Product/Order port boundaries rather than
+removed direct service calls or broad umbrella error variants.
+
+
+## Storefront Product HTTP policy (2026-10-19)
+
+Mounted Product list/detail share a static presentation policy. **Forbidden now returns
+403 and Conflict 409 instead of the prior generic 500**; missing/invisible Product
+remains 404. Mapper diagnostics are bounded and owner-call correlations are opaque.
+See the [contract and migration note](./public-port-error-safety.md#storefront-product-http-policy-continuation-2026-10-19).
+Source guards/format checks pass; four Rust scenarios are unrun and compilation,
+mounted execution, tracing capture and integration remain open.

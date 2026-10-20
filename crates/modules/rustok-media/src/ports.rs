@@ -15,6 +15,30 @@ use crate::{
     lifecycle::{AssetState, BlobState},
 };
 
+/// An atomically selected read/write capability from ONE owner instance. This
+/// prevents consumers from combining a remote read with an embedded write port.
+#[derive(Clone)]
+pub struct MediaAssetPorts {
+    read: std::sync::Arc<dyn MediaAssetReadPort>,
+    write: std::sync::Arc<dyn MediaAssetWritePort>,
+}
+impl MediaAssetPorts {
+    pub fn new<T: MediaAssetReadPort + MediaAssetWritePort + 'static>(
+        owner: std::sync::Arc<T>,
+    ) -> Self {
+        Self {
+            read: owner.clone(),
+            write: owner,
+        }
+    }
+    pub fn read(&self) -> std::sync::Arc<dyn MediaAssetReadPort> {
+        self.read.clone()
+    }
+    pub fn write(&self) -> std::sync::Arc<dyn MediaAssetWritePort> {
+        self.write.clone()
+    }
+}
+
 const MAX_MEDIA_LIST_LIMIT: u64 = 100;
 const MAX_MEDIA_RECONCILIATION_LIMIT: u64 = 1_000;
 

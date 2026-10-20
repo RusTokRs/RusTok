@@ -41,7 +41,8 @@ for (const required of [
   "Uuid::parse_str(context.actor.id.as_str())",
   '"product.schema_database_unavailable"',
   '"product.schema_validation"',
-  '"product.schema_invariant_violation"',
+  'CommerceError::Core(error) => crate::error::core_port_error(&error)',
+  'CommerceError::Conflict(_) => PortError::conflict(',
 ]) {
   requireText(port, required, "Product schema write owner port");
 }

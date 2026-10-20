@@ -1,8 +1,6 @@
 use super::*;
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
-use rustok_taxonomy::{
-    TaxonomyError, TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
-};
+use rustok_taxonomy::{TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 
 const PRODUCT_TAXONOMY_SCOPE: &str = "product";
 
@@ -306,10 +304,9 @@ impl ProductCatalogSchemaService {
         for row in category_rows {
             let parent_category_id =
                 *taxonomy_parent_map.get(&row.category_id).ok_or_else(|| {
-                    CommerceError::Validation(format!(
-                        "Product category {} is missing its Taxonomy hierarchy projection",
-                        row.category_id
-                    ))
+                    super::taxonomy_projection_error(
+                        "Product category is missing its Taxonomy hierarchy projection",
+                    )
                 })?;
             let clone_snapshot = row
                 .snapshot
@@ -448,7 +445,7 @@ where
         Some(PLATFORM_FALLBACK_LOCALE),
     )
     .await
-    .map_err(map_taxonomy_hierarchy_read_error)?;
+    .map_err(super::map_taxonomy_read_error)?;
 
     compose_product_taxonomy_parent_map(rows, owners)
 }
@@ -465,25 +462,22 @@ fn compose_product_taxonomy_parent_map(
 
     for category in categories {
         let owner = owners.remove(&category.category_id).ok_or_else(|| {
-            CommerceError::Validation(format!(
-                "Product category {} is missing its Taxonomy hierarchy projection",
-                category.category_id
-            ))
+            super::taxonomy_projection_error(
+                "Product category is missing its Taxonomy hierarchy projection",
+            )
         })?;
         let expected_key = format!("product-category-{}", category.category_id);
         if owner.canonical_key != expected_key {
-            return Err(CommerceError::Validation(format!(
-                "Product category {} has incompatible Taxonomy canonical key {}",
-                category.category_id, owner.canonical_key
-            )));
+            return Err(super::taxonomy_projection_error(
+                "Product category has incompatible Taxonomy canonical key",
+            ));
         }
         if owner.scope_type != TaxonomyScopeType::Module
             || owner.scope_value.as_deref() != Some(PRODUCT_TAXONOMY_SCOPE)
         {
-            return Err(CommerceError::Validation(format!(
-                "Product category {} has incompatible Taxonomy scope",
-                category.category_id
-            )));
+            return Err(super::taxonomy_projection_error(
+                "Product category has incompatible Taxonomy scope",
+            ));
         }
         parent_map.insert(category.category_id, owner.parent_id);
     }
@@ -501,29 +495,20 @@ fn taxonomy_ancestor_chain(
 
     while let Some(current_id) = current {
         if !seen.insert(current_id) {
-            return Err(CommerceError::Validation(format!(
-                "Product category {category_id} has a cyclic Taxonomy hierarchy projection"
-            )));
+            return Err(super::taxonomy_projection_error(
+                "Product category has a cyclic Taxonomy hierarchy projection",
+            ));
         }
         chain.push(current_id);
         current = *parent_map.get(&current_id).ok_or_else(|| {
-            CommerceError::Validation(format!(
-                "Product category {current_id} is missing its Taxonomy hierarchy projection"
-            ))
+            super::taxonomy_projection_error(
+                "Product category is missing its Taxonomy hierarchy projection",
+            )
         })?;
     }
 
     chain.reverse();
     Ok(chain)
-}
-
-fn map_taxonomy_hierarchy_read_error(error: TaxonomyError) -> CommerceError {
-    match error {
-        TaxonomyError::Database(error) => CommerceError::Database(error),
-        other => CommerceError::Validation(format!(
-            "Product Category Taxonomy hierarchy projection failed: {other}"
-        )),
-    }
 }
 
 #[cfg(test)]
@@ -548,9 +533,15 @@ mod tests {
         let root = Uuid::new_v4();
         let leaf = Uuid::new_v4();
         let missing_parent = HashMap::from([(leaf, Some(root))]);
-        assert!(taxonomy_ancestor_chain(leaf, &missing_parent).is_err());
+        assert!(matches!(
+            taxonomy_ancestor_chain(leaf, &missing_parent),
+            Err(CommerceError::Core(rustok_core::error::Error::Internal(_)))
+        ));
 
         let cycle = HashMap::from([(root, Some(leaf)), (leaf, Some(root))]);
-        assert!(taxonomy_ancestor_chain(leaf, &cycle).is_err());
+        assert!(matches!(
+            taxonomy_ancestor_chain(leaf, &cycle),
+            Err(CommerceError::Core(rustok_core::error::Error::Internal(_)))
+        ));
     }
 }

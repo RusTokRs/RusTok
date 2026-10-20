@@ -774,6 +774,7 @@ async fn test_get_variant_prices_empty() {
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let input = CreateProductInput {
+        attribute_values: Default::default(),
         translations: vec![ProductTranslationInput {
             locale: "en".to_string(),
             title: "No Price Product".to_string(),

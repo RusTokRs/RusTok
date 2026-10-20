@@ -254,11 +254,25 @@ fn attach_forum_media_asset_read_provider(
     use rustok_media::{MediaAssetReadPort, MediaService};
     use rustok_storage::StorageRuntime;
 
+    if let Some(ports) = host_runtime.shared_get::<rustok_media::MediaAssetPorts>() {
+        ctx.shared_insert(ports.clone());
+        ctx.shared_insert(ports.read());
+        ctx.shared_insert(ports.write());
+        return host_runtime
+            .with_shared_value(ports.read())
+            .with_shared_value(ports.write());
+    }
     if let Some(provider) = host_runtime.shared_get::<Arc<dyn MediaAssetReadPort>>() {
         ctx.shared_insert(provider);
         return host_runtime;
     }
 
+    if let Some(ports) = ctx.shared_get::<rustok_media::MediaAssetPorts>() {
+        return host_runtime
+            .with_shared_value(ports.read())
+            .with_shared_value(ports.write())
+            .with_shared_value(ports);
+    }
     if let Some(provider) = ctx.shared_get::<Arc<dyn MediaAssetReadPort>>() {
         return host_runtime.with_shared_value(provider);
     }
@@ -270,11 +284,16 @@ fn attach_forum_media_asset_read_provider(
         return host_runtime;
     };
 
-    let provider: Arc<dyn MediaAssetReadPort> =
-        Arc::new(MediaService::new(ctx.db_clone(), storage));
+    let ports =
+        rustok_media::MediaAssetPorts::new(Arc::new(MediaService::new(ctx.db_clone(), storage)));
+    let provider = ports.read();
     ctx.shared_insert(provider.clone());
+    ctx.shared_insert(ports.write());
+    ctx.shared_insert(ports.clone());
 
-    host_runtime.with_shared_value(provider)
+    host_runtime
+        .with_shared_value(ports)
+        .with_shared_value(provider)
 }
 
 #[cfg(all(test, feature = "mod-forum", feature = "mod-media"))]

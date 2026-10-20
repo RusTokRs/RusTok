@@ -565,6 +565,7 @@ async fn seed_tenant_locale(
 
 fn create_product_input() -> CreateProductInput {
     CreateProductInput {
+        attribute_values: Default::default(),
         translations: vec![
             ProductTranslationInput {
                 locale: "en".to_string(),

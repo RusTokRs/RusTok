@@ -64,7 +64,7 @@ for (const [source, value, label] of [
     'pub use read_context::{InProcessPricingReadPort, in_process_pricing_read_port};',
     'canonical root wrapper export',
   ],
-  [lib, 'in_process_pricing_write_port,', 'unchanged root write factory'],
+  [lib, 'pub use write_context::{InProcessPricingWritePort, in_process_pricing_write_port};', 'unchanged root write factory'],
   [owner, 'pub fn in_process_pricing_read_port(', 'legacy compatibility factory'],
   [owner, 'impl PricingReadPort for crate::PricingService', 'owner implementation'],
   [wrapper, 'pub struct InProcessPricingReadPort', 'canonical read wrapper'],
@@ -319,8 +319,8 @@ for (const marker of [
   'UUID presence and non-nil state',
   'exact quantity values are not recorded',
   'public message text is not recorded',
-  '`crates/modules/rustok-pricing/src/write_context.rs` remains open',
-]) requireText(document, marker, `${paths.document}: truthful scope`);
+  'Both canonical Pricing wrappers are now source-closed',
+]) requireText(document.replace(/\s+/g, ' ').toLowerCase(), marker.toLowerCase(), `${paths.document}: truthful scope`);
 
 if (failures.length > 0) {
   console.error('Pricing read local diagnostic-safety verification failed:');
@@ -329,5 +329,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ canonical Pricing reads preserve six owner delegations and public envelopes while logging only bounded context/request/message shape; write and runtime evidence remain open',
+  '✔ canonical Pricing reads preserve six owner delegations and public envelopes while logging only bounded context/request/message shape; broader cleanup and runtime evidence remain open',
 );

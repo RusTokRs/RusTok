@@ -43,6 +43,16 @@ fn map_storefront_product_error(
     product_id: Option<Uuid>,
 ) -> HttpError {
     let (status, code, message, error_kind) = match &error {
+        ProductError::Core(error) => crate::controllers::products::product_core_http_policy(
+            error,
+            "commerce_store_product_failed",
+        ),
+        ProductError::Conflict(_) => (
+            StatusCode::CONFLICT,
+            "commerce_store_product_conflict",
+            "Product request conflicts with the current state",
+            "conflict",
+        ),
         ProductError::Database(_) => (
             StatusCode::SERVICE_UNAVAILABLE,
             "commerce_store_product_unavailable",
@@ -67,8 +77,7 @@ fn map_storefront_product_error(
         | ProductError::DuplicateSku(_)
         | ProductError::NoVariants
         | ProductError::CannotDeletePublished
-        | ProductError::CannotDeleteOnlyVariant
-        | ProductError::Core(_) => (
+        | ProductError::CannotDeleteOnlyVariant => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "commerce_store_product_failed",
             "Product operation could not be completed safely",
@@ -107,13 +116,12 @@ fn storefront_product_port_context(
     tenant_id: Uuid,
     request_context: &RequestContext,
     public_channel_slug: Option<&str>,
-    product_id: Uuid,
 ) -> PortContext {
     let context = PortContext::new(
         tenant_id.to_string(),
         PortActor::service("rustok-commerce.storefront-product"),
         request_context.locale.as_str(),
-        format!("commerce-storefront-product:read:{product_id}"),
+        Uuid::new_v4().to_string(),
     )
     .with_deadline(std::time::Duration::from_secs(2));
     match public_channel_slug {
@@ -122,14 +130,11 @@ fn storefront_product_port_context(
     }
 }
 
-fn map_storefront_product_port_error(
-    error: PortError,
-    context: &PortContext,
-    operation: &'static str,
-    tenant_id: Uuid,
-    product_id: Uuid,
-) -> HttpError {
-    let (status, code, message, error_kind) = match &error.kind {
+// Transport presentation only: Product remains the owner of domain/Core classification.
+pub(super) fn storefront_product_port_http_policy(
+    kind: &PortErrorKind,
+) -> (StatusCode, &'static str, &'static str, &'static str) {
+    match kind {
         PortErrorKind::Validation => (
             StatusCode::BAD_REQUEST,
             "commerce_store_product_invalid",
@@ -148,17 +153,39 @@ fn map_storefront_product_port_error(
             "Product service is temporarily unavailable",
             "unavailable",
         ),
-        PortErrorKind::Conflict | PortErrorKind::Forbidden | PortErrorKind::InvariantViolation => (
+        PortErrorKind::Conflict => (
+            StatusCode::CONFLICT,
+            "commerce_store_product_conflict",
+            "Product request conflicts with the current state",
+            "conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            StatusCode::FORBIDDEN,
+            "commerce_product_access_denied",
+            "Product access is denied",
+            "forbidden",
+        ),
+        PortErrorKind::InvariantViolation => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "commerce_store_product_failed",
             "Product operation could not be completed safely",
             "owner_failure",
         ),
-    };
+    }
+}
+
+fn map_storefront_product_port_error(
+    error: PortError,
+    context: &PortContext,
+    operation: &'static str,
+    tenant_id: Uuid,
+    product_id: Uuid,
+) -> HttpError {
+    let (status, code, message, error_kind) = storefront_product_port_http_policy(&error.kind);
     tracing::error!(
         owner = "rustok_product",
         owner_operation = operation,
-        correlation_id = %context.correlation_id,
+        correlation_id_length = context.correlation_id.chars().count(),
         tenant_id_non_nil = !tenant_id.is_nil(),
         product_id_non_nil = !product_id.is_nil(),
         owner_error_kind = ?error.kind,
@@ -393,7 +420,10 @@ pub async fn list_products(
     Query(params): Query<StoreListProductsParams>,
 ) -> HttpResult<Json<PaginatedResponse<ProductListItem>>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = "commerce_storefront_product_http",
@@ -541,7 +571,12 @@ pub async fn list_products(
     params(("id" = Uuid, Path, description = "Product ID")),
     responses(
         (status = 200, description = "Product details", body = ProductResponse),
-        (status = 404, description = "Product not found")
+        (status = 400, description = "Invalid request"),
+        (status = 404, description = "Product not found"),
+        (status = 403, description = "Product access denied"),
+        (status = 409, description = "Product state conflict"),
+        (status = 503, description = "Product service unavailable"),
+        (status = 500, description = "Product invariant failure")
     )
 )]
 pub async fn show_product(
@@ -551,16 +586,22 @@ pub async fn show_product(
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_product_id",
+            "Product ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = "commerce_storefront_product_http",
         operation = "show_product",
-        tenant_id = %tenant.id,
-        product_id = %id,
+        tenant_id_non_nil = !tenant.id.is_nil(),
+        product_id_non_nil = !id.is_nil(),
         "handling show_product"
     );
 
@@ -571,7 +612,6 @@ pub async fn show_product(
         tenant.id,
         &request_context,
         public_channel_slug.as_deref(),
-        id,
     );
     let product = runtime
         .product_catalog_read_port()
@@ -616,7 +656,10 @@ pub async fn list_regions(
     request_context: RequestContext,
 ) -> HttpResult<Json<Vec<RegionResponse>>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = "commerce_storefront_auxiliary_http",
@@ -679,7 +722,10 @@ pub async fn list_shipping_options(
     Query(query): Query<StoreContextQuery>,
 ) -> HttpResult<Json<Vec<ShippingOptionResponse>>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = "commerce_storefront_auxiliary_http",
@@ -793,4 +839,101 @@ pub async fn list_shipping_options(
     });
 
     Ok(Json(options))
+}
+
+#[cfg(test)]
+mod product_port_policy_tests {
+    use super::*;
+
+    #[test]
+    fn all_product_port_kinds_have_explicit_safe_http_outcomes() {
+        for (kind, expected, code) in [
+            (
+                PortErrorKind::Validation,
+                StatusCode::BAD_REQUEST,
+                "commerce_store_product_invalid",
+            ),
+            (
+                PortErrorKind::NotFound,
+                StatusCode::NOT_FOUND,
+                "commerce_store_not_found",
+            ),
+            (
+                PortErrorKind::Forbidden,
+                StatusCode::FORBIDDEN,
+                "commerce_product_access_denied",
+            ),
+            (
+                PortErrorKind::Conflict,
+                StatusCode::CONFLICT,
+                "commerce_store_product_conflict",
+            ),
+            (
+                PortErrorKind::Unavailable,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "commerce_store_product_unavailable",
+            ),
+            (
+                PortErrorKind::Timeout,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "commerce_store_product_unavailable",
+            ),
+            (
+                PortErrorKind::InvariantViolation,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "commerce_store_product_failed",
+            ),
+        ] {
+            let policy = storefront_product_port_http_policy(&kind);
+            assert_eq!(policy.0, expected);
+            assert_eq!(policy.1, code);
+            // Poison the entire port envelope, including a forged code, not just Validation copy.
+            let error = PortError {
+                kind,
+                code: "private-code".into(),
+                message: "private-message".into(),
+                retryable: true,
+            };
+            let context = PortContext::new(
+                "private-tenant",
+                PortActor::system(),
+                "en",
+                "private-correlation",
+            );
+            let mapped = map_storefront_product_port_error(
+                error,
+                &context,
+                "scenario",
+                Uuid::nil(),
+                Uuid::nil(),
+            );
+            assert_eq!(mapped.status, expected);
+            assert_eq!(mapped.code, code);
+            assert_eq!(mapped.message, policy.2);
+            assert!(!mapped.message.contains("private-"));
+        }
+    }
+
+    #[test]
+    fn detail_owner_context_uses_opaque_correlation_and_preserves_scope() {
+        let tenant_id = Uuid::new_v4();
+        let request = RequestContext {
+            tenant_id,
+            user_id: None,
+            channel_id: None,
+            channel_slug: None,
+            channel_resolution_source: None,
+            locale: "ru".into(),
+            correlation_id: "private-header".into(),
+        };
+        let first = storefront_product_port_context(tenant_id, &request, Some("web"));
+        let second = storefront_product_port_context(tenant_id, &request, Some("web"));
+        assert!(Uuid::parse_str(&first.correlation_id).is_ok());
+        assert_ne!(first.correlation_id, second.correlation_id);
+        assert_ne!(first.correlation_id, request.correlation_id);
+        assert_eq!(first.tenant_id, tenant_id.to_string());
+        assert_eq!(first.locale, "ru");
+        assert_eq!(first.channel.as_deref(), Some("web"));
+        assert_eq!(first.deadline_ms, Some(2000));
+    }
 }

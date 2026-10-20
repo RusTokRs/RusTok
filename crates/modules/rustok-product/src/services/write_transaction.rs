@@ -19,7 +19,7 @@ use crate::{
         },
     },
 };
-use rustok_api::PortError;
+use rustok_api::{PortError, PortErrorKind};
 use rustok_events::DomainEvent;
 use rustok_outbox::{TransactionalEventBus, idempotency};
 use sea_orm::{
@@ -146,17 +146,24 @@ where
     result
 }
 
+/// Only authoritative domain refusal classes may become durable terminal receipts.
+/// Non-retryability alone is not proof of a domain outcome: configuration, permission,
+/// invariant and infrastructure errors must retain a reclaimable processing lease.
+pub(crate) fn is_terminal_product_failure(error: &PortError) -> bool {
+    !error.retryable
+        && matches!(
+            error.kind,
+            PortErrorKind::Validation | PortErrorKind::NotFound | PortErrorKind::Conflict
+        )
+}
+
 /// Persists only a deterministic Product owner failure into an admitted receipt.
-///
-/// Retryable port errors represent an unknown/transient infrastructure outcome. They must retain
-/// the processing lease so a later admission can reclaim the operation rather than replaying a
-/// terminal unavailable response for the caller's idempotency key.
 pub(crate) async fn fail_product_operation_receipt(
     database: &DatabaseConnection,
     lease: idempotency::Lease,
     error: &PortError,
 ) -> Result<(), PortError> {
-    if error.retryable {
+    if !is_terminal_product_failure(error) {
         return Ok(());
     }
 
@@ -728,10 +735,12 @@ impl ConnectionTrait for ProductWriteTransaction {
 mod tests {
     use super::{
         PRODUCT_OPERATION_RECEIPT, ProductOperationReceipt, ProductWriteTransaction,
-        complete_product_receipt_and_commit, record_product_operation_result,
+        complete_product_receipt_and_commit, fail_product_operation_receipt,
+        is_terminal_product_failure, record_product_operation_result,
         with_product_operation_receipt,
     };
     use crate::CommerceError;
+    use rustok_api::{PortError, PortErrorKind};
     use rustok_outbox::{SysEventsMigration, idempotency};
     use rustok_test_utils::mock_transactional_event_bus;
     use sea_orm::{
@@ -825,6 +834,133 @@ mod tests {
             Err(serde::ser::Error::custom(
                 "forced Product receipt response encoding failure",
             ))
+        }
+    }
+
+    #[test]
+    fn terminal_receipts_require_a_nonretryable_domain_refusal() {
+        for kind in [
+            PortErrorKind::Validation,
+            PortErrorKind::NotFound,
+            PortErrorKind::Conflict,
+            PortErrorKind::Forbidden,
+            PortErrorKind::Unavailable,
+            PortErrorKind::Timeout,
+            PortErrorKind::InvariantViolation,
+        ] {
+            for retryable in [false, true] {
+                let error = PortError {
+                    kind: kind.clone(),
+                    code: "test.failure".into(),
+                    message: "private detail".into(),
+                    retryable,
+                };
+                let expected = !retryable
+                    && matches!(
+                        kind,
+                        PortErrorKind::Validation
+                            | PortErrorKind::NotFound
+                            | PortErrorKind::Conflict
+                    );
+                assert_eq!(is_terminal_product_failure(&error), expected);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn non_domain_failures_do_not_attempt_receipt_finalization() {
+        let database = receipt_probe_database().await;
+        // No operation receipt exists for this lease. An attempted terminal write would fail.
+        let lease = idempotency::Lease {
+            operation_id: Uuid::new_v4(),
+            token: Uuid::new_v4(),
+        };
+        for kind in [
+            PortErrorKind::Forbidden,
+            PortErrorKind::Unavailable,
+            PortErrorKind::Timeout,
+            PortErrorKind::InvariantViolation,
+        ] {
+            let error = PortError {
+                kind: kind.clone(),
+                code: "test.failure".into(),
+                message: "private detail".into(),
+                retryable: false,
+            };
+            fail_product_operation_receipt(&database, lease, &error)
+                .await
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn only_domain_failure_receipts_replay_while_invariants_remain_processing() {
+        let database = receipt_probe_database().await;
+        let scope = idempotency::OwnerOperationScope::Tenant(Uuid::new_v4());
+        let request = json!({"product": "test"});
+        for (key, error, terminal) in [
+            (
+                "invariant",
+                PortError::invariant_violation("product.invariant_violation", "bounded"),
+                false,
+            ),
+            (
+                "forbidden",
+                PortError::forbidden("product.forbidden", "bounded"),
+                false,
+            ),
+            (
+                "validation",
+                PortError::validation("product.validation", "bounded"),
+                true,
+            ),
+            (
+                "not-found",
+                PortError::not_found("product.product_not_found", "bounded"),
+                true,
+            ),
+            (
+                "conflict",
+                PortError::conflict("product.duplicate_sku", "bounded"),
+                true,
+            ),
+        ] {
+            let lease = match idempotency::admit(
+                &database,
+                scope,
+                "product",
+                key,
+                "update_product",
+                &request,
+            )
+            .await
+            .unwrap()
+            {
+                idempotency::Admission::Run(lease) => lease,
+                _ => panic!("Fresh fixture must admit a command"),
+            };
+            fail_product_operation_receipt(&database, lease, &error)
+                .await
+                .unwrap();
+            let admission =
+                idempotency::admit(&database, scope, "product", key, "update_product", &request)
+                    .await;
+            if terminal {
+                match admission {
+                    Ok(idempotency::Admission::ReplayError(stored)) => {
+                        assert_eq!(stored.code, error.code)
+                    }
+                    _ => panic!("Deterministic refusal must replay"),
+                }
+            } else {
+                match admission {
+                    Err(pending) => {
+                        assert_eq!(pending.code, "outbox.operation_receipt_in_progress");
+                        assert!(pending.retryable);
+                    }
+                    _ => panic!("Non-domain failure must not become a terminal replay"),
+                }
+            }
         }
     }
 

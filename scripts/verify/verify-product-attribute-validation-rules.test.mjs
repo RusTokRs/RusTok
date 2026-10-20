@@ -14,7 +14,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const scriptPath = path.resolve(
-  "scripts/verify/verify-product-attribute-validation-rules.mjs"
+  "scripts/verify/verify-product-attribute-validation-rules.mjs",
 );
 
 function write(root, relativePath, content) {
@@ -64,10 +64,11 @@ const ENGINE_TESTS = [
 function engineSource() {
   const ruleList = RULE_NAMES.map((rule) => `    "${rule}",`).join("\n");
   const failures = RULE_NAMES.map(
-    (rule) => `        return Err(rule_failure(attribute_id, "${rule}", "detail"));`
+    (rule) =>
+      `        return Err(rule_failure(attribute_id, "${rule}", "detail"));`,
   ).join("\n");
   const tests = ENGINE_TESTS.map(
-    (name) => `    #[test]\n    fn ${name}() { assert!(true); }`
+    (name) => `    #[test]\n    fn ${name}() { assert!(true); }`,
   ).join("\n");
   return `use super::*;
 pub(crate) const ATTRIBUTE_VALIDATION_RULE_PREFIX: &str = "attribute validation rule";
@@ -193,6 +194,13 @@ async fn load_missing_required_locales<C>(conn: &C) -> CommerceResult<()> {
     Ok(())
 }
 pub async fn save_product_attribute_values(&self) -> CommerceResult<()> {
+    lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+    self.apply_product_attribute_values_in_tx(&txn, tenant_id, product_id).await?;
+    Ok(())
+}
+pub(crate) async fn apply_product_attribute_values_in_tx(&self) -> CommerceResult<()> {
+    lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+    Self::load_effective_form_for_category_in(&txn, tenant_id, category_id, &[]).await?;
     let validation_by_attribute = form
         .attributes
         .iter()
@@ -206,6 +214,8 @@ pub async fn save_product_attribute_values(&self) -> CommerceResult<()> {
     "SELECT id, value_type, scope, is_localized, validation FROM product_attributes"
 }
 pub async fn save_variant_attribute_values(&self) -> CommerceResult<()> {
+    load_variant_owner_for_update(&txn, tenant_id, variant_id).await?;
+    load_product_primary_category(&txn, tenant_id, product_id).await?;
     let validation_by_attribute = form
         .attributes
         .iter()
@@ -337,6 +347,42 @@ async fn bind_catalog_category_attribute(&self) {
 `,
 };
 
+const valuesPath =
+  "crates/modules/rustok-product/src/services/catalog_schema_service/values.rs";
+const variantValuesPath =
+  "crates/modules/rustok-product/src/services/catalog_schema_service/values/variant.rs";
+CANONICAL[valuesPath] +=
+  `pub async fn clear_detached_product_attribute_values() {
+    lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+    Self::load_effective_form_for_product_in(&txn, tenant_id, product_id).await?;
+}
+`;
+CANONICAL[variantValuesPath] +=
+  `pub async fn clear_detached_variant_attribute_values() {
+    load_variant_owner_for_update(&txn, tenant_id, variant_id).await?;
+    self.load_variant_attribute_values_in(&txn, tenant_id, variant_id, locale).await?;
+}
+async fn load_variant_owner_for_update() {
+    super::lock_product_for_update_in_tx(conn, tenant_id, product_id).await?;
+    let sql = "SELECT product_id FROM product_variants FOR UPDATE";
+}
+`;
+
+const valueTranslationPath =
+  "crates/modules/rustok-product/src/services/catalog_schema_service/values/translation.rs";
+const variantValueTranslationPath =
+  "crates/modules/rustok-product/src/services/catalog_schema_service/values/variant_translation.rs";
+CANONICAL[valueTranslationPath] =
+  `async fn apply_attribute_value_translation_exact_locale() {
+    super::lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+    let sql = "SELECT id FROM product_attribute_values FOR UPDATE OF pav";
+}`;
+CANONICAL[variantValueTranslationPath] =
+  `async fn apply_variant_attribute_value_translation_exact_locale() {
+    super::variant::load_variant_owner_for_update(&txn, tenant_id, variant_id).await?;
+    let sql = "SELECT id FROM product_variant_attribute_values FOR UPDATE OF pvav";
+}`;
+
 function writeFixture(root, overrides = {}) {
   for (const [relativePath, content] of Object.entries(CANONICAL)) {
     const resolved =
@@ -369,12 +415,18 @@ test("canonical fixture passes", () => {
   withFixture({}, (root) => {
     const result = runVerifier(root);
     assert.equal(result.status, 0, result.stderr + result.stdout);
-    assert.match(result.stdout, /declared rules are merged by override priority/);
+    assert.match(
+      result.stdout,
+      /declared rules are merged by override priority/,
+    );
   });
 });
 
 test("a declared rule that is never enforced fails", () => {
-  const engine = engineSource().replace('rule_failure(attribute_id, "maxJsonBytes", "detail")', "");
+  const engine = engineSource().replace(
+    'rule_failure(attribute_id, "maxJsonBytes", "detail")',
+    "",
+  );
   withFixture(
     {
       "crates/modules/rustok-product/src/services/catalog_schema_service/attribute_validation.rs":
@@ -384,14 +436,14 @@ test("a declared rule that is never enforced fails", () => {
       const result = runVerifier(root);
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /maxJsonBytes/);
-    }
+    },
   );
 });
 
 test("a declared rule without unit coverage fails", () => {
   const engine = engineSource().replace(
     "fn required_rules_parse_for_publish_gating() { assert!(true); }",
-    "fn uncovered() { assert!(true); }"
+    "fn uncovered() { assert!(true); }",
   );
   withFixture(
     {
@@ -401,8 +453,11 @@ test("a declared rule without unit coverage fails", () => {
     (root) => {
       const result = runVerifier(root);
       assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /missing unit test required_rules_parse_for_publish_gating/);
-    }
+      assert.match(
+        result.stderr,
+        /missing unit test required_rules_parse_for_publish_gating/,
+      );
+    },
   );
 });
 
@@ -418,23 +473,25 @@ test("an effective form that skips the rule merge fails", () => {
       const result = runVerifier(root);
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /merge declared rules into every binding/);
-    }
+    },
   );
 });
 
 test("a Product write path that drops the merged rules fails", () => {
   withFixture(
     {
-      "crates/modules/rustok-product/src/services/catalog_schema_service/values.rs": `${CANONICAL["crates/modules/rustok-product/src/services/catalog_schema_service/values.rs"].replace(
+      "crates/modules/rustok-product/src/services/catalog_schema_service/values.rs": `${CANONICAL[
+        "crates/modules/rustok-product/src/services/catalog_schema_service/values.rs"
+      ].replace(
         "validate_product_value_patch(definition, patch, &options, validation)?;",
-        "validate_product_value_patch(definition, patch, &options)?;"
+        "validate_product_value_patch(definition, patch, &options)?;",
       )}`,
     },
     (root) => {
       const result = runVerifier(root);
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /pass the merged rules to the validator/);
-    }
+    },
   );
 });
 
@@ -456,25 +513,26 @@ fn validate_variant_value_patch(
       const result = runVerifier(root);
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /must not drop the declared rule object/);
-    }
+    },
   );
 });
 
 test("a GraphQL create mutation that discards declared rules fails", () => {
   withFixture(
     {
-      "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs": CANONICAL[
-        "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs"
-      ].replace(
-        "        validation,\n        default_value: None,",
-        "        validation: serde_json::Value::Object(Default::default()),\n        default_value: None,"
-      ),
+      "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs":
+        CANONICAL[
+          "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs"
+        ].replace(
+          "        validation,\n        default_value: None,",
+          "        validation: serde_json::Value::Object(Default::default()),\n        default_value: None,",
+        ),
     },
     (root) => {
       const result = runVerifier(root);
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /must not discard declared rules/);
-    }
+    },
   );
 });
 
@@ -482,7 +540,7 @@ test("a public mapper without the structured rule arm fails", () => {
   const mapper = CANONICAL["crates/modules/rustok-product/src/public_error.rs"]
     .replace(
       "CommerceError::Validation(message) if attribute_validation_rule_of(message).is_some() => {",
-      "CommerceError::Validation(message) if false => {"
+      "CommerceError::Validation(message) if false => {",
     )
     .replace('"PRODUCT_ATTRIBUTE_VALIDATION"', '"PRODUCT_VALIDATION"');
   withFixture(
@@ -492,7 +550,7 @@ test("a public mapper without the structured rule arm fails", () => {
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /dedicated public arm/);
       assert.match(result.stderr, /stable public code/);
-    }
+    },
   );
 });
 
@@ -500,17 +558,27 @@ test("a publish gate without the required-locale probe fails", () => {
   const values = CANONICAL[
     "crates/modules/rustok-product/src/services/catalog_schema_service/values.rs"
   ]
-    .replace("load_missing_required_locales(conn, tenant_id, product_id).await?", "Ok(())")
-    .replace("async fn load_missing_required_locales<C>(conn: &C)", "async fn unused_probe<C>(conn: &C)");
+    .replace(
+      "load_missing_required_locales(conn, tenant_id, product_id).await?",
+      "Ok(())",
+    )
+    .replace(
+      "async fn load_missing_required_locales<C>(conn: &C)",
+      "async fn unused_probe<C>(conn: &C)",
+    );
   withFixture(
     {
-      "crates/modules/rustok-product/src/services/catalog_schema_service/values.rs": values,
+      "crates/modules/rustok-product/src/services/catalog_schema_service/values.rs":
+        values,
     },
     (root) => {
       const result = runVerifier(root);
       assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /required locales must be verified before publish/);
-    }
+      assert.match(
+        result.stderr,
+        /required locales must be verified before publish/,
+      );
+    },
   );
 });
 
@@ -520,7 +588,81 @@ test("an unregistered verifier fails the registry check", () => {
     (root) => {
       const result = runVerifier(root);
       assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /registry must list the rule-engine verifier/);
-    }
+      assert.match(
+        result.stderr,
+        /registry must list the rule-engine verifier/,
+      );
+    },
   );
 });
+
+for (const [name, file, original, changed, diagnostic] of [
+  [
+    "Product patch without the lock",
+    valuesPath,
+    "lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;\n    Self::load_effective_form_for_category_in",
+    "Self::load_effective_form_for_category_in",
+    /reads must follow/,
+  ],
+  [
+    "detached Product pool read",
+    valuesPath,
+    "Self::load_effective_form_for_product_in(&txn, tenant_id, product_id).await?;",
+    "self.load_effective_form_for_product(tenant_id, product_id).await?;",
+    /write transaction/,
+  ],
+  [
+    "Variant patch pool definition read",
+    variantValuesPath,
+    "validate_variant_value_patch(definition, patch, &options, validation)?;",
+    "load_variant_patch_definitions(&self.db, tenant_id, &ids).await?;",
+    /write transaction/,
+  ],
+  [
+    "Variant parent lock missing",
+    variantValuesPath,
+    "super::lock_product_for_update_in_tx(conn, tenant_id, product_id).await?;",
+    "",
+    /lock Product before Variant/,
+  ],
+  [
+    "detached Variant pool read",
+    variantValuesPath,
+    "self.load_variant_attribute_values_in(&txn, tenant_id, variant_id, locale).await?;",
+    "self.load_variant_attribute_values(tenant_id, variant_id, locale).await?;",
+    /write transaction/,
+  ],
+]) {
+  test(`${name} is rejected`, () => {
+    withFixture(
+      { [file]: CANONICAL[file].replace(original, changed) },
+      (root) => {
+        const result = runVerifier(root);
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, diagnostic);
+      },
+    );
+  });
+}
+
+for (const [file, lock] of [
+  [
+    valueTranslationPath,
+    "super::lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;",
+  ],
+  [
+    variantValueTranslationPath,
+    "super::variant::load_variant_owner_for_update(&txn, tenant_id, variant_id).await?;",
+  ],
+]) {
+  test(`Translation owner-before-value lock is required in ${path.basename(file)}`, () => {
+    withFixture({ [file]: CANONICAL[file].replace(lock, "") }, (root) => {
+      const result = runVerifier(root);
+      assert.notEqual(result.status, 0);
+      assert.match(
+        result.stderr,
+        /Translation apply must lock the owner before the value/,
+      );
+    });
+  });
+}

@@ -131,7 +131,8 @@ for (const marker of [
   'CommerceError::CannotDeletePublished =>',
   '"Published products must be archived before removal"',
   '"CANNOT_DELETE_PUBLISHED"',
-  'CommerceError::Core(_) =>',
+  'CommerceError::Core(error) => core_public_error_policy(error)',
+  'CommerceError::Conflict(_) =>',
   '"Product operation could not be completed safely"',
   '"PRODUCT_OPERATION_FAILED"',
   'let correlation_id = Uuid::new_v4();',
@@ -152,7 +153,7 @@ for (const marker of [
   'message,',
   'code,',
   'correlation_id,',
-]) requireText(mapper, marker, `${paths.mapper}: stable shared mapper`);
+]) requireText(mapperSource, marker, `${paths.mapper}: stable shared mapper`);
 
 for (const forbidden of [
   'error = ?error',
@@ -241,5 +242,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Product shared public errors preserve public mappings and correlation while retaining only bounded owner-error facts; execution evidence remains open',
+  '✔ Product shared public errors retain bounded facts, correlation and explicit nested Core classification; runtime evidence remains open',
 );

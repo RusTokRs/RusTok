@@ -327,7 +327,7 @@ test("a retryable Product failure must not become a terminal receipt", () => {
   const fixtureRoot = writeFixture({
     [relative]: replaceRequired(
       relative,
-      "    if error.retryable {\n        return Ok(());\n    }\n\n    idempotency::fail(database, lease, error).await",
+      "    if !is_terminal_product_failure(error) {\n        return Ok(());\n    }\n\n    idempotency::fail(database, lease, error).await",
       "    idempotency::fail(database, lease, error).await",
     ),
   });
@@ -335,7 +335,7 @@ test("a retryable Product failure must not become a terminal receipt", () => {
   assert.notEqual(result.status, 0);
   assert.match(
     result.output,
-    /product retryable receipt finalization: missing if error\.retryable \{/,
+    /product retryable receipt finalization: missing if !is_terminal_product_failure\(error\) \{/,
   );
 });
 

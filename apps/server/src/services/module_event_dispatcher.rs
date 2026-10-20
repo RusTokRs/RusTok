@@ -23,6 +23,8 @@ pub fn spawn_module_event_dispatcher(
     extensions: Arc<ModuleRuntimeExtensions>,
 ) {
     tracing::debug!("Spawning module event dispatcher");
+    #[cfg(feature = "mod-product")]
+    spawn_product_media_release_worker_if_enabled(ctx);
     let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
     let bus = ctx
         .shared_get::<Arc<EventRuntime>>()
@@ -214,10 +216,23 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     )));
 
     #[cfg(all(feature = "mod-seo", feature = "mod-media"))]
-    if let Some(storage) = runtime_ctx.shared_get::<rustok_storage::StorageRuntime>() {
-        let provider: Arc<dyn rustok_media::MediaAssetReadPort> =
-            Arc::new(rustok_media::MediaService::new(db.clone(), storage));
-        extensions.insert(rustok_seo::SeoMediaAssetReadProvider::new(provider));
+    {
+        let selected = runtime_ctx
+            .shared_get::<rustok_media::MediaAssetPorts>()
+            .map(|ports| ports.read())
+            .or_else(|| runtime_ctx.shared_get::<Arc<dyn rustok_media::MediaAssetReadPort>>());
+        let provider = selected.or_else(|| {
+            runtime_ctx
+                .shared_get::<rustok_storage::StorageRuntime>()
+                .map(|storage| {
+                    let provider: Arc<dyn rustok_media::MediaAssetReadPort> =
+                        Arc::new(rustok_media::MediaService::new(db.clone(), storage));
+                    provider
+                })
+        });
+        if let Some(provider) = provider {
+            extensions.insert(rustok_seo::SeoMediaAssetReadProvider::new(provider));
+        }
     }
 
     #[cfg(feature = "mod-media")]
@@ -946,4 +961,18 @@ mod tests {
         #[cfg(all(feature = "commerce-marketplace-financial", feature = "mod-payment"))]
         assert!(extensions.contains::<rustok_payment::PaymentProviderEventObservers>());
     }
+}
+
+#[cfg(feature = "mod-product")]
+fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    use crate::services::product_media_release_worker::spawn_product_media_release_worker;
+    // Reserve before spawning: concurrent composition must not create two workers.
+    struct ProductMediaReleaseWorkerReservation;
+    if !ctx.settings().runtime.runs_background_workers()
+        || !ctx.shared_insert_if_absent(ProductMediaReleaseWorkerReservation)
+    {
+        return;
+    }
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
+    ctx.shared_insert(spawn_product_media_release_worker(ctx.clone(), stop));
 }

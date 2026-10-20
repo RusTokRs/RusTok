@@ -409,3 +409,13 @@ Migration `m20260916_000032_clean_product_category_canonical_taxonomy` completes
 4. **Elimination of legacy donor read/write fallbacks**:
    - Non-PostgreSQL legacy donor writes (`should_write_legacy_category_translation`, `should_write_product_category_closure`) and donor read fallbacks (`list_categories_from_product_donor`, closure-based group label inheritance) are deleted.
    - Category listing and effective form resolution consume `TaxonomyOwnerCategoryReader` uniformly across all database engines.
+
+## Current error boundary (2026-10-18)
+
+The create/read/hierarchy source guards now follow the Migration 32 same-ID/all-backend target
+above, not the historical donor/typed-binding/closure compatibility phases. Taxonomy synchronization
+preserves typed domain conflicts, forbidden access and storage failures with static Product copy.
+Taxonomy reads and corrupt owner projections fail as internal invariants rather than client
+Validation; storage and forbidden remain distinct. See the
+[owner error policy and unexecuted gates](./product-public-error-diagnostic-safety.md#taxonomy-and-nested-core-continuation-2026-10-18).
+This updates source guards/classification only; no migration or runtime certification is added.

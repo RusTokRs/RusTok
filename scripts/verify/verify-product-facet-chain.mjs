@@ -555,7 +555,8 @@ requireAll(
     "rustok_api::Permission::PRODUCTS_READ,",
     '"tenant_id does not match current tenant"',
     "AdminProductListQuery::try_from_transport_with_attribute_filters(",
-    "request_context.map(|context| context.locale)",
+    'require_request_context("admin_catalog_facets").await?;',
+    ".unwrap_or(request_context.locale)",
   ],
   "admin native facet endpoint guards",
 );

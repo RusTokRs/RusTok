@@ -128,6 +128,8 @@ pub struct GqlVariantAxisValue {
 #[derive(SimpleObject)]
 pub struct GqlVariant {
     pub id: Uuid,
+    pub weight: Option<String>,
+    pub weight_unit: Option<String>,
     pub sku: Option<String>,
     pub barcode: Option<String>,
     pub shipping_profile_slug: Option<String>,
@@ -1010,6 +1012,7 @@ pub struct GqlFulfillmentList {
 
 #[derive(InputObject)]
 pub struct CreateProductInput {
+    pub attribute_values: Option<Vec<ProductAttributeValueBatchInput>>,
     pub translations: Vec<ProductTranslationInput>,
     pub variant_axes: Option<Vec<VariantAxisInputObject>>,
     pub variants: Vec<CreateVariantInput>,
@@ -1138,6 +1141,12 @@ pub enum ProductAttributeValueInputKind {
 }
 
 #[derive(InputObject)]
+pub struct ProductAttributeValueBatchInput {
+    pub locale: String,
+    pub patches: Vec<ProductAttributeValuePatchInput>,
+}
+
+#[derive(InputObject)]
 pub struct ProductAttributeValuePatchInput {
     pub attribute_id: Uuid,
     pub kind: ProductAttributeValueInputKind,
@@ -1192,6 +1201,7 @@ pub struct PriceInput {
 
 #[derive(InputObject)]
 pub struct UpdateProductInput {
+    pub attribute_values: Option<Vec<ProductAttributeValueBatchInput>>,
     pub translations: Option<Vec<ProductTranslationInput>>,
     /// Omitted keeps the stored value; explicit `null` clears it.
     pub seller_id: MaybeUndefined<String>,
@@ -1224,9 +1234,13 @@ pub(crate) fn graphql_patch<T>(value: MaybeUndefined<T>) -> rustok_api::Patch<T>
 
 #[derive(InputObject)]
 pub struct UpdateVariantInput {
-    pub sku: Option<String>,
-    pub barcode: Option<String>,
-    pub shipping_profile_slug: Option<String>,
+    /// Omitted keeps the current value; null clears it.
+    pub sku: MaybeUndefined<String>,
+    pub barcode: MaybeUndefined<String>,
+    pub shipping_profile_slug: MaybeUndefined<String>,
+    /// Decimal string, never a floating-point number. Null clears the weight.
+    pub weight: MaybeUndefined<String>,
+    pub weight_unit: MaybeUndefined<String>,
     pub axis_values: Option<Vec<VariantAxisValueInputObject>>,
     pub prices: Option<Vec<PriceInput>>,
     pub inventory_quantity: Option<i32>,
@@ -1998,6 +2012,8 @@ impl From<dto::VariantResponse> for GqlVariant {
     fn from(variant: dto::VariantResponse) -> Self {
         Self {
             id: variant.id,
+            weight: variant.weight.map(|value| value.to_string()),
+            weight_unit: variant.weight_unit,
             sku: variant.sku,
             barcode: variant.barcode,
             shipping_profile_slug: variant.shipping_profile_slug,
@@ -3202,6 +3218,43 @@ mod revision_tests {
     use uuid::Uuid;
 
     #[test]
+    fn price_input_requires_major_unit_decimal_strings_at_graphql_admission() {
+        use super::PriceInput;
+        use async_graphql::{InputType, Value};
+
+        let parse = |amount: Value, compare_at_amount: Value| {
+            PriceInput::parse(Some(Value::Object(
+                [
+                    (
+                        async_graphql::Name::new("currencyCode"),
+                        Value::String("KWD".into()),
+                    ),
+                    (async_graphql::Name::new("amount"), amount),
+                    (
+                        async_graphql::Name::new("compareAtAmount"),
+                        compare_at_amount,
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            )))
+        };
+        assert!(parse(Value::Number(1250.into()), Value::Null).is_err());
+        assert!(parse(Value::String("12.500".into()), Value::Number(1500.into())).is_err());
+        let price = parse(
+            Value::String("9007199254740993.001".into()),
+            Value::String("0".into()),
+        )
+        .unwrap_or_else(|_| panic!("decimal strings must be admitted"));
+        assert_eq!(price.amount, "9007199254740993.001");
+        assert_eq!(price.compare_at_amount.as_deref(), Some("0"));
+        let zero = parse(Value::String("0".into()), Value::Null)
+            .unwrap_or_else(|_| panic!("zero must be admitted"));
+        assert_eq!(zero.amount, "0");
+        assert_eq!(zero.compare_at_amount, None);
+    }
+
+    #[test]
     fn graphql_patch_keeps_clears_and_sets() {
         assert_eq!(
             graphql_patch(MaybeUndefined::<String>::Undefined),
@@ -3238,6 +3291,7 @@ mod revision_tests {
     #[test]
     fn update_input_carries_the_predecessor_revision() {
         let input = UpdateProductInput {
+            attribute_values: Default::default(),
             translations: None,
             seller_id: MaybeUndefined::Undefined,
             vendor: MaybeUndefined::Null,

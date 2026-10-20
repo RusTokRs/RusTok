@@ -17,10 +17,12 @@ import {
 import type {
   ProductListItem,
   ProductDetail,
+  ProductTranslation,
   ProductAttributeSummary,
   CatalogCategorySummary
 } from './api/types';
 import { productNavItems } from './nav';
+import { parsePriceAmount } from './money';
 
 registerAdminModule({
   id: 'product',
@@ -33,6 +35,13 @@ export * from './api/types';
 export * from './api/categories';
 export * from './api/attributes';
 export * from './api/products';
+export * from './api/write-outcome';
+export type {
+  ProductSavePayload,
+  ProductWriteOutcome,
+  ProductWriteAcknowledgement,
+  ProductWriteScope
+} from './write-attempt';
 export * from './api/relations';
 export * from './api/pricing';
 export * from './api/bundles';
@@ -295,7 +304,11 @@ export async function listCatalogAttributeSearchOptions(
 }
 
 export type CreateProductPayload = {
+  attributeValues?: import('./api/types').ProductAttributeValueBatch[];
   title: string;
+  translations?: ProductTranslation[];
+  primaryCategoryId?: string | null;
+  shippingProfileSlug?: string;
   handle?: string;
   locale?: string;
   description?: string;
@@ -304,37 +317,37 @@ export type CreateProductPayload = {
   sellerId?: string;
   tags?: string[];
   sku?: string;
-  priceAmount?: number;
+  barcode?: string;
+  compareAtAmount?: string | null;
+  inventoryPolicy?: string;
+  priceAmount?: string;
   currencyCode?: string;
   inventoryQuantity?: number;
   publish?: boolean;
 };
 
+export {
+  isProductEditorIntent,
+  PRODUCT_EDITOR_INTENT_QUERY_KEY
+} from './write-journal';
+
 const CREATE_PRODUCT_MUTATION = `
 mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) {
   createProduct(idempotencyKey: $idempotencyKey, input: $input) {
     id
-    status
-    title
-    handle
-    sellerId
-    vendor
-    productType
-    shippingProfileSlug
-    tags
-    createdAt
-    publishedAt
+    revision
   }
 }`;
 
 type CreateProductResponse = {
-  createProduct: ProductListItem;
+  createProduct: { id: string; revision: number };
 };
 
 export async function createProduct(
   opts: GqlOpts,
-  payload: CreateProductPayload
-): Promise<ProductListItem> {
+  payload: CreateProductPayload,
+  idempotencyKey: string = crypto.randomUUID()
+): Promise<{ id: string; revision: number }> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to create products.');
   }
@@ -349,46 +362,57 @@ export async function createProduct(
       .replace(/^-|-$/g, '');
 
   const input = {
-    translations: [
-      {
-        locale,
-        title: payload.title,
-        handle: handle || null,
-        description: payload.description || null,
-        metaTitle: null,
-        metaDescription: null
-      }
-    ],
+    attributeValues: payload.attributeValues ?? [],
+    translations: (
+      payload.translations ?? [
+        {
+          locale,
+          title: payload.title,
+          handle: handle || null,
+          description: payload.description || null,
+          metaTitle: null,
+          metaDescription: null
+        }
+      ]
+    ).map((translation) => ({
+      ...translation,
+      handle: translation.handle || null,
+      description: translation.description || null,
+      metaTitle: translation.metaTitle || null,
+      metaDescription: translation.metaDescription || null
+    })),
     variants: [
       {
         sku: payload.sku || null,
-        barcode: null,
+        barcode: payload.barcode || null,
         shippingProfileSlug: null,
         axisValues: [],
         prices:
-          payload.priceAmount !== undefined && payload.priceAmount > 0
+          payload.priceAmount !== undefined
             ? [
                 {
                   currencyCode: payload.currencyCode || 'USD',
-                  amount: payload.priceAmount,
-                  compareAtAmount: null
+                  amount: parsePriceAmount(payload.priceAmount),
+                  compareAtAmount:
+                    payload.compareAtAmount == null
+                      ? null
+                      : parsePriceAmount(payload.compareAtAmount)
                 }
               ]
             : [],
         inventoryQuantity: payload.inventoryQuantity ?? 0,
-        inventoryPolicy: 'deny'
+        inventoryPolicy: payload.inventoryPolicy ?? 'deny'
       }
     ],
     sellerId: payload.sellerId || null,
     vendor: payload.vendor || null,
     productType: payload.productType || 'simple',
-    shippingProfileSlug: null,
-    primaryCategoryId: null,
+    shippingProfileSlug: payload.shippingProfileSlug || null,
+    primaryCategoryId: payload.primaryCategoryId ?? null,
     tags: payload.tags || [],
     publish: Boolean(payload.publish)
   };
 
-  const idempotencyKey = crypto.randomUUID();
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     { idempotencyKey: string; input: typeof input },

@@ -533,4 +533,23 @@ assert(
   `expected package aggregate failure, got ${missingPackageAggregateResult.stderr}`,
 );
 
+// Keep transaction-aware replacements protected: the former markers pinned
+// category-only preflight and out-of-transaction projection/event plumbing.
+for (const [file, marker] of [
+  ['crates/modules/rustok-product/src/services/catalog/commands.rs',
+    'validate_product_publish_requirements_in(&txn, tenant_id, product_id)'],
+  ['crates/modules/rustok-product/src/services/catalog/projection.rs',
+    'BootstrapService::load_available_quantities(conn, &variant_ids)'],
+  ['crates/modules/rustok-product/src/services/write_transaction.rs',
+    'publish_in_tx_with_envelope_id(self.active_transaction()'],
+  ['crates/modules/rustok-product/src/services/write_transaction.rs',
+    'async fn commit(mut self)'],
+]) {
+  const root = copyFixture();
+  replaceAllInFixture(root, file, marker, 'transaction_contract_removed');
+  const result = run(root);
+  assert(result.status !== 0, `expected removed transaction marker to fail: ${marker}`);
+  assert(result.stderr.includes(marker), `expected transaction marker failure, got ${result.stderr}`);
+}
+
 console.log('[verify-product-catalog-schema.test] fixture coverage passed');

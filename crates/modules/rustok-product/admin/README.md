@@ -52,3 +52,36 @@ Every capability they expose is reachable on the mounted surface: list controls 
 ## Documentation
 
 - See [platform docs](../../../../docs/index.md).
+
+## Editorial save boundary
+
+The mounted editor binds `ProductAttributeValuesSection` to its candidate category and shared
+`ProductDraft`; typed fields are available before creation. Saving the Product composes its
+localized value batches and status in the same owner transaction. There is no second EAV or status
+save. Detached cleanup remains an explicit independent command. Value re-fetches preserve dirty
+fields; only acknowledged catalog saves clear their dirty state. The older unkeyed lifecycle
+GraphQL implementation has been removed; `product_lifecycle_graphql` is the sole lifecycle gateway.
+
+Existing Variant edits are an explicit **independent action**, not a second command hidden behind
+Product Save/Publish. The pricing card identifies the exact Variant hydrated into its controls and
+provides `Save only this variant`; ordinary document Save respects the selected status. Each
+acknowledgement updates only its confirmed local snapshot without a whole-editor refetch that
+would overwrite the other block's unsaved fields. Inputs are disabled while either of these commands runs.
+
+Variant controls are snapshotted before bootstrap/IO. Empty base-price input leaves prices alone,
+not an implicit free USD row; zero and decimal precision remain valid. Invalid local scalars and
+unsupported SKU/barcode clears are refused before sending. Full nullable Variant patches and
+immutable pending-request recovery remain separate gaps; the transport's retained-key helper is
+not durable snapshot recovery. Five added Rust tests are unrun without Cargo/rustc. Source
+guards are not compilation, database or mounted-client evidence. Whole-screen multi-command
+atomicity is not claimed: Product document/category/EAV/publication remains the atomic Save scope.
+
+
+## Admin catalog trusted context (2026-10-18)
+
+Native list and facet reads now propagate canonical RequestContext rejection before owner
+queries, even with an explicit locale. Existing authentication, permission and tenant checks
+remain mandatory. Successful locale precedence and owner translation fallback are unchanged.
+See the [current contract](../docs/product-public-error-diagnostic-safety.md#admin-catalog-context-admission-continuation-2026-10-18).
+This is source-only/unintegrated: two new source scenarios are unrun; compilation, host trusted
+resolved-locale composition, and mounted profile behavior remain maintainer verification gates.

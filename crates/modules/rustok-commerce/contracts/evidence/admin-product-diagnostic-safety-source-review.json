@@ -20,23 +20,37 @@
     "typed_policy_selection_precedes_shadowing": true,
     "product_error_policy_preserved": true,
     "http_envelopes_preserved": true,
-    "ten_shared_mapper_callsites_preserved": true,
     "permissions_preserved": true,
     "filters_locale_metrics_pagination_preserved": true,
-    "shipping_profile_validation_mapper_unchanged": true,
     "broad_ecommerce_cleanup_closed": false,
-    "runtime_evidence_claimed": false
+    "runtime_evidence_claimed": false,
+    "typed_read_and_port_command_mappers": true,
+    "shipping_profile_admission_behind_receipts": true,
+    "authenticated_scope_before_io": true,
+    "request_correlation_preserved": true,
+    "log_scope": "error_mapper_logs_only"
   },
-  "execution": [],
+  "execution": [
+    {
+      "date": "2026-10-18",
+      "kind": "source_only",
+      "checks": [
+        "verify-commerce-admin-product-diagnostic-safety.mjs",
+        "verify-commerce-admin-product-route-error-context.mjs",
+        "verify-commerce-graphql-order-helper-error-safety.mjs"
+      ],
+      "runtime_proven": false
+    }
+  ],
   "validation": {
     "tests_run": false,
     "cargo_run": false,
-    "format_run": false,
-    "verifiers_run": false,
+    "format_run": true,
+    "verifiers_run": true,
     "workflow_checks_run": false,
     "ci_run": false,
     "compile_proven": false,
     "runtime_proven": false
   },
-  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+  "validation_disclosure": "2026-10-18 continuation: source guards and WASM rustfmt formatting/idempotence only. No test suites, Cargo, CI, workflow or runtime execution. Formatting is not compilation or repository cargo fmt."
 }

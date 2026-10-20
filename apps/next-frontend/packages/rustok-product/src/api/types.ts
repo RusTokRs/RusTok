@@ -19,7 +19,7 @@ export type ProductCatalogSearchOptions = {
 };
 
 export type ProductCatalogSearchOptionsRequest = {
-  graphql: import("./products").ProductGraphqlExecutor;
+  graphql: import('./products').ProductGraphqlExecutor;
   locale: string;
   token?: string | null;
   tenantSlug?: string | null;
@@ -28,17 +28,17 @@ export type ProductCatalogSearchOptionsRequest = {
 
 export type StorefrontProductPrice = {
   currencyCode: string;
-  amount: number;
-  compareAtAmount?: number | null;
+  amount: string;
+  compareAtAmount?: string | null;
   onSale?: boolean | null;
-  discountPercent?: number | null;
+  discountPercent?: string | null;
 };
 
 export type StorefrontEffectivePrice = {
   currencyCode: string;
-  amount: number;
-  compareAtAmount?: number | null;
-  discountPercent?: number | null;
+  amount: string;
+  compareAtAmount?: string | null;
+  discountPercent?: string | null;
   onSale?: boolean | null;
   priceListId?: string | null;
   channelId?: string | null;
@@ -48,7 +48,7 @@ export type StorefrontEffectivePrice = {
 export type StorefrontProductVariant = {
   id: string;
   title: string;
-  sku: string;
+  sku: string | null;
   inventoryQuantity?: number | null;
   inStock: boolean;
   prices: StorefrontProductPrice[];
@@ -176,3 +176,9 @@ export type ProductCatalogFacet = {
   totalProducts: number;
   values: ProductCatalogFacetValue[];
 };
+
+/** Pricing supplies only price fields, never inventory, axes, or catalog identity. */
+export type StorefrontProductPricing = Pick<
+  StorefrontProductVariant,
+  'id' | 'prices' | 'effectivePrice'
+>;

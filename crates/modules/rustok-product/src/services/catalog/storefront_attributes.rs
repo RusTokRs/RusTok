@@ -166,18 +166,8 @@ where
     let mut attributes = Vec::with_capacity(slices.len());
     for slice in slices {
         let row = slice.row;
-        let value_type = match AttributeValueType::from_storage(&row.value_type) {
-            Ok(value_type) => value_type,
-            Err(error) => {
-                tracing::warn!(
-                    attribute_id = %row.attribute_id,
-                    attribute_code = row.code.as_str(),
-                    value_type = row.value_type.as_str(),
-                    error = ?error,
-                    "skipping storefront attribute with an unsupported stored value type"
-                );
-                continue;
-            }
+        let Some(value_type) = parse_storefront_value_type(&row) else {
+            continue;
         };
         if matches!(value_type, AttributeValueType::Json) {
             continue;
@@ -595,6 +585,37 @@ where
         .collect())
 }
 
+// Both deliberate degradation paths use the same bounded event; no stored payload is rendered.
+fn record_attribute_projection_skip(
+    row: &StorefrontAttributeValueRow,
+    reason: &'static str,
+    expected: &'static str,
+) {
+    tracing::warn!(
+        owner = "rustok_product",
+        operation = "storefront_product_attributes",
+        boundary = "product_storefront_attribute_projection",
+        reason,
+        expected,
+        value_id_non_nil = !row.id.is_nil(),
+        attribute_id_non_nil = !row.attribute_id.is_nil(),
+        attribute_code_length = row.code.chars().count(),
+        stored_type_length = row.value_type.chars().count(),
+        is_localized = row.is_localized,
+        "storefront attribute projection omitted an unsupported or missing value"
+    );
+}
+
+fn parse_storefront_value_type(row: &StorefrontAttributeValueRow) -> Option<AttributeValueType> {
+    match AttributeValueType::from_storage(&row.value_type) {
+        Ok(value_type) => Some(value_type),
+        Err(_) => {
+            record_attribute_projection_skip(row, "unsupported_type", "supported_attribute_type");
+            None
+        }
+    }
+}
+
 /// Formats one scalar (non-dictionary) value for display.
 ///
 /// Returns `None` for a stored value that does not match its declared type: a storefront read
@@ -604,14 +625,8 @@ fn format_scalar_value(
     value_type: AttributeValueType,
     localized_texts: &HashMap<Uuid, String>,
 ) -> Option<String> {
-    let missing = |expected: &str| {
-        tracing::warn!(
-            attribute_id = %row.attribute_id,
-            attribute_code = row.code.as_str(),
-            value_type = row.value_type.as_str(),
-            expected = expected,
-            "skipping storefront attribute value that does not match its stored type"
-        );
+    let missing = |expected: &'static str| {
+        record_attribute_projection_skip(row, "missing_scalar", expected);
         None
     };
 
@@ -659,5 +674,101 @@ fn format_scalar_value(
         AttributeValueType::Select | AttributeValueType::Multiselect | AttributeValueType::Json => {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_projection_tests {
+    use super::*;
+
+    fn row() -> StorefrontAttributeValueRow {
+        StorefrontAttributeValueRow {
+            id: Uuid::new_v4(),
+            attribute_id: Uuid::new_v4(),
+            code: "private-attribute-code".into(),
+            value_type: "text".into(),
+            is_localized: false,
+            position: 0,
+            show_on_storefront: true,
+            value_text: None,
+            value_integer: None,
+            value_decimal: None,
+            value_boolean: None,
+            value_date: None,
+            value_datetime: None,
+        }
+    }
+
+    #[test]
+    fn unsupported_storage_type_remains_omitted_without_an_error_envelope() {
+        let mut value = row();
+        value.value_type = "private-unsupported-type".into();
+        assert!(parse_storefront_value_type(&value).is_none());
+        value.value_type = "text".into();
+        assert!(matches!(
+            parse_storefront_value_type(&value),
+            Some(AttributeValueType::Text)
+        ));
+        value.value_type = "json".into();
+        assert!(matches!(
+            parse_storefront_value_type(&value),
+            Some(AttributeValueType::Json)
+        ));
+    }
+
+    #[test]
+    fn missing_scalars_remain_omitted() {
+        for value_type in [
+            AttributeValueType::Text,
+            AttributeValueType::Integer,
+            AttributeValueType::Decimal,
+            AttributeValueType::Boolean,
+            AttributeValueType::Date,
+            AttributeValueType::Datetime,
+        ] {
+            assert_eq!(
+                format_scalar_value(&row(), value_type, &HashMap::new()),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn false_and_zero_are_valid_values_not_missing_data() {
+        let mut value = row();
+        value.value_boolean = Some(false);
+        value.value_integer = Some(0);
+        value.value_decimal = Some(Decimal::ZERO);
+        for (kind, expected) in [
+            (AttributeValueType::Boolean, "false"),
+            (AttributeValueType::Integer, "0"),
+            (AttributeValueType::Decimal, "0"),
+        ] {
+            assert_eq!(
+                format_scalar_value(&value, kind, &HashMap::new()).as_deref(),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn localized_text_precedes_base_and_blank_base_remains_omitted() {
+        let mut value = row();
+        value.is_localized = true;
+        value.value_text = Some("base".into());
+        let translated = HashMap::from([(value.id, "translated".into())]);
+        assert_eq!(
+            format_scalar_value(&value, AttributeValueType::Text, &translated).as_deref(),
+            Some("translated")
+        );
+        assert_eq!(
+            format_scalar_value(&value, AttributeValueType::Text, &HashMap::new()).as_deref(),
+            Some("base")
+        );
+        value.value_text = Some("  ".into());
+        assert_eq!(
+            format_scalar_value(&value, AttributeValueType::Text, &HashMap::new()),
+            None
+        );
     }
 }

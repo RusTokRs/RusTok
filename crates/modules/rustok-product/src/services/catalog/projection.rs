@@ -213,11 +213,24 @@ impl CatalogService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> CommerceResult<ProductResponse> {
+        self.get_product_in(&self.db, tenant_id, product_id, locale, fallback_locale)
+            .await
+    }
+
+    /// Build the public snapshot on the write connection before its commit.
+    pub(super) async fn get_product_in<C: ConnectionTrait>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> CommerceResult<ProductResponse> {
         debug!(product_id = %product_id, "Fetching product");
 
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(conn)
             .await?
             .ok_or_else(|| {
                 warn!(product_id = %product_id, "Product not found");
@@ -231,18 +244,18 @@ impl CatalogService {
                     entities::product_translation::Entity::find()
                         .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
                         .filter(entities::product_translation::Column::ProductId.eq(product_id))
-                        .all(&self.db)
+                        .all(conn)
                         .await?,
                 )
             },
-            load_product_variant_axes(&self.db, tenant_id, product_id, locale),
+            load_product_variant_axes(conn, tenant_id, product_id, locale),
             async {
                 Ok::<_, CommerceError>(
                     entities::product_variant::Entity::find()
                         .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
                         .filter(entities::product_variant::Column::ProductId.eq(product_id))
                         .order_by_asc(entities::product_variant::Column::Position)
-                        .all(&self.db)
+                        .all(conn)
                         .await?,
                 )
             },
@@ -251,18 +264,19 @@ impl CatalogService {
                     entities::product_image::Entity::find()
                         .filter(entities::product_image::Column::ProductId.eq(product_id))
                         .order_by_asc(entities::product_image::Column::Position)
-                        .all(&self.db)
+                        .all(conn)
                         .await?,
                 )
             },
-            self.load_product_tags(
+            self.load_product_tags_in(
+                conn,
                 tenant_id,
                 product_id,
                 tag_locale,
                 fallback_locale.or(Some(PLATFORM_FALLBACK_LOCALE)),
             ),
             resolve_product_metadata(
-                &self.db,
+                conn,
                 tenant_id,
                 product_id,
                 &product.metadata,
@@ -282,7 +296,7 @@ impl CatalogService {
                 if variant_ids.is_empty() {
                     Ok::<_, CommerceError>(Vec::new())
                 } else {
-                    PricingBootstrapService::load_prices_for_variants(&self.db, &variant_ids)
+                    PricingBootstrapService::load_catalog_base_prices_for_variants(conn, &variant_ids)
                         .await
                         .map_err(CommerceError::from)
                 }
@@ -298,17 +312,17 @@ impl CatalogService {
                                     .is_in(variant_ids.clone()),
                             )
                             .order_by_asc(entities::variant_translation::Column::Locale)
-                            .all(&self.db)
+                            .all(conn)
                             .await?,
                     )
                 }
             },
             async {
-                BootstrapService::load_available_quantities(&self.db, &variant_ids)
+                BootstrapService::load_available_quantities(conn, &variant_ids)
                     .await
                     .map_err(CommerceError::from)
             },
-            load_variant_axis_values(&self.db, tenant_id, &variant_ids, locale),
+            load_variant_axis_values(conn, tenant_id, &variant_ids, locale),
         )?;
 
         let mut prices_by_variant: HashMap<
@@ -393,7 +407,7 @@ impl CatalogService {
             entities::product_image_translation::Entity::find()
                 .filter(entities::product_image_translation::Column::ImageId.is_in(image_ids))
                 .order_by_asc(entities::product_image_translation::Column::Locale)
-                .all(&self.db)
+                .all(conn)
                 .await?
         } else {
             Vec::new()
@@ -487,16 +501,25 @@ impl CatalogService {
         tenant_id: Uuid,
         variant_id: Uuid,
     ) -> CommerceResult<VariantResponse> {
+        self.get_variant_in(&self.db, tenant_id, variant_id).await
+    }
+
+    pub(super) async fn get_variant_in<C: ConnectionTrait>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        variant_id: Uuid,
+    ) -> CommerceResult<VariantResponse> {
         let variant = entities::product_variant::Entity::find_by_id(variant_id)
             .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(conn)
             .await?
             .ok_or(CommerceError::VariantNotFound(variant_id))?;
 
         let variant_ids = [variant_id];
         let (prices, translations, available_inventory_by_variant, mut axis_values_by_variant) = tokio::try_join!(
             async {
-                PricingBootstrapService::load_prices_for_variants(&self.db, &variant_ids)
+                PricingBootstrapService::load_catalog_base_prices_for_variants(conn, &variant_ids)
                     .await
                     .map_err(CommerceError::from)
             },
@@ -505,16 +528,16 @@ impl CatalogService {
                     entities::variant_translation::Entity::find()
                         .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
                         .order_by_asc(entities::variant_translation::Column::Locale)
-                        .all(&self.db)
+                        .all(conn)
                         .await?,
                 )
             },
             async {
-                BootstrapService::load_available_quantities(&self.db, &variant_ids)
+                BootstrapService::load_available_quantities(conn, &variant_ids)
                     .await
                     .map_err(CommerceError::from)
             },
-            load_variant_axis_values(&self.db, tenant_id, &variant_ids, PLATFORM_FALLBACK_LOCALE),
+            load_variant_axis_values(conn, tenant_id, &variant_ids, PLATFORM_FALLBACK_LOCALE),
         )?;
 
         let price_responses: Vec<PriceResponse> = prices

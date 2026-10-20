@@ -121,3 +121,20 @@
 ## FFA separation for admin and storefront
 
 The admin package now uses the `admin/src/transport.rs` facade and an explicit Leptos rendering adapter `admin/src/ui/leptos.rs`; the crate root only connects module layers and re-exports `PricingAdmin`. The storefront package already maintains the separation of `storefront/src/core.rs`, `storefront/src/transport/` and `storefront/src/ui/leptos.rs` with parity between native and GraphQL selected paths.
+
+
+## Product error contract continuation (2026-10-18)
+
+The existing explicit Product-service error adapter handles Product's generic Conflict as an
+existing RichError Conflict with static copy and `PRODUCT_CONFLICT` code. It does not relabel it
+as Validation or duplicate SKU/handle. This is exhaustiveness/classification source work only;
+Pricing's wider error pipeline and runtime behavior are not certified by the Product slice.
+
+## Pricing public error continuation (2026-10-18)
+
+Canonical ports and direct service consumers now share the Pricing-owned Foundation/Core/Rich
+classifier. Product native pricing and Commerce mutation public errors use static owner
+presentation with fresh references; query failures retain owner retryability. Ten owner entry
+logs no longer emit request payload. See the [current contract](pricing-owner-port-error-safety.md#nested-error-and-public-consumer-continuation-2026-10-18).
+This is source-only, unintegrated work; five new Rust scenarios are unrun, and compilation,
+mounted execution, and broader Pricing/Translation/price-list auditing remain open.

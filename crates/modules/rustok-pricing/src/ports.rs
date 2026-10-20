@@ -254,15 +254,7 @@ impl PricingReadPort for crate::PricingService {
         if let Some(price_list_id) = request.price_list_id {
             validate_non_nil_uuid(price_list_id, "price_list_id")?;
         }
-        tracing::debug!(
-            owner = PRICING_OWNER,
-            tenant_id = %tenant_id,
-            variant_id = %request.variant_id,
-            product_id = ?request.product_id,
-            currency = %request.currency_code,
-            operation = owner_operation,
-            "pricing port resolve_product_price entered"
-        );
+        log_pricing_port_entry(&context, owner_operation);
         let variant_id = request.variant_id;
 
         // Resolve the tenant-owned product projection first and verify that the
@@ -368,13 +360,7 @@ impl PricingReadPort for crate::PricingService {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         validate_non_nil_uuid(request.price_list_id, "price_list_id")?;
-        tracing::debug!(
-            owner = PRICING_OWNER,
-            tenant_id = %tenant_id,
-            price_list_id = %request.price_list_id,
-            operation = owner_operation,
-            "pricing port read_price_list_projection entered"
-        );
+        log_pricing_port_entry(&context, owner_operation);
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
         let lists = self
             .list_active_price_lists(tenant_id, Some(locale), Some(locale))
@@ -421,13 +407,7 @@ impl PricingReadPort for crate::PricingService {
         if let Some(channel_id) = request.channel_id {
             validate_non_nil_uuid(channel_id, "channel_id")?;
         }
-        tracing::debug!(
-            owner = PRICING_OWNER,
-            tenant_id = %tenant_id,
-            channel_id = ?request.channel_id,
-            operation = owner_operation,
-            "pricing port list_active_price_list_projections entered"
-        );
+        log_pricing_port_entry(&context, owner_operation);
         let lists = self
             .list_active_price_lists_for_channel(
                 tenant_id,
@@ -465,13 +445,7 @@ impl PricingReadPort for crate::PricingService {
         if let Some(price_list_id) = request.selected_price_list_id {
             validate_non_nil_uuid(price_list_id, "selected_price_list_id")?;
         }
-        tracing::debug!(
-            owner = PRICING_OWNER,
-            tenant_id = %tenant_id,
-            product_id = %request.product_id,
-            operation = owner_operation,
-            "pricing port read_admin_product_pricing_projection entered"
-        );
+        log_pricing_port_entry(&context, owner_operation);
         self.get_admin_product_pricing_with_locale_fallback(
             tenant_id,
             request.product_id,
@@ -491,13 +465,7 @@ impl PricingReadPort for crate::PricingService {
         let owner_operation = "read_storefront_product_pricing_projection";
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
-        tracing::debug!(
-            owner = PRICING_OWNER,
-            tenant_id = %tenant_id,
-            handle = %request.handle,
-            operation = owner_operation,
-            "pricing port read_storefront_product_pricing_projection entered"
-        );
+        log_pricing_port_entry(&context, owner_operation);
         self.get_published_product_pricing_by_handle_with_locale_fallback(
             tenant_id,
             request.handle.trim(),
@@ -524,15 +492,7 @@ impl PricingReadPort for crate::PricingService {
         if let Some(channel_id) = request.channel_id {
             validate_non_nil_uuid(channel_id, "channel_id")?;
         }
-        tracing::debug!(
-            owner = PRICING_OWNER,
-            tenant_id = %tenant_id,
-            variant_id = %request.variant_id,
-            price_list_id = ?request.price_list_id,
-            discount_percent = %request.discount_percent,
-            operation = owner_operation,
-            "pricing port preview_variant_discount entered"
-        );
+        log_pricing_port_entry(&context, owner_operation);
         let preview = if let Some(price_list_id) = request.price_list_id {
             self.preview_price_list_percentage_discount_with_channel(
                 tenant_id,
@@ -577,15 +537,7 @@ impl PricingWritePort for crate::PricingService {
         if let Some(channel_id) = request.channel_id {
             validate_non_nil_uuid(channel_id, "channel_id")?;
         }
-        tracing::debug!(
-            owner = PRICING_OWNER,
-            tenant_id = %tenant_id,
-            variant_id = %request.variant_id,
-            price_list_id = ?request.price_list_id,
-            amount = %request.amount,
-            operation = owner_operation,
-            "pricing port upsert_variant_price entered"
-        );
+        log_pricing_port_entry(&context, owner_operation);
         self.upsert_admin_variant_price_with_channel(
             tenant_id,
             actor_id,
@@ -617,14 +569,7 @@ impl PricingWritePort for crate::PricingService {
         if let Some(channel_id) = request.channel_id {
             validate_non_nil_uuid(channel_id, "channel_id")?;
         }
-        tracing::debug!(
-            owner = PRICING_OWNER,
-            tenant_id = %tenant_id,
-            price_list_id = %request.price_list_id,
-            channel_id = ?request.channel_id,
-            operation = owner_operation,
-            "pricing port set_price_list_scope entered"
-        );
+        log_pricing_port_entry(&context, owner_operation);
         self.set_price_list_scope(
             tenant_id,
             actor_id,
@@ -653,15 +598,7 @@ impl PricingWritePort for crate::PricingService {
         if let Some(channel_id) = request.channel_id {
             validate_non_nil_uuid(channel_id, "channel_id")?;
         }
-        tracing::debug!(
-            owner = PRICING_OWNER,
-            tenant_id = %tenant_id,
-            variant_id = %request.variant_id,
-            price_list_id = ?request.price_list_id,
-            discount_percent = %request.discount_percent,
-            operation = owner_operation,
-            "pricing port apply_variant_discount entered"
-        );
+        log_pricing_port_entry(&context, owner_operation);
         let result = if let Some(price_list_id) = request.price_list_id {
             self.apply_price_list_percentage_discount_with_channel(
                 tenant_id,
@@ -700,13 +637,7 @@ impl PricingWritePort for crate::PricingService {
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let actor_id = parse_port_actor_id(&context, owner_operation)?;
         validate_non_nil_uuid(request.price_list_id, "price_list_id")?;
-        tracing::debug!(
-            owner = PRICING_OWNER,
-            tenant_id = %tenant_id,
-            price_list_id = %request.price_list_id,
-            operation = owner_operation,
-            "pricing port set_price_list_percentage_rule entered"
-        );
+        log_pricing_port_entry(&context, owner_operation);
         self.set_price_list_percentage_rule_projection(
             tenant_id,
             actor_id,
@@ -875,6 +806,21 @@ fn pricing_owner_error_facts(error: &CommerceError) -> PricingOwnerErrorFacts {
     }
 }
 
+fn log_pricing_port_entry(context: &PortContext, operation: &'static str) {
+    let facts = pricing_port_context_facts(context);
+    tracing::debug!(
+        owner = PRICING_OWNER,
+        boundary = PRICING_PORT_BOUNDARY,
+        operation,
+        tenant_id_length = facts.tenant_id_length,
+        actor_kind = facts.actor_kind,
+        claim_count = facts.claim_count,
+        role_count = facts.role_count,
+        correlation_present = !context.correlation_id.is_empty(),
+        "pricing owner port entered"
+    );
+}
+
 fn log_pricing_port_failure(
     context: &PortContext,
     operation: &'static str,
@@ -1029,213 +975,310 @@ fn parse_port_actor_id(context: &PortContext, operation: &'static str) -> Result
     Ok(actor_id)
 }
 
+pub(crate) struct PricingErrorPolicy {
+    pub(crate) kind: PortErrorKind,
+    pub(crate) code: &'static str,
+    message: &'static str,
+    pub(crate) retryable: bool,
+}
+
+impl PricingErrorPolicy {
+    fn new(
+        kind: PortErrorKind,
+        code: &'static str,
+        message: &'static str,
+        retryable: bool,
+    ) -> Self {
+        Self {
+            kind,
+            code,
+            message,
+            retryable,
+        }
+    }
+
+    fn into_port_error(self) -> PortError {
+        PortError::new(self.kind, self.code, self.message, self.retryable)
+    }
+}
+
+// One owner policy for canonical ports and direct service consumers. Payloads stay internal.
+pub(crate) fn pricing_error_policy(error: &CommerceError) -> PricingErrorPolicy {
+    match error {
+        CommerceError::Database(_) => PricingErrorPolicy::new(
+            PortErrorKind::Unavailable,
+            "pricing.database_unavailable",
+            "pricing storage is temporarily unavailable",
+            true,
+        ),
+        CommerceError::ProductNotFound(_) => PricingErrorPolicy::new(
+            PortErrorKind::NotFound,
+            "pricing.product_not_found",
+            "product was not found",
+            false,
+        ),
+        CommerceError::VariantNotFound(_) => PricingErrorPolicy::new(
+            PortErrorKind::NotFound,
+            "pricing.variant_not_found",
+            "variant was not found",
+            false,
+        ),
+        CommerceError::DuplicateHandle { .. } => PricingErrorPolicy::new(
+            PortErrorKind::Conflict,
+            "pricing.duplicate_handle",
+            "pricing handle is already in use",
+            false,
+        ),
+        CommerceError::DuplicateSku(_) => PricingErrorPolicy::new(
+            PortErrorKind::Conflict,
+            "pricing.duplicate_sku",
+            "pricing SKU is already in use",
+            false,
+        ),
+        CommerceError::InvalidPrice(_) | CommerceError::Validation(_) => PricingErrorPolicy::new(
+            PortErrorKind::Validation,
+            "pricing.validation",
+            "pricing request is invalid",
+            false,
+        ),
+        CommerceError::InsufficientInventory { .. } => PricingErrorPolicy::new(
+            PortErrorKind::Conflict,
+            "pricing.insufficient_inventory",
+            "inventory is insufficient for the pricing operation",
+            false,
+        ),
+        CommerceError::InvalidOptionCombination => PricingErrorPolicy::new(
+            PortErrorKind::Validation,
+            "pricing.invalid_option_combination",
+            "invalid option combination",
+            false,
+        ),
+        CommerceError::ShippingProfileNotFound(_) => PricingErrorPolicy::new(
+            PortErrorKind::NotFound,
+            "pricing.shipping_profile_not_found",
+            "shipping profile was not found",
+            false,
+        ),
+        CommerceError::DuplicateShippingProfileSlug(_) => PricingErrorPolicy::new(
+            PortErrorKind::Conflict,
+            "pricing.duplicate_shipping_profile_slug",
+            "shipping profile slug is already in use",
+            false,
+        ),
+        CommerceError::NoVariants => PricingErrorPolicy::new(
+            PortErrorKind::Validation,
+            "pricing.no_variants",
+            "product must have at least one variant",
+            false,
+        ),
+        CommerceError::CannotDeletePublished => PricingErrorPolicy::new(
+            PortErrorKind::Conflict,
+            "pricing.cannot_delete_published",
+            "cannot delete published product",
+            false,
+        ),
+        CommerceError::Core(error) => pricing_core_error_policy(error),
+        CommerceError::Rich(error) => pricing_rich_error_policy(&error.kind),
+    }
+}
+
+fn pricing_core_error_policy(error: &rustok_core::Error) -> PricingErrorPolicy {
+    use rustok_core::Error as CoreError;
+    match error {
+        CoreError::Database(_) => PricingErrorPolicy::new(
+            PortErrorKind::Unavailable,
+            "pricing.database_unavailable",
+            "pricing storage is temporarily unavailable",
+            true,
+        ),
+        CoreError::Cache(_) | CoreError::External(_) => PricingErrorPolicy::new(
+            PortErrorKind::Unavailable,
+            "pricing.dependency_unavailable",
+            "pricing dependency is temporarily unavailable",
+            true,
+        ),
+        CoreError::Auth(_) | CoreError::Forbidden(_) => PricingErrorPolicy::new(
+            PortErrorKind::Forbidden,
+            "pricing.access_denied",
+            "pricing operation is not permitted",
+            false,
+        ),
+        CoreError::InvalidIdFormat(_) | CoreError::Validation(_) => PricingErrorPolicy::new(
+            PortErrorKind::Validation,
+            "pricing.validation",
+            "pricing request is invalid",
+            false,
+        ),
+        CoreError::NotFound(_) => PricingErrorPolicy::new(
+            PortErrorKind::NotFound,
+            "pricing.resource_not_found",
+            "pricing resource was not found",
+            false,
+        ),
+        CoreError::Serialization(_) | CoreError::Scripting(_) | CoreError::Internal(_) => {
+            PricingErrorPolicy::new(
+                PortErrorKind::InvariantViolation,
+                "pricing.core_error",
+                "pricing operation failed an internal invariant",
+                false,
+            )
+        }
+    }
+}
+
+fn pricing_rich_error_policy(kind: &rustok_core::error::ErrorKind) -> PricingErrorPolicy {
+    use rustok_core::error::ErrorKind;
+    // Status, user_message, error_code, trace_id, fields, and source are not public authority.
+    match kind {
+        ErrorKind::Validation | ErrorKind::BusinessLogic => PricingErrorPolicy::new(
+            PortErrorKind::Validation,
+            "pricing.validation",
+            "pricing request is invalid",
+            false,
+        ),
+        ErrorKind::Unauthenticated | ErrorKind::Forbidden => PricingErrorPolicy::new(
+            PortErrorKind::Forbidden,
+            "pricing.access_denied",
+            "pricing operation is not permitted",
+            false,
+        ),
+        ErrorKind::NotFound => PricingErrorPolicy::new(
+            PortErrorKind::NotFound,
+            "pricing.resource_not_found",
+            "pricing resource was not found",
+            false,
+        ),
+        ErrorKind::Conflict => PricingErrorPolicy::new(
+            PortErrorKind::Conflict,
+            "pricing.state_conflict",
+            "pricing operation conflicts with the current state",
+            false,
+        ),
+        ErrorKind::RateLimited => PricingErrorPolicy::new(
+            PortErrorKind::Unavailable,
+            "pricing.rate_limited",
+            "pricing is temporarily rate limited",
+            true,
+        ),
+        ErrorKind::Database => PricingErrorPolicy::new(
+            PortErrorKind::Unavailable,
+            "pricing.database_unavailable",
+            "pricing storage is temporarily unavailable",
+            true,
+        ),
+        ErrorKind::ExternalService => PricingErrorPolicy::new(
+            PortErrorKind::Unavailable,
+            "pricing.dependency_unavailable",
+            "pricing dependency is temporarily unavailable",
+            true,
+        ),
+        ErrorKind::Timeout => PricingErrorPolicy::new(
+            PortErrorKind::Timeout,
+            "pricing.timeout",
+            "pricing operation timed out",
+            true,
+        ),
+        ErrorKind::Internal => PricingErrorPolicy::new(
+            PortErrorKind::InvariantViolation,
+            "pricing.rich_error",
+            "pricing operation failed an internal invariant",
+            false,
+        ),
+    }
+}
+
 fn pricing_error_to_port_error(
     context: &PortContext,
     operation: &'static str,
     error: CommerceError,
 ) -> PortError {
     let error_facts = pricing_owner_error_facts(&error);
-    match error {
-        CommerceError::Database(_) => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.database_unavailable",
-                &error_facts,
-                true,
-            );
-            PortError::unavailable(
-                "pricing.database_unavailable",
-                "pricing storage is temporarily unavailable",
-            )
-        }
-        CommerceError::ProductNotFound(_) => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.product_not_found",
-                &error_facts,
-                false,
-            );
-            PortError::new(
-                PortErrorKind::NotFound,
-                "pricing.product_not_found",
-                "product was not found",
-                false,
-            )
-        }
-        CommerceError::VariantNotFound(_) => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.variant_not_found",
-                &error_facts,
-                false,
-            );
-            PortError::new(
-                PortErrorKind::NotFound,
-                "pricing.variant_not_found",
-                "variant was not found",
-                false,
-            )
-        }
-        CommerceError::DuplicateHandle { .. } => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.duplicate_handle",
-                &error_facts,
-                false,
-            );
-            PortError::new(
-                PortErrorKind::Conflict,
-                "pricing.duplicate_handle",
-                "pricing handle is already in use",
-                false,
-            )
-        }
-        CommerceError::DuplicateSku(_) => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.duplicate_sku",
-                &error_facts,
-                false,
-            );
-            PortError::new(
-                PortErrorKind::Conflict,
-                "pricing.duplicate_sku",
-                "pricing SKU is already in use",
-                false,
-            )
-        }
-        CommerceError::InvalidPrice(_) => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.validation",
-                &error_facts,
-                false,
-            );
-            PortError::validation("pricing.validation", "pricing request is invalid")
-        }
-        CommerceError::Validation(_) => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.validation",
-                &error_facts,
-                false,
-            );
-            PortError::validation("pricing.validation", "pricing request is invalid")
-        }
-        CommerceError::InsufficientInventory { .. } => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.insufficient_inventory",
-                &error_facts,
-                false,
-            );
-            PortError::new(
-                PortErrorKind::Conflict,
-                "pricing.insufficient_inventory",
-                "inventory is insufficient for the pricing operation",
-                false,
-            )
-        }
-        CommerceError::InvalidOptionCombination => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.invalid_option_combination",
-                &error_facts,
-                false,
-            );
-            PortError::validation(
-                "pricing.invalid_option_combination",
-                "invalid option combination",
-            )
-        }
-        CommerceError::ShippingProfileNotFound(_) => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.shipping_profile_not_found",
-                &error_facts,
-                false,
-            );
-            PortError::new(
-                PortErrorKind::NotFound,
-                "pricing.shipping_profile_not_found",
-                "shipping profile was not found",
-                false,
-            )
-        }
-        CommerceError::DuplicateShippingProfileSlug(_) => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.duplicate_shipping_profile_slug",
-                &error_facts,
-                false,
-            );
-            PortError::new(
-                PortErrorKind::Conflict,
-                "pricing.duplicate_shipping_profile_slug",
-                "shipping profile slug is already in use",
-                false,
-            )
-        }
-        CommerceError::NoVariants => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.no_variants",
-                &error_facts,
-                false,
-            );
-            PortError::validation(
-                "pricing.no_variants",
-                "product must have at least one variant",
-            )
-        }
-        CommerceError::CannotDeletePublished => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.cannot_delete_published",
-                &error_facts,
-                false,
-            );
-            PortError::new(
-                PortErrorKind::Conflict,
-                "pricing.cannot_delete_published",
-                "cannot delete published product",
-                false,
-            )
-        }
-        CommerceError::Rich(_) => {
-            log_pricing_port_failure(context, operation, "pricing.rich_error", &error_facts, true);
-            PortError::invariant_violation(
-                "pricing.rich_error",
-                "pricing operation failed an internal invariant",
-            )
-        }
-        CommerceError::Core(_) => {
-            log_pricing_port_failure(context, operation, "pricing.core_error", &error_facts, true);
-            PortError::invariant_violation(
-                "pricing.core_error",
-                "pricing operation failed an internal invariant",
-            )
-        }
-    }
+    let mapped = pricing_error_policy(&error);
+    let technical = matches!(
+        mapped.kind,
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
+    );
+    log_pricing_port_failure(context, operation, mapped.code, &error_facts, technical);
+    mapped.into_port_error()
+}
+
+pub(crate) fn log_pricing_service_failure(
+    error: &CommerceError,
+    operation: &'static str,
+    boundary: &'static str,
+    public: &crate::public_error::PricingPublicError,
+) {
+    let facts = pricing_owner_error_facts(error);
+    tracing::error!(
+        owner = PRICING_OWNER,
+        operation,
+        boundary,
+        public_code = public.code,
+        retryable = public.retryable,
+        correlation_id = %public.correlation_id,
+        error_variant = facts.error_variant,
+        text_field_count = facts.text_field_count,
+        text_total_length = facts.text_total_length,
+        uuid_field_count = facts.uuid_field_count,
+        uuid_non_nil_count = facts.uuid_non_nil_count,
+        numeric_field_count = facts.numeric_field_count,
+        numeric_nonzero_count = facts.numeric_nonzero_count,
+        numeric_negative_count = facts.numeric_negative_count,
+        opaque_payload_present = facts.opaque_payload_present,
+        "pricing service operation failed"
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rustok_api::PortActor;
+
+    #[test]
+    fn canonical_port_uses_nested_owner_policy_without_payload_or_retry_loss() {
+        use rustok_core::error::{ErrorKind, RichError};
+        let context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::system(),
+            "en",
+            "scenario",
+        );
+        for (kind, expected, code, retryable) in [
+            (
+                ErrorKind::Forbidden,
+                PortErrorKind::Forbidden,
+                "pricing.access_denied",
+                false,
+            ),
+            (
+                ErrorKind::Timeout,
+                PortErrorKind::Timeout,
+                "pricing.timeout",
+                true,
+            ),
+            (
+                ErrorKind::RateLimited,
+                PortErrorKind::Unavailable,
+                "pricing.rate_limited",
+                true,
+            ),
+        ] {
+            let error = CommerceError::from(RichError::new(kind, "private-port-payload"));
+            let port = pricing_error_to_port_error(&context, "scenario", error);
+            assert_eq!(port.kind, expected);
+            assert_eq!(port.code, code);
+            assert_eq!(port.retryable, retryable);
+            assert!(!port.message.contains("private-port-payload"));
+        }
+        let port = pricing_error_to_port_error(
+            &context,
+            "scenario",
+            CommerceError::Core(rustok_core::Error::Cache("private-cache-payload".into())),
+        );
+        assert_eq!(port.kind, PortErrorKind::Unavailable);
+        assert!(port.retryable);
+        assert!(!port.message.contains("private-cache-payload"));
+    }
 
     #[test]
     fn validate_non_nil_uuid_accepts_valid_and_rejects_nil() {

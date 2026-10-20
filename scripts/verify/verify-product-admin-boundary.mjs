@@ -157,7 +157,9 @@ for (const marker of ["list.items.is_empty()", "list.items.into_iter().map"] ) {
 }
 assertNotContains(ui, "match shipping_profiles.get()", `${uiPath}: shipping-profile consumers must share core-owned load-result normalization`);
 assertContains(ui, "TypedProductAttributeField", `${uiPath}: effective product form must render typed attribute editors`);
-assertContains(ui, "save_product_attribute_values", `${uiPath}: product submit flow must persist typed attribute patches`);
+for (const marker of ["command.draft.attribute_values =", "patches: attribute_patches,"]) {
+  assertContains(ui, marker, `${uiPath}: product submit must carry typed attribute patches in the atomic owner draft`);
+}
 
 for (const marker of [
   "fetch_bootstrap",

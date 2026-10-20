@@ -1580,9 +1580,10 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.category_seo_translation_owner_validation",
             "Product rejected the Category SEO translation mutation",
         ),
-        CommerceError::Core(_) => PortError::invariant_violation(
-            "product.category_seo_translation_owner_invariant",
-            "Product Category SEO state is invalid",
+        CommerceError::Core(error) => crate::error::core_port_error(&error),
+        CommerceError::Conflict(_) => PortError::conflict(
+            "product.conflict",
+            "product request conflicts with the current state",
         ),
     }
 }

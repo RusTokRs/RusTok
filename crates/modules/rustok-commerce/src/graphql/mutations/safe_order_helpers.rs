@@ -7,7 +7,6 @@ use rustok_order::ReadOrderProjectionRequest;
 use uuid::Uuid;
 
 pub(crate) use super::cart_safe_helpers::*;
-use crate::storefront_shipping::normalize_shipping_profile_slug;
 use crate::{CommerceError, ShippingProfileService};
 
 const STOREFRONT_ORDER_GRAPHQL_OWNER: &str = "rustok_order.storefront_access";
@@ -48,29 +47,17 @@ impl StorefrontOrderGraphqlErrorContext {
 }
 
 #[derive(Clone, Copy)]
-struct ShippingProfileGraphqlErrorContext<'a> {
+struct ShippingProfileGraphqlErrorContext {
     tenant_id: Uuid,
-    requested_slug: Option<&'a str>,
     requested_profile_count: Option<usize>,
     shipping_profile_id: Option<Uuid>,
     operation: &'static str,
 }
 
-impl<'a> ShippingProfileGraphqlErrorContext<'a> {
-    fn single(tenant_id: Uuid, requested_slug: &'a str, operation: &'static str) -> Self {
-        Self {
-            tenant_id,
-            requested_slug: Some(requested_slug),
-            requested_profile_count: Some(1),
-            shipping_profile_id: None,
-            operation,
-        }
-    }
-
+impl ShippingProfileGraphqlErrorContext {
     fn batch(tenant_id: Uuid, requested_profile_count: usize, operation: &'static str) -> Self {
         Self {
             tenant_id,
-            requested_slug: None,
             requested_profile_count: Some(requested_profile_count),
             shipping_profile_id: None,
             operation,
@@ -91,7 +78,8 @@ fn public_graphql_error(
 
 fn storefront_order_graphql_error_policy(error: &PortError) -> StorefrontGraphqlPolicy {
     match &error.kind {
-        PortErrorKind::Validation | PortErrorKind::Forbidden => (
+        PortErrorKind::Forbidden => ("Order access is forbidden", "FORBIDDEN", false, "forbidden"),
+        PortErrorKind::Validation => (
             "Order request is invalid",
             "ORDER_REQUEST_INVALID",
             false,
@@ -156,58 +144,62 @@ fn storefront_order_read_context(
     tenant_id: Uuid,
     auth: &AuthContext,
     tenant_default_locale: &str,
-    order_id: Uuid,
+    _order_id: Uuid,
 ) -> PortContext {
-    let locale = if tenant_default_locale.trim().is_empty() {
-        "und"
-    } else {
-        tenant_default_locale
-    };
-    let context = PortContext::new(
+    let request = ctx.data_opt::<RequestContext>();
+    let locale = request
+        .map(|request| request.locale.as_str())
+        .unwrap_or_else(|| {
+            if tenant_default_locale.trim().is_empty() {
+                "und"
+            } else {
+                tenant_default_locale
+            }
+        });
+    let correlation = request
+        .map(|request| request.correlation_id.clone())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let mut context = PortContext::new(
         tenant_id.to_string(),
         PortActor::user(auth.user_id.to_string()),
         locale,
-        format!("commerce-storefront-order-access:{order_id}"),
+        correlation,
     )
     .with_deadline(std::time::Duration::from_secs(2));
-    match ctx
-        .data_opt::<RequestContext>()
-        .and_then(|request| request.channel_slug.as_deref())
-    {
+    for permission in &auth.permissions {
+        context = context.with_claim(permission.to_string());
+    }
+    match request.and_then(|request| request.channel_slug.as_deref()) {
         Some(channel) => context.with_channel(channel),
         None => context,
     }
 }
 
 fn shipping_profile_graphql_error_policy(
-    context: &mut ShippingProfileGraphqlErrorContext<'_>,
+    context: &mut ShippingProfileGraphqlErrorContext,
     error: &CommerceError,
-) -> (String, &'static str, bool, &'static str) {
+) -> StorefrontGraphqlPolicy {
     match error {
-        CommerceError::Validation(detail) => (
-            if detail.is_empty() {
-                "Shipping profile request is invalid".to_string()
-            } else {
-                detail.clone()
-            },
+        CommerceError::Validation(_) => (
+            "Shipping profile request is invalid",
             "SHIPPING_PROFILE_REQUEST_INVALID",
             false,
             "validation",
         ),
         CommerceError::InvalidPrice(_) => (
-            "Shipping profile request is invalid".to_string(),
+            "Shipping profile request is invalid",
             "SHIPPING_PROFILE_REQUEST_INVALID",
             false,
             "invalid_price",
         ),
         CommerceError::InvalidOptionCombination => (
-            "Shipping profile request is invalid".to_string(),
+            "Shipping profile request is invalid",
             "SHIPPING_PROFILE_REQUEST_INVALID",
             false,
             "invalid_option_combination",
         ),
         CommerceError::NoVariants => (
-            "Shipping profile request is invalid".to_string(),
+            "Shipping profile request is invalid",
             "SHIPPING_PROFILE_REQUEST_INVALID",
             false,
             "no_variants",
@@ -215,20 +207,20 @@ fn shipping_profile_graphql_error_policy(
         CommerceError::ShippingProfileNotFound(shipping_profile_id) => {
             context.shipping_profile_id = Some(*shipping_profile_id);
             (
-                "Shipping profile was not found".to_string(),
+                "Shipping profile was not found",
                 "SHIPPING_PROFILE_NOT_FOUND",
                 false,
                 "shipping_profile_not_found",
             )
         }
         CommerceError::DuplicateShippingProfileSlug(_) => (
-            "Shipping profile conflicts with the current state".to_string(),
+            "Shipping profile conflicts with the current state",
             "SHIPPING_PROFILE_STATE_CONFLICT",
             false,
             "duplicate_shipping_profile_slug",
         ),
         CommerceError::Database(_) => (
-            "Shipping profile service is temporarily unavailable".to_string(),
+            "Shipping profile service is temporarily unavailable",
             "SHIPPING_PROFILE_TEMPORARILY_UNAVAILABLE",
             true,
             "database",
@@ -241,7 +233,7 @@ fn shipping_profile_graphql_error_policy(
         | CommerceError::CannotDeletePublished
         | CommerceError::Rich(_)
         | CommerceError::Core(_) => (
-            "Shipping profile operation could not be completed safely".to_string(),
+            "Shipping profile operation could not be completed safely",
             "SHIPPING_PROFILE_OPERATION_FAILED",
             false,
             "unexpected_owner_error",
@@ -250,18 +242,16 @@ fn shipping_profile_graphql_error_policy(
 }
 
 fn shipping_profile_graphql_error(
-    mut context: ShippingProfileGraphqlErrorContext<'_>,
+    mut context: ShippingProfileGraphqlErrorContext,
     error: CommerceError,
 ) -> async_graphql::Error {
     let (message, code, retryable, error_kind) =
         shipping_profile_graphql_error_policy(&mut context, &error);
     tracing::error!(
-        error = ?error,
         owner = SHIPPING_PROFILE_GRAPHQL_OWNER,
-        tenant_id = %context.tenant_id,
-        requested_slug = ?context.requested_slug,
+        tenant_id_non_nil = !context.tenant_id.is_nil(),
         requested_profile_count = ?context.requested_profile_count,
-        shipping_profile_id = ?context.shipping_profile_id,
+        shipping_profile_id_present = context.shipping_profile_id.is_some(),
         operation = %context.operation,
         error_kind,
         public_code = code,
@@ -282,7 +272,32 @@ pub(crate) async fn ensure_storefront_order_access(
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-    let tenant = ctx.data::<TenantContext>()?;
+    let tenant = ctx.data::<TenantContext>().map_err(|_| {
+        public_graphql_error(
+            "Order context is temporarily unavailable",
+            "ORDER_TEMPORARILY_UNAVAILABLE",
+            true,
+        )
+    })?;
+    if tenant_id.is_nil()
+        || auth.user_id.is_nil()
+        || tenant.id != tenant_id
+        || auth.tenant_id != tenant_id
+        || ctx.data_opt::<RequestContext>().is_some_and(|request| {
+            request.tenant_id != tenant_id || request.user_id != Some(auth.user_id)
+        })
+    {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Authenticated order context does not match the request",
+        ));
+    }
+    if order_id.is_nil() {
+        return Err(public_graphql_error(
+            "Invalid order identity",
+            "ORDER_REQUEST_INVALID",
+            false,
+        ));
+    }
     let customer_id = super::cart_safe_helpers::resolve_optional_storefront_customer_id(
         db,
         tenant_id,
@@ -335,32 +350,6 @@ pub(crate) async fn ensure_storefront_order_access(
     Ok(())
 }
 
-pub(crate) async fn validate_product_shipping_profile_input(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    shipping_profile_slug: Option<&str>,
-) -> Result<()> {
-    let Some(slug) = shipping_profile_slug.and_then(normalize_shipping_profile_slug) else {
-        return Ok(());
-    };
-
-    ShippingProfileService::new(db.clone())
-        .ensure_shipping_profile_slug_exists(tenant_id, &slug)
-        .await
-        .map_err(|error| {
-            shipping_profile_graphql_error(
-                ShippingProfileGraphqlErrorContext::single(
-                    tenant_id,
-                    &slug,
-                    "validate_product_shipping_profile_input",
-                ),
-                error,
-            )
-        })?;
-
-    Ok(())
-}
-
 pub(crate) async fn validate_shipping_option_profile_inputs(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
@@ -385,4 +374,35 @@ pub(crate) async fn validate_shipping_option_profile_inputs(
         })?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+    #[test]
+    fn shipping_validation_detail_is_never_a_public_message() {
+        let mut context = ShippingProfileGraphqlErrorContext::batch(
+            Uuid::new_v4(),
+            1,
+            "validate_shipping_option_profile_inputs",
+        );
+        let (message, code, retryable, _) = shipping_profile_graphql_error_policy(
+            &mut context,
+            &CommerceError::Validation("SECRET_OWNER_PAYLOAD".into()),
+        );
+        assert_eq!(message, "Shipping profile request is invalid");
+        assert_eq!(code, "SHIPPING_PROFILE_REQUEST_INVALID");
+        assert!(!retryable);
+        assert!(!message.contains("SECRET"));
+    }
+    #[test]
+    fn order_forbidden_is_distinct_from_input_validation() {
+        let (_, forbidden, _, kind) =
+            storefront_order_graphql_error_policy(&PortError::forbidden("private", "private"));
+        let (_, validation, _, _) =
+            storefront_order_graphql_error_policy(&PortError::validation("private", "private"));
+        assert_eq!(forbidden, "FORBIDDEN");
+        assert_eq!(kind, "forbidden");
+        assert_ne!(forbidden, validation);
+    }
 }

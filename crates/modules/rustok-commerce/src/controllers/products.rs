@@ -95,6 +95,51 @@ fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
     }
 }
 
+pub(crate) fn product_core_http_policy(
+    error: &rustok_core::error::Error,
+    internal_code: &'static str,
+) -> AdminProductHttpPolicy {
+    use rustok_api::PortErrorKind;
+    match rustok_product::error::core_port_error(error).kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_product_dependency_unavailable",
+            "Product dependency is temporarily unavailable",
+            "dependency_unavailable",
+        ),
+        PortErrorKind::Forbidden => (
+            StatusCode::FORBIDDEN,
+            "commerce_product_access_denied",
+            "Product access is denied",
+            "forbidden",
+        ),
+        PortErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            "commerce_product_dependency_not_found",
+            "Referenced product resource was not found",
+            "dependency_not_found",
+        ),
+        PortErrorKind::Validation => (
+            StatusCode::BAD_REQUEST,
+            "commerce_product_invalid",
+            "Product request is invalid",
+            "validation",
+        ),
+        PortErrorKind::Conflict => (
+            StatusCode::CONFLICT,
+            "commerce_product_conflict",
+            "Product request conflicts with the current state",
+            "conflict",
+        ),
+        PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            internal_code,
+            "Product operation could not be completed safely",
+            "unexpected_owner_error",
+        ),
+    }
+}
+
 fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
     match error {
         CommerceError::Database(_) => (
@@ -135,11 +180,14 @@ fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
             "Product operation conflicts with the current state",
             "state_conflict",
         ),
-        CommerceError::Core(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_product_failed",
-            "Product operation could not be completed safely",
-            "unexpected_owner_error",
+        CommerceError::Core(error) => {
+            product_core_http_policy(error, "commerce_admin_product_failed")
+        }
+        CommerceError::Conflict(_) => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_conflict",
+            "Product request conflicts with the current state",
+            "conflict",
         ),
     }
 }
@@ -244,6 +292,27 @@ pub(crate) fn admin_product_lifecycle_idempotency_key(
     ))
 }
 
+/// All identity dimensions come from upstream authentication/middleware. A typed
+/// context is not authority to mix another tenant or principal into an owner call.
+pub(crate) fn ensure_admin_product_scope(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request: &RequestContext,
+) -> HttpResult<()> {
+    if tenant.id.is_nil()
+        || auth.user_id.is_nil()
+        || auth.tenant_id != tenant.id
+        || request.tenant_id != tenant.id
+        || request.user_id != Some(auth.user_id)
+    {
+        return Err(HttpError::forbidden(
+            "commerce_admin_product_scope_mismatch",
+            "Authenticated Product context does not match the request",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn admin_product_command_context(
     tenant_id: Uuid,
     auth: &AuthContext,
@@ -255,14 +324,18 @@ pub(crate) fn admin_product_command_context(
     let resource_id = product_id
         .map(|value| value.to_string())
         .unwrap_or_else(|| "new".to_string());
-    let context = PortContext::new(
+    let mut context = PortContext::new(
         tenant_id.to_string(),
         PortActor::user(auth.user_id.to_string()),
         request_context.locale.as_str(),
-        format!("commerce-admin-product:{operation}:{resource_id}"),
+        request_context.correlation_id.clone(),
     )
+    .with_causation_id(format!("commerce-admin-product:{operation}:{resource_id}"))
     .with_idempotency_key(idempotency_key)
     .with_deadline(std::time::Duration::from_secs(2));
+    for permission in &auth.permissions {
+        context = context.with_claim(permission.to_string());
+    }
     match request_context.channel_slug.as_deref() {
         Some(channel) => context.with_channel(channel),
         None => context,
@@ -370,8 +443,12 @@ pub async fn list_products(
         &[Permission::PRODUCTS_LIST],
         "Permission denied: products:list required",
     )?;
+    ensure_admin_product_scope(&tenant, &auth, &request_context)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PRODUCT_BOUNDARY,
@@ -577,11 +654,18 @@ pub async fn show_product(
         &[Permission::PRODUCTS_READ],
         "Permission denied: products:read required",
     )?;
+    ensure_admin_product_scope(&tenant, &auth, &request_context)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_product_id",
+            "Product ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PRODUCT_BOUNDARY,
@@ -625,11 +709,18 @@ pub async fn delete_product(
         &[Permission::PRODUCTS_DELETE],
         "Permission denied: products:delete required",
     )?;
+    ensure_admin_product_scope(&tenant, &auth, &request_context)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_product_id",
+            "Product ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PRODUCT_BOUNDARY,
@@ -684,11 +775,18 @@ pub async fn publish_product(
         &[Permission::PRODUCTS_UPDATE],
         "Permission denied: products:update required",
     )?;
+    ensure_admin_product_scope(&tenant, &auth, &request_context)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_product_id",
+            "Product ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PRODUCT_BOUNDARY,
@@ -743,11 +841,18 @@ pub async fn unpublish_product(
         &[Permission::PRODUCTS_UPDATE],
         "Permission denied: products:update required",
     )?;
+    ensure_admin_product_scope(&tenant, &auth, &request_context)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_product_id",
+            "Product ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PRODUCT_BOUNDARY,
@@ -807,11 +912,18 @@ pub async fn archive_product(
         &[Permission::PRODUCTS_UPDATE],
         "Permission denied: products:update required",
     )?;
+    ensure_admin_product_scope(&tenant, &auth, &request_context)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_product_id", "Product ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_product_id",
+            "Product ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_PRODUCT_BOUNDARY,
@@ -910,5 +1022,122 @@ mod tests {
         assert_eq!(error.status, StatusCode::FORBIDDEN);
         assert_eq!(error.code, "commerce_permission_denied");
         assert_eq!(error.message, "Permission denied");
+    }
+    #[test]
+    fn product_scope_rejects_mixed_authenticated_dimensions() {
+        let id = Uuid::new_v4();
+        let user = Uuid::new_v4();
+        let tenant = TenantContext {
+            id,
+            name: "test".into(),
+            slug: "test".into(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".into(),
+            is_active: true,
+        };
+        let mut auth = AuthContext {
+            tenant_id: id,
+            user_id: user,
+            session_id: Uuid::new_v4(),
+            permissions: vec![],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "test".into(),
+        };
+        let mut request = RequestContext {
+            tenant_id: id,
+            user_id: Some(user),
+            channel_id: None,
+            channel_slug: None,
+            channel_resolution_source: None,
+            locale: "en".into(),
+            correlation_id: "trace".into(),
+        };
+        assert!(ensure_admin_product_scope(&tenant, &auth, &request).is_ok());
+        auth.tenant_id = Uuid::new_v4();
+        assert_eq!(
+            ensure_admin_product_scope(&tenant, &auth, &request)
+                .unwrap_err()
+                .status,
+            StatusCode::FORBIDDEN
+        );
+        auth.tenant_id = id;
+        request.tenant_id = Uuid::new_v4();
+        assert!(ensure_admin_product_scope(&tenant, &auth, &request).is_err());
+        request.tenant_id = id;
+        request.user_id = None;
+        assert!(ensure_admin_product_scope(&tenant, &auth, &request).is_err());
+        request.user_id = Some(Uuid::new_v4());
+        assert!(ensure_admin_product_scope(&tenant, &auth, &request).is_err());
+        auth.user_id = Uuid::nil();
+        request.user_id = Some(Uuid::nil());
+        assert!(ensure_admin_product_scope(&tenant, &auth, &request).is_err());
+    }
+
+    #[test]
+    fn owner_port_error_messages_never_enter_http_envelope() {
+        for kind in [
+            PortErrorKind::Validation,
+            PortErrorKind::NotFound,
+            PortErrorKind::Conflict,
+            PortErrorKind::Forbidden,
+            PortErrorKind::Unavailable,
+            PortErrorKind::Timeout,
+            PortErrorKind::InvariantViolation,
+        ] {
+            let error = map_admin_product_port_error(
+                AdminProductErrorContext::new(
+                    Uuid::new_v4(),
+                    Uuid::new_v4(),
+                    None,
+                    "create_product",
+                ),
+                &PortContext::new("tenant", PortActor::user("user"), "en", "trace"),
+                PortError::new(kind, "SECRET_OWNER_CODE", "SECRET_OWNER_MESSAGE", true),
+            );
+            assert!(!error.message.contains("SECRET"));
+            assert!(!error.code.contains("SECRET"));
+        }
+    }
+}
+
+#[cfg(test)]
+mod core_product_policy_tests {
+    use super::*;
+    use rustok_core::error::Error as CoreError;
+    #[test]
+    fn nested_core_http_statuses_follow_owner_classification() {
+        for (error, expected) in [
+            (
+                CoreError::Forbidden("private-marker".into()),
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                CoreError::Database(sea_orm::DbErr::Custom("private-marker".into())),
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                CoreError::External("private-marker".into()),
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                CoreError::Validation("private-marker".into()),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                CoreError::NotFound("private-marker".into()),
+                StatusCode::NOT_FOUND,
+            ),
+            (
+                CoreError::Internal("private-marker".into()),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+        ] {
+            let (status, _, message, _) =
+                product_core_http_policy(&error, "commerce_admin_product_failed");
+            assert_eq!(status, expected);
+            assert!(!message.contains("private-marker"));
+        }
     }
 }

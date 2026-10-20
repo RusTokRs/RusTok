@@ -335,12 +335,10 @@ pub(crate) async fn save_product_attribute_values(
     tenant_slug: Option<String>,
     product_id: String,
     locale: String,
-    mut patches: Vec<ProductAttributeValuePatchDraft>,
+    patches: Vec<ProductAttributeValuePatchDraft>,
     idempotency_key: String,
 ) -> Result<Vec<ProductAttributeValueItem>, GraphqlHttpError> {
-    for patch in &mut patches {
-        patch.kind = patch.kind.trim().to_ascii_uppercase();
-    }
+    let patches = normalize_product_attribute_patches(patches);
     let response: SaveAttributeValuesResponse = request(
         SAVE_ATTRIBUTE_VALUES_MUTATION,
         SchemaWriteVariables {
@@ -383,4 +381,49 @@ pub(crate) async fn clear_detached_product_attribute_values(
     Ok::<Vec<ProductAttributeValueItem>, GraphqlHttpError>(
         response.clear_detached_product_attribute_values,
     )
+}
+
+/// GraphQL enum spelling belongs to the transport, not to the editor model.
+/// Textarea/richtext are editor rendering kinds; their typed value is Text.
+pub(crate) fn normalize_product_attribute_patches(
+    mut patches: Vec<ProductAttributeValuePatchDraft>,
+) -> Vec<ProductAttributeValuePatchDraft> {
+    for patch in &mut patches {
+        patch.kind = match patch.kind.trim().to_ascii_uppercase().as_str() {
+            "TEXTAREA" | "RICHTEXT" => "TEXT".into(),
+            kind => kind.to_string(),
+        };
+    }
+    patches
+}
+
+pub(crate) fn normalize_product_attribute_batches(
+    batches: Vec<crate::model::ProductAttributeValueBatchDraft>,
+) -> Vec<crate::model::ProductAttributeValueBatchDraft> {
+    batches.into_iter().map(|mut batch| {
+        batch.patches = normalize_product_attribute_patches(batch.patches);
+        batch
+    }).collect()
+}
+
+#[cfg(test)]
+mod value_input_tests {
+    use super::*;
+
+    #[test]
+    fn atomic_batches_use_the_same_graphql_enum_admission_as_standalone_patches() {
+        let batches = ["text", "textarea", "richtext", "clear"].into_iter().map(|kind| {
+            serde_json::from_value(serde_json::json!({
+                "locale": "fr",
+                "patches": [{ "attributeId": "attribute", "kind": kind, "text": "value" }]
+            })).unwrap()
+        }).collect();
+        let batches = normalize_product_attribute_batches(batches);
+        let kinds = batches.iter().map(|batch| batch.patches[0].kind.as_str()).collect::<Vec<_>>();
+        assert_eq!(kinds, vec!["TEXT", "TEXT", "TEXT", "CLEAR"]);
+        assert!(batches.iter().all(|batch| batch.locale == "fr"));
+        let wire = serde_json::to_value(&batches[0]).unwrap();
+        assert_eq!(wire["patches"][0]["attributeId"], "attribute");
+        assert_eq!(wire["patches"][0]["text"], "value");
+    }
 }

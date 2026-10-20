@@ -1422,6 +1422,7 @@ mod tests {
                 tenant_id,
                 actor_id,
                 rustok_product::dto::CreateProductInput {
+                    attribute_values: Default::default(),
                     translations: vec![rustok_product::dto::ProductTranslationInput {
                         locale: "en".to_string(),
                         title: "Tiered Pricing Product".to_string(),

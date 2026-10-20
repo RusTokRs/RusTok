@@ -45,6 +45,30 @@ fn map_product_internal_error() -> ServerFnError {
     ServerFnError::new(rustok_product::ProductPublicError::internal().to_string())
 }
 
+/// A rejected trusted context is not an absent optional channel. Never widen a read on rejection.
+#[cfg(feature = "ssr")]
+pub(super) async fn require_request_context(
+    operation: &'static str,
+    boundary: &'static str,
+) -> Result<rustok_api::RequestContext, ServerFnError> {
+    leptos_axum::extract::<rustok_api::RequestContext>()
+        .await
+        .map_err(|_| {
+            let public = rustok_product::ProductPublicError::internal();
+            tracing::error!(
+                owner = "rustok_product.storefront",
+                owner_operation = operation,
+                boundary,
+                code = "product.storefront_request_context_unavailable",
+                public_code = public.code,
+                correlation_id = %public.correlation_id,
+                request_context_rejected = true,
+                "product storefront trusted request context extraction failed"
+            );
+            ServerFnError::new(public.to_string())
+        })
+}
+
 #[cfg(feature = "ssr")]
 fn map_product_service_error(
     error: rustok_product::CommerceError,
@@ -65,52 +89,14 @@ fn map_pricing_service_error(
     error: rustok_commerce_foundation::CommerceError,
     operation: &'static str,
 ) -> ServerFnError {
-    use rustok_commerce_foundation::CommerceError;
-
-    let (message, code, retryable) = match &error {
-        CommerceError::Database(_) => (
-            "Pricing data is temporarily unavailable",
-            "PRICING_TEMPORARILY_UNAVAILABLE",
-            true,
-        ),
-        CommerceError::Validation(_)
-        | CommerceError::InvalidPrice(_)
-        | CommerceError::InvalidOptionCombination => (
-            "Pricing request is invalid",
-            "PRICING_REQUEST_INVALID",
-            false,
-        ),
-        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => (
-            "Pricing resource was not found",
-            "PRICING_RESOURCE_NOT_FOUND",
-            false,
-        ),
-        CommerceError::DuplicateHandle { .. }
-        | CommerceError::DuplicateSku(_)
-        | CommerceError::InsufficientInventory { .. }
-        | CommerceError::ShippingProfileNotFound(_)
-        | CommerceError::DuplicateShippingProfileSlug(_)
-        | CommerceError::NoVariants
-        | CommerceError::CannotDeletePublished
-        | CommerceError::Rich(_)
-        | CommerceError::Core(_) => (
-            "Pricing operation could not be completed safely",
-            "PRICING_OPERATION_FAILED",
-            false,
-        ),
-    };
-    let correlation_id = uuid::Uuid::new_v4();
-    tracing::error!(
-        error = ?error,
+    let public = rustok_pricing::map_pricing_service_error(
+        &error,
         operation,
-        public_code = code,
-        retryable,
-        boundary = "product_storefront_native_pricing",
-        %correlation_id,
-        "pricing service operation failed"
+        "product_storefront_native_pricing",
     );
     ServerFnError::new(format!(
-        "{message} (code: {code}; reference: {correlation_id})"
+        "{} (code: {}; reference: {})",
+        public.message, public.code, public.correlation_id
     ))
 }
 
@@ -362,6 +348,11 @@ async fn storefront_catalog_search_options_native(
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(map_product_internal_error)?;
+        require_request_context(
+            "storefront_catalog_search_options",
+            "product_storefront_native_server",
+        )
+        .await?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(|_| map_product_internal_error())?;
@@ -435,24 +426,23 @@ async fn storefront_products_native(
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(map_product_internal_error)?;
         let db = runtime_ctx.db_clone();
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .ok();
+        let request_context =
+            require_request_context("storefront_products", "product_storefront_native_server")
+                .await?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(|_| map_product_internal_error())?;
         let requested_locale = resolve_requested_locale(
             locale,
-            request_context.as_ref().map(|ctx| ctx.locale.as_str()),
+            Some(request_context.locale.as_str()),
             tenant.default_locale.as_str(),
         );
-        let public_channel_slug = request_context
-            .as_ref()
-            .and_then(|ctx| normalize_public_channel_slug(ctx.channel_slug.as_deref()));
+        let public_channel_slug =
+            normalize_public_channel_slug(request_context.channel_slug.as_deref());
         let selected_channel_id = sanitize_uuid_string(channel_id)
             .as_deref()
             .and_then(|value| Uuid::parse_str(value).ok())
-            .or_else(|| request_context.as_ref().and_then(|ctx| ctx.channel_id));
+            .or(request_context.channel_id);
         let selected_channel_slug =
             sanitize_channel_slug(channel_slug).or_else(|| public_channel_slug.clone());
 

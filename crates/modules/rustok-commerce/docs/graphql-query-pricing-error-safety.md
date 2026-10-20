@@ -89,3 +89,15 @@ cargo check -p rustok-pricing --lib
 ```
 
 No tests, Node verifiers, Cargo commands, formatting, mounted GraphQL scenarios, workflows, or CI were executed.
+
+
+## Nested owner classification continuation (2026-10-18)
+
+Pricing now owns exhaustive nested Core/Rich classification; see the
+[owner contract](../../rustok-pricing/docs/pricing-owner-port-error-safety.md#nested-error-and-public-consumer-continuation-2026-10-18).
+This facade keeps query-specific static messages and existing optional-not-found behavior.
+Remaining failures preserve `error.retryable` instead of suppressing it for domain kinds;
+Unavailable/Timeout remain retryable even if an owner flag is false. Successful DTOs and
+owner delegation are unchanged. The source guard now checks the actual `query_impl` module
+and its scoped Pricing alias, not retired textual `include!` wiring. Standalone source
+verification only; no tests, compilation, or runtime execution for this continuation.

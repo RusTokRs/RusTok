@@ -19,6 +19,8 @@ Documentation in `docs/` describes the platform as a whole.
 Local documents for applications and crates live in `apps/*/docs/`,
 `crates/{libs,modules,ui,utils,workers}/*/docs/` and `README.md` next to the code.
 
+Current bounded continuation: [Commerce storefront Product HTTP policy](../crates/modules/rustok-commerce/docs/public-port-error-safety.md#storefront-product-http-policy-continuation-2026-10-19) — intentional Forbidden/Conflict 403/409 migration, bounded diagnostics and opaque owner-call correlations; source-only, no runtime/readiness promotion.
+
 ## How to Use the Map
 
 1. Open the platform overview and the relevant architecture section.
@@ -122,6 +124,7 @@ from complete operation safety and retention through serving cutover.
 - [AI Capability Documentation](../crates/modules/rustok-ai/docs/README.md) — provider-neutral RAG ingestion and Athanor data plane
 - [Content Module Documentation](../crates/modules/rustok-content/docs/README.md)
 - [Cart Module Documentation](../crates/modules/rustok-cart/docs/README.md)
+- [Product image Media retention workflow](../crates/modules/rustok-product/docs/media-reference-retention.md) — accepted owner ordering, durable release queue, bounded backfill and explicit unexecuted runtime gates.
 - [Media Module Documentation](../crates/modules/rustok-media/docs/README.md)
 - [Order Module Documentation](../crates/modules/rustok-order/docs/README.md)
 - [Pricing Persistence Documentation](../crates/modules/rustok-pricing-persistence/README.md)

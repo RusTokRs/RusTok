@@ -36,10 +36,10 @@ use crate::core::{
 use crate::model::{
     BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategorySummary,
     CategoryAttributeGroupDraft, ProductAdminBootstrap, ProductAttributeSchemaGroupDraft,
-    ProductAttributeSchemaSummary, ProductAttributeSummary, ProductAttributeValueItem,
-    ProductDetail, ProductEffectiveForm, ProductEffectiveFormAttribute, ProductImageDraft,
-    ProductPricingDetail, SetCategorySchemaModeDraft, SetVariantAxesDraft, UpdateProductImageDraft,
-    VariantAxisDraft, VariantDraft, VariantPriceDraft,
+    ProductAttributeSchemaSummary, ProductAttributeSummary, ProductDetail, ProductEffectiveForm,
+    ProductEffectiveFormAttribute, ProductImageDraft, ProductPricingDetail,
+    SetCategorySchemaModeDraft, SetVariantAxesDraft, UpdateProductImageDraft, VariantAxisDraft,
+    VariantDraft, VariantPriceDraft,
 };
 use crate::transport;
 
@@ -376,7 +376,7 @@ pub fn ProductAdmin() -> impl IntoView {
     });
     Effect::new(move |_| {
         if let Some(Ok(values)) = attribute_values.get() {
-            attribute_editor_state.set(ProductAttributeEditorState::from_values(values));
+            attribute_editor_state.update(|state| state.refresh_values(values));
         }
     });
     let selected_pricing = local_resource(
@@ -577,7 +577,7 @@ pub fn ProductAdmin() -> impl IntoView {
             bootstrap.get_untracked().and_then(Result::ok).as_ref(),
         );
 
-        let command = match command {
+        let mut command = match command {
             Ok(command) => command,
             Err(err) => {
                 set_error.set(Some(err.message(submit_ui_locale.as_deref())));
@@ -606,13 +606,20 @@ pub fn ProductAdmin() -> impl IntoView {
             }
         };
 
+        command.draft.attribute_values = if attribute_patches.is_empty() {
+            Vec::new()
+        } else {
+            vec![crate::model::ProductAttributeValueBatchDraft {
+                locale: command.draft.locale.clone(),
+                patches: attribute_patches,
+            }]
+        };
+
         set_busy.set(true);
         set_error.set(None);
 
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
-        let attribute_tenant_id = command.tenant_id.clone();
-        let attribute_actor_id = command.actor_id.clone();
 
         let error_copy_for_submit = error_copy_for_submit_base.clone();
         spawn_local(async move {
@@ -643,22 +650,8 @@ pub fn ProductAdmin() -> impl IntoView {
 
             match result {
                 Ok(product) => {
+                    attribute_editor_state.update(|state| state.acknowledge());
                     let product_id = product.id.clone();
-                    let attribute_result = if attribute_patches.is_empty() {
-                        Ok(Vec::new())
-                    } else {
-                        transport::save_product_attribute_values(
-                            token_value,
-                            tenant_value,
-                            attribute_tenant_id,
-                            attribute_actor_id,
-                            product_id.clone(),
-                            submit_locale.clone(),
-                            attribute_patches,
-                        )
-                        .await
-                        .map_err(|error| error.to_string())
-                    };
                     apply_product(
                         &product,
                         Some(submit_locale.as_str()),
@@ -680,14 +673,6 @@ pub fn ProductAdmin() -> impl IntoView {
                         set_inventory_quantity,
                         set_publish_now,
                     );
-                    match attribute_result {
-                        Ok(values) if !values.is_empty() => attribute_editor_state
-                            .set(ProductAttributeEditorState::from_values(values)),
-                        Ok(_) => {}
-                        Err(detail) => {
-                            set_error.set(Some(error_copy_for_submit.save_product_failure(detail)))
-                        }
-                    }
                     set_refresh_nonce.update(|value| *value += 1);
                     submit_query_writer
                         .apply_query_intent(product_admin_saved_product_query_intent(product_id));
@@ -728,7 +713,7 @@ pub fn ProductAdmin() -> impl IntoView {
             .await
             {
                 Ok(values) => {
-                    attribute_editor_state.set(ProductAttributeEditorState::from_values(values));
+                    attribute_editor_state.update(|state| state.refresh_values(values));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => set_error.set(Some(error_copy.save_product_failure(err))),
@@ -2087,10 +2072,8 @@ fn ProductVariantsPanel(
                                     let var_id = v_id_save.clone();
                                     let prod_id = p_id_save.clone();
 
-                                    let draft = VariantDraft {
-                                        sku: text_or_none(edit_sku.get_untracked()),
-                                        barcode: None,
-                                        shipping_profile_slug: None,
+                                    let draft = crate::model::VariantUpdateDraft {
+                                        sku: crate::model::VariantUpdateDraft::edited_text(edit_sku.get_untracked()),
                                         axis_values: Vec::new(),
                                         prices: vec![VariantPriceDraft {
                                             currency_code: default_curr_save.clone(),
@@ -2099,6 +2082,7 @@ fn ProductVariantsPanel(
                                         }],
                                         inventory_quantity: Some(edit_stock.get_untracked()),
                                         inventory_policy: None,
+                                        ..Default::default()
                                     };
 
                                     set_busy.set(true);
@@ -2620,14 +2604,17 @@ fn ProductMediaPanel(
 
 /// Mounted editor section that renders the product's effective typed schema.
 ///
-/// The section loads the effective form and the saved values through the
-/// canonical transport facade, renders one typed field per schema attribute
-/// (grouped, disabled attributes excluded), persists only dirty patches, and
-/// keeps detached values visible with an explicit clear action.
+/// Fields edit the parent document draft; only its catalog save commits values.
+/// Saved values load independently of category changes so changing the candidate
+/// category cannot reset dirty fields. Detached cleanup remains an explicit command.
 #[component]
-pub fn ProductAttributeValuesSection(
-    product_id: String,
+pub(crate) fn ProductAttributeValuesSection(
+    product_id: Option<String>,
     locale: Option<String>,
+    effective_form: LocalResource<Result<Option<ProductEffectiveForm>, String>>,
+    editor_state: RwSignal<ProductAttributeEditorState>,
+    owner_busy: ReadSignal<bool>,
+    owner_refresh_nonce: ReadSignal<u64>,
     on_saved: Callback<()>,
 ) -> impl IntoView {
     let token = use_token();
@@ -2649,43 +2636,31 @@ pub fn ProductAttributeValuesSection(
     let section_copy = build_product_attribute_values_section_copy(locale.as_deref());
     let section_title = section_copy.title.clone();
     let section_subtitle = section_copy.subtitle.clone();
-    let section_save_label = section_copy.save.clone();
-    let section_saving_label = section_copy.saving.clone();
-    let section_saved_label = section_copy.saved.clone();
-    let section_nothing_dirty = section_copy.nothing_dirty.clone();
     let section_missing_option = section_copy.missing_option.clone();
     let error_copy = build_product_admin_error_copy(locale.as_deref());
 
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
-    let (notice, set_notice) = signal(Option::<String>::None);
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
-    let editor_state = RwSignal::new(ProductAttributeEditorState::default());
 
     let loaded_product_id = product_id.clone();
     let loaded_locale = locale.clone();
     let detached_locale = locale.clone();
-    let form_resource = LocalResource::new(move || {
+    let values_resource = LocalResource::new(move || {
         let tok = token.get();
         let ten = tenant.get();
         let pid = loaded_product_id.clone();
         let loc = loaded_locale.clone().unwrap_or_default();
         let _ = refresh_nonce.get();
+        let _ = owner_refresh_nonce.get();
         async move {
+            let Some(pid) = pid else {
+                return Ok(Vec::new());
+            };
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|failure| failure.to_string())?;
-            let form = catalog_transport::fetch_effective_product_form(
-                tok.clone(),
-                ten.clone(),
-                bootstrap.current_tenant.id.clone(),
-                Some(pid.clone()),
-                None,
-                loc.clone(),
-            )
-            .await
-            .map_err(|failure| failure.to_string())?;
-            let values = catalog_transport::fetch_product_attribute_values(
+            catalog_transport::fetch_product_attribute_values(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,
@@ -2693,95 +2668,28 @@ pub fn ProductAttributeValuesSection(
                 loc,
             )
             .await
-            .map_err(|failure| failure.to_string())?;
-            Ok::<(Option<ProductEffectiveForm>, Vec<ProductAttributeValueItem>), String>((
-                form, values,
-            ))
+            .map_err(|failure| failure.to_string())
         }
     });
-
     Effect::new(move |_| {
-        if let Some(Ok((_, values))) = form_resource.get() {
-            editor_state.set(ProductAttributeEditorState::from_values(values));
+        if let Some(Ok(values)) = values_resource.get() {
+            editor_state.update(|state| state.refresh_values(values));
         }
     });
-
-    let save_product_id = product_id.clone();
-    let save_locale = locale.clone();
-    let save_error_copy = error_copy.clone();
-    let on_save = move |_| {
-        let attribute_types = form_resource
-            .get_untracked()
-            .and_then(Result::ok)
-            .and_then(|(form, _)| form)
-            .map(|form| {
-                form.attributes
-                    .into_iter()
-                    .map(|attribute| (attribute.attribute_id, attribute.value_type))
-                    .collect::<std::collections::HashMap<_, _>>()
-            })
-            .unwrap_or_default();
-        let patches = match editor_state
-            .get_untracked()
-            .patches(save_locale.as_deref(), &attribute_types)
-        {
-            Ok(patches) => patches,
-            Err(message) => {
-                set_error.set(Some(message));
-                return;
-            }
-        };
-        if patches.is_empty() {
-            set_notice.set(Some(section_nothing_dirty.clone()));
-            return;
-        }
-
-        set_busy.set(true);
-        set_error.set(None);
-        set_notice.set(None);
-
-        let tok = token.get_untracked();
-        let ten = tenant.get_untracked();
-        let pid = save_product_id.clone();
-        let loc = save_locale.clone().unwrap_or_default();
-        let saved_label = section_saved_label.clone();
-        let save_error_copy = save_error_copy.clone();
-        spawn_local(async move {
-            let result = async {
-                let bootstrap =
-                    catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await?;
-                catalog_transport::save_product_attribute_values(
-                    tok,
-                    ten,
-                    bootstrap.current_tenant.id,
-                    bootstrap.me.id,
-                    pid,
-                    loc,
-                    patches,
-                )
-                .await
-            }
-            .await;
-
-            set_busy.set(false);
-            match result {
-                Ok(values) => {
-                    editor_state.set(ProductAttributeEditorState::from_values(values));
-                    set_notice.set(Some(saved_label));
-                    set_refresh_nonce.update(|value| *value += 1);
-                    on_saved.run(());
-                }
-                Err(failure) => set_error.set(Some(save_error_copy.save_product_failure(failure))),
-            }
-        });
+    let form_resource = move || match (effective_form.get(), values_resource.get()) {
+        (Some(Ok(form)), Some(Ok(values))) => Some(Ok((form, values))),
+        (Some(Err(error)), _) | (_, Some(Err(error))) => Some(Err(error)),
+        _ => None,
     };
 
     let clear_product_id = product_id.clone();
     let clear_locale = locale.clone();
     let clear_error_copy = error_copy.clone();
     let on_clear_detached = Callback::new(move |_| {
-        let attribute_ids = form_resource
-            .get_untracked()
+        if owner_busy.get_untracked() || busy.get_untracked() {
+            return;
+        }
+        let attribute_ids = form_resource()
             .and_then(Result::ok)
             .map(|(_, values)| values)
             .unwrap_or_default()
@@ -2793,13 +2701,14 @@ pub fn ProductAttributeValuesSection(
             return;
         }
 
+        let Some(pid) = clear_product_id.clone() else {
+            return;
+        };
         set_busy.set(true);
         set_error.set(None);
-        set_notice.set(None);
 
         let tok = token.get_untracked();
         let ten = tenant.get_untracked();
-        let pid = clear_product_id.clone();
         let loc = clear_locale.clone().unwrap_or_default();
         let clear_error = clear_error_copy.clone();
         spawn_local(async move {
@@ -2822,7 +2731,7 @@ pub fn ProductAttributeValuesSection(
             set_busy.set(false);
             match result {
                 Ok(values) => {
-                    editor_state.set(ProductAttributeEditorState::from_values(values));
+                    editor_state.update(|state| state.refresh_values(values));
                     set_refresh_nonce.update(|value| *value += 1);
                     on_saved.run(());
                 }
@@ -2832,33 +2741,19 @@ pub fn ProductAttributeValuesSection(
     });
 
     let has_detached_values = move || {
-        form_resource
-            .get()
+        form_resource()
             .and_then(Result::ok)
             .map(|(_, values)| values.iter().any(|value| value.detached))
             .unwrap_or(false)
     };
 
     view! {
+        <fieldset disabled=move || busy.get() || owner_busy.get()>
         <section class="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div class="space-y-1">
                     <h3 class="text-sm font-semibold text-foreground">{section_title.clone()}</h3>
                     <p class="text-xs text-muted-foreground">{section_subtitle.clone()}</p>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button
-                        type="button"
-                        class="inline-flex h-9 items-center justify-center rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-                        disabled=move || busy.get()
-                        on:click=on_save
-                    >
-                        {move || if busy.get() {
-                            section_saving_label.clone()
-                        } else {
-                            section_save_label.clone()
-                        }}
-                    </button>
                 </div>
             </div>
 
@@ -2867,13 +2762,7 @@ pub fn ProductAttributeValuesSection(
                     {move || error.get().unwrap_or_default()}
                 </div>
             </Show>
-            <Show when=move || notice.get().is_some()>
-                <div class="rounded-xl border border-emerald-200 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900 dark:text-emerald-400">
-                    {move || notice.get().unwrap_or_default()}
-                </div>
-            </Show>
-
-            {move || match form_resource.get() {
+            {move || match form_resource() {
                 None => {
                     let loading = form_loading.clone();
                     view! { <p class="text-xs text-muted-foreground">{loading}</p> }.into_any()
@@ -2987,8 +2876,7 @@ pub fn ProductAttributeValuesSection(
                                     let detached_locale = detached_locale.clone();
                                     let form_detached_empty_label = form_detached_empty_label.clone();
                                     move || {
-                                        let values = form_resource
-                                            .get()
+                                        let values = form_resource()
                                             .and_then(Result::ok)
                                             .map(|(_, values)| {
                                                 build_product_detached_attribute_value_view_models(
@@ -3020,6 +2908,7 @@ pub fn ProductAttributeValuesSection(
                 }
             </Show>
         </section>
+        </fieldset>
     }.into_any()
 }
 

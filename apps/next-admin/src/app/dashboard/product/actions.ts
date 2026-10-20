@@ -14,6 +14,10 @@ import { auth } from '@/auth';
 import { graphqlRequest } from '@/shared/api/graphql';
 import {
   createProduct,
+  productWriteOutcome,
+  type ProductSavePayload,
+  type ProductWriteOutcome,
+  type ProductWriteScope,
   updateProductDetail,
   deleteProductDetail,
   createVariant,
@@ -22,7 +26,6 @@ import {
   addProductImage,
   deleteProductImage,
   reorderProductImages,
-  saveProductAttributeValues,
   setVariantAxes,
   getCategoryEffectiveForm,
   fetchProductRelations,
@@ -41,9 +44,7 @@ import {
   deleteBundle,
   addBundleItem,
   removeBundleItem,
-  type ProductTranslation,
   type ProductVariant,
-  type ProductAttributeValuePatch,
   type UpdateProductInput,
   type CreateVariantInput,
   type UpdateVariantInput,
@@ -61,11 +62,19 @@ import {
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-async function getAuthOpts() {
+async function getAuthOpts(expectedScope?: ProductWriteScope) {
   const session = await auth();
   const token = session?.user?.rustokToken ?? null;
   const tenantSlug = session?.user?.tenantSlug ?? null;
   const tenantId = session?.user?.tenantId ?? null;
+
+  if (
+    expectedScope &&
+    (expectedScope.tenantId !== tenantId ||
+      expectedScope.actorId !== session?.user?.id)
+  ) {
+    throw new Error('The Product editor authentication context changed');
+  }
 
   if (!token || !tenantSlug || !tenantId) {
     throw new Error('Sign in again to manage products.');
@@ -79,163 +88,164 @@ async function getAuthOpts() {
   };
 }
 
-export async function saveProductAction(payload: {
-  id?: string;
-  isNew: boolean;
-  translations: ProductTranslation[];
-  vendor?: string;
-  sellerId?: string;
-  productType?: string;
-  shippingProfileSlug?: string;
-  primaryCategoryId?: string | null;
-  tags: string[];
-  status?: string;
-  revision?: number | null;
-  initialVariant?: {
-    sku: string;
-    barcode: string;
-    priceAmount: number;
-    currencyCode: string;
-    compareAtAmount?: number | null;
-    inventoryQuantity: number;
-    inventoryPolicy: string;
-  };
-  attributePatches: ProductAttributeValuePatch[];
-  activeLocale: string;
-}): Promise<{ id: string; revision: number | null }> {
-  const opts = await getAuthOpts();
-
-  if (payload.isNew) {
-    const primaryTranslation = payload.translations[0];
-    if (!primaryTranslation) {
-      throw new Error('At least one translation with title is required.');
-    }
-
-    const created = await createProduct(opts, {
-      title: primaryTranslation.title,
-      handle: primaryTranslation.handle || undefined,
-      description: primaryTranslation.description || undefined,
-      locale: primaryTranslation.locale,
-      vendor: payload.vendor,
-      sellerId: payload.sellerId,
-      productType: payload.productType,
-      tags: payload.tags,
-      sku: payload.initialVariant?.sku,
-      priceAmount: payload.initialVariant?.priceAmount,
-      currencyCode: payload.initialVariant?.currencyCode,
-      inventoryQuantity: payload.initialVariant?.inventoryQuantity,
-      publish: payload.status === 'ACTIVE'
-    });
-
-    // Attribute values need the created product id, so they are written after
-    // creation. Attribute failure must not be swallowed: a draft product is
-    // rolled back so the operator can retry the form safely, while a published
-    // product is kept and reported as a partial success.
-    if (payload.attributePatches.length > 0 && created.id) {
-      try {
-        await saveProductAttributeValues(
-          opts,
-          created.id,
-          payload.activeLocale,
-          payload.attributePatches
-        );
-      } catch (err) {
-        const reason =
-          err instanceof Error ? err.message : 'unknown attribute error';
-
-        let rollbackSucceeded = false;
-        if (payload.status !== 'ACTIVE') {
-          try {
-            await deleteProductDetail(opts, created.id);
-            rollbackSucceeded = true;
-          } catch (rollbackError) {
-            console.error(
-              'Failed to roll back product after attribute error:',
-              rollbackError
-            );
-          }
-        }
-
-        revalidatePath('/dashboard/product');
-        revalidatePath(`/dashboard/product/${created.id}`);
-
-        if (rollbackSucceeded) {
-          throw new Error(
-            `Product creation was rolled back because attribute values could not be saved: ${reason}. Nothing was saved — fix the values and save again.`
-          );
-        }
-
-        throw new Error(
-          `Product was created, but attribute values could not be saved: ${reason}. Open /dashboard/product/${created.id} to review the product and retry the attributes.`
-        );
-      }
-    }
-
-    revalidatePath('/dashboard/product');
-    return { id: created.id, revision: null };
-  } else {
-    if (!payload.id) {
-      throw new Error('Product ID is required for update.');
-    }
-
-    const updateInput: UpdateProductInput = {
-      translations: payload.translations.map((t) => ({
-        locale: t.locale,
-        title: t.title,
-        handle: t.handle || null,
-        description: t.description || null,
-        metaTitle: t.metaTitle || null,
-        metaDescription: t.metaDescription || null
-      })),
-      vendor: payload.vendor || null,
-      sellerId: payload.sellerId || null,
-      productType: payload.productType || null,
-      shippingProfileSlug: payload.shippingProfileSlug || null,
-      primaryCategoryId: payload.primaryCategoryId,
-      tags: payload.tags,
-      status: payload.status || null,
-      // The document revision the editor loaded; the owner refuses a save that would
-      // overwrite a concurrent edit instead of silently losing it.
-      revision: payload.revision ?? null
-    };
-
-    const updated = await updateProductDetail(opts, payload.id, updateInput);
-
-    // Product details are already persisted at this point: attribute values are
-    // saved afterwards because their effective schema depends on the category
-    // assigned above. Surface a partial-success error instead of claiming the
-    // whole save failed, and keep the paths revalidated so the saved product is
-    // visible for a retry.
-    if (payload.attributePatches.length > 0) {
-      try {
-        await saveProductAttributeValues(
-          opts,
-          payload.id,
-          payload.activeLocale,
-          payload.attributePatches
-        );
-      } catch (err) {
-        revalidatePath('/dashboard/product');
-        revalidatePath(`/dashboard/product/${payload.id}`);
-        const reason =
-          err instanceof Error ? err.message : 'unknown attribute error';
-        throw new Error(
-          `Product details were saved, but attribute values could not be saved: ${reason}. Fix the issue and save again to retry the attributes.`
-        );
-      }
-    }
-
-    revalidatePath('/dashboard/product');
-    revalidatePath(`/dashboard/product/${payload.id}`);
-    return { id: updated.id, revision: updated.revision ?? null };
+async function getProductWriteAuthOpts(
+  scope: ProductWriteScope,
+  idempotencyKey: string
+) {
+  if (
+    typeof idempotencyKey !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      idempotencyKey
+    )
+  ) {
+    throw new Error('Product editor attempt identity is missing or invalid');
   }
+  if (!scope?.tenantId || !scope?.actorId)
+    throw new Error('Product editor context is missing');
+  return getAuthOpts(scope);
 }
 
-export async function deleteProductAction(id: string): Promise<boolean> {
-  const opts = await getAuthOpts();
-  const success = await deleteProductDetail(opts, id);
-  revalidatePath('/dashboard/product');
-  return success;
+export async function saveProductAction(
+  payload: ProductSavePayload,
+  idempotencyKey: string
+): Promise<ProductWriteOutcome> {
+  const outcome = await productWriteOutcome(async () => {
+    const opts = await getProductWriteAuthOpts(payload.scope, idempotencyKey);
+
+    if (payload.isNew) {
+      const primaryTranslation = payload.translations[0];
+      if (!primaryTranslation) {
+        throw new Error('At least one translation with title is required.');
+      }
+
+      const created = await createProduct(
+        opts,
+        {
+          title: primaryTranslation.title,
+          translations: payload.translations,
+          primaryCategoryId: payload.primaryCategoryId,
+          shippingProfileSlug: payload.shippingProfileSlug,
+          handle: primaryTranslation.handle || undefined,
+          description: primaryTranslation.description || undefined,
+          locale: primaryTranslation.locale,
+          vendor: payload.vendor,
+          sellerId: payload.sellerId,
+          productType: payload.productType,
+          tags: payload.tags,
+          sku: payload.initialVariant?.sku,
+          barcode: payload.initialVariant?.barcode,
+          compareAtAmount: payload.initialVariant?.compareAtAmount,
+          inventoryPolicy: payload.initialVariant?.inventoryPolicy,
+          priceAmount: payload.initialVariant?.priceAmount,
+          currencyCode: payload.initialVariant?.currencyCode,
+          inventoryQuantity: payload.initialVariant?.inventoryQuantity,
+          attributeValues: payload.attributePatches.length
+            ? [
+                {
+                  locale: payload.activeLocale,
+                  patches: payload.attributePatches
+                }
+              ]
+            : [],
+          publish: payload.status === 'ACTIVE'
+        },
+        idempotencyKey
+      );
+
+      return { id: created.id, revision: created.revision };
+    } else {
+      if (!payload.id) {
+        throw new Error('Product ID is required for update.');
+      }
+
+      const updateInput: UpdateProductInput = {
+        attributeValues: payload.attributePatches.length
+          ? [
+              {
+                locale: payload.activeLocale,
+                patches: payload.attributePatches
+              }
+            ]
+          : [],
+        translations: payload.translations.map((t) => ({
+          locale: t.locale,
+          title: t.title,
+          handle: t.handle || null,
+          description: t.description || null,
+          metaTitle: t.metaTitle || null,
+          metaDescription: t.metaDescription || null
+        })),
+        vendor: payload.vendor || null,
+        sellerId: payload.sellerId || null,
+        productType: payload.productType || null,
+        shippingProfileSlug: payload.shippingProfileSlug || null,
+        primaryCategoryId: payload.primaryCategoryId,
+        tags: payload.tags,
+        status: payload.status || null,
+        // The document revision the editor loaded; the owner refuses a save that would
+        // overwrite a concurrent edit instead of silently losing it.
+        revision: payload.revision ?? null
+      };
+
+      const updated = await updateProductDetail(
+        opts,
+        payload.id,
+        updateInput,
+        idempotencyKey
+      );
+
+      return { id: updated.id, revision: updated.revision ?? null };
+    }
+  });
+  await refreshProductAfterWrite(outcome);
+  return outcome;
+}
+
+export async function changeProductStatusAction(
+  id: string,
+  status: string,
+  revision: number | null,
+  idempotencyKey: string,
+  scope: ProductWriteScope
+): Promise<ProductWriteOutcome> {
+  const outcome = await productWriteOutcome(async () => {
+    const opts = await getProductWriteAuthOpts(scope, idempotencyKey);
+    const updated = await updateProductDetail(
+      opts,
+      id,
+      { status, revision },
+      idempotencyKey
+    );
+    return { id: updated.id, revision: updated.revision ?? null };
+  });
+  await refreshProductAfterWrite(outcome);
+  return outcome;
+}
+
+export async function deleteProductAction(
+  id: string,
+  idempotencyKey: string,
+  scope: ProductWriteScope
+): Promise<ProductWriteOutcome> {
+  const outcome = await productWriteOutcome(async () => {
+    const opts = await getProductWriteAuthOpts(scope, idempotencyKey);
+    const success = await deleteProductDetail(opts, id, idempotencyKey);
+    if (!success) throw new Error('Product deletion was not acknowledged');
+    return { id, revision: null };
+  });
+  await refreshProductAfterWrite(outcome);
+  return outcome;
+}
+
+async function refreshProductAfterWrite(outcome: ProductWriteOutcome) {
+  if (outcome.status !== 'confirmed') return;
+  try {
+    revalidatePath('/dashboard/product');
+    revalidatePath(`/dashboard/product/${outcome.value.id}`);
+  } catch {
+    // Cache invalidation is not the owner commit. Keep its acknowledged success.
+    // The next page read can refresh independently; never mint another write.
+  }
 }
 
 export async function addVariantAction(
@@ -263,12 +273,15 @@ export async function addVariantAction(
 
 export async function updateVariantAction(
   id: string,
-  variant: Partial<ProductVariant>
+  variant: UpdateVariantInput
 ): Promise<ProductVariant> {
   const opts = await getAuthOpts();
   const input: UpdateVariantInput = {
     sku: variant.sku,
     barcode: variant.barcode,
+    shippingProfileSlug: variant.shippingProfileSlug,
+    weight: variant.weight,
+    weightUnit: variant.weightUnit,
     inventoryQuantity: variant.inventoryQuantity,
     inventoryPolicy: variant.inventoryPolicy,
     prices: variant.prices?.map((p) => ({

@@ -1,17 +1,17 @@
-import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import test from "node:test";
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import test from 'node:test';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "../..");
-const verifier = path.join(here, "verify-product-lifecycle-events.mjs");
+const repoRoot = path.resolve(here, '../..');
+const verifier = path.join(here, 'verify-product-lifecycle-events.mjs');
 
 const canonicalFiles = {
-  "crates/libs/rustok-events/src/types/domain_event.rs": `pub enum DomainEvent {
+  'crates/libs/rustok-events/src/types/domain_event.rs': `pub enum DomainEvent {
     ProductPublished {
         product_id: Uuid,
     },
@@ -54,7 +54,7 @@ impl DomainEvent {
     }
 }
 `,
-  "crates/libs/rustok-events/src/types/validation.rs": `fn validate(&self) -> Result<(), String> {
+  'crates/libs/rustok-events/src/types/validation.rs': `fn validate(&self) -> Result<(), String> {
     match self {
         Self::ProductPublished { product_id }
             | Self::ProductUnpublished { product_id }
@@ -66,7 +66,7 @@ impl DomainEvent {
     }
 }
 `,
-  "crates/libs/rustok-events/src/schema.rs": `const PRODUCT_ID_FIELDS: &[FieldSchema] = &[field!("product_id", "uuid")];
+  'crates/libs/rustok-events/src/schema.rs': `const PRODUCT_ID_FIELDS: &[FieldSchema] = &[field!("product_id", "uuid")];
 
 pub const EVENT_SCHEMAS: &[EventSchema] = &[
     EventSchema {
@@ -89,7 +89,7 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
     },
 ];
 `,
-  "crates/libs/rustok-events/tests/canonical_contracts.rs": `fn sample_events() -> Vec<DomainEvent> {
+  'crates/libs/rustok-events/tests/canonical_contracts.rs': `fn sample_events() -> Vec<DomainEvent> {
     vec![
         DomainEvent::ProductPublished { product_id: id(26) },
         DomainEvent::ProductUnpublished { product_id: id(1013) },
@@ -97,7 +97,7 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
     ]
 }
 `,
-  "crates/modules/rustok-product/src/services/catalog/commands.rs": `pub async fn unpublish_product(tenant_id: Uuid, actor_id: Uuid, product_id: Uuid) {
+  'crates/modules/rustok-product/src/services/catalog/commands.rs': `pub async fn unpublish_product(tenant_id: Uuid, actor_id: Uuid, product_id: Uuid) {
     let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
     product_active.published_at = Set(None);
     txn.publish(
@@ -151,7 +151,7 @@ pub async fn update_product(tenant_id: Uuid, actor_id: Uuid, product_id: Uuid) {
 
 pub async fn delete_product(tenant_id: Uuid, actor_id: Uuid, product_id: Uuid) {}
 `,
-  "crates/modules/rustok-product/src/catalog_command_port.rs": `pub trait ProductCatalogCommandPort {
+  'crates/modules/rustok-product/src/catalog_command_port.rs': `pub trait ProductCatalogCommandPort {
     async fn publish_product(
         &self,
         context: PortContext,
@@ -177,17 +177,13 @@ impl ProductCatalogCommandPort for CatalogService {
     }
 }
 `,
-  "crates/modules/rustok-product/src/media_asset_read_port.rs": `impl ProductCatalogCommandPort for ProductMediaValidatedCommandPort {
-    async fn archive_product(
-        &self,
-        context: PortContext,
-        product_id: Uuid,
-    ) -> Result<ProductResponse, PortError> {
-        self.inner.archive_product(context, product_id).await
+  'crates/modules/rustok-product/src/runtime.rs': `impl ProductCatalogCommandRuntime {
+    pub fn with_media_reference_port(mut self) {
+        self.command_port = Arc::new(catalog.clone());
     }
 }
 `,
-  "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs": `impl CommerceCatalogMutation {
+  'crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs': `impl CommerceCatalogMutation {
     async fn unpublish_product(
         &self,
         ctx: &Context<'_>,
@@ -221,7 +217,7 @@ impl ProductCatalogCommandPort for CatalogService {
     }
 }
 `,
-  "crates/modules/rustok-commerce/src/controllers/products.rs": `pub async fn archive_product(
+  'crates/modules/rustok-commerce/src/controllers/products.rs': `pub async fn archive_product(
     State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
@@ -243,7 +239,7 @@ impl ProductCatalogCommandPort for CatalogService {
     Ok(Json(product))
 }
 `,
-  "crates/modules/rustok-commerce/src/controllers/admin/products.rs": `/// Archive admin ecommerce product
+  'crates/modules/rustok-commerce/src/controllers/admin/products.rs': `/// Archive admin ecommerce product
 #[utoipa::path(
     post,
     path = "/admin/products/{id}/archive",
@@ -261,19 +257,19 @@ pub async fn archive_product(
         .await
 }
 `,
-  "crates/modules/rustok-commerce/src/controllers/admin/mod.rs": `.route(
+  'crates/modules/rustok-commerce/src/controllers/admin/mod.rs': `.route(
     "/products/{id}/archive",
     axum::routing::post(products::archive_product),
 )
 `,
-  "crates/modules/rustok-commerce/src/openapi.rs": `pub fn admin_paths() -> Vec<utoipa::openapi::path::PathItem> {
+  'crates/modules/rustok-commerce/src/openapi.rs': `pub fn admin_paths() -> Vec<utoipa::openapi::path::PathItem> {
     vec![
         crate::controllers::admin::unpublish_product,
         crate::controllers::admin::archive_product,
     ]
 }
 `,
-  "crates/modules/rustok-search/src/ingestion.rs": `impl EventHandler for SearchIngestion {
+  'crates/modules/rustok-search/src/ingestion.rs': `impl EventHandler for SearchIngestion {
     fn handles(&self, event: &DomainEvent) -> bool {
         match event {
             DomainEvent::ProductCreated { .. }
@@ -308,7 +304,7 @@ fn project_step(event: &DomainEvent) -> &'static str {
     }
 }
 `,
-  "crates/modules/rustok-product/src/services/index_refresh.rs": `pub(crate) fn product_locale_refresh_target(event: &DomainEvent) -> Option<Uuid> {
+  'crates/modules/rustok-product/src/services/index_refresh.rs': `pub(crate) fn product_locale_refresh_target(event: &DomainEvent) -> Option<Uuid> {
     match event {
         DomainEvent::ProductCreated { product_id }
         | DomainEvent::ProductUpdated { product_id }
@@ -321,7 +317,7 @@ fn project_step(event: &DomainEvent) -> &'static str {
 
 /// Captures the canonical live and retained-delete state after one Product owner command.
 `,
-  "crates/modules/rustok-product/src/services/index_refresh_publication.rs": `let root_product_id = match &envelope.event {
+  'crates/modules/rustok-product/src/services/index_refresh_publication.rs': `let root_product_id = match &envelope.event {
     DomainEvent::ProductCreated { product_id }
     | DomainEvent::ProductUpdated { product_id }
     | DomainEvent::ProductPublished { product_id }
@@ -331,18 +327,20 @@ fn project_step(event: &DomainEvent) -> &'static str {
 };
 if root_product_id != product_id {
 `,
-  "crates/modules/rustok-product/docs/product-unpublish-archive-events.md": `# Product unpublish and archive lifecycle events
+  'crates/modules/rustok-product/docs/product-unpublish-archive-events.md': `# Product unpublish and archive lifecycle events
 
 \`product.unpublished\` clears storefront visibility, \`product.archived\` retires the product.
 
 cargo run --locked -p rustok-events --example event_contract_digests -- --write
 `,
-  "docs/audits/product-module-engineering-audit-2026-10-07.md": `| \`PROD-EVENT-001\` | Устранено | Добавлен \`ProductUnpublished\` и команда архивации |
-`,
+  'docs/audits/product-module-engineering-audit-2026-10-07.md': `| \`PROD-EVENT-001\` | Устранено | Добавлен \`ProductUnpublished\` и команда архивации |
+`
 };
 
 const writeFixture = (overrides = {}) => {
-  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "verify-lifecycle-events-"));
+  const fixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'verify-lifecycle-events-')
+  );
   const files = { ...canonicalFiles, ...overrides };
   for (const [relative, content] of Object.entries(files)) {
     if (content === null) continue;
@@ -358,108 +356,119 @@ const runVerifier = (fixtureRoot) => {
     const stdout = execFileSync(process.execPath, [verifier], {
       cwd: repoRoot,
       env: { ...process.env, RUSTOK_VERIFY_REPO_ROOT: fixtureRoot },
-      encoding: "utf8",
+      encoding: 'utf8'
     });
     return { status: 0, output: stdout };
   } catch (error) {
-    return { status: error.status ?? 1, output: `${error.stdout ?? ""}${error.stderr ?? ""}` };
+    return {
+      status: error.status ?? 1,
+      output: `${error.stdout ?? ''}${error.stderr ?? ''}`
+    };
   }
 };
 
-test("canonical lifecycle event contract passes", () => {
+test('canonical lifecycle event contract passes', () => {
   const fixtureRoot = writeFixture();
   const result = runVerifier(fixtureRoot);
   assert.equal(result.status, 0, result.output);
   assert.match(result.output, /withdrawal and retirement are published/);
 });
 
-test("a dropped ProductUnpublished variant fails the contract", () => {
+test('a dropped ProductUnpublished variant fails the contract', () => {
   const fixtureRoot = writeFixture({
-    "crates/libs/rustok-events/src/types/domain_event.rs": canonicalFiles[
-      "crates/libs/rustok-events/src/types/domain_event.rs"
+    'crates/libs/rustok-events/src/types/domain_event.rs': canonicalFiles[
+      'crates/libs/rustok-events/src/types/domain_event.rs'
     ].replace(
       `    ProductUnpublished {
         product_id: Uuid,
     },
 `,
-      "",
-    ),
+      ''
+    )
   });
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);
   assert.match(result.output, /DomainEvent variant: missing/);
 });
 
-test("unpublish publishing the generic updated event fails the contract", () => {
+test('unpublish publishing the generic updated event fails the contract', () => {
   const fixtureRoot = writeFixture({
-    "crates/modules/rustok-product/src/services/catalog/commands.rs": canonicalFiles[
-      "crates/modules/rustok-product/src/services/catalog/commands.rs"
-    ].replace(
-      "DomainEvent::ProductUnpublished { product_id },",
-      "DomainEvent::ProductUpdated { product_id },",
-    ),
+    'crates/modules/rustok-product/src/services/catalog/commands.rs':
+      canonicalFiles[
+        'crates/modules/rustok-product/src/services/catalog/commands.rs'
+      ].replace(
+        'DomainEvent::ProductUnpublished { product_id },',
+        'DomainEvent::ProductUpdated { product_id },'
+      )
   });
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);
-  assert.match(result.output, /unpublish owner command: forbidden DomainEvent::ProductUpdated/);
+  assert.match(
+    result.output,
+    /unpublish owner command: forbidden DomainEvent::ProductUpdated/
+  );
 });
 
-test("archive missing from the owner port fails the contract", () => {
+test('archive missing from the owner port fails the contract', () => {
   const fixtureRoot = writeFixture({
-    "crates/modules/rustok-product/src/catalog_command_port.rs": canonicalFiles[
-      "crates/modules/rustok-product/src/catalog_command_port.rs"
+    'crates/modules/rustok-product/src/catalog_command_port.rs': canonicalFiles[
+      'crates/modules/rustok-product/src/catalog_command_port.rs'
     ].replace(
       `    async fn archive_product(
         &self,
         context: PortContext,
         product_id: Uuid,
     ) -> Result<ProductResponse, PortError>;`,
-      "",
-    ),
+      ''
+    )
   });
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);
   assert.match(result.output, /command port trait: missing/);
 });
 
-test("archive GraphQL mutation without an idempotency key fails the contract", () => {
+test('archive GraphQL mutation without an idempotency key fails the contract', () => {
   const fixtureRoot = writeFixture({
-    "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs": canonicalFiles[
-      "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs"
-    ].replace(
-      `    async fn archive_product(
+    'crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs':
+      canonicalFiles[
+        'crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs'
+      ].replace(
+        `    async fn archive_product(
         &self,
         ctx: &Context<'_>,
         idempotency_key: String,`,
-      `    async fn archive_product(
+        `    async fn archive_product(
         &self,
-        ctx: &Context<'_>,`,
-    ),
+        ctx: &Context<'_>,`
+      )
   });
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);
-  assert.match(result.output, /archive GraphQL mutation: missing idempotency_key: String/);
+  assert.match(
+    result.output,
+    /archive GraphQL mutation: missing idempotency_key: String/
+  );
 });
 
-test("a search consumer that ignores the new events fails the contract", () => {
+test('a search consumer that ignores the new events fails the contract', () => {
   const fixtureRoot = writeFixture({
-    "crates/modules/rustok-search/src/ingestion.rs": canonicalFiles[
-      "crates/modules/rustok-search/src/ingestion.rs"
+    'crates/modules/rustok-search/src/ingestion.rs': canonicalFiles[
+      'crates/modules/rustok-search/src/ingestion.rs'
     ].replace(
       `        | DomainEvent::ProductUnpublished { .. }
         | DomainEvent::ProductArchived { .. } => "upsert_product",`,
-      `        => "upsert_product",`,
-    ),
+      `        => "upsert_product",`
+    )
   });
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);
   assert.match(result.output, /search ingestion plan: missing/);
 });
 
-test("a lifecycle doc without the digest release gate fails the contract", () => {
+test('a lifecycle doc without the digest release gate fails the contract', () => {
   const fixtureRoot = writeFixture({
-    "crates/modules/rustok-product/docs/product-unpublish-archive-events.md":
-      "# Product unpublish and archive lifecycle events\n\n`product.unpublished` and `product.archived`.\n",
+    'crates/modules/rustok-product/docs/product-unpublish-archive-events.md':
+      '# Product unpublish and archive lifecycle events\n\n`product.unpublished` and `product.archived`.\n'
   });
   const result = runVerifier(fixtureRoot);
   assert.notEqual(result.status, 0);

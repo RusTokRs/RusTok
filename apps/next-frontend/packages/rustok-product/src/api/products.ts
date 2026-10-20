@@ -15,7 +15,7 @@ import type {
   StorefrontCatalogFilter,
   StorefrontProductDetail,
   StorefrontProductListResponse,
-  StorefrontProductVariant,
+  StorefrontProductPricing,
 } from "./types";
 
 export type ProductGraphqlExecutor = typeof storefrontGraphql;
@@ -371,13 +371,13 @@ export async function fetchStorefrontProductPricing(
   locale?: string,
   currencyCode?: string,
   tenantSlug?: string | null,
-): Promise<{ variants: StorefrontProductVariant[] } | null> {
+): Promise<{ variants: StorefrontProductPricing[] } | null> {
   const cleanHandle = handle.trim();
   if (!cleanHandle) return null;
 
   try {
     const response = await graphql<{
-      storefrontPricingProduct: { variants: StorefrontProductVariant[] } | null;
+      storefrontPricingProduct: { variants: StorefrontProductPricing[] } | null;
     }, {
       locale?: string;
       handle: string;

@@ -1637,9 +1637,10 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
                 "Product state conflicts with the requested Category Form translation mutation",
             )
         }
-        CommerceError::Core(_) => PortError::invariant_violation(
-            "product.category_form_translation_owner_invariant",
-            "Product Category Form translation state is invalid",
+        CommerceError::Core(error) => crate::error::core_port_error(&error),
+        CommerceError::Conflict(_) => PortError::conflict(
+            "product.conflict",
+            "product request conflicts with the current state",
         ),
     }
 }

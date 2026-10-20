@@ -138,11 +138,16 @@ pub fn build_shipping_selection_plan(
     let mut selections = Vec::with_capacity(request.delivery_groups.len());
 
     for group in &request.delivery_groups {
-        let group_matches = group.shipping_profile_slug == request.shipping_profile_slug
+        let group_matches = group.shipping_profile_slug.trim() == request.shipping_profile_slug.trim()
             && if let Some(seller_id) = request.seller_id.as_deref() {
-                group.seller_id.as_deref() == Some(seller_id)
+                group.seller_id.as_deref().map(str::trim) == Some(seller_id.trim())
             } else {
-                group.seller_id.is_none()
+                group
+                    .seller_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .is_none()
             };
         let selected_shipping_option_id = if group_matches {
             matched_target = true;
@@ -150,7 +155,7 @@ pub fn build_shipping_selection_plan(
                 let is_available = group
                     .available_shipping_option_ids
                     .iter()
-                    .any(|option_id| option_id == shipping_option_id);
+                    .any(|option_id| option_id.trim() == shipping_option_id.trim());
                 if !is_available {
                     return Err(ShippingSelectionError::UnavailableShippingOption {
                         shipping_profile_slug: group.shipping_profile_slug.clone(),
@@ -240,8 +245,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
     fn default_test_profile_uses_graphql_transport_without_native_fallback() {
         assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
+    }
+
+    #[test]
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    fn ssr_test_profile_uses_native_server_transport() {
+        assert_eq!(selected_transport_path(), UiTransportPath::NativeServer);
     }
 
     #[test]

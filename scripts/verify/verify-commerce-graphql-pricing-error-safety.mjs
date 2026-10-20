@@ -31,36 +31,26 @@ for (const value of [
 }
 
 for (const [value, label] of [
-  ['PortError, PortErrorKind', 'port error imports'],
   ['fn pricing_port_graphql_error(', 'shared pricing GraphQL mapper'],
-  ['correlation_id = %context.correlation_id', 'correlation logging'],
-  ['tenant_id = %context.tenant_id', 'tenant logging'],
+  ['rustok_pricing::map_pricing_port_error(&error)', 'Pricing-owned public policy'],
+  ['correlation_id = %public.correlation_id', 'opaque public reference logging'],
+  ['tenant_id_length = context.tenant_id.chars().count()', 'bounded tenant facts'],
+  ['request_correlation_present = !context.correlation_id.is_empty()', 'bounded context facts'],
   ['operation,', 'operation logging'],
-  ['owner_code = %error.code', 'owner code logging'],
-  ['owner_kind = ?error.kind', 'owner kind logging'],
-  ['owner_retryable = error.retryable', 'owner retryability logging'],
-  ['PortErrorKind::Validation', 'validation mapping'],
-  ['PortErrorKind::NotFound', 'not-found mapping'],
-  ['PortErrorKind::Conflict', 'conflict mapping'],
-  ['PortErrorKind::Forbidden', 'forbidden mapping'],
-  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'availability mapping'],
-  ['PortErrorKind::InvariantViolation', 'invariant mapping'],
-  ['"PRICING_REQUEST_INVALID"', 'validation code'],
-  ['"PRICING_RESOURCE_NOT_FOUND"', 'not-found code'],
-  ['"PRICING_STATE_CONFLICT"', 'conflict code'],
-  ['"PRICING_ACCESS_DENIED"', 'forbidden code'],
-  ['"PRICING_TEMPORARILY_UNAVAILABLE"', 'availability code'],
-  ['"PRICING_OPERATION_FAILED"', 'fallback code'],
-  ['"Pricing request is invalid"', 'validation message'],
-  ['"Pricing resource was not found"', 'not-found message'],
-  ['"Pricing operation conflicts with the current state"', 'conflict message'],
-  ['"Pricing operation is not permitted"', 'forbidden message'],
-  ['"Pricing is temporarily unavailable"', 'availability message'],
-  ['"Pricing operation could not be completed safely"', 'fallback message'],
-  ['extensions.set("retryable", retryable)', 'retryability extension'],
-]) {
-  requireText(value, label);
-}
+  ['owner_code_length = error.code.chars().count()', 'bounded code facts'],
+  ['owner_message_length = error.message.chars().count()', 'bounded message facts'],
+  ['owner_kind = ?error.kind', 'typed owner kind'],
+  ['owner_retryable = error.retryable', 'owner retryability'],
+  ['async_graphql::Error::new(public.message)', 'static owner public copy'],
+  ['extensions.set("code", public.code)', 'owner public code'],
+  ['extensions.set("retryable", public.retryable)', 'owner retryability extension'],
+  ['extensions.set("correlation_id", public.correlation_id.to_string())', 'opaque reference extension'],
+]) requireText(value, label);
+for (const value of [
+  'error = ?error', 'correlation_id = %context.correlation_id',
+  'tenant_id = %context.tenant_id', 'owner_code = %error.code',
+  'error.message.clone()', 'match &error.kind',
+]) forbidText(value, 'raw payload or parallel classification');
 
 for (const operation of [
   'preview_admin_cart_promotion',

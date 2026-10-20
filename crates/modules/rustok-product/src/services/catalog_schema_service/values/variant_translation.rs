@@ -300,6 +300,21 @@ impl ProductCatalogSchemaService {
         ensure_postgres(self.db.get_database_backend())?;
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        let observed = load_variant_attribute_value_aggregate(&txn, tenant_id, value_id)
+            .await?
+            .ok_or(ProductVariantAttributeValueTranslationError::ValueNotFound(
+                value_id,
+            ))?;
+        let owner =
+            super::variant::load_variant_owner_for_update(&txn, tenant_id, observed.variant_id)
+                .await?;
+        if owner.product_id != observed.product_id {
+            return Err(
+                ProductVariantAttributeValueTranslationError::OwnerInvariant(
+                    "Variant attribute value owner changed while acquiring write locks".to_string(),
+                ),
+            );
+        }
         let locked = txn
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -314,11 +329,18 @@ INNER JOIN product_variants pv
    AND pv.tenant_id = pvav.tenant_id
 WHERE pvav.tenant_id = $1
   AND pvav.id = $2
+  AND pvav.variant_id = $3
+  AND pv.product_id = $4
   AND pa.is_localized = TRUE
   AND pa.value_type IN ('text', 'textarea', 'richtext')
 FOR UPDATE OF pvav
 "#,
-                vec![tenant_id.into(), value_id.into()],
+                vec![
+                    tenant_id.into(),
+                    value_id.into(),
+                    observed.variant_id.into(),
+                    observed.product_id.into(),
+                ],
             ))
             .await?;
         if locked.is_none() {
@@ -1584,9 +1606,10 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.variant_attribute_value_translation_owner_validation",
             "Product rejected the Variant attribute-value translation mutation",
         ),
-        CommerceError::Core(_) => PortError::invariant_violation(
-            "product.variant_attribute_value_translation_owner_invariant",
-            "Product Variant attribute-value translation state is invalid",
+        CommerceError::Core(error) => crate::error::core_port_error(&error),
+        CommerceError::Conflict(_) => PortError::conflict(
+            "product.conflict",
+            "product request conflicts with the current state",
         ),
     }
 }

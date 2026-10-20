@@ -1,3 +1,4 @@
+pub mod product_media;
 use rustok_cart::entities::{
     cart, cart_adjustment, cart_line_item, cart_line_item_marketplace_snapshot,
     cart_line_item_translation, cart_shipping_selection, cart_tax_line,
@@ -47,6 +48,8 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         return;
     }
 
+    // Apply the real additive Media migration once product_images exists below;
+    // using the actual migration preserves its coverage FK in SQLite fixtures.
     let builder = db.get_database_backend();
     let schema = Schema::new(builder);
 
@@ -400,6 +403,18 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(product_image::Entity),
     )
     .await;
+    if !SchemaManager::new(db)
+        .has_table("product_media_releases")
+        .await
+        .unwrap()
+    {
+        rustok_product::migrations::migrations()
+            .last()
+            .unwrap()
+            .up(&SchemaManager::new(db))
+            .await
+            .unwrap();
+    }
     create_entity_table(
         db,
         &builder,

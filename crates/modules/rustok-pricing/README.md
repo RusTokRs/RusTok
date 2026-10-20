@@ -85,3 +85,12 @@
 - `PricingView`
 
 See also `docs/README.md`.
+
+## Pricing public error continuation (2026-10-18)
+
+Canonical ports and direct service consumers now share the Pricing-owned Foundation/Core/Rich
+classifier. Product native pricing and Commerce mutation public errors use static owner
+presentation with fresh references; query failures retain owner retryability. Ten owner entry
+logs no longer emit request payload. See the [current contract](docs/pricing-owner-port-error-safety.md#nested-error-and-public-consumer-continuation-2026-10-18).
+This is source-only, unintegrated work; five new Rust scenarios are unrun, and compilation,
+mounted execution, and broader Pricing/Translation/price-list auditing remain open.

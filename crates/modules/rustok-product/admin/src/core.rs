@@ -13,6 +13,48 @@ use crate::model::{
     ProductTranslation, ShippingProfile, ShippingProfileList,
 };
 
+/// Local scalar admission for the independently saved Variant controls. This does
+/// not implement nullable patches: refuse an unsupported clear instead of showing
+/// success while the transport silently treats it as an omitted field.
+pub(crate) fn validate_editor_variant_draft(
+    draft: &crate::model::VariantUpdateDraft,
+) -> Result<(), String> {
+    for (field, patch, limit) in [
+        ("SKU", &draft.sku, 100),
+        ("barcode", &draft.barcode, 100),
+        ("Shipping profile slug", &draft.shipping_profile_slug, 100),
+        ("Weight unit", &draft.weight_unit, 16),
+    ] {
+        if let rustok_api::Patch::Set(value) = patch
+            && value.chars().count() > limit
+        {
+            return Err(format!("{field} must be max {limit} characters."));
+        }
+    }
+    if let rustok_api::Patch::Set(value) = &draft.weight {
+        rust_decimal::Decimal::from_str_exact(value)
+            .map_err(|_| "Weight must be an exact decimal amount.".to_string())?;
+    }
+    if draft.inventory_quantity.is_some_and(|value| value < 0) {
+        return Err("Inventory must be a non-negative 32-bit integer.".to_string());
+    }
+    for price in &draft.prices {
+        if price.currency_code.trim().is_empty() {
+            return Err("Currency is required for a base price.".to_string());
+        }
+        for value in
+            std::iter::once(price.amount.as_str()).chain(price.compare_at_amount.as_deref())
+        {
+            let amount = rust_decimal::Decimal::from_str_exact(value.trim())
+                .map_err(|_| "Prices must be exact decimal amounts.".to_string())?;
+            if amount.is_sign_negative() && !amount.is_zero() {
+                return Err("Prices must not be negative.".to_string());
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn translation_for_locale(
     translations: &[ProductTranslation],
     requested_locale: Option<&str>,
@@ -516,10 +558,6 @@ pub(crate) fn build_product_attribute_form_copy(locale: Option<&str>) -> Product
 pub(crate) struct ProductAttributeValuesSectionCopy {
     pub title: String,
     pub subtitle: String,
-    pub save: String,
-    pub saving: String,
-    pub saved: String,
-    pub nothing_dirty: String,
     pub missing_option: String,
 }
 
@@ -532,23 +570,7 @@ pub(crate) fn build_product_attribute_values_section_copy(
         subtitle: t(
             locale,
             "product.attributes.valuesSubtitle",
-            "Values validated against the effective category schema.",
-        ),
-        save: t(
-            locale,
-            "product.attributes.valuesSave",
-            "Save attribute values",
-        ),
-        saving: t(locale, "product.attributes.valuesSaving", "Saving..."),
-        saved: t(
-            locale,
-            "product.attributes.valuesSaved",
-            "Attribute values saved",
-        ),
-        nothing_dirty: t(
-            locale,
-            "product.attributes.valuesNothingDirty",
-            "Nothing changed: typed values already match the saved state.",
+            "Values are validated and saved together with the product document.",
         ),
         missing_option: t(
             locale,
@@ -649,6 +671,22 @@ struct ProductAttributeEditorEntry {
 }
 
 impl ProductAttributeEditorState {
+    pub(crate) fn refresh_values(&mut self, values: Vec<ProductAttributeValueItem>) {
+        let mut fresh = Self::from_values(values);
+        for (id, entry) in &self.entries {
+            if entry.dirty {
+                fresh.entries.insert(id.clone(), entry.clone());
+            }
+        }
+        *self = fresh;
+    }
+
+    pub(crate) fn acknowledge(&mut self) {
+        for entry in self.entries.values_mut() {
+            entry.dirty = false;
+        }
+    }
+
     pub(crate) fn from_values(values: Vec<ProductAttributeValueItem>) -> Self {
         let entries = values
             .into_iter()
@@ -1393,6 +1431,7 @@ pub(crate) fn build_save_command(
         tenant_id: bootstrap.current_tenant.id.clone(),
         actor_id: bootstrap.me.id.clone(),
         draft: ProductDraft {
+            attribute_values: Default::default(),
             locale,
             title: form.title,
             handle: form.handle,
@@ -1408,6 +1447,7 @@ pub(crate) fn build_save_command(
             amount: form.amount,
             compare_at_amount: form.compare_at_amount,
             inventory_quantity: form.inventory_quantity,
+            inventory_policy: "DENY".to_string(),
             publish_now: form.publish_now,
             status: None,
             meta_title: None,
@@ -2864,6 +2904,66 @@ mod tests {
     use super::*;
     use crate::model::{CurrentTenant, CurrentUser};
 
+    fn editor_variant_fixture() -> crate::model::VariantUpdateDraft {
+        crate::model::VariantUpdateDraft {
+            sku: rustok_api::Patch::Set("SKU".to_string()),
+            barcode: rustok_api::Patch::Set("123".to_string()),
+            inventory_quantity: Some(0),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn editor_variant_empty_prices_do_not_create_a_free_default() {
+        let draft = editor_variant_fixture();
+        assert!(validate_editor_variant_draft(&draft).is_ok());
+        assert!(draft.prices.is_empty());
+    }
+
+    #[test]
+    fn editor_variant_keeps_zero_and_exact_major_unit_precision() {
+        let mut draft = editor_variant_fixture();
+        for amount in ["0", "0.000000001", "123456789.123456789"] {
+            draft.prices = vec![crate::model::VariantPriceDraft {
+                currency_code: "JPY".to_string(),
+                amount: amount.to_string(),
+                compare_at_amount: None,
+            }];
+            assert!(validate_editor_variant_draft(&draft).is_ok());
+            assert_eq!(draft.prices[0].amount, amount);
+        }
+    }
+
+    #[test]
+    fn editor_variant_refuses_invalid_scalars_before_transport_identity() {
+        let mut draft = editor_variant_fixture();
+        draft.inventory_quantity = Some(-1);
+        assert!(validate_editor_variant_draft(&draft).is_err());
+        draft.inventory_quantity = Some(0);
+        for amount in ["not-money", "-1", "79228162514264337593543950336"] {
+            draft.prices = vec![crate::model::VariantPriceDraft {
+                currency_code: "USD".to_string(),
+                amount: amount.to_string(),
+                compare_at_amount: None,
+            }];
+            assert!(validate_editor_variant_draft(&draft).is_err());
+        }
+        draft.prices[0].amount = "1".to_string();
+        draft.prices[0].currency_code.clear();
+        assert!(validate_editor_variant_draft(&draft).is_err());
+    }
+
+    #[test]
+    fn editor_variant_accepts_explicit_clears_without_clearing_untouched_fields() {
+        let mut draft = editor_variant_fixture();
+        draft.sku = rustok_api::Patch::Clear;
+        draft.barcode = rustok_api::Patch::Clear;
+        assert!(validate_editor_variant_draft(&draft).is_ok());
+        assert!(draft.shipping_profile_slug.is_keep());
+        assert!(draft.weight.is_keep());
+        assert!(draft.weight_unit.is_keep());
+    }
+
     fn without_bidi_isolates(value: &str) -> String {
         value.replace(['\u{2068}', '\u{2069}'], "")
     }
@@ -3815,6 +3915,18 @@ mod tests {
 
         assert_eq!(patches[0].kind, "clear");
         assert!(patches[0].text.is_none());
+    }
+
+    #[test]
+    fn value_refresh_preserves_dirty_fields_until_catalog_acknowledgement() {
+        let mut state = ProductAttributeEditorState::default();
+        state.set_text("material".into(), "Unsaved cotton".into());
+        state.refresh_values(Vec::new());
+        assert_eq!(state.text("material"), "Unsaved cotton");
+        let types = HashMap::from([("material".into(), "text".into())]);
+        assert_eq!(state.patches(Some("en"), &types).unwrap().len(), 1);
+        state.acknowledge();
+        assert!(state.patches(Some("en"), &types).unwrap().is_empty());
     }
 
     #[test]

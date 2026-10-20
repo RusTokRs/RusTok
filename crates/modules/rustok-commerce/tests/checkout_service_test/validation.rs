@@ -645,6 +645,7 @@ async fn complete_checkout_allows_backorder_variant_when_channel_inventory_hidde
     // Create product with `continue` (backorder) inventory policy
     let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
     let product_input = CreateProductInput {
+        attribute_values: Default::default(),
         translations: vec![ProductTranslationInput {
             locale: "en".to_string(),
             title: "Backorder Channel Product".to_string(),

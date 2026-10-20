@@ -55,3 +55,24 @@ published catalog discovery.
 - `ui::leptos::CatalogFacetFilters`
 
 See also `../README.md` and `../docs/README.md`.
+
+
+## Native Pricing public errors (2026-10-18)
+
+The native Pricing error adapter delegates Foundation/Core/Rich classification and bounded
+service diagnostics to `rustok-pricing::map_pricing_service_error`; it renders only static
+message/code and a fresh reference. It no longer logs the original pricing error or maintains
+a transport-local classifier. See the [Pricing owner contract](../../rustok-pricing/docs/pricing-owner-port-error-safety.md#nested-error-and-public-consumer-continuation-2026-10-18).
+Success projections and price contexts are unchanged. Source-only guards and formatting do
+not certify compilation, SSR execution, or other catalog context-extractor diagnostics.
+
+
+## Native storefront context admission (2026-10-18)
+
+Catalog list, facets, detail/Pricing and search options now require the canonical trusted
+`RequestContext` before owner reads. Extractor rejection is no longer treated as an absent
+optional context; valid anonymous/no-channel contexts remain allowed. Raw rejection/channel/
+locale/correlation payload is removed from affected context diagnostics. See the
+[current contract](../docs/product-public-error-diagnostic-safety.md#native-storefront-context-admission-continuation-2026-10-18).
+This is source-only, unintegrated work: five new negative guard scenarios are unrun;
+compilation, host middleware composition and mounted behavior remain maintainer gates.

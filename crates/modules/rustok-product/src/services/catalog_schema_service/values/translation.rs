@@ -291,6 +291,13 @@ impl ProductCatalogSchemaService {
         ensure_postgres(self.db.get_database_backend())?;
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        let observed = load_attribute_value_aggregate(&txn, tenant_id, value_id)
+            .await?
+            .ok_or(ProductAttributeValueTranslationError::ValueNotFound(
+                value_id,
+            ))?;
+        let product =
+            super::lock_product_for_update_in_tx(&txn, tenant_id, observed.product_id).await?;
         let locked = txn
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -302,11 +309,16 @@ INNER JOIN product_attributes pa
    AND pa.tenant_id = pav.tenant_id
 WHERE pav.tenant_id = $1
   AND pav.id = $2
+  AND pav.product_id = $3
   AND pa.is_localized = TRUE
   AND pa.value_type IN ('text', 'textarea', 'richtext')
 FOR UPDATE OF pav
 "#,
-                vec![tenant_id.into(), value_id.into()],
+                vec![
+                    tenant_id.into(),
+                    value_id.into(),
+                    observed.product_id.into(),
+                ],
             ))
             .await?;
         if locked.is_none() {
@@ -378,6 +390,7 @@ ON CONFLICT (value_id, locale) DO UPDATE SET value_text = EXCLUDED.value_text
             )
         })?;
 
+        super::advance_product_value_revision_in_tx(&txn, &product).await?;
         txn.publish(
             tenant_id,
             actor_user_id,
@@ -1508,9 +1521,10 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.attribute_value_translation_owner_validation",
             "Product rejected the attribute-value translation mutation",
         ),
-        CommerceError::Core(_) => PortError::invariant_violation(
-            "product.attribute_value_translation_owner_invariant",
-            "Product attribute-value translation state is invalid",
+        CommerceError::Core(error) => crate::error::core_port_error(&error),
+        CommerceError::Conflict(_) => PortError::conflict(
+            "product.conflict",
+            "product request conflicts with the current state",
         ),
     }
 }

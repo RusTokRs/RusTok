@@ -182,7 +182,9 @@ pub mod module_event_dispatcher {
                 forum_search_category_scope::ServerForumSearchCategoryScopePort::shared(
                     db.clone(),
                     audience_facts.clone(),
-                    extensions.get::<rustok_api::SharedStaticModuleSettingsReader>().cloned(),
+                    extensions
+                        .get::<rustok_api::SharedStaticModuleSettingsReader>()
+                        .cloned(),
                 );
             let owner_revision =
                 forum_search_owner_revision::ServerForumProjectionOwnerRevisionSourcePort::shared(
@@ -192,13 +194,17 @@ pub mod module_event_dispatcher {
                 forum_search_result_eligibility::ServerForumSearchResultEligibilityPort::new(
                     db.clone(),
                     audience_facts.clone(),
-                    extensions.get::<rustok_api::SharedStaticModuleSettingsReader>().cloned(),
+                    extensions
+                        .get::<rustok_api::SharedStaticModuleSettingsReader>()
+                        .cloned(),
                 );
             let result_eligibility =
                 forum_search_result_eligibility::ServerForumSearchResultEligibilityPort::shared(
                     db.clone(),
                     audience_facts,
-                    extensions.get::<rustok_api::SharedStaticModuleSettingsReader>().cloned(),
+                    extensions
+                        .get::<rustok_api::SharedStaticModuleSettingsReader>()
+                        .cloned(),
                 );
             let mut audience_registry = extensions
                 .get::<rustok_search::SearchAudienceRegistry>()
@@ -491,9 +497,7 @@ pub mod module_event_dispatcher {
                 extensions.contains::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
             );
             #[cfg(feature = "mod-forum")]
-            assert!(
-                extensions.contains::<rustok_search::SearchAudienceRegistry>()
-            );
+            assert!(extensions.contains::<rustok_search::SearchAudienceRegistry>());
             #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
             assert!(
                 extensions.contains::<rustok_notifications::NotificationRecipientPolicyRuntime>()
@@ -567,7 +571,9 @@ pub mod product_catalog_deployment;
 #[cfg(feature = "mod-product")]
 pub mod product_index_refresh_worker;
 #[cfg(all(feature = "mod-product", feature = "mod-media"))]
-pub mod product_media_asset_validation;
+pub mod product_media_reference;
+#[cfg(feature = "mod-product")]
+pub mod product_media_release_worker;
 pub mod profile_media_public_image_deployment;
 pub mod profile_media_public_image_runtime;
 

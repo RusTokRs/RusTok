@@ -87,3 +87,12 @@ consumer bindings and Flex Category extension.
 - [Implementation plan](./implementation-plan.md)
 - [Taxonomy Category + Flex platform plan](../../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
 - [Manifest layer contract](../../../../docs/modules/manifest.md)
+## Transaction-aware localized name reads
+
+`TaxonomyService::resolve_term_names_in` accepts the caller's `ConnectionTrait` connection, so
+consumer-owned aggregate transactions can project names for terms they just created without
+committing first. Term and translation queries both retain tenant predicates and use that same
+connection. Ordinary `resolve_term_names` delegates to this implementation on the service connection;
+consumer modules do not read Taxonomy entities to assemble their responses. The owner-read
+regression covers transaction visibility, foreign-tenant absence and rollback; its new execution
+is outstanding in the Product hardening sandbox without Cargo.

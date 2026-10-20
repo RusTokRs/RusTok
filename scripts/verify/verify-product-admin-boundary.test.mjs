@@ -77,7 +77,7 @@ pub fn ProductAdmin() {
     let _products_load = product_admin_products_load_view_from_result;
     let _shipping_profiles_load = product_admin_shipping_profiles_load_view_from_result;
     let _typed_editor = TypedProductAttributeField;
-    let _save_attribute_values = transport::save_product_attribute_values;
+    command.draft.attribute_values = vec![ProductAttributeValueBatchDraft { patches: attribute_patches, }];
     let _clear_detached_values = transport::clear_detached_product_attribute_values;
     ${rawApiCall ? "let _raw = api::fetch_products;" : ""}
     ${rawServiceCall ? "let _service = ProductService::new;" : ""}

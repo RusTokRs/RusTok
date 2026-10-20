@@ -9,3 +9,5 @@ mod types;
 
 pub use catalog_read::*;
 pub use types::*;
+
+pub(crate) use diagnostics::{product_owner_error_facts, product_port_context_facts};

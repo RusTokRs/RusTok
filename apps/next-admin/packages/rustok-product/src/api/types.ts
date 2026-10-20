@@ -160,8 +160,8 @@ export interface ProductImage {
 
 export interface ProductVariantPrice {
   currencyCode: string;
-  amount: number;
-  compareAtAmount: number | null;
+  amount: string;
+  compareAtAmount: string | null;
   discountPercent?: string | null;
   onSale?: boolean;
   priceListId?: string | null;
@@ -321,7 +321,11 @@ export interface ProductAttributeValuePatch {
 }
 
 export type ProductRelationType =
-  'CROSS_SELL' | 'UP_SELL' | 'RELATED' | 'ACCESSORY' | 'ALTERNATIVE';
+  | 'CROSS_SELL'
+  | 'UP_SELL'
+  | 'RELATED'
+  | 'ACCESSORY'
+  | 'ALTERNATIVE';
 
 export interface ProductRelation {
   id: string;
@@ -434,4 +438,10 @@ export interface BundleListResponse {
   total: number;
   page: number;
   perPage: number;
+}
+
+/** Value batches composed into the same catalog save/receipt as the document. */
+export interface ProductAttributeValueBatch {
+  locale: string;
+  patches: ProductAttributeValuePatch[];
 }

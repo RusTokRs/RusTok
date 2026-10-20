@@ -30,7 +30,9 @@ function readRepo(relativePath) {
   try {
     return readFileSync(path.join(repoRoot, relativePath), "utf8");
   } catch (error) {
-    failures.push(`${relativePath}: expected readable source (${error.message})`);
+    failures.push(
+      `${relativePath}: expected readable source (${error.message})`,
+    );
     return "";
   }
 }
@@ -73,10 +75,12 @@ function functionBody(source, signature) {
 const paths = {
   engine:
     "crates/modules/rustok-product/src/services/catalog_schema_service/attribute_validation.rs",
-  schemaService: "crates/modules/rustok-product/src/services/catalog_schema_service.rs",
+  schemaService:
+    "crates/modules/rustok-product/src/services/catalog_schema_service.rs",
   effectiveForms:
     "crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs",
-  values: "crates/modules/rustok-product/src/services/catalog_schema_service/values.rs",
+  values:
+    "crates/modules/rustok-product/src/services/catalog_schema_service/values.rs",
   variantValues:
     "crates/modules/rustok-product/src/services/catalog_schema_service/values/variant.rs",
   bindings: "crates/modules/rustok-product/src/services/catalog_schema.rs",
@@ -84,7 +88,8 @@ const paths = {
   publicError: "crates/modules/rustok-product/src/public_error.rs",
   manifest: "crates/modules/rustok-product/Cargo.toml",
   commerceTypes: "crates/modules/rustok-commerce/src/graphql/types.rs",
-  commerceMutations: "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs",
+  commerceMutations:
+    "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs",
   commerceQuery: "crates/modules/rustok-commerce/src/graphql/query.rs",
   registry: "docs/modules/registry.md",
   audit: "docs/audits/product-module-engineering-audit-2026-10-07.md",
@@ -116,27 +121,31 @@ for (const marker of [
   "pub(crate) fn attribute_validation_public_message(",
   "pub(crate) fn rule_failure(",
 ]) {
-  assertContains(engine, marker, `${paths.engine}: rule engine surface missing ${marker}`);
+  assertContains(
+    engine,
+    marker,
+    `${paths.engine}: rule engine surface missing ${marker}`,
+  );
 }
 assertContains(
   engine,
   "merged.remove(key);",
-  `${paths.engine}: a null override must be able to clear an inherited rule`
+  `${paths.engine}: a null override must be able to clear an inherited rule`,
 );
 assertContains(
   engine,
   'rest.starts_with(" failed for attribute ")',
-  `${paths.engine}: the canonical failure message must stay parseable`
+  `${paths.engine}: the canonical failure message must stay parseable`,
 );
 assertContains(
   engine,
   '"Product attribute value violates the schema validation rules"',
-  `${paths.engine}: a bounded fallback public message is required`
+  `${paths.engine}: a bounded fallback public message is required`,
 );
 assertContains(
   manifest,
   'regex = "1.12"',
-  `${paths.manifest}: the pattern rule must use the workspace regex engine`
+  `${paths.manifest}: the pattern rule must use the workspace regex engine`,
 );
 
 const declaredRules = [
@@ -160,14 +169,14 @@ for (const rule of declaredRules) {
   const declared = countOccurrences(engine, `"${rule}"`);
   if (declared < 2) {
     failures.push(
-      `${paths.engine}: rule \`${rule}\` must be declared and enforced from the shared schema (found ${declared})`
+      `${paths.engine}: rule \`${rule}\` must be declared and enforced from the shared schema (found ${declared})`,
     );
   }
 }
 const ruleFailureCalls = countOccurrences(engine, "rule_failure(");
 if (ruleFailureCalls < 12) {
   failures.push(
-    `${paths.engine}: every value rule must fail through rule_failure (found ${ruleFailureCalls})`
+    `${paths.engine}: every value rule must fail through rule_failure (found ${ruleFailureCalls})`,
   );
 }
 
@@ -185,205 +194,233 @@ const engineTests = [
   "empty_rules_skip_enforcement_entirely",
 ];
 if (countOccurrences(engine, "#[test]") < engineTests.length) {
-  failures.push(`${paths.engine}: expected at least ${engineTests.length} engine unit tests`);
+  failures.push(
+    `${paths.engine}: expected at least ${engineTests.length} engine unit tests`,
+  );
 }
 for (const testName of engineTests) {
-  assertContains(engine, `fn ${testName}()`, `${paths.engine}: missing unit test ${testName}`);
+  assertContains(
+    engine,
+    `fn ${testName}()`,
+    `${paths.engine}: missing unit test ${testName}`,
+  );
 }
 // 3. Attribute-level rules are merged under schema/category overrides once per effective form.
 assertContains(
   bindings,
   "pub validation: Value,",
-  `${paths.bindings}: the effective binding must carry the merged rule object`
+  `${paths.bindings}: the effective binding must carry the merged rule object`,
 );
 assertContains(
   effectiveForms,
   "load_effective_attribute_validation(db, tenant_id, &mut form).await?;",
-  `${paths.effectiveForms}: the effective form must merge declared rules into every binding`
+  `${paths.effectiveForms}: the effective form must merge declared rules into every binding`,
 );
 assertContains(
   effectiveForms,
   "async fn load_effective_attribute_validation<C>(",
-  `${paths.effectiveForms}: the merged rule loader is missing`
+  `${paths.effectiveForms}: the merged rule loader is missing`,
 );
 assertContains(
   effectiveForms,
   "attribute_validation::merge_product_attribute_validation(",
-  `${paths.effectiveForms}: the merge must go through the shared engine`
+  `${paths.effectiveForms}: the merge must go through the shared engine`,
 );
 assertContains(
   effectiveForms,
   "&binding.validation_overrides,",
-  `${paths.effectiveForms}: binding overrides must win over the attribute base rules`
+  `${paths.effectiveForms}: binding overrides must win over the attribute base rules`,
 );
 assertContains(
   effectiveForms,
   "SELECT id, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})",
-  `${paths.effectiveForms}: declared rules must be loaded for the effective bindings`
+  `${paths.effectiveForms}: declared rules must be loaded for the effective bindings`,
 );
-const additionBinding = functionBody(bindings, "fn apply_local_category_bindings(");
+const additionBinding = functionBody(
+  bindings,
+  "fn apply_local_category_bindings(",
+);
 assertContains(
   additionBinding,
   "validation: Value::Object(Default::default()),",
-  `${paths.bindings}: category-local additions start from the attribute base rules`
+  `${paths.bindings}: category-local additions start from the attribute base rules`,
 );
 
 if (!/is_localized:\s*bool,[\s\S]*?validation:\s*Value,/.test(schemaService)) {
-  failures.push(`${paths.schemaService}: write definitions must expose the declared rule object`);
+  failures.push(
+    `${paths.schemaService}: write definitions must expose the declared rule object`,
+  );
 }
 assertContains(
   schemaService,
   "SELECT id, value_type, scope, is_localized, validation",
-  `${paths.schemaService}: the definition loader must select the validation column`
+  `${paths.schemaService}: the definition loader must select the validation column`,
 );
-const productValidator = functionBody(schemaService, "fn validate_product_value_patch(");
+const productValidator = functionBody(
+  schemaService,
+  "fn validate_product_value_patch(",
+);
 assertContains(
   productValidator,
   "validation: &Value,",
-  `${paths.schemaService}: validate_product_value_patch must accept the merged rules`
+  `${paths.schemaService}: validate_product_value_patch must accept the merged rules`,
 );
 assertContains(
   productValidator,
   "attribute_validation::validate_attribute_value_rules(",
-  `${paths.schemaService}: product attribute writes must enforce the merged rules`
+  `${paths.schemaService}: product attribute writes must enforce the merged rules`,
 );
 assertContains(
   values,
   "let validation_by_attribute = form",
-  `${paths.values}: the Product write path must read rules from the effective form`
+  `${paths.values}: the Product write path must read rules from the effective form`,
 );
 assertContains(
   values,
   "validate_product_value_patch(definition, patch, &options, validation)?;",
-  `${paths.values}: the Product write path must pass the merged rules to the validator`
+  `${paths.values}: the Product write path must pass the merged rules to the validator`,
 );
-const variantValidator = functionBody(variantValues, "fn validate_variant_value_patch(");
+const variantValidator = functionBody(
+  variantValues,
+  "fn validate_variant_value_patch(",
+);
 assertContains(
   variantValidator,
   "validation: &Value,",
-  `${paths.variantValues}: validate_variant_value_patch must accept the merged rules`
+  `${paths.variantValues}: validate_variant_value_patch must accept the merged rules`,
 );
 assertContains(
   variantValidator,
   "attribute_validation::validate_attribute_value_rules(",
-  `${paths.variantValues}: Variant attribute writes must enforce the merged rules`
+  `${paths.variantValues}: Variant attribute writes must enforce the merged rules`,
 );
 assertContains(
   variantValues,
   "validate_variant_value_patch(definition, patch, &options, validation)?;",
-  `${paths.variantValues}: the Variant write path must pass the merged rules to the validator`
+  `${paths.variantValues}: the Variant write path must pass the merged rules to the validator`,
 );
 assertContains(
   variantValues,
   "SELECT id, value_type, scope, is_localized, validation FROM product_attributes",
-  `${paths.variantValues}: the Variant definition loader must select the validation column`
+  `${paths.variantValues}: the Variant definition loader must select the validation column`,
 );
 for (const source of [schemaService, values, variantValues]) {
   assertAbsent(
     source,
     "SELECT id, value_type, scope, is_localized FROM product_attributes",
-    "attribute definition loads must not drop the declared rule object"
+    "attribute definition loads must not drop the declared rule object",
   );
 }
 
 // 5. `required` and `requiredLocales` gate publication through the same engine.
 const publishRequirements = functionBody(
   values,
-  "async fn validate_product_publish_requirements_in"
+  "async fn validate_product_publish_requirements_in",
 );
 assertContains(
   publishRequirements,
   "attribute_validation::parse_product_attribute_validation(&binding.validation)?",
-  `${paths.values}: publish requirements must read the effective rules`
+  `${paths.values}: publish requirements must read the effective rules`,
 );
 assertContains(
   publishRequirements,
   "binding.is_required || rules.required || !rules.required_locales.is_empty()",
-  `${paths.values}: required/requiredLocales must make an attribute mandatory at publish`
+  `${paths.values}: required/requiredLocales must make an attribute mandatory at publish`,
 );
 assertContains(
   publishRequirements,
   "load_missing_required_locales(",
-  `${paths.values}: declared required locales must be verified before publish`
+  `${paths.values}: declared required locales must be verified before publish`,
 );
 assertContains(
   values,
   "async fn load_missing_required_locales<C>(",
-  `${paths.values}: the required-locale probe is missing`
+  `${paths.values}: the required-locale probe is missing`,
 );
 assertContains(
   values,
   "JOIN product_attribute_value_translations pavt",
-  `${paths.values}: the required-locale probe must read the localized value rows`
+  `${paths.values}: the required-locale probe must read the localized value rows`,
 );
 assertContains(
   values,
   "return Err(attribute_validation::rule_failure(",
-  `${paths.values}: required-locale failures must use the canonical rule failure`
+  `${paths.values}: required-locale failures must use the canonical rule failure`,
 );
 assertContains(
   values,
   '"requiredLocales",',
-  `${paths.values}: required-locale failures must name the failing rule`
+  `${paths.values}: required-locale failures must name the failing rule`,
 );
 const newProductRequirements = functionBody(
   values,
-  "pub(crate) async fn validate_new_product_publish_requirements_in<C>("
+  "pub(crate) async fn validate_new_product_publish_requirements_in<C>(",
 );
 assertContains(
   values,
   "Self::validate_new_product_publish_requirements_in(&self.db, tenant_id, primary_category_id)",
-  `${paths.values}: public publish-requirement check must delegate to the connection-scoped variant`
+  `${paths.values}: public publish-requirement check must delegate to the connection-scoped variant`,
 );
 assertContains(
   newProductRequirements,
   "binding.is_required || rules.required || !rules.required_locales.is_empty()",
-  `${paths.values}: new-product publish requirements must honour declared rules`
+  `${paths.values}: new-product publish requirements must honour declared rules`,
 );
 
 // 6. Authoring commands reject unknown rules and the GraphQL surface can carry them.
 assertContains(
   schemaService,
   "attribute_validation::validate_declared_rule_keys(&self.validation)?;",
-  `${paths.schemaService}: create_attribute must reject unknown rule keys`
+  `${paths.schemaService}: create_attribute must reject unknown rule keys`,
 );
 assertContains(
   schemaService,
   "attribute_validation::validate_declared_rule_keys(&self.validation_overrides)?;",
-  `${paths.schemaService}: schema and category bindings must reject unknown rule keys`
+  `${paths.schemaService}: schema and category bindings must reject unknown rule keys`,
 );
-if (countOccurrences(schemaService, "validate_declared_rule_keys(&self.validation_overrides)") !== 2) {
+if (
+  countOccurrences(
+    schemaService,
+    "validate_declared_rule_keys(&self.validation_overrides)",
+  ) !== 2
+) {
   failures.push(
-    `${paths.schemaService}: both bind commands must validate their rule overrides`
+    `${paths.schemaService}: both bind commands must validate their rule overrides`,
   );
 }
 assertContains(
   commerceTypes,
   "pub validation: Option<Json<serde_json::Value>>,",
-  `${paths.commerceTypes}: CreateProductAttributeInput must accept declared rules`
+  `${paths.commerceTypes}: CreateProductAttributeInput must accept declared rules`,
 );
 if (
-  countOccurrences(commerceTypes, "pub validation_overrides: Option<Json<serde_json::Value>>,") !== 2
+  countOccurrences(
+    commerceTypes,
+    "pub validation_overrides: Option<Json<serde_json::Value>>,",
+  ) !== 2
 ) {
   failures.push(
-    `${paths.commerceTypes}: both bind inputs must accept rule overrides`
+    `${paths.commerceTypes}: both bind inputs must accept rule overrides`,
   );
 }
-const createAttribute = functionBody(commerceMutations, "async fn create_product_attribute(");
+const createAttribute = functionBody(
+  commerceMutations,
+  "async fn create_product_attribute(",
+);
 assertContains(
   createAttribute,
   "let validation = match input.validation {",
-  `${paths.commerceMutations}: createProductAttribute must read the declared rules`
+  `${paths.commerceMutations}: createProductAttribute must read the declared rules`,
 );
 assertContains(
   createAttribute,
   "validation,",
-  `${paths.commerceMutations}: createProductAttribute must pass the declared rules to the owner`
+  `${paths.commerceMutations}: createProductAttribute must pass the declared rules to the owner`,
 );
 assertAbsent(
   createAttribute,
   "validation: serde_json::Value::Object(Default::default()),",
-  `${paths.commerceMutations}: createProductAttribute must not discard declared rules`
+  `${paths.commerceMutations}: createProductAttribute must not discard declared rules`,
 );
 for (const signature of [
   "async fn bind_product_attribute_schema_attribute(",
@@ -393,17 +430,17 @@ for (const signature of [
   assertContains(
     body,
     "let validation_overrides = match input.validation_overrides {",
-    `${paths.commerceMutations}: ${signature} must read the rule overrides`
+    `${paths.commerceMutations}: ${signature} must read the rule overrides`,
   );
   assertContains(
     body,
     "validation_overrides,",
-    `${paths.commerceMutations}: ${signature} must pass the rule overrides to the owner`
+    `${paths.commerceMutations}: ${signature} must pass the rule overrides to the owner`,
   );
   assertAbsent(
     body,
     "validation_overrides: serde_json::Value::Object(Default::default()),",
-    `${paths.commerceMutations}: ${signature} must not discard rule overrides`
+    `${paths.commerceMutations}: ${signature} must not discard rule overrides`,
   );
 }
 
@@ -411,71 +448,180 @@ for (const signature of [
 assertContains(
   readPort,
   "pub validation: serde_json::Value,",
-  `${paths.readPort}: the effective-form projection must expose merged rules`
+  `${paths.readPort}: the effective-form projection must expose merged rules`,
 );
 assertContains(
   readPort,
   "validation: binding.validation,",
-  `${paths.readPort}: the projection must copy the merged rules`
+  `${paths.readPort}: the projection must copy the merged rules`,
 );
 assertContains(
   commerceTypes,
   "pub validation: Json<serde_json::Value>,",
-  `${paths.commerceTypes}: the GraphQL effective-form attribute must expose merged rules`
+  `${paths.commerceTypes}: the GraphQL effective-form attribute must expose merged rules`,
 );
 assertContains(
   commerceQuery,
   "validation: Json(attribute.validation),",
-  `${paths.commerceQuery}: the GraphQL effective-form mapping must pass merged rules`
+  `${paths.commerceQuery}: the GraphQL effective-form mapping must pass merged rules`,
 );
 
 // 8. Rule violations keep a structured, bounded public failure.
 assertContains(
   publicError,
   "use crate::services::catalog_schema_service::attribute_validation::{",
-  `${paths.publicError}: the public mapper must use the shared rule classifier`
+  `${paths.publicError}: the public mapper must use the shared rule classifier`,
 );
 assertContains(
   publicError,
   "CommerceError::Validation(message) if attribute_validation_rule_of(message).is_some() => {",
-  `${paths.publicError}: rule violations need a dedicated public arm`
+  `${paths.publicError}: rule violations need a dedicated public arm`,
 );
 assertContains(
   publicError,
   '"PRODUCT_ATTRIBUTE_VALIDATION"',
-  `${paths.publicError}: rule violations need a stable public code`
+  `${paths.publicError}: rule violations need a stable public code`,
 );
 assertContains(
   publicError,
   "attribute_validation_public_message(rule)",
-  `${paths.publicError}: the public copy must stay bounded to the closed rule set`
+  `${paths.publicError}: the public copy must stay bounded to the closed rule set`,
 );
 assertContains(
   publicError,
   'CommerceError::Validation(_) => ("Product request is invalid", "PRODUCT_VALIDATION", false),',
-  `${paths.publicError}: the existing generic validation mapping must stay intact`
+  `${paths.publicError}: the existing generic validation mapping must stay intact`,
 );
 assertContains(
   publicError,
   '"attribute_validation"',
-  `${paths.publicError}: bounded diagnostics must classify rule violations`
+  `${paths.publicError}: bounded diagnostics must classify rule violations`,
 );
 assertContains(
   publicError,
   "attribute_validation_rule_of(message).unwrap_or_default()",
-  `${paths.publicError}: the guard and the public copy must use one classification`
+  `${paths.publicError}: the guard and the public copy must use one classification`,
 );
+
+// Validation and detached deletion must use the category protected by the write lock.
+// These are source-order guardrails, not PostgreSQL concurrency execution evidence.
+for (const [source, method, lock, read] of [
+  [
+    values,
+    "apply_product_attribute_values_in_tx",
+    "lock_product_for_update_in_tx(",
+    "Self::load_effective_form_for_category_in(",
+  ],
+  [
+    values,
+    "clear_detached_product_attribute_values",
+    "lock_product_for_update_in_tx(",
+    "Self::load_effective_form_for_product_in(",
+  ],
+  [
+    variantValues,
+    "save_variant_attribute_values",
+    "load_variant_owner_for_update(",
+    "load_product_primary_category(",
+  ],
+  [
+    variantValues,
+    "clear_detached_variant_attribute_values",
+    "load_variant_owner_for_update(",
+    ".load_variant_attribute_values_in(",
+  ],
+]) {
+  const body = functionBody(source, `async fn ${method}(`);
+  const lockIndex = body.indexOf(lock);
+  const readIndex = body.indexOf(read);
+  if (lockIndex < 0 || readIndex < 0 || lockIndex > readIndex) {
+    failures.push(
+      `${method}: category-dependent reads must follow the owner write lock`,
+    );
+  }
+  for (const forbidden of [
+    ".all(&self.db)",
+    "load_variant_patch_definitions(&self.db",
+    "load_variant_patch_options(&self.db",
+    ".load_effective_form_for_category(",
+    ".load_effective_form_for_product(",
+    ".load_variant_attribute_values(",
+  ]) {
+    assertAbsent(
+      body,
+      forbidden,
+      `${method}: value validation must use the write transaction, not a pool read`,
+    );
+  }
+}
+const standaloneProductValues = functionBody(
+  values,
+  "pub async fn save_product_attribute_values(",
+);
+const standaloneLock = standaloneProductValues.indexOf(
+  "lock_product_for_update_in_tx(",
+);
+const standaloneWrite = standaloneProductValues.indexOf(
+  ".apply_product_attribute_values_in_tx(",
+);
+if (standaloneLock < 0 || standaloneWrite < standaloneLock) {
+  failures.push(
+    "save_product_attribute_values: shared value writes must follow the owner write lock",
+  );
+}
+const variantLock = functionBody(
+  variantValues,
+  "async fn load_variant_owner_for_update(",
+);
+const productLockIndex = variantLock.indexOf(
+  "super::lock_product_for_update_in_tx(",
+);
+const childLockIndex = variantLock.indexOf("FOR UPDATE");
+if (
+  productLockIndex < 0 ||
+  childLockIndex < 0 ||
+  productLockIndex > childLockIndex
+) {
+  failures.push("variant value writes must lock Product before Variant");
+}
+
+for (const [file, method, lock, valueLock] of [
+  [
+    "translation.rs",
+    "apply_attribute_value_translation_exact_locale",
+    "super::lock_product_for_update_in_tx(",
+    "FOR UPDATE OF pav",
+  ],
+  [
+    "variant_translation.rs",
+    "apply_variant_attribute_value_translation_exact_locale",
+    "super::variant::load_variant_owner_for_update(",
+    "FOR UPDATE OF pvav",
+  ],
+]) {
+  const source = readRepo(
+    `crates/modules/rustok-product/src/services/catalog_schema_service/values/${file}`,
+  );
+  const body = functionBody(source, `async fn ${method}(`);
+  const parentIndex = body.indexOf(lock);
+  const valueIndex = body.indexOf(valueLock);
+  if (parentIndex < 0 || valueIndex < 0 || parentIndex > valueIndex) {
+    failures.push(
+      `${method}: Translation apply must lock the owner before the value`,
+    );
+  }
+}
 
 // 9. The remediation stays documented.
 assertContains(
   readRepo(paths.registry),
   "verify-product-attribute-validation-rules.mjs",
-  `${paths.registry}: registry must list the rule-engine verifier`
+  `${paths.registry}: registry must list the rule-engine verifier`,
 );
 assertContains(
   readRepo(paths.audit),
   "PROD-VALID-001",
-  `${paths.audit}: the audit must keep the finding record`
+  `${paths.audit}: the audit must keep the finding record`,
 );
 
 if (failures.length > 0) {
@@ -487,5 +633,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "product attribute validation: declared rules are merged by override priority, enforced on Product and Variant writes, gated at publish, authorable through the API, and reported through a bounded public error"
+  "product attribute validation: declared rules are merged by override priority, enforced on Product and Variant writes, gated at publish, authorable through the API, and reported through a bounded public error",
 );

@@ -133,7 +133,7 @@ for (const marker of [
   'self.set_price_list_scope(',
   'self.apply_percentage_discount_with_channel(',
   'self.set_price_list_percentage_rule_projection(',
-]) requireText(ports, marker, `${paths.ports}: preserved behavior`);
+]) requireText(ports.replace(/\s+/g, ''), marker.replace(/\s+/g, ''), `${paths.ports}: preserved behavior`);
 
 for (const marker of [
   'Database(#[from] sea_orm::DbErr)',
@@ -160,6 +160,9 @@ const parserLogger = functionBody(ports, 'log_pricing_context_rejection');
 const tenantParser = functionBody(ports, 'parse_port_tenant_id');
 const actorParser = functionBody(ports, 'parse_port_actor_id');
 const mapper = functionBody(ports, 'pricing_error_to_port_error');
+const policy = functionBody(ports, 'pricing_error_policy');
+const corePolicy = functionBody(ports, 'pricing_core_error_policy');
+const richPolicy = functionBody(ports, 'pricing_rich_error_policy');
 const resolve = functionBody(readImpl, 'resolve_product_price');
 const readList = functionBody(readImpl, 'read_price_list_projection');
 const diagnosticScope = [
@@ -170,6 +173,9 @@ const diagnosticScope = [
   tenantParser,
   actorParser,
   mapper,
+  policy,
+  corePolicy,
+  richPolicy,
   resolve,
   readList,
 ].join('\n');
@@ -263,7 +269,7 @@ for (const [source, code, message] of [
   }
 }
 
-for (const [variant, code, message, technical] of [
+for (const [variant, code, message, retryable] of [
   ['CommerceError::Database(_)', 'pricing.database_unavailable', 'pricing storage is temporarily unavailable', 'true'],
   ['CommerceError::ProductNotFound(_)', 'pricing.product_not_found', 'product was not found', 'false'],
   ['CommerceError::VariantNotFound(_)', 'pricing.variant_not_found', 'variant was not found', 'false'],
@@ -276,16 +282,27 @@ for (const [variant, code, message, technical] of [
   ['CommerceError::DuplicateShippingProfileSlug(_)', 'pricing.duplicate_shipping_profile_slug', 'shipping profile slug is already in use', 'false'],
   ['CommerceError::NoVariants', 'pricing.no_variants', 'product must have at least one variant', 'false'],
   ['CommerceError::CannotDeletePublished', 'pricing.cannot_delete_published', 'cannot delete published product', 'false'],
-  ['CommerceError::Rich(_)', 'pricing.rich_error', 'pricing operation failed an internal invariant', 'true'],
-  ['CommerceError::Core(_)', 'pricing.core_error', 'pricing operation failed an internal invariant', 'true'],
 ]) {
   for (const marker of [variant, `"${code}"`, `"${message}"`]) {
-    requireText(mapper, marker, `${paths.ports}: ${code} mapping`);
+    requireText(policy, marker, `${paths.ports}: ${code} mapping`);
   }
-  const severity = new RegExp(
-    `"${code.replaceAll('.', '\\.')}",[\\s\\S]*?&error_facts,[\\s\\S]*?${technical},`,
-  );
-  if (!severity.test(mapper)) failures.push(`${paths.ports}: ${code} severity drift`);
+  const outcome = `"${code}","${message}",${retryable}`.replace(/\s/g, '');
+  if (!policy.replace(/\s/g, '').includes(outcome)) {
+    failures.push(`${paths.ports}: ${code} retryability drift`);
+  }
+}
+for (const marker of [
+  'let mapped = pricing_error_policy(&error);',
+  'mapped.code,',
+  'mapped.into_port_error()',
+  'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
+]) requireText(mapper, marker, `${paths.ports}: owner policy delegation`);
+for (const marker of [
+  'CommerceError::Core(error) => pricing_core_error_policy(error)',
+  'CommerceError::Rich(error) => pricing_rich_error_policy(&error.kind)',
+]) requireText(policy, marker, `${paths.ports}: nested policy delegation`);
+for (const [source, code] of [[corePolicy, 'pricing.core_error'], [richPolicy, 'pricing.rich_error']]) {
+  requireText(source, `"${code}"`, `${paths.ports}: internal invariant fallback`);
 }
 
 for (const forbidden of [

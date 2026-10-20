@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "module": "product",
+  "role": "consumer",
+  "status": "in_progress",
+  "consumer_profile": "product_image_retention",
+  "provider_dependencies": [
+    {
+      "module": "media",
+      "registry": "crates/modules/rustok-media/contracts/media-fba-registry.json",
+      "contract_version": "media.asset_read.v1",
+      "port": "MediaAssetReadPort",
+      "operations": ["lookup_asset_references", "list_asset_references"],
+      "required_profiles": ["in_process", "grpc_loopback"],
+      "fallback_profiles": [],
+      "degraded_modes": ["reject_new_image_writes", "retain_committed_release_work", "diagnostics_unavailable"],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError"
+    },
+    {
+      "module": "media",
+      "registry": "crates/modules/rustok-media/contracts/media-fba-registry.json",
+      "contract_version": "media.asset_write.v1",
+      "port": "MediaAssetWritePort",
+      "operations": ["retain_asset_reference", "release_asset_reference"],
+      "required_profiles": ["in_process", "grpc_loopback"],
+      "fallback_profiles": [],
+      "degraded_modes": ["reject_new_image_writes", "retain_committed_release_work"],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError"
+    }
+  ],
+  "implementation_gap": {
+    "status": "source_implemented_runtime_pending",
+    "remaining_work": "Rust 1.96 compilation, real SQLite/PostgreSQL Product commands, composed native/remote Media GC fences, unknown commit/lease reclaim, process restart, multi-replica delivery and mounted operator/client execution. No runtime certification artifact is asserted."
+  },
+  "evidence": {
+    "local_plan": "crates/modules/rustok-product/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "workflow": "crates/modules/rustok-product/docs/media-reference-retention.md",
+    "verifier": "scripts/verify/verify-product-media-retention.mjs",
+    "owner_source": "crates/modules/rustok-product/src/media_reference.rs",
+    "host_composition": "apps/server/src/services/product_media_reference.rs",
+    "worker": "apps/server/src/services/product_media_release_worker.rs",
+    "real_media_owner_integration_test_sources_unrun": "apps/server/src/services/product_media_reference_integration_tests.rs",
+    "database_protocol_tests": "crates/modules/rustok-product/tests/media_reference_protocol.rs",
+    "catalog_command_tests": "crates/modules/rustok-commerce/tests/catalog_service_test.rs"
+  }
+}

@@ -466,6 +466,7 @@ fn registered_provider(db: DatabaseConnection) -> Arc<dyn TranslationTargetProvi
 
 fn initial_product() -> CreateProductInput {
     CreateProductInput {
+        attribute_values: Default::default(),
         translations: vec![ProductTranslationInput {
             locale: "en".into(),
             title: "Variant Evidence Product".into(),

@@ -250,3 +250,53 @@ available only for actionable domain errors.
   reconciliation, correlation, HTTP-envelope, and transport round-trip tests.
 
 No verification command above was executed as part of this source wave.
+
+
+## Storefront Product HTTP policy continuation (2026-10-19)
+
+Status: **source-only, unintegrated; runtime verification open**.
+
+The mounted `GET /store/products` owner-list adapter and delegated
+`GET /store/products/{id}` adapter share one Commerce HTTP presentation policy,
+`products_legacy::storefront_product_port_http_policy`. Product remains responsible
+for domain/nested Core classification; Commerce presents the resulting `PortErrorKind`.
+No public response or classification is derived from owner code/message text.
+
+| Owner kind | HTTP status | Public code |
+| --- | --- | --- |
+| Validation | 400 | `commerce_store_product_invalid` |
+| NotFound | 404 | `commerce_store_not_found` |
+| Forbidden | 403 | `commerce_product_access_denied` |
+| Conflict | 409 | `commerce_store_product_conflict` |
+| Unavailable / Timeout | 503 | `commerce_store_product_unavailable` |
+| InvariantViolation | 500 | `commerce_store_product_failed` |
+
+**Migration / intentionally changed error semantics:** Forbidden and Conflict were
+previously collapsed into `500 commerce_store_product_failed` by both port mappers.
+Consumers must now handle the typed 403/409 outcomes and their codes rather than
+expecting/retrying a generic 500. Forbidden uses `Product access is denied`; Conflict
+uses `Product request conflicts with the current state`. Other status/code/copy
+families are preserved. These are not claims that every request can produce every
+kind: missing/invisible Product still maps to 404, and channel admission still runs
+before the owner read. The list annotation and both detail OpenAPI annotations
+include the error statuses. Success payloads, list pagination/filtering and runtime
+capability selection/fail-closed behavior are unchanged by this continuation.
+
+Both mapper events retain only correlation character count, closed owner kind,
+owner-code length, retryability and identity presence, plus static public facts.
+The mounted detail debug event uses tenant/product non-nil flags instead of UUIDs.
+Private list/detail context factories generate a fresh opaque UUID for each owner
+invocation rather than embedding page or Product identity. Tenant, service actor,
+locale, channel and two-second deadline remain intact. This is not header-correlation
+propagation, an externally returned error reference, or an end-to-end tracing claim.
+`HttpError` does not expose a retryable field; owner retryability remains diagnostic.
+
+Evidence: six scoped standalone source guards, three JavaScript syntax checks,
+two-file Rust formatter/idempotence checks and `git diff --check` pass. The list
+cutover guard was migrated from stale inline-policy/runtime-layout/unchecked-offset
+markers to the shared policy, typed host capability and existing checked offset.
+Four new Rust scenarios cover all-kind poisoned owner envelopes and opaque context
+scope; they are deliberately **unrun**. No tests, Cargo compilation, HTTP requests,
+log capture, CI, database or remote-adapter checks were performed. Owner review,
+integration, mounted behavior and broader Commerce diagnostics remain open; no
+readiness or sequential full-stack audit cursor is promoted.

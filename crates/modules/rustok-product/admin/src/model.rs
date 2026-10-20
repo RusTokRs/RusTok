@@ -290,6 +290,47 @@ pub struct VariantDraft {
     pub inventory_policy: Option<String>,
 }
 
+/// Update-only intent. Creation continues to use VariantDraft.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct VariantUpdateDraft {
+    #[serde(default, skip_serializing_if = "rustok_api::Patch::is_keep")]
+    pub sku: rustok_api::Patch<String>,
+    #[serde(default, skip_serializing_if = "rustok_api::Patch::is_keep")]
+    pub barcode: rustok_api::Patch<String>,
+    #[serde(
+        rename = "shippingProfileSlug",
+        default,
+        skip_serializing_if = "rustok_api::Patch::is_keep"
+    )]
+    pub shipping_profile_slug: rustok_api::Patch<String>,
+    #[serde(default, skip_serializing_if = "rustok_api::Patch::is_keep")]
+    pub weight: rustok_api::Patch<String>,
+    #[serde(
+        rename = "weightUnit",
+        default,
+        skip_serializing_if = "rustok_api::Patch::is_keep"
+    )]
+    pub weight_unit: rustok_api::Patch<String>,
+    #[serde(rename = "axisValues", default)]
+    pub axis_values: Vec<VariantAxisValueDraft>,
+    #[serde(default)]
+    pub prices: Vec<VariantPriceDraft>,
+    #[serde(rename = "inventoryQuantity")]
+    pub inventory_quantity: Option<i32>,
+    #[serde(rename = "inventoryPolicy")]
+    pub inventory_policy: Option<String>,
+}
+
+impl VariantUpdateDraft {
+    /// Only call for a field actually edited by the form; untouched fields remain Keep.
+    pub fn edited_text(value: String) -> rustok_api::Patch<String> {
+        match rustok_ui_core::normalize_ui_text(&value) {
+            Some(value) => rustok_api::Patch::Set(value),
+            None => rustok_api::Patch::Clear,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct VariantPriceDraft {
     #[serde(rename = "currencyCode")]
@@ -319,6 +360,8 @@ pub struct UpdateProductImageDraft {
 
 #[derive(Clone, Debug)]
 pub struct ProductDraft {
+    #[serde(default)]
+    pub attribute_values: Vec<ProductAttributeValueBatchDraft>,
     pub locale: String,
     pub title: String,
     pub handle: String,
@@ -334,6 +377,7 @@ pub struct ProductDraft {
     pub amount: String,
     pub compare_at_amount: String,
     pub inventory_quantity: i32,
+    pub inventory_policy: String,
     pub publish_now: bool,
     pub status: Option<String>,
     pub meta_title: Option<String>,
@@ -629,4 +673,10 @@ pub struct BindCategoryAttributeDraft {
     #[serde(rename = "isDisabled")]
     pub is_disabled: bool,
     pub position: Option<i32>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductAttributeValueBatchDraft {
+    pub locale: String,
+    pub patches: Vec<ProductAttributeValuePatchDraft>,
 }

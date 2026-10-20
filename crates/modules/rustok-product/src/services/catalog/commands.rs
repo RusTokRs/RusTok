@@ -77,6 +77,21 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        self.validate_shipping_profiles(
+            tenant_id,
+            actor_id,
+            input
+                .shipping_profile_slug
+                .iter()
+                .map(String::as_str)
+                .chain(
+                    input
+                        .variants
+                        .iter()
+                        .filter_map(|variant| variant.shipping_profile_slug.as_deref()),
+                ),
+        )
+        .await?;
 
         if input.translations.is_empty() {
             warn!("Product creation rejected: no translations");
@@ -101,7 +116,7 @@ impl CatalogService {
             input.variant_axes.as_slice(),
         )
         .await?;
-        let product_id = generate_id();
+        let product_id = current_product_operation_id().unwrap_or_else(generate_id);
         let now = Utc::now();
         debug!(product_id = %product_id, "Generated product ID");
 
@@ -124,14 +139,6 @@ impl CatalogService {
         );
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
-        if input.publish {
-            ProductCatalogSchemaService::validate_new_product_publish_requirements_in(
-                &txn,
-                tenant_id,
-                input.primary_category_id,
-            )
-            .await?;
-        }
 
         let product = entities::product::ActiveModel {
             id: Set(product_id),
@@ -363,12 +370,35 @@ impl CatalogService {
                 .await?;
         }
 
+        let schema = ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone());
+        let attributes_changed = schema
+            .apply_product_attribute_batches_in_tx(
+                &txn,
+                tenant_id,
+                product_id,
+                &input.attribute_values,
+            )
+            .await?;
+        if input.publish {
+            schema
+                .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+                .await?;
+        }
+
         txn.publish(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductCreated { product_id },
         )
         .await?;
+        if attributes_changed {
+            txn.publish(
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductAttributeValuesChanged { product_id },
+            )
+            .await?;
+        }
 
         if input.publish {
             txn.publish(
@@ -379,6 +409,10 @@ impl CatalogService {
             .await?;
         }
 
+        let result = self
+            .get_product_in(&txn, tenant_id, product_id, preferred_locale.as_str(), None)
+            .await?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         debug!("Transaction committed");
 
@@ -390,13 +424,7 @@ impl CatalogService {
             "Product created successfully"
         );
 
-        self.get_product_with_locale_fallback(
-            tenant_id,
-            product_id,
-            preferred_locale.as_str(),
-            None,
-        )
-        .await
+        Ok(result)
     }
 
     #[instrument(skip(self))]
@@ -412,6 +440,13 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        let shipping_slug = match &input.shipping_profile_slug {
+            Patch::Set(slug) => Some(slug.as_str()),
+            Patch::Keep | Patch::Clear => None,
+        };
+        self.validate_shipping_profiles(tenant_id, actor_id, shipping_slug)
+            .await?;
+
         validate_patch_text_length(&input.seller_id, 100, "Seller ID")?;
         validate_patch_text_length(&input.vendor, 255, "Vendor")?;
         validate_patch_text_length(&input.product_type, 255, "Product type")?;
@@ -433,6 +468,14 @@ impl CatalogService {
             })?;
         let existing_product = product.clone();
         ensure_expected_revision(&existing_product, input.expected_revision)?;
+        if !input.changes_document() && input.status.as_ref() == Some(&existing_product.status) {
+            let result = self
+                .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+                .await?;
+            record_product_operation_result(&result);
+            txn.commit().await?;
+            return Ok(result);
+        }
         if let Patch::Set(primary_category_id) = &input.primary_category_id {
             validate_existing_variant_axes_for_category_in(
                 &txn,
@@ -549,10 +592,9 @@ impl CatalogService {
             _ => false,
         };
 
+        let remains_active = input.status.as_ref().unwrap_or(&existing_product.status)
+            == &entities::product::ProductStatus::Active;
         if will_become_active {
-            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
-                .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
-                .await?;
             product_active.published_at = Set(Some(Utc::now().into()));
         } else if will_deactivate {
             product_active.published_at = Set(None);
@@ -699,6 +741,32 @@ impl CatalogService {
                 .await?;
         }
 
+        let attributes_changed =
+            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
+                .apply_product_attribute_batches_in_tx(
+                    &txn,
+                    tenant_id,
+                    product_id,
+                    &input.attribute_values,
+                )
+                .await?;
+        if attributes_changed {
+            txn.publish(
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductAttributeValuesChanged { product_id },
+            )
+            .await?;
+        }
+
+        // Validate the persisted candidate, including its new category and translations.
+        // Failure rolls the entire write back before any lifecycle event is committed.
+        if remains_active {
+            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
+                .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+                .await?;
+        }
+
         txn.publish(
             tenant_id,
             Some(actor_id),
@@ -745,16 +813,14 @@ impl CatalogService {
             .await?;
         }
 
+        let result = self
+            .get_product_in(&txn, tenant_id, product_id, preferred_locale.as_str(), None)
+            .await?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         info!(product_id = %product_id, "Product updated successfully");
 
-        self.get_product_with_locale_fallback(
-            tenant_id,
-            product_id,
-            preferred_locale.as_str(),
-            None,
-        )
-        .await
+        Ok(result)
     }
 
     async fn validate_primary_category(
@@ -808,6 +874,16 @@ impl CatalogService {
                 error
             })?;
 
+        // Retries of a completed transition must not change timestamps or emit events.
+        if product.status == entities::product::ProductStatus::Active {
+            let result = self
+                .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+                .await?;
+            record_product_operation_result(&result);
+            txn.commit().await?;
+            return Ok(result);
+        }
+
         ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
             .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
             .await?;
@@ -827,10 +903,14 @@ impl CatalogService {
         )
         .await?;
 
+        let result = self
+            .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+            .await?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         info!(product_id = %product_id, "Product published successfully");
 
-        self.get_product(tenant_id, product_id).await
+        Ok(result)
     }
 
     #[instrument(skip(self))]
@@ -845,6 +925,16 @@ impl CatalogService {
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+
+        // Retries of a completed transition must not change timestamps or emit events.
+        if product.status == entities::product::ProductStatus::Draft {
+            let result = self
+                .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+                .await?;
+            record_product_operation_result(&result);
+            txn.commit().await?;
+            return Ok(result);
+        }
 
         let next_revision = next_revision(product.revision)?;
         let mut product_active: entities::product::ActiveModel = product.into();
@@ -861,10 +951,14 @@ impl CatalogService {
         )
         .await?;
 
+        let result = self
+            .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+            .await?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         info!(product_id = %product_id, "Product unpublished successfully");
 
-        self.get_product(tenant_id, product_id).await
+        Ok(result)
     }
 
     #[instrument(skip(self))]
@@ -879,6 +973,16 @@ impl CatalogService {
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+
+        // Retries of a completed transition must not change timestamps or emit events.
+        if product.status == entities::product::ProductStatus::Archived {
+            let result = self
+                .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+                .await?;
+            record_product_operation_result(&result);
+            txn.commit().await?;
+            return Ok(result);
+        }
 
         let next_revision = next_revision(product.revision)?;
         let mut product_active: entities::product::ActiveModel = product.into();
@@ -895,10 +999,14 @@ impl CatalogService {
         )
         .await?;
 
+        let result = self
+            .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+            .await?;
+        record_product_operation_result(&result);
         txn.commit().await?;
         info!(product_id = %product_id, "Product archived successfully");
 
-        self.get_product(tenant_id, product_id).await
+        Ok(result)
     }
 
     #[instrument(skip(self))]
@@ -969,13 +1077,15 @@ impl CatalogService {
                 .await?;
         }
 
-        let image_ids: Vec<Uuid> = entities::product_image::Entity::find()
+        let images = entities::product_image::Entity::find()
             .filter(entities::product_image::Column::ProductId.eq(product_id))
             .all(&txn)
-            .await?
-            .into_iter()
-            .map(|image| image.id)
-            .collect();
+            .await?;
+        for image in &images {
+            self.enqueue_product_media_release(&*txn, tenant_id, actor_id, image)
+                .await?;
+        }
+        let image_ids: Vec<Uuid> = images.iter().map(|image| image.id).collect();
         if !image_ids.is_empty() {
             entities::product_image_translation::Entity::delete_many()
                 .filter(
@@ -1006,6 +1116,7 @@ impl CatalogService {
         txn.publish_product_deleted(tenant_id, Some(actor_id), product_id, &image_ids)
             .await?;
 
+        record_product_operation_result(&());
         txn.commit().await?;
         info!(product_id = %product_id, "Product deleted successfully");
 
@@ -1025,6 +1136,13 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        self.validate_shipping_profiles(
+            tenant_id,
+            actor_id,
+            input.shipping_profile_slug.as_deref(),
+        )
+        .await?;
+
         validate_variant_prices(&input.prices)?;
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
@@ -1069,7 +1187,7 @@ impl CatalogService {
             None => 0,
         };
 
-        let variant_id = generate_id();
+        let variant_id = current_product_operation_id().unwrap_or_else(generate_id);
         let now = Utc::now();
 
         let variant = entities::product_variant::ActiveModel {
@@ -1165,6 +1283,8 @@ impl CatalogService {
         )
         .await?;
 
+        let result = self.get_variant_in(&txn, tenant_id, variant_id).await?;
+        record_product_operation_result(&result);
         txn.commit().await?;
 
         info!(
@@ -1173,7 +1293,7 @@ impl CatalogService {
             "Product variant created successfully"
         );
 
-        self.get_variant(tenant_id, variant_id).await
+        Ok(result)
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, variant_id = %variant_id))]
@@ -1189,8 +1309,26 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        validate_patch_text_length(&input.sku, 100, "SKU")?;
+        validate_patch_text_length(&input.barcode, 100, "Barcode")?;
+        validate_patch_text_length(&input.shipping_profile_slug, 100, "Shipping profile slug")?;
+        validate_patch_text_length(&input.weight_unit, 16, "Weight unit")?;
+        if let Patch::Set(slug) = &input.shipping_profile_slug {
+            self.validate_shipping_profiles(tenant_id, actor_id, Some(slug.as_str()))
+                .await?;
+        }
+
         if let Some(prices) = input.prices.as_deref() {
             validate_variant_prices(prices)?;
+            if prices.iter().any(|price| {
+                price.channel_id.is_some()
+                    || normalize_public_channel_slug(price.channel_slug.as_deref()).is_some()
+            }) {
+                return Err(CommerceError::Validation(
+                    "Catalog edits accept only unscoped base prices; use Pricing for contextual prices"
+                        .into(),
+                ));
+            }
         }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
@@ -1206,31 +1344,45 @@ impl CatalogService {
         let mut active: entities::product_variant::ActiveModel = variant.into();
         active.updated_at = Set(Utc::now().into());
 
-        if let Some(sku) = input.sku.clone() {
-            active.sku = Set(Some(sku));
+        // Keep leaves the loaded ActiveValue untouched; Clear writes SQL NULL.
+        match &input.sku {
+            Patch::Keep => {}
+            Patch::Clear => active.sku = Set(None),
+            Patch::Set(value) => active.sku = Set(Some(value.clone())),
         }
-        if let Some(barcode) = input.barcode {
-            active.barcode = Set(Some(barcode));
+        match input.barcode {
+            Patch::Keep => {}
+            Patch::Clear => active.barcode = Set(None),
+            Patch::Set(value) => active.barcode = Set(Some(value)),
         }
-        if input.shipping_profile_slug.is_some() {
-            active.shipping_profile_slug = Set(input
-                .shipping_profile_slug
-                .as_deref()
-                .and_then(normalize_shipping_profile_slug));
+        match input.shipping_profile_slug {
+            Patch::Keep => {}
+            Patch::Clear => active.shipping_profile_slug = Set(None),
+            Patch::Set(value) => {
+                active.shipping_profile_slug = Set(normalize_shipping_profile_slug(&value))
+            }
         }
         if let Some(inventory_policy) = input.inventory_policy {
             active.inventory_policy = Set(inventory_policy);
         }
-        if input.weight.is_some() {
-            active.weight = Set(input.weight);
+        match input.weight {
+            Patch::Keep => {}
+            Patch::Clear => active.weight = Set(None),
+            Patch::Set(value) => active.weight = Set(Some(value)),
         }
-        if let Some(weight_unit) = input.weight_unit {
-            active.weight_unit = Set(Some(weight_unit));
+        match input.weight_unit {
+            Patch::Keep => {}
+            Patch::Clear => active.weight_unit = Set(None),
+            Patch::Set(value) => active.weight_unit = Set(Some(value)),
         }
+        let requested_sku = match &input.sku {
+            Patch::Set(value) => Some(value.as_str()),
+            Patch::Keep | Patch::Clear => None,
+        };
         let _updated_variant = active
             .update(&txn)
             .await
-            .map_err(|error| map_product_unique_violation(error, "", "", input.sku.as_deref()))?;
+            .map_err(|error| map_product_unique_violation(error, "", "", requested_sku))?;
 
         if let Some(ref axis_values) = input.axis_values {
             let configured_axes =
@@ -1295,8 +1447,6 @@ impl CatalogService {
         }
 
         if let Some(prices) = input.prices {
-            PricingBootstrapService::delete_prices_for_variants_in_tx(&txn, &[variant_id]).await?;
-
             let mut initial_prices = Vec::new();
             for price_input in &prices {
                 initial_prices.push(InitialPrice {
@@ -1310,9 +1460,12 @@ impl CatalogService {
                     compare_at_amount: price_input.compare_at_amount,
                 });
             }
-            if !initial_prices.is_empty() {
-                PricingBootstrapService::create_initial_prices_in_tx(&txn, initial_prices).await?;
-            }
+            PricingBootstrapService::replace_catalog_base_prices_in_tx(
+                &txn,
+                variant_id,
+                initial_prices,
+            )
+            .await?;
         }
 
         if let Some(quantity) = input.inventory_quantity {
@@ -1329,6 +1482,8 @@ impl CatalogService {
         )
         .await?;
 
+        let result = self.get_variant_in(&txn, tenant_id, variant_id).await?;
+        record_product_operation_result(&result);
         txn.commit().await?;
 
         info!(
@@ -1337,7 +1492,7 @@ impl CatalogService {
             "Product variant updated successfully"
         );
 
-        self.get_variant(tenant_id, variant_id).await
+        Ok(result)
     }
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id, variant_id = %variant_id))]
@@ -1390,6 +1545,7 @@ impl CatalogService {
         )
         .await?;
 
+        record_product_operation_result(&());
         txn.commit().await?;
 
         info!(
@@ -1411,11 +1567,34 @@ impl CatalogService {
     ) -> CommerceResult<ProductImageResponse> {
         debug!(media_id = %input.media_id, "Adding product image");
         validate_product_image_input(input.position, input.alt_text.as_deref())?;
+        if input.media_id.is_nil() {
+            return Err(CommerceError::Validation(
+                "Product image Media UUID must not be nil".into(),
+            ));
+        }
         let image_locale = input
             .alt_text
             .as_deref()
             .map(|_| canonical_product_image_locale(input.locale.as_deref()))
             .transpose()?;
+
+        // Product owns the UUID before Media IO; receipt replay returns before
+        // this future is polled. Retries of an admitted operation reuse this UUID.
+        let image_id = current_product_operation_id().unwrap_or_else(generate_id);
+        // Avoid retaining against an obviously missing/cross-tenant target. The
+        // parent is rechecked under its write lock after Media retain.
+        entities::product::Entity::find_by_id(product_id)
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(CommerceError::ProductNotFound(product_id))?;
+        if self.has_unverified_media_images(tenant_id).await? {
+            return Err(CommerceError::Database(sea_orm::DbErr::Custom(
+                "existing Product images require Media hold backfill before image admission".into(),
+            )));
+        }
+        self.retain_product_image(tenant_id, actor_id, image_id, input.media_id)
+            .await?;
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
@@ -1446,7 +1625,6 @@ impl CatalogService {
         let position = i32::try_from(insertion_index)
             .map_err(|_| CommerceError::Validation("too many Product images".to_owned()))?;
 
-        let image_id = generate_id();
         let _image = entities::product_image::ActiveModel {
             id: Set(image_id),
             product_id: Set(product_id),
@@ -1455,6 +1633,9 @@ impl CatalogService {
         }
         .insert(&txn)
         .await?;
+        self.mark_image_media_provisioned(&*txn, tenant_id, image_id)
+            .await?;
+        self.mark_media_retention_ready(&*txn, tenant_id).await?;
 
         let mut ordered_image_ids = existing_images
             .into_iter()
@@ -1492,6 +1673,15 @@ impl CatalogService {
         )
         .await?;
 
+        let result = ProductImageResponse {
+            id: image_id,
+            media_id: input.media_id,
+            url: format_product_media_url(input.media_id),
+            alt_text: input.alt_text,
+            position,
+            translations,
+        };
+        record_product_operation_result(&result);
         txn.commit().await?;
 
         info!(
@@ -1500,14 +1690,7 @@ impl CatalogService {
             "Product image added successfully"
         );
 
-        Ok(ProductImageResponse {
-            id: image_id,
-            media_id: input.media_id,
-            url: format_product_media_url(input.media_id),
-            alt_text: input.alt_text,
-            position,
-            translations,
-        })
+        Ok(result)
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, product_id = %product_id, image_id = %image_id))]
@@ -1520,6 +1703,7 @@ impl CatalogService {
         input: UpdateProductImageInput,
     ) -> CommerceResult<ProductImageResponse> {
         debug!("Updating product image");
+        let response_locale = canonical_product_image_locale(input.locale.as_deref())?;
         validate_product_image_input(input.position, input.alt_text.as_deref())?;
         let image_locale = input
             .alt_text
@@ -1608,18 +1792,29 @@ impl CatalogService {
         )
         .await?;
 
-        txn.commit().await?;
-
         let all_translations = entities::product_image_translation::Entity::find()
             .filter(entities::product_image_translation::Column::ImageId.eq(image_id))
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(|t| ProductImageTranslationResponse {
-                locale: t.locale,
-                alt_text: t.alt_text,
-            })
-            .collect();
+            .order_by_asc(entities::product_image_translation::Column::Locale)
+            .all(&txn)
+            .await?;
+        let alt_text =
+            super::projection::resolve_image_alt_text(&all_translations, &response_locale, None);
+        let result = ProductImageResponse {
+            id: image_id,
+            media_id: updated_image.media_id,
+            url: format_product_media_url(updated_image.media_id),
+            alt_text,
+            position,
+            translations: all_translations
+                .into_iter()
+                .map(|translation| ProductImageTranslationResponse {
+                    locale: translation.locale,
+                    alt_text: translation.alt_text,
+                })
+                .collect(),
+        };
+        record_product_operation_result(&result);
+        txn.commit().await?;
 
         info!(
             image_id = %image_id,
@@ -1627,14 +1822,7 @@ impl CatalogService {
             "Product image updated successfully"
         );
 
-        Ok(ProductImageResponse {
-            id: image_id,
-            media_id: updated_image.media_id,
-            url: format_product_media_url(updated_image.media_id),
-            alt_text: input.alt_text,
-            position,
-            translations: all_translations,
-        })
+        Ok(result)
     }
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id, product_id = %product_id, image_id = %image_id))]
@@ -1651,11 +1839,14 @@ impl CatalogService {
 
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
-        let _image = entities::product_image::Entity::find_by_id(image_id)
+        let image = entities::product_image::Entity::find_by_id(image_id)
             .filter(entities::product_image::Column::ProductId.eq(product_id))
             .one(&txn)
             .await?
             .ok_or(CommerceError::ImageNotFound(image_id))?;
+
+        self.enqueue_product_media_release(&*txn, tenant_id, actor_id, &image)
+            .await?;
 
         entities::product_image_translation::Entity::delete_many()
             .filter(entities::product_image_translation::Column::ImageId.eq(image_id))
@@ -1684,6 +1875,7 @@ impl CatalogService {
         )
         .await?;
 
+        record_product_operation_result(&());
         txn.commit().await?;
 
         info!(
@@ -1735,6 +1927,7 @@ impl CatalogService {
         )
         .await?;
 
+        record_product_operation_result(&());
         txn.commit().await?;
 
         info!(product_id = %product_id, "Product images reordered successfully");
@@ -1844,10 +2037,17 @@ impl CatalogService {
         )
         .await?;
 
+        let result = super::projection::load_product_variant_axes(
+            &txn,
+            tenant_id,
+            product_id,
+            PLATFORM_FALLBACK_LOCALE,
+        )
+        .await?;
+        record_product_operation_result(&result);
         txn.commit().await?;
 
-        self.get_product_variant_axes(tenant_id, product_id, PLATFORM_FALLBACK_LOCALE)
-            .await
+        Ok(result)
     }
 }
 

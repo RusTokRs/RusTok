@@ -105,6 +105,7 @@ fn product_owner_error_facts(error: &CommerceError) -> ProductOwnerErrorFacts {
         CommerceError::CannotDeleteOnlyVariant => ("cannot_delete_only_variant", 0, 0, 0, 0, false),
         CommerceError::CannotDeletePublished => ("cannot_delete_published", 0, 0, 0, 0, false),
         CommerceError::Core(_) => ("core", 0, 0, 0, 0, true),
+        CommerceError::Conflict(_) => ("conflict", 0, 0, 0, 0, true),
     };
 
     ProductOwnerErrorFacts {
@@ -128,6 +129,34 @@ fn attribute_validation_public_failure(message: &str) -> (&'static str, &'static
         "PRODUCT_ATTRIBUTE_VALIDATION",
         false,
     )
+}
+
+fn core_public_error_policy(
+    error: &rustok_core::error::Error,
+) -> (&'static str, &'static str, bool) {
+    use rustok_api::PortErrorKind;
+    let port = crate::error::core_port_error(error);
+    let (message, code) = match port.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            "Product data is temporarily unavailable",
+            "PRODUCT_TEMPORARILY_UNAVAILABLE",
+        ),
+        PortErrorKind::Forbidden => ("Product access is denied", "PRODUCT_ACCESS_DENIED"),
+        PortErrorKind::Validation => ("Product request is invalid", "PRODUCT_VALIDATION"),
+        PortErrorKind::NotFound => (
+            "Referenced product resource was not found",
+            "PRODUCT_DEPENDENCY_NOT_FOUND",
+        ),
+        PortErrorKind::Conflict => (
+            "Product request conflicts with the current state",
+            "PRODUCT_CONFLICT",
+        ),
+        PortErrorKind::InvariantViolation => (
+            "Product operation could not be completed safely",
+            "PRODUCT_OPERATION_FAILED",
+        ),
+    };
+    (message, code, port.retryable)
 }
 
 pub fn map_product_public_error(
@@ -186,9 +215,10 @@ pub fn map_product_public_error(
             "CANNOT_DELETE_PUBLISHED",
             false,
         ),
-        CommerceError::Core(_) => (
-            "Product operation could not be completed safely",
-            "PRODUCT_OPERATION_FAILED",
+        CommerceError::Core(error) => core_public_error_policy(error),
+        CommerceError::Conflict(_) => (
+            "Product request conflicts with the current state",
+            "PRODUCT_CONFLICT",
             false,
         ),
     };

@@ -42,6 +42,23 @@ RusToK uses a hybrid transport layer:
 - host applications and UI packages must not become canonical owner of API logic
 - module-owned HTTP/GraphQL surfaces must align with manifest wiring and local docs
 
+Product workflow write semantics and the incomplete editor aggregate-save remediation are tracked
+by the [Product owner plan](../../crates/modules/rustok-product/docs/implementation-plan.md#workflow-remediation-2026-10-17).
+Owner document updates validate Active requirements against their candidate state before commit;
+create/update compose typed locale/value batches inside that same transaction, not through a
+second independently receipted schema command. Next status actions use lifecycle-only
+updates rather than a partial editor-document save. All fourteen catalog commands now bind caller keys to durable owner receipts with pre-commit
+public results. Atomic document/category/Product EAV/publication save is source-implemented in Next
+and Leptos; database execution, whole-screen Variant atomicity and child-command recovery remain
+open. Next save/status/delete retain immutable requests in a scope/resource/URL-intent browser
+journal, with exclusive Web Locks, explicit recovery and terminal tombstones; live browser/backend
+reload/concurrency evidence remains open. GraphQL `outcome: rejected` distinguishes a finalized
+domain refusal from admission/context failures, even when both are nonretryable. The Product [write boundary](../../crates/modules/rustok-product/docs/write-boundary.md)
+records lifecycle receipt semantics separately from the receipt-bound EAV surface and Proposed Media workflow.
+Product/Pricing money uses decimal strings in major units at Next/GraphQL boundaries. Catalog
+Variant price replacement is limited to unscoped base rows; contextual prices use Pricing commands
+and survive catalog edits. See [base-price semantics](../../crates/modules/rustok-product/docs/write-boundary.md#catalog-base-price-replacement).
+
 ## API Adapter Placement
 
 API adapters follow the backend module layout:

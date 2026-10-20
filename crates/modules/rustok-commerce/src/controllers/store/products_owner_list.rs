@@ -4,8 +4,7 @@ use axum::{
     http::StatusCode,
 };
 use rustok_api::{
-    OptionalAuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
-    TenantContext,
+    OptionalAuthContext, PortActor, PortContext, PortError, RequestContext, TenantContext,
 };
 use rustok_product::LegacyStorefrontHttpProductsRequest;
 use rustok_web::{HttpError, HttpResult};
@@ -27,13 +26,12 @@ fn storefront_product_list_port_context(
     tenant_id: Uuid,
     locale: &str,
     public_channel_slug: Option<&str>,
-    page: u64,
 ) -> PortContext {
     let context = PortContext::new(
         tenant_id.to_string(),
         PortActor::service("rustok-commerce.storefront-product"),
         locale,
-        format!("commerce-storefront-product:list:{page}"),
+        Uuid::new_v4().to_string(),
     )
     .with_deadline(std::time::Duration::from_secs(2));
     match public_channel_slug {
@@ -64,36 +62,12 @@ fn map_storefront_product_list_port_error(
     context: &PortContext,
     tenant_id: Uuid,
 ) -> HttpError {
-    let (status, code, message, error_kind) = match &error.kind {
-        PortErrorKind::Validation => (
-            StatusCode::BAD_REQUEST,
-            "commerce_store_product_invalid",
-            "Product request is invalid",
-            "validation",
-        ),
-        PortErrorKind::NotFound => (
-            StatusCode::NOT_FOUND,
-            "commerce_store_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_store_product_unavailable",
-            "Product service is temporarily unavailable",
-            "unavailable",
-        ),
-        PortErrorKind::Conflict | PortErrorKind::Forbidden | PortErrorKind::InvariantViolation => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_store_product_failed",
-            "Product operation could not be completed safely",
-            "owner_failure",
-        ),
-    };
+    let (status, code, message, error_kind) =
+        super::products_legacy::storefront_product_port_http_policy(&error.kind);
     tracing::error!(
         owner = STOREFRONT_PRODUCT_OWNER,
         owner_operation = STOREFRONT_PRODUCT_LIST_OPERATION,
-        correlation_id = %context.correlation_id,
+        correlation_id_length = context.correlation_id.chars().count(),
         tenant_id_non_nil = !tenant_id.is_nil(),
         owner_error_kind = ?error.kind,
         owner_code_length = error.code.chars().count(),
@@ -115,7 +89,12 @@ fn map_storefront_product_list_port_error(
     params(StoreListProductsParams),
     responses(
         (status = 200, description = "Published storefront products", body = PaginatedResponse<ProductListItem>),
-        (status = 400, description = "Invalid request")
+        (status = 400, description = "Invalid request"),
+        (status = 404, description = "Commerce resource not found"),
+        (status = 403, description = "Product access denied"),
+        (status = 409, description = "Product state conflict"),
+        (status = 503, description = "Product service unavailable"),
+        (status = 500, description = "Product invariant failure")
     )
 )]
 pub async fn list_products(
@@ -134,12 +113,8 @@ pub async fn list_products(
         .as_deref()
         .unwrap_or(request_context.locale.as_str());
     let public_channel_slug = public_channel_slug_from_request(&request_context);
-    let port_context = storefront_product_list_port_context(
-        tenant.id,
-        locale,
-        public_channel_slug.as_deref(),
-        page,
-    );
+    let port_context =
+        storefront_product_list_port_context(tenant.id, locale, public_channel_slug.as_deref());
     let port = runtime
         .product_storefront_http_read_port()
         .ok_or_else(storefront_product_list_unavailable)?;
@@ -191,7 +166,12 @@ pub async fn list_products(
     params(("id" = Uuid, Path, description = "Product ID")),
     responses(
         (status = 200, description = "Product details", body = ProductResponse),
-        (status = 404, description = "Product not found")
+        (status = 400, description = "Invalid request"),
+        (status = 404, description = "Product not found"),
+        (status = 403, description = "Product access denied"),
+        (status = 409, description = "Product state conflict"),
+        (status = 503, description = "Product service unavailable"),
+        (status = 500, description = "Product invariant failure")
     )
 )]
 pub async fn show_product(
@@ -243,4 +223,55 @@ pub async fn list_shipping_options(
         Query(query),
     )
     .await
+}
+
+#[cfg(test)]
+mod product_list_policy_tests {
+    use super::*;
+    use rustok_api::PortErrorKind;
+
+    #[test]
+    fn list_mapper_uses_the_same_static_policy_for_arbitrary_owner_payloads() {
+        for kind in [
+            PortErrorKind::Validation,
+            PortErrorKind::NotFound,
+            PortErrorKind::Forbidden,
+            PortErrorKind::Conflict,
+            PortErrorKind::Unavailable,
+            PortErrorKind::Timeout,
+            PortErrorKind::InvariantViolation,
+        ] {
+            let policy = super::super::products_legacy::storefront_product_port_http_policy(&kind);
+            let error = PortError {
+                kind,
+                code: "private-code".into(),
+                message: "private-message".into(),
+                retryable: true,
+            };
+            let context = PortContext::new(
+                "private-tenant",
+                PortActor::system(),
+                "en",
+                "private-correlation",
+            );
+            let mapped = map_storefront_product_list_port_error(error, &context, Uuid::nil());
+            assert_eq!(mapped.status, policy.0);
+            assert_eq!(mapped.code, policy.1);
+            assert_eq!(mapped.message, policy.2);
+            assert!(!mapped.message.contains("private-"));
+        }
+    }
+
+    #[test]
+    fn list_owner_context_uses_opaque_correlation_and_preserves_scope() {
+        let tenant_id = Uuid::new_v4();
+        let first = storefront_product_list_port_context(tenant_id, "en", Some("web"));
+        let second = storefront_product_list_port_context(tenant_id, "en", Some("web"));
+        assert!(Uuid::parse_str(&first.correlation_id).is_ok());
+        assert_ne!(first.correlation_id, second.correlation_id);
+        assert_eq!(first.tenant_id, tenant_id.to_string());
+        assert_eq!(first.locale, "en");
+        assert_eq!(first.channel.as_deref(), Some("web"));
+        assert_eq!(first.deadline_ms, Some(2000));
+    }
 }

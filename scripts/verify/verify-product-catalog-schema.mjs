@@ -527,8 +527,8 @@ for (const marker of [
   'mod tags;',
   'Primary category must be structural',
   'DomainEvent::ProductPrimaryCategoryChanged',
-  'validate_product_publish_requirements',
-  'validate_new_product_publish_requirements',
+  // Validate the inserted document/EAV in the transaction, not category-only preflight.
+  'validate_product_publish_requirements_in(&txn, tenant_id, product_id)',
   'DomainEvent::ProductPublished { product_id }',
   // Zero-legacy policy: the legacy product_options subsystem was dropped
   // (m20250130_000013); variant option axes now live in the attribute tables.
@@ -556,7 +556,7 @@ for (const marker of [
   'use rustok_inventory::{BootstrapService, InitialInventory};',
   'BootstrapService::ensure_default_location_in_tx(&txn, tenant_id)',
   'BootstrapService::create_initial_records_in_tx(',
-  'BootstrapService::load_available_quantities(&self.db, &variant_ids)',
+  'BootstrapService::load_available_quantities(conn, &variant_ids)',
   'BootstrapService::delete_records_for_variants_in_tx(&txn, &variant_ids)',
 ]) {
   requireSource(catalogServiceAggregate, marker, 'product catalog service aggregate');
@@ -613,12 +613,6 @@ for (const marker of [
   requireSource(productEventTest, marker, productEventTestPath);
 }
 for (const marker of [
-  'validate_product_shipping_profile_input',
-  '.ensure_shipping_profile_slug_exists(tenant_id, &slug)',
-]) {
-  requireSource(commerceSafeOrderHelpers, marker, commerceSafeOrderHelpersPath);
-}
-for (const marker of [
   'effective_shipping_profile_slug(',
   'product_model.shipping_profile_slug.as_deref()',
   'variant.shipping_profile_slug.as_deref()',
@@ -626,8 +620,6 @@ for (const marker of [
   requireSource(commerceMutationHelpers, marker, commerceMutationHelpersPath);
 }
 for (const marker of [
-  'validate_product_shipping_profile_input(',
-  'input.shipping_profile_slug.as_deref()',
   '.publish_product(port_context.clone(), id)',
   'PRODUCT_MODULE_SLUG as MODULE_SLUG',
   'product_mutation_actor(ctx)',
@@ -646,8 +638,8 @@ forbidSource(commerceCatalogMutation, 'tenant_id: Uuid', commerceCatalogMutation
 forbidSource(commerceCatalogMutation, 'user_id: Uuid', commerceCatalogMutationPath);
 for (const marker of [
   'struct ProductWriteTransaction',
-  'publish_in_tx_with_envelope_id(&self.transaction',
-  'async fn commit(self)',
+  'publish_in_tx_with_envelope_id(self.active_transaction()',
+  'async fn commit(mut self)',
 ]) {
   requireSource(productWriteTransaction, marker, productWriteTransactionPath);
 }
@@ -777,3 +769,7 @@ if (!scripts['test:verify:ecommerce:fba']?.includes('npm run test:verify:product
 }
 
 console.log('[verify-product-catalog-schema] Product catalog schema/write-read model invariants are source-locked');
+
+// Shipping policy now belongs behind Product receipt admission.
+import {run as verifyShippingAdmission} from "./verify-product-shipping-admission.mjs";
+verifyShippingAdmission();

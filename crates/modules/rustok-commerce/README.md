@@ -104,3 +104,13 @@ profile to digital lines. See
 - commerce-owned `dto` and `entities` modules; owner DTO/entity/service contracts are imported from owner crates directly
 
 See also `docs/README.md`.
+
+
+## Storefront Product HTTP policy (2026-10-19)
+
+Mounted Product list/detail share a static presentation policy. **Forbidden now returns
+403 and Conflict 409 instead of the prior generic 500**; missing/invisible Product
+remains 404. Mapper diagnostics are bounded and owner-call correlations are opaque.
+See the [contract and migration note](docs/public-port-error-safety.md#storefront-product-http-policy-continuation-2026-10-19).
+Source guards/format checks pass; four Rust scenarios are unrun and compilation,
+mounted execution, tracing capture and integration remain open.

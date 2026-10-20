@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql, graphql_url};
 use rustok_ui_core::normalize_ui_text as optional_text;
 use serde::{Deserialize, Serialize};
@@ -202,10 +200,22 @@ struct VariantAxisInput {
 
 #[derive(Debug, Serialize)]
 struct UpdateVariantInput {
-    sku: Option<String>,
-    barcode: Option<String>,
-    #[serde(rename = "shippingProfileSlug")]
-    shipping_profile_slug: Option<String>,
+    #[serde(skip_serializing_if = "rustok_api::Patch::is_keep")]
+    sku: rustok_api::Patch<String>,
+    #[serde(skip_serializing_if = "rustok_api::Patch::is_keep")]
+    barcode: rustok_api::Patch<String>,
+    #[serde(
+        rename = "shippingProfileSlug",
+        skip_serializing_if = "rustok_api::Patch::is_keep"
+    )]
+    shipping_profile_slug: rustok_api::Patch<String>,
+    #[serde(skip_serializing_if = "rustok_api::Patch::is_keep")]
+    weight: rustok_api::Patch<String>,
+    #[serde(
+        rename = "weightUnit",
+        skip_serializing_if = "rustok_api::Patch::is_keep"
+    )]
+    weight_unit: rustok_api::Patch<String>,
     #[serde(rename = "axisValues", skip_serializing_if = "Option::is_none")]
     axis_values: Option<Vec<VariantAxisValueInput>>,
     prices: Option<Vec<PriceInput>>,
@@ -235,6 +245,8 @@ struct UpdateProductImageInput {
 
 #[derive(Debug, Serialize)]
 struct CreateProductInput {
+    #[serde(rename = "attributeValues", skip_serializing_if = "Vec::is_empty")]
+    attribute_values: Vec<crate::model::ProductAttributeValueBatchDraft>,
     translations: Vec<ProductTranslationInput>,
     #[serde(rename = "variantAxes", skip_serializing_if = "Option::is_none")]
     variant_axes: Option<Vec<VariantAxisInput>>,
@@ -254,6 +266,8 @@ struct CreateProductInput {
 
 #[derive(Debug, Serialize)]
 struct UpdateProductInput {
+    #[serde(rename = "attributeValues", skip_serializing_if = "Vec::is_empty")]
+    attribute_values: Vec<crate::model::ProductAttributeValueBatchDraft>,
     translations: Option<Vec<ProductTranslationInput>>,
     /// Predecessor revision read with the document; omitted by unconditional lifecycle writes.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -519,6 +533,10 @@ pub(crate) async fn update_product(
             idempotency_key,
             id,
             input: UpdateProductInput {
+                attribute_values:
+                    crate::product_schema_graphql::normalize_product_attribute_batches(
+                        draft.attribute_values.clone(),
+                    ),
                 translations: Some(vec![build_translation_input(&draft)]),
                 revision: draft.revision,
                 seller_id: optional_text(draft.seller_id.as_str()),
@@ -566,6 +584,7 @@ pub(crate) async fn change_product_status(
             idempotency_key,
             id,
             input: UpdateProductInput {
+                attribute_values: Default::default(),
                 translations: None,
                 revision: None,
                 seller_id: None,
@@ -722,7 +741,7 @@ pub(crate) async fn update_product_variant(
     actor_id: String,
     variant_id: String,
     idempotency_key: String,
-    draft: crate::model::VariantDraft,
+    draft: crate::model::VariantUpdateDraft,
 ) -> Result<crate::model::ProductVariant, GraphqlHttpError> {
     let context = MutationErrorContext::new(
         "update_product_variant",
@@ -749,12 +768,11 @@ pub(crate) async fn update_product_variant(
     };
 
     let input = UpdateVariantInput {
-        sku: draft.sku.as_deref().and_then(optional_text),
-        barcode: draft.barcode.as_deref().and_then(optional_text),
-        shipping_profile_slug: draft
-            .shipping_profile_slug
-            .as_deref()
-            .and_then(optional_text),
+        sku: draft.sku,
+        barcode: draft.barcode,
+        shipping_profile_slug: draft.shipping_profile_slug,
+        weight: draft.weight,
+        weight_unit: draft.weight_unit,
         axis_values: if draft.axis_values.is_empty() {
             None
         } else {
@@ -974,6 +992,9 @@ pub(crate) async fn reorder_product_images(
 
 fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
     CreateProductInput {
+        attribute_values: crate::product_schema_graphql::normalize_product_attribute_batches(
+            draft.attribute_values.clone(),
+        ),
         translations: vec![build_translation_input(&draft)],
         variant_axes: None,
         variants: vec![CreateVariantInput {
@@ -995,7 +1016,7 @@ fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
                 compare_at_amount: optional_text(draft.compare_at_amount.as_str()),
             }],
             inventory_quantity: Some(draft.inventory_quantity),
-            inventory_policy: Some("deny".to_string()),
+            inventory_policy: Some(draft.inventory_policy.trim().to_ascii_lowercase()),
         }],
         seller_id: optional_text(draft.seller_id.as_str()),
         vendor: optional_text(draft.vendor.as_str()),
@@ -1019,5 +1040,60 @@ fn build_translation_input(draft: &ProductDraft) -> ProductTranslationInput {
         description: optional_text(draft.description.as_str()),
         meta_title: draft.meta_title.clone(),
         meta_description: draft.meta_description.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn variant_update_wire_keeps_untouched_fields_absent_and_edited_clears_null() {
+        let draft = crate::model::VariantUpdateDraft {
+            sku: crate::model::VariantUpdateDraft::edited_text("  ".into()),
+            ..Default::default()
+        };
+        let input = UpdateVariantInput {
+            sku: draft.sku,
+            barcode: draft.barcode,
+            shipping_profile_slug: draft.shipping_profile_slug,
+            weight: draft.weight,
+            weight_unit: draft.weight_unit,
+            axis_values: None,
+            prices: None,
+            inventory_quantity: None,
+            inventory_policy: None,
+        };
+        let json = serde_json::to_value(input).unwrap();
+        assert_eq!(json.get("sku"), Some(&serde_json::Value::Null));
+        for field in ["barcode", "shippingProfileSlug", "weight", "weightUnit"] {
+            assert!(
+                json.get(field).is_none(),
+                "Untouched field must be omitted: {field}"
+            );
+        }
+        assert_eq!(
+            crate::model::VariantUpdateDraft::edited_text(" SKU ".into()),
+            rustok_api::Patch::Set("SKU".into())
+        );
+    }
+
+    #[test]
+    fn initial_variant_forwards_the_selected_inventory_policy() {
+        for policy in ["DENY", "CONTINUE"] {
+            let draft: ProductDraft = serde_json::from_value(serde_json::json!({
+                "locale": "en", "title": "Chair", "handle": "chair", "description": "",
+                "seller_id": "", "vendor": "", "product_type": "simple", "sku": "CHAIR",
+                "barcode": "", "currency_code": "USD", "amount": "0", "compare_at_amount": "",
+                "inventory_quantity": 0, "inventory_policy": policy, "publish_now": false,
+                "tags": [],
+            }))
+            .unwrap();
+            let input = build_create_product_input(draft);
+            assert_eq!(
+                input.variants[0].inventory_policy.as_deref(),
+                Some(policy.to_ascii_lowercase().as_str())
+            );
+        }
     }
 }

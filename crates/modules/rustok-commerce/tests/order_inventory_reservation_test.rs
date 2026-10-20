@@ -88,6 +88,7 @@ async fn create_product_and_variant(catalog: &CatalogService, tenant_id: Uuid) -
             tenant_id,
             Uuid::new_v4(),
             CreateProductInput {
+                attribute_values: Default::default(),
                 translations: vec![ProductTranslationInput {
                     locale: "en".to_string(),
                     title: "Reserved product".to_string(),

@@ -1,5 +1,12 @@
 # Admin product shipping-profile diagnostic safety
 
+> Historical source review, superseded on 2026-10-18. The Product preflight mapper
+> and validator below have been removed. Shipping admission now executes through
+> ProductShippingProfilePort behind owner receipt admission; failures use Product
+> public-error/receipt handling. See the [current write boundary](../../rustok-product/docs/write-boundary.md#receipt-aware-shipping-profile-admission).
+> The retained verifier entrypoint checks that replacement contract, not this old mapper.
+> No runtime execution certification is implied.
+
 Status: **source-ready / unvalidated**
 
 ## Scope

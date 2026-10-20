@@ -38,8 +38,6 @@ for (const [value, label] of [
 ]) requireText(router, value, label);
 
 for (const [value, label] of [
-  ['ProductStorefrontHttpReadPort', 'Product HTTP owner port type'],
-  ['self.product_catalog_read_runtime.storefront_http_read_port()', 'host-selected optional capability'],
   ['ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;', 'channel guard'],
   ['let page = pagination.page.max(1);', 'page normalization'],
   ['let per_page = pagination.limit();', '100-row REST clamp'],
@@ -80,6 +78,11 @@ for (const value of [
   'error.to_string()',
 ]) forbidText(mounted, value, 'mounted Product module must not own Product storage/backend details');
 
+const policyStart = legacy.indexOf('pub(super) fn storefront_product_port_http_policy(');
+const policyEnd = legacy.indexOf('fn map_storefront_product_port_error(', policyStart);
+if (policyStart < 0 || policyEnd < 0) failures.push('shared Product HTTP policy is missing');
+const sharedPolicy = legacy.slice(policyStart, policyEnd);
+requireText(mounted, 'super::products_legacy::storefront_product_port_http_policy(&error.kind)', 'mounted list delegates public policy');
 for (const [value, label] of [
   ['StatusCode::BAD_REQUEST', 'validation status'],
   ['StatusCode::NOT_FOUND', 'not-found status'],
@@ -89,6 +92,10 @@ for (const [value, label] of [
   ['"commerce_store_not_found"', 'not-found code'],
   ['"commerce_store_product_unavailable"', 'unavailable code'],
   ['"commerce_store_product_failed"', 'fail-closed code'],
+  ['StatusCode::FORBIDDEN', 'permission status'],
+  ['StatusCode::CONFLICT', 'conflict status'],
+]) requireText(sharedPolicy, value, label);
+for (const [value, label] of [
   ['owner_error_kind = ?error.kind', 'bounded error-kind diagnostic'],
   ['owner_code_length = error.code.chars().count()', 'bounded owner-code diagnostic'],
   ['retryable = error.retryable', 'bounded retryable diagnostic'],
@@ -110,7 +117,7 @@ for (const [value, label] of [
   ['.all(db)', 'pre-visibility materialization'],
   ['rustok_inventory::is_metadata_visible_for_public_channel(', 'owner channel visibility'],
   ['let total = visible_products.len() as u64;', 'post-visibility total'],
-  ['.skip(offset as usize)', 'post-visibility page offset'],
+  ['.skip(offset_usize)', 'post-visibility page offset'],
   ['.take(per_page as usize)', 'post-visibility page size'],
   ['pick_product_translation(items.as_slice(), locale, fallback_locale)', 'locale fallback projection'],
   ['.unwrap_or_default()', 'empty missing translation projection'],
@@ -119,15 +126,16 @@ for (const [value, label] of [
 ]) requireText(owner, value, label);
 
 const visibilityIndex = owner.indexOf('rustok_inventory::is_metadata_visible_for_public_channel(');
-const skipIndex = owner.indexOf('.skip(offset as usize)');
+const skipIndex = owner.indexOf('.skip(offset_usize)');
 if (visibilityIndex < 0 || skipIndex < 0 || visibilityIndex > skipIndex) {
   failures.push('owner REST compatibility projection must apply channel visibility before pagination');
 }
 
 for (const [value, label] of [
   ['fn product_storefront_http_read_port(', 'Commerce host Product HTTP owner accessor'],
+  ['Option<std::sync::Arc<dyn rustok_product::ProductStorefrontHttpReadPort>>', 'typed optional Product HTTP capability'],
   ['self.product_catalog_read_runtime.storefront_http_read_port()', 'Commerce host delegates to Product runtime'],
-]) requireText(commerceRuntime, value, label);
+]) requireText(commerceRuntime.replace(/\s/g, ''), value.replace(/\s/g, ''), label);
 
 for (const [value, label] of [
   ['storefront_http_read_port: Option<Arc<dyn ProductStorefrontHttpReadPort>>', 'optional runtime capability'],

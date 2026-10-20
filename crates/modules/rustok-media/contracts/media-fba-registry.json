@@ -100,6 +100,16 @@
       "fallback_profiles": [
         "embedded_native"
       ]
+    },
+    {
+      "module": "product",
+      "profile": "product_image_retention",
+      "degraded_modes": [
+        "reject_new_image_writes",
+        "retain_committed_release_work",
+        "diagnostics_unavailable"
+      ],
+      "fallback_profiles": []
     }
   ],
   "evidence": {

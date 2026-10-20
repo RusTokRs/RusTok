@@ -81,7 +81,9 @@
 - Values live in typed product/variant attribute value tables; localized labels and text-like values are in translation tables.
 - Product-level values are read and modified through an owner-owned typed read/patch contract: an omitted attribute does not change, `clear` deletes the value, an empty multiselect clears the value, options and effective schema are validated before transactional write, and detached values are preserved and returned with a separate marker.
 - Detached values are displayed in the product admin as a separate review block and are cleared only through the owner-owned `clear_detached_product_attribute_values`; the service verifies that each deleted attribute is indeed outside the current effective schema, build-profile-selected native `#[server]` and GraphQL paths are maintained in parallel.
-- Publish validation is performed in the owner-owned `ProductCatalogSchemaService`: required effective attributes must be filled before the product transitions to `Active`, localized text-like values require an explicit non-empty translation row, option attributes require saved option relations, and create-with-publish is rejected for categories with required typed attributes.
+- Publish validation is performed in the owner-owned `ProductCatalogSchemaService`: required effective attributes must be filled before the product transitions to `Active`. Product document updates validate the persisted candidate category and translations inside their transaction whenever the resulting status is `Active`; typed product-value patches validate active-product completeness after applying all patches and before committing. Localized text-like values require an explicit non-empty translation row, option attributes require saved option relations, and create-with-publish is rejected for categories with required typed attributes.
+- Typed product-value patch validation acquires the Product row lock before reading the category, effective form, definitions, and options on the write transaction. This serializes category changes against value patches; it does not establish a tenant-wide schema snapshot against concurrent schema administration.
+- Repeated owner publish/unpublish/archive commands targeting the current status are no-ops: they preserve editorial revision, timestamps, and lifecycle events. These state-level no-ops are not durable replay: lifecycle caller keys are currently validated but not persisted as receipts (see [write boundary](./write-boundary.md)).
 - Effective form loads localized options in a single bounded query by effective attribute ids; schema/category groups return a localized `group_label` by host locale, binding uses stable `group_code`, and the product admin groups fields by label/code, displays typed controls and sends only dirty patches after saving the product and its primary category.
 - The former Product-to-Index projection has been removed with Index v1. Product and Search must not depend on an Index projection until the generic Index Engine publishes replacement owner contracts.
 - Search consumes Product's public transport contract for category and attribute options. The Product write model remains authoritative for schema inheritance and detached-value handling.
@@ -135,15 +137,14 @@ is the only canonical primary-category source.
 
 `product_images.media_id` stores a Media-owned asset UUID without a direct
 foreign key to Media storage and is non-null in the Product target schema.
-When the host composes the Media validation decorator, Product performs a
-pre-write read-side admission through the public Media owner contract, so Media
-can evolve its persistence schema without a Product migration-order dependency.
-That admission is **not** a durable Media retention hold: the current Product
-runtime does not retain a reference before image commit or release one after
-image/Product removal. The proposed retention cutover and its required
-Product-owned image identity, Media write-port composition, and reconciliation
-semantics are recorded in
-[`2026-10-17-product-image-media-reference-retention`](../../../../DECISIONS/2026-10-17-product-image-media-reference-retention.md).
+The accepted retention cutover replaces the read-only decorator with a Product-owned
+consumer port composed inside receipt admission. New images retain an exact Media hold
+before the Product transaction; image/Product removal atomically queues postcommit release.
+Missing provider and incomplete legacy provisioning fail closed. Bounded operator audit,
+backfill and queue status preserve owner boundaries. See the
+[workflow, maintenance-window cutover and unexecuted gates](./media-reference-retention.md)
+and the [accepted ADR](../../../../DECISIONS/2026-10-17-product-image-media-reference-retention.md).
+Source implementation is not Rust/database/live transport certification.
 
 The target-schema migration removes unused compatibility fields from product,
 translation, option, image, and variant storage and aligns
@@ -207,3 +208,147 @@ Cargo checks remain a targeted/live evidence step before promoting product FBA t
 - [Product write boundary](write-boundary.md)
 - [Product unpublish and archive lifecycle events](product-unpublish-archive-events.md)
 - [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)
+
+## Value-write serialization and lifecycle-only editing
+
+Product value patch/clear and Variant value patch/clear acquire their owner locks before resolving
+category-dependent state on the same transaction. Variant writes lock the parent Product before
+the Variant, matching catalog update/delete/axis commands; the observed parent is rechecked under
+the Variant lock. This protects against Product category changes, not independent concurrent
+schema administration. SQLite test paths omit unsupported `FOR UPDATE` after acquiring the
+parent write lock; PostgreSQL keeps the row locks. Exact-locale EAV Translation apply
+also takes parent owner locks before the value row lock and verifies its owner predicates before
+reading the CAS snapshot, avoiding the inverse value-to-owner order.
+
+Next status changes use a separate lifecycle callback that sends only Product identity, status,
+and the predecessor revision through the existing update API. They never submit unsaved document
+fields or turn omitted nullable fields into clears. The status badge and local revision change
+only after owner success. Same-status lifecycle-only updates preserve revision/timestamps, but a
+supplied stale revision is still refused before that no-op.
+
+## Product workflow remediation (2026-10-17)
+
+The Next create adapter now preserves supplied translations (including SEO), primary category,
+shipping profile, barcode, compare-at price, and inventory policy. An explicit zero price is not
+silently dropped. The editor fences obsolete category-form responses and reloads by category and
+locale. See the [implementation plan](./implementation-plan.md#workflow-remediation-2026-10-17)
+for verification and remaining work. These changes do **not** make the multi-request editor save
+atomic. That historical Media status is superseded by the 2026-10-18 accepted/source-implemented workflow; runtime verification remains open.
+
+The follow-up also cuts Next money paths over to major-unit decimal strings and narrows catalog
+price reads/replacement to unscoped base rows, preserving stored Pricing contexts. See
+[base-price write semantics](./write-boundary.md#catalog-base-price-replacement) and the
+[verification limits](./implementation-plan.md#decimal-money-and-catalog-base-price-scope-follow-up).
+Next Product detail overlays Pricing by Variant ID only and has no missing-Pricing catalog fallback.
+Rust execution, mounted UI/context coverage and atomic/durable aggregate save remain open.
+
+All fourteen catalog commands now build their public response on the write connection before
+commit and bind external command-port calls to durable owner receipts. Source wiring and mutation
+guards pass; Rust/database execution is still outstanding. See the
+[receipt write boundary](./write-boundary.md#lifecycle-receipts-and-pre-commit-results). This is not
+atomic document/EAV save, client retry certification, or Media retention approval.
+
+### Atomic editorial values
+
+Catalog create/update compose locale-scoped typed values inside the document transaction before
+Active publication validation. Next and the mounted Leptos editor send those values in the same
+command; independent schema/value commands remain separately receipted. See the
+[atomic editorial follow-up](./implementation-plan.md#atomic-editorial-follow-up-2026-10-17)
+for source evidence and the still-open runtime, whole-screen Variant and browser-retry work.
+
+
+## Nullable Variant patches (2026-10-18)
+
+The [nullable Variant update contract](./variant-nullable-patches.md) supersedes earlier notes
+that Variant nullable updates still conflate missing and null. Product now owns Keep/Clear/Set
+for all five nullable fields, with Set-only Shipping admission, GraphQL exact-decimal mapping,
+Next command-shaped callback/action forwarding, separate Leptos create/update drafts and
+complete-draft retry intent. The unused foundation update DTO is removed. Source verification
+and WASM formatting are not compilation or runtime proof. Ten new Rust regression scenario
+sources are unrun, existing editor validation sources are migrated, and no test suite was run.
+Mounted transports, database/concurrency/rollback and actual UI gates remain open; this does not
+close durable child-command retry or whole-screen Variant atomicity gaps or advance readiness.
+
+
+## Flex/error/receipt boundary (2026-10-18)
+
+Flex conversion is exhaustive and payload-safe; fixed Product entity registration rejection is
+internal rather than client validation. Storage class is preserved. Catalog command and receipt
+replay-decode diagnostics no longer render raw owner/serde errors. The shared catalog/schema/
+Translation failure finalizer persists only non-retryable Validation/NotFound/Conflict; an invariant
+or permission failure is not terminal merely because `retryable=false`. See the
+[current diagnostic contract and open runtime gates](./product-public-error-diagnostic-safety.md#flex-and-receipt-failure-continuation-2026-10-18).
+Six new Rust scenario sources are unrun; no test suite was executed. Broader Core/Taxonomy
+classification, mounted runtime and lease-reclaim execution remain open. Readiness is unchanged.
+
+
+## Taxonomy and Core error continuation (2026-10-18)
+
+The [current error boundary](./product-public-error-diagnostic-safety.md#taxonomy-and-nested-core-continuation-2026-10-18)
+now distinguishes Taxonomy write refusals from read-projection corruption and centrally classifies
+nested Core failures across Product read/write/Translation and shared public/HTTP adapters.
+Generic conflicts have an owner Conflict variant rather than Validation text. GraphQL definitive
+outcomes require a known domain code and actual domain kind; the shared receipt allowlist and
+existing stored receipts remain unchanged. The three category source guards now track current
+same-ID/all-backend owner composition rather than retired donor/binding/closure compatibility.
+Seven new Rust scenarios and strengthened existing hierarchy scenarios are unrun. Sixteen standalone
+source guards and WASM formatting/idempotence of 27 Rust files pass; these do not prove compilation,
+mounted behavior, rollback/replay/reclaim or privacy at runtime. No test suites or CI were run.
+
+
+## Native storefront context admission (2026-10-18)
+
+Catalog list, facets, detail/Pricing and search options now require the canonical trusted
+`RequestContext` before owner reads. Extractor rejection is no longer treated as an absent
+optional context; valid anonymous/no-channel contexts remain allowed. Raw rejection/channel/
+locale/correlation payload is removed from affected context diagnostics. See the
+[current contract](./product-public-error-diagnostic-safety.md#native-storefront-context-admission-continuation-2026-10-18).
+This is source-only, unintegrated work: five new negative guard scenarios are unrun;
+compilation, host middleware composition and mounted behavior remain maintainer gates.
+
+
+## Admin catalog trusted context (2026-10-18)
+
+Native list and facet reads now propagate canonical RequestContext rejection before owner
+queries, even with an explicit locale. Existing authentication, permission and tenant checks
+remain mandatory. Successful locale precedence and owner translation fallback are unchanged.
+See the [current contract](./product-public-error-diagnostic-safety.md#admin-catalog-context-admission-continuation-2026-10-18).
+This is source-only/unintegrated: two new source scenarios are unrun; compilation, host trusted
+resolved-locale composition, and mounted profile behavior remain maintainer verification gates.
+
+
+## Schema/tag read diagnostic continuation (2026-10-18)
+
+Both owner read adapters now reuse bounded Product context/error fact projections instead
+of logging raw errors, admission message/code text or identity values. Existing classification,
+public envelopes and read admission are preserved. See the [current contract](./product-public-error-diagnostic-safety.md#schema-and-tag-read-diagnostics-continuation-2026-10-18).
+Eight scoped source guards and four-file formatting/idempotence pass; three new Rust scenarios
+are unrun. Compilation, log capture, runtime and broader Product diagnostics remain open.
+
+
+## Storefront attribute warning safety (2026-10-18)
+
+Unsupported-type/missing-scalar projection warnings now retain bounded shape only, without
+stored identity/code/type/error payload. Existing best-effort omission and valid false/zero/
+localized formatting semantics are preserved. See the [current contract](./product-public-error-diagnostic-safety.md#storefront-attribute-degradation-diagnostics-continuation-2026-10-18).
+Six scoped source guards and one-file formatting/idempotence pass; four new Rust scenarios
+are unrun. Compilation, captured tracing and mounted projection execution remain open.
+
+
+## Storefront HTTP read warning safety (2026-10-18)
+
+The compatibility read port now logs bounded context/error shape and pagination failure flags,
+not caller identity strings or exact rejected page inputs. Existing HTTP classification,
+visibility and pagination behavior are preserved. See the [current contract](./product-public-error-diagnostic-safety.md#storefront-http-read-diagnostics-continuation-2026-10-18).
+Six scoped source guards and one-file formatting/idempotence pass; two added Rust scenarios
+are unrun. Compilation, captured tracing and mounted HTTP execution remain open.
+
+
+## Catalog command diagnostic safety (2026-10-19)
+
+Seven Product command-boundary events now use canonical context/error facts instead
+of caller correlation/tenant strings, Product UUIDs and raw receipt/admission codes.
+Public mapping, write admission, request fingerprints and receipt replay/finalization
+are preserved. See the [current contract](./product-public-error-diagnostic-safety.md#catalog-command-diagnostics-continuation-2026-10-19).
+Six scoped source guards and Rust formatting/idempotence pass; two new Rust scenarios
+are deliberately unrun. Compilation, tracing capture and transaction/runtime gates remain open.

@@ -105,6 +105,7 @@ pub(crate) fn convert_create_product_input(
         .collect::<Result<Vec<_>>>()?;
 
     Ok(crate::dto::CreateProductInput {
+        attribute_values: convert_product_attribute_batches(input.attribute_values)?,
         translations,
         variant_axes,
         variants,
@@ -207,14 +208,21 @@ pub(crate) fn convert_update_variant_input(
     });
 
     Ok(crate::dto::UpdateVariantInput {
-        sku: input.sku,
-        barcode: input.barcode,
-        shipping_profile_slug: input.shipping_profile_slug,
+        sku: graphql_patch(input.sku),
+        barcode: graphql_patch(input.barcode),
+        shipping_profile_slug: graphql_patch(input.shipping_profile_slug),
         prices,
         inventory_quantity: input.inventory_quantity,
         inventory_policy: input.inventory_policy,
-        weight: None,
-        weight_unit: None,
+        weight: match graphql_patch(input.weight) {
+            rustok_api::Patch::Keep => rustok_api::Patch::Keep,
+            rustok_api::Patch::Clear => rustok_api::Patch::Clear,
+            rustok_api::Patch::Set(value) => rustok_api::Patch::Set(
+                Decimal::from_str_exact(&value)
+                    .map_err(|_| async_graphql::Error::new("Invalid decimal weight"))?,
+            ),
+        },
+        weight_unit: graphql_patch(input.weight_unit),
         axis_values,
     })
 }
@@ -1068,4 +1076,87 @@ pub(crate) async fn validate_storefront_variant_inventory(
     }
 
     Ok(())
+}
+
+/// Reuse the standalone EAV scalar/payload admission; catalog commands compose
+/// its typed result, never a second independently committed value command.
+pub(crate) fn convert_product_attribute_batches(
+    input: Option<Vec<ProductAttributeValueBatchInput>>,
+) -> Result<Vec<rustok_product::dto::ProductAttributeValueBatch>> {
+    input
+        .unwrap_or_default()
+        .into_iter()
+        .map(|batch| {
+            Ok(rustok_product::dto::ProductAttributeValueBatch {
+                locale: batch.locale,
+                patches: batch
+                    .patches
+                    .into_iter()
+                    .map(super::catalog::parse_product_attribute_value_patch)
+                    .collect::<Result<Vec<_>>>()?,
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod variant_patch_tests {
+    use super::*;
+    use async_graphql::InputType;
+    use rustok_api::Patch;
+
+    fn decode(value: serde_json::Value) -> UpdateVariantInput {
+        UpdateVariantInput::parse(Some(async_graphql::Value::from_json(value).unwrap()))
+            .unwrap_or_else(|_| panic!("Invalid Variant input fixture"))
+    }
+
+    #[test]
+    fn graphql_omission_and_null_reach_the_owner_as_different_intents() {
+        let omitted = convert_update_variant_input(decode(serde_json::json!({}))).unwrap();
+        assert!(omitted.sku.is_keep());
+        assert!(omitted.barcode.is_keep());
+        assert!(omitted.shipping_profile_slug.is_keep());
+        assert!(omitted.weight.is_keep());
+        assert!(omitted.weight_unit.is_keep());
+        let cleared = convert_update_variant_input(decode(serde_json::json!({
+            "sku": null, "barcode": null, "shippingProfileSlug": null,
+            "weight": null, "weightUnit": null,
+        })))
+        .unwrap();
+        assert_eq!(cleared.sku, Patch::Clear);
+        assert_eq!(cleared.barcode, Patch::Clear);
+        assert_eq!(cleared.shipping_profile_slug, Patch::Clear);
+        assert_eq!(cleared.weight, Patch::Clear);
+        assert_eq!(cleared.weight_unit, Patch::Clear);
+    }
+
+    #[test]
+    fn graphql_preserves_concrete_values_and_exact_decimal_weight() {
+        let input = convert_update_variant_input(decode(serde_json::json!({
+            "sku": "SKU", "barcode": "0123", "shippingProfileSlug": "parcel",
+            "weight": "0.000000001", "weightUnit": "kg",
+        })))
+        .unwrap();
+        assert_eq!(input.sku, Patch::Set("SKU".into()));
+        assert_eq!(input.barcode, Patch::Set("0123".into()));
+        assert_eq!(input.shipping_profile_slug, Patch::Set("parcel".into()));
+        assert_eq!(
+            input.weight,
+            Patch::Set(Decimal::from_str_exact("0.000000001").unwrap())
+        );
+        assert_eq!(input.weight_unit, Patch::Set("kg".into()));
+    }
+
+    #[test]
+    fn graphql_rejects_invalid_or_inexact_weight_instead_of_clearing_or_rounding() {
+        for value in [
+            "not-decimal",
+            "79228162514264337593543950336",
+            "0.00000000000000000000000000001",
+        ] {
+            assert!(
+                convert_update_variant_input(decode(serde_json::json!({"weight": value}))).is_err()
+            );
+        }
+    }
 }

@@ -245,6 +245,7 @@ mutation ProductAdminSaveAttributeValues($idempotencyKey: String!, $productId: U
 }`;
 
 export type UpdateProductInput = {
+  attributeValues?: import('./types').ProductAttributeValueBatch[];
   translations?: Array<{
     locale: string;
     title: string;
@@ -269,21 +270,24 @@ export type CreateVariantInput = {
   shippingProfileSlug?: string | null;
   prices: Array<{
     currencyCode: string;
-    amount: number;
-    compareAtAmount?: number | null;
+    amount: string;
+    compareAtAmount?: string | null;
   }>;
   inventoryQuantity?: number;
   inventoryPolicy?: string;
 };
 
+/** Omit a nullable field to keep it; null clears it; a value replaces it. */
 export type UpdateVariantInput = {
   sku?: string | null;
   barcode?: string | null;
   shippingProfileSlug?: string | null;
+  weight?: string | null;
+  weightUnit?: string | null;
   prices?: Array<{
     currencyCode: string;
-    amount: number;
-    compareAtAmount?: number | null;
+    amount: string;
+    compareAtAmount?: string | null;
   }>;
   inventoryQuantity?: number;
   inventoryPolicy?: string;
@@ -397,13 +401,13 @@ export async function fetchProductAttributeValues(
 export async function updateProductDetail(
   opts: GqlOpts,
   id: string,
-  input: UpdateProductInput
+  input: UpdateProductInput,
+  idempotencyKey: string = crypto.randomUUID()
 ): Promise<ProductDetail> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to manage products.');
   }
 
-  const idempotencyKey = crypto.randomUUID();
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     { idempotencyKey: string; id: string; input: UpdateProductInput },
@@ -420,13 +424,13 @@ export async function updateProductDetail(
 
 export async function deleteProductDetail(
   opts: GqlOpts,
-  id: string
+  id: string,
+  idempotencyKey: string = crypto.randomUUID()
 ): Promise<boolean> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to manage products.');
   }
 
-  const idempotencyKey = crypto.randomUUID();
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     { idempotencyKey: string; id: string },

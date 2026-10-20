@@ -29,6 +29,28 @@ fn map_product_internal_error() -> ServerFnError {
 }
 
 #[cfg(feature = "ssr")]
+async fn require_request_context(
+    operation: &'static str,
+) -> Result<rustok_api::RequestContext, ServerFnError> {
+    leptos_axum::extract::<rustok_api::RequestContext>()
+        .await
+        .map_err(|_| {
+            let public = rustok_product::ProductPublicError::internal();
+            tracing::error!(
+                owner = "rustok_product.admin",
+                owner_operation = operation,
+                boundary = "product_admin_catalog_native",
+                code = "product.admin_catalog_request_context_unavailable",
+                public_code = public.code,
+                correlation_id = %public.correlation_id,
+                request_context_rejected = true,
+                "product admin trusted request context extraction failed"
+            );
+            ServerFnError::new(public.to_string())
+        })
+}
+
+#[cfg(feature = "ssr")]
 fn map_product_service_error(
     error: rustok_product::CommerceError,
     operation: &'static str,
@@ -111,14 +133,11 @@ async fn product_admin_catalog_list_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .ok();
+        let request_context = require_request_context("admin_catalog_list").await?;
         let requested_locale = locale
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
-            .or_else(|| request_context.map(|context| context.locale))
-            .unwrap_or_else(|| tenant.default_locale.clone());
+            .unwrap_or(request_context.locale);
         let list_query = AdminProductListQuery::try_from_transport_with_attribute_filters(
             search,
             status,
@@ -255,14 +274,11 @@ async fn product_admin_catalog_facets_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .ok();
+        let request_context = require_request_context("admin_catalog_facets").await?;
         let requested_locale = locale
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
-            .or_else(|| request_context.map(|context| context.locale))
-            .unwrap_or_else(|| tenant.default_locale.clone());
+            .unwrap_or(request_context.locale);
         let list_query = AdminProductListQuery::try_from_transport_with_attribute_filters(
             search,
             status,

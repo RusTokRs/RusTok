@@ -53,6 +53,7 @@ pub(crate) async fn setup() -> (
 
 pub(crate) fn create_product_input() -> CreateProductInput {
     CreateProductInput {
+        attribute_values: Default::default(),
         translations: vec![
             ProductTranslationInput {
                 locale: "en".to_string(),

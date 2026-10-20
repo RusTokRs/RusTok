@@ -129,14 +129,30 @@ fn map_product_unique_violation(
     CommerceError::Database(error)
 }
 
+#[derive(Clone)]
 pub struct CatalogService {
-    db: DatabaseConnection,
+    pub(crate) db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    pub(crate) shipping_profile_port: Option<std::sync::Arc<dyn crate::ProductShippingProfilePort>>,
+    pub(crate) media_reference_port: Option<std::sync::Arc<dyn crate::ProductMediaReferencePort>>,
 }
 
 impl CatalogService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self {
+            db,
+            event_bus,
+            media_reference_port: None,
+            shipping_profile_port: None,
+        }
+    }
+
+    pub fn with_media_reference_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ProductMediaReferencePort>,
+    ) -> Self {
+        self.media_reference_port = Some(crate::media_reference::bound_media_reference_port(port));
+        self
     }
 
     pub(crate) fn database(&self) -> &DatabaseConnection {

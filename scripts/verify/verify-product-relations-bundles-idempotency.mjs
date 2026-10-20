@@ -450,7 +450,7 @@ need(
   "product owner transaction Drop rollback handoff",
 );
 for (const marker of [
-  "if error.retryable {",
+  "if !is_terminal_product_failure(error) {",
   "return Ok(());",
   "idempotency::fail(database, lease, error).await",
 ]) {
