@@ -248,71 +248,6 @@ impl CreateVariantInput {
     }
 }
 
-impl UpdateVariantInput {
-    pub fn validate_invariants(&self) -> Result<(), crate::error::CommerceError> {
-        if self.inventory_quantity.is_some_and(|qty| qty < 0) {
-            return Err(crate::error::CommerceError::validation(
-                "inventory_quantity cannot be negative",
-            ));
-        }
-        if self
-            .inventory_policy
-            .as_ref()
-            .is_some_and(|p| p.trim().is_empty() || p.len() > 32)
-        {
-            return Err(crate::error::CommerceError::validation(
-                "inventory_policy must be between 1 and 32 characters",
-            ));
-        }
-        if self.weight.is_some_and(|w| w < rust_decimal::Decimal::ZERO) {
-            return Err(crate::error::CommerceError::validation(
-                "weight cannot be negative",
-            ));
-        }
-        if self
-            .weight_unit
-            .as_ref()
-            .is_some_and(|u| u.trim().is_empty() || u.len() > 16)
-        {
-            return Err(crate::error::CommerceError::validation(
-                "weight_unit cannot be empty or exceed 16 characters",
-            ));
-        }
-        if self
-            .sku
-            .as_ref()
-            .is_some_and(|s| s.trim().is_empty() || s.len() > 100)
-        {
-            return Err(crate::error::CommerceError::validation(
-                "sku cannot be blank or exceed 100 characters",
-            ));
-        }
-        if self
-            .barcode
-            .as_ref()
-            .is_some_and(|b| b.trim().is_empty() || b.len() > 100)
-        {
-            return Err(crate::error::CommerceError::validation(
-                "barcode cannot be blank or exceed 100 characters",
-            ));
-        }
-        if self
-            .shipping_profile_slug
-            .as_ref()
-            .is_some_and(|p| p.trim().is_empty() || p.len() > 100)
-        {
-            return Err(crate::error::CommerceError::validation(
-                "shipping_profile_slug cannot be blank or exceed 100 characters",
-            ));
-        }
-        if let Some(ref prices) = self.prices {
-            for price in prices {
-                price.validate_invariants()?;
-            }
-        }
-        Ok(())
-    }
-}
 
 impl AdjustInventoryInput {
     pub fn validate_invariants(&self) -> Result<(), crate::error::CommerceError> {
@@ -383,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn test_create_and_update_variant_input_validation() {
+    fn test_create_variant_input_validation() {
         let valid_create = CreateVariantInput {
             sku: Some("SKU-100".into()),
             barcode: Some("123456789".into()),
@@ -413,24 +348,6 @@ mod tests {
             ..valid_create
         };
         assert!(negative_weight.validate_invariants().is_err());
-
-        let valid_update = UpdateVariantInput {
-            sku: Some("SKU-200".into()),
-            barcode: None,
-            shipping_profile_slug: None,
-            prices: None,
-            inventory_quantity: Some(25),
-            inventory_policy: Some("continue".into()),
-            weight: None,
-            weight_unit: None,
-        };
-        assert!(valid_update.validate_invariants().is_ok());
-
-        let invalid_update_qty = UpdateVariantInput {
-            inventory_quantity: Some(-1),
-            ..valid_update
-        };
-        assert!(invalid_update_qty.validate_invariants().is_err());
     }
 
     #[test]

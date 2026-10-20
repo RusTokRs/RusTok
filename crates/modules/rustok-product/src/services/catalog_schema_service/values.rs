@@ -36,9 +36,9 @@ async fn lock_product_for_update_in_tx(
 /// does not call this helper: the enclosing document command advances once.
 async fn advance_product_value_revision_in_tx(
     txn: &DatabaseTransaction,
-    product: &entities::product::Model,
+    product: &crate::entities::product::Model,
 ) -> CommerceResult<()> {
-    let mut active: entities::product::ActiveModel = product.clone().into();
+    let mut active: crate::entities::product::ActiveModel = product.clone().into();
     active.revision = sea_orm::Set(crate::services::catalog::concurrency::next_revision(
         product.revision,
     )?);
