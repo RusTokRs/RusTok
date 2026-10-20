@@ -258,9 +258,12 @@ fn map_customer_read_local_port_error(
     error: PortError,
 ) -> PortError {
     let local_operation = match (owner_operation, error.code.as_str(), error.message.as_str()) {
-        (_, "customer.context_invalid", "customer request context is invalid") => {
-            "validate_tenant_context"
-        }
+        (
+            _,
+            "customer.context_invalid" | "customer.tenant_id_invalid",
+            "customer request context is invalid"
+            | "customer request context tenant id is invalid",
+        ) => "validate_tenant_context",
         (
             LIST_CUSTOMER_PROJECTIONS_OPERATION,
             "customer.page_invalid",

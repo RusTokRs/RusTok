@@ -9,7 +9,7 @@ use validator::Validate;
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateCustomerInput {
     pub user_id: Option<Uuid>,
-    #[validate(email)]
+    #[validate(email, length(min = 3, max = 255))]
     pub email: String,
     #[validate(length(max = 100))]
     pub first_name: Option<String>,
@@ -24,7 +24,7 @@ pub struct CreateCustomerInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct UpdateCustomerInput {
-    #[validate(email)]
+    #[validate(email, length(min = 3, max = 255))]
     pub email: Option<String>,
     #[validate(length(max = 100))]
     pub first_name: Option<String>,

@@ -32,6 +32,9 @@ impl CustomerService {
         tenant_id: Uuid,
         mut input: CreateCustomerInput,
     ) -> CustomerResult<CustomerResponse> {
+        if tenant_id.is_nil() {
+            return Err(CustomerError::Validation("tenant_id must not be nil".to_string()));
+        }
         input.email = input.email.trim().to_string();
         input
             .validate()
@@ -40,6 +43,9 @@ impl CustomerService {
         let email = input.email.clone();
         self.ensure_email_available(tenant_id, &email, None).await?;
         if let Some(user_id) = input.user_id {
+            if user_id.is_nil() {
+                return Err(CustomerError::Validation("user_id must not be nil".to_string()));
+            }
             self.ensure_user_available(tenant_id, user_id, None).await?;
         }
 
@@ -70,6 +76,12 @@ impl CustomerService {
         tenant_id: Uuid,
         customer_id: Uuid,
     ) -> CustomerResult<CustomerResponse> {
+        if tenant_id.is_nil() {
+            return Err(CustomerError::Validation("tenant_id must not be nil".to_string()));
+        }
+        if customer_id.is_nil() {
+            return Err(CustomerError::CustomerNotFound(customer_id));
+        }
         let customer = entities::customer::Entity::find_by_id(customer_id)
             .filter(entities::customer::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -83,6 +95,12 @@ impl CustomerService {
         tenant_id: Uuid,
         user_id: Uuid,
     ) -> CustomerResult<CustomerResponse> {
+        if tenant_id.is_nil() {
+            return Err(CustomerError::Validation("tenant_id must not be nil".to_string()));
+        }
+        if user_id.is_nil() {
+            return Err(CustomerError::CustomerByUserNotFound(user_id));
+        }
         let customer = entities::customer::Entity::find()
             .filter(entities::customer::Column::TenantId.eq(tenant_id))
             .filter(entities::customer::Column::UserId.eq(user_id))
@@ -97,13 +115,23 @@ impl CustomerService {
         tenant_id: Uuid,
         user_ids: &[Uuid],
     ) -> CustomerResult<Vec<crate::CustomerProfileEnrichment>> {
-        if user_ids.is_empty() {
+        if tenant_id.is_nil() || user_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let valid_user_ids: Vec<Uuid> = user_ids
+            .iter()
+            .copied()
+            .filter(|id| !id.is_nil())
+            .take(500)
+            .collect();
+        if valid_user_ids.is_empty() {
             return Ok(Vec::new());
         }
 
         entities::customer::Entity::find()
             .filter(entities::customer::Column::TenantId.eq(tenant_id))
-            .filter(entities::customer::Column::UserId.is_in(user_ids.iter().copied()))
+            .filter(entities::customer::Column::UserId.is_in(valid_user_ids))
             .all(&self.db)
             .await
             .map(|customers| {
@@ -129,6 +157,9 @@ impl CustomerService {
         tenant_id: Uuid,
         input: ListCustomersInput,
     ) -> CustomerResult<(Vec<CustomerResponse>, u64)> {
+        if tenant_id.is_nil() {
+            return Err(CustomerError::Validation("tenant_id must not be nil".to_string()));
+        }
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
 
@@ -141,12 +172,17 @@ impl CustomerService {
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
+            let bounded_search = if search.len() > 256 {
+                &search[..256]
+            } else {
+                search
+            };
             query = query.filter(
                 Condition::any()
-                    .add(entities::customer::Column::Email.contains(search))
-                    .add(entities::customer::Column::FirstName.contains(search))
-                    .add(entities::customer::Column::LastName.contains(search))
-                    .add(entities::customer::Column::Phone.contains(search)),
+                    .add(entities::customer::Column::Email.contains(bounded_search))
+                    .add(entities::customer::Column::FirstName.contains(bounded_search))
+                    .add(entities::customer::Column::LastName.contains(bounded_search))
+                    .add(entities::customer::Column::Phone.contains(bounded_search)),
             );
         }
 
@@ -212,6 +248,12 @@ impl CustomerService {
         customer_id: Uuid,
         input: UpdateCustomerInput,
     ) -> CustomerResult<CustomerResponse> {
+        if tenant_id.is_nil() {
+            return Err(CustomerError::Validation("tenant_id must not be nil".to_string()));
+        }
+        if customer_id.is_nil() {
+            return Err(CustomerError::CustomerNotFound(customer_id));
+        }
         let mut input = input;
         if let Some(email) = input.email.as_deref() {
             input.email = Some(email.trim().to_string());
@@ -263,6 +305,12 @@ impl CustomerService {
         user_id: Uuid,
         input: CreateCustomerInput,
     ) -> CustomerResult<CustomerResponse> {
+        if tenant_id.is_nil() {
+            return Err(CustomerError::Validation("tenant_id must not be nil".to_string()));
+        }
+        if user_id.is_nil() {
+            return Err(CustomerError::Validation("user_id must not be nil".to_string()));
+        }
         match self.get_customer_by_user(tenant_id, user_id).await {
             Ok(existing) => {
                 self.update_customer(
