@@ -102,6 +102,11 @@ impl FulfillmentService {
         operation_id: Uuid,
     ) -> FulfillmentResult<ShippingOptionResponse> {
         validate_tenant_id(tenant_id)?;
+        if operation_id.is_nil() {
+            return Err(FulfillmentError::Validation(
+                "operation_id must not be nil".to_string(),
+            ));
+        }
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
@@ -243,6 +248,12 @@ impl FulfillmentService {
         operation_id: Uuid,
     ) -> FulfillmentResult<ShippingOptionResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_shipping_option_id(shipping_option_id)?;
+        if operation_id.is_nil() {
+            return Err(FulfillmentError::Validation(
+                "operation_id must not be nil".to_string(),
+            ));
+        }
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
@@ -365,6 +376,7 @@ impl FulfillmentService {
         tenant_default_locale: Option<&str>,
     ) -> FulfillmentResult<ShippingOptionResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_shipping_option_id(shipping_option_id)?;
         let option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -390,6 +402,7 @@ impl FulfillmentService {
         shipping_option_id: Uuid,
     ) -> FulfillmentResult<ShippingOptionResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_shipping_option_id(shipping_option_id)?;
         self.set_shipping_option_active(tenant_id, shipping_option_id, false)
             .await
     }
@@ -400,6 +413,7 @@ impl FulfillmentService {
         shipping_option_id: Uuid,
     ) -> FulfillmentResult<ShippingOptionResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_shipping_option_id(shipping_option_id)?;
         self.set_shipping_option_active(tenant_id, shipping_option_id, true)
             .await
     }
@@ -426,6 +440,7 @@ impl FulfillmentService {
         input: CreateFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_fulfillment_id(fulfillment_id)?;
         self.create_fulfillment_with_identity_and_id(tenant_id, input, None, fulfillment_id)
             .await
     }
@@ -602,6 +617,8 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: CreateFulfillmentInput,
     ) -> FulfillmentResult<()> {
+        validate_tenant_id(tenant_id)?;
+        validate_fulfillment_id(fulfillment_id)?;
         self.validate_create_fulfillment_input(tenant_id, &input)
             .await?;
         let now = Utc::now();
@@ -614,11 +631,19 @@ impl FulfillmentService {
         tenant_id: Uuid,
         input: &CreateFulfillmentInput,
     ) -> FulfillmentResult<()> {
+        validate_tenant_id(tenant_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
 
+        validate_order_id(input.order_id)?;
+        if matches!(input.customer_id, Some(id) if id.is_nil()) {
+            return Err(FulfillmentError::Validation(
+                "customer_id must not be nil".to_string(),
+            ));
+        }
         if let Some(shipping_option_id) = input.shipping_option_id {
+            validate_shipping_option_id(shipping_option_id)?;
             self.get_shipping_option(tenant_id, shipping_option_id, None, None)
                 .await?;
         }
@@ -651,6 +676,13 @@ impl FulfillmentService {
             items,
             metadata,
         } = input;
+
+        let carrier = carrier
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let tracking_number = tracking_number
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
 
         let checkout_operation_id = identity.map(|value| value.operation_id);
         let checkout_fulfillment_index = identity.map(|value| i64::from(value.index));
@@ -714,6 +746,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_fulfillment_id(fulfillment_id)?;
         let txn = self.begin_read_transaction().await?;
         let fulfillment = self
             .load_fulfillment(&txn, tenant_id, fulfillment_id)
@@ -833,6 +866,7 @@ impl FulfillmentService {
         order_id: Uuid,
     ) -> FulfillmentResult<Option<FulfillmentResponse>> {
         validate_tenant_id(tenant_id)?;
+        validate_order_id(order_id)?;
         let txn = self.begin_read_transaction().await?;
         let fulfillment = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
@@ -859,6 +893,7 @@ impl FulfillmentService {
         order_id: Uuid,
     ) -> FulfillmentResult<Vec<FulfillmentResponse>> {
         validate_tenant_id(tenant_id)?;
+        validate_order_id(order_id)?;
         let txn = self.begin_read_transaction().await?;
         let rows = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
@@ -889,12 +924,21 @@ impl FulfillmentService {
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id));
 
         if let Some(status) = input.status {
-            query = query.filter(entities::fulfillment::Column::Status.eq(status));
+            let trimmed = status.trim().to_ascii_lowercase();
+            if !trimmed.is_empty() {
+                query = query.filter(entities::fulfillment::Column::Status.eq(trimmed));
+            }
         }
         if let Some(order_id) = input.order_id {
+            validate_order_id(order_id)?;
             query = query.filter(entities::fulfillment::Column::OrderId.eq(order_id));
         }
         if let Some(customer_id) = input.customer_id {
+            if customer_id.is_nil() {
+                return Err(FulfillmentError::Validation(
+                    "customer_id must not be nil".to_string(),
+                ));
+            }
             query = query.filter(entities::fulfillment::Column::CustomerId.eq(customer_id));
         }
 
@@ -924,6 +968,7 @@ impl FulfillmentService {
         result: &crate::providers::FulfillmentProviderOperationResult,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_fulfillment_id(fulfillment_id)?;
         if operation_id.is_nil() {
             return Err(FulfillmentError::Validation(
                 "fulfillment provider operation id must not be nil".to_string(),
@@ -1066,9 +1111,12 @@ impl FulfillmentService {
         provider_result: Option<(Value, Uuid)>,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_fulfillment_id(fulfillment_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        input.carrier = input.carrier.trim().to_string();
+        input.tracking_number = input.tracking_number.trim().to_string();
         input.metadata = match provider_result.as_ref() {
             Some((provider_metadata, operation_id)) => prepare_provider_lifecycle_metadata(
                 input.metadata,
@@ -1221,9 +1269,13 @@ impl FulfillmentService {
         mut input: DeliverFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_fulfillment_id(fulfillment_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        if let Some(ref note) = input.delivered_note {
+            input.delivered_note = Some(note.trim().to_string());
+        }
         input.metadata = strip_provider_operation_metadata(input.metadata);
         let txn = self.db.begin().await?;
         let fulfillment = self
@@ -1333,6 +1385,7 @@ impl FulfillmentService {
         mut input: ReopenFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_fulfillment_id(fulfillment_id)?;
         input.metadata = strip_provider_operation_metadata(input.metadata);
         let txn = self.db.begin().await?;
         let fulfillment = self
@@ -1487,9 +1540,12 @@ impl FulfillmentService {
         provider_result: Option<(Value, Uuid)>,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_fulfillment_id(fulfillment_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        input.carrier = input.carrier.trim().to_string();
+        input.tracking_number = input.tracking_number.trim().to_string();
         input.metadata = match provider_result.as_ref() {
             Some((provider_metadata, operation_id)) => prepare_provider_lifecycle_metadata(
                 input.metadata,
@@ -1650,9 +1706,13 @@ impl FulfillmentService {
         provider_result: Option<(Value, Uuid)>,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_fulfillment_id(fulfillment_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        if let Some(ref reason) = input.reason {
+            input.reason = Some(reason.trim().to_string());
+        }
         input.metadata = match provider_result.as_ref() {
             Some((provider_metadata, operation_id)) => prepare_provider_lifecycle_metadata(
                 input.metadata,
@@ -1742,6 +1802,7 @@ impl FulfillmentService {
     where
         C: ConnectionTrait,
     {
+        validate_fulfillment_id(fulfillment_id)?;
         entities::fulfillment::Entity::find_by_id(fulfillment_id)
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .one(db)
@@ -1833,6 +1894,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         fulfillment_id: Uuid,
     ) -> FulfillmentResult<entities::fulfillment::Model> {
+        validate_fulfillment_id(fulfillment_id)?;
         entities::fulfillment::Entity::find_by_id(fulfillment_id)
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .lock_exclusive()
@@ -1850,6 +1912,7 @@ impl FulfillmentService {
     where
         C: ConnectionTrait,
     {
+        validate_fulfillment_id(fulfillment_id)?;
         entities::fulfillment_item::Entity::find()
             .join(
                 JoinType::InnerJoin,
@@ -1893,6 +1956,12 @@ impl FulfillmentService {
         operation_id: Uuid,
     ) -> FulfillmentResult<ShippingOptionResponse> {
         validate_tenant_id(tenant_id)?;
+        validate_shipping_option_id(shipping_option_id)?;
+        if operation_id.is_nil() {
+            return Err(FulfillmentError::Validation(
+                "operation_id must not be nil".to_string(),
+            ));
+        }
         let shipping_option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
             .lock_exclusive()
@@ -1934,6 +2003,33 @@ fn validate_tenant_id(tenant_id: Uuid) -> FulfillmentResult<()> {
     if tenant_id.is_nil() {
         return Err(FulfillmentError::Validation(
             "tenant_id must not be nil".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_fulfillment_id(fulfillment_id: Uuid) -> FulfillmentResult<()> {
+    if fulfillment_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "fulfillment_id must not be nil".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_order_id(order_id: Uuid) -> FulfillmentResult<()> {
+    if order_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "order_id must not be nil".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_shipping_option_id(shipping_option_id: Uuid) -> FulfillmentResult<()> {
+    if shipping_option_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "shipping_option_id must not be nil".to_string(),
         ));
     }
     Ok(())
@@ -2452,6 +2548,11 @@ fn validate_fulfillment_items(
     for item in items {
         item.validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        if item.order_line_item_id.is_nil() {
+            return Err(FulfillmentError::Validation(
+                "order_line_item_id must not be nil".to_string(),
+            ));
+        }
         if !seen_line_items.insert(item.order_line_item_id) {
             return Err(FulfillmentError::Validation(format!(
                 "duplicate fulfillment item for order_line_item_id {}",
@@ -2474,6 +2575,11 @@ fn validate_item_quantity_adjustments(
     for item in items {
         item.validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        if item.fulfillment_item_id.is_nil() {
+            return Err(FulfillmentError::Validation(
+                "fulfillment_item_id must not be nil".to_string(),
+            ));
+        }
         if !seen_items.insert(item.fulfillment_item_id) {
             return Err(FulfillmentError::Validation(format!(
                 "duplicate fulfillment item adjustment for item {}",
@@ -3246,6 +3352,43 @@ mod tests {
     fn validate_tenant_id_rejects_nil_identity() {
         assert!(super::validate_tenant_id(Uuid::nil()).is_err());
         assert!(super::validate_tenant_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn validate_fulfillment_id_rejects_nil_identity() {
+        assert!(super::validate_fulfillment_id(Uuid::nil()).is_err());
+        assert!(super::validate_fulfillment_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn validate_order_id_rejects_nil_identity() {
+        assert!(super::validate_order_id(Uuid::nil()).is_err());
+        assert!(super::validate_order_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn validate_shipping_option_id_rejects_nil_identity() {
+        assert!(super::validate_shipping_option_id(Uuid::nil()).is_err());
+        assert!(super::validate_shipping_option_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn validate_fulfillment_items_rejects_nil_line_item() {
+        let items = vec![crate::dto::CreateFulfillmentItemInput {
+            order_line_item_id: Uuid::nil(),
+            quantity: 1,
+            metadata: serde_json::json!({}),
+        }];
+        assert!(super::validate_fulfillment_items(Some(&items)).is_err());
+    }
+
+    #[test]
+    fn validate_item_quantity_adjustments_rejects_nil_item() {
+        let items = vec![crate::dto::FulfillmentItemQuantityInput {
+            fulfillment_item_id: Uuid::nil(),
+            quantity: 1,
+        }];
+        assert!(super::validate_item_quantity_adjustments(Some(&items)).is_err());
     }
 
     #[test]
