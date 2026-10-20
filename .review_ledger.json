@@ -1261,10 +1261,10 @@
       "path": "crates/modules/rustok-region",
       "category": "modules",
       "files": 39,
-      "loc": 8566,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 8915,
+      "completed": true,
+      "completed_at": "2026-10-20 21:36",
+      "notes": "Audited; enforced non-nil UUID validation across service/translation/target/ports, bounded tax_rate [0..=100] across inputs and policies, enforced alphabetic currency and unique country codes, aligned country tax policies with region countries, fixed order of operations in update_region to delete old policies before country mutation preventing trigger violation, applied migrations in test schema setup, aligned read port admission/tenant diagnostics with error safety contract, added 7 unit tests covering bounds and invariants; 11/11 tests passed, 0 clippy warnings, all 5 boundary/FBA scripts passed, gate passed."
     },
     "crates/modules/rustok-region/admin": {
       "name": "admin",
