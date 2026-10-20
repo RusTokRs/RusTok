@@ -3,7 +3,8 @@ use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     SelectShippingOptionRequest, ShippingSelectionLabels, build_select_shipping_option_request,
-    format_shipping_option_price,
+    delivery_group_key, format_line_items_label, format_provider_label,
+    format_shipping_option_price, is_shipping_option_selected, selection_action_label,
 };
 use crate::i18n::t;
 use crate::model::{StorefrontDeliveryGroup, StorefrontShippingOption};
@@ -15,31 +16,7 @@ pub fn FulfillmentView() -> impl IntoView {
     let busy = RwSignal::new(false).read_only();
     let on_select_shipping_option = Callback::new(|_: SelectShippingOptionRequest| {});
     let delivery_groups = Vec::<StorefrontDeliveryGroup>::new();
-    let labels = ShippingSelectionLabels {
-        badge: t(locale, "fulfillment.shipping.badge", "Shipping"),
-        title: t(locale, "fulfillment.shipping.title", "Delivery options"),
-        subtitle: t(
-            locale,
-            "fulfillment.shipping.subtitle",
-            "Choose shipping options for each delivery group.",
-        ),
-        empty: t(
-            locale,
-            "fulfillment.shipping.empty",
-            "No delivery groups are available for this cart.",
-        ),
-        group_label: t(locale, "fulfillment.shipping.group", "Delivery group"),
-        line_items_label: t(locale, "fulfillment.shipping.lineItems", "line items"),
-        provider_label: t(locale, "fulfillment.shipping.provider", "Provider"),
-        selected_label: t(locale, "fulfillment.shipping.selected", "Selected"),
-        select_label: t(locale, "fulfillment.shipping.select", "Select"),
-        pending_label: t(locale, "fulfillment.shipping.pending", "Processing..."),
-        no_selection_label: t(
-            locale,
-            "fulfillment.shipping.noSelection",
-            "No shipping option",
-        ),
-    };
+    let labels = ShippingSelectionLabels::resolve(locale);
 
     view! {
         <FulfillmentShippingSelectionPanel
@@ -88,7 +65,7 @@ pub fn FulfillmentShippingSelectionPanel(
             <div class="mt-5 grid gap-4">
                 <For
                     each=move || delivery_groups.clone()
-                    key=|group| format!("{}::{:?}", group.shipping_profile_slug, group.seller_id)
+                    key=|group| delivery_group_key(group)
                     children=move |group| {
                         view! {
                             <DeliveryGroupCard
@@ -129,7 +106,7 @@ fn DeliveryGroupCard(
                     <h5 class="mt-1 text-base font-semibold text-card-foreground">{group.shipping_profile_slug.clone()}</h5>
                 </div>
                 <div class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-                    {format!("{}: {}", labels.line_items_label, group.line_item_count)}
+                    {format_line_items_label(&labels.line_items_label, group.line_item_count)}
                 </div>
             </div>
             <div class="mt-4 grid gap-3">
@@ -140,7 +117,7 @@ fn DeliveryGroupCard(
                     on:click=select_clear
                 >
                     <span class="font-medium text-card-foreground">{clear_label}</span>
-                    <span class="text-xs text-muted-foreground">{if selected_id.is_none() { labels.selected_label.clone() } else { labels.select_label.clone() }}</span>
+                    <span class="text-xs text-muted-foreground">{selection_action_label(selected_id.is_none(), &labels)}</span>
                 </button>
                 <For
                     each=move || stored_group.with_value(|g| g.available_shipping_options.clone())
@@ -174,7 +151,7 @@ fn ShippingOptionButton(
     busy: ReadSignal<bool>,
     on_select_shipping_option: Callback<SelectShippingOptionRequest>,
 ) -> impl IntoView {
-    let is_selected = selected_shipping_option_id.as_deref() == Some(option.id.as_str());
+    let is_selected = is_shipping_option_selected(selected_shipping_option_id.as_deref(), &option.id);
     let option_for_click = option.clone();
     let group_for_click = group.clone();
     let on_click = move |_| {
@@ -194,11 +171,11 @@ fn ShippingOptionButton(
             <div class="flex items-start justify-between gap-3">
                 <div>
                     <div class="font-medium text-card-foreground">{option.name}</div>
-                    <div class="mt-1 text-xs text-muted-foreground">{format!("{}: {}", labels.provider_label, option.provider_id)}</div>
+                    <div class="mt-1 text-xs text-muted-foreground">{format_provider_label(&labels.provider_label, &option.provider_id)}</div>
                 </div>
                 <div class="text-right">
                     <div class="font-semibold text-card-foreground">{format_shipping_option_price(&option.amount, &option.currency_code)}</div>
-                    <div class="mt-1 text-xs text-muted-foreground">{if is_selected { labels.selected_label } else { labels.select_label }}</div>
+                    <div class="mt-1 text-xs text-muted-foreground">{selection_action_label(is_selected, &labels)}</div>
                 </div>
             </div>
         </button>
