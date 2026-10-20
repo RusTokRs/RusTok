@@ -45,6 +45,11 @@ impl MarketplaceSellerService {
         input
             .validate()
             .map_err(|error| MarketplaceSellerError::Validation(error.to_string()))?;
+        if input.owner_user_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "owner_user_id must not be nil".to_string(),
+            ));
+        }
         let locale = normalize_seller_locale(locale)?;
         let handle = normalize_handle(input.handle.as_str())?;
         let display_name = required_text(input.display_name, "display_name")?;
@@ -163,6 +168,11 @@ impl MarketplaceSellerService {
         input
             .validate()
             .map_err(|error| MarketplaceSellerError::Validation(error.to_string()))?;
+        if seller_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "seller_id must not be nil".to_string(),
+            ));
+        }
         let locale = normalize_seller_locale(locale)?;
         let display_name = input
             .display_name
@@ -255,6 +265,11 @@ impl MarketplaceSellerService {
         input
             .validate()
             .map_err(|error| MarketplaceSellerError::Validation(error.to_string()))?;
+        if seller_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "seller_id must not be nil".to_string(),
+            ));
+        }
         let locale = normalize_seller_locale(locale)?;
         let note = optional_text(input.note);
         let key = normalize_idempotency_key(idempotency_key)?;
@@ -338,6 +353,11 @@ impl MarketplaceSellerService {
         input
             .validate()
             .map_err(|error| MarketplaceSellerError::Validation(error.to_string()))?;
+        if seller_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "seller_id must not be nil".to_string(),
+            ));
+        }
         let locale = normalize_seller_locale(locale)?;
         let approved = input.approved;
         let note = optional_text(input.note);
@@ -445,6 +465,11 @@ impl MarketplaceSellerService {
         input
             .validate()
             .map_err(|error| MarketplaceSellerError::Validation(error.to_string()))?;
+        if seller_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "seller_id must not be nil".to_string(),
+            ));
+        }
         let locale = normalize_seller_locale(locale)?;
         let reason = required_text(input.reason, "reason")?;
         let key = normalize_idempotency_key(idempotency_key)?;
@@ -525,6 +550,11 @@ impl MarketplaceSellerService {
         locale: &str,
         seller_id: Uuid,
     ) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
+        if seller_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "seller_id must not be nil".to_string(),
+            ));
+        }
         let locale = normalize_seller_locale(locale)?;
         let key = normalize_idempotency_key(idempotency_key)?;
         let hash = command_request_hash(
@@ -613,6 +643,11 @@ impl MarketplaceSellerService {
         seller_id: Uuid,
         input: AddMarketplaceSellerMemberInput,
     ) -> MarketplaceSellerResult<MarketplaceSellerMemberResponse> {
+        if seller_id.is_nil() || input.user_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "seller_id and user_id must not be nil".to_string(),
+            ));
+        }
         let locale = normalize_seller_locale(locale)?;
         let metadata = object_or_empty(input.metadata, "metadata")?;
         let normalized = serde_json::json!({
@@ -703,6 +738,11 @@ impl MarketplaceSellerService {
             seller_id,
             member_id,
         } = identity;
+        if seller_id.is_nil() || member_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "seller_id and member_id must not be nil".to_string(),
+            ));
+        }
         let locale = normalize_seller_locale(locale)?;
         let policy_input = input.clone();
         let metadata = input

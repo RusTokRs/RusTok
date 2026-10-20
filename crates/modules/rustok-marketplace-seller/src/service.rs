@@ -37,6 +37,11 @@ impl MarketplaceSellerService {
         seller_id: Uuid,
         locale: &str,
     ) -> MarketplaceSellerResult<MarketplaceSellerResponse> {
+        if tenant_id.is_nil() || seller_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "tenant_id and seller_id must not be nil".to_string(),
+            ));
+        }
         load_seller_response(&self.db, tenant_id, seller_id, locale).await
     }
 
@@ -46,6 +51,11 @@ impl MarketplaceSellerService {
         locale: &str,
         input: ListMarketplaceSellersInput,
     ) -> MarketplaceSellerResult<(Vec<MarketplaceSellerResponse>, u64)> {
+        if tenant_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
         let locale = normalize_seller_locale(locale)?;
@@ -90,6 +100,11 @@ impl MarketplaceSellerService {
         seller_id: Uuid,
         user_id: Uuid,
     ) -> MarketplaceSellerResult<MarketplaceSellerMemberResponse> {
+        if tenant_id.is_nil() || seller_id.is_nil() || user_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "tenant_id, seller_id, and user_id must not be nil".to_string(),
+            ));
+        }
         let model = seller_member::Entity::find()
             .filter(seller_member::Column::TenantId.eq(tenant_id))
             .filter(seller_member::Column::SellerId.eq(seller_id))
@@ -105,6 +120,11 @@ impl MarketplaceSellerService {
         tenant_id: Uuid,
         seller_id: Uuid,
     ) -> MarketplaceSellerResult<Vec<MarketplaceSellerMemberResponse>> {
+        if tenant_id.is_nil() || seller_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "tenant_id and seller_id must not be nil".to_string(),
+            ));
+        }
         find_seller(&self.db, tenant_id, seller_id).await?;
         seller_member::Entity::find()
             .filter(seller_member::Column::TenantId.eq(tenant_id))
@@ -123,6 +143,11 @@ impl MarketplaceSellerService {
         seller_id: Uuid,
         limit: u64,
     ) -> MarketplaceSellerResult<Vec<MarketplaceSellerEventResponse>> {
+        if tenant_id.is_nil() || seller_id.is_nil() {
+            return Err(MarketplaceSellerError::Validation(
+                "tenant_id and seller_id must not be nil".to_string(),
+            ));
+        }
         find_seller(&self.db, tenant_id, seller_id).await?;
         list_seller_events(&self.db, tenant_id, seller_id, limit).await
     }
@@ -133,6 +158,11 @@ pub(crate) async fn find_seller<C: ConnectionTrait>(
     tenant_id: Uuid,
     seller_id: Uuid,
 ) -> MarketplaceSellerResult<seller::Model> {
+    if tenant_id.is_nil() || seller_id.is_nil() {
+        return Err(MarketplaceSellerError::Validation(
+            "tenant_id and seller_id must not be nil".to_string(),
+        ));
+    }
     seller::Entity::find_by_id(seller_id)
         .filter(seller::Column::TenantId.eq(tenant_id))
         .one(connection)
