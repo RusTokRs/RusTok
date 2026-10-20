@@ -16,11 +16,13 @@
 pub mod domain;
 pub mod dto;
 pub mod error;
+pub mod events;
 pub mod module;
 pub mod ports;
 
 pub use domain::{
-    AccountDefinition, AccountType, PostingDirection, PostingRule, validate_transaction_balance,
+    AccountDefinition, AccountType, PostingDirection, PostingRule, standard_accounts,
+    validate_transaction_balance,
 };
 pub use dto::{
     AccountResponse, CreateAccountInput, JournalPostingItem, JournalPostingResponse,
@@ -28,5 +30,10 @@ pub use dto::{
     TrialBalanceResponse,
 };
 pub use error::{AccountingError, AccountingResult};
+pub use events::{
+    ACCOUNTING_EVENT_ACCOUNT_CREATED, ACCOUNTING_EVENT_ACCOUNT_UPDATED,
+    ACCOUNTING_EVENT_TRANSACTION_POSTED, AccountCreatedEvent, AccountUpdatedEvent,
+    JournalTransactionPostedEvent,
+};
 pub use module::AccountingModule;
 pub use ports::{AccountingBalanceReadPort, AccountingJournalPort};

@@ -292,14 +292,13 @@ async fn finish_failed_relation_operation(
     }
     idempotency::fail(service.database(), lease, &port_error)
         .await
-        .map_err(|receipt_error| {
+        .inspect_err(|receipt_error| {
             tracing::error!(
                 tenant_id = %context.tenant_id,
                 operation_id = %lease.operation_id,
                 internal_code = %receipt_error.code,
                 "failed to persist Product relation terminal failure receipt"
             );
-            receipt_error
         })
 }
 
@@ -387,7 +386,7 @@ mod tests {
     use super::*;
     use rustok_outbox::SysEventsMigration;
     use sea_orm::{
-        ConnectionTrait, Database, DatabaseBackend, Statement, TransactionTrait, TryGetable,
+        ConnectionTrait, Database, DatabaseBackend, Statement, TransactionTrait,
     };
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use uuid::Uuid;
@@ -430,7 +429,7 @@ mod tests {
         ));
 
         let row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM relation_receipt_probe".to_owned(),
             ))

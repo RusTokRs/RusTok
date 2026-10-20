@@ -402,12 +402,12 @@ pub(super) async fn fetch_storefront_orders(
 ) -> Result<StorefrontOrdersResponse, OrderQueryTransportError> {
     let mut vars = serde_json::Map::new();
     if let Some(p) = page {
-        vars.insert("page".into(), json!(p));
+        vars.insert("page".into(), json!(p.max(1)));
     }
     if let Some(pp) = per_page {
-        vars.insert("perPage".into(), json!(pp));
+        vars.insert("perPage".into(), json!(pp.clamp(1, 100)));
     }
-    if let Some(s) = status.filter(|s| !s.trim().is_empty()) {
+    if let Some(s) = status.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
         vars.insert("status".into(), json!(s));
     }
 

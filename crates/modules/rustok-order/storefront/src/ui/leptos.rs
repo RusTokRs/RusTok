@@ -3,59 +3,13 @@ use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     OrderCheckoutActionLabels, OrderCheckoutResultData, OrderCheckoutResultLabels,
-    build_order_checkout_result_view_model, build_order_tracking_steps,
-    order_checkout_action_label,
+    build_order_checkout_result_view_model_with_locale, build_order_tracking_steps,
+    localize_status, order_checkout_action_label, order_status_badge_style,
 };
 use crate::i18n::t;
 use crate::transport::{
     CompleteCheckoutRequest, build_complete_checkout_request, fetch_order, fetch_orders,
 };
-
-fn order_status_badge_style(status: &str) -> &'static str {
-    match status.trim().to_uppercase().as_str() {
-        "PENDING" => "bg-amber-500/10 text-amber-600 border-amber-500/25",
-        "CONFIRMED" | "PAID" => "bg-blue-500/10 text-blue-600 border-blue-500/25",
-        "PROCESSING" => "bg-indigo-500/10 text-indigo-600 border-indigo-500/25",
-        "SHIPPED" => "bg-purple-500/10 text-purple-600 border-purple-500/25",
-        "DELIVERED" => "bg-emerald-500/10 text-emerald-600 border-emerald-500/25",
-        "CANCELLED" => "bg-rose-500/10 text-rose-600 border-rose-500/25",
-        _ => "bg-primary/10 text-primary border-primary/25",
-    }
-}
-
-fn localize_status(locale: Option<&str>, status: &str) -> String {
-    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
-    match status.trim().to_uppercase().as_str() {
-        "PENDING" => if is_ru {
-            "В обработке"
-        } else {
-            "Pending"
-        }
-        .to_string(),
-        "CONFIRMED" => if is_ru {
-            "Подтвержден"
-        } else {
-            "Confirmed"
-        }
-        .to_string(),
-        "PAID" => if is_ru { "Оплачен" } else { "Paid" }.to_string(),
-        "PROCESSING" => if is_ru { "Сборка" } else { "Processing" }.to_string(),
-        "SHIPPED" => if is_ru {
-            "Отправлен"
-        } else {
-            "Shipped"
-        }
-        .to_string(),
-        "DELIVERED" => if is_ru {
-            "Доставлен"
-        } else {
-            "Delivered"
-        }
-        .to_string(),
-        "CANCELLED" => if is_ru { "Отменен" } else { "Cancelled" }.to_string(),
-        other => other.to_string(),
-    }
-}
 
 #[component]
 pub fn OrderView() -> impl IntoView {
@@ -563,7 +517,12 @@ pub fn OrderCheckoutResultCard(
     result: OrderCheckoutResultData,
     labels: OrderCheckoutResultLabels,
 ) -> impl IntoView {
-    let view_model = build_order_checkout_result_view_model(result, &labels);
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let view_model = build_order_checkout_result_view_model_with_locale(
+        result,
+        &labels,
+        route_context.locale.as_deref(),
+    );
     let order_id = view_model.order_id.clone();
     let is_placeholder = order_id == "pending" || order_id.is_empty();
 

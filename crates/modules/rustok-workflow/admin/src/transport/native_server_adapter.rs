@@ -135,6 +135,12 @@ fn map_workflow_error(err: rustok_workflow::WorkflowError) -> ServerFnError {
         rustok_workflow::WorkflowError::NotFound(id) => {
             ServerFnError::new(format!("Workflow not found: {id}"))
         }
+        rustok_workflow::WorkflowError::VersionNotFound(id, version) => {
+            ServerFnError::new(format!("Workflow version not found: workflow_id={id}, version={version}"))
+        }
+        rustok_workflow::WorkflowError::TemplateNotFound(id) => {
+            ServerFnError::new(format!("Workflow template not found: {id}"))
+        }
         rustok_workflow::WorkflowError::StepNotFound(id) => {
             ServerFnError::new(format!("Workflow step not found: {id}"))
         }

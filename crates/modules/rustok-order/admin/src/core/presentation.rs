@@ -3,7 +3,8 @@ use crate::model::{OrderDetail, OrderLineItem, OrderListItem};
 use rustok_ui_i18n::fluent_args;
 
 pub fn localized_order_status(locale: Option<&str>, status: &str) -> String {
-    match status {
+    let s = status.trim().to_ascii_lowercase();
+    match s.as_str() {
         "pending" => t(locale, "order.status.pending", "Pending"),
         "confirmed" => t(locale, "order.status.confirmed", "Confirmed"),
         "paid" => t(locale, "order.status.paid", "Paid"),
@@ -15,7 +16,8 @@ pub fn localized_order_status(locale: Option<&str>, status: &str) -> String {
 }
 
 pub fn order_status_badge(status: &str) -> &'static str {
-    match status {
+    let s = status.trim().to_ascii_lowercase();
+    match s.as_str() {
         "delivered" => "border-emerald-200 bg-emerald-50 text-emerald-700",
         "paid" => "border-blue-200 bg-blue-50 text-blue-700",
         "shipped" => "border-amber-200 bg-amber-50 text-amber-700",
@@ -151,7 +153,8 @@ pub fn summarize_order_timeline(locale: Option<&str>, order: &OrderDetail) -> St
 }
 
 pub fn action_hint(locale: Option<&str>, status: &str) -> String {
-    match status {
+    let s = status.trim().to_ascii_lowercase();
+    match s.as_str() {
         "confirmed" => t(
             locale,
             "order.actionHint.confirmed",
@@ -203,8 +206,26 @@ mod tests {
     #[test]
     fn order_status_badge_maps_lifecycle_states() {
         assert!(order_status_badge("paid").contains("text-blue-700"));
+        assert!(order_status_badge("  PAID  ").contains("text-blue-700"));
         assert!(order_status_badge("cancelled").contains("text-rose-700"));
+        assert!(order_status_badge("Cancelled").contains("text-rose-700"));
+        assert!(order_status_badge("delivered").contains("text-emerald-700"));
+        assert!(order_status_badge("shipped").contains("text-amber-700"));
         assert!(order_status_badge("pending").contains("text-slate-700"));
+        assert!(order_status_badge("unknown").contains("text-slate-700"));
+    }
+
+    #[test]
+    fn localized_order_status_normalizes_casing() {
+        assert_eq!(localized_order_status(Some("en"), "  PAID  "), "Paid");
+        assert_eq!(localized_order_status(Some("ru"), "Confirmed"), "Подтверждён");
+        assert_eq!(localized_order_status(Some("en"), "custom_status"), "custom_status");
+    }
+
+    #[test]
+    fn action_hint_normalizes_casing() {
+        assert!(action_hint(Some("en"), "  PAID  ").contains("ready for shipment"));
+        assert!(action_hint(Some("ru"), "Confirmed").contains("отметить заказ как оплаченный"));
     }
 
     #[test]

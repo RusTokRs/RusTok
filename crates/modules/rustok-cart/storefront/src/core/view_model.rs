@@ -284,3 +284,30 @@ pub fn cart_checkout_handoff_view_model(
         module_ownership: labels.module_ownership.clone(),
     }
 }
+
+pub fn calculate_cart_item_count(items: &[StorefrontCartLineItem]) -> i32 {
+    items.iter().map(|item| item.quantity).sum()
+}
+
+pub fn format_cart_badge_count(count: i32) -> String {
+    if count > 99 {
+        "99+".to_string()
+    } else {
+        count.to_string()
+    }
+}
+
+#[cfg(test)]
+mod badge_tests {
+    use super::*;
+
+    #[test]
+    fn item_count_and_badge_formatting() {
+        assert_eq!(calculate_cart_item_count(&[]), 0);
+        assert_eq!(format_cart_badge_count(0), "0");
+        assert_eq!(format_cart_badge_count(5), "5");
+        assert_eq!(format_cart_badge_count(99), "99");
+        assert_eq!(format_cart_badge_count(100), "99+");
+        assert_eq!(format_cart_badge_count(150), "99+");
+    }
+}

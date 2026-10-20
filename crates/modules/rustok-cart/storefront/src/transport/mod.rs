@@ -103,9 +103,16 @@ mod tests {
 
     use super::*;
 
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
     #[test]
     fn default_test_profile_uses_graphql_transport_without_native_fallback() {
         assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
+    }
+
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    #[test]
+    fn ssr_test_profile_uses_native_server_transport() {
+        assert_eq!(selected_transport_path(), UiTransportPath::NativeServer);
     }
 
     #[test]

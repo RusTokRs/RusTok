@@ -26,7 +26,12 @@ pub fn workflow_name_from_template_input(
 ) -> String {
     let trimmed = entered_name.trim();
     if trimmed.is_empty() {
-        format!("{default_name_prefix} {template_id}")
+        let tid = template_id.trim();
+        if tid.is_empty() {
+            format!("{default_name_prefix} untitled")
+        } else {
+            format!("{default_name_prefix} {tid}")
+        }
     } else {
         trimmed.to_string()
     }
@@ -45,6 +50,10 @@ mod tests {
         assert_eq!(
             workflow_name_from_template_input("   ", "Workflow from", "tpl-1"),
             "Workflow from tpl-1"
+        );
+        assert_eq!(
+            workflow_name_from_template_input("", "Workflow from", "  "),
+            "Workflow from untitled"
         );
     }
 

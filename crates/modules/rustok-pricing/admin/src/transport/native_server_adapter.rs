@@ -233,9 +233,14 @@ fn parse_optional_uuid(value: &str, field_name: &str) -> Result<Option<Uuid>, Se
         return Ok(None);
     };
 
-    Uuid::parse_str(value.as_str())
-        .map(Some)
-        .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))
+    let parsed = Uuid::parse_str(value.as_str())
+        .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))?;
+
+    if parsed.is_nil() {
+        return Err(ServerFnError::new(format!("Invalid {field_name}")));
+    }
+
+    Ok(Some(parsed))
 }
 
 #[cfg(feature = "ssr")]
@@ -1382,6 +1387,31 @@ mod tests {
         .expect("tenant should be inserted");
     }
 
+    async fn seed_channel_context(
+        db: &sea_orm::DatabaseConnection,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+        channel_slug: &str,
+    ) {
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, status, settings, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            vec![
+                channel_id.into(),
+                tenant_id.into(),
+                channel_slug.into(),
+                format!("Channel {channel_slug}").into(),
+                true.into(),
+                false.into(),
+                "active".into(),
+                json!({}).to_string().into(),
+            ],
+        ))
+        .await
+        .expect("channel should be inserted");
+    }
+
     async fn create_test_product(
         catalog: &CatalogService,
         tenant_id: Uuid,
@@ -1628,6 +1658,10 @@ mod tests {
             .expect_err("invalid price_list_id should be rejected");
 
         assert!(error.to_string().contains("Invalid price_list_id"));
+
+        let nil_error = parse_optional_uuid(Uuid::nil().to_string().as_str(), "price_list_id")
+            .expect_err("nil price_list_id should be rejected");
+        assert!(nil_error.to_string().contains("Invalid price_list_id"));
     }
 
     #[test]
@@ -1636,6 +1670,10 @@ mod tests {
             .expect_err("invalid channel_id should be rejected");
 
         assert!(error.to_string().contains("Invalid channel_id"));
+
+        let nil_error = parse_optional_uuid_string(Some(Uuid::nil().to_string()), "channel_id")
+            .expect_err("nil channel_id should be rejected");
+        assert!(nil_error.to_string().contains("Invalid channel_id"));
     }
 
     #[tokio::test]
@@ -1815,6 +1853,7 @@ mod tests {
         let actor_id = Uuid::new_v4();
         let channel_id = Uuid::new_v4();
         seed_tenant_context(&db, tenant_id).await;
+        seed_channel_context(&db, tenant_id, channel_id, "web-store").await;
 
         let tenant = TenantContext {
             id: tenant_id,
@@ -2477,6 +2516,7 @@ mod tests {
         let actor_id = Uuid::new_v4();
         let channel_id = Uuid::new_v4();
         seed_tenant_context(&db, tenant_id).await;
+        seed_channel_context(&db, tenant_id, channel_id, "web-store").await;
 
         let tenant = TenantContext {
             id: tenant_id,
@@ -2815,6 +2855,7 @@ mod tests {
         let actor_id = Uuid::new_v4();
         let channel_id = Uuid::new_v4();
         seed_tenant_context(&db, tenant_id).await;
+        seed_channel_context(&db, tenant_id, channel_id, "web-store").await;
 
         let tenant = TenantContext {
             id: tenant_id,
@@ -3132,6 +3173,7 @@ mod tests {
         let actor_id = Uuid::new_v4();
         let channel_id = Uuid::new_v4();
         seed_tenant_context(&db, tenant_id).await;
+        seed_channel_context(&db, tenant_id, channel_id, "web-store").await;
 
         let tenant = TenantContext {
             id: tenant_id,
@@ -3503,6 +3545,7 @@ mod tests {
         let actor_id = Uuid::new_v4();
         let channel_id = Uuid::new_v4();
         seed_tenant_context(&db, tenant_id).await;
+        seed_channel_context(&db, tenant_id, channel_id, "web-store").await;
         let price_list_id = create_price_list(&db, tenant_id, "active").await;
 
         let tenant = TenantContext {
@@ -3595,6 +3638,7 @@ mod tests {
         let actor_id = Uuid::new_v4();
         let channel_id = Uuid::new_v4();
         seed_tenant_context(&db, tenant_id).await;
+        seed_channel_context(&db, tenant_id, channel_id, "web-store").await;
         let price_list_id = create_price_list(&db, tenant_id, "active").await;
 
         let tenant = TenantContext {
@@ -3700,6 +3744,8 @@ mod tests {
         let channel_id = Uuid::new_v4();
         let other_channel_id = Uuid::new_v4();
         seed_tenant_context(&db, tenant_id).await;
+        seed_channel_context(&db, tenant_id, channel_id, "web-store").await;
+        seed_channel_context(&db, tenant_id, other_channel_id, "mobile-app").await;
         let price_list_id = create_price_list(&db, tenant_id, "active").await;
 
         let tenant = TenantContext {

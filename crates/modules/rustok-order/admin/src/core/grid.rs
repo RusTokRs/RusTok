@@ -148,10 +148,11 @@ pub fn matches_order_filter(item: &OrderListItem, col_id: &str, filter_val: &Fil
                     .unwrap_or(false)
         }
         ("status", FilterValue::Select(val)) => {
-            if val.is_empty() {
+            let v = val.trim();
+            if v.is_empty() {
                 true
             } else {
-                item.status.eq_ignore_ascii_case(val)
+                item.status.eq_ignore_ascii_case(v)
             }
         }
         ("created_at", FilterValue::DateRange { from, to }) => {
@@ -160,17 +161,17 @@ pub fn matches_order_filter(item: &OrderListItem, col_id: &str, filter_val: &Fil
                 .split('T')
                 .next()
                 .unwrap_or(&item.created_at);
-            if let Some(f) = from
-                && !f.trim().is_empty()
-                && item_date < f.as_str()
-            {
-                return false;
+            if let Some(f) = from {
+                let f_trimmed = f.trim();
+                if !f_trimmed.is_empty() && item_date < f_trimmed {
+                    return false;
+                }
             }
-            if let Some(t) = to
-                && !t.trim().is_empty()
-                && item_date > t.as_str()
-            {
-                return false;
+            if let Some(t) = to {
+                let t_trimmed = t.trim();
+                if !t_trimmed.is_empty() && item_date > t_trimmed {
+                    return false;
+                }
             }
             true
         }
@@ -298,5 +299,33 @@ mod tests {
         let filtered = filter_orders(&orders, &filters);
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].id, "ord-103");
+    }
+
+    #[test]
+    fn test_filter_orders_handles_untrimmed_date_and_status() {
+        let orders = vec![
+            create_test_order("ord-1", "paid", Some("cust-1"), "2026-05-10T12:00:00Z"),
+            create_test_order("ord-2", "shipped", Some("cust-2"), "2026-05-15T12:00:00Z"),
+        ];
+
+        // Whitespace-padded status select
+        let mut status_filters = ColumnFilters::new();
+        status_filters.set("status", FilterValue::Select("  paid  ".to_string()));
+        let filtered_status = filter_orders(&orders, &status_filters);
+        assert_eq!(filtered_status.len(), 1);
+        assert_eq!(filtered_status[0].id, "ord-1");
+
+        // Whitespace-padded date range
+        let mut date_filters = ColumnFilters::new();
+        date_filters.set(
+            "created_at",
+            FilterValue::DateRange {
+                from: Some("  2026-05-12  ".to_string()),
+                to: Some("  2026-05-16  ".to_string()),
+            },
+        );
+        let filtered_date = filter_orders(&orders, &date_filters);
+        assert_eq!(filtered_date.len(), 1);
+        assert_eq!(filtered_date[0].id, "ord-2");
     }
 }

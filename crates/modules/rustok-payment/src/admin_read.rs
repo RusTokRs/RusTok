@@ -168,7 +168,7 @@ impl PaymentAdminReadPort for InProcessPaymentAdminReadPort {
                 ListPaymentCollectionsInput {
                     page: request.page,
                     per_page: request.per_page,
-                    status: request.status,
+                    status: request.status.filter(|s| !s.trim().is_empty()),
                     order_id: request.order_id,
                     cart_id: request.cart_id,
                     customer_id: request.customer_id,
@@ -249,7 +249,7 @@ impl PaymentAdminReadPort for InProcessPaymentAdminReadPort {
                     per_page: request.per_page,
                     payment_collection_id: request.payment_collection_id,
                     order_id: request.order_id,
-                    status: request.status,
+                    status: request.status.filter(|s| !s.trim().is_empty()),
                 },
             )
             .await

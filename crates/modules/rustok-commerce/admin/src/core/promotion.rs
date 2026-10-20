@@ -22,16 +22,55 @@ pub fn prepare_cart_promotion_command(form: CartPromotionForm<'_>) -> Option<Car
         return None;
     }
 
+    let kind = parse_promotion_kind(form.kind);
+    let scope = parse_promotion_scope(form.scope);
+
+    let (discount_percent, amount) = match kind {
+        crate::model::CommerceCartPromotionKind::PercentageDiscount => {
+            let discount_percent = form.discount_percent.trim().to_string();
+            if discount_percent.is_empty() {
+                return None;
+            }
+            (discount_percent, String::new())
+        }
+        crate::model::CommerceCartPromotionKind::FixedDiscount => {
+            let amount = form.amount.trim().to_string();
+            if amount.is_empty() {
+                return None;
+            }
+            (String::new(), amount)
+        }
+    };
+
+    let line_item_id = match scope {
+        crate::model::CommerceCartPromotionScope::LineItem => {
+            let line_item_id = form.line_item_id.trim().to_string();
+            if line_item_id.is_empty() {
+                return None;
+            }
+            line_item_id
+        }
+        crate::model::CommerceCartPromotionScope::Cart
+        | crate::model::CommerceCartPromotionScope::Shipping => String::new(),
+    };
+
+    let metadata_trimmed = form.metadata_json.trim();
+    if !metadata_trimmed.is_empty()
+        && serde_json::from_str::<serde_json::Value>(metadata_trimmed).is_err()
+    {
+        return None;
+    }
+
     Some(CartPromotionCommand {
         cart_id,
         draft: crate::model::CommerceCartPromotionDraft {
-            kind: parse_promotion_kind(form.kind),
-            scope: parse_promotion_scope(form.scope),
-            line_item_id: form.line_item_id.trim().to_string(),
+            kind,
+            scope,
+            line_item_id,
             source_id,
-            discount_percent: form.discount_percent.trim().to_string(),
-            amount: form.amount.trim().to_string(),
-            metadata_json: form.metadata_json.trim().to_string(),
+            discount_percent,
+            amount,
+            metadata_json: metadata_trimmed.to_string(),
         },
     })
 }
@@ -82,8 +121,36 @@ mod tests {
         assert_eq!(command.draft.line_item_id, "line-1");
         assert_eq!(command.draft.source_id, "promo");
         assert_eq!(command.draft.discount_percent, "10");
-        assert_eq!(command.draft.amount, "4.99");
+        assert_eq!(command.draft.amount, "");
         assert_eq!(command.draft.metadata_json, "{ }");
+    }
+
+    #[test]
+    fn cart_promotion_command_normalizes_fixed_discount_and_shipping_scope() {
+        let command = prepare_cart_promotion_command(CartPromotionForm {
+            cart_id: "cart-2",
+            kind: "fixed_discount",
+            scope: "shipping",
+            line_item_id: "item-should-be-cleared",
+            source_id: "promo-shipping",
+            discount_percent: "25",
+            amount: "7.50",
+            metadata_json: "{}",
+        })
+        .expect("valid command");
+
+        assert_eq!(command.cart_id, "cart-2");
+        assert_eq!(
+            command.draft.kind,
+            crate::model::CommerceCartPromotionKind::FixedDiscount
+        );
+        assert_eq!(
+            command.draft.scope,
+            crate::model::CommerceCartPromotionScope::Shipping
+        );
+        assert_eq!(command.draft.line_item_id, "");
+        assert_eq!(command.draft.discount_percent, "");
+        assert_eq!(command.draft.amount, "7.50");
     }
 
     #[test]
@@ -111,6 +178,65 @@ mod tests {
                 discount_percent: "",
                 amount: DEFAULT_PROMOTION_AMOUNT,
                 metadata_json: "",
+            })
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn cart_promotion_command_requires_kind_and_scope_fields() {
+        assert!(
+            prepare_cart_promotion_command(CartPromotionForm {
+                cart_id: "cart-1",
+                kind: "percentage_discount",
+                scope: "shipping",
+                line_item_id: "",
+                source_id: "promo",
+                discount_percent: "  ",
+                amount: "5.00",
+                metadata_json: "",
+            })
+            .is_none()
+        );
+
+        assert!(
+            prepare_cart_promotion_command(CartPromotionForm {
+                cart_id: "cart-1",
+                kind: "fixed_discount",
+                scope: "shipping",
+                line_item_id: "",
+                source_id: "promo",
+                discount_percent: "10",
+                amount: "  ",
+                metadata_json: "",
+            })
+            .is_none()
+        );
+
+        assert!(
+            prepare_cart_promotion_command(CartPromotionForm {
+                cart_id: "cart-1",
+                kind: "fixed_discount",
+                scope: "line_item",
+                line_item_id: "  ",
+                source_id: "promo",
+                discount_percent: "",
+                amount: "5.00",
+                metadata_json: "",
+            })
+            .is_none()
+        );
+
+        assert!(
+            prepare_cart_promotion_command(CartPromotionForm {
+                cart_id: "cart-1",
+                kind: "fixed_discount",
+                scope: "shipping",
+                line_item_id: "",
+                source_id: "promo",
+                discount_percent: "",
+                amount: "5.00",
+                metadata_json: "{not-json",
             })
             .is_none()
         );

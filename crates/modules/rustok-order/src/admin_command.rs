@@ -421,5 +421,52 @@ mod tests {
         let err = require_admin_command_context(&context, "test_admin_cmd").unwrap_err();
         assert_eq!(err.code, "order.actor_id_nil");
     }
+
+    #[test]
+    fn test_validate_non_nil_uuid() {
+        assert!(validate_non_nil_uuid(Uuid::new_v4(), "order_id").is_ok());
+        let err = validate_non_nil_uuid(Uuid::nil(), "order_id").unwrap_err();
+        assert_eq!(err.code, "order.order_id_nil");
+    }
+
+    #[test]
+    fn test_map_order_error() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(actor_id.to_string()),
+            "en",
+            "corr-1",
+        );
+
+        let err = map_order_error(
+            &context,
+            "test_op",
+            order_id,
+            OrderError::Validation("invalid".to_string()),
+        );
+        assert_eq!(err.code, "order.admin_command_validation");
+
+        let err = map_order_error(
+            &context,
+            "test_op",
+            order_id,
+            OrderError::OrderNotFound(order_id),
+        );
+        assert_eq!(err.code, "order.admin_order_not_found");
+
+        let err = map_order_error(
+            &context,
+            "test_op",
+            order_id,
+            OrderError::InvalidTransition {
+                from: "pending".to_string(),
+                to: "delivered".to_string(),
+            },
+        );
+        assert_eq!(err.code, "order.admin_command_state_conflict");
+    }
 }
 

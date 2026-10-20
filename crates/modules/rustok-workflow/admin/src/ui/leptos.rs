@@ -171,6 +171,12 @@ fn WorkflowList(workflows: Vec<WorkflowSummary>) -> impl IntoView {
         "workflow.table.details",
         "View details ->",
     );
+    let clear_label = t(locale.as_deref(), "workflow.table.clear", "Clear");
+    let search_placeholder = t(
+        locale.as_deref(),
+        "workflow.search.placeholder",
+        "Search by name...",
+    );
 
     if workflows.is_empty() {
         return view! {
@@ -282,14 +288,14 @@ fn WorkflowList(workflows: Vec<WorkflowSummary>) -> impl IntoView {
             <Show when=move || !selection.get().is_empty()>
                 <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-primary/20 bg-primary/5 text-sm">
                     <span class="font-medium text-foreground">
-                        {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "процессов" } else { "workflows" })}
+                        {move || format!("{} {}", selection.get().count(), if is_ru { "выбрано процессов" } else { "workflows selected" })}
                     </span>
                     <button
                         type="button"
                         class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
                         on:click=move |_| selection.update(|s| s.clear())
                     >
-                        {if is_ru { "Снять выбор" } else { "Clear" }}
+                        {clear_label.clone()}
                     </button>
                 </div>
             </Show>
@@ -297,7 +303,7 @@ fn WorkflowList(workflows: Vec<WorkflowSummary>) -> impl IntoView {
             <div class="flex items-center justify-between gap-4">
                 <input
                     type="text"
-                    placeholder=if is_ru { "Поиск по названию..." } else { "Search by name..." }
+                    placeholder=search_placeholder.clone()
                     class="w-full max-w-xs px-3 py-1.5 border border-border rounded-lg text-sm bg-background text-foreground"
                     prop:value=move || search.get()
                     on:input=move |ev| set_search.set(event_target_value(&ev))
@@ -363,8 +369,14 @@ fn TemplateGallery(
         "workflow.error.loadTemplates",
         "Failed to load templates",
     );
+    let create_template_error = t(
+        locale.as_deref(),
+        "workflow.error.createTemplate",
+        "Failed to create workflow from template",
+    );
     let (pending_id, set_pending_id) = signal(Option::<String>::None);
     let (name_input, set_name_input) = signal(String::new());
+    let (action_error, set_action_error) = signal(Option::<String>::None);
 
     let token_for_templates = token.clone();
     let tenant_for_templates = tenant_slug.clone();
@@ -388,6 +400,18 @@ fn TemplateGallery(
                     {templates_subtitle}
                 </p>
             </div>
+
+            <Show when=move || action_error.get().is_some()>
+                <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    {
+                        let create_template_error = create_template_error.clone();
+                        move || {
+                            let err_msg = action_error.get().unwrap_or_default();
+                            workflow_error_view_model(&create_template_error, err_msg).message
+                        }
+                    }
+                </div>
+            </Show>
 
             <Suspense fallback=move || view! {
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -418,6 +442,7 @@ fn TemplateGallery(
                                                 name=current_name.clone()
                                                 on_name_change=Callback::new(move |value| set_name_input.set(value))
                                                 on_use=Callback::new(move |_| {
+                                                    set_action_error.set(None);
                                                     let context = workflow_admin_transport_context(
                                                         token_for_request.clone(),
                                                         tenant_for_request.clone(),
@@ -435,10 +460,12 @@ fn TemplateGallery(
                                                             Ok(workflow_id) => {
                                                                 set_pending_id.set(None);
                                                                 set_name_input.set(String::new());
+                                                                set_action_error.set(None);
                                                                 on_created.run(workflow_id);
                                                             }
-                                                            Err(_) => {
+                                                            Err(err) => {
                                                                 set_pending_id.set(None);
+                                                                set_action_error.set(Some(err.to_string()));
                                                             }
                                                         }
                                                     });

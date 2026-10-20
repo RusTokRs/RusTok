@@ -34,7 +34,7 @@ pub(crate) fn text_or_none(value: String) -> Option<String> {
 
 pub(crate) fn normalized_currency_code(value: String) -> Option<String> {
     let value = text_or_none(value)?;
-    if value.len() == 3 {
+    if value.len() == 3 && value.chars().all(|ch| ch.is_ascii_alphabetic()) {
         Some(value.to_ascii_uppercase())
     } else {
         None
@@ -43,12 +43,18 @@ pub(crate) fn normalized_currency_code(value: String) -> Option<String> {
 
 pub(crate) fn normalized_region_id(value: String) -> Option<String> {
     let value = text_or_none(value)?;
-    Uuid::parse_str(value.as_str()).ok().map(|_| value)
+    Uuid::parse_str(value.as_str())
+        .ok()
+        .filter(|uuid| !uuid.is_nil())
+        .map(|_| value)
 }
 
 pub(crate) fn normalized_price_list_id(value: String) -> Option<String> {
     let value = text_or_none(value)?;
-    Uuid::parse_str(value.as_str()).ok().map(|_| value)
+    Uuid::parse_str(value.as_str())
+        .ok()
+        .filter(|uuid| !uuid.is_nil())
+        .map(|_| value)
 }
 
 pub(crate) fn normalized_quantity(value: String) -> Option<i32> {
@@ -83,9 +89,14 @@ pub(crate) fn parse_optional_uuid_string(
         return Ok(None);
     };
 
-    Uuid::parse_str(value.as_str())
-        .map(|_| Some(value))
-        .map_err(|_| PricingAdminRequestError::new(format!("Invalid {field_name}")))
+    let parsed = Uuid::parse_str(value.as_str())
+        .map_err(|_| PricingAdminRequestError::new(format!("Invalid {field_name}")))?;
+
+    if parsed.is_nil() {
+        return Err(PricingAdminRequestError::new(format!("Invalid {field_name}")));
+    }
+
+    Ok(Some(value))
 }
 
 pub(crate) fn parse_resolution_quantity(
@@ -321,6 +332,22 @@ mod tests {
         let error = parse_optional_uuid_string(Some("not-a-uuid".to_string()), "price_list_id")
             .expect_err("invalid UUID should fail");
         assert_eq!(error.to_string(), "Invalid price_list_id");
+
+        let nil_error = parse_optional_uuid_string(
+            Some(Uuid::nil().to_string()),
+            "price_list_id",
+        )
+        .expect_err("nil UUID should fail");
+        assert_eq!(nil_error.to_string(), "Invalid price_list_id");
+
+        assert_eq!(normalized_region_id(Uuid::nil().to_string()), None);
+        assert_eq!(normalized_price_list_id(Uuid::nil().to_string()), None);
+        assert_eq!(normalized_currency_code("123".to_string()), None);
+        assert_eq!(normalized_currency_code("US1".to_string()), None);
+        assert_eq!(
+            normalized_currency_code("usd".to_string()),
+            Some("USD".to_string())
+        );
     }
 
     #[test]

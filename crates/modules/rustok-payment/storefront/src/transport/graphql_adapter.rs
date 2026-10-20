@@ -187,8 +187,14 @@ fn parse_cart_id(value: &str) -> Result<Uuid, PaymentTransportError> {
 }
 
 fn parse_uuid(value: &str, field: &str) -> Result<Uuid, PaymentTransportError> {
-    Uuid::parse_str(value.trim())
-        .map_err(|_| PaymentTransportError::Validation(format!("{field} must be a valid UUID")))
+    let parsed = Uuid::parse_str(value.trim())
+        .map_err(|_| PaymentTransportError::Validation(format!("{field} must be a valid UUID")))?;
+    if parsed.is_nil() {
+        return Err(PaymentTransportError::Validation(format!(
+            "{field} must not be a nil UUID"
+        )));
+    }
+    Ok(parsed)
 }
 
 fn summarize_refunds(items: &[GraphqlRefundItem], total: u64) -> RefundSummary {
@@ -265,5 +271,17 @@ mod tests {
         let summary = summarize_refunds(&[], 0);
         assert_eq!(summary.refunded_amount, None);
         assert_eq!(summary.latest_status, None);
+    }
+
+    #[test]
+    fn parse_uuid_validates_and_rejects_nil() {
+        let valid = Uuid::new_v4();
+        assert_eq!(parse_cart_id(&valid.to_string()).unwrap(), valid);
+
+        let err_invalid = parse_cart_id("not-a-uuid").unwrap_err();
+        assert!(matches!(err_invalid, PaymentTransportError::Validation(msg) if msg.contains("must be a valid UUID")));
+
+        let err_nil = parse_cart_id(&Uuid::nil().to_string()).unwrap_err();
+        assert!(matches!(err_nil, PaymentTransportError::Validation(msg) if msg.contains("must not be a nil UUID")));
     }
 }

@@ -1656,3 +1656,139 @@ async fn sanitization_strips_customer_tax_exempt_from_line_item_metadata() {
         Some(&serde_json::json!("gift"))
     );
 }
+
+#[tokio::test]
+async fn whitespace_or_empty_line_item_title_rejected() {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+
+    let err = service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                title: "   ".to_string(),
+                ..line_item_input()
+            },
+        )
+        .await
+        .expect_err("whitespace title must be rejected");
+
+    assert!(matches!(err, CartError::Validation(_)));
+
+    let err = service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                title: "".to_string(),
+                ..line_item_input()
+            },
+        )
+        .await
+        .expect_err("empty title must be rejected");
+
+    assert!(matches!(err, CartError::Validation(_)));
+}
+
+#[tokio::test]
+async fn line_item_title_trimmed_and_blank_sku_filtered() {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+
+    let updated = service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                title: "  Trimmed Widget  ".to_string(),
+                sku: Some("   ".to_string()),
+                ..line_item_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.line_items[0].title, "Trimmed Widget");
+    assert_eq!(updated.line_items[0].sku, None);
+}
+
+#[tokio::test]
+async fn create_cart_and_update_context_normalize_whitespace_email() {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+
+    let cart = service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                email: Some("  buyer@example.com  ".to_string()),
+                ..create_cart_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(cart.email.as_deref(), Some("buyer@example.com"));
+
+    let updated = service
+        .update_context(
+            tenant_id,
+            cart.id,
+            UpdateCartContextInput {
+                email: Some("  updated@example.com  ".to_string()),
+                region_id: None,
+                country_code: None,
+                locale_code: None,
+                selected_shipping_option_id: None,
+                shipping_selections: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.email.as_deref(), Some("updated@example.com"));
+
+    let cleared = service
+        .update_context(
+            tenant_id,
+            cart.id,
+            UpdateCartContextInput {
+                email: Some("   ".to_string()),
+                region_id: None,
+                country_code: None,
+                locale_code: None,
+                selected_shipping_option_id: None,
+                shipping_selections: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(cleared.email, None);
+}
+
+#[test]
+fn normalize_locale_code_validates_and_lowercases() {
+    use rustok_cart::services::cart::helpers::normalize_locale_code;
+
+    assert_eq!(normalize_locale_code("en").unwrap(), "en");
+    assert_eq!(normalize_locale_code("pt_BR").unwrap(), "pt-br");
+    assert_eq!(normalize_locale_code("pl_PL").unwrap(), "pl-pl");
+    assert_eq!(normalize_locale_code("ru-RU").unwrap(), "ru-ru");
+
+    assert!(normalize_locale_code("12").is_err());
+    assert!(normalize_locale_code("$$").is_err());
+    assert!(normalize_locale_code("").is_err());
+    assert!(normalize_locale_code("toolonglocalecode").is_err());
+}

@@ -10,16 +10,25 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use rustok_api::{AuthContext, PortError, RequestContext};
+use rustok_core::{Error, Result as CoreResult};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::engine::{SearchFacetBucket, SearchFacetGroup};
+use crate::dictionaries::SearchDictionaryService;
+use crate::engine::{
+    SearchEngineKind, SearchFacetBucket, SearchFacetGroup, SearchQuery, SearchResult,
+};
+use crate::pg_engine::PgSearchEngine;
 use crate::storefront_category_scope::StorefrontSearchTransport;
+use crate::storefront_channel_authority::TrustedStorefrontChannel;
 
 pub const MAX_SEARCH_AUDIENCE_CANDIDATES: usize = 100;
+pub const AUDIENCE_CANDIDATE_SCAN_PAGE_SIZE: usize = 50;
 /// Neutral candidate descriptor representing one document returned by search engine.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SearchCandidateDescriptor {
@@ -178,12 +187,11 @@ pub async fn resolve_audience_eligible_candidates(
             "Search audience candidate resolution requires a valid tenant ID",
         ));
     }
-    if locale.trim().is_empty() {
-        return Err(PortError::validation(
-            "search.audience.locale_required",
-            "Search audience candidate resolution requires a locale",
-        ));
-    }
+    let effective_locale = if locale.trim().is_empty() {
+        "en"
+    } else {
+        locale.trim()
+    };
 
     if candidates.iter().any(|candidate| candidate.document_id.is_nil()) {
         return Err(PortError::validation(
@@ -220,7 +228,7 @@ pub async fn resolve_audience_eligible_candidates(
 
             let request = SearchAudienceRequest {
                 tenant_id,
-                locale: locale.to_string(),
+                locale: effective_locale.to_string(),
                 candidates: module_candidates,
                 auth: auth.clone(),
                 request_context: request_context.clone(),
@@ -312,6 +320,288 @@ pub fn build_authorized_facets(items: &[crate::SearchResultItem]) -> Vec<SearchF
             buckets: to_buckets(statuses),
         },
     ]
+}
+
+/// Executes unified storefront search across audience-gated and unconstrained domain modules.
+///
+/// Implements preflight discovery gating, anti-DoS bounded candidate scans, concurrent
+/// post-authorization across registered `SearchAudiencePolicyPort` implementations, accurate
+/// facet re-aggregation over authorized documents, and query-rule execution.
+pub async fn execute_audience_eligible_search(
+    db: &DatabaseConnection,
+    engine: &PgSearchEngine,
+    mut search_query: SearchQuery,
+    channel: &TrustedStorefrontChannel,
+    registry: &SearchAudienceRegistry,
+    auth: Option<AuthContext>,
+    request_context: Option<RequestContext>,
+    transport: StorefrontSearchTransport,
+) -> CoreResult<SearchResult> {
+    let started_at = Instant::now();
+    let tenant_id = search_query
+        .tenant_id
+        .ok_or_else(|| Error::Validation("storefront search requires tenant_id".to_string()))?;
+    if tenant_id.is_nil() {
+        return Err(Error::Validation(
+            "storefront search requires a valid tenant ID".to_string(),
+        ));
+    }
+
+    if search_query.query.trim().is_empty() {
+        return Ok(SearchResult {
+            items: Vec::new(),
+            total: 0,
+            took_ms: 0,
+            engine: SearchEngineKind::Postgres,
+            ranking_profile: search_query.ranking_profile,
+            facets: build_authorized_facets(&[]),
+        });
+    }
+
+    let mut blocked_modules = HashSet::new();
+
+    // 1. Preflight discovery gate for unauthenticated requests
+    if auth.is_none() {
+        if !search_query.source_modules.is_empty() {
+            let mut allowed_modules = Vec::new();
+            for module in &search_query.source_modules {
+                if registry.get(module).is_some() {
+                    let allowed = registry
+                        .public_discovery_allowed(module, tenant_id)
+                        .await
+                        .map_err(|e| {
+                            Error::Validation(format!(
+                                "Preflight discovery check failed for `{module}`: {}",
+                                e.message
+                            ))
+                        })?;
+                    if allowed {
+                        allowed_modules.push(module.clone());
+                    } else {
+                        blocked_modules.insert(module.clone());
+                    }
+                } else {
+                    allowed_modules.push(module.clone());
+                }
+            }
+
+            if allowed_modules.is_empty() {
+                // All requested modules are closed to public discovery.
+                // Return empty result immediately without touching Postgres.
+                return Ok(SearchResult {
+                    items: Vec::new(),
+                    total: 0,
+                    took_ms: started_at.elapsed().as_millis() as u64,
+                    engine: SearchEngineKind::Postgres,
+                    ranking_profile: search_query.ranking_profile,
+                    facets: build_authorized_facets(&[]),
+                });
+            }
+
+            search_query.source_modules = allowed_modules;
+        } else {
+            // No specific source modules were requested: check all registered audience policies.
+            for module in registry.source_modules() {
+                let allowed = registry
+                    .public_discovery_allowed(&module, tenant_id)
+                    .await
+                    .map_err(|e| {
+                        Error::Validation(format!(
+                            "Preflight discovery check failed for `{module}`: {}",
+                            e.message
+                        ))
+                    })?;
+                if !allowed {
+                    blocked_modules.insert(module);
+                }
+            }
+        }
+    }
+
+    // 2. Fast-path: if registry is empty, or none of the requested source modules have an audience policy
+    let any_audience_policy = if search_query.source_modules.is_empty() {
+        !registry.is_empty()
+    } else {
+        search_query
+            .source_modules
+            .iter()
+            .any(|module| registry.get(module).is_some())
+    };
+
+    if !any_audience_policy {
+        let result = engine
+            .search_storefront(search_query.clone(), channel)
+            .await?;
+        return SearchDictionaryService::apply_storefront_query_rules(
+            db,
+            &search_query,
+            result,
+            channel,
+        )
+        .await;
+    }
+
+    let blocked_exclusions: Vec<String> = blocked_modules.iter().cloned().collect();
+
+    // 3. Bounded candidate scan for audience-governed search
+    let mut scan_query = search_query.clone();
+    scan_query.limit = AUDIENCE_CANDIDATE_SCAN_PAGE_SIZE;
+    scan_query.offset = 0;
+
+    let first_page = engine
+        .search_storefront_candidates_with_exclusions(
+            scan_query.clone(),
+            channel,
+            &blocked_exclusions,
+        )
+        .await?;
+
+    let raw_total = usize::try_from(first_page.total).map_err(|_| {
+        Error::Validation("Storefront Search candidate count is too large".to_string())
+    })?;
+
+    if raw_total == 0 || first_page.items.is_empty() {
+        return Ok(SearchResult {
+            items: Vec::new(),
+            total: 0,
+            took_ms: started_at.elapsed().as_millis() as u64,
+            engine: first_page.engine,
+            ranking_profile: first_page.ranking_profile,
+            facets: build_authorized_facets(&[]),
+        });
+    }
+
+    if raw_total > MAX_SEARCH_AUDIENCE_CANDIDATES {
+        return Err(Error::Validation(format!(
+            "Storefront Search matched more than {MAX_SEARCH_AUDIENCE_CANDIDATES} candidates for audience-restricted modules; narrow the query or filter scope"
+        )));
+    }
+
+    let engine_kind = first_page.engine;
+    let ranking_profile = first_page.ranking_profile;
+    let mut all_items = first_page.items;
+    let mut raw_rows = HashSet::with_capacity(raw_total);
+
+    for item in &all_items {
+        if !raw_rows.insert((
+            item.source_module.clone(),
+            item.entity_type.clone(),
+            item.id,
+            item.locale.clone(),
+        )) {
+            return Err(Error::Internal(
+                "Storefront Search candidate scan returned a duplicate raw row".to_string(),
+            ));
+        }
+    }
+
+    while all_items.len() < raw_total {
+        scan_query.offset = all_items.len();
+        let page = engine
+            .search_storefront_candidates_with_exclusions(
+                scan_query.clone(),
+                channel,
+                &blocked_exclusions,
+            )
+            .await?;
+
+        if page.total != raw_total as u64 || page.items.is_empty() {
+            return Err(Error::Internal(
+                "Storefront Search candidate snapshot changed during bounded eligibility evaluation".to_string(),
+            ));
+        }
+
+        for item in &page.items {
+            if !raw_rows.insert((
+                item.source_module.clone(),
+                item.entity_type.clone(),
+                item.id,
+                item.locale.clone(),
+            )) {
+                return Err(Error::Internal(
+                    "Storefront Search candidate scan returned a duplicate raw row".to_string(),
+                ));
+            }
+        }
+
+        all_items.extend(page.items);
+        if all_items.len() > raw_total {
+            return Err(Error::Internal(
+                "Storefront Search candidate scan exceeded its initial bounded total".to_string(),
+            ));
+        }
+    }
+
+    if all_items.len() != raw_total || raw_rows.len() != raw_total {
+        return Err(Error::Internal(
+            "Storefront Search candidate scan did not resolve one unique row per result".to_string(),
+        ));
+    }
+
+    // Filter out blocked modules from preflight discovery
+    if !blocked_modules.is_empty() {
+        all_items.retain(|item| !blocked_modules.contains(&item.source_module));
+    }
+
+    // 4. Batch post-authorization across registered audience policies
+    let descriptors: Vec<SearchCandidateDescriptor> = all_items
+        .iter()
+        .map(|item| {
+            SearchCandidateDescriptor::new(
+                item.id,
+                &item.source_module,
+                &item.entity_type,
+            )
+        })
+        .collect();
+
+    let effective_locale = search_query
+        .locale
+        .as_deref()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .unwrap_or("en");
+
+    let allowed_ids = resolve_audience_eligible_candidates(
+        registry,
+        tenant_id,
+        effective_locale,
+        &descriptors,
+        auth,
+        request_context,
+        transport,
+    )
+    .await
+    .map_err(|e| Error::Validation(e.message))?;
+
+    all_items.retain(|item| allowed_ids.contains(&item.id));
+
+    // 5. Accurate totals, facets and pagination slicing
+    let total = all_items.len() as u64;
+    let facets = build_authorized_facets(&all_items);
+    let items = all_items
+        .into_iter()
+        .skip(search_query.offset)
+        .take(search_query.limit)
+        .collect();
+
+    let result = SearchResult {
+        items,
+        total,
+        took_ms: started_at.elapsed().as_millis() as u64,
+        engine: engine_kind,
+        ranking_profile,
+        facets,
+    };
+
+    // 6. Apply storefront query rules over authorized result
+    SearchDictionaryService::apply_authorized_storefront_query_rules(
+        db,
+        &search_query,
+        result,
+        channel,
+    )
+    .await
 }
 
 fn normalize_source_module(value: &str) -> Result<String, PortError> {
@@ -505,5 +795,128 @@ mod tests {
 
         assert!(allowed.contains(&allowed_topic));
         assert!(!allowed.contains(&denied_topic));
+    }
+
+    struct ClosedAudiencePolicy;
+
+    #[async_trait]
+    impl SearchAudiencePolicyPort for ClosedAudiencePolicy {
+        fn source_module(&self) -> &'static str {
+            "private_docs"
+        }
+
+        async fn public_discovery_allowed(&self, _tenant_id: Uuid) -> Result<bool, PortError> {
+            Ok(false)
+        }
+
+        async fn filter_eligible_candidates(
+            &self,
+            _request: SearchAudienceRequest,
+        ) -> Result<Vec<Uuid>, PortError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn preflight_discovery_blocked_skips_execution() {
+        let mut registry = SearchAudienceRegistry::new();
+        registry.register(ClosedAudiencePolicy).unwrap();
+
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory db");
+        let engine = PgSearchEngine::new(db.clone());
+
+        let channel = TrustedStorefrontChannel {
+            channel_id: None,
+            channel_slug: None,
+        };
+
+        let search_query = SearchQuery {
+            tenant_id: Some(Uuid::new_v4()),
+            locale: Some("en".to_string()),
+            channel_id: None,
+            original_query: "confidential roadmap".to_string(),
+            query: "confidential roadmap".to_string(),
+            ranking_profile: crate::ranking::SearchRankingProfile::Balanced,
+            preset_key: None,
+            limit: 10,
+            offset: 0,
+            published_only: true,
+            entity_types: Vec::new(),
+            source_modules: vec!["private_docs".to_string()],
+            statuses: Vec::new(),
+            category_ids: Vec::new(),
+            attribute_filters: Vec::new(),
+            sort_attribute_code: None,
+            sort_desc: false,
+        };
+
+        let result = execute_audience_eligible_search(
+            &db,
+            &engine,
+            search_query,
+            &channel,
+            &registry,
+            None,
+            None,
+            StorefrontSearchTransport::Graphql,
+        )
+        .await
+        .expect("empty public search");
+
+        assert!(result.items.is_empty());
+        assert_eq!(result.total, 0);
+        assert!(result.facets.iter().all(|f| f.buckets.is_empty()));
+    }
+
+    #[tokio::test]
+    async fn empty_query_returns_empty_result() {
+        let registry = SearchAudienceRegistry::new();
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory db");
+        let engine = PgSearchEngine::new(db.clone());
+
+        let channel = TrustedStorefrontChannel {
+            channel_id: None,
+            channel_slug: None,
+        };
+
+        let search_query = SearchQuery {
+            tenant_id: Some(Uuid::new_v4()),
+            locale: Some("en".to_string()),
+            channel_id: None,
+            original_query: "   ".to_string(),
+            query: "   ".to_string(),
+            ranking_profile: crate::ranking::SearchRankingProfile::Balanced,
+            preset_key: None,
+            limit: 10,
+            offset: 0,
+            published_only: true,
+            entity_types: Vec::new(),
+            source_modules: Vec::new(),
+            statuses: Vec::new(),
+            category_ids: Vec::new(),
+            attribute_filters: Vec::new(),
+            sort_attribute_code: None,
+            sort_desc: false,
+        };
+
+        let result = execute_audience_eligible_search(
+            &db,
+            &engine,
+            search_query,
+            &channel,
+            &registry,
+            None,
+            None,
+            StorefrontSearchTransport::Graphql,
+        )
+        .await
+        .expect("empty query result");
+
+        assert!(result.items.is_empty());
+        assert_eq!(result.total, 0);
     }
 }

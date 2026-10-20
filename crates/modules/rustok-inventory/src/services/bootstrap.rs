@@ -156,11 +156,24 @@ impl BootstrapService {
         if input.variant_id.is_nil() {
             return Err(sea_orm::DbErr::Custom("variant_id cannot be nil".to_string()));
         }
+        if input.available_quantity < 0 {
+            return Err(sea_orm::DbErr::Custom(
+                "available_quantity cannot be negative".to_string(),
+            ));
+        }
+        let sku = input.sku.and_then(|sku| {
+            let trimmed = sku.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        });
         let now = Utc::now();
         let inventory_item = entities::inventory_item::ActiveModel {
             id: Set(generate_id()),
             variant_id: Set(input.variant_id),
-            sku: Set(input.sku),
+            sku: Set(sku),
             requires_shipping: Set(true),
             metadata: Set(serde_json::json!({ "source": "inventory_bootstrap" })),
             created_at: Set(now.into()),
@@ -196,6 +209,11 @@ impl BootstrapService {
         if variant_id.is_nil() {
             return Err(sea_orm::DbErr::Custom("variant_id cannot be nil".to_string()));
         }
+        if quantity < 0 {
+            return Err(sea_orm::DbErr::Custom(
+                "quantity cannot be negative".to_string(),
+            ));
+        }
         let Some(item) = entities::inventory_item::Entity::find()
             .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
             .one(conn)
@@ -228,6 +246,12 @@ impl BootstrapService {
             return Ok(HashMap::new());
         }
 
+        if variant_ids.iter().any(|id| id.is_nil()) {
+            return Err(sea_orm::DbErr::Custom(
+                "variant_ids must not contain a nil UUID".to_string(),
+            ));
+        }
+
         let inventory_items = entities::inventory_item::Entity::find()
             .filter(entities::inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
             .all(conn)
@@ -251,8 +275,9 @@ impl BootstrapService {
         let mut available_by_variant = HashMap::new();
         for level in levels {
             if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
-                *available_by_variant.entry(*variant_id).or_insert(0) +=
-                    level.stocked_quantity - level.reserved_quantity;
+                let available = level.stocked_quantity.saturating_sub(level.reserved_quantity);
+                let entry = available_by_variant.entry(*variant_id).or_insert(0_i32);
+                *entry = (*entry).saturating_add(available);
             }
         }
 
@@ -268,6 +293,12 @@ impl BootstrapService {
     {
         if variant_ids.is_empty() {
             return Ok(());
+        }
+
+        if variant_ids.iter().any(|id| id.is_nil()) {
+            return Err(sea_orm::DbErr::Custom(
+                "variant_ids must not contain a nil UUID".to_string(),
+            ));
         }
 
         let inventory_item_ids: Vec<Uuid> = entities::inventory_item::Entity::find()
@@ -307,6 +338,7 @@ impl BootstrapService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sea_orm::Database;
 
     #[test]
     fn initial_inventory_debug_derives_correctly() {
@@ -318,5 +350,103 @@ mod tests {
         let formatted = format!("{input:?}");
         assert!(formatted.contains("SKU-123"));
         assert!(formatted.contains("10"));
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_service_nil_location_guard() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let loc = entities::stock_location::Model {
+            id: Uuid::nil(),
+            tenant_id: Uuid::new_v4(),
+            code: Some("default".to_string()),
+            address_line1: None,
+            address_line2: None,
+            city: None,
+            province: None,
+            postal_code: None,
+            country_code: None,
+            phone: None,
+            metadata: serde_json::json!({}),
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+            deleted_at: None,
+        };
+        let input = InitialInventory {
+            variant_id: Uuid::new_v4(),
+            sku: None,
+            available_quantity: 10,
+        };
+        let err = BootstrapService::create_initial_records_in_tx(&db, &loc, input)
+            .await
+            .expect_err("nil location.id must be rejected");
+        assert!(err.to_string().contains("location.id cannot be nil"));
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_service_nil_variant_and_negative_quantity_guards() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let loc = entities::stock_location::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            code: Some("default".to_string()),
+            address_line1: None,
+            address_line2: None,
+            city: None,
+            province: None,
+            postal_code: None,
+            country_code: None,
+            phone: None,
+            metadata: serde_json::json!({}),
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+            deleted_at: None,
+        };
+        let nil_variant_input = InitialInventory {
+            variant_id: Uuid::nil(),
+            sku: None,
+            available_quantity: 10,
+        };
+        let err = BootstrapService::create_initial_records_in_tx(&db, &loc, nil_variant_input)
+            .await
+            .expect_err("nil variant_id must be rejected");
+        assert!(err.to_string().contains("variant_id cannot be nil"));
+
+        let negative_qty_input = InitialInventory {
+            variant_id: Uuid::new_v4(),
+            sku: None,
+            available_quantity: -5,
+        };
+        let err = BootstrapService::create_initial_records_in_tx(&db, &loc, negative_qty_input)
+            .await
+            .expect_err("negative available_quantity must be rejected");
+        assert!(err.to_string().contains("available_quantity cannot be negative"));
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_service_update_initial_quantity_guards() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let err = BootstrapService::update_initial_quantity_in_tx(&db, Uuid::nil(), 5)
+            .await
+            .expect_err("nil variant_id must be rejected");
+        assert!(err.to_string().contains("variant_id cannot be nil"));
+
+        let err = BootstrapService::update_initial_quantity_in_tx(&db, Uuid::new_v4(), -1)
+            .await
+            .expect_err("negative quantity must be rejected");
+        assert!(err.to_string().contains("quantity cannot be negative"));
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_service_nil_slice_guards() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let err = BootstrapService::load_available_quantities(&db, &[Uuid::nil()])
+            .await
+            .expect_err("nil variant_id in slice must be rejected");
+        assert!(err.to_string().contains("variant_ids must not contain a nil UUID"));
+
+        let err = BootstrapService::delete_records_for_variants_in_tx(&db, &[Uuid::new_v4(), Uuid::nil()])
+            .await
+            .expect_err("nil variant_id in delete slice must be rejected");
+        assert!(err.to_string().contains("variant_ids must not contain a nil UUID"));
     }
 }

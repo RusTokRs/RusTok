@@ -109,7 +109,7 @@ pub struct ListOrdersInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct MarkPaidOrderInput {
-    #[validate(length(min = 1, max = 191))]
+    #[validate(length(min = 1, max = 100))]
     pub payment_id: String,
     #[validate(length(min = 1, max = 100))]
     pub payment_method: String,
@@ -123,13 +123,15 @@ pub struct ShipOrderInput {
     pub carrier: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct DeliverOrderInput {
+    #[validate(length(max = 255))]
     pub delivered_signature: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CancelOrderInput {
+    #[validate(length(max = 500))]
     pub reason: Option<String>,
 }
 
@@ -408,5 +410,49 @@ mod tests {
         let mut input = valid_order();
         input.shipping_total = -Decimal::ONE;
         assert!(input.validate().is_err());
+    }
+
+    #[test]
+    fn validates_mark_paid_input_bounds() {
+        let valid = MarkPaidOrderInput {
+            payment_id: "pay_123".to_string(),
+            payment_method: "card".to_string(),
+        };
+        assert!(valid.validate().is_ok());
+
+        let empty_id = MarkPaidOrderInput {
+            payment_id: "".to_string(),
+            payment_method: "card".to_string(),
+        };
+        assert!(empty_id.validate().is_err());
+
+        let too_long_id = MarkPaidOrderInput {
+            payment_id: "x".repeat(101),
+            payment_method: "card".to_string(),
+        };
+        assert!(too_long_id.validate().is_err());
+    }
+
+    #[test]
+    fn validates_deliver_and_cancel_input_bounds() {
+        let valid_deliver = DeliverOrderInput {
+            delivered_signature: Some("Signature".to_string()),
+        };
+        assert!(valid_deliver.validate().is_ok());
+
+        let too_long_signature = DeliverOrderInput {
+            delivered_signature: Some("s".repeat(256)),
+        };
+        assert!(too_long_signature.validate().is_err());
+
+        let valid_cancel = CancelOrderInput {
+            reason: Some("Customer request".to_string()),
+        };
+        assert!(valid_cancel.validate().is_ok());
+
+        let too_long_reason = CancelOrderInput {
+            reason: Some("r".repeat(501)),
+        };
+        assert!(too_long_reason.validate().is_err());
     }
 }

@@ -93,14 +93,14 @@ pub fn normalize_country_code(value: &str) -> CartResult<String> {
 }
 
 pub fn normalize_locale_code(value: &str) -> CartResult<String> {
-    let normalized = value.trim().replace('_', "-").to_ascii_lowercase();
-    if (2..=10).contains(&normalized.len()) {
-        Ok(normalized)
-    } else {
-        Err(CartError::Validation(format!(
+    let normalized = normalize_locale_tag(value)
+        .map(|tag| tag.to_ascii_lowercase())
+        .filter(|tag| (2..=10).contains(&tag.len()));
+    normalized.ok_or_else(|| {
+        CartError::Validation(format!(
             "locale_code `{value}` is invalid"
-        )))
-    }
+        ))
+    })
 }
 
 pub fn normalize_shipping_profile_slug(value: Option<&str>) -> String {

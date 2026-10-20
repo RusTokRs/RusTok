@@ -40,8 +40,23 @@ impl PgSearchEngine {
         query: SearchQuery,
         channel: &TrustedStorefrontChannel,
     ) -> Result<SearchResult> {
-        self.search_with_storefront_channel(query, Some(channel), false)
+        self.search_storefront_candidates_with_exclusions(query, channel, &[])
             .await
+    }
+
+    pub async fn search_storefront_candidates_with_exclusions(
+        &self,
+        query: SearchQuery,
+        channel: &TrustedStorefrontChannel,
+        excluded_modules: &[String],
+    ) -> Result<SearchResult> {
+        self.search_with_storefront_channel_and_exclusions(
+            query,
+            Some(channel),
+            false,
+            excluded_modules,
+        )
+        .await
     }
 
     pub(crate) async fn search_forum_storefront_candidates(
@@ -57,6 +72,22 @@ impl PgSearchEngine {
         query: SearchQuery,
         storefront_channel: Option<&TrustedStorefrontChannel>,
         exclude_forum: bool,
+    ) -> Result<SearchResult> {
+        self.search_with_storefront_channel_and_exclusions(
+            query,
+            storefront_channel,
+            exclude_forum,
+            &[],
+        )
+        .await
+    }
+
+    async fn search_with_storefront_channel_and_exclusions(
+        &self,
+        query: SearchQuery,
+        storefront_channel: Option<&TrustedStorefrontChannel>,
+        exclude_forum: bool,
+        excluded_modules: &[String],
     ) -> Result<SearchResult> {
         if self.db.get_database_backend() != DbBackend::Postgres {
             return Err(Error::External(
@@ -90,6 +121,7 @@ impl PgSearchEngine {
             query: &query,
             storefront_channel,
             exclude_forum,
+            excluded_modules,
             offset,
             limit,
         };
@@ -129,6 +161,7 @@ fn build_filter_clause(
     starting_param: usize,
     storefront_channel: Option<&TrustedStorefrontChannel>,
     exclude_forum: bool,
+    excluded_modules: &[String],
 ) -> FilterClause {
     let mut clauses = Vec::new();
     let mut values = Vec::new();
@@ -139,6 +172,17 @@ fn build_filter_clause(
     }
     if exclude_forum {
         clauses.push("source_module <> 'forum'".to_string());
+    }
+    for excluded in excluded_modules {
+        if exclude_forum && excluded == "forum" {
+            continue;
+        }
+        if !excluded.is_empty()
+            && excluded.len() <= 64
+            && excluded.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            clauses.push(format!("source_module <> '{excluded}'"));
+        }
     }
 
     if let Some(channel) = storefront_channel {
@@ -274,6 +318,7 @@ struct RankedSearchRequest<'a> {
     query: &'a SearchQuery,
     storefront_channel: Option<&'a TrustedStorefrontChannel>,
     exclude_forum: bool,
+    excluded_modules: &'a [String],
     offset: i64,
     limit: i64,
 }
@@ -282,7 +327,13 @@ async fn run_fts_search(
     db: &DatabaseConnection,
     request: &RankedSearchRequest<'_>,
 ) -> Result<SearchResult> {
-    let filters = build_filter_clause(request.query, 4, request.storefront_channel, request.exclude_forum);
+    let filters = build_filter_clause(
+        request.query,
+        4,
+        request.storefront_channel,
+        request.exclude_forum,
+        request.excluded_modules,
+    );
     let cte = build_fts_cte(request.query.ranking_profile);
 
     finalize_ranked_search(
@@ -309,7 +360,13 @@ async fn run_typo_tolerant_search(
     db: &DatabaseConnection,
     request: &RankedSearchRequest<'_>,
 ) -> Result<SearchResult> {
-    let filters = build_filter_clause(request.query, 4, request.storefront_channel, request.exclude_forum);
+    let filters = build_filter_clause(
+        request.query,
+        4,
+        request.storefront_channel,
+        request.exclude_forum,
+        request.excluded_modules,
+    );
     let cte = build_typo_cte(request.query.ranking_profile);
 
     finalize_ranked_search(
@@ -869,6 +926,7 @@ mod tests {
             4,
             None,
             false,
+            &[],
         );
 
         assert_eq!(
@@ -885,6 +943,7 @@ mod tests {
             4,
             None,
             false,
+            &[],
         );
 
         for marker in [
@@ -902,11 +961,37 @@ mod tests {
 
     #[test]
     fn generic_storefront_excludes_forum_from_raw_totals_items_and_facets() {
-        let clause = build_filter_clause(&query_with_categories(vec![]), 4, None, true);
+        let clause = build_filter_clause(&query_with_categories(vec![]), 4, None, true, &[]);
         assert!(clause.clause.contains("source_module <> 'forum'"));
         assert!(clause.values.is_empty());
-        let owner_candidates = build_filter_clause(&query_with_categories(vec![]), 4, None, false);
+        let owner_candidates = build_filter_clause(&query_with_categories(vec![]), 4, None, false, &[]);
         assert!(!owner_candidates.clause.contains("source_module <> 'forum'"));
+    }
+
+    #[test]
+    fn filter_clause_supports_arbitrary_excluded_modules() {
+        let clause = build_filter_clause(
+            &query_with_categories(vec![]),
+            4,
+            None,
+            false,
+            &["events".to_string(), "private_docs".to_string()],
+        );
+        assert!(clause.clause.contains("source_module <> 'events'"));
+        assert!(clause.clause.contains("source_module <> 'private_docs'"));
+    }
+
+    #[test]
+    fn filter_clause_excludes_forum_when_passed_in_excluded_modules_even_if_exclude_forum_flag_is_false() {
+        let clause = build_filter_clause(
+            &query_with_categories(vec![]),
+            4,
+            None,
+            false,
+            &["forum".to_string(), "courses".to_string()],
+        );
+        assert!(clause.clause.contains("source_module <> 'forum'"));
+        assert!(clause.clause.contains("source_module <> 'courses'"));
     }
 
     #[test]

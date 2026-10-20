@@ -234,8 +234,9 @@ pub async fn load_available_inventory_by_variant_for_public_channel(
         }
 
         if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
-            *available_by_variant.entry(*variant_id).or_insert(0) +=
-                level.stocked_quantity - level.reserved_quantity;
+            let available = level.stocked_quantity.saturating_sub(level.reserved_quantity);
+            let entry = available_by_variant.entry(*variant_id).or_insert(0_i32);
+            *entry = (*entry).saturating_add(available);
         }
     }
 

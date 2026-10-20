@@ -420,7 +420,7 @@ async fn symbol_used_by_published_current_page<C: ConnectionTrait>(
     }
 }
 
-async fn template_symbol_ids<C: ConnectionTrait>(
+pub(crate) async fn template_symbol_ids<C: ConnectionTrait>(
     conn: &C,
     tenant_id: Uuid,
     locale: &str,
@@ -440,6 +440,39 @@ async fn template_symbol_ids<C: ConnectionTrait>(
         }
     }
     Ok(references)
+}
+
+pub(crate) async fn symbol_used_by_any_page<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    locale: &str,
+    symbol_id: &str,
+) -> PagesResult<bool> {
+    let bodies = page_body::Entity::find()
+        .filter(page_body::Column::TenantId.eq(tenant_id))
+        .filter(page_body::Column::Locale.eq(locale))
+        .all(conn)
+        .await?;
+    for body in bodies {
+        if body.format == PAGE_BUILDER_DOCUMENT_FORMAT
+            && content_references_symbol(&body.content, symbol_id)?
+        {
+            return Ok(true);
+        }
+    }
+    let drafts = page_body_draft::Entity::find()
+        .filter(page_body_draft::Column::TenantId.eq(tenant_id))
+        .filter(page_body_draft::Column::Locale.eq(locale))
+        .all(conn)
+        .await?;
+    for draft in drafts {
+        if draft.format == PAGE_BUILDER_DOCUMENT_FORMAT
+            && content_references_symbol(&draft.content, symbol_id)?
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn content_references_any_symbol(

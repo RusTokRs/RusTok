@@ -10,7 +10,7 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, QueryFilter,
-    Set,
+    QueryOrder, Set,
 };
 use uuid::Uuid;
 
@@ -297,14 +297,14 @@ impl BlogPostRouteOwner {
         tenant_id: Uuid,
         target_id: Uuid,
     ) -> BlogResult<Vec<blog_post_route::Model>> {
-        Ok(blog_post_route::Entity::find()
+        blog_post_route::Entity::find()
             .filter(blog_post_route::Column::TenantId.eq(tenant_id))
             .filter(blog_post_route::Column::TargetKind.eq(BLOG_POST_TARGET_TYPE))
             .filter(blog_post_route::Column::TargetId.eq(target_id))
             .order_by_asc(blog_post_route::Column::SourceRoute)
             .all(txn)
             .await
-            .map_err(BlogError::from)?)
+            .map_err(BlogError::from)
     }
 
     async fn delete_target_routes_in_tx(

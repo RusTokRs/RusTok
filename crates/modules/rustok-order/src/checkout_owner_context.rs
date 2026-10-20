@@ -516,7 +516,7 @@ fn parse_order_actor_id(
     boundary: &'static str,
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    let actor_id = Uuid::parse_str(&context.actor.id).map_err(|_| {
+    Uuid::parse_str(&context.actor.id).map_err(|_| {
         let error =
             PortError::validation("order.actor_id_invalid", "order request context is invalid");
         log_order_checkout_context_rejection(
@@ -532,27 +532,7 @@ fn parse_order_actor_id(
             },
         );
         error
-    })?;
-    if actor_id.is_nil() {
-        let error = PortError::validation(
-            "order.actor_id_nil",
-            "order actor_id must not be a nil UUID",
-        );
-        log_order_checkout_context_rejection(
-            context,
-            owner,
-            boundary,
-            operation,
-            "actor_id_nil",
-            &error,
-            CheckoutContextRejectionEvidence {
-                parse_failed: true,
-                expected_checkout_operation_id: None,
-            },
-        );
-        return Err(error);
-    }
-    Ok(actor_id)
+    })
 }
 
 fn require_order_checkout_causation(

@@ -580,7 +580,7 @@ CREATE INDEX idx_product_bundle_items_product
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::{ConnectionTrait, Database, TryGetable};
+    use sea_orm::{ConnectionTrait, Database};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
 
     use super::Migration;
@@ -671,7 +671,7 @@ INSERT INTO product_bundle_items (
             .expect("SQLite Bundle upgrade should apply");
 
         let tenant_id: String = db
-            .query_one(sea_orm::Statement::from_string(
+            .query_one_raw(sea_orm::Statement::from_string(
                 sea_orm::DatabaseBackend::Sqlite,
                 "SELECT tenant_id FROM product_bundle_items WHERE id = 'item'".to_owned(),
             ))

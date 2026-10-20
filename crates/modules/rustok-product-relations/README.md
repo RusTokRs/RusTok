@@ -22,6 +22,7 @@ The module does **not** currently publish Product Relation lifecycle outbox even
 
 - [`ProductRelationsPort`](src/ports.rs): Service and application port for relationship management.
 - [`ProductRelationService`](src/services/relation_service.rs): Domain service orchestrating validation, persistence, and ordering normalization.
-- [`ProductRelationsModule`](src/lib.rs): Platform module registration and migration provider.
+- [`ProductRelationsModule`](src/module.rs): Platform module registration and migration provider.
 
+For the formal Rust API contract and guarantees, see [`CRATE_API.md`](CRATE_API.md).
 For detailed architecture and implementation notes, see [`docs/`](docs/).

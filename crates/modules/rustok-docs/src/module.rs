@@ -39,6 +39,21 @@ impl RusToKModule for DocsModule {
             Permission::PAGES_MANAGE,
         ]
     }
+
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut rustok_core::ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        rustok_core::search_projection::register_search_projection_source(
+            extensions,
+            crate::search_projection::DocsSearchProjectionSourceFactory,
+        )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "docs Search projection source registration failed: {error}"
+            ))
+        })
+    }
 }
 
 impl MigrationSource for DocsModule {

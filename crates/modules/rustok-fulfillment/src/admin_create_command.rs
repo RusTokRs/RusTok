@@ -238,6 +238,12 @@ impl FulfillmentAdminCreateCommandPort for InProcessFulfillmentAdminCreateComman
                 "shipping_option_id must not be nil",
             ));
         }
+        if matches!(request.input.customer_id, Some(id) if id.is_nil()) {
+            return Err(PortError::validation(
+                "fulfillment.validation",
+                "customer_id must not be nil",
+            ));
+        }
         tracing::debug!(
             boundary = ADMIN_CREATE_BOUNDARY,
             owner_operation = OPERATION,

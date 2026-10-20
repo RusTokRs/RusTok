@@ -87,8 +87,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
     fn default_test_profile_uses_graphql_transport_without_native_fallback() {
         assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
+    }
+
+    #[test]
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    fn ssr_test_profile_uses_native_server_transport() {
+        assert_eq!(selected_transport_path(), UiTransportPath::NativeServer);
     }
 
     #[test]

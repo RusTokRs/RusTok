@@ -94,7 +94,12 @@ fn is_invalid_cart_selection(error: &UiTransportError) -> bool {
     ]
     .into_iter()
     .flatten()
-    .any(|message| message == INVALID_CART_SELECTION || message == CART_ID_UUID_VALIDATION)
+    .any(|message| {
+        message == INVALID_CART_SELECTION
+            || message == CART_ID_UUID_VALIDATION
+            || message.contains(INVALID_CART_SELECTION)
+            || message.contains(CART_ID_UUID_VALIDATION)
+    })
 }
 
 fn configured_tenant_slug_length() -> Option<usize> {
@@ -110,4 +115,79 @@ fn configured_tenant_slug_length() -> Option<usize> {
             (!value.is_empty()).then_some(value.chars().count())
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_validation_error_on_native_and_graphql() {
+        let req = FetchCommerceRequest {
+            selected_cart_id: Some("bad-id".into()),
+            locale: Some("en".into()),
+        };
+        let ctx = AggregateFetchErrorContext::new(&req);
+
+        let err_native = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::NativeServer,
+            native_error: Some("ServerFnError: cart_id must be a valid UUID".into()),
+            graphql_error: None,
+            fallback_attempted: false,
+        };
+        match ctx.map_error(err_native) {
+            ApiError::Validation(msg) => assert_eq!(msg, "Invalid cart selection"),
+            other => panic!("expected ApiError::Validation, got {other:?}"),
+        }
+
+        let err_graphql = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::Graphql,
+            native_error: None,
+            graphql_error: Some("Invalid cart selection".into()),
+            fallback_attempted: false,
+        };
+        match ctx.map_error(err_graphql) {
+            ApiError::Validation(msg) => assert_eq!(msg, "Invalid cart selection"),
+            other => panic!("expected ApiError::Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn maps_transport_errors_to_safe_public_message() {
+        let req = FetchCommerceRequest {
+            selected_cart_id: None,
+            locale: None,
+        };
+        let ctx = AggregateFetchErrorContext::new(&req);
+
+        let err_native = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::NativeServer,
+            native_error: Some("database connection failed: secret_creds".into()),
+            graphql_error: None,
+            fallback_attempted: false,
+        };
+        match ctx.map_error(err_native) {
+            ApiError::ServerFn(msg) => {
+                assert_eq!(msg, "Storefront commerce data is temporarily unavailable");
+            }
+            other => panic!("expected ApiError::ServerFn, got {other:?}"),
+        }
+
+        let err_graphql = UiTransportError {
+            surface: "commerce".into(),
+            failed_path: UiTransportPath::Graphql,
+            native_error: None,
+            graphql_error: Some("http 502 bad gateway".into()),
+            fallback_attempted: false,
+        };
+        match ctx.map_error(err_graphql) {
+            ApiError::Graphql(msg) => {
+                assert_eq!(msg, "Storefront commerce data is temporarily unavailable");
+            }
+            other => panic!("expected ApiError::Graphql, got {other:?}"),
+        }
+    }
 }

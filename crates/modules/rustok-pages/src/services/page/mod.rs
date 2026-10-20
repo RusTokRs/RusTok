@@ -21,7 +21,9 @@ mod route;
 mod route_history_import;
 mod schedule;
 mod symbols;
-pub(crate) use symbols::lock_site_symbol_catalog_in_tx;
+pub(crate) use symbols::{
+    lock_site_symbol_catalog_in_tx, symbol_used_by_any_page, template_symbol_ids,
+};
 mod translation_apply;
 
 use rustok_content::entities::node::ContentStatus;

@@ -88,7 +88,9 @@ impl BlogSearchProjectionSource {
 
         let mut translations_by_post: HashMap<Uuid, Vec<blog_post_translation::Model>> =
             HashMap::new();
+        let mut locales = BTreeSet::new();
         for translation in translations {
+            locales.insert(translation.locale.clone());
             translations_by_post
                 .entry(translation.post_id)
                 .or_default()
@@ -125,10 +127,6 @@ impl BlogSearchProjectionSource {
         //    Reading them per (post x locale) multiplied the Taxonomy and Tag
         //    queries by the page size.
         let fallback_locale = Some(PLATFORM_FALLBACK_LOCALE);
-        let locales = translations
-            .iter()
-            .map(|translation| translation.locale.clone())
-            .collect::<BTreeSet<_>>();
         let mut category_maps_by_locale: HashMap<String, HashMap<Uuid, BlogCategoryProjectionInfo>> =
             HashMap::new();
         let mut tag_maps_by_locale: HashMap<String, HashMap<Uuid, Vec<String>>> = HashMap::new();

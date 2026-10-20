@@ -48,6 +48,7 @@ pub use services::{
 pub use steps::{AlloyScriptStep, NotificationSender, NotifyStep, ScriptRunner};
 pub use templates::{BUILTIN_TEMPLATES, WorkflowTemplate};
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct WorkflowModule;
 
 #[async_trait]

@@ -1,7 +1,7 @@
 use crate::error::{EmailError, Result};
 
 /// A rendered, ready-to-send email.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderedEmail {
     pub subject: String,
     pub text: String,
@@ -41,8 +41,45 @@ pub trait EmailTemplateProvider: Send + Sync {
 
 /// Render a Tera template string, returning the rendered output.
 pub fn render_tera_string(template: &str, vars: &serde_json::Value) -> Result<String> {
-    let ctx = tera::Context::from_serialize(vars)
-        .map_err(|e| EmailError::Template(format!("Failed to build Tera context: {e}")))?;
+    let ctx = if vars.is_null() {
+        tera::Context::new()
+    } else if vars.is_object() {
+        tera::Context::from_serialize(vars)
+            .map_err(|e| EmailError::Template(format!("Failed to build Tera context: {e}")))?
+    } else {
+        return Err(EmailError::Template(
+            "Tera template context vars must be a JSON object or null".to_string(),
+        ));
+    };
     tera::Tera::one_off(template, &ctx, /*autoescape=*/ false)
         .map_err(|e| EmailError::Template(format!("Tera render error: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_render_tera_string_with_object() {
+        let template = "Hello {{ name }}!";
+        let vars = json!({ "name": "Alice" });
+        let res = render_tera_string(template, &vars).unwrap();
+        assert_eq!(res, "Hello Alice!");
+    }
+
+    #[test]
+    fn test_render_tera_string_with_null() {
+        let template = "Hello Static World!";
+        let res = render_tera_string(template, &serde_json::Value::Null).unwrap();
+        assert_eq!(res, "Hello Static World!");
+    }
+
+    #[test]
+    fn test_render_tera_string_invalid_vars() {
+        let template = "Hello {{ name }}!";
+        let vars = json!(["not", "an", "object"]);
+        let err = render_tera_string(template, &vars).unwrap_err();
+        assert!(matches!(err, EmailError::Template(_)));
+    }
 }

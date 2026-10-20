@@ -55,6 +55,7 @@ async fn handler_with_pages() -> SearchIngestionHandler {
         None,
         None,
         Some(Arc::new(MockPagesSource)),
+        None,
     )
 }
 

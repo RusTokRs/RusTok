@@ -52,7 +52,7 @@ pub fn PaymentCollectionCard(
                 {labels.module_ownership}
             </p>
             <div class="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                {format!("{} · {}", view_model.collection_id, view_model.status)}
+                {view_model.summary()}
             </div>
         </article>
     }

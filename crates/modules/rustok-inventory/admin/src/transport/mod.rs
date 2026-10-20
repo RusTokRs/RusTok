@@ -25,7 +25,7 @@ fn products_request(
     status: Option<String>,
 ) -> InventoryProductsRequest {
     InventoryProductsRequest {
-        tenant_id,
+        tenant_id: tenant_id.trim().to_string(),
         locale,
         search,
         status,
@@ -38,8 +38,8 @@ fn product_request(
     locale: Option<String>,
 ) -> InventoryProductRequest {
     InventoryProductRequest {
-        tenant_id,
-        id,
+        tenant_id: tenant_id.trim().to_string(),
+        id: id.trim().to_string(),
         locale,
     }
 }
@@ -310,7 +310,7 @@ mod tests {
     #[test]
     fn products_request_preserves_inventory_facade_context() {
         let request = products_request(
-            "tenant-id".to_string(),
+            " tenant-id ".to_string(),
             Some("en".to_string()),
             Some("boots".to_string()),
             Some("ACTIVE".to_string()),
@@ -325,8 +325,8 @@ mod tests {
     #[test]
     fn product_request_preserves_inventory_facade_context() {
         let request = product_request(
-            "tenant-id".to_string(),
-            "product-id".to_string(),
+            " tenant-id ".to_string(),
+            " product-id ".to_string(),
             Some("de".to_string()),
         );
 

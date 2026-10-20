@@ -408,6 +408,11 @@ where
     if stock_location_ids.is_empty() {
         return Ok(Vec::new());
     }
+    if stock_location_ids.iter().any(|id| id.is_nil()) {
+        return Err(StockLocationTranslationExactLocaleError::Validation(
+            "stock_location_ids must not contain a nil UUID".to_string(),
+        ));
+    }
     Ok(stock_location_translation::Entity::find()
         .filter(
             stock_location_translation::Column::StockLocationId.is_in(stock_location_ids.to_vec()),
@@ -597,5 +602,14 @@ mod tests {
         assert!(normalize_name("  ").is_err());
         assert_eq!(normalize_name(" Warehouse ").unwrap(), "Warehouse");
         assert!(normalize_name(&"a".repeat(101)).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_load_translations_for_stock_locations_rejects_nil_uuid() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let err = load_translations_for_stock_locations(&db, &[Uuid::nil()])
+            .await
+            .expect_err("nil stock_location_id must be rejected");
+        assert!(err.to_string().contains("stock_location_ids must not contain a nil UUID"));
     }
 }

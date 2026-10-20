@@ -7,11 +7,16 @@ use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
-use crate::core::{filter_shipping_options, shipping_option_grid_columns};
-use crate::core::{shipping_option_list_request, shipping_profile_list_request};
+use crate::core::{
+    active_badge, filter_shipping_options, format_allowed_profiles, format_selected_profiles,
+    localized_active_label, profile_chip_class, profile_choice_label,
+    shipping_option_grid_columns, shipping_option_list_request, shipping_profile_list_request,
+    slug_selected, summarize_shipping_option, toggle_slug_selection,
+    validate_shipping_option_draft,
+};
 use crate::i18n::t;
 use crate::model::{
-    FulfillmentAdminBootstrap, ShippingOption, ShippingOptionDraft, ShippingProfile,
+    FulfillmentAdminBootstrap, ShippingOption, ShippingOptionDraft,
 };
 use crate::transport;
 
@@ -312,8 +317,12 @@ pub fn FulfillmentAdmin() -> impl IntoView {
                 .get_untracked()
                 .map(|option| option.translation_revision.clone()),
         };
-        if draft.name.is_empty() {
-            set_error.set(Some(required_label.clone()));
+        if let Err(error_key) = validate_shipping_option_draft(&draft) {
+            set_error.set(Some(t(
+                submit_ui_locale.as_deref(),
+                error_key,
+                &required_label,
+            )));
             return;
         }
         let token_value = token.get_untracked();
@@ -427,6 +436,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
         filters.set(new_filters);
+        pagination.update(|p| p.page = 1);
     });
 
     let on_row_click = {
@@ -756,116 +766,3 @@ impl ShippingOptionFormSignals {
     }
 }
 
-fn summarize_shipping_option(locale: Option<&str>, option: &ShippingOption) -> String {
-    format!(
-        "{} | {} {} | {} {} | {} {}",
-        option.name,
-        option.currency_code,
-        option.amount,
-        t(
-            locale,
-            "fulfillment.summary.shippingOption.provider",
-            "provider"
-        ),
-        option.provider_id,
-        t(
-            locale,
-            "fulfillment.summary.shippingOption.profiles",
-            "profiles"
-        ),
-        format_allowed_profiles(locale, option.allowed_shipping_profile_slugs.as_ref())
-    )
-}
-
-fn format_allowed_profiles(locale: Option<&str>, profiles: Option<&Vec<String>>) -> String {
-    match profiles {
-        Some(values) if !values.is_empty() => values.join(", "),
-        _ => t(locale, "fulfillment.common.all", "all"),
-    }
-}
-
-fn format_selected_profiles(locale: Option<&str>, values: &[String]) -> String {
-    let slugs = normalize_slug_list(values);
-    if slugs.is_empty() {
-        t(locale, "fulfillment.common.allCarts", "all carts")
-    } else {
-        slugs.join(", ")
-    }
-}
-
-fn profile_choice_label(locale: Option<&str>, profile: &ShippingProfile) -> String {
-    if profile.active {
-        format!("{} ({})", profile.name, profile.slug)
-    } else {
-        format!(
-            "{} ({}, {})",
-            profile.name,
-            profile.slug,
-            t(locale, "fulfillment.common.inactive", "inactive")
-        )
-    }
-}
-
-fn localized_active_label(locale: Option<&str>, active: bool) -> String {
-    if active {
-        t(locale, "fulfillment.common.active", "ACTIVE")
-    } else {
-        t(locale, "fulfillment.common.inactive", "INACTIVE")
-    }
-}
-
-fn profile_chip_class(selected: bool, inactive: bool) -> &'static str {
-    match (selected, inactive) {
-        (true, false) => {
-            "inline-flex rounded-full border border-primary bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition hover:bg-primary/15"
-        }
-        (true, true) => {
-            "inline-flex rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 transition hover:bg-amber-100"
-        }
-        (false, true) => {
-            "inline-flex rounded-full border border-border bg-muted px-3 py-2 text-xs font-medium text-muted-foreground opacity-60"
-        }
-        (false, false) => {
-            "inline-flex rounded-full border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition hover:bg-accent"
-        }
-    }
-}
-
-fn toggle_slug_selection(current: &mut Vec<String>, slug: &str) {
-    let slug = slug.trim();
-    if slug.is_empty() {
-        return;
-    }
-    let mut values = normalize_slug_list(current);
-    if let Some(position) = values.iter().position(|value| value == slug) {
-        values.remove(position);
-    } else {
-        values.push(slug.to_string());
-        values.sort();
-        values.dedup();
-    }
-    *current = values;
-}
-
-fn slug_selected(current: &[String], slug: &str) -> bool {
-    normalize_slug_list(current)
-        .iter()
-        .any(|value| value == slug)
-}
-
-fn normalize_slug_list(current: &[String]) -> Vec<String> {
-    current
-        .iter()
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .collect()
-}
-
-fn active_badge(active: bool) -> &'static str {
-    if active {
-        "border-emerald-200 bg-emerald-50 text-emerald-700"
-    } else {
-        "border-slate-200 bg-slate-100 text-slate-700"
-    }
-}

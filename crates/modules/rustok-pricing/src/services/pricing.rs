@@ -439,11 +439,12 @@ impl PricingService {
         channel_id: Option<Uuid>,
         channel_slug: Option<String>,
     ) -> CommerceResult<PriceAdjustmentPreview> {
+        let currency_code = normalize_resolution_currency(currency_code)?;
         validate_discount_percent(discount_percent)?;
         let price = self
             .find_canonical_price_row(
                 variant_id,
-                currency_code,
+                &currency_code,
                 price_list_id,
                 channel_id,
                 channel_slug.as_deref(),
@@ -454,7 +455,7 @@ impl PricingService {
         // decimals, so the value it shows is the value the owner can represent.
         let adjusted_amount = money::round_to_currency(
             base_amount * ((Decimal::from(100) - discount_percent) / Decimal::from(100)),
-            currency_code,
+            &currency_code,
         )
         .map_err(|error| {
             CommerceError::Validation(format!(
@@ -464,7 +465,7 @@ impl PricingService {
 
         Ok(PriceAdjustmentPreview {
             kind: PriceAdjustmentKind::PercentageDiscount,
-            currency_code: price.currency_code,
+            currency_code,
             current_amount: price.amount,
             base_amount,
             adjustment_percent: discount_percent,
@@ -841,6 +842,7 @@ impl PricingService {
         min_quantity: Option<i32>,
         max_quantity: Option<i32>,
     ) -> CommerceResult<()> {
+        let currency_code = normalize_resolution_currency(currency_code)?;
         let txn = self.db.begin().await?;
         let variant = load_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
@@ -891,7 +893,7 @@ impl PricingService {
 
         let existing = entities::price::Entity::find()
             .filter(entities::price::Column::VariantId.eq(variant_id))
-            .filter(entities::price::Column::CurrencyCode.eq(currency_code))
+            .filter(entities::price::Column::CurrencyCode.eq(&currency_code))
             .filter(entities::price::Column::RegionId.is_null())
             .filter(optional_uuid_filter(
                 entities::price::Column::PriceListId,
@@ -942,7 +944,7 @@ impl PricingService {
                     price_list_id: Set(price_list_id),
                     channel_id: Set(channel_id),
                     channel_slug: Set(channel_slug),
-                    currency_code: Set(currency_code.to_string()),
+                    currency_code: Set(currency_code.clone()),
                     region_id: Set(None),
                     amount: Set(amount),
                     compare_at_amount: Set(compare_at_amount),
@@ -958,10 +960,10 @@ impl PricingService {
         }
 
         let old_cents =
-            old_amount.and_then(|amount| money::to_minor_units(amount, currency_code).ok());
+            old_amount.and_then(|amount| money::to_minor_units(amount, &currency_code).ok());
         // The event carries minor units, so the amount must be scaled by the currency exponent and
         // must never be silently replaced by zero.
-        let new_cents = money::to_minor_units(amount, currency_code).map_err(|error| {
+        let new_cents = money::to_minor_units(amount, &currency_code).map_err(|error| {
             CommerceError::Validation(format!(
                 "price amount {amount} has no minor-unit form in {currency_code}: {error}"
             ))
@@ -970,7 +972,7 @@ impl PricingService {
         let event = DomainEvent::PriceUpdated {
             variant_id,
             product_id: variant.product_id,
-            currency: currency_code.to_string(),
+            currency: currency_code,
             old_amount: old_cents,
             new_amount: new_cents,
         };
@@ -1000,6 +1002,7 @@ impl PricingService {
         let variant = load_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
         for price_input in &prices {
+            let normalized_currency = normalize_resolution_currency(&price_input.currency_code)?;
             let normalized_channel_slug =
                 normalize_channel_slug(price_input.channel_slug.as_deref());
             validate_channel_scope_in_tx(
@@ -1025,7 +1028,7 @@ impl PricingService {
 
             let existing = entities::price::Entity::find()
                 .filter(entities::price::Column::VariantId.eq(variant_id))
-                .filter(entities::price::Column::CurrencyCode.eq(&price_input.currency_code))
+                .filter(entities::price::Column::CurrencyCode.eq(&normalized_currency))
                 .filter(entities::price::Column::RegionId.is_null())
                 .filter(entities::price::Column::PriceListId.is_null())
                 .filter(optional_uuid_filter(
@@ -1068,7 +1071,7 @@ impl PricingService {
                         channel_slug: Set(normalize_channel_slug(
                             price_input.channel_slug.as_deref(),
                         )),
-                        currency_code: Set(price_input.currency_code.clone()),
+                        currency_code: Set(normalized_currency.clone()),
                         region_id: Set(None),
                         amount: Set(price_input.amount),
                         compare_at_amount: Set(price_input.compare_at_amount),
@@ -1085,13 +1088,12 @@ impl PricingService {
                 }
             }
 
-            let currency_code = price_input.currency_code.as_str();
             let old_cents =
-                old_amount.and_then(|amount| money::to_minor_units(amount, currency_code).ok());
+                old_amount.and_then(|amount| money::to_minor_units(amount, &normalized_currency).ok());
             let new_cents =
-                money::to_minor_units(price_input.amount, currency_code).map_err(|error| {
+                money::to_minor_units(price_input.amount, &normalized_currency).map_err(|error| {
                     CommerceError::Validation(format!(
-                        "price amount {} has no minor-unit form in {currency_code}: {error}",
+                        "price amount {} has no minor-unit form in {normalized_currency}: {error}",
                         price_input.amount
                     ))
                 })?;
@@ -1099,7 +1101,7 @@ impl PricingService {
             let event = DomainEvent::PriceUpdated {
                 variant_id,
                 product_id: variant.product_id,
-                currency: price_input.currency_code.clone(),
+                currency: normalized_currency,
                 old_amount: old_cents,
                 new_amount: new_cents,
             };
@@ -1535,9 +1537,10 @@ impl PricingService {
         channel_id: Option<Uuid>,
         channel_slug: Option<&str>,
     ) -> CommerceResult<entities::price::Model> {
+        let currency_code = normalize_resolution_currency(currency_code)?;
         entities::price::Entity::find()
             .filter(entities::price::Column::VariantId.eq(variant_id))
-            .filter(entities::price::Column::CurrencyCode.eq(currency_code))
+            .filter(entities::price::Column::CurrencyCode.eq(&currency_code))
             .filter(entities::price::Column::RegionId.is_null())
             .filter(optional_uuid_filter(
                 entities::price::Column::PriceListId,

@@ -6,6 +6,12 @@ pub enum WorkflowError {
     #[error("Workflow not found: {0}")]
     NotFound(Uuid),
 
+    #[error("Workflow version not found: workflow_id={0}, version={1}")]
+    VersionNotFound(Uuid, i32),
+
+    #[error("Workflow template not found: {0}")]
+    TemplateNotFound(String),
+
     #[error("Workflow step not found: {0}")]
     StepNotFound(Uuid),
 
