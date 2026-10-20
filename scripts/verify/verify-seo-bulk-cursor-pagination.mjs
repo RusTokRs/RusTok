@@ -112,7 +112,19 @@ for (const [source, label] of [[pagesSeo, 'pages'], [productSeo, 'product']]) {
   forbidText(source, '.ok();', `${label} provider silent error`);
 }
 requireText(pagesSeo, 'Err(PagesError::PageNotFound(_)) => Ok(None),', 'pages not-found only');
-requireText(productSeo, 'Err(CommerceError::ProductNotFound(_)) => Ok(None),', 'product not-found only');
+// The lean SEO projection reads the product row directly: absence maps to `Ok(None)`
+// at the `find_by_id` boundary, so the detail-projection not-found translation is no
+// longer part of the product SEO path.
+requireText(productSeo, 'get_product_seo_projection(', 'product lean SEO projection load');
+const productProjection = read(
+  'crates/modules/rustok-product/src/services/catalog/projection.rs',
+);
+requireText(productProjection, 'fn get_product_seo_projection(', 'product projection definition');
+requireText(
+  productProjection,
+  'let Some(product) = entities::product::Entity::find_by_id(product_id)',
+  'product projection not-found maps to None',
+);
 
 if (exists('crates/modules/rustok-seo/src/services/bulk_legacy_offset.rs')) {
   failures.push('offset bulk helper file must not exist');

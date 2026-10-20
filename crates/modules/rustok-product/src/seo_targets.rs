@@ -1,4 +1,4 @@
-use crate::dto::{ProductImageResponse, ProductResponse, ProductTranslationResponse};
+use crate::dto::{ProductImageResponse, ProductSeoProjection, ProductTranslationResponse};
 use crate::entities::product::ProductStatus;
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
@@ -6,7 +6,8 @@ use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
     SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
-    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetOpenGraphRecord,
+    SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetLoadTargetsRequest,
+    SeoTargetOpenGraphRecord,
     SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
     SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap, builtin_slug,
     populate_image_template_fields, schema,
@@ -14,7 +15,9 @@ use rustok_seo_targets::{
 use url::Url;
 use uuid::Uuid;
 
-use crate::{CatalogService, CommerceError};
+use std::collections::HashMap;
+
+use crate::CatalogService;
 
 const BULK_FETCH_SIZE: u64 = 48;
 
@@ -45,14 +48,14 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
         request: SeoTargetLoadRequest<'_>,
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
         let service = CatalogService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let product = load_product_if_present(
-            &service,
-            request.tenant_id,
-            request.target_id,
-            request.locale,
-            request.default_locale,
-        )
-        .await?;
+        let product = service
+            .get_product_seo_projection(
+                request.tenant_id,
+                request.target_id,
+                request.locale,
+                request.default_locale,
+            )
+            .await?;
         let Some(product) = product else {
             return Ok(None);
         };
@@ -64,10 +67,56 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
         }
 
         Ok(Some(map_product_response(
-            product,
+            &product,
             request.locale,
             request.default_locale,
         )))
+    }
+
+    /// Set-based state loads: one four-query page of projections per call instead of
+    /// per-id detail reads, so diagnostics/export scans stop paying the product
+    /// detail fan-out (variants, prices, inventory, attributes) per target.
+    async fn load_targets(
+        &self,
+        runtime: &SeoTargetRuntimeContext,
+        request: SeoTargetLoadTargetsRequest<'_>,
+    ) -> AnyResult<Vec<(Uuid, Option<SeoLoadedTargetRecord>)>> {
+        let service = CatalogService::new(runtime.db.clone(), runtime.event_bus.clone());
+        let projections = service
+            .get_product_seo_projections(
+                request.tenant_id,
+                request.target_ids,
+                request.locale,
+                request.default_locale,
+            )
+            .await?;
+        let mut by_id = projections
+            .into_iter()
+            .map(|projection| (projection.id, projection))
+            .collect::<HashMap<_, _>>();
+        let mut records = Vec::with_capacity(request.target_ids.len());
+        for target_id in request.target_ids.iter().copied() {
+            let Some(projection) = by_id.remove(&target_id) else {
+                records.push((target_id, None));
+                continue;
+            };
+            if matches!(request.scope, SeoTargetLoadScope::PublicRoute)
+                && (projection.status != ProductStatus::Active
+                    || projection.published_at.is_none())
+            {
+                records.push((target_id, None));
+                continue;
+            }
+            records.push((
+                target_id,
+                Some(map_product_response(
+                    &projection,
+                    request.locale,
+                    request.default_locale,
+                )),
+            ));
+        }
+        Ok(records)
     }
 
     async fn resolve_route(
@@ -110,18 +159,26 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
             .scan_published_product_ids(request.tenant_id, None, after, request.limit)
             .await?;
 
-        let mut items = Vec::with_capacity(product_ids.len());
-        for product_id in product_ids {
-            if let Some(summary) = load_product_summary(
-                &service,
+        let projections = service
+            .get_product_seo_projections(
                 request.tenant_id,
+                &product_ids,
                 request.locale,
                 request.default_locale,
-                product_id,
             )
-            .await?
-            {
-                items.push(summary);
+            .await?;
+        let mut by_id = projections
+            .into_iter()
+            .map(|projection| (projection.id, projection))
+            .collect::<HashMap<_, _>>();
+        let mut items = Vec::with_capacity(product_ids.len());
+        for product_id in product_ids {
+            if let Some(projection) = by_id.remove(&product_id) {
+                items.push(product_summary_from_projection(
+                    &projection,
+                    request.locale,
+                    request.default_locale,
+                ));
             }
         }
         Ok(SeoBulkSummaryPage {
@@ -145,16 +202,24 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
             let (product_ids, next_after) = service
                 .scan_published_product_ids(request.tenant_id, None, after, BULK_FETCH_SIZE)
                 .await?;
-            for product_id in product_ids {
-                if let Some(candidate) = load_product_sitemap_candidate(
-                    &service,
+            let projections = service
+                .get_product_seo_projections(
                     request.tenant_id,
+                    &product_ids,
                     request.default_locale,
-                    product_id,
+                    request.default_locale,
                 )
-                .await?
-                {
-                    candidates.push(candidate);
+                .await?;
+            let mut by_id = projections
+                .into_iter()
+                .map(|projection| (projection.id, projection))
+                .collect::<HashMap<_, _>>();
+            for product_id in product_ids {
+                if let Some(projection) = by_id.remove(&product_id) {
+                    candidates.push(product_sitemap_candidate_from_projection(
+                        &projection,
+                        request.default_locale,
+                    ));
                 }
             }
             match next_after {
@@ -167,76 +232,38 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
     }
 }
 
-/// Loads a product for SEO. A missing product is `None`; every other error propagates.
-async fn load_product_if_present(
-    service: &CatalogService,
-    tenant_id: Uuid,
-    product_id: Uuid,
+fn product_summary_from_projection(
+    projection: &ProductSeoProjection,
     locale: &str,
     default_locale: &str,
-) -> AnyResult<Option<ProductResponse>> {
-    match service
-        .get_product_with_locale_fallback(tenant_id, product_id, locale, Some(default_locale))
-        .await
-    {
-        Ok(product) => Ok(Some(product)),
-        Err(CommerceError::ProductNotFound(_)) => Ok(None),
-        Err(error) => Err(error.into()),
-    }
-}
-
-async fn load_product_summary(
-    service: &CatalogService,
-    tenant_id: uuid::Uuid,
-    locale: &str,
-    default_locale: &str,
-    product_id: uuid::Uuid,
-) -> AnyResult<Option<SeoBulkSummaryRecord>> {
-    let Some(product) =
-        load_product_if_present(service, tenant_id, product_id, locale, default_locale).await?
-    else {
-        return Ok(None);
-    };
-    let mapped = map_product_response(product, locale, default_locale);
-    Ok(Some(SeoBulkSummaryRecord {
+) -> SeoBulkSummaryRecord {
+    let mapped = map_product_response(projection, locale, default_locale);
+    SeoBulkSummaryRecord {
         target_kind: mapped.target_kind,
         target_id: mapped.target_id,
         effective_locale: mapped.effective_locale,
         label: mapped.title,
         route: mapped.canonical_route,
-    }))
+    }
 }
 
-async fn load_product_sitemap_candidate(
-    service: &CatalogService,
-    tenant_id: uuid::Uuid,
+fn product_sitemap_candidate_from_projection(
+    projection: &ProductSeoProjection,
     default_locale: &str,
-    product_id: Uuid,
-) -> AnyResult<Option<SeoSitemapCandidateRecord>> {
-    let Some(product) = load_product_if_present(
-        service,
-        tenant_id,
-        product_id,
-        default_locale,
-        default_locale,
-    )
-    .await?
-    else {
-        return Ok(None);
-    };
-    let mapped = map_product_response(product, default_locale, default_locale);
-    Ok(Some(SeoSitemapCandidateRecord {
+) -> SeoSitemapCandidateRecord {
+    let mapped = map_product_response(projection, default_locale, default_locale);
+    SeoSitemapCandidateRecord {
         target_kind: mapped.target_kind,
         target_id: mapped.target_id,
         locale: mapped.effective_locale,
         route: mapped.canonical_route,
         images: mapped.open_graph.images,
         alternates: mapped.alternates,
-    }))
+    }
 }
 
 fn map_product_response(
-    product: ProductResponse,
+    product: &ProductSeoProjection,
     requested_locale: &str,
     default_locale: &str,
 ) -> SeoLoadedTargetRecord {

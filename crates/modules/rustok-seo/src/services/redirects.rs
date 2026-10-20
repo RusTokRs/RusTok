@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use chrono::{DateTime, FixedOffset, Utc};
@@ -200,6 +200,28 @@ fn redirect_is_live(redirect: &seo_redirect::Model, now: &DateTime<FixedOffset>)
             .unwrap_or(true)
 }
 
+/// Maximum hops a manual redirect write may traverse before it is conservatively
+/// rejected as a cycle.
+const REDIRECT_CYCLE_MAX_HOPS: usize = 16;
+
+/// Whether a stored redirect pattern would capture `route` at runtime. Mirrors
+/// `RedirectLookup::matches` (exact map, literal wildcards, prefix/suffix
+/// buckets) as a pure predicate so write paths can reason about capture sets.
+fn redirect_pattern_captures(match_type: &str, source_pattern: &str, route: &str) -> bool {
+    if match_type == SeoRedirectMatchType::Exact.as_str() {
+        return source_pattern == route;
+    }
+    if match_type != SeoRedirectMatchType::Wildcard.as_str() {
+        return false;
+    }
+    let Some((prefix, suffix)) = source_pattern.split_once('*') else {
+        return source_pattern == route;
+    };
+    route.starts_with(prefix)
+        && route.len() >= prefix.len() + suffix.len()
+        && route.ends_with(suffix)
+}
+
 fn redirect_lookup_cache_entry_weight(_tenant_id: &Uuid, lookup: &Arc<RedirectLookup>) -> u32 {
     let mut weight = std::mem::size_of::<Uuid>()
         .saturating_add(std::mem::size_of::<Arc<RedirectLookup>>())
@@ -307,68 +329,139 @@ impl SeoService {
             ));
         }
         let status_code = normalize_redirect_status(input.status_code)?;
+        // Only live writes are checked: deactivation cannot create a cycle, and
+        // an operator must always be able to disable an existing loop.
+        if input.is_active {
+            self.ensure_no_redirect_cycle(tenant.id, &source_pattern, &target_url)
+                .await?;
+        }
         let now = Utc::now().fixed_offset();
         let transition_id = Uuid::new_v4();
         let txn = self.db.begin().await?;
 
-        let model = if let Some(id) = input.id {
-            let Some(existing) = seo_redirect::Entity::find_by_id(id)
-                .filter(seo_redirect::Column::TenantId.eq(tenant.id))
-                .one(&txn)
-                .await?
-            else {
-                return Err(SeoError::NotFound);
-            };
-            let mut active: seo_redirect::ActiveModel = existing.into();
-            active.match_type = Set(input.match_type.as_str().to_string());
-            active.source_pattern = Set(source_pattern);
-            active.target_url = Set(target_url.clone());
-            active.status_code = Set(status_code);
-            active.expires_at = Set(input.expires_at.map(|value| value.into()));
-            active.is_active = Set(input.is_active);
-            active.updated_at = Set(now);
-            active.update(&txn).await?
-        } else {
-            let existing = seo_redirect::Entity::find()
-                .filter(seo_redirect::Column::TenantId.eq(tenant.id))
-                .filter(seo_redirect::Column::MatchType.eq(input.match_type.as_str()))
-                .filter(seo_redirect::Column::SourcePattern.eq(source_pattern.as_str()))
-                .one(&txn)
-                .await?;
-
-            if let Some(existing) = existing {
-                let mut active: seo_redirect::ActiveModel = existing.into();
-                active.target_url = Set(target_url.clone());
-                active.status_code = Set(status_code);
-                active.expires_at = Set(input.expires_at.map(|value| value.into()));
-                active.is_active = Set(input.is_active);
-                active.updated_at = Set(now);
-                active.update(&txn).await?
-            } else {
-                seo_redirect::ActiveModel {
-                    id: Set(Uuid::new_v4()),
-                    tenant_id: Set(tenant.id),
-                    match_type: Set(input.match_type.as_str().to_string()),
-                    source_pattern: Set(source_pattern),
-                    target_url: Set(target_url),
-                    status_code: Set(status_code),
-                    expires_at: Set(input.expires_at.map(|value| value.into())),
-                    is_active: Set(input.is_active),
-                    created_at: Set(now),
-                    updated_at: Set(now),
-                }
-                .insert(&txn)
-                .await?
-            }
-        };
-
-        let record = map_redirect_record(model);
+        let record = self
+            .persist_redirect_in_tx(
+                &txn,
+                tenant.id,
+                &input,
+                &source_pattern,
+                &target_url,
+                status_code,
+                now,
+            )
+            .await?;
         self.publish_redirect_transition_in_tx(&txn, tenant.id, transition_id, &record)
             .await?;
         txn.commit().await?;
 
         super::invalidate_redirect_cache(tenant.id).await;
         Ok(record)
+    }
+
+    /// Persists one redirect row inside an existing transaction. Shared by the
+    /// manual upsert and the auto-redirect rename flow so both get identical
+    /// row semantics; the caller publishes the transition and commits.
+    async fn persist_redirect_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        input: &SeoRedirectInput,
+        source_pattern: &str,
+        target_url: &str,
+        status_code: i32,
+        now: DateTime<FixedOffset>,
+    ) -> SeoResult<SeoRedirectRecord> {
+        let model = if let Some(id) = input.id {
+            let Some(existing) = seo_redirect::Entity::find_by_id(id)
+                .filter(seo_redirect::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+            else {
+                return Err(SeoError::NotFound);
+            };
+            let mut active: seo_redirect::ActiveModel = existing.into();
+            active.match_type = Set(input.match_type.as_str().to_string());
+            active.source_pattern = Set(source_pattern.to_string());
+            active.target_url = Set(target_url.to_string());
+            active.status_code = Set(status_code);
+            active.expires_at = Set(input.expires_at.map(|value| value.into()));
+            active.is_active = Set(input.is_active);
+            active.updated_at = Set(now);
+            active.update(txn).await?
+        } else {
+            let existing = seo_redirect::Entity::find()
+                .filter(seo_redirect::Column::TenantId.eq(tenant_id))
+                .filter(seo_redirect::Column::MatchType.eq(input.match_type.as_str()))
+                .filter(seo_redirect::Column::SourcePattern.eq(source_pattern))
+                .one(txn)
+                .await?;
+
+            if let Some(existing) = existing {
+                let mut active: seo_redirect::ActiveModel = existing.into();
+                active.target_url = Set(target_url.to_string());
+                active.status_code = Set(status_code);
+                active.expires_at = Set(input.expires_at.map(|value| value.into()));
+                active.is_active = Set(input.is_active);
+                active.updated_at = Set(now);
+                active.update(txn).await?
+            } else {
+                seo_redirect::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    tenant_id: Set(tenant_id),
+                    match_type: Set(input.match_type.as_str().to_string()),
+                    source_pattern: Set(source_pattern.to_string()),
+                    target_url: Set(target_url.to_string()),
+                    status_code: Set(status_code),
+                    expires_at: Set(input.expires_at.map(|value| value.into())),
+                    is_active: Set(input.is_active),
+                    created_at: Set(now),
+                    updated_at: Set(now),
+                }
+                .insert(txn)
+                .await?
+            }
+        };
+        Ok(map_redirect_record(model))
+    }
+
+    /// Rejects a write whose proposed target closes a redirect cycle: follows
+    /// the stored matching graph from the target and fails when it reaches the
+    /// proposed source, revisits a URL, or exceeds the hop budget (conservative
+    /// fail-closed). Runtime resolution additionally guards self-loops; invalid
+    /// input must still be rejected at the write boundary so a storable cycle
+    /// can never 5xx every matching request.
+    async fn ensure_no_redirect_cycle(
+        &self,
+        tenant_id: Uuid,
+        source_pattern: &str,
+        target_url: &str,
+    ) -> SeoResult<()> {
+        let mut visited = HashSet::from([target_url.to_string()]);
+        let mut current = target_url.to_string();
+        let mut hops = 0usize;
+        loop {
+            if current == source_pattern {
+                return Err(SeoError::validation(format!(
+                    "redirect chain would form a cycle at `{current}`"
+                )));
+            }
+            if hops >= REDIRECT_CYCLE_MAX_HOPS {
+                return Err(SeoError::validation(format!(
+                    "redirect chain exceeds {REDIRECT_CYCLE_MAX_HOPS} hops"
+                )));
+            }
+            let Some(next) = self.match_redirect(tenant_id, current.as_str()).await? else {
+                return Ok(());
+            };
+            if !visited.insert(next.target_url.clone()) {
+                return Err(SeoError::validation(format!(
+                    "redirect chain would form a cycle at `{}`",
+                    next.target_url
+                )));
+            }
+            current = next.target_url;
+            hops += 1;
+        }
     }
 
     pub async fn auto_redirect_on_canonical_url_changed(
@@ -399,82 +492,115 @@ impl SeoService {
             }
         };
 
-        let tenant = TenantContext {
-            id: tenant_id,
-            name: String::new(),
-            slug: String::new(),
-            domain: None,
-            settings: serde_json::Value::Null,
-            default_locale: settings
-                .x_default_locale
-                .clone()
-                .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| "en".to_string()),
-            is_active: true,
-        };
-
         let now = Utc::now().fixed_offset();
 
-        // 1. Deactivate any existing redirect whose source_pattern is our new canonical destination.
-        // (Prevents immediate bounce or loop: the new URL is now live, not a redirect source).
-        let existing_as_source = seo_redirect::Entity::find()
-            .filter(seo_redirect::Column::TenantId.eq(tenant_id))
-            .filter(seo_redirect::Column::MatchType.eq(SeoRedirectMatchType::Exact.as_str()))
-            .filter(seo_redirect::Column::SourcePattern.eq(normalized_new_url.as_str()))
-            .filter(seo_redirect::Column::IsActive.eq(true))
-            .all(&self.db)
-            .await?;
-
-        for item in existing_as_source {
-            let mut active: seo_redirect::ActiveModel = item.into();
-            active.is_active = Set(false);
-            active.updated_at = Set(now);
-            let _ = active.update(&self.db).await;
-        }
-
-        // 2. Create/update 301 redirects for each old URL and flatten multi-hop chains
+        // Plan every exact source first. Invalid old URLs are warned and skipped
+        // exactly as before; DB or event failures below abort the whole rename so
+        // the redirect table never lands in a half-renamed state.
+        let mut creates: Vec<String> = Vec::with_capacity(old_urls.len());
         for old_url in old_urls {
             let old_url = old_url.trim();
             if old_url.is_empty() || old_url == normalized_new_url {
                 continue;
             }
+            let source_pattern =
+                match normalize_source_pattern(old_url, SeoRedirectMatchType::Exact) {
+                    Ok(source_pattern) => source_pattern,
+                    Err(err) => {
+                        tracing::warn!(
+                            tenant_id = %tenant_id,
+                            source = old_url,
+                            error = %err,
+                            "Skipping invalid old URL for auto-redirect"
+                        );
+                        continue;
+                    }
+                };
+            if source_pattern == normalized_new_url {
+                continue;
+            }
+            creates.push(source_pattern);
+        }
 
+        let txn = self.db.begin().await?;
+
+        // 1. Deactivate every live redirect that would capture the new canonical
+        // URL (exact rows sourced at it plus wildcards covering it): the new URL
+        // is now live, not a redirect source. Each deactivation publishes its
+        // transition inside the same transaction.
+        let capture_candidates = seo_redirect::Entity::find()
+            .filter(seo_redirect::Column::TenantId.eq(tenant_id))
+            .filter(seo_redirect::Column::IsActive.eq(true))
+            .filter(seo_redirect::Column::MatchType.is_in([
+                SeoRedirectMatchType::Exact.as_str(),
+                SeoRedirectMatchType::Wildcard.as_str(),
+            ]))
+            .all(&txn)
+            .await?;
+        for item in capture_candidates {
+            if !redirect_is_live(&item, &now)
+                || !redirect_pattern_captures(
+                    item.match_type.as_str(),
+                    item.source_pattern.as_str(),
+                    normalized_new_url.as_str(),
+                )
+            {
+                continue;
+            }
+            let mut active: seo_redirect::ActiveModel = item.into();
+            active.is_active = Set(false);
+            active.updated_at = Set(now);
+            let model = active.update(&txn).await?;
+            let record = map_redirect_record(model);
+            self.publish_redirect_transition_in_tx(&txn, tenant_id, Uuid::new_v4(), &record)
+                .await?;
+        }
+
+        // 2. Create/update the 301 redirect for each old URL and 3. flatten
+        // chains so nothing keeps pointing at a retired URL — one transaction,
+        // one cache invalidation after commit.
+        for source_pattern in creates {
             let input = SeoRedirectInput {
                 id: None,
                 match_type: SeoRedirectMatchType::Exact,
-                source_pattern: old_url.to_string(),
+                source_pattern: source_pattern.clone(),
                 target_url: normalized_new_url.clone(),
                 status_code: 301,
                 expires_at: None,
                 is_active: true,
             };
-
-            if let Err(err) = self.upsert_redirect(&tenant, input).await {
-                tracing::warn!(
-                    tenant_id = %tenant_id,
-                    source = old_url,
-                    target = %normalized_new_url,
-                    error = %err,
-                    "Failed to auto-create 301 redirect on canonical URL change"
-                );
-            }
-
-            // 3. Flatten redirect chains: if any other redirect was pointing to old_url,
-            // update it to point directly to normalized_new_url (A -> B, B -> C becomes A -> C).
-            let pointing_to_old = seo_redirect::Entity::find()
-                .filter(seo_redirect::Column::TenantId.eq(tenant_id))
-                .filter(seo_redirect::Column::TargetUrl.eq(old_url))
-                .filter(seo_redirect::Column::SourcePattern.ne(normalized_new_url.as_str()))
-                .all(&self.db)
+            let record = self
+                .persist_redirect_in_tx(
+                    &txn,
+                    tenant_id,
+                    &input,
+                    &source_pattern,
+                    normalized_new_url.as_str(),
+                    301,
+                    now,
+                )
+                .await?;
+            self.publish_redirect_transition_in_tx(&txn, tenant_id, Uuid::new_v4(), &record)
                 .await?;
 
+            let pointing_to_old = seo_redirect::Entity::find()
+                .filter(seo_redirect::Column::TenantId.eq(tenant_id))
+                .filter(seo_redirect::Column::TargetUrl.eq(source_pattern.as_str()))
+                .filter(seo_redirect::Column::SourcePattern.ne(normalized_new_url.as_str()))
+                .all(&txn)
+                .await?;
             for item in pointing_to_old {
                 let mut active: seo_redirect::ActiveModel = item.into();
                 active.target_url = Set(normalized_new_url.clone());
                 active.updated_at = Set(now);
-                let _ = active.update(&self.db).await;
+                let model = active.update(&txn).await?;
+                let record = map_redirect_record(model);
+                self.publish_redirect_transition_in_tx(&txn, tenant_id, Uuid::new_v4(), &record)
+                    .await?;
             }
         }
+
+        txn.commit().await?;
 
         super::invalidate_redirect_cache(tenant_id).await;
         Ok(())
@@ -977,6 +1103,20 @@ mod tests {
 
         assert_ne!(first, repeated_state);
         assert!(first.starts_with("seo.redirect.upserted:"));
+    }
+
+    #[test]
+    fn redirect_pattern_captures_mirrors_runtime_matching() {
+        use super::redirect_pattern_captures;
+
+        assert!(redirect_pattern_captures("exact", "/new", "/new"));
+        assert!(!redirect_pattern_captures("exact", "/new", "/new/deep"));
+        assert!(redirect_pattern_captures("wildcard", "/old/*", "/old/page"));
+        assert!(!redirect_pattern_captures("wildcard", "/old/*", "/other/page"));
+        assert!(!redirect_pattern_captures("wildcard", "/old/*", "/old"));
+        assert!(redirect_pattern_captures("wildcard", "/a*b", "/axxb"));
+        assert!(redirect_pattern_captures("wildcard", "literal", "literal"));
+        assert!(!redirect_pattern_captures("unknown", "/x", "/x"));
     }
 
     #[test]

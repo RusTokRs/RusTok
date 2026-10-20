@@ -55,6 +55,7 @@ async fn bulk_terminal_state_rolls_back_when_transactional_event_fails() {
         processed_count: Set(0),
         succeeded_count: Set(0),
         failed_count: Set(0),
+        skipped_count: Set(0),
         artifact_count: Set(0),
         last_error: Set(None),
         created_by: Set(None),
@@ -98,6 +99,7 @@ async fn bulk_terminal_state_rolls_back_when_transactional_event_fails() {
     assert_eq!(persisted.processed_count, 0);
     assert_eq!(persisted.succeeded_count, 0);
     assert_eq!(persisted.failed_count, 0);
+    assert_eq!(persisted.skipped_count, 0);
     assert_eq!(
         seo_event_delivery::Entity::find()
             .count(&db)
@@ -134,6 +136,7 @@ async fn create_tables(db: &DatabaseConnection) {
             processed_count INTEGER NOT NULL,
             succeeded_count INTEGER NOT NULL,
             failed_count INTEGER NOT NULL,
+            skipped_count INTEGER NOT NULL,
             artifact_count INTEGER NOT NULL,
             last_error TEXT NULL,
             created_by TEXT NULL,

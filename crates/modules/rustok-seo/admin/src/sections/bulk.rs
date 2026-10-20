@@ -674,7 +674,13 @@ fn render_bulk_job(job: SeoBulkJobRecord) -> impl IntoView {
             </div>
             <div class="grid gap-2 text-sm text-foreground md:grid-cols-2">
                 <div>{format!("matched={} | processed={}", job.matched_count, job.processed_count)}</div>
-                <div>{format!("ok={} | failed={} | artifacts={}", job.succeeded_count, job.failed_count, job.artifact_count)}</div>
+                <div>{format!(
+                    "ok={} | failed={} | skipped={} | artifacts={}",
+                    job.succeeded_count,
+                    job.failed_count,
+                    job.skipped_count,
+                    job.artifact_count
+                )}</div>
                 <div>{format!("created: {created_at}")}</div>
                 <div>{format!("started: {started_at}")}</div>
                 <div>{format!("completed: {completed_at}")}</div>

@@ -221,6 +221,7 @@ impl SeoService {
             progress.processed,
             progress.succeeded,
             progress.failed,
+            progress.skipped,
             progress.artifacts,
             None,
         )

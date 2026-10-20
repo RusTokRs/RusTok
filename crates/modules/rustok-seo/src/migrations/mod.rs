@@ -9,6 +9,7 @@ mod m20260911_000009_add_translation_change_journal;
 mod m20260911_000010_add_translation_apply_receipts;
 mod m20260930_000011_add_seo_queue_constraints;
 mod m20260930_000012_add_seo_tenant_foreign_keys;
+mod m20261018_000013_add_seo_bulk_job_skipped_count;
 
 use sea_orm_migration::prelude::*;
 

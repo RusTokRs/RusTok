@@ -155,6 +155,23 @@ impl SeoMetadataService {
             .await
     }
 
+    /// Persists an AI smart-fill through the generation repository, which owns
+    /// explicit-state preservation (robots/canonical/schema/og:image are never
+    /// materialized from generation snapshots). Transports stay thin: they only
+    /// authorize and forward.
+    pub async fn ai_smart_fill_meta(
+        &self,
+        tenant: &TenantContext,
+        target_kind: SeoTargetSlug,
+        target_id: Uuid,
+        locale: Option<&str>,
+        channel_slug: Option<&str>,
+    ) -> SeoResult<SeoMetaRecord> {
+        self.runtime
+            .ai_smart_fill_meta(tenant, target_kind, target_id, locale, channel_slug)
+            .await
+    }
+
     pub async fn publish_revision(
         &self,
         tenant: &TenantContext,

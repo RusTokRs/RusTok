@@ -566,6 +566,19 @@ pub struct SeoTargetLoadRequest<'a> {
     pub channel_slug: Option<&'a str>,
 }
 
+/// Batched counterpart of [`SeoTargetLoadRequest`] for scan consumers (diagnostics,
+/// exports): one provider call covers every requested id.
+#[cfg(feature = "server")]
+#[derive(Debug, Clone, Copy)]
+pub struct SeoTargetLoadTargetsRequest<'a> {
+    pub tenant_id: Uuid,
+    pub default_locale: &'a str,
+    pub locale: &'a str,
+    pub target_ids: &'a [Uuid],
+    pub scope: SeoTargetLoadScope,
+    pub channel_slug: Option<&'a str>,
+}
+
 #[cfg(feature = "server")]
 #[derive(Debug, Clone, Copy)]
 pub struct SeoTargetRouteResolveRequest<'a> {
@@ -940,6 +953,36 @@ pub trait SeoTargetProvider: Send + Sync {
         runtime: &SeoTargetRuntimeContext,
         request: SeoTargetLoadRequest<'_>,
     ) -> AnyResult<Option<SeoLoadedTargetRecord>>;
+
+    /// Batched state loads for scan consumers (diagnostics, exports). The default walks
+    /// `load_target` per requested id, preserving single-load semantics; providers that
+    /// can issue set-based queries override it. The result carries one entry per
+    /// requested id, with `None` for targets the provider does not serve (missing,
+    /// filtered by scope, or out of visibility).
+    async fn load_targets(
+        &self,
+        runtime: &SeoTargetRuntimeContext,
+        request: SeoTargetLoadTargetsRequest<'_>,
+    ) -> AnyResult<Vec<(Uuid, Option<SeoLoadedTargetRecord>)>> {
+        let mut records = Vec::with_capacity(request.target_ids.len());
+        for target_id in request.target_ids.iter().copied() {
+            let record = self
+                .load_target(
+                    runtime,
+                    SeoTargetLoadRequest {
+                        tenant_id: request.tenant_id,
+                        default_locale: request.default_locale,
+                        locale: request.locale,
+                        target_id,
+                        scope: request.scope,
+                        channel_slug: request.channel_slug,
+                    },
+                )
+                .await?;
+            records.push((target_id, record));
+        }
+        Ok(records)
+    }
 
     async fn resolve_route(
         &self,
