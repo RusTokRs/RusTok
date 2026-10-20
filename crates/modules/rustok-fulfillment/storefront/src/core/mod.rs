@@ -86,10 +86,10 @@ pub fn is_shipping_option_selected(selected_id: Option<&str>, option_id: &str) -
     selected_id.map(str::trim).filter(|s| !s.is_empty()) == Some(option_id)
 }
 
-pub fn selection_action_label<'a>(
+pub fn selection_action_label(
     is_selected: bool,
-    labels: &'a ShippingSelectionLabels,
-) -> &'a str {
+    labels: &ShippingSelectionLabels,
+) -> &str {
     if is_selected {
         &labels.selected_label
     } else {

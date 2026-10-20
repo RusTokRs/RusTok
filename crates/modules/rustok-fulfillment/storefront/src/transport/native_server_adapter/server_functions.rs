@@ -148,6 +148,9 @@ async fn storefront_fulfillment_select_shipping_option_native(
             .await
             .map_err(map_tenant_context_error)?;
         let tenant_id = tenant.id;
+        if tenant_id.is_nil() {
+            return Err(ServerFnError::new("tenant_id must not be a nil UUID"));
+        }
         let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
             .map_err(|error| map_auth_context_error(tenant_id, error))?;
@@ -160,6 +163,9 @@ async fn storefront_fulfillment_select_shipping_option_native(
         };
         let cart_id = Uuid::parse_str(request.cart_id.trim())
             .map_err(|_| ServerFnError::new("cart_id must be a valid UUID"))?;
+        if cart_id.is_nil() {
+            return Err(ServerFnError::new("cart_id must not be a nil UUID"));
+        }
 
         let shipping_selections = build_shipping_selection_updates(&request)
             .map_err(|error| ServerFnError::new(error.message().to_string()))?
@@ -206,8 +212,32 @@ fn parse_optional_uuid(
     value
         .filter(|value| !value.trim().is_empty())
         .map(|value| {
-            Uuid::parse_str(value.trim())
-                .map_err(|_| ServerFnError::new(format!("{field_name} must be a valid UUID")))
+            let parsed = Uuid::parse_str(value.trim())
+                .map_err(|_| ServerFnError::new(format!("{field_name} must be a valid UUID")))?;
+            if parsed.is_nil() {
+                return Err(ServerFnError::new(format!("{field_name} must not be a nil UUID")));
+            }
+            Ok(parsed)
         })
         .transpose()
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_optional_uuid_rejects_nil() {
+        let err = parse_optional_uuid(Some(Uuid::nil().to_string()), "shipping_option_id").unwrap_err();
+        assert!(err.to_string().contains("must not be a nil UUID"));
+
+        assert_eq!(parse_optional_uuid(None, "shipping_option_id").unwrap(), None);
+        assert_eq!(parse_optional_uuid(Some("   ".into()), "shipping_option_id").unwrap(), None);
+
+        let valid = Uuid::new_v4();
+        assert_eq!(
+            parse_optional_uuid(Some(valid.to_string()), "shipping_option_id").unwrap(),
+            Some(valid)
+        );
+    }
 }
