@@ -522,9 +522,9 @@
       "category": "modules",
       "files": 8,
       "loc": 1916,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-20 06:10",
+      "notes": "Audited; extracted FFA view-model and slug helpers to core, added draft validation, normalized filter whitespace and pagination reset on filter change; 16/16 tests passed across default & SSR features, 0 clippy warnings, gate passed."
     },
     "crates/modules/rustok-fulfillment/storefront": {
       "name": "storefront",
