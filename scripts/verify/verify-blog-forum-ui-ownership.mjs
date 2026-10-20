@@ -162,7 +162,8 @@ hasAll(
     'richTextDocumentHasText',
     'contentLocale={contentLocale}',
     'disabled={form.formState.isSubmitting}',
-    'content: doc',
+    'const submittedDocument = documentRef.current;',
+    'content: submittedDocument',
     "dir='ltr'"
   ],
   'Forum reply editor'

@@ -24,7 +24,12 @@ export interface EventDeliveryConfiguration {
   restartRequired: boolean;
 }
 
-const EVENTS_STATUS_QUERY = `
+export interface EventDeliveryUpdate {
+  desiredProfile: string;
+  restartRequired: boolean;
+}
+
+export const EVENTS_STATUS_QUERY = `
 query EventsStatus {
   eventsStatus {
     configuredProfile iggyMode relayIntervalMs dlqEnabled maxAttempts
@@ -32,14 +37,14 @@ query EventsStatus {
   }
 }`;
 
-const EVENT_DELIVERY_CONFIGURATION_QUERY = `
+export const EVENT_DELIVERY_CONFIGURATION_QUERY = `
 query EventDeliveryConfiguration {
   eventDeliveryConfiguration {
     activeProfile desiredProfile iggyMode iggyConfigured restartRequired
   }
 }`;
 
-const UPDATE_EVENT_DELIVERY_CONFIGURATION_MUTATION = `
+export const UPDATE_EVENT_DELIVERY_CONFIGURATION_MUTATION = `
 mutation UpdateEventDeliveryConfiguration($input: UpdateEventDeliveryConfigurationInput!) {
   updateEventDeliveryConfiguration(input: $input) {
     desiredProfile restartRequired
@@ -69,14 +74,11 @@ export async function getEventDeliveryConfiguration(
 export async function saveEventDeliveryProfile(
   profile: string,
   opts: GqlOpts = {}
-): Promise<EventDeliveryConfiguration> {
+): Promise<EventDeliveryUpdate> {
   const data = await graphqlRequest<
     { input: { profile: string } },
     {
-      updateEventDeliveryConfiguration: Pick<
-        EventDeliveryConfiguration,
-        'desiredProfile' | 'restartRequired'
-      >;
+      updateEventDeliveryConfiguration: EventDeliveryUpdate;
     }
   >(
     UPDATE_EVENT_DELIVERY_CONFIGURATION_MUTATION,
@@ -86,9 +88,6 @@ export async function saveEventDeliveryProfile(
   );
   return {
     desiredProfile: data.updateEventDeliveryConfiguration.desiredProfile,
-    restartRequired: data.updateEventDeliveryConfiguration.restartRequired,
-    activeProfile: '',
-    iggyMode: '',
-    iggyConfigured: true
+    restartRequired: data.updateEventDeliveryConfiguration.restartRequired
   };
 }

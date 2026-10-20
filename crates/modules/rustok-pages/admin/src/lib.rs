@@ -19,6 +19,7 @@ mod model;
 mod rollback_control;
 mod standalone_metadata;
 pub mod starters;
+pub mod templates_admin;
 mod transport;
 
 use composition::PagesAdmin as PagesWorkspace;

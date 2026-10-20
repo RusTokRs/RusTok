@@ -46,3 +46,20 @@ Use `localhost`, not `127.0.0.1`, in this Windows debug environment. The local l
 
 - [App docs](./docs/README.md)
 - [Platform docs index](../../docs/index.md)
+
+## Dependency verification — 2026-10-17
+
+Use the checked-in npm lockfile: `npm ci`, `npm run typecheck`, `npm run lint`.
+Build/verify `packages/richtext` with its own npm lock before using its shared
+frame assets. Next is pinned to 16.4.0 after the latest-main reconciliation; React/React DOM and their types share
+19.3.0, ESLint is 9.39.4 and TypeScript is 6.0.3. Tiptap's shared package uses
+one 3.30.5 cohort. No `--force` or legacy peer install flags are required, and
+Next build-time type errors are no longer ignored. Full host typecheck/lint and
+scoped Forum tests pass on the installed graph; browser/runtime acceptance is
+separate. See the central richtext plan for dependency evidence and limits.
+
+Docker uses the repository root as its build context:
+`docker build -f apps/next-admin/Dockerfile --target production .`.
+The npm-only stages retain local file dependency paths, build richtext assets,
+and copy the standalone app plus those assets into the image. The old Bun
+lockfile is removed. Docker image build/runtime still require external verification.

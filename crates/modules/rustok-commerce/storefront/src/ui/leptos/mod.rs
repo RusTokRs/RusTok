@@ -115,6 +115,7 @@ pub fn CommerceView() -> impl IntoView {
             let action_error_label = action_error_label.clone();
             set_action_busy.set(true);
             set_action_error.set(None);
+            set_completion.set(None);
             spawn_local(async move {
                 match transport::complete_storefront_checkout(request).await {
                     Ok(result) => {

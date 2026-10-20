@@ -246,14 +246,13 @@ export interface BlogCategorySummary {
   name: string;
   slug: string;
   description: string | null;
-  postsCount: number;
 }
 
 const BLOG_CATEGORIES_QUERY = `
   query BlogCategories($tenantId: UUID, $filter: BlogCategoriesFilter) {
     blogCategories(tenantId: $tenantId, filter: $filter) {
       items {
-        id name slug description postsCount
+        id name slug description
       }
       total
     }
@@ -266,23 +265,22 @@ export async function fetchBlogCategories(
   tenantSlug?: string | null,
   locale?: string,
 ): Promise<BlogCategorySummary[]> {
-  try {
-    const response = await graphql<{
-      blogCategories: { items: BlogCategorySummary[]; total: number };
-    }, {
-      tenantId?: string | null;
-      filter?: { locale?: string; isActive?: boolean };
-    }>({
-      query: BLOG_CATEGORIES_QUERY,
-      variables: {
-        tenantId,
-        filter: { locale, isActive: true },
-      },
-      tenant: tenantSlug ?? undefined,
-    });
-    return response.data?.blogCategories?.items ?? [];
-  } catch {
-    return [];
+  const response = await graphql<{
+    blogCategories: { items: BlogCategorySummary[]; total: number };
+  }, {
+    tenantId?: string | null;
+    filter?: { locale?: string };
+  }>({
+    query: BLOG_CATEGORIES_QUERY,
+    variables: {
+      tenantId,
+      filter: { locale },
+    },
+    tenant: tenantSlug ?? undefined,
+  });
+  if (response.errors?.length || !response.data) {
+    throw new Error(response.errors?.[0]?.message ?? "Blog categories payload is missing");
   }
+  return response.data.blogCategories.items;
 }
 

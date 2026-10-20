@@ -17,9 +17,9 @@ struct TopicResponseParts {
 
 use chrono::Utc;
 use flex::{
-    field_definition_from_source, impl_field_definition_source, persist_localized_values,
-    prepare_donor_attached_values_create, prepare_donor_attached_values_update,
-    resolve_attached_payload, resolve_attached_payloads, AttachedPayloadResolutionInput,
+    AttachedPayloadResolutionInput, field_definition_from_source, impl_field_definition_source,
+    persist_localized_values, prepare_donor_attached_values_create,
+    prepare_donor_attached_values_update, resolve_attached_payload, resolve_attached_payloads,
 };
 use sea_orm::{
     ActiveModelTrait,
@@ -54,12 +54,12 @@ use crate::error::{ForumError, ForumResult};
 use crate::richtext::{
     normalize_discussion, project_discussion, project_stored_discussion, serialize_discussion,
 };
-use crate::services::content_limits::ForumContentLimits;
 use crate::services::category::CategoryService;
+use crate::services::content_limits::ForumContentLimits;
+use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::subscription::SubscriptionService;
 use crate::services::user_stats::UserStatsService;
-use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::vote::{VoteService, VoteSummary};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
@@ -129,7 +129,8 @@ impl TopicService {
             .load_topic_tags(tenant_id, topic.id, &locale, fallback_locale.as_deref())
             .await?;
         let solution_reply_id = self.load_solution_reply_id(tenant_id, topic_id).await?;
-        let vote_summary = VoteService::new(self.db.clone()).with_settings_providers(self.settings.clone())
+        let vote_summary = VoteService::new(self.db.clone())
+            .with_settings_providers(self.settings.clone())
             .topic_vote_summary(tenant_id, topic_id, security.user_id)
             .await?;
         let is_subscribed = SubscriptionService::new(self.db.clone())
@@ -317,7 +318,11 @@ impl TopicService {
             .exec(txn)
             .await?;
         if updated.rows_affected != 1 {
-            if Self::find_topic_in_tx(txn, tenant_id, topic_id).await?.reply_count < 0 {
+            if Self::find_topic_in_tx(txn, tenant_id, topic_id)
+                .await?
+                .reply_count
+                < 0
+            {
                 return Err(ForumError::Validation(
                     "Forum topic reply counter is inconsistent".to_string(),
                 ));
@@ -512,7 +517,7 @@ impl TopicService {
             backend => {
                 return Err(ForumError::Validation(format!(
                     "Forum topic deleted-state lookup does not support database backend {backend:?}"
-                )))
+                )));
             }
         };
         let row = self
@@ -552,10 +557,11 @@ impl TopicService {
             backend => {
                 return Err(ForumError::Validation(format!(
                     "Forum topic deleted-state lookup does not support database backend {backend:?}"
-                )))
+                )));
             }
         };
-        let sql = format!("SELECT id FROM forum_topics WHERE tenant_id = {} AND deleted_at IS NOT NULL AND id IN ({})",
+        let sql = format!(
+            "SELECT id FROM forum_topics WHERE tenant_id = {} AND deleted_at IS NOT NULL AND id IN ({})",
             tenant_placeholder, placeholders
         );
         let mut values = Vec::with_capacity(topic_ids.len() + 1);
@@ -704,9 +710,7 @@ impl TopicService {
         let solution_reply_ids = self
             .load_solution_reply_ids_map(tenant_id, &topic_ids)
             .await?;
-        let deleted_topic_ids = self
-            .load_deleted_topic_ids(tenant_id, &topic_ids)
-            .await?;
+        let deleted_topic_ids = self.load_deleted_topic_ids(tenant_id, &topic_ids).await?;
         let schema = load_topic_custom_fields_schema(&self.db, tenant_id).await?;
         let metadata_inputs = topics
             .iter()
@@ -726,7 +730,8 @@ impl TopicService {
         )
         .await
         .map_err(|error| ForumError::Validation(error.to_string()))?;
-        let vote_summaries = VoteService::new(self.db.clone()).with_settings_providers(self.settings.clone())
+        let vote_summaries = VoteService::new(self.db.clone())
+            .with_settings_providers(self.settings.clone())
             .topic_vote_summaries(tenant_id, &topic_ids, viewer_user_id)
             .await?;
         let subscription_flags = SubscriptionService::new(self.db.clone())
@@ -758,6 +763,9 @@ impl TopicService {
                     last_reply_at: topic.last_reply_at,
                     updated_at: topic.updated_at,
                     id: topic.id,
+                    reply_count: topic.reply_count,
+                    order: Default::default(),
+                    selection_scope: None,
                 }),
                 requested_locale: locale.to_string(),
                 locale: locale.to_string(),
@@ -1097,7 +1105,6 @@ fn topic_field_definition_from_row(
 ) -> Option<FieldDefinition> {
     field_definition_from_source(&row)
 }
-
 
 impl TopicService {
     async fn prepare_topic_relation_body_for_update(

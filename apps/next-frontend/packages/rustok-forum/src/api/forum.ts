@@ -133,8 +133,8 @@ const STOREFRONT_CATEGORIES_QUERY = `
 `;
 
 const STOREFRONT_TOPICS_QUERY = `
-  query StorefrontForumAudienceTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $perPage: Int) {
-    forumStorefrontAudienceTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, perPage: $perPage) {
+  query StorefrontForumAudienceTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $perPage: Int, $search: String, $order: ForumTopicListOrder, $solvedOnly: Boolean!) {
+    forumStorefrontAudienceTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, perPage: $perPage, search: $search, order: $order, solvedOnly: $solvedOnly) {
       nextCursor
       items {
         id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt solutionReplyId voteScore
@@ -144,8 +144,8 @@ const STOREFRONT_TOPICS_QUERY = `
 `;
 
 const STOREFRONT_UNREAD_TOPICS_QUERY = `
-  query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $limit: Int) {
-    forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, limit: $limit, unreadOnly: true) {
+  query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $limit: Int, $search: String, $order: ForumTopicListOrder, $solvedOnly: Boolean!) {
+    forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, limit: $limit, unreadOnly: true, search: $search, order: $order, solvedOnly: $solvedOnly) {
       nextCursor
       items {
         id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt
@@ -289,6 +289,9 @@ export async function fetchStorefrontTopics(options: {
   tenantSlug?: string;
   token?: string;
   categoryId?: string;
+  search?: string;
+  order?: 'LATEST' | 'TOP';
+  solvedOnly?: boolean;
   locale?: string;
   limit?: number;
   /** Opaque cursor returned as `nextCursor` by the previous page. */
@@ -303,6 +306,9 @@ export async function fetchStorefrontTopics(options: {
     variables: {
       tenantId: options.tenantId,
       categoryId: options.categoryId,
+      search: options.search,
+      order: options.order ?? 'LATEST',
+      solvedOnly: options.solvedOnly ?? false,
       locale: options.locale,
       after: options.after,
       // Omitted page sizes resolve through the tenant's `topics_per_page` setting.
@@ -325,6 +331,9 @@ export async function fetchStorefrontUnreadTopics(options: {
   tenantSlug?: string;
   token: string;
   categoryId?: string;
+  search?: string;
+  order?: 'LATEST' | 'TOP';
+  solvedOnly?: boolean;
   locale?: string;
   limit?: number;
   after?: string;
@@ -338,6 +347,9 @@ export async function fetchStorefrontUnreadTopics(options: {
     variables: {
       tenantId: options.tenantId,
       categoryId: options.categoryId,
+      search: options.search,
+      order: options.order ?? 'LATEST',
+      solvedOnly: options.solvedOnly ?? false,
       locale: options.locale,
       after: options.after,
       limit: options.limit,

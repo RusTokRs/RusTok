@@ -6,8 +6,8 @@ use std::{
 };
 
 use crate::model::{
-    ForumCategoryConnection, ForumMemberCard, ForumReplyPage, ForumTopicPage,
-    ForumTopicDetail, StorefrontForumData,
+    ForumCategoryConnection, ForumMemberCard, ForumReplyPage, ForumTopicDetail, ForumTopicPage,
+    StorefrontForumData,
 };
 
 use super::StorefrontForumBulkReadResult;
@@ -30,8 +30,8 @@ impl Display for ApiError {
 impl std::error::Error for ApiError {}
 
 const STOREFRONT_FORUM_CATEGORIES_QUERY: &str = "query StorefrontForumCategories($tenantId: UUID, $locale: String, $pagination: PaginationInput) { forumStorefrontCategories(tenantId: $tenantId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale name slug description icon color parentId topicCount replyCount } } }";
-const STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY: &str = "query StorefrontForumAudienceTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $perPage: Int) { forumStorefrontAudienceTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, perPage: $perPage) { nextCursor items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt solutionReplyId voteScore } } }";
-const STOREFRONT_FORUM_UNREAD_TOPICS_QUERY: &str = "query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $limit: Int) { forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, limit: $limit) { nextCursor items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt readStateExplicit lastReadPosition lastReadRevision unreadCount hasUnreadTopicRevision isUnread } } }";
+const STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY: &str = "query StorefrontForumAudienceTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $perPage: Int, $search: String, $order: ForumTopicListOrder, $solvedOnly: Boolean!) { forumStorefrontAudienceTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, perPage: $perPage, search: $search, order: $order, solvedOnly: $solvedOnly) { nextCursor items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt solutionReplyId voteScore } } }";
+const STOREFRONT_FORUM_UNREAD_TOPICS_QUERY: &str = "query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $limit: Int, $search: String, $order: ForumTopicListOrder, $solvedOnly: Boolean!) { forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, limit: $limit, search: $search, order: $order, solvedOnly: $solvedOnly) { nextCursor items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt readStateExplicit lastReadPosition lastReadRevision unreadCount hasUnreadTopicRevision isUnread } } }";
 const STOREFRONT_FORUM_TOPIC_QUERY: &str = "query StorefrontForumTopic($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontAudienceTopic(tenantId: $tenantId, id: $id, locale: $locale) { id effectiveLocale availableLocales categoryId authorId title slug body { document html } bodyPlainText status tags isPinned isLocked replyCount createdAt updatedAt } }";
 const STOREFRONT_FORUM_REPLIES_QUERY: &str = "query StorefrontForumReplies($tenantId: UUID, $topicId: UUID!, $locale: String, $after: String, $perPage: Int) { forumStorefrontReplies(tenantId: $tenantId, topicId: $topicId, locale: $locale, after: $after, perPage: $perPage) { nextCursor items { id effectiveLocale topicId authorId content { document html } contentPlainText status parentReplyId createdAt updatedAt } } }";
 const STOREFRONT_FORUM_MEMBER_CARDS_QUERY: &str = "query StorefrontForumMemberCards($userIds: [UUID!]!, $locale: String) { forumMemberCards(userIds: $userIds, locale: $locale) { userId profile { userId handle displayName tags avatarMediaId preferredLocale } forumStats { topicCount replyCount solutionCount } } }";
@@ -115,6 +115,8 @@ struct CategoriesVariables {
 
 #[derive(Debug, Serialize)]
 struct TopicsVariables {
+    #[serde(flatten)]
+    selection: crate::model::ForumTopicSelection,
     #[serde(rename = "tenantId")]
     tenant_id: Option<String>,
     #[serde(rename = "categoryId")]
@@ -128,6 +130,8 @@ struct TopicsVariables {
 
 #[derive(Debug, Serialize)]
 struct UnreadTopicsVariables {
+    #[serde(flatten)]
+    selection: crate::model::ForumTopicSelection,
     #[serde(rename = "tenantId")]
     tenant_id: Option<String>,
     #[serde(rename = "categoryId")]
@@ -214,7 +218,6 @@ fn configured_tenant_slug() -> Option<String> {
     })
 }
 
-
 async fn request_raw<V, T>(query: &str, variables: V) -> Result<T, GraphqlHttpError>
 where
     V: Serialize,
@@ -266,6 +269,7 @@ pub async fn fetch_storefront_forum_graphql(
     selected_category_id: Option<String>,
     selected_topic_id: Option<String>,
     locale: Option<String>,
+    selection: crate::model::ForumTopicSelection,
 ) -> Result<StorefrontForumData, ApiError> {
     let categories_response: StorefrontForumCategoriesResponse = request(
         STOREFRONT_FORUM_CATEGORIES_QUERY,
@@ -312,6 +316,7 @@ pub async fn fetch_storefront_forum_graphql(
     let personalized = request_raw::<_, StorefrontForumUnreadTopicsResponse>(
         STOREFRONT_FORUM_UNREAD_TOPICS_QUERY,
         UnreadTopicsVariables {
+            selection: selection.clone(),
             tenant_id: None,
             category_id: resolved_category_id.clone(),
             locale: locale.clone(),
@@ -326,6 +331,7 @@ pub async fn fetch_storefront_forum_graphql(
             let response: StorefrontForumAudienceTopicsResponse = request(
                 STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY,
                 TopicsVariables {
+                    selection: selection.clone(),
                     tenant_id: None,
                     category_id: resolved_category_id.clone(),
                     locale: locale.clone(),
@@ -380,6 +386,7 @@ pub async fn fetch_storefront_forum_graphql(
         load_storefront_member_cards(&topics, selected_topic.as_ref(), &replies, locale).await?;
 
     Ok(StorefrontForumData {
+        topic_selection: selection,
         categories: categories_response.forum_storefront_categories,
         topics,
         selected_category_id: resolved_category_id,
@@ -401,11 +408,13 @@ pub async fn fetch_storefront_forum_topic_page_graphql(
     after: String,
     locale: Option<String>,
     read_state_available: bool,
+    selection: crate::model::ForumTopicSelection,
 ) -> Result<ForumTopicPage, ApiError> {
     if read_state_available {
         let response: StorefrontForumUnreadTopicsResponse = request(
             STOREFRONT_FORUM_UNREAD_TOPICS_QUERY,
             UnreadTopicsVariables {
+                selection: selection.clone(),
                 tenant_id: None,
                 category_id: selected_category_id,
                 locale: locale.clone(),
@@ -419,6 +428,7 @@ pub async fn fetch_storefront_forum_topic_page_graphql(
     let response: StorefrontForumAudienceTopicsResponse = request(
         STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY,
         TopicsVariables {
+            selection: selection.clone(),
             tenant_id: None,
             category_id: selected_category_id,
             locale: locale.clone(),

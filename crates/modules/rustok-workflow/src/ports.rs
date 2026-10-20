@@ -102,6 +102,18 @@ fn workflow_error_to_port_error(error: WorkflowError) -> PortError {
             "webhook secret is not configured",
             false,
         ),
+        WorkflowError::VersionNotFound(workflow_id, version) => PortError::new(
+            PortErrorKind::NotFound,
+            "workflow.version_not_found",
+            format!("workflow version not found: workflow_id={workflow_id}, version={version}"),
+            false,
+        ),
+        WorkflowError::TemplateNotFound(template_id) => PortError::new(
+            PortErrorKind::NotFound,
+            "workflow.template_not_found",
+            format!("workflow template not found: {template_id}"),
+            false,
+        ),
         WorkflowError::Database(message) => PortError::unavailable(
             "workflow.database_unavailable",
             format!("workflow database error: {message}"),
@@ -114,3 +126,54 @@ fn workflow_error_to_port_error(error: WorkflowError) -> PortError {
         ),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::PortActor;
+
+    fn sample_context(tenant_id: &str) -> PortContext {
+        PortContext::new(tenant_id, PortActor::system(), "en", "corr-test")
+    }
+
+    #[test]
+    fn test_workflow_tenant_id_valid() {
+        let tenant_id = Uuid::new_v4();
+        let context = sample_context(&tenant_id.to_string());
+        let parsed = workflow_tenant_id(&context).expect("valid tenant UUID");
+        assert_eq!(parsed, tenant_id);
+    }
+
+    #[test]
+    fn test_workflow_tenant_id_invalid() {
+        let context = sample_context("invalid-uuid");
+        let err = workflow_tenant_id(&context).unwrap_err();
+        assert_eq!(err.code, "workflow.tenant_id_invalid");
+    }
+
+    #[test]
+    fn test_workflow_error_mappings() {
+        let id = Uuid::new_v4();
+        let err = workflow_error_to_port_error(WorkflowError::NotFound(id));
+        assert_eq!(err.kind, PortErrorKind::NotFound);
+        assert_eq!(err.code, "workflow.not_found");
+
+        let err = workflow_error_to_port_error(WorkflowError::VersionNotFound(id, 2));
+        assert_eq!(err.kind, PortErrorKind::NotFound);
+        assert_eq!(err.code, "workflow.version_not_found");
+
+        let err = workflow_error_to_port_error(WorkflowError::TemplateNotFound("crm".into()));
+        assert_eq!(err.kind, PortErrorKind::NotFound);
+        assert_eq!(err.code, "workflow.template_not_found");
+
+        let err = workflow_error_to_port_error(WorkflowError::NotActive("draft".into()));
+        assert_eq!(err.kind, PortErrorKind::Conflict);
+
+        let err = workflow_error_to_port_error(WorkflowError::WebhookSignatureMissing);
+        assert_eq!(err.kind, PortErrorKind::Forbidden);
+
+        let err = workflow_error_to_port_error(WorkflowError::WebhookSecretNotConfigured);
+        assert_eq!(err.kind, PortErrorKind::Unavailable);
+    }
+}
+

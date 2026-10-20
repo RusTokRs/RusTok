@@ -43,12 +43,19 @@ When that instruction is given, the contributor or AI agent MUST:
 1. Read this `AGENTS.md`, `docs/index.md`, `docs/CONTINUOUS_CODE_REVIEW.md`, and the active section of `docs/standards/continuous-review-ledger.md`. The ledger is the single living audit-progress record for sequential full-stack passes; do not create parallel audit plans.
 2. Record the current `main` commit SHA before starting the next phase and refresh `main` again immediately before integration.
 3. Execute audit phases strictly in ledger order unless an explicit dependency or an active ADR requires a different order. Do not skip a phase because a component was previously marked complete in an older review round.
-4. Review the whole affected change surface, including business/domain logic, persistence and migrations, writers/readers, events/outbox/workers, transports, tenancy/context/auth/policy, UI/operator surfaces, scripts, generated/reference artifacts, dependencies, and documentation.
-5. Fix discovered repository-owned defects to the canonical architecture in the same change set. Do not leave a known in-scope root-cause defect as a follow-up merely because a narrower test or static check would pass.
-6. Work on a dedicated phase branch created from the refreshed `main` (or directly on `main` when explicitly configured for single-agent direct repository management). When working via branches, commit the audit result and implementation cleanly on that branch, prepare the PR/integration evidence for the maintainer, and integrate to `main` before beginning the next phase. Never rewrite another agent's branch or force-update shared history.
-7. Scoped verification vs full test suites: The AI agent MUST run local, scoped checks for the affected crate/package (e.g. `cargo check -p <crate>`, `cargo test -p <crate>`, linters, and type checks) to verify correctness and ensure changes compile and pass local invariants. The AI agent MUST NOT run full workspace test suites or long-running E2E integration suites unless explicitly requested; those remain with the maintainer and CI. The agent must never claim runtime/test evidence it did not obtain.
-8. Mark the phase complete in the canonical ledger only after the implementation/assessment commit has been integrated into `main`; record outstanding maintainer verification explicitly.
-9. When an issue changes an architectural contract rather than merely implementing an existing one, stop implementation at the boundary and add/update the owning ADR before continuing.
+4. **Exhaustive Crate Inspection (No Surface Skimming):** Read and analyze the **entire** in-scope crate/package end-to-end across all source files in `src/`, not merely 1-2 files flagged by an automated scanner. An agent MUST NOT fix a couple of superficial warnings and move on while leaving the rest of the crate uninspected.
+5. **Mandatory Behavioral & Logical Verification:** Logic is not merely high-level business flows; logic MUST be verified in **every** module and library. For every component, systematically verify the 6 Universal Logic Dimensions:
+   - *Preconditions & Bounds:* extreme values (0, negative, empty strings/slices, overflows, bounds checks, temporal skew).
+   - *Branch Completeness & Anti-Swallowing:* no silent suppression (`let _ =`, dummy `Ok(())`/`None` masks); every failure path must propagate typed domain errors.
+   - *State Transition Integrity:* validate lifecycle graphs; ensure no entity/task can transition to an invalid state or become permanently stranded in `processing`/`pending` upon mid-chain failure.
+   - *Side-Effect Completeness:* atomic coupling of data mutations with cache invalidation, outbox events, balance/counter adjustments, and resource cleanup.
+   - *Calculation & Algorithmic Correctness:* precision in money/currency math, pagination cursor logic (off-by-one `<` vs `<=`), cycle detection in graphs/trees.
+   - *Order of Operations & Concurrency:* eliminate check-then-act (TOCTOU) races between condition verification and state mutation.
+6. **Exhaustive Remediation to Zero Defects ("Косяков нет — теперь иду дальше"):** Remediate ALL discovered defects (logical, transactional, architectural, anti-slop, error handling, edge cases) within the crate in the same change set. An agent MUST NOT advance to the next ledger component while known defects or unverified files remain in the current crate.
+7. Work on a dedicated phase branch created from the refreshed `main` (or directly on `main` when explicitly configured for single-agent direct repository management). When working via branches, commit the audit result and implementation cleanly on that branch, prepare the PR/integration evidence for the maintainer, and integrate to `main` before beginning the next phase. Never rewrite another agent's branch or force-update shared history.
+8. Scoped verification vs full test suites: The AI agent MUST run local, scoped checks for the affected crate/package (e.g. `cargo check -p <crate>`, `cargo test -p <crate>`, linters, and type checks) to verify correctness and ensure changes compile and pass local invariants. When a non-trivial logical branch lacks a test, add a focused unit test to lock in the verified behavior. The AI agent MUST NOT run full workspace test suites or long-running E2E integration suites unless explicitly requested; those remain with the maintainer and CI. The agent must never claim runtime/test evidence it did not obtain.
+9. Mark the phase complete in the canonical ledger only after all files are verified, all defects in the crate are resolved, and the commit has been integrated into `main`; record the specific verified logic chains and outstanding maintainer verification explicitly.
+10. When an issue changes an architectural contract rather than merely implementing an existing one, stop implementation at the boundary and add/update the owning ADR before continuing.
 
 ### 2.1.1 Cross-Cutting Architectural Audit Contract (CCAR)
 
@@ -142,6 +149,9 @@ Deliver the coherent target design, not the smallest patch that makes one sympto
 
 MUST:
 - investigate and address root causes;
+- understand the behavioral purpose of the code and verify its logical correctness, not merely its syntax or formatting;
+- conduct exhaustive, crate-wide analysis across all source files of the target component, remediating all discovered defects to a zero-defect state ("косяков нет") before advancing to the next component;
+- systematically verify the 6 Universal Logic Dimensions (preconditions & bounds, branch completeness & anti-swallowing, state transitions, side-effect completeness, algorithmic/calculation precision, order/concurrency);
 - preserve clear ownership and dependency direction;
 - keep code, schema, callers, transports, tests, configuration, generated artifacts, and documentation consistent;
 - implement required runtime wiring, not only source markers;
@@ -149,6 +159,10 @@ MUST:
 - run strictly crate-scoped verification: use `cargo check -p <crate>` or `cargo test -p <crate> --lib` targeted to the specific affected crate rather than workspace-wide builds.
 
 MUST NOT:
+- skim only surface files or fix a couple of scanner-reported warnings while leaving the rest of the crate uninspected or broken ("верхоглядство");
+- advance to another component when known defects or unverified source files remain in the current crate;
+- prioritize cosmetic/syntactic refactoring over behavioral and logical correctness;
+- suppress errors silently via `let _ = ...` or fake `Ok(())` defaults that hide broken execution chains;
 - introduce hidden coupling, special-case branches, fragile workarounds, or knowingly duplicated sources of truth;
 - leave a known inconsistency for a hypothetical later cleanup when it is part of the current cutover;
 - create speculative infrastructure, registries, providers, feature flags, abstractions, or config keys without a current canonical consumer or requirement;

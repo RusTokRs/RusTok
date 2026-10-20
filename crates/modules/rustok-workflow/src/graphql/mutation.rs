@@ -367,10 +367,34 @@ impl WorkflowMutation {
 }
 
 fn default_generated_workflow(description: &str) -> serde_json::Value {
+    let name_snippet: String = description.chars().take(50).collect();
     serde_json::json!({
-        "name": format!("Workflow: {}", &description[..description.len().min(50)]),
+        "name": format!("Workflow: {name_snippet}"),
         "description": description,
         "trigger_config": { "type": "manual" },
         "steps": []
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_generated_workflow_utf8_boundary_safety() {
+        // Cyrillic string where byte 50 would split a 2-byte UTF-8 char
+        let description = "Создание автоматического процесса для синхронизации всех заказов в платформе";
+        let workflow = default_generated_workflow(description);
+        let name = workflow["name"].as_str().unwrap();
+        assert!(name.starts_with("Workflow: Создание"));
+        assert_eq!(workflow["description"], description);
+    }
+
+    #[test]
+    fn test_default_generated_workflow_short_string() {
+        let description = "Simple";
+        let workflow = default_generated_workflow(description);
+        assert_eq!(workflow["name"], "Workflow: Simple");
+    }
+}
+

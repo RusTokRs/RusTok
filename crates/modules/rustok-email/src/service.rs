@@ -10,7 +10,7 @@ use crate::error::{EmailError, Result};
 use crate::template::{EmailTemplateProvider, RenderedEmail};
 
 /// Email to send for password reset.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PasswordResetEmail {
     pub to: String,
     pub reset_url: String,
@@ -76,14 +76,16 @@ impl EmailService {
 
         let encoded_token: String =
             url::form_urlencoded::byte_serialize(token.as_bytes()).collect();
-        let separator = if config.reset_base_url.contains('?') {
+        let trimmed = config.reset_base_url.trim();
+        let separator = if trimmed.ends_with('?') || trimmed.ends_with('&') {
+            ""
+        } else if trimmed.contains('?') {
             "&"
         } else {
             "?"
         };
         format!(
-            "{}{}token={}",
-            config.reset_base_url, separator, encoded_token
+            "{trimmed}{separator}token={encoded_token}"
         )
     }
 }
@@ -307,5 +309,20 @@ mod tests {
         let url = EmailService::password_reset_url(&config, "abc+/=&?");
 
         assert_eq!(url, "/reset-password?tenant=demo&token=abc%2B%2F%3D%26%3F");
+    }
+
+    #[test]
+    fn password_reset_url_handles_trailing_separator() {
+        let config_q = config_with_reset_base_url("/reset-password?");
+        assert_eq!(
+            EmailService::password_reset_url(&config_q, "my-token"),
+            "/reset-password?token=my-token"
+        );
+
+        let config_amp = config_with_reset_base_url("/reset-password?tenant=demo&");
+        assert_eq!(
+            EmailService::password_reset_url(&config_amp, "my-token"),
+            "/reset-password?tenant=demo&token=my-token"
+        );
     }
 }

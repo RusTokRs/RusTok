@@ -81,6 +81,9 @@ async fn saved_private_tenant_denies_all_public_owner_shapes_before_loading_cand
         .list_public_storefront_visible_with_locale_fallback(
             tenant,
             ListTopicsFilter {
+                search: None,
+                order: Default::default(),
+                solved_only: false,
                 category_id: None,
                 status: None,
                 locale: Some("en".into()),

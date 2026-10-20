@@ -124,6 +124,10 @@ impl CartService {
         let channel_slug = channel_slug
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        let email = input
+            .email
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
 
         let cart_id = generate_id();
         let now = Utc::now();
@@ -134,7 +138,7 @@ impl CartService {
             channel_id: Set(channel_id),
             channel_slug: Set(channel_slug),
             customer_id: Set(input.customer_id),
-            email: Set(input.email),
+            email: Set(email),
             region_id: Set(input.region_id),
             country_code: Set(country_code),
             locale_code: Set(locale_code),
@@ -207,6 +211,14 @@ impl CartService {
             None => load_tenant_default_locale(&txn, tenant_id).await?,
         };
         let line_item_id = generate_id();
+        let title = input.title.trim().to_string();
+        if title.is_empty() {
+            return Err(CartError::Validation("title must not be empty".to_string()));
+        }
+        let sku = input
+            .sku
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         let shipping_profile_slug = normalize_line_item_shipping_profile(
             input.fulfillment_requirement,
             input.shipping_profile_slug.as_deref(),
@@ -219,7 +231,7 @@ impl CartService {
             variant_id: Set(input.variant_id),
             fulfillment_requirement: Set(input.fulfillment_requirement.as_str().to_string()),
             shipping_profile_slug: Set(shipping_profile_slug.clone().unwrap_or_default()),
-            sku: Set(input.sku),
+            sku: Set(sku),
             quantity: Set(input.quantity),
             unit_price: Set(input.unit_price),
             total_price: Set(input.unit_price * Decimal::from(input.quantity)),
@@ -234,7 +246,7 @@ impl CartService {
             id: Set(generate_id()),
             cart_line_item_id: Set(line_item_id),
             locale: Set(locale),
-            title: Set(input.title),
+            title: Set(title),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -356,8 +368,13 @@ impl CartService {
             .map(normalize_locale_code)
             .transpose()?;
 
+        let email = input
+            .email
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
         let mut active: entities::cart::ActiveModel = cart.clone().into();
-        active.email = Set(input.email);
+        active.email = Set(email);
         active.region_id = Set(input.region_id);
         active.country_code = Set(country_code);
         active.locale_code = Set(locale_code);

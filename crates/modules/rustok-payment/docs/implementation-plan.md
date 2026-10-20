@@ -17,6 +17,7 @@ Provider operation requests/results also pass bounded metadata/payload and refer
 
 The ecommerce-family implementation plan is maintained in `crates/modules/rustok-commerce/docs/implementation-plan.md#payment-workstream`.
 This module is currently `boundary_ready` with FBA registry `payment-fba-registry.json`.
+- Payment storefront native client error safety: `source_ready_unvalidated`
 
 ## Milestones
 

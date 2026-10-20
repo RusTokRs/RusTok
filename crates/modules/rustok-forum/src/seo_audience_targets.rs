@@ -447,6 +447,9 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                 .list_public_storefront_visible_with_locale_fallback(
                     tenant_id,
                     ListTopicsFilter {
+                        search: None,
+                        order: Default::default(),
+                        solved_only: false,
                         category_id: None,
                         status: None,
                         locale: Some(request.locale.to_string()),

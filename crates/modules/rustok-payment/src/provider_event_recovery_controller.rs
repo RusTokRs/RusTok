@@ -109,6 +109,13 @@ pub async fn run_provider_event_recovery(
     auth: AuthContext,
     Query(query): Query<PaymentProviderEventRecoveryQuery>,
 ) -> Result<Json<PaymentProviderEventRecoveryResponse>, (StatusCode, Json<Value>)> {
+    if tenant.id.is_nil() {
+        return Err(safe_error(
+            StatusCode::BAD_REQUEST,
+            "payment_tenant_id_nil",
+            "tenant_id must not be a nil UUID",
+        ));
+    }
     if !has_any_effective_permission(&auth.permissions, &[Permission::PAYMENTS_MANAGE]) {
         return Err(safe_error(
             StatusCode::FORBIDDEN,
@@ -124,11 +131,12 @@ pub async fn run_provider_event_recovery(
             runtime.event_observers,
         )),
     );
+    let limit = query.limit.map(|limit| limit.clamp(1, 100));
     let report = service
         .run(
             tenant.id,
             "payment-provider-event-http-recovery",
-            query.limit,
+            limit,
         )
         .await
         .map_err(map_recovery_error)?;

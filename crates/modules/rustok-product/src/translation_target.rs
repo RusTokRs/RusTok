@@ -111,14 +111,13 @@ impl ProductTranslationTargetProvider {
     ) -> Result<(), PortError> {
         fail_product_operation_receipt(self.service.database(), lease, error)
             .await
-            .map_err(|receipt_error| {
+            .inspect_err(|receipt_error| {
                 tracing::error!(
                     operation_id = %lease.operation_id,
                     internal_code = %receipt_error.code,
                     retryable = receipt_error.retryable,
                     "Failed to persist Product translation-target failure receipt"
                 );
-                receipt_error
             })
     }
 }

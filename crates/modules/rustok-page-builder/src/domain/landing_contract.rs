@@ -23,10 +23,12 @@ pub enum LandingSectionKind {
     ContactForm,
     Faq,
     Pricing,
+    Newsletter,
+    LeadCapture,
 }
 
 impl LandingSectionKind {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 9] = [
         Self::Hero,
         Self::TwoColumns,
         Self::FeatureGrid,
@@ -34,6 +36,8 @@ impl LandingSectionKind {
         Self::ContactForm,
         Self::Faq,
         Self::Pricing,
+        Self::Newsletter,
+        Self::LeadCapture,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -45,6 +49,8 @@ impl LandingSectionKind {
             Self::ContactForm => "contact_form",
             Self::Faq => "faq",
             Self::Pricing => "pricing",
+            Self::Newsletter => "newsletter",
+            Self::LeadCapture => "lead_capture",
         }
     }
 
@@ -57,6 +63,8 @@ impl LandingSectionKind {
             Self::ContactForm => "fly.contact_form",
             Self::Faq => "fly.faq_accordion",
             Self::Pricing => "fly.pricing_section",
+            Self::Newsletter => "fly.newsletter_form",
+            Self::LeadCapture => "fly.lead_capture_form",
         }
     }
 
@@ -69,6 +77,8 @@ impl LandingSectionKind {
             Self::ContactForm => &["heading", "text", "form", "input", "textarea", "submit"],
             Self::Faq => &["heading", "accordion"],
             Self::Pricing => &["heading", "pricing_table"],
+            Self::Newsletter => &["heading", "text", "form", "input", "submit"],
+            Self::LeadCapture => &["heading", "text", "form", "input", "submit"],
         }
     }
 
@@ -81,6 +91,8 @@ impl LandingSectionKind {
             "contact_form" => Some(Self::ContactForm),
             "faq" => Some(Self::Faq),
             "pricing" => Some(Self::Pricing),
+            "newsletter" => Some(Self::Newsletter),
+            "lead_capture" => Some(Self::LeadCapture),
             _ => None,
         }
     }
@@ -1033,6 +1045,51 @@ mod tests {
         assert!(report.valid);
         assert_eq!(report.pages[0].sections.len(), 1);
         assert_eq!(report.pages[0].sections[0].kind, LandingSectionKind::Pricing);
+    }
+
+    #[test]
+    fn newsletter_and_lead_capture_sections_are_recognized_and_validated() {
+        let newsletter_project = project_with_section(json!({
+            "id": "newsletter-sec",
+            "type": "section",
+            "flyLandingSection": "newsletter",
+            "components": [
+                { "type": "heading", "content": "Newsletter" },
+                { "type": "text", "content": "Subscribe" },
+                {
+                    "type": "form",
+                    "components": [
+                        { "type": "input" },
+                        { "type": "submit" }
+                    ]
+                }
+            ]
+        }));
+        let report = LandingSectionValidationReport::for_document(&newsletter_project).expect("report");
+        assert!(report.valid);
+        assert_eq!(report.pages[0].sections.len(), 1);
+        assert_eq!(report.pages[0].sections[0].kind, LandingSectionKind::Newsletter);
+
+        let lead_capture_project = project_with_section(json!({
+            "id": "lead-capture-sec",
+            "type": "section",
+            "flyLandingSection": "lead_capture",
+            "components": [
+                { "type": "heading", "content": "Request Demo" },
+                { "type": "text", "content": "Tell us about your team" },
+                {
+                    "type": "form",
+                    "components": [
+                        { "type": "input" },
+                        { "type": "submit" }
+                    ]
+                }
+            ]
+        }));
+        let report = LandingSectionValidationReport::for_document(&lead_capture_project).expect("report");
+        assert!(report.valid);
+        assert_eq!(report.pages[0].sections.len(), 1);
+        assert_eq!(report.pages[0].sections[0].kind, LandingSectionKind::LeadCapture);
     }
 }
 

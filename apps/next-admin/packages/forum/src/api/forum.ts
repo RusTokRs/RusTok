@@ -220,13 +220,15 @@ export async function updateForumTopic(
   return data.updateForumTopic;
 }
 
+/** Load every owner-visible candidate for admin topic selectors. Never return a partial list. */
 export async function listForumTopics(
   opts: GqlOpts = {},
-  input: { locale?: string; first?: number } = {}
+  input: { locale?: string } = {}
 ): Promise<ForumTopicSummary[]> {
   const query = `
-    query ForumTopics($tenantId: UUID!, $locale: String, $perPage: Int) {
-      forumTopics(tenantId: $tenantId, locale: $locale, perPage: $perPage) {
+    query ForumTopics($tenantId: UUID!, $locale: String, $after: String, $perPage: Int) {
+      forumTopics(tenantId: $tenantId, locale: $locale, after: $after, perPage: $perPage) {
+        nextCursor
         items {
           id
           locale
@@ -241,27 +243,40 @@ export async function listForumTopics(
     }
   `;
 
-  const data = await graphqlRequest<
-    {
-      tenantId: string;
-      locale?: string;
-      perPage: number;
-    },
-    {
-      forumTopics: { items: ForumTopicSummary[] };
-    }
-  >(
-    query,
-    {
-      tenantId: opts.tenantId!,
-      locale: input.locale,
-      perPage: input.first ?? 100
-    },
-    opts.token,
-    opts.tenantSlug
-  );
+  const items = new Map<string, ForumTopicSummary>();
+  const cursors = new Set<string>();
+  let after: string | null = null;
+  for (;;) {
+    const data: {
+      forumTopics: { items: ForumTopicSummary[]; nextCursor: string | null };
+    } = await graphqlRequest<
+      {
+        tenantId: string;
+        locale?: string;
+        after: string | null;
+        perPage: number;
+      },
+      { forumTopics: { items: ForumTopicSummary[]; nextCursor: string | null } }
+    >(
+      query,
+      { tenantId: opts.tenantId!, locale: input.locale, after, perPage: 100 },
+      opts.token,
+      opts.tenantSlug
+    );
 
-  return data.forumTopics.items;
+    const page = data.forumTopics;
+    for (const item of page.items) items.set(item.id, item);
+    if (page.nextCursor === null) return Array.from(items.values());
+    if (
+      !page.nextCursor ||
+      cursors.has(page.nextCursor) ||
+      page.items.length === 0
+    ) {
+      throw new Error('Forum topic pagination did not advance');
+    }
+    cursors.add(page.nextCursor);
+    after = page.nextCursor;
+  }
 }
 
 /** Upper bound for admin operations that need a whole thread. Above it the load is refused. */

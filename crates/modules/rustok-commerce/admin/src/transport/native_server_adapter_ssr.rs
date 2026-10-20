@@ -1429,3 +1429,159 @@ async fn commerce_admin_apply_cart_promotion_native(
     )
     .await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::Permission;
+
+    #[test]
+    fn ensure_permission_validates_required_permissions() {
+        let permissions = vec![Permission::ORDERS_READ];
+        assert!(ensure_permission(&permissions, &[Permission::ORDERS_READ], "orders:read").is_ok());
+        assert!(ensure_permission(&permissions, &[Permission::ORDERS_UPDATE], "orders:update").is_err());
+    }
+
+    #[test]
+    fn parse_uuid_and_optional_uuid_work_as_expected() {
+        let valid_uuid_str = "a1a2a3a4-b1b2-c1c2-d1d2-d3d4d5d6d7d8";
+        let parsed = parse_uuid(valid_uuid_str, "test_id").expect("valid uuid");
+        assert_eq!(parsed.to_string(), valid_uuid_str);
+
+        assert!(parse_uuid("not-a-uuid", "test_id").is_err());
+
+        assert_eq!(
+            parse_optional_uuid(Some(valid_uuid_str.to_string()), "test_id").unwrap(),
+            Some(parsed)
+        );
+        assert_eq!(
+            parse_optional_uuid(Some("   ".to_string()), "test_id").unwrap(),
+            None
+        );
+        assert_eq!(parse_optional_uuid(None, "test_id").unwrap(), None);
+        assert!(parse_optional_uuid(Some("invalid".to_string()), "test_id").is_err());
+    }
+
+    #[test]
+    fn parse_cart_id_validates_cart_uuid() {
+        let valid = uuid::Uuid::new_v4();
+        assert_eq!(parse_cart_id(&valid.to_string()).unwrap(), valid);
+        assert!(parse_cart_id("bad").is_err());
+    }
+
+    #[test]
+    fn parse_optional_line_item_id_enforces_scope_rules() {
+        let item_id = uuid::Uuid::new_v4();
+
+        // Scope Cart/Shipping: must be empty
+        assert_eq!(
+            parse_optional_line_item_id("", &CommerceCartPromotionScope::Cart).unwrap(),
+            None
+        );
+        assert_eq!(
+            parse_optional_line_item_id("  ", &CommerceCartPromotionScope::Shipping).unwrap(),
+            None
+        );
+        assert!(
+            parse_optional_line_item_id(&item_id.to_string(), &CommerceCartPromotionScope::Cart)
+                .is_err()
+        );
+        assert!(
+            parse_optional_line_item_id(&item_id.to_string(), &CommerceCartPromotionScope::Shipping)
+                .is_err()
+        );
+
+        // Scope LineItem: must be non-empty valid UUID
+        assert_eq!(
+            parse_optional_line_item_id(&item_id.to_string(), &CommerceCartPromotionScope::LineItem)
+                .unwrap(),
+            Some(item_id)
+        );
+        assert!(
+            parse_optional_line_item_id("", &CommerceCartPromotionScope::LineItem).is_err()
+        );
+        assert!(
+            parse_optional_line_item_id("invalid", &CommerceCartPromotionScope::LineItem).is_err()
+        );
+    }
+
+    #[test]
+    fn decimal_parsers_enforce_promotion_kind_invariants() {
+        assert_eq!(
+            parse_decimal("12.34", "field").unwrap(),
+            rust_decimal::Decimal::new(1234, 2)
+        );
+        assert!(parse_decimal("abc", "field").is_err());
+
+        assert_eq!(
+            parse_required_decimal("50", "discount_percent").unwrap(),
+            rust_decimal::Decimal::new(50, 0)
+        );
+        assert!(parse_required_decimal("  ", "discount_percent").is_err());
+
+        assert!(ensure_unused_decimal("", "amount").is_ok());
+        assert!(ensure_unused_decimal("   ", "amount").is_ok());
+        assert!(ensure_unused_decimal("10.00", "amount").is_err());
+    }
+
+    #[test]
+    fn parse_metadata_json_handles_empty_and_valid_payloads() {
+        assert_eq!(
+            parse_metadata_json("").unwrap(),
+            serde_json::Value::Object(Default::default())
+        );
+        assert_eq!(
+            parse_metadata_json("   ").unwrap(),
+            serde_json::Value::Object(Default::default())
+        );
+        assert!(parse_metadata_json(r#"{"key":"value"}"#).is_ok());
+        assert!(parse_metadata_json("{invalid").is_err());
+    }
+
+    #[test]
+    fn normalize_source_id_trims_and_requires_non_empty() {
+        assert_eq!(
+            normalize_source_id("  operator-1  ").unwrap(),
+            "operator-1"
+        );
+        assert!(normalize_source_id("   ").is_err());
+    }
+
+    #[test]
+    fn order_change_error_mapping_maps_safely() {
+        let auth = rustok_api::AuthContext {
+            user_id: uuid::Uuid::new_v4(),
+            session_id: uuid::Uuid::new_v4(),
+            tenant_id: uuid::Uuid::new_v4(),
+            permissions: vec![Permission::ORDERS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "password".to_string(),
+        };
+        let tenant = rustok_api::TenantContext {
+            id: uuid::Uuid::new_v4(),
+            slug: "test-tenant".to_string(),
+            name: "Test Tenant".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let context = OrderChangeOwnerErrorContext {
+            operation: "test_op",
+            correlation_id: "corr-123",
+            tenant: &tenant,
+            auth: &auth,
+            request_context: None,
+            order_id: None,
+            order_change_id: None,
+        };
+
+        let err = order_change_owner_error(
+            context,
+            rustok_order::error::OrderError::OrderNotFound(uuid::Uuid::new_v4()),
+        );
+        assert!(err.to_string().contains("not found"));
+    }
+}
+

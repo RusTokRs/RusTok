@@ -75,9 +75,9 @@ const preserved = {
   [persistencePath]: '5834d1021dfad4fed23e8ade98aff816f004e865',
   [persistedTriggerPath]: '17a3be2732cd7fbd48981ff417265055ce86e4b2',
   [bridgePath]: '9ec8190ff19ad1603e60a5d60c566bb8f417ef6c',
-  [serverManifestPath]: 'e80ef5a046f33d493848e695164fa5954ec27d4d',
-  [blogManifestPath]: 'dee1a06ee5ee6d0b4650507d5fbe515d19e7c4d8',
-  [lockPath]: '5fcab03cf83b781a874e04bf6d048f0d5e2f6bd2',
+  [serverManifestPath]: 'f72bc1ce6f615150c86afa55ae0bc5b3478b366b',
+  [blogManifestPath]: '6ddf884489822b893a6ee6e449e9287e56b28f3f',
+  [lockPath]: '2241697f53e2a264bce6fa529c07fcb6d2048d83',
 };
 for (const [relativePath, expected] of Object.entries(preserved)) {
   requireCondition(
@@ -245,7 +245,7 @@ hasAll(
   [
     '## Slice 82 — PostgreSQL schedule persistence adapter',
     '`PostgresCommentsTcpDelegationSchedulePersistenceStore`',
-    '`INSERT ... ON CONFLICT (state_key) DO NOTHING`',
+    'INSERT ... ON CONFLICT (state_key) DO NOTHING',
     'The complete expected record participates in the predicate',
     'Ambiguous commit reconciliation',
     'fail-stop the process',

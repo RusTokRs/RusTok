@@ -36,6 +36,17 @@ SSR only emits iframe markup; it does not execute
 the WASM bridge. That Rust package remains a transport/UI binding; it does not
 copy the editor schema, toolbar, or frame protocol.
 
+Disposal is terminal: a controller ignores already-queued handshake and port callbacks after
+`destroy()`, including document/focus/error events. Removing listeners and closing the port do
+not replace this receive-time lifetime check. Owners that replace an editing target must give
+the replacement its own frame lifetime and reject callbacks captured by the previous owner
+session. Ordinary controlled edits and authoring-context/read-only updates within one editor
+still use its existing controller; no new document or protocol version is introduced.
+
+Node controller tests exercise the production controller with deterministic window/channel
+bindings, covering queued events, queued handshake and live updates. They are not browser
+scheduling, opaque-origin or mounted-owner evidence.
+
 The unversioned frame protocol validates structure, the complete current
 profile grammar, message size, session id, and monotonic sequence before
 applying input. The host validates frame-produced documents again before
@@ -54,3 +65,8 @@ components accept the typed projection rather than raw caller HTML, attach the
 owner content locale with automatic direction, and do not import Tiptap or the
 frame runtime. Neither Tiptap nor this frame belongs in anonymous storefront
 bundles.
+
+The 2026-10-17 dependency alignment removes the earlier forced-install limitation:
+Tiptap core, extensions and PM peers are locked to `3.30.5`. Ordinary `npm ci`
+and the full package `npm run verify` pass. The host locks are synchronized;
+see the central richtext plan for verification and remaining browser limits.

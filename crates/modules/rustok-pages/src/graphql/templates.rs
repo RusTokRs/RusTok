@@ -87,11 +87,41 @@ impl PageTemplateQuery {
         tenant_id: Option<Uuid>,
     ) -> Result<Vec<GqlPageTemplate>> {
         require_module_enabled(ctx, "pages").await?;
-        let (tenant_id, security) = scope(ctx, tenant_id, Permission::PAGES_READ)?;
+        let (tenant_id, security) = scope(ctx, tenant_id, Permission::PAGES_MANAGE)?;
         PageTemplateService::new(ctx.data::<DatabaseConnection>()?.clone())
             .list(tenant_id, &security, &locale)
             .await
             .map(|rows| rows.into_iter().map(Into::into).collect())
+            .map_err(|err| async_graphql::Error::new(err.to_string()))
+    }
+
+    async fn page_template(
+        &self,
+        ctx: &Context<'_>,
+        key: String,
+        locale: String,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<GqlPageTemplate>> {
+        require_module_enabled(ctx, "pages").await?;
+        let (tenant_id, security) = scope(ctx, tenant_id, Permission::PAGES_MANAGE)?;
+        PageTemplateService::new(ctx.data::<DatabaseConnection>()?.clone())
+            .get(tenant_id, &security, &key, &locale)
+            .await
+            .map(|opt| opt.map(Into::into))
+            .map_err(|err| async_graphql::Error::new(err.to_string()))
+    }
+
+    async fn page_template_keys(
+        &self,
+        ctx: &Context<'_>,
+        locale: String,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Vec<String>> {
+        require_module_enabled(ctx, "pages").await?;
+        let (tenant_id, security) = scope(ctx, tenant_id, Permission::PAGES_MANAGE)?;
+        PageTemplateService::new(ctx.data::<DatabaseConnection>()?.clone())
+            .list_keys(tenant_id, &security, &locale)
+            .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))
     }
 }

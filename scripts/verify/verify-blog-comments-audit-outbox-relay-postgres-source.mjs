@@ -131,7 +131,7 @@ for (const marker of [
 ]) forbid(test, marker, "PostgreSQL harness");
 
 for (const marker of [
-  "status: `restart_ambiguity_postgres_evidence_source_ready_maintainer_execution_pending`",
+  "Status: `restart_ambiguity_postgres_evidence_source_ready_maintainer_execution_pending`",
   "Retain canonical relay restart, delivery acknowledgement, retry, and DLQ evidence",
   "`rustok-outbox`-owned slice",
 ]) need(previousPlan, marker, "slice 96 cursor");
@@ -174,7 +174,7 @@ for (const marker of [
   "RustokOutboxCommentsTcpDelegationScheduleAuditCanonicalWriter",
   "publication.idempotency_key()",
   "TransactionalEventBus::publish_contract_once_direct_in_tx_with_envelope_id",
-  "Delivery remains owned by",
+  "transport delivery remains owned by",
 ]) need(writer, marker, "Blog canonical writer");
 
 if (failures.length) {

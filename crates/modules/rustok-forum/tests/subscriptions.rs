@@ -161,6 +161,9 @@ async fn category_and_topic_subscriptions_round_trip_through_read_paths() {
             tenant_id,
             viewer.clone(),
             ListTopicsFilter {
+                search: None,
+                order: Default::default(),
+                solved_only: false,
                 category_id: Some(category.id),
                 status: None,
                 locale: Some("en".to_string()),

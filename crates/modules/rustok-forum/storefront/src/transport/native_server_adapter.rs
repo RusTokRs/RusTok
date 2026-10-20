@@ -6,8 +6,8 @@ use crate::model::StorefrontForumData;
 #[cfg(feature = "ssr")]
 use crate::model::{
     ForumCategoryConnection, ForumCategoryListItem, ForumMemberCard, ForumMemberProfileSummary,
-    ForumMemberStats, ForumReplyDetail, ForumReplyPage, ForumTopicPage,
-    ForumTopicDetail, ForumTopicListItem,
+    ForumMemberStats, ForumReplyDetail, ForumReplyPage, ForumTopicDetail, ForumTopicListItem,
+    ForumTopicPage,
 };
 
 /// Storefront channel policy applies to guests and authenticated readers alike.
@@ -44,12 +44,27 @@ pub(super) fn forum_settings_providers(
     }
 }
 
+#[cfg(feature = "ssr")]
+pub(super) fn selected_topic_filter(
+    mut filter: rustok_forum::ListTopicsFilter,
+    selection: crate::model::ForumTopicSelection,
+) -> rustok_forum::ListTopicsFilter {
+    filter.search = selection.search;
+    filter.order = match selection.order {
+        crate::model::ForumTopicFeedOrder::Latest => rustok_forum::ForumTopicListOrder::Latest,
+        crate::model::ForumTopicFeedOrder::Top => rustok_forum::ForumTopicListOrder::Top,
+    };
+    filter.solved_only = selection.solved_only;
+    filter
+}
+
 pub async fn fetch_storefront_forum_server(
     selected_category_id: Option<String>,
     selected_topic_id: Option<String>,
     locale: Option<String>,
+    selection: crate::model::ForumTopicSelection,
 ) -> Result<StorefrontForumData, ApiError> {
-    storefront_forum_native(selected_category_id, selected_topic_id, locale)
+    storefront_forum_native(selected_category_id, selected_topic_id, locale, selection)
         .await
         .map_err(|error| ApiError::ServerFn(error.to_string()))
 }
@@ -68,6 +83,7 @@ async fn storefront_forum_native(
     selected_category_id: Option<String>,
     selected_topic_id: Option<String>,
     locale: Option<String>,
+    selection: crate::model::ForumTopicSelection,
 ) -> Result<StorefrontForumData, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -101,7 +117,9 @@ async fn storefront_forum_native(
             .await
             .map_err(ServerFnError::new)?;
         if !forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
-            return Err(ServerFnError::new("Forum module is not enabled for this channel"));
+            return Err(ServerFnError::new(
+                "Forum module is not enabled for this channel",
+            ));
         }
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
@@ -128,8 +146,9 @@ async fn storefront_forum_native(
         ) {
             (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
                 .with_static_readers(static_reader, transactional_reader),
-            (Some(static_reader), None) =>
-                ForumSettingsProviders::default().with_static_reader(static_reader),
+            (Some(static_reader), None) => {
+                ForumSettingsProviders::default().with_static_reader(static_reader)
+            }
             (None, _) => ForumSettingsProviders::default(),
         };
         let topics_per_page = settings_providers
@@ -143,7 +162,8 @@ async fn storefront_forum_native(
         let category_audience_service = match audience_facts.clone() {
             Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db.clone(), facts),
             None => ForumCategoryAudienceReadService::new(db.clone()),
-        }.with_settings_providers(settings_providers.clone());
+        }
+        .with_settings_providers(settings_providers.clone());
         let topic_audience_service = match audience_facts.clone() {
             Some(facts) => ForumTopicAudienceReadService::with_audience_facts(
                 db.clone(),
@@ -151,7 +171,8 @@ async fn storefront_forum_native(
                 facts,
             ),
             None => ForumTopicAudienceReadService::new(db.clone(), event_bus.clone()),
-        }.with_settings_providers(settings_providers.clone());
+        }
+        .with_settings_providers(settings_providers.clone());
         let topic_audience_list_service = match audience_facts.clone() {
             Some(facts) => ForumTopicAudienceListService::with_audience_facts(
                 db.clone(),
@@ -159,7 +180,8 @@ async fn storefront_forum_native(
                 facts,
             ),
             None => ForumTopicAudienceListService::new(db.clone(), event_bus.clone()),
-        }.with_settings_providers(settings_providers.clone());
+        }
+        .with_settings_providers(settings_providers.clone());
         let reply_audience_service = match audience_facts.clone() {
             Some(facts) => ForumReplyAudienceReadService::with_audience_facts(
                 db.clone(),
@@ -167,7 +189,8 @@ async fn storefront_forum_native(
                 facts,
             ),
             None => ForumReplyAudienceReadService::new(db.clone(), event_bus.clone()),
-        }.with_settings_providers(settings_providers.clone());
+        }
+        .with_settings_providers(settings_providers.clone());
         let read_state_service = match audience_facts {
             Some(facts) => ForumStorefrontReadStateService::with_audience_facts(
                 db.clone(),
@@ -175,7 +198,8 @@ async fn storefront_forum_native(
                 facts,
             ),
             None => ForumStorefrontReadStateService::new(db.clone(), event_bus.clone()),
-        }.with_settings_providers(settings_providers.clone());
+        }
+        .with_settings_providers(settings_providers.clone());
         let channel_slug = request.channel_slug.as_deref();
 
         let category_page = if let Some(auth) = auth.as_ref() {
@@ -257,69 +281,74 @@ async fn storefront_forum_native(
             .map(|category| category.id)
             .or_else(|| categories.first().map(|category| category.id));
         let topic_filter = ListTopicsFilter {
+            search: None,
+            order: Default::default(),
+            solved_only: false,
             category_id: resolved_category_id,
             status: None,
             locale: Some(effective_locale.clone()),
             after: None,
             per_page: topics_per_page,
         };
+        let topic_filter = selected_topic_filter(topic_filter, selection.clone());
 
         let (topic_items, topics_next_cursor, first_topic_id, read_state_available) =
-            if let Some(auth) =
-            auth.as_ref() {
-            let security =
-                SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
-            let audience_context = topic_read_audience_port_context(
-                ForumTopicReadTransport::NativeServer,
-                ForumTopicReadOperation::TopicList,
-                tenant.id,
-                auth,
-                Some(&request),
-                effective_locale.as_str(),
-            )
-            .map_err(server_error)?;
-            let page = read_state_service
-                .list_topics_with_unread_audience_visible(
+            if let Some(auth) = auth.as_ref() {
+                let security = SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                );
+                let audience_context = topic_read_audience_port_context(
+                    ForumTopicReadTransport::NativeServer,
+                    ForumTopicReadOperation::TopicList,
                     tenant.id,
-                    security,
-                    audience_context,
-                    topic_filter,
-                    Some(tenant.default_locale.as_str()),
-                    false, // Preserve the full personalized feed and its read-state badges.
+                    auth,
+                    Some(&request),
+                    effective_locale.as_str(),
                 )
-                .await
                 .map_err(server_error)?;
-            let first_topic_id = page.items.first().map(|item| item.topic.id);
-            (
-                page.items
-                    .into_iter()
-                    .map(map_unread_topic)
-                    .collect::<Vec<_>>(),
-                page.next_cursor,
-                first_topic_id,
-                true,
-            )
-        } else {
-            let page = topic_audience_list_service
-                .list_public_storefront_visible_with_locale_fallback(
-                    tenant.id,
-                    topic_filter,
-                    Some(tenant.default_locale.as_str()),
-                    channel_slug,
+                let page = read_state_service
+                    .list_topics_with_unread_audience_visible(
+                        tenant.id,
+                        security,
+                        audience_context,
+                        topic_filter,
+                        Some(tenant.default_locale.as_str()),
+                        false, // Preserve the full personalized feed and its read-state badges.
+                    )
+                    .await
+                    .map_err(server_error)?;
+                let first_topic_id = page.items.first().map(|item| item.topic.id);
+                (
+                    page.items
+                        .into_iter()
+                        .map(map_unread_topic)
+                        .collect::<Vec<_>>(),
+                    page.next_cursor,
+                    first_topic_id,
+                    true,
                 )
-                .await
-                .map_err(server_error)?;
-            let first_topic_id = page.items.first().map(|topic| topic.id);
-            (
-                page.items
-                    .into_iter()
-                    .map(map_topic_list_item)
-                    .collect::<Vec<_>>(),
-                page.next_cursor,
-                first_topic_id,
-                false,
-            )
-        };
+            } else {
+                let page = topic_audience_list_service
+                    .list_public_storefront_visible_with_locale_fallback(
+                        tenant.id,
+                        topic_filter,
+                        Some(tenant.default_locale.as_str()),
+                        channel_slug,
+                    )
+                    .await
+                    .map_err(server_error)?;
+                let first_topic_id = page.items.first().map(|topic| topic.id);
+                (
+                    page.items
+                        .into_iter()
+                        .map(map_topic_list_item)
+                        .collect::<Vec<_>>(),
+                    page.next_cursor,
+                    first_topic_id,
+                    false,
+                )
+            };
 
         let resolved_topic_id = requested_topic_id.or(first_topic_id);
         if selected_topic.is_none()
@@ -423,6 +452,7 @@ async fn storefront_forum_native(
         };
 
         Ok(StorefrontForumData {
+            topic_selection: selection,
             categories: ForumCategoryConnection {
                 items: categories.into_iter().map(map_category).collect(),
                 total: categories_total,
@@ -441,7 +471,7 @@ async fn storefront_forum_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (selected_category_id, selected_topic_id, locale);
+        let _ = (selected_category_id, selected_topic_id, locale, selection);
         Err(ServerFnError::new(
             "forum/storefront-data requires the `ssr` feature",
         ))
@@ -477,7 +507,9 @@ async fn storefront_topic_mark_read_native(
             .await
             .map_err(ServerFnError::new)?;
         if !forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
-            return Err(ServerFnError::new("Forum module is not enabled for this channel"));
+            return Err(ServerFnError::new(
+                "Forum module is not enabled for this channel",
+            ));
         }
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()

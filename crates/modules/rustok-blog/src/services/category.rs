@@ -64,6 +64,18 @@ impl CategoryService {
         let settings = normalize_category_settings(input.settings)?;
         let description = input.description;
         let parent_id = input.parent_id;
+        // Validate the requested position against the current sibling count before
+        // the write transaction opens: a rejected position must not open a
+        // transaction, write a row and sync the canonical copy only to roll all of
+        // it back. The authoritative check inside the transaction still runs.
+        if let Some(sibling_count) = self.count_siblings(tenant_id, parent_id).await? {
+            let requested = u64::try_from(requested_position).unwrap_or(u64::MAX);
+            if requested > sibling_count {
+                return Err(BlogError::validation(format!(
+                    "Category position {requested_position} exceeds sibling count {sibling_count}",
+                )));
+            }
+        }
         let now = Utc::now();
         let id = Uuid::new_v4();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
@@ -106,6 +118,50 @@ impl CategoryService {
             .await?;
         txn.commit().await.map_err(BlogError::from)?;
         Ok(id)
+    }
+
+    /// Counts the canonical siblings of a parent in the Blog module scope.
+    ///
+    /// Returns `None` when the canonical Taxonomy projection does not cover every
+    /// Blog category of the tenant: the pre-transaction position check is then
+    /// skipped, and the authoritative check inside the write transaction decides.
+    async fn count_siblings(
+        &self,
+        tenant_id: Uuid,
+        parent_id: Option<Uuid>,
+    ) -> BlogResult<Option<u64>> {
+        let category_ids = blog_category::Entity::find()
+            .filter(blog_category::Column::TenantId.eq(tenant_id))
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|category| category.id)
+            .collect::<Vec<_>>();
+        if category_ids.is_empty() {
+            return Ok(Some(0));
+        }
+
+        let canonical = TaxonomyOwnerCategoryReader::new(self.db.clone())
+            .load_scoped_categories_strict(
+                tenant_id,
+                TaxonomyScopeType::Module,
+                Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
+                Some(&category_ids),
+                PLATFORM_FALLBACK_LOCALE,
+                None,
+            )
+            .await
+            .map_err(BlogError::from)?;
+        if canonical.len() != category_ids.len() {
+            return Ok(None);
+        }
+
+        Ok(Some(
+            canonical
+                .into_iter()
+                .filter(|category| category.parent_id == parent_id)
+                .count() as u64,
+        ))
     }
 
     #[instrument(skip(self, security, input))]
@@ -156,6 +212,47 @@ impl CategoryService {
             )));
         }
 
+        let existing_canonical = category_taxonomy_sync::load_category_locale_copy_in_tx(
+            &txn,
+            tenant_id,
+            category_id,
+            &locale,
+        )
+        .await?;
+        let (canonical_name, canonical_slug, canonical_description, copy_unchanged) =
+            match existing_canonical {
+                Some(existing) => {
+                    let name = requested_name.clone().unwrap_or_else(|| existing.name.clone());
+                    validate_category_name(&name)?;
+                    let slug = match requested_slug.as_deref() {
+                        Some(slug) => normalize_non_empty_slug(slug)?,
+                        None if requested_name.is_some() => normalize_non_empty_slug(&name)?,
+                        None => normalize_non_empty_slug(&existing.slug)?,
+                    };
+                    let description =
+                        requested_description.clone().or_else(|| existing.description.clone());
+                    validate_optional_description(description.as_deref())?;
+                    let unchanged = name == existing.name
+                        && slug == existing.slug
+                        && description == existing.description;
+                    (name, slug, description, unchanged)
+                }
+                None => {
+                    let name = requested_name
+                        .clone()
+                        .ok_or_else(|| BlogError::validation("Category name is required"))?;
+                    validate_category_name(&name)?;
+                    let slug = match requested_slug.as_deref() {
+                        Some(slug) => normalize_non_empty_slug(slug)?,
+                        None => normalize_non_empty_slug(&name)?,
+                    };
+                    validate_optional_description(requested_description.as_deref())?;
+                    // A missing localized copy is created by this update, so the
+                    // request always carries a change.
+                    (name, slug, requested_description.clone(), false)
+                }
+            };
+
         let next_resource_revision = next_category_revision(&category)?;
         let now = Utc::now().fixed_offset();
         validate_persisted_category_settings(&category.settings)?;
@@ -163,6 +260,15 @@ impl CategoryService {
             Some(settings) => normalize_category_settings(settings)?,
             None => category.settings.clone(),
         };
+
+        // A request that changes nothing must not advance the resource revision,
+        // rewrite the settings column or publish a reindex event. The post owner
+        // rejects such a request outright, and a Category that advances its
+        // revision on every call breaks every revision-based consumer.
+        if copy_unchanged && settings == category.settings {
+            return Err(BlogError::validation("No Blog category changes were supplied"));
+        }
+
         let resource_updated = blog_category::Entity::update_many()
             .col_expr(blog_category::Column::Settings, Expr::value(settings))
             .col_expr(
@@ -180,40 +286,6 @@ impl CategoryService {
                 "blog category changed before the update could commit",
             ));
         }
-
-        let existing_canonical = category_taxonomy_sync::load_category_locale_copy_in_tx(
-            &txn,
-            tenant_id,
-            category_id,
-            &locale,
-        )
-        .await?;
-        let (canonical_name, canonical_slug, canonical_description) = match existing_canonical {
-            Some(existing) => {
-                let name = requested_name.clone().unwrap_or(existing.name);
-                validate_category_name(&name)?;
-                let slug = match requested_slug.as_deref() {
-                    Some(slug) => normalize_non_empty_slug(slug)?,
-                    None if requested_name.is_some() => normalize_non_empty_slug(&name)?,
-                    None => normalize_non_empty_slug(&existing.slug)?,
-                };
-                let description = requested_description.clone().or(existing.description);
-                validate_optional_description(description.as_deref())?;
-                (name, slug, description)
-            }
-            None => {
-                let name = requested_name
-                    .clone()
-                    .ok_or_else(|| BlogError::validation("Category name is required"))?;
-                validate_category_name(&name)?;
-                let slug = match requested_slug.as_deref() {
-                    Some(slug) => normalize_non_empty_slug(slug)?,
-                    None => normalize_non_empty_slug(&name)?,
-                };
-                validate_optional_description(requested_description.as_deref())?;
-                (name, slug, requested_description.clone())
-            }
-        };
 
         let placement = canonical.into_iter().next().ok_or_else(|| {
             BlogError::invariant(format!(

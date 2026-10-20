@@ -152,7 +152,7 @@ requireCondition(!protocol.includes('net::TcpStream'), 'framing must not own Tcp
 for (const fragment of [
   'pub enum CommentsThreadRequest',
   'pub enum CommentsThreadTransportReply',
-  'Success(CommentsThreadResponse)',
+  'Success(Box<CommentsThreadResponse>)',
   'Error(PortError)',
 ]) requireText(remote, fragment, 'remote typed core');
 

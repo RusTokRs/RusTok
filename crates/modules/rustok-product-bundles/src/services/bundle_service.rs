@@ -786,7 +786,7 @@ pub(crate) async fn update_bundle_in_tx(
     }
 
     let next_discount_type = discount_type.or_else(|| Some(bundle.discount_type.clone()));
-    let next_discount_value = discount_value.or(Some(bundle.discount_value.clone()));
+    let next_discount_value = discount_value.or(Some(bundle.discount_value));
     let (next_discount_type, next_discount_value) =
         normalize_discount(next_discount_type, next_discount_value)?;
     active.discount_type = Set(next_discount_type);

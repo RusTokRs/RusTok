@@ -145,6 +145,9 @@ async fn create_reply(
 
 fn topic_filter() -> ListTopicsFilter {
     ListTopicsFilter {
+        search: None,
+        order: Default::default(),
+        solved_only: false,
         category_id: None,
         status: None,
         locale: Some("en".into()),

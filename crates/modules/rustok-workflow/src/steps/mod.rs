@@ -21,10 +21,18 @@ pub use notify::{NotificationSender, NotifyStep};
 
 /// Context passed between workflow steps during execution.
 /// Steps can read from and write to the context.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct StepContext {
     /// Data available to steps — starts with trigger event payload, enriched by each step
     pub data: Value,
+}
+
+impl Default for StepContext {
+    fn default() -> Self {
+        Self {
+            data: Value::Object(serde_json::Map::new()),
+        }
+    }
 }
 
 impl StepContext {
@@ -37,6 +45,9 @@ impl StepContext {
     }
 
     pub fn set(&mut self, key: impl Into<String>, value: Value) {
+        if !self.data.is_object() {
+            self.data = Value::Object(serde_json::Map::new());
+        }
         if let Value::Object(ref mut map) = self.data {
             map.insert(key.into(), value);
         }
@@ -81,3 +92,38 @@ pub trait WorkflowStep: Send + Sync {
     /// Execute the step, returning updated context or an error.
     async fn execute(&self, config: &Value, context: StepContext) -> WorkflowResult<StepOutput>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_step_context_default_and_set() {
+        let mut ctx = StepContext::default();
+        assert!(ctx.data.is_object());
+        ctx.set("foo", json!("bar"));
+        assert_eq!(ctx.get("foo"), Some(&json!("bar")));
+    }
+
+    #[test]
+    fn test_step_context_set_from_null() {
+        let mut ctx = StepContext::new(Value::Null);
+        ctx.set("greeting", json!("hello"));
+        assert_eq!(ctx.get("greeting"), Some(&json!("hello")));
+    }
+
+    #[test]
+    fn test_step_output_constructors() {
+        let ctx = StepContext::default();
+        let data = json!({ "status": "ok" });
+        let cont = StepOutput::continue_with(ctx.clone(), data.clone());
+        assert!(cont.should_continue);
+        assert_eq!(cont.data, data);
+
+        let stop = StepOutput::stop_with(ctx, data.clone());
+        assert!(!stop.should_continue);
+        assert_eq!(stop.data, data);
+    }
+}
+

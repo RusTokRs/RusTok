@@ -84,7 +84,7 @@ const preserved = {
   'apps/server/tests/blog_comments_schedule_audit_postgres.rs':
     '7b726fe69de5d678021bb376ea4ca9a0cb2b89e6',
   'apps/server/Cargo.toml':
-    'e80ef5a046f33d493848e695164fa5954ec27d4d',
+    'f72bc1ce6f615150c86afa55ae0bc5b3478b366b',
 };
 
 for (const [relativePath, expectedSha] of Object.entries(preserved)) {

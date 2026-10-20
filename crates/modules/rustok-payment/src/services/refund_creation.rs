@@ -49,7 +49,7 @@ impl PaymentRefundCreationService {
         }
         let creation_key = normalize_creation_key(creation_key.into())?;
         validate_payment_metadata(&input.metadata, "create refund")?;
-        let reason = normalize_reason(input.reason);
+        let reason = normalize_reason(input.reason)?;
         let request_hash = refund_request_hash(input.amount, reason.as_deref(), &input.metadata)?;
 
         if let Some(existing) = self
@@ -230,11 +230,19 @@ fn normalize_creation_key(value: String) -> PaymentResult<String> {
     Ok(value)
 }
 
-fn normalize_reason(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
+fn normalize_reason(value: Option<String>) -> PaymentResult<Option<String>> {
+    let normalized = value.and_then(|value| {
         let value = value.trim().to_string();
         (!value.is_empty()).then_some(value)
-    })
+    });
+    if let Some(ref reason) = normalized
+        && reason.len() > 500
+    {
+        return Err(PaymentError::Validation(
+            "refund reason must be at most 500 characters".to_string(),
+        ));
+    }
+    Ok(normalized)
 }
 
 fn refund_request_hash(
@@ -313,5 +321,21 @@ mod tests {
         )
         .unwrap();
         assert_eq!(left, right);
+    }
+
+    #[test]
+    fn normalize_reason_bounds_and_trims() {
+        assert_eq!(normalize_reason(None).unwrap(), None);
+        assert_eq!(normalize_reason(Some("   ".into())).unwrap(), None);
+        assert_eq!(
+            normalize_reason(Some("  damaged in transit  ".into())).unwrap(),
+            Some("damaged in transit".into())
+        );
+
+        let oversized = "r".repeat(501);
+        let err = normalize_reason(Some(oversized)).unwrap_err();
+        assert!(
+            matches!(err, PaymentError::Validation(msg) if msg.contains("refund reason must be at most 500 characters"))
+        );
     }
 }

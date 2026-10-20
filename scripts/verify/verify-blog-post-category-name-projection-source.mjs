@@ -136,7 +136,9 @@ for (const marker of [
   'canonical_by_id.len() != category_ids.len()',
   'available_locales.is_empty()',
   'projection is missing',
-  'fallback_locale,',
+  // The Taxonomy read must receive the caller's fallback locale: the argument
+  // list is pinned so the parameter declaration cannot satisfy the guard.
+  'Some(&category_ids),\n            locale,\n            fallback_locale,\n        )',
   'canonical.name.clone()',
 ]) need(categoryProjection, marker, files.categoryProjection);
 forbid(categoryProjection, 'blog_category_translation', files.categoryProjection);

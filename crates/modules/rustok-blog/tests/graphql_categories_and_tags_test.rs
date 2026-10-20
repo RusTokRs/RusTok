@@ -25,10 +25,12 @@ fn test_category_list_item_into_gql_blog_category() {
         effective_locale: "ru".to_string(),
         name: "Новости".to_string(),
         slug: "novosti".to_string(),
+        description: Some("Новости платформы".to_string()),
         parent_id: None,
         position: 0,
         settings: serde_json::json!({"icon": "newspaper"}),
         created_at: now,
+        updated_at: now,
     };
 
     let gql: GqlBlogCategory = item.into();
@@ -40,7 +42,16 @@ fn test_category_list_item_into_gql_blog_category() {
     assert_eq!(gql.position, 0);
     assert!(gql.settings.contains("newspaper"));
     assert_eq!(gql.created_at, now.to_rfc3339());
-    assert_eq!(gql.updated_at, None);
+    assert_eq!(
+        gql.description.as_deref(),
+        Some("Новости платформы"),
+        "the list projection must carry the canonical description"
+    );
+    assert_eq!(
+        gql.updated_at.as_deref(),
+        Some(now.to_rfc3339().as_str()),
+        "the list projection must carry the update timestamp"
+    );
 }
 
 #[test]

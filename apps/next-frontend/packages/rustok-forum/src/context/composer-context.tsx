@@ -7,10 +7,22 @@ import {
 } from '@rustok/richtext';
 import type { ForumQuoteReference } from '../api/forum';
 import { getClientAuth } from '@/shared/lib/auth';
-import { getDraftIdentity, getDraftStorageKey, isCurrentDraftSession, parseTopicDraft, switchTopicDraft, type DraftIdentity, type DraftScope } from './draft-storage';
+import {
+  getDraftIdentity,
+  getDraftStorageKey,
+  isCurrentDraftSession,
+  parseTopicDraft,
+  parseReplyDraft,
+  switchTopicDraft,
+  type DraftIdentity,
+  type DraftScope,
+  type TopicDraft,
+} from './draft-storage';
 import { useForumAuth } from '../components/use-forum-auth';
 
 export interface ComposerState {
+  /** Render projection of the composer-owned editing lifetime. */
+  editorSession: number;
   isOpen: boolean;
   isMinimized: boolean;
   mode: 'reply' | 'topic';
@@ -24,14 +36,14 @@ export interface ComposerState {
   isSubmitting: boolean;
   error: string | null;
   /** Null when this viewer has no safe local draft namespace. */
-  draftStorage: 'pending' | 'saved' | 'failed' | null;
+  draftStorage: 'pending' | 'saved' | 'failed' | 'cleanup_failed' | null;
 }
 
 export type DraftSelectionResult = 'moved' | 'restored' | 'failed';
 
 export interface ComposerContextValue {
   state: ComposerState;
-  openReply: (params: { topicId: string; topicTitle: string; parentReplyId?: string | null }) => void;
+  openReply: (params: { topicId: string; topicTitle: string; parentReplyId?: string | null }) => boolean;
   openNewTopic: (params?: { categoryId?: string | null }) => void;
   selectCategory: (categoryId: string) => DraftSelectionResult;
   close: () => void;
@@ -45,6 +57,8 @@ export interface ComposerContextValue {
   setError: (error: string | null) => void;
   reset: () => void;
   isCurrentViewer: () => boolean;
+  /** Capture an editor lifetime, not merely its target IDs. */
+  captureEditorSession: () => () => boolean;
 }
 
 const ComposerContext = createContext<ComposerContextValue | null>(null);
@@ -123,38 +137,52 @@ function ComposerSession({ children, scope, sessionToken, sessionTenant }: {
   const [document, setDocument] = useState<RichTextDocument>(emptyRichTextDocument());
   const [quotes, setQuotes] = useState<ForumQuoteReference[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // The ref is the synchronous owner lock; isSubmitting is its render projection.
+  const submissionPendingRef = useRef(false);
+  // Target IDs can repeat after a close/reopen; asynchronous edits need a lifetime too.
+  const editorSessionRef = useRef(0);
+  const [editorSession, setEditorSession] = useState(0);
+  const advanceEditorSession = useCallback(() => {
+    editorSessionRef.current += 1;
+    setEditorSession(editorSessionRef.current);
+  }, []);
+  const setSubmitting = useCallback((pending: boolean) => {
+    submissionPendingRef.current = pending;
+    setIsSubmitting(pending);
+  }, []);
   const [error, setError] = useState<string | null>(null);
-  const [draftStorageStatus, setDraftStorageStatus] = useState<'pending' | 'saved' | 'failed'>('pending');
+  const [draftStorageStatus, setDraftStorageStatus] = useState<'pending' | 'saved' | 'failed' | 'cleanup_failed'>('pending');
 
-  // Load draft from localStorage when opening
-  const loadDraft = useCallback((draftMode: 'reply' | 'topic', tId: string | null, cId: string | null) => {
-    if (!scope || !isCurrentViewer()) return;
-    try {
-      const key = getDraftStorageKey(scope, draftMode, tId, cId);
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        if (draftMode === 'topic') {
-          const parsed = parseTopicDraft(saved);
-          setDocument(parsed.document);
-          setTitle(parsed.title);
-          setQuotes(parsed.quotes);
-        } else {
-          const parsed = JSON.parse(saved);
-          if (parsed.document) setDocument(parsed.document);
-          if (parsed.title) setTitle(parsed.title);
-          if (Array.isArray(parsed.quotes)) setQuotes(parsed.quotes);
-        }
-      }
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, [scope, isCurrentViewer]);
+  // A successful post must not resurrect its stored payload after a failed removeItem.
+  // This is session-only recovery state; it is never an alternate persisted draft store.
+  const pendingDraftCleanupRef = useRef(new Set<string>());
+
+  const retryDraftCleanup = useCallback((key: string): boolean => {
+    if (!pendingDraftCleanupRef.current.has(key)) return false;
+    // Fail closed while storage is blocked. Retry deletion before any restoration.
+    localStorage.removeItem(key);
+    pendingDraftCleanupRef.current.delete(key);
+    return true;
+  }, []);
+
+  // Parse before changing the editor. A corrupt or unreadable destination
+  // must not replace the outgoing in-memory draft or be silently overwritten.
+  const loadDraft = useCallback((draftMode: 'reply' | 'topic', tId: string | null, cId: string | null, pId: string | null): TopicDraft | null => {
+    if (!scope || !isCurrentViewer()) return null;
+    const key = getDraftStorageKey(scope, draftMode, tId, cId, pId);
+    if (retryDraftCleanup(key)) return null;
+    const saved = localStorage.getItem(key);
+    return saved === null ? null : draftMode === 'topic'
+      ? parseTopicDraft(saved) : parseReplyDraft(saved, pId);
+  }, [scope, isCurrentViewer, retryDraftCleanup]);
 
   const persistDraft = useCallback((): boolean => {
     if (!scope || !isCurrentViewer()) return false;
     try {
-      const key = getDraftStorageKey(scope, mode, topicId, categoryId);
-      localStorage.setItem(key, JSON.stringify({ title, document, quotes }));
+      const key = getDraftStorageKey(scope, mode, topicId, categoryId, parentReplyId);
+      localStorage.setItem(key, JSON.stringify(mode === 'reply'
+        ? { title, document, quotes, parentReplyId } : { title, document, quotes }));
+      pendingDraftCleanupRef.current.delete(key);
       setDraftStorageStatus('saved');
       return true;
     } catch {
@@ -162,7 +190,7 @@ function ComposerSession({ children, scope, sessionToken, sessionTenant }: {
       // The in-memory editor remains usable when storage is unavailable.
       return false;
     }
-  }, [scope, isCurrentViewer, mode, topicId, categoryId, title, document, quotes]);
+  }, [scope, isCurrentViewer, mode, topicId, categoryId, parentReplyId, title, document, quotes]);
 
   // Autosave while editing. Closing flushes synchronously below, before this
   // timer is cancelled by the `isOpen` transition.
@@ -190,54 +218,93 @@ function ComposerSession({ children, scope, sessionToken, sessionTenant }: {
     };
   }, []);
 
-  const clearDraft = useCallback((draftMode: 'reply' | 'topic', tId: string | null, cId: string | null) => {
-    if (!scope || !isCurrentViewer()) return;
+  const captureEditorSession = useCallback(() => {
+    const generation = editorSessionRef.current;
+    return () => generation === editorSessionRef.current && activeDraftRef.current &&
+      !submissionPendingRef.current && isCurrentViewer();
+  }, [isCurrentViewer]);
+
+  const updateTitle = useCallback((value: string) => {
+    if (!activeDraftRef.current || submissionPendingRef.current || !isCurrentViewer()) return;
+    setTitle(value);
+  }, [isCurrentViewer]);
+
+  const updateDocument = useCallback((value: RichTextDocument) => {
+    if (!activeDraftRef.current || submissionPendingRef.current || !isCurrentViewer()) return;
+    setDocument(value);
+  }, [isCurrentViewer]);
+
+  const clearDraft = useCallback((draftMode: 'reply' | 'topic', tId: string | null, cId: string | null, pId: string | null): boolean => {
+    if (!scope) return true;
+    if (!isCurrentViewer()) return false;
+    const key = getDraftStorageKey(scope, draftMode, tId, cId, pId);
+    pendingDraftCleanupRef.current.add(key);
     try {
-      const key = getDraftStorageKey(scope, draftMode, tId, cId);
       localStorage.removeItem(key);
+      pendingDraftCleanupRef.current.delete(key);
+      setDraftStorageStatus('saved');
+      return true;
     } catch {
-      // Ignore
+      setDraftStorageStatus('cleanup_failed');
+      return false;
     }
   }, [scope, isCurrentViewer]);
 
   const openReply = useCallback((params: { topicId: string; topicTitle: string; parentReplyId?: string | null }) => {
-    if (isSubmitting) return;
-    if (isOpen && scope && !persistDraft()) return;
+    if (isSubmitting || submissionPendingRef.current || !isCurrentViewer()) return false;
+    if (isOpen && scope && !persistDraft()) return false;
+    const pId = params.parentReplyId ?? null;
+    let draft: TopicDraft | null;
+    try {
+      draft = loadDraft('reply', params.topicId, null, pId);
+    } catch {
+      setDraftStorageStatus('failed');
+      return false;
+    }
+    advanceEditorSession();
     setMode('reply');
     setTopicId(params.topicId);
     setTopicTitle(params.topicTitle);
-    setParentReplyId(params.parentReplyId ?? null);
-    setTitle('');
-    setQuotes([]);
+    setParentReplyId(pId);
+    setCategoryId(null);
+    setTitle(draft?.title ?? '');
+    setQuotes(draft?.quotes ?? []);
     setError(null);
-    setDocument(emptyRichTextDocument());
-    loadDraft('reply', params.topicId, null);
+    setDocument(draft?.document ?? emptyRichTextDocument());
     activeDraftRef.current = true;
     setIsOpen(true);
     setIsMinimized(false);
-  }, [loadDraft, isOpen, isSubmitting, scope, persistDraft]);
+    return true;
+  }, [loadDraft, isOpen, isSubmitting, scope, persistDraft, isCurrentViewer, advanceEditorSession]);
 
   const openNewTopic = useCallback((params?: { categoryId?: string | null }) => {
-    if (isSubmitting) return;
+    if (isSubmitting || submissionPendingRef.current || !isCurrentViewer()) return;
     if (isOpen && scope && !persistDraft()) return;
     const cId = params?.categoryId ?? null;
+    let draft: TopicDraft | null;
+    try {
+      draft = loadDraft('topic', null, cId, null);
+    } catch {
+      setDraftStorageStatus('failed');
+      return;
+    }
+    advanceEditorSession();
     setMode('topic');
     setTopicId(null);
     setTopicTitle(null);
     setCategoryId(cId);
     setParentReplyId(null);
-    setTitle('');
-    setQuotes([]);
+    setTitle(draft?.title ?? '');
+    setQuotes(draft?.quotes ?? []);
     setError(null);
-    setDocument(emptyRichTextDocument());
-    loadDraft('topic', null, cId);
+    setDocument(draft?.document ?? emptyRichTextDocument());
     activeDraftRef.current = true;
     setIsOpen(true);
     setIsMinimized(false);
-  }, [loadDraft, isOpen, isSubmitting, scope, persistDraft]);
+  }, [loadDraft, isOpen, isSubmitting, scope, persistDraft, isCurrentViewer, advanceEditorSession]);
 
   const selectCategory = useCallback((nextCategoryId: string): DraftSelectionResult => {
-    if (mode !== 'topic' || !nextCategoryId || isSubmitting) return 'failed';
+    if (mode !== 'topic' || !nextCategoryId || isSubmitting || submissionPendingRef.current) return 'failed';
     if (categoryId === nextCategoryId) return 'moved';
     if (scope && !isCurrentViewer()) return 'failed';
     // Save before switching keys: an occupied destination has its own draft.
@@ -245,6 +312,7 @@ function ComposerSession({ children, scope, sessionToken, sessionTenant }: {
     let restored = false;
     if (scope) {
       try {
+        retryDraftCleanup(getDraftStorageKey(scope, 'topic', null, nextCategoryId));
         const existing = switchTopicDraft(localStorage, scope, categoryId, nextCategoryId, {
           title, document, quotes,
         });
@@ -262,19 +330,21 @@ function ComposerSession({ children, scope, sessionToken, sessionTenant }: {
         return 'failed';
       }
     }
+    advanceEditorSession();
     setCategoryId(nextCategoryId);
     setError(null);
     return restored ? 'restored' : 'moved';
-  }, [mode, categoryId, isSubmitting, scope, isCurrentViewer, title, document, quotes]);
+  }, [mode, categoryId, isSubmitting, scope, isCurrentViewer, title, document, quotes, retryDraftCleanup, advanceEditorSession]);
 
   const close = useCallback(() => {
     // Closing cancels the debounced autosave. Persist the latest in-memory
     // snapshot first, including text typed less than 600 ms ago.
-    if (isOpen) persistDraft();
+    if (isOpen && scope && !persistDraft()) return;
+    advanceEditorSession();
     activeDraftRef.current = false;
     setIsOpen(false);
     setIsMinimized(false);
-  }, [isOpen, persistDraft]);
+  }, [isOpen, scope, persistDraft, advanceEditorSession]);
 
   const minimize = useCallback(() => {
     setIsMinimized(true);
@@ -286,16 +356,18 @@ function ComposerSession({ children, scope, sessionToken, sessionTenant }: {
 
   const reset = useCallback(() => {
     activeDraftRef.current = false;
-    clearDraft(mode, topicId, categoryId);
+    clearDraft(mode, topicId, categoryId, parentReplyId);
+    advanceEditorSession();
     setTitle('');
     setDocument(emptyRichTextDocument());
     setQuotes([]);
     setError(null);
     setIsOpen(false);
     setIsMinimized(false);
-  }, [clearDraft, mode, topicId, categoryId]);
+  }, [clearDraft, mode, topicId, categoryId, parentReplyId, advanceEditorSession]);
 
   const appendQuote = useCallback((quote: ForumQuoteReference | null, quoteText: string, authorHandle?: string) => {
+    if (!activeDraftRef.current || submissionPendingRef.current || !isCurrentViewer()) return;
     if (quote) {
       setQuotes((prev) => {
         // A persisted relation pins a real global relation-revision ID only.
@@ -336,13 +408,15 @@ function ComposerSession({ children, scope, sessionToken, sessionTenant }: {
     activeDraftRef.current = true;
     setIsOpen(true);
     setIsMinimized(false);
-  }, []);
+  }, [isCurrentViewer]);
 
   const removeQuote = useCallback((index: number) => {
+    if (!activeDraftRef.current || submissionPendingRef.current || !isCurrentViewer()) return;
     setQuotes((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+  }, [isCurrentViewer]);
 
   const state = useMemo<ComposerState>(() => ({
+    editorSession,
     isOpen,
     isMinimized,
     mode,
@@ -357,6 +431,7 @@ function ComposerSession({ children, scope, sessionToken, sessionTenant }: {
     error,
     draftStorage: scope ? draftStorageStatus : null,
   }), [
+    editorSession,
     isOpen,
     isMinimized,
     mode,
@@ -381,16 +456,21 @@ function ComposerSession({ children, scope, sessionToken, sessionTenant }: {
     close,
     minimize,
     expand,
-    setTitle,
-    setDocument,
+    setTitle: updateTitle,
+    setDocument: updateDocument,
     appendQuote,
     removeQuote,
-    setSubmitting: setIsSubmitting,
+    setSubmitting,
     setError,
     reset,
     isCurrentViewer,
+    captureEditorSession,
   }), [
     state,
+    updateTitle,
+    updateDocument,
+    setSubmitting,
+    captureEditorSession,
     openReply,
     openNewTopic,
     selectCategory,

@@ -115,6 +115,9 @@ impl ForumContentQuery {
         locale: Option<String>,
         after: Option<String>,
         per_page: Option<i32>,
+        search: Option<String>,
+        order: Option<crate::ForumTopicListOrder>,
+        #[graphql(default)] solved_only: bool,
     ) -> Result<ForumTopicPage> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
@@ -136,6 +139,9 @@ impl ForumContentQuery {
         };
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let filter = crate::ListTopicsFilter {
+            search,
+            order: order.unwrap_or_default(),
+            solved_only,
             category_id,
             status: None,
             locale: Some(locale.clone()),

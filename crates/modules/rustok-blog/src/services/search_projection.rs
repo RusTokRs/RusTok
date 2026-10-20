@@ -1,11 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
-    QuerySelect, Statement,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -19,7 +16,9 @@ use rustok_profiles_api::ProfileSummaryReader;
 
 use crate::dto::PublishedPostCursor;
 use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};
-use crate::services::category_name_projection::load_category_projections_map;
+use crate::services::category_name_projection::{
+    BlogCategoryProjectionInfo, load_category_projections_map,
+};
 use crate::services::post::{
     order_public_post_list, public_post_after_condition, public_post_cursor,
 };
@@ -89,7 +88,9 @@ impl BlogSearchProjectionSource {
 
         let mut translations_by_post: HashMap<Uuid, Vec<blog_post_translation::Model>> =
             HashMap::new();
+        let mut locales = BTreeSet::new();
         for translation in translations {
+            locales.insert(translation.locale.clone());
             translations_by_post
                 .entry(translation.post_id)
                 .or_default()
@@ -112,7 +113,7 @@ impl BlogSearchProjectionSource {
                 .push(vis.channel_slug);
         }
 
-        // 3. Load categories
+        // 3. Collect the Category identities of the whole page
         let category_ids: Vec<Uuid> = posts
             .iter()
             .filter_map(|p| p.category_id)
@@ -121,6 +122,37 @@ impl BlogSearchProjectionSource {
         // 4. Load authors
         let author_ids: Vec<Uuid> = posts.iter().map(|p| p.author_id).collect();
         let author_names = self.load_author_names(tenant_id, &author_ids).await?;
+
+        // 5. Load the localized Category and Tag projections once per locale.
+        //    Reading them per (post x locale) multiplied the Taxonomy and Tag
+        //    queries by the page size.
+        let fallback_locale = Some(PLATFORM_FALLBACK_LOCALE);
+        let mut category_maps_by_locale: HashMap<String, HashMap<Uuid, BlogCategoryProjectionInfo>> =
+            HashMap::new();
+        let mut tag_maps_by_locale: HashMap<String, HashMap<Uuid, Vec<String>>> = HashMap::new();
+        for locale in &locales {
+            let category_map = load_category_projections_map(
+                &self.db,
+                tenant_id,
+                &category_ids,
+                locale,
+                fallback_locale,
+            )
+            .await
+            .map_err(|error| Error::External(error.to_string()))?;
+            category_maps_by_locale.insert(locale.clone(), category_map);
+
+            let tag_map = load_post_tags_map(
+                &self.db,
+                tenant_id,
+                &post_ids,
+                locale,
+                fallback_locale,
+            )
+            .await
+            .map_err(|error| Error::External(error.to_string()))?;
+            tag_maps_by_locale.insert(locale.clone(), tag_map);
+        }
 
         let mut documents = Vec::new();
 
@@ -134,38 +166,24 @@ impl BlogSearchProjectionSource {
 
             for translation in post_translations {
                 let locale = &translation.locale;
-                let fallback_locale = Some(PLATFORM_FALLBACK_LOCALE);
 
                 // Category projection for this specific locale
-                let category_info = if let Some(cat_id) = post.category_id {
-                    let cat_map = load_category_projections_map(
-                        &self.db,
-                        tenant_id,
-                        &category_ids,
-                        locale,
-                        fallback_locale,
-                    )
-                    .await
-                    .map_err(|e| Error::External(e.to_string()))?;
-                    cat_map.get(&cat_id).cloned()
-                } else {
-                    None
-                };
+                let category_info = post.category_id.and_then(|cat_id| {
+                    category_maps_by_locale
+                        .get(locale)
+                        .and_then(|cat_map| cat_map.get(&cat_id))
+                        .cloned()
+                });
 
                 let category_name = category_info.as_ref().map(|c| c.name.clone());
                 let category_slug = category_info.as_ref().map(|c| c.slug.clone());
 
                 // Tags for this specific post and locale
-                let tags_map = load_post_tags_map(
-                    &self.db,
-                    tenant_id,
-                    &[post.id],
-                    locale,
-                    fallback_locale,
-                )
-                .await
-                .map_err(|e| Error::External(e.to_string()))?;
-                let post_tags = tags_map.get(&post.id).cloned().unwrap_or_default();
+                let post_tags = tag_maps_by_locale
+                    .get(locale)
+                    .and_then(|tags_map| tags_map.get(&post.id))
+                    .cloned()
+                    .unwrap_or_default();
 
                 let keywords_text = [
                     category_name.as_deref().unwrap_or(""),
@@ -238,56 +256,53 @@ impl BlogSearchProjectionSource {
             return Ok(HashMap::new());
         }
 
-        if let Some(reader) = &self.profiles_reader {
-            let summaries = reader
-                .find_profile_summaries(
-                    tenant_id,
-                    author_ids,
-                    None,
-                    Some(PLATFORM_FALLBACK_LOCALE),
-                    rustok_profiles_api::ProfileSummaryAudience::Anonymous,
-                )
-                .await
-                .unwrap_or_default();
-            let mut result = HashMap::new();
-            for (user_id, s) in summaries {
-                let name = if s.display_name.trim().is_empty() {
-                    s.handle
-                } else {
-                    s.display_name
-                };
-                result.insert(user_id, name);
-            }
-            return Ok(result);
-        }
-
-        if self.db.get_database_backend() == DbBackend::Postgres {
-            let stmt = Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                r#"
-                SELECT id, name
-                FROM users
-                WHERE tenant_id = $1
-                  AND id = ANY($2)
-                  AND LOWER(status::text) = 'active'
-                "#,
-                vec![tenant_id.into(), author_ids.to_vec().into()],
+        let Some(reader) = &self.profiles_reader else {
+            // The Profiles owner port is the only sanctioned source of public author
+            // names. Reading the platform `users` table directly would publish the
+            // account name of a profile whose visibility forbids it, because the
+            // Profiles privacy decision is not applied there.
+            tracing::warn!(
+                tenant_id = %tenant_id,
+                author_count = author_ids.len(),
+                "Blog Search projection has no Profiles owner port; public author names are omitted",
             );
-            if let Ok(rows) = self.db.query_all_raw(stmt).await {
-                let mut map = HashMap::new();
-                for row in rows {
-                    if let (Ok(id), Ok(name)) = (
-                        row.try_get::<Uuid>("", "id"),
-                        row.try_get::<String>("", "name"),
-                    ) {
-                        map.insert(id, name);
-                    }
-                }
-                return Ok(map);
-            }
-        }
+            return Ok(HashMap::new());
+        };
 
-        Ok(HashMap::new())
+        let summaries = match reader
+            .find_profile_summaries(
+                tenant_id,
+                author_ids,
+                None,
+                Some(PLATFORM_FALLBACK_LOCALE),
+                rustok_profiles_api::ProfileSummaryAudience::Anonymous,
+            )
+            .await
+        {
+            Ok(summaries) => summaries,
+            Err(error) => {
+                // A failing Profiles reader must not abort the whole projection, but
+                // the degradation has to be visible in the platform log.
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    author_count = author_ids.len(),
+                    error = %error,
+                    "Blog Search projection could not resolve public author names",
+                );
+                return Ok(HashMap::new());
+            }
+        };
+
+        let mut result = HashMap::new();
+        for (user_id, summary) in summaries {
+            let name = if summary.display_name.trim().is_empty() {
+                summary.handle
+            } else {
+                summary.display_name
+            };
+            result.insert(user_id, name);
+        }
+        Ok(result)
     }
 }
 

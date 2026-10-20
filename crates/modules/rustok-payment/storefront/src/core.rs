@@ -18,6 +18,12 @@ pub struct PaymentCollectionCardViewModel {
     pub status: String,
 }
 
+impl PaymentCollectionCardViewModel {
+    pub fn summary(&self) -> String {
+        format!("{} · {}", self.collection_id, self.status)
+    }
+}
+
 pub fn build_payment_collection_card_view_model(
     payment_collection: Option<PaymentCollectionCardData>,
     labels: &PaymentCollectionCardLabels,
@@ -57,6 +63,7 @@ mod tests {
 
         assert_eq!(view_model.collection_id, "paycol_1");
         assert_eq!(view_model.status, "authorized");
+        assert_eq!(view_model.summary(), "paycol_1 · authorized");
     }
 
     #[test]
@@ -65,6 +72,7 @@ mod tests {
 
         assert_eq!(view_model.collection_id, "not attached");
         assert_eq!(view_model.status, "pending");
+        assert_eq!(view_model.summary(), "not attached · pending");
     }
 }
 

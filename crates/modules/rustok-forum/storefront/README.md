@@ -18,6 +18,17 @@ Leptos storefront UI package for the `rustok-forum` module.
 - Presents the module as a NodeBB-inspired public discussion surface.
 - Ships package-owned `storefront/locales/en.ftl`, `storefront/locales/ru.ftl`, and `storefront/locales/ar.ftl` bundles declared through `[provides.storefront_ui.i18n]`; every composer and thread label resolves through `crate::i18n::t` with the locale published by `UiRouteContext`, and every label that carries a number or a slug resolves through `crate::i18n::count_message` / `crate::i18n::slug_message` so the catalog binds `$count`/`$slug` itself. A caller-side `"{count} threads"` template is not an acceptable substitute: Fluent reports a format error for an unbound argument, the shared resolver turns any format error into `Failed`, and the caller literal then wins in every locale, which silently deletes all plural variants.
 
+## Topic selection and continuation
+
+`ForumTopicSelection` is a typed transport projection (`search`, `order`, `solvedOnly`)
+of the Forum owner list contract. Both native and GraphQL initial/page requests forward it;
+`StorefrontForumData.topic_selection` retains it so Load more cannot accidentally switch back
+to an unselected feed. `read_state_available` still selects the original read-state/audience
+owner; a failed continuation never switches transport or query. Current Leptos UI requests
+Latest by default; this is transport parity, not a claim that it exposes Next's new controls.
+No search/ranking predicate runs in this package. See the
+[owner feed decision](../../../../DECISIONS/2026-10-17-forum-topic-feed-selection.md).
+
 ## Entry Points
 
 - `ForumView` - root storefront view rendered from the host storefront slot registry.
@@ -38,6 +49,19 @@ Leptos storefront UI package for the `rustok-forum` module.
 - Hides deleted-route tombstones until Forum owns a visibility-authorized disclosure snapshot; the Rust host therefore returns the same public `404` for missing, hidden, deleted and `GONE` routes.
 - Does not expose category-subtree or tenant-wide mark-read commands because those owner scopes are not yet narrowed to the storefront channel-visible topic set.
 - A composer quote is sent as an owner relation only when it carries an exact positive source revision (`forum_storefront_quote_revision`). The Leptos Reply card quotes the reply text and leaves the relation unpinned: the storefront reply read model carries no revision, and `verify-forum-reply-reactions-storefront-composition.mjs` forbids the module UI from fanning out `fetch_storefront_reply_current_revision` per visible reply (that lookup stays host-owned and selected-reply only). No revision number is invented, so an edited source can never be mis-pinned.
+
+## Composer draft and submission contract
+
+- Framework-independent composer state, validation and command construction live in `src/core.rs`.
+  The Leptos adapter binds inputs and dispatches the selected transport only.
+- In-memory drafts are scoped to topic plus parent reply, or to the posting category for a new topic.
+  Switching topic, reply parent or mode saves the outgoing text/title/quotes and restores only the
+  destination draft. Explicitly selecting an empty posting category moves the current new-topic
+  draft; selecting a category with a saved draft preserves and restores both editors.
+- A submission captures one transport command and freezes target selection and editor inputs until
+  it finishes. Quote entry/removal cannot mutate that snapshot. Closing may hide the pending drawer,
+  but cannot retarget it. Failure retains the draft; success clears only the submitted target.
+- Drafts are memory-only for the mounted Forum view, not browser-persistent storage.
 
 ## Known Limitations / Pending Implementation
 

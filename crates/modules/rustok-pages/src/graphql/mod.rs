@@ -6,6 +6,7 @@ mod query;
 mod runtime_data;
 mod scenario_baseline;
 mod starters;
+mod symbols;
 mod templates;
 mod types;
 
@@ -18,6 +19,7 @@ pub struct PagesQuery(
     builder_rollout::PageBuilderRolloutQuery,
     templates::PageTemplateQuery,
     starters::PageStarterQuery,
+    symbols::SiteSymbolQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -28,6 +30,7 @@ pub struct PagesMutation(
     artifact_repair::PageArtifactRepairMutation,
     templates::PageTemplateMutation,
     starters::PageStarterMutation,
+    symbols::SiteSymbolMutation,
 );
 
 pub use artifact_integrity_audit::{
@@ -48,4 +51,5 @@ pub use scenario_baseline::{
     GqlPageBuilderScenarioReleaseStatus, SaveGqlPageBuilderScenarioBaselineInput,
 };
 pub use starters::{GqlPageStarter, SaveGqlPageStarterInput};
+pub use symbols::{GqlSiteSymbol, SaveGqlSiteSymbolInput};
 pub use types::*;

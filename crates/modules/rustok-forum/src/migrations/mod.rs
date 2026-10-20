@@ -68,6 +68,7 @@ mod m20260921_000035_add_forum_reply_restore_snapshots;
 mod m20260924_000036_add_forum_attachment_relations;
 mod m20261008_000037_create_forum_topic_routes;
 mod m20261009_000038_allow_pending_forum_topic_status;
+mod m20261017_000039_add_forum_top_feed_indexes;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -144,6 +145,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260924_000036_add_forum_attachment_relations::Migration),
         Box::new(m20261008_000037_create_forum_topic_routes::Migration),
         Box::new(m20261009_000038_allow_pending_forum_topic_status::Migration),
+        Box::new(m20261017_000039_add_forum_top_feed_indexes::Migration),
     ]
 }
 

@@ -154,8 +154,17 @@ impl CartService {
         } else {
             cart.selected_shipping_option_id
         };
+        let email = match cart.email.clone() {
+            Some(email) => Some(email),
+            None => request
+                .input
+                .email
+                .as_deref()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+        };
         let context_input = UpdateCartContextInput {
-            email: cart.email.clone(),
+            email,
             region_id: cart.region_id.or(request.input.region_id),
             country_code,
             locale_code,

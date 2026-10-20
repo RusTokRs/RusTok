@@ -31,6 +31,7 @@ pub use price_list_owner_port::{PriceListOwnerPort, in_process_price_list_owner_
 pub use public_error::{PricingPublicError, map_pricing_port_error, map_pricing_service_error};
 pub use read_context::{InProcessPricingReadPort, in_process_pricing_read_port};
 pub use write_context::{InProcessPricingWritePort, in_process_pricing_write_port};
+// Canonical in_process_pricing_write_port, retained for diagnostic compatibility
 
 pub use services::{
     ActivePriceListOption, AdminPricingPrice, AdminPricingProductDetail, AdminPricingProductList,

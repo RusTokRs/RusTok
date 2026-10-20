@@ -248,3 +248,88 @@ pub async fn delete_page(
 ) -> Result<bool, TransportError> {
     graphql_adapter::delete_page(token, tenant_slug, id).await
 }
+
+pub async fn fetch_template_keys(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<String>, TransportError> {
+    graphql_adapter::fetch_template_keys(token, tenant_slug, locale).await
+}
+
+pub async fn fetch_page_templates(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<crate::model::PageTemplateSummary>, TransportError> {
+    graphql_adapter::fetch_page_templates(token, tenant_slug, locale).await
+}
+
+pub async fn preview_page_template_document(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    key: String,
+    locale: String,
+    document: String,
+) -> Result<String, TransportError> {
+    graphql_adapter::preview_page_template_document(token, tenant_slug, key, locale, document).await
+}
+
+pub async fn fetch_site_symbols(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<crate::model::SiteSymbolSummary>, TransportError> {
+    graphql_adapter::fetch_site_symbols(token, tenant_slug, locale).await
+}
+
+pub async fn save_page_template(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    key: String,
+    locale: String,
+    header_symbol_ids: Vec<String>,
+    footer_symbol_ids: Vec<String>,
+    expected_revision: Option<i64>,
+) -> Result<crate::model::PageTemplateSummary, TransportError> {
+    graphql_adapter::save_page_template(
+        token,
+        tenant_slug,
+        key,
+        locale,
+        header_symbol_ids,
+        footer_symbol_ids,
+        expected_revision,
+    )
+    .await
+}
+
+pub async fn delete_page_template(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    key: String,
+    locale: String,
+    expected_revision: i64,
+) -> Result<bool, TransportError> {
+    graphql_adapter::delete_page_template(token, tenant_slug, key, locale, expected_revision).await
+}
+
+pub async fn save_site_symbol(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    symbol_id: String,
+    locale: String,
+    name: Option<String>,
+    content_json: String,
+) -> Result<crate::model::SiteSymbolSummary, TransportError> {
+    graphql_adapter::save_site_symbol(token, tenant_slug, symbol_id, locale, name, content_json).await
+}
+
+pub async fn delete_site_symbol(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    symbol_id: String,
+    locale: String,
+) -> Result<bool, TransportError> {
+    graphql_adapter::delete_site_symbol(token, tenant_slug, symbol_id, locale).await
+}

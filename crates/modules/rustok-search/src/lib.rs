@@ -25,6 +25,7 @@ pub mod graphql;
 pub mod ingestion;
 pub mod migrations;
 pub mod models;
+pub(crate) mod docs_projector;
 pub(crate) mod pages_projector;
 pub mod pg_engine;
 pub mod ports;
@@ -47,9 +48,10 @@ pub use analytics::{
     SearchQueryLogRecord,
 };
 pub use audience_security::{
-    MAX_SEARCH_AUDIENCE_CANDIDATES, SearchAudiencePolicyPort, SearchAudienceRegistry,
-    SearchAudienceRequest, SearchCandidateDescriptor, SharedSearchAudiencePolicyPort,
-    build_authorized_facets, resolve_audience_eligible_candidates,
+    AUDIENCE_CANDIDATE_SCAN_PAGE_SIZE, MAX_SEARCH_AUDIENCE_CANDIDATES, SearchAudiencePolicyPort,
+    SearchAudienceRegistry, SearchAudienceRequest, SearchCandidateDescriptor,
+    SharedSearchAudiencePolicyPort, build_authorized_facets, execute_audience_eligible_search,
+    resolve_audience_eligible_candidates,
 };
 pub use diagnostics::{
     LaggingSearchDocument, SearchConsistencyIssue, SearchDiagnosticsService,
@@ -177,11 +179,15 @@ impl RusToKModule for SearchModule {
         let pages_source = sources
             .as_ref()
             .and_then(|s| s.build_with_extensions("pages", ctx.db.clone(), ctx.extensions));
+        let docs_source = sources
+            .as_ref()
+            .and_then(|s| s.build_with_extensions("docs", ctx.db.clone(), ctx.extensions));
         registry.register(SearchIngestionHandler::with_all_projection_sources(
             ctx.db.clone(),
             blog_source,
             forum_source,
             pages_source,
+            docs_source,
         ));
     }
 

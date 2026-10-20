@@ -417,6 +417,12 @@ impl ForumReadModelService {
         }
         if let Some(raw) = query.cursor.as_deref() {
             let after = TopicListCursor::decode(raw)?;
+            if after.order != crate::ForumTopicListOrder::Latest || after.selection_scope.is_some()
+            {
+                return Err(crate::ForumError::Validation(
+                    "Cursor does not belong to the topic read model".into(),
+                ));
+            }
             select = select.filter(topic_list_after_condition(&after));
         }
 

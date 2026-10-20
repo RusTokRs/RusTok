@@ -394,7 +394,8 @@ hasAll(
     'RUSTOK_COMMENTS_TCP_DELEGATION_TTL_MS',
     'RUSTOK_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY',
     'comments_tcp_delegation_signer_from_environment()',
-    'TcpJsonCommentsTransport::with_bearer_and_delegation(',
+    // The host composes the delegation over the channel connector.
+    'TcpJsonCommentsTransport::with_channel_connector_bearer_and_delegation(',
     'comments_tcp_authority_from_environment',
     'CommentsTcpDelegatingAuthorityResolver::new(',
     '.with_service_claim(COMMENTS_TCP_SERVICE_PERMISSION)',

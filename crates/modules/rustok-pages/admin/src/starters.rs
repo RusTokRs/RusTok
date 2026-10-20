@@ -328,11 +328,35 @@ fn build_lead_capture_doc(title: &str) -> ProjectDocument {
                     "id": "capture-form",
                     "type": "form",
                     "tagName": "form",
+                    "flyForm": {
+                        "id": "lead-capture",
+                        "method": "post",
+                        "encoding": "url_encoded",
+                        "provider": "forms",
+                        "action": "submit"
+                    },
+                    "attributes": {
+                        "action": "/api/forms/lead-capture/submit/form",
+                        "method": "POST"
+                    },
                     "style": { "display": "flex", "flex-direction": "column", "gap": "16px" },
                     "components": [
-                        { "id": "f-name", "type": "input", "tagName": "input", "attributes": { "type": "text", "placeholder": "Full Name", "required": "true" }, "style": { "padding": "12px 16px", "border": "1px solid #cbd5e1", "border-radius": "8px", "font-size": "15px" } },
-                        { "id": "f-email", "type": "input", "tagName": "input", "attributes": { "type": "email", "placeholder": "Work Email", "required": "true" }, "style": { "padding": "12px 16px", "border": "1px solid #cbd5e1", "border-radius": "8px", "font-size": "15px" } },
-                        { "id": "f-sub", "type": "submit", "tagName": "button", "content": "Claim Free Seat", "style": { "padding": "14px 24px", "background": "#2563eb", "color": "#ffffff", "border": "0", "border-radius": "8px", "font-size": "16px", "font-weight": "600", "cursor": "pointer" } }
+                        {
+                            "id": "f-website",
+                            "type": "input",
+                            "tagName": "input",
+                            "attributes": {
+                                "type": "text",
+                                "name": "website",
+                                "tabindex": "-1",
+                                "autocomplete": "off",
+                                "aria-hidden": "true"
+                            },
+                            "style": { "display": "none", "position": "absolute", "left": "-9999px" }
+                        },
+                        { "id": "f-name", "type": "input", "tagName": "input", "attributes": { "type": "text", "name": "name", "placeholder": "Full Name", "required": "true" }, "style": { "padding": "12px 16px", "border": "1px solid #cbd5e1", "border-radius": "8px", "font-size": "15px" } },
+                        { "id": "f-email", "type": "input", "tagName": "input", "attributes": { "type": "email", "name": "email", "placeholder": "Work Email", "required": "true" }, "style": { "padding": "12px 16px", "border": "1px solid #cbd5e1", "border-radius": "8px", "font-size": "15px" } },
+                        { "id": "f-sub", "type": "submit", "tagName": "button", "attributes": { "type": "submit" }, "content": "Claim Free Seat", "style": { "padding": "14px 24px", "background": "#2563eb", "color": "#ffffff", "border": "0", "border-radius": "8px", "font-size": "16px", "font-weight": "600", "cursor": "pointer" } }
                     ]
                 }
             ]
@@ -441,12 +465,36 @@ fn build_company_contact_doc(title: &str) -> ProjectDocument {
                                 "id": "corp-contact-form",
                                 "type": "form",
                                 "tagName": "form",
+                                "flyForm": {
+                                    "id": "contact-form",
+                                    "method": "post",
+                                    "encoding": "url_encoded",
+                                    "provider": "forms",
+                                    "action": "submit"
+                                },
+                                "attributes": {
+                                    "action": "/api/forms/contact-form/submit/form",
+                                    "method": "POST"
+                                },
                                 "style": { "display": "flex", "flex-direction": "column", "gap": "16px" },
                                 "components": [
-                                    { "id": "cf-name", "type": "input", "tagName": "input", "attributes": { "type": "text", "placeholder": "Your Name", "required": "true" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
-                                    { "id": "cf-email", "type": "input", "tagName": "input", "attributes": { "type": "email", "placeholder": "Work Email", "required": "true" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
-                                    { "id": "cf-msg", "type": "textarea", "tagName": "textarea", "attributes": { "placeholder": "How can we help your organization?", "rows": 4 }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
-                                    { "id": "cf-btn", "type": "submit", "tagName": "button", "content": "Send Inquiry", "style": { "padding": "14px 28px", "background": "#2563eb", "color": "#ffffff", "border": "0", "border-radius": "8px", "font-weight": "600", "cursor": "pointer" } }
+                                    {
+                                        "id": "cf-website",
+                                        "type": "input",
+                                        "tagName": "input",
+                                        "attributes": {
+                                            "type": "text",
+                                            "name": "website",
+                                            "tabindex": "-1",
+                                            "autocomplete": "off",
+                                            "aria-hidden": "true"
+                                        },
+                                        "style": { "display": "none", "position": "absolute", "left": "-9999px" }
+                                    },
+                                    { "id": "cf-name", "type": "input", "tagName": "input", "attributes": { "type": "text", "name": "name", "placeholder": "Your Name", "required": "true" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
+                                    { "id": "cf-email", "type": "input", "tagName": "input", "attributes": { "type": "email", "name": "email", "placeholder": "Work Email", "required": "true" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
+                                    { "id": "cf-msg", "type": "textarea", "tagName": "textarea", "attributes": { "name": "message", "placeholder": "How can we help your organization?", "rows": 4 }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
+                                    { "id": "cf-btn", "type": "submit", "tagName": "button", "attributes": { "type": "submit" }, "content": "Send Inquiry", "style": { "padding": "14px 28px", "background": "#2563eb", "color": "#ffffff", "border": "0", "border-radius": "8px", "font-weight": "600", "cursor": "pointer" } }
                                 ]
                             }
                         ]

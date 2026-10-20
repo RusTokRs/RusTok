@@ -674,6 +674,63 @@ fn product_variant_translation_change_target(event: &DomainEvent) -> Option<(Uui
     }
 }
 
+impl Deref for ProductWriteTransaction {
+    type Target = DatabaseTransaction;
+
+    fn deref(&self) -> &Self::Target {
+        self.active_transaction()
+    }
+}
+
+#[async_trait::async_trait]
+impl ConnectionTrait for ProductWriteTransaction {
+    fn get_database_backend(&self) -> DbBackend {
+        self.active_transaction().get_database_backend()
+    }
+
+    async fn execute<S: sea_orm::StatementBuilder>(&self, stmt: &S) -> Result<ExecResult, DbErr> {
+        self.active_transaction().execute(stmt).await
+    }
+
+    async fn execute_raw(&self, stmt: Statement) -> Result<ExecResult, DbErr> {
+        self.active_transaction().execute_raw(stmt).await
+    }
+
+    async fn execute_unprepared(&self, sql: &str) -> Result<ExecResult, DbErr> {
+        self.active_transaction().execute_unprepared(sql).await
+    }
+
+    async fn query_one<S: sea_orm::StatementBuilder>(
+        &self,
+        stmt: &S,
+    ) -> Result<Option<QueryResult>, DbErr> {
+        self.active_transaction().query_one(stmt).await
+    }
+
+    async fn query_one_raw(&self, stmt: Statement) -> Result<Option<QueryResult>, DbErr> {
+        self.active_transaction().query_one_raw(stmt).await
+    }
+
+    async fn query_all<S: sea_orm::StatementBuilder>(
+        &self,
+        stmt: &S,
+    ) -> Result<Vec<QueryResult>, DbErr> {
+        self.active_transaction().query_all(stmt).await
+    }
+
+    async fn query_all_raw(&self, stmt: Statement) -> Result<Vec<QueryResult>, DbErr> {
+        self.active_transaction().query_all_raw(stmt).await
+    }
+
+    fn support_returning(&self) -> bool {
+        self.active_transaction().support_returning()
+    }
+
+    fn is_mock_connection(&self) -> bool {
+        self.active_transaction().is_mock_connection()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -688,7 +745,6 @@ mod tests {
     use rustok_test_utils::mock_transactional_event_bus;
     use sea_orm::{
         ConnectOptions, ConnectionTrait, Database, DatabaseBackend, Statement, TransactionTrait,
-        TryGetable,
     };
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use serde::{Serialize, Serializer};
@@ -754,7 +810,7 @@ mod tests {
 
     async fn assert_probe_is_rolled_back(database: &sea_orm::DatabaseConnection) {
         let row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM product_receipt_probe".to_owned(),
             ))
@@ -994,7 +1050,7 @@ mod tests {
             );
 
         let row = observer
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM product_receipt_probe".to_owned(),
             ))
@@ -1040,62 +1096,5 @@ mod tests {
             .expect_err("a missing receipt result must reject commit");
         assert!(matches!(error, CommerceError::Database(_)));
         assert_probe_is_rolled_back(&database).await;
-    }
-}
-
-impl Deref for ProductWriteTransaction {
-    type Target = DatabaseTransaction;
-
-    fn deref(&self) -> &Self::Target {
-        self.active_transaction()
-    }
-}
-
-#[async_trait::async_trait]
-impl ConnectionTrait for ProductWriteTransaction {
-    fn get_database_backend(&self) -> DbBackend {
-        self.active_transaction().get_database_backend()
-    }
-
-    async fn execute<S: sea_orm::StatementBuilder>(&self, stmt: &S) -> Result<ExecResult, DbErr> {
-        self.active_transaction().execute(stmt).await
-    }
-
-    async fn execute_raw(&self, stmt: Statement) -> Result<ExecResult, DbErr> {
-        self.active_transaction().execute_raw(stmt).await
-    }
-
-    async fn execute_unprepared(&self, sql: &str) -> Result<ExecResult, DbErr> {
-        self.active_transaction().execute_unprepared(sql).await
-    }
-
-    async fn query_one<S: sea_orm::StatementBuilder>(
-        &self,
-        stmt: &S,
-    ) -> Result<Option<QueryResult>, DbErr> {
-        self.active_transaction().query_one(stmt).await
-    }
-
-    async fn query_one_raw(&self, stmt: Statement) -> Result<Option<QueryResult>, DbErr> {
-        self.active_transaction().query_one_raw(stmt).await
-    }
-
-    async fn query_all<S: sea_orm::StatementBuilder>(
-        &self,
-        stmt: &S,
-    ) -> Result<Vec<QueryResult>, DbErr> {
-        self.active_transaction().query_all(stmt).await
-    }
-
-    async fn query_all_raw(&self, stmt: Statement) -> Result<Vec<QueryResult>, DbErr> {
-        self.active_transaction().query_all_raw(stmt).await
-    }
-
-    fn support_returning(&self) -> bool {
-        self.active_transaction().support_returning()
-    }
-
-    fn is_mock_connection(&self) -> bool {
-        self.active_transaction().is_mock_connection()
     }
 }

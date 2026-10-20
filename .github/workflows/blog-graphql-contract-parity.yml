@@ -1,0 +1,50 @@
+name: Blog GraphQL Contract Parity
+
+on:
+  pull_request:
+    paths:
+      - "crates/modules/rustok-blog/src/graphql/**"
+      - "crates/modules/rustok-blog/admin/src/transport/**"
+      - "crates/modules/rustok-blog/storefront/src/transport/**"
+      - "apps/next-admin/packages/blog/**"
+      - "apps/next-frontend/packages/rustok-blog/**"
+      - "scripts/verify/verify-blog-nextjs-graphql-contract.mjs"
+      - "scripts/verify/verify-blog-nextjs-graphql-contract.test.mjs"
+      - ".github/workflows/blog-graphql-contract-parity.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/modules/rustok-blog/src/graphql/**"
+      - "crates/modules/rustok-blog/admin/src/transport/**"
+      - "crates/modules/rustok-blog/storefront/src/transport/**"
+      - "apps/next-admin/packages/blog/**"
+      - "apps/next-frontend/packages/rustok-blog/**"
+      - "scripts/verify/verify-blog-nextjs-graphql-contract.mjs"
+      - "scripts/verify/verify-blog-nextjs-graphql-contract.test.mjs"
+      - ".github/workflows/blog-graphql-contract-parity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  blog-graphql-contract-parity:
+    name: Blog client GraphQL contract parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Verify Blog client GraphQL contract parity
+        run: node scripts/verify/verify-blog-nextjs-graphql-contract.mjs
+      - name: Run Blog client GraphQL contract parity self-test
+        run: node --test scripts/verify/verify-blog-nextjs-graphql-contract.test.mjs

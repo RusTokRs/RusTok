@@ -1,253 +1,148 @@
-//! Property-based tests for Blog Post state machine
+//! Property-based tests for the canonical Blog status model.
 //!
-//! Uses proptest to verify state machine invariants hold for all possible inputs.
+//! The retired generic `BlogPost<Draft|Published|Archived>` type-state model is
+//! gone: it was dead code that contradicted the persisted semantics (it
+//! overwrote `created_at` when a post left the published state) and no write
+//! path used it. The properties below guard the model the write path actually
+//! uses — the persisted status enum, its canonical transition table
+//! ([`BlogPostStatus::can_transition_to`], consulted by
+//! `crate::services::post::commands`) and the comment moderation model.
+//!
+//! Every property is a property of the *relation* between two statuses, so a
+//! change of the transition table is caught by the property suite and not only
+//! by the explicit table test in `state_machine.rs`.
 
 use super::state_machine::*;
 use proptest::prelude::*;
-use uuid::Uuid;
 
-// ============================================================================
-// Strategies for generating test data
-// ============================================================================
-
-fn uuid_strategy() -> impl Strategy<Value = Uuid> {
-    (any::<[u8; 16]>()).prop_map(Uuid::from_bytes)
+/// Generates every persisted Blog post status.
+fn status_strategy() -> impl Strategy<Value = BlogPostStatus> {
+    any::<u8>().prop_map(|value| match value % 3 {
+        0 => BlogPostStatus::Draft,
+        1 => BlogPostStatus::Published,
+        _ => BlogPostStatus::Archived,
+    })
 }
 
-fn non_empty_string_strategy() -> impl Strategy<Value = String> {
-    "[a-zA-Z0-9_-]{1,50}"
+/// Generates every Blog comment status.
+fn comment_status_strategy() -> impl Strategy<Value = CommentStatus> {
+    any::<u8>().prop_map(|value| match value % 4 {
+        0 => CommentStatus::Pending,
+        1 => CommentStatus::Approved,
+        2 => CommentStatus::Spam,
+        _ => CommentStatus::Trash,
+    })
 }
-
-fn tags_strategy() -> impl Strategy<Value = Vec<String>> {
-    prop::collection::vec(non_empty_string_strategy(), 0..10)
-}
-
-// ============================================================================
-// State Machine Invariants
-// ============================================================================
 
 proptest! {
-    /// Test: All draft posts can be published
+    /// A post is published out of the draft state only.
     #[test]
-    fn draft_can_always_be_published(
-        id in uuid_strategy(),
-        tenant_id in uuid_strategy(),
-        author_id in uuid_strategy(),
-        title in non_empty_string_strategy(),
-        slug in non_empty_string_strategy(),
-        locale in non_empty_string_strategy(),
-    ) {
-        let post = BlogPost::new_draft(id, tenant_id, author_id, title, slug, locale);
-        let published = post.publish();
-
-        prop_assert_eq!(published.id, id);
-        prop_assert_eq!(published.tenant_id, tenant_id);
-        prop_assert_eq!(published.to_status(), BlogPostStatus::Published);
+    fn publishing_is_allowed_only_from_draft(from in status_strategy()) {
+        prop_assert_eq!(
+            from.can_transition_to(BlogPostStatus::Published),
+            from == BlogPostStatus::Draft,
+        );
     }
 
-    /// Test: All published posts can be archived
+    /// A post is archived out of the published state only.
     #[test]
-    fn published_can_always_be_archived(
-        id in uuid_strategy(),
-        tenant_id in uuid_strategy(),
-        author_id in uuid_strategy(),
-        title in non_empty_string_strategy(),
-        slug in non_empty_string_strategy(),
-        locale in non_empty_string_strategy(),
-        reason in non_empty_string_strategy(),
-    ) {
-        let post = BlogPost::new_draft(id, tenant_id, author_id, title, slug, locale)
-            .publish()
-            .archive(reason);
-
-        prop_assert_eq!(post.id, id);
-        prop_assert_eq!(post.to_status(), BlogPostStatus::Archived);
+    fn archiving_is_allowed_only_from_published(from in status_strategy()) {
+        prop_assert_eq!(
+            from.can_transition_to(BlogPostStatus::Archived),
+            from == BlogPostStatus::Published,
+        );
     }
 
-    /// Test: All published posts can be unpublished
+    /// A post returns to the draft state out of the published and the archived
+    /// state, and never out of the draft state itself.
     #[test]
-    fn published_can_always_be_unpublished(
-        id in uuid_strategy(),
-        tenant_id in uuid_strategy(),
-        author_id in uuid_strategy(),
-        title in non_empty_string_strategy(),
-        slug in non_empty_string_strategy(),
-        locale in non_empty_string_strategy(),
-    ) {
-        let post = BlogPost::new_draft(id, tenant_id, author_id, title, slug, locale)
-            .publish()
-            .unpublish();
-
-        prop_assert_eq!(post.id, id);
-        prop_assert_eq!(post.to_status(), BlogPostStatus::Draft);
+    fn restoring_to_draft_is_allowed_from_published_and_archived(from in status_strategy()) {
+        prop_assert_eq!(
+            from.can_transition_to(BlogPostStatus::Draft),
+            matches!(from, BlogPostStatus::Published | BlogPostStatus::Archived),
+        );
     }
 
-    /// Test: All archived posts can be restored
+    /// The transition table has no self-transition.
     #[test]
-    fn archived_can_always_be_restored(
-        id in uuid_strategy(),
-        tenant_id in uuid_strategy(),
-        author_id in uuid_strategy(),
-        title in non_empty_string_strategy(),
-        slug in non_empty_string_strategy(),
-        locale in non_empty_string_strategy(),
-        reason in non_empty_string_strategy(),
-    ) {
-        let post = BlogPost::new_draft(id, tenant_id, author_id, title, slug, locale)
-            .publish()
-            .archive(reason)
-            .restore_to_draft();
-
-        prop_assert_eq!(post.id, id);
-        prop_assert_eq!(post.to_status(), BlogPostStatus::Draft);
+    fn a_status_never_transitions_to_itself(from in status_strategy()) {
+        prop_assert!(!from.can_transition_to(from));
     }
 
-    /// Test: ID is preserved through all valid transitions
+    /// The only symmetric pair of the transition table is the publish and the
+    /// unpublish pair.
     #[test]
-    fn id_preserved_through_transitions(
-        id in uuid_strategy(),
-        tenant_id in uuid_strategy(),
-        author_id in uuid_strategy(),
-        title in non_empty_string_strategy(),
-        slug in non_empty_string_strategy(),
-        locale in non_empty_string_strategy(),
-        reason in non_empty_string_strategy(),
+    fn the_only_symmetric_transition_pair_is_publish_and_unpublish(
+        from in status_strategy(),
+        to in status_strategy(),
     ) {
-        // Draft -> Published
-        let post = BlogPost::new_draft(id, tenant_id, author_id, title.clone(), slug.clone(), locale.clone());
-        prop_assert_eq!(post.id, id);
-
-        let post = post.publish();
-        prop_assert_eq!(post.id, id);
-
-        // Published -> Archived
-        let post = post.archive(reason);
-        prop_assert_eq!(post.id, id);
-
-        // Archived -> Draft
-        let post = post.restore_to_draft();
-        prop_assert_eq!(post.id, id);
-
-        // Draft -> Published -> Draft
-        let post = post.publish().unpublish();
-        prop_assert_eq!(post.id, id);
+        let symmetric = from.can_transition_to(to) && to.can_transition_to(from);
+        prop_assert_eq!(
+            symmetric,
+            matches!(
+                (from, to),
+                (BlogPostStatus::Draft, BlogPostStatus::Published)
+                    | (BlogPostStatus::Published, BlogPostStatus::Draft)
+            ),
+        );
     }
 
-    /// Test: Tenant ID is preserved through all transitions
+    /// Every persisted status is reachable from the draft state in at most two
+    /// transitions.
     #[test]
-    fn tenant_id_preserved_through_transitions(
-        id in uuid_strategy(),
-        tenant_id in uuid_strategy(),
-        author_id in uuid_strategy(),
-        title in non_empty_string_strategy(),
-        slug in non_empty_string_strategy(),
-        locale in non_empty_string_strategy(),
-    ) {
-        let post = BlogPost::new_draft(id, tenant_id, author_id, title, slug, locale);
-        let post = post.publish();
-        let post = post.archive("test".to_string());
-        let post = post.restore_to_draft();
-
-        prop_assert_eq!(post.tenant_id, tenant_id);
+    fn every_status_is_reachable_from_draft(from in status_strategy()) {
+        let reachable = from == BlogPostStatus::Draft
+            || BlogPostStatus::Draft.can_transition_to(from)
+            || (BlogPostStatus::Draft.can_transition_to(BlogPostStatus::Published)
+                && BlogPostStatus::Published.can_transition_to(from));
+        prop_assert!(reachable);
     }
 
-    /// Test: Author ID is preserved through all transitions
+    /// A post that can be archived can always be restored to the draft state.
     #[test]
-    fn author_id_preserved_through_transitions(
-        id in uuid_strategy(),
-        tenant_id in uuid_strategy(),
-        author_id in uuid_strategy(),
-        title in non_empty_string_strategy(),
-        slug in non_empty_string_strategy(),
-        locale in non_empty_string_strategy(),
-    ) {
-        let post = BlogPost::new_draft(id, tenant_id, author_id, title, slug, locale);
-        let post = post.publish();
-        let post = post.archive("test".to_string());
-        let post = post.restore_to_draft();
-
-        prop_assert_eq!(post.author_id, author_id);
+    fn an_archivable_post_can_always_be_restored(from in status_strategy()) {
+        prop_assert!(
+            !from.can_transition_to(BlogPostStatus::Archived)
+                || from.can_transition_to(BlogPostStatus::Draft),
+        );
     }
 
-    /// Test: Title and slug are preserved
+    /// A draft post is never archived directly.
     #[test]
-    fn metadata_preserved_through_transitions(
-        id in uuid_strategy(),
-        tenant_id in uuid_strategy(),
-        author_id in uuid_strategy(),
-        title in non_empty_string_strategy(),
-        slug in non_empty_string_strategy(),
-        locale in non_empty_string_strategy(),
-    ) {
-        let post = BlogPost::new_draft(id, tenant_id, author_id, title.clone(), slug.clone(), locale.clone());
-        let post = post.publish();
-        let post = post.archive("test".to_string());
-        let post = post.restore_to_draft();
-
-        prop_assert_eq!(post.title, title);
-        prop_assert_eq!(post.slug, slug);
-        prop_assert_eq!(post.locale, locale);
+    fn a_draft_post_is_never_archived_directly(from in status_strategy()) {
+        prop_assert!(
+            from != BlogPostStatus::Draft
+                || !from.can_transition_to(BlogPostStatus::Archived),
+        );
     }
 
-    /// Test: Tags are preserved through state transitions
+    /// An archived post is never published directly.
     #[test]
-    fn tags_preserved_through_transitions(
-        id in uuid_strategy(),
-        tenant_id in uuid_strategy(),
-        author_id in uuid_strategy(),
-        title in non_empty_string_strategy(),
-        slug in non_empty_string_strategy(),
-        locale in non_empty_string_strategy(),
-        tags in tags_strategy(),
-    ) {
-        let post = BlogPost::new_draft(id, tenant_id, author_id, title, slug, locale)
-            .set_tags(tags.clone());
-        let post = post.publish();
-        let post = post.archive("test".to_string());
-        let post = post.restore_to_draft();
-
-        prop_assert_eq!(post.tags, tags);
+    fn an_archived_post_is_never_published_directly(from in status_strategy()) {
+        prop_assert!(
+            from != BlogPostStatus::Archived
+                || !from.can_transition_to(BlogPostStatus::Published),
+        );
     }
 
-    /// Test: Published_at is always in the past or now
+    /// Only an approved comment is publicly visible.
     #[test]
-    fn published_at_not_in_future(
-        id in uuid_strategy(),
-        tenant_id in uuid_strategy(),
-        author_id in uuid_strategy(),
-        title in non_empty_string_strategy(),
-        slug in non_empty_string_strategy(),
-        locale in non_empty_string_strategy(),
-    ) {
-        let post = BlogPost::new_draft(id, tenant_id, author_id, title, slug, locale)
-            .publish();
-
-        prop_assert!(post.state.published_at <= chrono::Utc::now());
+    fn comment_visibility_matches_the_approved_status(from in comment_status_strategy()) {
+        prop_assert_eq!(from.is_visible(), from == CommentStatus::Approved);
     }
 
-    /// Test: Archived_at is always in the past or now
+    /// A trashed comment never becomes visible again.
     #[test]
-    fn archived_at_not_in_future(
-        id in uuid_strategy(),
-        tenant_id in uuid_strategy(),
-        author_id in uuid_strategy(),
-        title in non_empty_string_strategy(),
-        slug in non_empty_string_strategy(),
-        locale in non_empty_string_strategy(),
-        reason in non_empty_string_strategy(),
-    ) {
-        let post = BlogPost::new_draft(id, tenant_id, author_id, title, slug, locale)
-            .publish()
-            .archive(reason);
-
-        prop_assert!(post.state.archived_at <= chrono::Utc::now());
+    fn a_trashed_comment_never_becomes_visible_again(from in comment_status_strategy()) {
+        prop_assert!(!from.trash().is_visible());
+        prop_assert!(
+            from != CommentStatus::Trash
+                || (!from.approve().is_visible() && !from.mark_spam().is_visible()),
+        );
     }
 }
 
-// ============================================================================
-// Comment Status Tests
-// ============================================================================
-
+/// The comment visibility is decided by the approved status only.
 #[test]
 fn comment_visibility_is_correct() {
     let statuses = [
@@ -263,12 +158,14 @@ fn comment_visibility_is_correct() {
     }
 }
 
+/// An approved comment stays approved.
 #[test]
 fn approved_stays_approved_on_approve() {
     let status = CommentStatus::Approved;
     assert_eq!(status.approve(), CommentStatus::Approved);
 }
 
+/// The trashed state is terminal.
 #[test]
 fn trash_is_terminal() {
     let status = CommentStatus::Trash;

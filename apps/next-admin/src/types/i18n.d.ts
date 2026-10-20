@@ -360,6 +360,8 @@ export type AppMessageKey =
   | 'events.save'
   | 'events-saved'
   | 'events.saved'
+  | 'events-savedWithoutRestart'
+  | 'events.savedWithoutRestart'
   | 'events-saving'
   | 'events.saving'
   | 'events-status-activeProfile'
@@ -1948,6 +1950,8 @@ export interface AppMessageArgs {
   'events-save'?: Record<string, never>;
   'events.saved'?: Record<string, never>;
   'events-saved'?: Record<string, never>;
+  'events.savedWithoutRestart'?: Record<string, never>;
+  'events-savedWithoutRestart'?: Record<string, never>;
   'events.saving'?: Record<string, never>;
   'events-saving'?: Record<string, never>;
   'events.status.activeProfile'?: Record<string, never>;
@@ -1972,8 +1976,8 @@ export interface AppMessageArgs {
   'events-transport-active'?: Record<string, never>;
   'events.transport.help'?: Record<string, never>;
   'events-transport-help'?: Record<string, never>;
-  'events.transport.iggyDeployment'?: Record<string, never>;
-  'events-transport-iggyDeployment'?: Record<string, never>;
+  'events.transport.iggyDeployment': { 'mode': string | number | Date };
+  'events-transport-iggyDeployment': { 'mode': string | number | Date };
   'events.transport.label'?: Record<string, never>;
   'events-transport-label'?: Record<string, never>;
   'events.transport.moduleDisabledWarning'?: Record<string, never>;

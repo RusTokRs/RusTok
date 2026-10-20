@@ -40,13 +40,14 @@ If you are an AI agent assigned to this task, execute this continuous loop:
 
 ```mermaid
 flowchart LR
-    A["1. Check Ledger<br/>(Find Next Module)"] --> B["2. Scan & Inspect<br/>(Identify Slop)"]
-    B --> C["3. Gentle Refactor<br/>(Clean Code, No Breaking)"]
-    C --> D["4. Run Gatekeeper<br/>(verify-remediation-gate)"]
-    D --> E["5. Mark Done<br/>(Check off in Ledger)"]
-    E -->|Next module| A
-    E -->|When all done| F["Auto-Rollover<br/>(Advance Round & Recalculate)"]
-    F --> A
+    A["1. Check Ledger<br/>(Target Next Crate)"] --> B["2. Full Tree Reading<br/>(Read ALL src/ files)"]
+    B --> C["3. Logic & Slop Audit<br/>(Pillar 0 + Pillars 1-7)"]
+    C --> D["4. Exhaustive Fix<br/>('Косяков нет')"]
+    D --> E["5. Scoped Tests & Gate<br/>(verify-remediation-gate)"]
+    E --> F["6. Record & Advance<br/>(Log verified logic)"]
+    F -->|Next crate| A
+    F -->|Round finished| G["Auto-Rollover<br/>(Advance Round)"]
+    G --> A
 ```
 
 ### Step 1: Find the Next Module in the Active Round
@@ -56,56 +57,68 @@ python scripts/maintenance/review_orchestrator.py ledger-status
 ```
 Or open the living checklist: **[`docs/standards/continuous-review-ledger.md`](./standards/continuous-review-ledger.md)**.
 
-### Step 2: Scan the Target Component
-Run the scanner on the target component (e.g. `crates/modules/rustok-forum`):
-```bash
-python scripts/maintenance/scan_codebase.py --target crates/modules/rustok-forum --summary
-```
-Or view the top specific issue:
-```bash
-python scripts/maintenance/review_orchestrator.py next
-```
+### Step 2: Exhaustive Crate Tree Discovery (Read All Source Files)
+> [!CAUTION]
+> **Запрет «верхоглядства» (No Surface Skimming):**
+> Запрещено ограничиваться чтением 1-2 файлов, на которые указал сканер или `review_orchestrator.py next`. Сканер находит лишь базовые синтаксические паттерны. Агент **ОБЯЗАН** просмотреть всю файловую структуру крейта (`src/**/*.rs`), понять назначение модуля, его публичный контракт, сущности и обработчики.
 
-### Step 3: Deep Engineering Review (7 Pillars of Quality & Anti-Slop)
+### Step 3: Deep Engineering & Logic Audit (Pillar 0 + 7 Pillars)
 
 Do **NOT** stop at trivial mechanical linting (like unwrap or regexes). Perform a genuine senior-level engineering review based on [docs/standards/patterns-vs-antipatterns.md](standards/patterns-vs-antipatterns.md):
 
-1. **Transactional & Event Correctness (AGENTS.md §7, §8):**
-   - **Outbox Invariant:** Domain events MUST be emitted via `publish_in_tx(&txn, ...)` within the active database transaction, NOT after commit or outside the transaction.
-   - **Race Conditions & TOCTOU:** Avoid check-then-act logic without DB constraints or locks (e.g. checking uniqueness in application code without a UNIQUE index or advisory lock).
-   - **Error Swallowing:** Eliminate silent error suppression (`let _ = ...` or returning default `Ok(())` on critical failures).
+#### 0. Behavioral & Logical Correctness — PRIMARY (AGENTS.md §2.1, §4)
+Code is defined by what it **does**, not just how cleanly it compiles. For every crate (foundation library, utility, worker, or domain module), systematically verify the **6 Universal Logic Dimensions**:
+- **Preconditions & Boundary Bounds:** Verify extreme and invalid inputs: 0-values, negative numbers, empty strings/slices, integer overflows, timezone/clock skew. Reject invalid states at the boundary.
+- **Branch Completeness & Anti-Swallowing:** Prohibit silent error suppression (`let _ = ...`, logging an error and returning dummy `Ok(())` or `None` that tricks callers into thinking work succeeded). Ensure every failure branch propagates typed domain errors.
+- **State Transition Chains & Recovery:** Validate lifecycle state machines. Verify that mid-chain failures never leave entities permanently stranded in `processing`/`pending` without compensation or recovery paths.
+- **Side-Effect Completeness:** When an entity is mutated, verify all dependent side-effects occur atomically: DB write -> outbox event emitted -> cache invalidated -> counters/balances adjusted -> locks released.
+- **Calculation & Algorithmic Precision:** Verify currency/money math (`Decimal` vs `f64`), pagination cursor logic (off-by-one errors `<` vs `<=`), cycle detection in graphs/hierarchies, and collection sorting invariants.
+- **Concurrency & Order of Operations:** Eliminate check-then-act (TOCTOU) races between state checks and database writes; guarantee order-independent async handling.
 
-2. **AI-Slop Remediation & Cognitive Bloat:**
-   - **File Stitching Anti-Pattern:** Prohibit `include!("...")` macros used to bypass module boundaries. Use canonical Rust modules (`mod foo; use foo::*;`).
-   - **Spaghetti Nesting:** Flatten pyramid `match` / `if let` blocks (3+ levels deep) using early returns (`let ... else { return ... }`) or `?` combinators.
-   - **Phantom Abstractions:** Remove traits/interfaces that have only a single trivial implementation and zero mock/extension needs.
-   - **Meaningless Comments:** Strip AI-generated "captain-obvious" comments (`// create user`, `// return result`).
+#### 1. Transactional & Event Correctness (AGENTS.md §7, §8):
+- **Outbox Invariant:** Domain events MUST be emitted via `publish_in_tx(&txn, ...)` within the active database transaction, NOT after commit or outside the transaction.
+- **Race Conditions & TOCTOU:** Avoid check-then-act logic without DB constraints or locks (e.g. checking uniqueness in application code without a UNIQUE index or advisory lock).
+- **Error Swallowing:** Eliminate silent error suppression (`let _ = ...` or returning default `Ok(())` on critical failures).
 
-3. **Multi-Tenancy & Data Isolation (AGENTS.md §7):**
-   - **Tenant Scope on Every Query:** Verify that **every single** database query touching domain data contains `.filter(Column::TenantId.eq(tenant_id))`.
-   - **Data Leakage:** Never return raw SeaORM Entities directly to GraphQL/REST. Always map into explicit DTOs to avoid leaking sensitive fields.
+#### 2. AI-Slop Remediation & Cognitive Bloat:
+- **File Stitching Anti-Pattern:** Prohibit `include!("...")` macros used to bypass module boundaries. Use canonical Rust modules (`mod foo; use foo::*;`).
+- **Spaghetti Nesting:** Flatten pyramid `match` / `if let` blocks (3+ levels deep) using early returns (`let ... else { return ... }`) or `?` combinators.
+- **Phantom Abstractions:** Remove traits/interfaces that have only a single trivial implementation and zero mock/extension needs.
+- **Meaningless Comments:** Strip AI-generated "captain-obvious" comments (`// create user`, `// return result`).
 
-4. **Async Runtime Hazards & Performance (AGENTS.md §10):**
-   - **Blocking IO in Tokio:** Strictly prohibit blocking calls (`std::fs::*`, `std::thread::sleep`, `std::sync::Mutex`) inside async functions. Use `tokio::fs` or `tokio::task::spawn_blocking`.
-   - **N+1 Database Queries:** Eliminate loops executing individual database queries per item. Batch queries via `Column::Id.is_in(...)`.
-   - **Clone Churn:** Remove redundant `.clone()` / `.to_string()` when passing borrowed slices (`&str`, `&[T]`) or `Cow` is sufficient.
+#### 3. Multi-Tenancy & Data Isolation (AGENTS.md §7):
+- **Tenant Scope on Every Query:** Verify that **every single** database query touching domain data contains `.filter(Column::TenantId.eq(tenant_id))`.
+- **Data Leakage:** Never return raw SeaORM Entities directly to GraphQL/REST. Always map into explicit DTOs to avoid leaking sensitive fields.
 
-5. **Type Safety & Domain Invariants (AGENTS.md §4, §6):**
-   - **Newtypes over Primitives:** Replace raw `Uuid` / `String` for IDs with typed newtypes (`TenantId`, `UserId`) to prevent ID mix-ups.
-   - **State Machines:** Replace string-based status fields (`if status == "pending"`) with strongly-typed enums and valid state transition methods.
-   - **Strict Error Modeling:** Replace vague `anyhow` or `String` errors in libraries/modules with explicit, typed domain error enums (`thiserror`).
+#### 4. Async Runtime Hazards & Performance (AGENTS.md §10):
+- **Blocking IO in Tokio:** Strictly prohibit blocking calls (`std::fs::*`, `std::thread::sleep`, `std::sync::Mutex`) inside async functions. Use `tokio::fs` or `tokio::task::spawn_blocking`.
+- **N+1 Database Queries:** Eliminate loops executing individual database queries per item. Batch queries via `Column::Id.is_in(...)`.
+- **Clone Churn:** Remove redundant `.clone()` / `.to_string()` when passing borrowed slices (`&str`, `&[T]`) or `Cow` is sufficient.
 
-6. **Runtime Safety & Panic Elimination (AGENTS.md §14):**
-   - Replace bare `.unwrap()` / `.expect()` in domain paths with typed `Result` propagation (`?`).
-   - If physically guaranteed by compiler or constant, document the guarantee: `// INVARIANT: <explanation>`.
+#### 5. Type Safety & Domain Invariants (AGENTS.md §4, §6):
+- **Newtypes over Primitives:** Replace raw `Uuid` / `String` for IDs with typed newtypes (`TenantId`, `UserId`) to prevent ID mix-ups.
+- **State Machines:** Replace string-based status fields (`if status == "pending"`) with strongly-typed enums and valid state transition methods.
+- **Strict Error Modeling:** Replace vague `anyhow` or `String` errors in libraries/modules with explicit, typed domain error enums (`thiserror`).
 
-7. **FFA Frontend & UI Boundary Correctness (AGENTS.md §5):**
-   - **Zero Framework in Core:** `core/` MUST have zero UI framework imports (`leptos::*`, `dioxus::*`). All validation, calculations, computable view-models, and state machines MUST live in `core/` and be tested by standalone unit tests.
-   - **Zero Domain Logic in UI Adapters:** `ui/leptos` and `ui/dioxus` MUST NOT contain input validation rules, command construction, price/discount math, status evaluation, or direct backend API calls. The adapter ONLY binds the ready `ViewModel` to DOM/design tokens and events to callbacks.
-   - **Anti-Leak Smell:** If a module's `core/` is trivial or lacks unit tests while `ui/leptos.rs` is bloated with business logic, extract the logic into `core/` before declaring the component reviewed.
+#### 6. Runtime Safety & Panic Elimination (AGENTS.md §14):
+- Replace bare `.unwrap()` / `.expect()` in domain paths with typed `Result` propagation (`?`).
+- If physically guaranteed by compiler or constant, document the guarantee: `// INVARIANT: <explanation>`.
 
-### Step 4: Validate with the Gatekeeper
-Before committing, you **MUST** run the gatekeeper on your modified files:
+#### 7. FFA Frontend & UI Boundary Correctness (AGENTS.md §5):
+- **Zero Framework in Core:** `core/` MUST have zero UI framework imports (`leptos::*`, `dioxus::*`). All validation, calculations, computable view-models, and state machines MUST live in `core/` and be tested by standalone unit tests.
+- **Zero Domain Logic in UI Adapters:** `ui/leptos` and `ui/dioxus` MUST NOT contain input validation rules, command construction, price/discount math, status evaluation, or direct backend API calls. The adapter ONLY binds the ready `ViewModel` to DOM/design tokens and events to callbacks.
+- **Anti-Leak Smell:** If a module's `core/` is trivial or lacks unit tests while `ui/leptos.rs` is bloated with business logic, extract the logic into `core/` before declaring the component reviewed.
+
+### Step 4: Exhaustive Remediation ("Косяков нет, теперь иду дальше")
+Remediate **ALL** discovered defects across the entire crate in the same change set. An agent MUST NOT fix 2-3 isolated issues and leave the rest unaddressed. When a non-trivial logical branch lacks a test, add a focused unit test to lock in the verified behavior.
+
+### Step 5: Validate with Scoped Checks & Gatekeeper
+Run scoped compiler and test checks:
+```bash
+cargo check -p <crate>
+cargo test -p <crate> --lib
+```
+Before committing, run the gatekeeper on modified files:
 ```bash
 python scripts/verify/verify-remediation-gate.py --files path/to/modified_file.rs
 ```
@@ -113,12 +126,12 @@ python scripts/verify/verify-remediation-gate.py --files path/to/modified_file.r
 > **Anti-Suppression Enforcement ([AGENTS.md §14](../AGENTS.md)):**
 > The gatekeeper will **REJECT** any diff containing `#[allow(dead_code)]`, `#[allow(unused)]`, `@ts-ignore`, `todo!()`, or any deleted tests.
 
-### Step 5: Mark the Component Done in the Ledger
-Once the gatekeeper passes and changes are committed:
+### Step 6: Mark the Component Done in the Ledger
+Once the crate is in a zero-defect state, gatekeeper passes, and changes are committed:
 ```bash
-python scripts/maintenance/review_orchestrator.py mark-done <component_path> --notes "Cleaned unwrap calls, removed redundant clones"
+python scripts/maintenance/review_orchestrator.py mark-done <component_path> --notes "Logic verified: <details>; Remediated: <details>"
 ```
-This automatically updates `docs/standards/continuous-review-ledger.md` in git.
+Record the specific verified logic chains and edge-case invariants in `docs/standards/continuous-review-ledger.md`.
 
 ---
 

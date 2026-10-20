@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 use uuid::Uuid;
-use validator::{Validate, ValidationError};
+use validator::{Validate, ValidateEmail, ValidationError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -34,7 +34,7 @@ impl CartLineFulfillmentRequirement {
 pub struct CreateCartInput {
     pub customer_id: Option<Uuid>,
     #[validate(length(max = 255))]
-    #[validate(email)]
+    #[validate(custom(function = "validate_optional_email"))]
     pub email: Option<String>,
     pub region_id: Option<Uuid>,
     #[validate(custom(function = "validate_country_code"))]
@@ -56,7 +56,7 @@ pub struct AddCartLineItemInput {
     pub shipping_profile_slug: Option<String>,
     #[validate(length(max = 100))]
     pub sku: Option<String>,
-    #[validate(length(min = 1, max = 255))]
+    #[validate(custom(function = "validate_non_empty_title"))]
     pub title: String,
     #[validate(range(min = 1))]
     pub quantity: i32,
@@ -68,7 +68,7 @@ pub struct AddCartLineItemInput {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct UpdateCartContextInput {
     #[validate(length(max = 255))]
-    #[validate(email)]
+    #[validate(custom(function = "validate_optional_email"))]
     pub email: Option<String>,
     pub region_id: Option<Uuid>,
     #[validate(custom(function = "validate_country_code"))]
@@ -222,26 +222,36 @@ fn validate_country_code(value: &str) -> Result<(), ValidationError> {
     }
 }
 
+fn validate_optional_email(value: &str) -> Result<(), ValidationError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    if trimmed.validate_email() {
+        Ok(())
+    } else {
+        Err(ValidationError::new("email"))
+    }
+}
+
 fn validate_locale_code(value: &str) -> Result<(), ValidationError> {
-    let normalized = value.trim().replace('_', "-");
-    let mut segments = normalized.split('-');
-    let Some(language) = segments.next() else {
+    let Some(normalized) = rustok_api::normalize_locale_tag(value) else {
         return Err(ValidationError::new("locale_code"));
     };
-    if !(2..=3).contains(&language.len()) || !language.chars().all(|ch| ch.is_ascii_alphabetic()) {
-        return Err(ValidationError::new("locale_code"));
+    if (2..=10).contains(&normalized.len()) {
+        Ok(())
+    } else {
+        Err(ValidationError::new("locale_code"))
     }
-    if segments.any(|segment| {
-        segment.is_empty()
-            || segment.len() > 8
-            || !segment.chars().all(|ch| ch.is_ascii_alphanumeric())
-    }) {
-        return Err(ValidationError::new("locale_code"));
+}
+
+fn validate_non_empty_title(value: &str) -> Result<(), ValidationError> {
+    let trimmed = value.trim();
+    if (1..=255).contains(&trimmed.len()) {
+        Ok(())
+    } else {
+        Err(ValidationError::new("title"))
     }
-    if normalized.len() > 35 {
-        return Err(ValidationError::new("locale_code"));
-    }
-    Ok(())
 }
 
 fn validate_non_negative_decimal(value: &Decimal) -> Result<(), ValidationError> {

@@ -738,6 +738,58 @@ Done when each new node, mark, or consumer lands with owner policy, server
 validation/render/plain-text support, both host adapters where applicable, CSP
 and accessibility evidence, migrations, and synchronized local/central docs.
 
+## Scoped controller disposal correction — 2026-10-17
+
+The user-requested Forum inspection also found that the shared frame controller accepted
+already-queued port events and handshakes after `destroy()`. Both receive entrypoints now reject
+destroyed instances. Forum retains ownership of editing-target lifetimes: its React frame is
+keyed by the current composer lifetime, and document callbacks capture that lifetime before
+mutating a draft. This does not change the document/profile/protocol boundary or normal
+controlled updates within one editor.
+
+Two shared-controller regressions failed before the correction, and a live-update positive
+case passes. `npm test` builds the canonical tracked `dist/` artifacts and passes **13/13**
+richtext tests; the package semantic TS 6.0.3 check and generated-contract verifier pass.
+Forum's separate scoped evidence is recorded in its owner plan. Tests use deterministic
+window/MessagePort bindings; no new mounted-browser evidence or Phase 2 completion is implied.
+
+Historical build environment limitation at that pass: the unchanged manifest/lockfile mixed Tiptap core `3.30.5` with
+extension/PM peers at `3.27.4`; a normal clean resolution reports `ERESOLVE`. Verification used
+an external copy of the existing frozen lock via `npm ci --force --ignore-scripts`, retaining
+those declared/locked versions and peer warnings. No dependency or lockfile was changed. The
+canonical build refreshed tracked frame hashes/manifest and controller-containing bundles;
+dependency-owner peer alignment and mounted-browser verification remain outstanding.
+
+## Dependency conflict resolution — 2026-10-17
+
+The user authorized removing all discovered dependency conflicts rather than retaining the
+forced-install limitation above. Tiptap core/extensions/PM now form one locked `3.30.5` cohort.
+Both Next hosts lock the current local richtext contract, React/React DOM and their types at
+`19.3.0`, ESLint `9.39.4` and TypeScript `6.0.3`; admin's parser/TypeScript-ESLint graph was
+refreshed to the compatible 8.71 cohort. Admin explicitly supplies AJV 8 as a development peer
+for `@hookform/resolvers`; ESLint's separate AJV 6 dependency remains nested rather than being
+incorrectly supplied to that optional peer. No application schema validator was duplicated.
+Storefront Next advances from `16.3.6` to `16.3.8`, matching admin and its ESLint config.
+
+Ordinary `npm ci` now succeeds for richtext and both hosts without `--force`, legacy peer flags
+or TLS verification bypasses. Sandbox GitHub downloads required the existing system CA bundle
+and an HTTPS rewrite of the public Git URL. `npm ls --all` succeeds for all three installed
+trees after local package dev-tool installation and normal `npm prune` of npm 10's extraneous
+platform-optionals. These are real repository installs, not the earlier scratch aliases.
+Full richtext `npm run verify` passes **17 tests**, native package typecheck and canonical asset
+regeneration. Both hosts' full `npm run typecheck`, `npm run lint`, scoped Forum module lint
+and Forum scripts pass. Four dependency/build contract tests were added; the three cohort/host
+checks also fail against base manifests/locks. Current combined Forum/ownership/richtext evidence
+is **156 tests**, with host scripts separately passing **115 storefront / 12 admin**.
+
+The obsolete TypeScript-7 `ignoreBuildErrors` exceptions are removed from both Next configs.
+Admin's obsolete Bun lock/install path is removed atomically: Docker now uses npm with repository
+root context, supported Node 24, local-package paths, standalone tracing and explicit shared
+richtext assets. Its format script uses the already-declared Prettier instead of Bun. No Docker
+engine is installed here; image build/runtime are source-reviewed only. Browser/IME/host save-reload
+and Rust/PostgreSQL acceptance remain outstanding; dependency alignment is not Phase 2 completion
+or a claim that every transitive security advisory is resolved.
+
 ## Verification matrix
 
 Minimum gates for the cutover:

@@ -480,14 +480,32 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         )
         .await
         .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
-        page.map(|page| {
+        if let Some(page) = page {
             let seed = crate::core::edit_form_seed_from_page(&page, &self.default_locale);
-            let project = crate::core::parse_project_data(&seed.project_data_text)
+            let mut project = crate::core::parse_project_data(&seed.project_data_text)
                 .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
-            canonicalize_builder_project(project)
-                .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))
-        })
-        .transpose()
+            if !page.template.is_empty() && page.template != "default" {
+                let locale = page_locale(&page, self.default_locale.clone());
+                if let Ok(preview_json_str) = transport::preview_page_template_document(
+                    Some(self.token.clone()),
+                    Some(self.tenant_slug.clone()),
+                    page.template.clone(),
+                    locale,
+                    seed.project_data_text.clone(),
+                )
+                .await
+                {
+                    if let Ok(injected) = serde_json::from_str::<Value>(&preview_json_str) {
+                        project = injected;
+                    }
+                }
+            }
+            let canonical = canonicalize_builder_project(project)
+                .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
+            Ok(Some(canonical))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn save_project(

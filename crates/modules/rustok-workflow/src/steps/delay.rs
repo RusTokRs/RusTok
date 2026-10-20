@@ -29,7 +29,15 @@ impl WorkflowStep for DelayStep {
         let delay_ms = config
             .get("delay_ms")
             .and_then(Value::as_u64)
-            .ok_or_else(|| WorkflowError::InvalidStepConfig("delay: missing 'delay_ms'".into()))?;
+            .or_else(|| {
+                config
+                    .get("duration_seconds")
+                    .and_then(Value::as_u64)
+                    .map(|s| s.saturating_mul(1000))
+            })
+            .ok_or_else(|| {
+                WorkflowError::InvalidStepConfig("delay: missing 'delay_ms' or 'duration_seconds'".into())
+            })?;
 
         if delay_ms > MAX_INLINE_DELAY_MS {
             return Err(WorkflowError::InvalidStepConfig(format!(
@@ -48,3 +56,39 @@ impl WorkflowStep for DelayStep {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_delay_step_duration_seconds() {
+        let step = DelayStep;
+        let context = StepContext::default();
+        // 0 seconds should execute immediately
+        let config = json!({ "duration_seconds": 0 });
+        let out = step.execute(&config, context).await.unwrap();
+        assert!(out.should_continue);
+        assert_eq!(out.data["delayed_ms"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_delay_step_missing_config() {
+        let step = DelayStep;
+        let context = StepContext::default();
+        let config = json!({});
+        let err = step.execute(&config, context).await.unwrap_err();
+        assert!(matches!(err, WorkflowError::InvalidStepConfig(_)));
+    }
+
+    #[tokio::test]
+    async fn test_delay_step_exceeds_max() {
+        let step = DelayStep;
+        let context = StepContext::default();
+        let config = json!({ "duration_seconds": 120 });
+        let err = step.execute(&config, context).await.unwrap_err();
+        assert!(matches!(err, WorkflowError::InvalidStepConfig(_)));
+    }
+}
+

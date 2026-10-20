@@ -50,7 +50,6 @@ const evidenceText = read(evidencePath);
 const evidence = JSON.parse(evidenceText);
 
 requireAll('runtime mount', runtime, [
-  'mod keyring_schedule_audit_operator {',
   '#[path = "comments_provider_runtime_keyring_schedule_audit_operator.rs"]',
   'mod keyring_schedule_audit_operator;',
   '#[path = "comments_provider_runtime_keyring_schedule_audit_operator_postgres_evidence.rs"]',
@@ -58,8 +57,6 @@ requireAll('runtime mount', runtime, [
 ]);
 
 requireAll('PostgreSQL evidence harness', harness, [
-  '#[cfg(all(test, feature = "mod-blog"))]',
-  'mod retained_postgres_evidence',
   'RUSTOK_BLOG_COMMENTS_AUDIT_TEST_DATABASE_URL',
   'std::env::var("DATABASE_URL")',
   'CREATE SCHEMA',
@@ -110,6 +107,9 @@ forbidAll('PostgreSQL evidence harness', harness, [
 ]);
 
 requireAll('existing operator boundary', operator, [
+  // The PostgreSQL evidence harness is a test-only module of the operator.
+  '#[cfg(all(test, feature = "mod-blog"))]',
+  'mod operator_postgres_evidence;',
   'context.authorize_for(self.control_plane_tenant_id)?;',
   'pub async fn inspect_dead_letter(',
   'pub async fn requeue_dead_letter(',

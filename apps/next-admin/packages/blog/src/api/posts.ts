@@ -137,7 +137,6 @@ export interface UpdatePostInput {
   content?: RichTextDocument;
   excerpt?: string;
   slug?: string;
-  status?: BlogPostStatus;
   tags?: string[];
   categoryId?: string | null;
   featuredImageUrl?: string;

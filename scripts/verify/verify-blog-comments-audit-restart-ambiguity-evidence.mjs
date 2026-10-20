@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readComposedRustSource } from './lib/rust-facade-source.mjs';
+import { flattenWhitespace } from './lib/verify-text.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const runtimePath = 'apps/server/src/services/comments_provider_runtime.rs';
@@ -30,6 +31,17 @@ function read(relativePath) {
 function requireAll(label, text, markers) {
   for (const marker of markers) {
     if (!text.includes(marker)) {
+      throw new Error(`${label} is missing required marker: ${marker}`);
+    }
+  }
+}
+
+function requireAllProse(label, text, markers) {
+  // See scripts/verify/lib/verify-text.mjs: prose markers are wording contracts, so they
+  // are compared against a whitespace-flattened view of the source.
+  const flattened = flattenWhitespace(text);
+  for (const marker of markers) {
+    if (!flattened.includes(flattenWhitespace(marker))) {
       throw new Error(`${label} is missing required marker: ${marker}`);
     }
   }
@@ -70,6 +82,8 @@ const plan = read(planPath);
 const evidence = JSON.parse(read(evidencePath));
 
 requireAll('runtime test mounts', runtime, [
+  // The PostgreSQL evidence harnesses are test-only modules.
+  '#[cfg(all(test, feature = "mod-blog"))]',
   '#[path = "comments_provider_runtime_keyring_schedule_audit_recovery_postgres_test_support.rs"]',
   'mod test_support;',
   '#[path = "comments_provider_runtime_keyring_schedule_audit_restart_ambiguity_postgres_evidence.rs"]',
@@ -123,8 +137,6 @@ requireAll('production canonical writer', writer, [
 ]);
 
 requireAll('restart ambiguity harness', harness, [
-  '#[cfg(all(test, feature = "mod-blog"))]',
-  'mod retained_restart_ambiguity_evidence',
   'RUSTOK_BLOG_COMMENTS_AUDIT_TEST_DATABASE_URL',
   'rustok_outbox::OutboxModule.migrations()',
   'rustok_blog::BlogModule.migrations()',
@@ -165,7 +177,7 @@ forbidAll('restart ambiguity harness ownership', harness, [
   'async_graphql',
 ]);
 
-requireAll('slice 96 plan', plan, [
+requireAllProse('slice 96 plan', plan, [
   'Status: `restart_ambiguity_postgres_evidence_source_ready_maintainer_execution_pending`.',
   'Active claim acknowledgement',
   'Expired claim restart recovery',

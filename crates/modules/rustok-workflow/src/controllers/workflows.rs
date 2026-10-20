@@ -28,6 +28,18 @@ fn map_workflow_error(
             "Workflow was not found",
             "workflow_not_found",
         ),
+        WorkflowError::VersionNotFound(_, _) => (
+            StatusCode::NOT_FOUND,
+            "workflow_version_not_found",
+            "Workflow version was not found",
+            "version_not_found",
+        ),
+        WorkflowError::TemplateNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "workflow_template_not_found",
+            "Workflow template was not found",
+            "template_not_found",
+        ),
         WorkflowError::StepNotFound(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "workflow_operation_failed",

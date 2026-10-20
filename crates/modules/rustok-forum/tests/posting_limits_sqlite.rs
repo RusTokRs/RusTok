@@ -928,6 +928,9 @@ async fn storefront_ids(
             tenant_id,
             reader.clone(),
             ListTopicsFilter {
+                search: None,
+                order: Default::default(),
+                solved_only: false,
                 category_id: Some(category_id),
                 status: None,
                 locale: Some("en".to_string()),

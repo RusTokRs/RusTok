@@ -153,6 +153,9 @@ async fn mark_and_clear_solution_updates_topic_and_reply_read_paths() {
             tenant_id,
             customer.clone(),
             ListTopicsFilter {
+                search: None,
+                order: Default::default(),
+                solved_only: false,
                 category_id: Some(category.id),
                 status: None,
                 locale: Some("en".to_string()),

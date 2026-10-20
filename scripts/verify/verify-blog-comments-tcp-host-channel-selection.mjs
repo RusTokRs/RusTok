@@ -128,7 +128,8 @@ hasAll(
   runtime,
   [
     'CommentsTcpChannelProtection, CommentsTcpClientChannelConnector,',
-    'CommentsTcpServerChannelAcceptor, CommentsThreadPort,',
+    'CommentsTcpDelegationSigner, CommentsTcpServerChannelAcceptor, CommentsThreadTransport,',
+    'use rustok_comments_api::CommentsThreadPort;',
     'PlaintextLoopbackCommentsTcpChannel',
     'TcpProtectedLoopback',
     'pub struct SharedCommentsTcpClientChannelConnector(',
@@ -165,9 +166,14 @@ hasNone(
     'TrustedCommentsTcpAuthority::new(',
     '0.0.0.0:',
     'retry(',
-    'println!(',
   ],
   'host runtime non-claims',
+);
+// The runtime must not print to stdout. `eprintln!` is a different macro: the
+// composed test harnesses use it for their child-process readiness marker.
+requireCondition(
+  !/(?<!e)println!\(/.test(runtime),
+  'host runtime non-claims contains forbidden println!(',
 );
 
 hasAll(

@@ -24,6 +24,13 @@ fn map_workflow_step_error(
             "Workflow was not found",
             "workflow_not_found",
         ),
+        WorkflowError::VersionNotFound(_, _)
+        | WorkflowError::TemplateNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "workflow_not_found",
+            "Workflow entity was not found",
+            "not_found",
+        ),
         WorkflowError::StepNotFound(_) => (
             StatusCode::NOT_FOUND,
             "workflow_step_not_found",
@@ -149,7 +156,7 @@ pub async fn delete_step(
 
 fn ensure_workflow_permission(auth: &AuthContext) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, &[Permission::WORKFLOWS_UPDATE]) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "workflow_permission_denied",
             "Permission denied: workflows:update required".to_string(),
         ));

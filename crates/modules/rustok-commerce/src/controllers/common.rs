@@ -4,12 +4,63 @@ use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-#[derive(Debug, Clone, Deserialize, Default, IntoParams, ToSchema)]
+#[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct PaginationParams {
-    #[serde(default = "default_page")]
+    #[serde(default = "default_page", deserialize_with = "deserialize_number_or_string")]
     pub page: u64,
-    #[serde(default = "default_per_page")]
+    #[serde(default = "default_per_page", deserialize_with = "deserialize_number_or_string")]
     pub per_page: u64,
+}
+
+fn deserialize_number_or_string<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct NumberOrStringVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for NumberOrStringVisitor {
+        type Value = u64;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a positive integer or a string representing a positive integer")
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<u64, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(value)
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<u64, E>
+        where
+            E: serde::de::Error,
+        {
+            if value >= 0 {
+                Ok(value as u64)
+            } else {
+                Err(E::custom("expected positive integer"))
+            }
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<u64, E>
+        where
+            E: serde::de::Error,
+        {
+            value.parse::<u64>().map_err(E::custom)
+        }
+    }
+
+    deserializer.deserialize_any(NumberOrStringVisitor)
+}
+
+impl Default for PaginationParams {
+    fn default() -> Self {
+        Self {
+            page: default_page(),
+            per_page: default_per_page(),
+        }
+    }
 }
 
 fn default_page() -> u64 {
@@ -21,8 +72,12 @@ fn default_per_page() -> u64 {
 }
 
 impl PaginationParams {
+    pub fn page(&self) -> u64 {
+        self.page.max(1)
+    }
+
     pub fn offset(&self) -> u64 {
-        (self.page.max(1).saturating_sub(1)) * self.limit()
+        (self.page().saturating_sub(1)) * self.limit()
     }
 
     pub fn limit(&self) -> u64 {

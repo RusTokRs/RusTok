@@ -473,39 +473,23 @@ impl SearchQueryRoot {
             sort_desc: input.sort_desc,
         };
 
-        let audience_registry = ctx.data_opt::<crate::SearchAudienceRegistry>();
-        let result = if let Some(registry) = audience_registry {
-            if !registry.is_empty() {
-                let auth = ctx.data_opt::<AuthContext>().cloned();
-                let request_context = ctx.data_opt::<RequestContext>().cloned();
-                run_audience_storefront_search_with_dictionaries(
-                    db,
-                    &engine,
-                    search_query.clone(),
-                    &trusted_channel,
-                    registry,
-                    auth,
-                    request_context,
-                )
-                .await
-            } else {
-                run_storefront_search_with_dictionaries(
-                    db,
-                    &engine,
-                    search_query.clone(),
-                    &trusted_channel,
-                )
-                .await
-            }
-        } else {
-            run_storefront_search_with_dictionaries(
-                db,
-                &engine,
-                search_query.clone(),
-                &trusted_channel,
-            )
-            .await
-        };
+        let default_registry = crate::SearchAudienceRegistry::new();
+        let registry = ctx
+            .data_opt::<crate::SearchAudienceRegistry>()
+            .unwrap_or(&default_registry);
+        let auth = ctx.data_opt::<AuthContext>().cloned();
+        let request_context = ctx.data_opt::<RequestContext>().cloned();
+        let result = crate::execute_audience_eligible_search(
+            db,
+            &engine,
+            search_query.clone(),
+            &trusted_channel,
+            registry,
+            auth,
+            request_context,
+            crate::StorefrontSearchTransport::Graphql,
+        )
+        .await;
         finalize_search_result(
             db,
             policy.surface,
@@ -1095,85 +1079,7 @@ async fn run_search_with_dictionaries(
     SearchDictionaryService::apply_query_rules(db, &search_query, result).await
 }
 
-async fn run_storefront_search_with_dictionaries(
-    db: &sea_orm::DatabaseConnection,
-    engine: &PgSearchEngine,
-    search_query: SearchQuery,
-    channel: &TrustedStorefrontChannel,
-) -> rustok_core::Result<crate::SearchResult> {
-    let result = engine
-        .search_storefront(search_query.clone(), channel)
-        .await?;
-    SearchDictionaryService::apply_storefront_query_rules(db, &search_query, result, channel).await
-}
 
-async fn run_audience_storefront_search_with_dictionaries(
-    db: &sea_orm::DatabaseConnection,
-    engine: &PgSearchEngine,
-    search_query: SearchQuery,
-    channel: &TrustedStorefrontChannel,
-    registry: &crate::SearchAudienceRegistry,
-    auth: Option<AuthContext>,
-    request_context: Option<RequestContext>,
-) -> rustok_core::Result<crate::SearchResult> {
-    if let Some(tenant_id) = search_query.tenant_id {
-        if auth.is_none() && search_query.source_modules.len() == 1 {
-            let module = &search_query.source_modules[0];
-            if !registry.public_discovery_allowed(module, tenant_id).await.unwrap_or(true) {
-                return Ok(crate::SearchResult {
-                    items: Vec::new(),
-                    total: 0,
-                    took_ms: 0,
-                    engine: crate::SearchEngineKind::Postgres,
-                    ranking_profile: search_query.ranking_profile,
-                    facets: Vec::new(),
-                });
-            }
-        }
-    }
-
-    let mut result = engine
-        .search_storefront_candidates(search_query.clone(), channel)
-        .await?;
-
-    if let Some(tenant_id) = search_query.tenant_id {
-        let descriptors: Vec<crate::SearchCandidateDescriptor> = result
-            .items
-            .iter()
-            .map(|item| {
-                crate::SearchCandidateDescriptor::new(
-                    item.id,
-                    &item.source_module,
-                    &item.entity_type,
-                )
-            })
-            .collect();
-
-        let allowed_ids = crate::resolve_audience_eligible_candidates(
-            registry,
-            tenant_id,
-            search_query.locale.as_deref().unwrap_or_default(),
-            &descriptors,
-            auth,
-            request_context,
-            crate::StorefrontSearchTransport::Graphql,
-        )
-        .await
-        .map_err(|e| rustok_core::Error::Validation(e.message))?;
-
-        result.items.retain(|item| allowed_ids.contains(&item.id));
-        result.total = result.items.len() as u64;
-        result.facets = crate::build_authorized_facets(&result.items);
-    }
-
-    SearchDictionaryService::apply_authorized_storefront_query_rules(
-        db,
-        &search_query,
-        result,
-        channel,
-    )
-    .await
-}
 
 fn classify_search_error(error: &rustok_core::Error) -> &'static str {
     match error {

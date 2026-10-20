@@ -15,12 +15,22 @@ pub enum FulfillmentStatusKind {
 
 impl FulfillmentStatusKind {
     pub fn from_raw(status: &str) -> Self {
-        match status {
-            "pending" => Self::Pending,
-            "shipped" => Self::Shipped,
-            "delivered" => Self::Delivered,
-            "cancelled" => Self::Cancelled,
+        match status.trim() {
+            s if s.eq_ignore_ascii_case("pending") => Self::Pending,
+            s if s.eq_ignore_ascii_case("shipped") => Self::Shipped,
+            s if s.eq_ignore_ascii_case("delivered") => Self::Delivered,
+            s if s.eq_ignore_ascii_case("cancelled") => Self::Cancelled,
             _ => Self::Unknown,
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Shipped => "shipped",
+            Self::Delivered => "delivered",
+            Self::Cancelled => "cancelled",
+            Self::Unknown => "unknown",
         }
     }
 
@@ -57,9 +67,46 @@ mod tests {
     }
 
     #[test]
+    fn fulfillment_status_from_raw_handles_case_and_whitespace() {
+        assert_eq!(
+            FulfillmentStatusKind::from_raw("  PENDING  "),
+            FulfillmentStatusKind::Pending
+        );
+        assert_eq!(
+            FulfillmentStatusKind::from_raw("Shipped"),
+            FulfillmentStatusKind::Shipped
+        );
+        assert_eq!(
+            FulfillmentStatusKind::from_raw("DELIVERED"),
+            FulfillmentStatusKind::Delivered
+        );
+        assert_eq!(
+            FulfillmentStatusKind::from_raw(" cancelled "),
+            FulfillmentStatusKind::Cancelled
+        );
+    }
+
+    #[test]
+    fn fulfillment_status_as_str_round_trip() {
+        for kind in [
+            FulfillmentStatusKind::Pending,
+            FulfillmentStatusKind::Shipped,
+            FulfillmentStatusKind::Delivered,
+            FulfillmentStatusKind::Cancelled,
+        ] {
+            assert_eq!(FulfillmentStatusKind::from_raw(kind.as_str()), kind);
+        }
+        assert_eq!(FulfillmentStatusKind::Unknown.as_str(), "unknown");
+    }
+
+    #[test]
     fn unknown_fulfillment_value_fails_closed() {
         assert_eq!(
             FulfillmentStatusKind::from_raw("carrier_custom"),
+            FulfillmentStatusKind::Unknown
+        );
+        assert_eq!(
+            FulfillmentStatusKind::from_raw("   "),
             FulfillmentStatusKind::Unknown
         );
     }

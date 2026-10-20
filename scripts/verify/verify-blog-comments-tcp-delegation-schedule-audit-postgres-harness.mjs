@@ -70,7 +70,7 @@ const preserved = {
     '8660fd1b96997bcdbaf52718847ce7c8b7eeb7e0',
   'crates/modules/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs':
     '2f6473d7889a242ef86621b8615834e8bffe1013',
-  'apps/server/Cargo.toml': 'e80ef5a046f33d493848e695164fa5954ec27d4d',
+  'apps/server/Cargo.toml': 'f72bc1ce6f615150c86afa55ae0bc5b3478b366b',
 };
 for (const [relativePath, expectedSha] of Object.entries(preserved)) {
   requireCondition(

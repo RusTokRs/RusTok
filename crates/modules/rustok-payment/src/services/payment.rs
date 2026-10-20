@@ -327,7 +327,7 @@ impl PaymentService {
         let mut query = entities::payment_collection::Entity::find()
             .filter(entities::payment_collection::Column::TenantId.eq(tenant_id));
 
-        if let Some(status) = input.status {
+        if let Some(status) = input.status.filter(|s| !s.trim().is_empty()) {
             let normalized_status = Self::normalize_collection_status_filter(&status)?;
             query =
                 query.filter(entities::payment_collection::Column::Status.eq(normalized_status));
@@ -469,7 +469,7 @@ impl PaymentService {
             query =
                 query.filter(entities::refund::Column::PaymentCollectionId.is_in(collection_ids));
         }
-        if let Some(status) = input.status {
+        if let Some(status) = input.status.filter(|s| !s.trim().is_empty()) {
             let normalized_status = Self::normalize_refund_status_filter(&status)?;
             query = query.filter(entities::refund::Column::Status.eq(normalized_status));
         }
@@ -587,13 +587,14 @@ impl PaymentService {
         }
 
         let now = Utc::now();
+        let normalized_reason = normalize_optional_reason(input.reason)?;
         let fallback_reason = refund.reason.clone();
         let mut active: entities::refund::ActiveModel = refund.into();
         let current_metadata = active.metadata.clone().take().unwrap_or_default();
         let merged_metadata = merge_metadata(current_metadata, input.metadata);
         validate_payment_metadata(&merged_metadata, "cancel refund merged metadata")?;
         active.status = Set(STATUS_REFUND_CANCELLED.to_string());
-        active.reason = Set(normalize_optional_reason(input.reason).or(fallback_reason));
+        active.reason = Set(normalized_reason.or(fallback_reason));
         active.metadata = Set(merged_metadata);
         active.updated_at = Set(now.into());
         active.cancelled_at = Set(Some(now.into()));
@@ -762,6 +763,7 @@ impl PaymentService {
             Err(error) => return Err(error),
         };
 
+        let normalized_reason = normalize_optional_reason(input.reason)?;
         let now = Utc::now();
         if let Some(payment) = payment {
             let payment_status = PaymentStatusKind::from_raw(payment.status.as_str());
@@ -775,8 +777,7 @@ impl PaymentService {
                 });
             }
             let mut payment_active: entities::payment::ActiveModel = payment.into();
-            let reason = input
-                .reason
+            let reason = normalized_reason
                 .clone()
                 .unwrap_or_else(|| "cancelled".to_string());
             let payment_metadata = payment_active.metadata.clone().take().unwrap_or_default();
@@ -798,7 +799,7 @@ impl PaymentService {
             "cancel collection merged metadata",
         )?;
         active.status = Set(STATUS_CANCELLED.to_string());
-        active.cancellation_reason = Set(input.reason);
+        active.cancellation_reason = Set(normalized_reason);
         active.metadata = Set(merged_collection_metadata);
         active.cancelled_at = Set(Some(now.into()));
         active.updated_at = Set(now.into());
@@ -1107,10 +1108,18 @@ fn normalize_provider_payment_id(value: Option<String>) -> String {
         .unwrap_or_else(|| format!("manual_{}", generate_id()))
 }
 
-fn normalize_optional_reason(value: Option<String>) -> Option<String> {
-    value
+fn normalize_optional_reason(value: Option<String>) -> PaymentResult<Option<String>> {
+    let normalized = value
         .map(|reason| reason.trim().to_string())
-        .filter(|reason| !reason.is_empty())
+        .filter(|reason| !reason.is_empty());
+    if let Some(ref reason) = normalized
+        && reason.len() > 500
+    {
+        return Err(PaymentError::Validation(
+            "cancellation reason must be at most 500 characters".to_string(),
+        ));
+    }
+    Ok(normalized)
 }
 
 pub(crate) fn validate_payment_metadata(
@@ -1249,6 +1258,28 @@ mod tests {
         let err = validate_non_nil(Uuid::nil(), "field").unwrap_err();
         assert!(
             matches!(err, PaymentError::Validation(msg) if msg.contains("field must not be a nil UUID"))
+        );
+    }
+
+    #[test]
+    fn normalize_optional_reason_trims_and_bounds() {
+        assert_eq!(
+            normalize_optional_reason(None).unwrap(),
+            None
+        );
+        assert_eq!(
+            normalize_optional_reason(Some("   ".to_string())).unwrap(),
+            None
+        );
+        assert_eq!(
+            normalize_optional_reason(Some("  customer requested  ".to_string())).unwrap(),
+            Some("customer requested".to_string())
+        );
+
+        let oversized = "x".repeat(501);
+        let err = normalize_optional_reason(Some(oversized)).unwrap_err();
+        assert!(
+            matches!(err, PaymentError::Validation(msg) if msg.contains("cancellation reason must be at most 500 characters"))
         );
     }
 }

@@ -316,7 +316,8 @@ async fn storefront_pricing_native(
         let selected_channel_id = explicit_channel_id
             .as_deref()
             .and_then(|value| Uuid::parse_str(value).ok())
-            .or_else(|| request_context.as_ref().and_then(|ctx| ctx.channel_id));
+            .filter(|uuid| !uuid.is_nil())
+            .or_else(|| request_context.as_ref().and_then(|ctx| ctx.channel_id.filter(|uuid| !uuid.is_nil())));
         let selected_channel_slug = sanitize_channel_slug(query.channel_slug).or_else(|| {
             request_context
                 .as_ref()
@@ -339,15 +340,18 @@ async fn storefront_pricing_native(
             let region_id = context
                 .region_id
                 .as_deref()
-                .and_then(|value| Uuid::parse_str(value).ok());
+                .and_then(|value| Uuid::parse_str(value).ok())
+                .filter(|uuid| !uuid.is_nil());
             let price_list_id = context
                 .price_list_id
                 .as_deref()
-                .and_then(|value| Uuid::parse_str(value).ok());
+                .and_then(|value| Uuid::parse_str(value).ok())
+                .filter(|uuid| !uuid.is_nil());
             let channel_id = context
                 .channel_id
                 .as_deref()
-                .and_then(|value| Uuid::parse_str(value).ok());
+                .and_then(|value| Uuid::parse_str(value).ok())
+                .filter(|uuid| !uuid.is_nil());
             PriceResolutionContext {
                 currency_code: context.currency_code.clone(),
                 region_id,

@@ -311,6 +311,9 @@ async fn topic_list_exposes_requested_effective_and_available_locales() {
             tenant_id,
             admin,
             ListTopicsFilter {
+                search: None,
+                order: Default::default(),
+                solved_only: false,
                 category_id: Some(category.id),
                 status: None,
                 locale: Some("fr-FR".to_string()),

@@ -31,6 +31,14 @@ const PUBLISH_PAGE_MUTATION: &str = "mutation PublishPage($id: UUID!, $input: Pu
 const ROLLBACK_PAGE_MUTATION: &str = "mutation RollbackPage($id: UUID!, $input: RollbackGqlPageInput!) { rollbackPage(id: $id, input: $input) { operationId pageId version idempotencyKey targetPublishOperationId sourceArtifactSetHash targetArtifactSetHash replayed rolledBackAt } }";
 const UNPUBLISH_PAGE_MUTATION: &str = "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id version status updatedAt translation { locale title slug } } }";
 const DELETE_PAGE_MUTATION: &str = "mutation DeletePage($id: UUID!) { deletePage(id: $id) }";
+const PAGE_TEMPLATE_KEYS_QUERY: &str = "query PageTemplateKeys($locale: String!) { pageTemplateKeys(locale: $locale) }";
+const PAGE_TEMPLATES_QUERY: &str = "query PageTemplates($locale: String!) { pageTemplates(locale: $locale) { key locale headerSymbolIds footerSymbolIds revision } }";
+const PREVIEW_PAGE_TEMPLATE_DOCUMENT_QUERY: &str = "query PreviewPageTemplateDocument($key: String!, $locale: String!, $document: String!) { previewPageTemplateDocument(key: $key, locale: $locale, document: $document) }";
+const SITE_SYMBOLS_QUERY: &str = "query SiteSymbols($locale: String!) { siteSymbols(locale: $locale) { symbolId locale name contentJson createdAt updatedAt } }";
+const SAVE_PAGE_TEMPLATE_MUTATION: &str = "mutation SavePageTemplate($key: String!, $locale: String!, $headerSymbolIds: [String!]!, $footerSymbolIds: [String!]!, $expectedRevision: Long) { savePageTemplate(key: $key, locale: $locale, headerSymbolIds: $headerSymbolIds, footerSymbolIds: $footerSymbolIds, expectedRevision: $expectedRevision) { key locale headerSymbolIds footerSymbolIds revision } }";
+const DELETE_PAGE_TEMPLATE_MUTATION: &str = "mutation DeletePageTemplate($key: String!, $locale: String!, $expectedRevision: Long!) { deletePageTemplate(key: $key, locale: $locale, expectedRevision: $expectedRevision) }";
+const SAVE_SITE_SYMBOL_MUTATION: &str = "mutation SaveSiteSymbol($input: SaveGqlSiteSymbolInput!) { saveSiteSymbol(input: $input) { symbolId locale name contentJson createdAt updatedAt } }";
+const DELETE_SITE_SYMBOL_MUTATION: &str = "mutation DeleteSiteSymbol($symbolId: String!, $locale: String!) { deleteSiteSymbol(symbolId: $symbolId, locale: $locale) }";
 const PUBLISH_IDEMPOTENCY_FORMAT: &str = "pages_admin_publish_v1";
 const ROLLBACK_IDEMPOTENCY_FORMAT: &str = "pages_admin_rollback_v1";
 
@@ -145,6 +153,54 @@ struct SchedulePagePublishResponse {
 struct CancelPagePublishResponse {
     #[serde(rename = "cancelPagePublish")]
     cancel_page_publish: crate::model::PagePublishSchedule,
+}
+
+#[derive(Debug, Deserialize)]
+struct PageTemplateKeysResponse {
+    #[serde(rename = "pageTemplateKeys")]
+    page_template_keys: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PageTemplatesResponse {
+    #[serde(rename = "pageTemplates")]
+    page_templates: Vec<crate::model::PageTemplateSummary>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PreviewPageTemplateDocumentResponse {
+    #[serde(rename = "previewPageTemplateDocument")]
+    preview_page_template_document: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SiteSymbolsResponse {
+    #[serde(rename = "siteSymbols")]
+    site_symbols: Vec<crate::model::SiteSymbolSummary>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SavePageTemplateResponse {
+    #[serde(rename = "savePageTemplate")]
+    save_page_template: crate::model::PageTemplateSummary,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeletePageTemplateResponse {
+    #[serde(rename = "deletePageTemplate")]
+    delete_page_template: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct SaveSiteSymbolResponse {
+    #[serde(rename = "saveSiteSymbol")]
+    save_site_symbol: crate::model::SiteSymbolSummary,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteSiteSymbolResponse {
+    #[serde(rename = "deleteSiteSymbol")]
+    delete_site_symbol: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -273,6 +329,60 @@ struct PageIdVariables {
 struct PageBuilderScenarioBaselineVariables {
     #[serde(rename = "pageId")]
     page_id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct LocaleVariables {
+    locale: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PreviewPageTemplateVariables {
+    key: String,
+    locale: String,
+    document: String,
+}
+
+#[derive(Debug, Serialize)]
+struct SavePageTemplateVariables {
+    key: String,
+    locale: String,
+    #[serde(rename = "headerSymbolIds")]
+    header_symbol_ids: Vec<String>,
+    #[serde(rename = "footerSymbolIds")]
+    footer_symbol_ids: Vec<String>,
+    #[serde(rename = "expectedRevision")]
+    expected_revision: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+struct DeletePageTemplateVariables {
+    key: String,
+    locale: String,
+    #[serde(rename = "expectedRevision")]
+    expected_revision: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct SaveSiteSymbolVariables {
+    input: SaveSiteSymbolInputPayload,
+}
+
+#[derive(Debug, Serialize)]
+struct SaveSiteSymbolInputPayload {
+    #[serde(rename = "symbolId")]
+    symbol_id: String,
+    locale: String,
+    name: Option<String>,
+    #[serde(rename = "contentJson")]
+    content_json: String,
+}
+
+#[derive(Debug, Serialize)]
+struct DeleteSiteSymbolVariables {
+    #[serde(rename = "symbolId")]
+    symbol_id: String,
+    locale: String,
 }
 
 async fn request<V, T>(
@@ -740,4 +850,156 @@ pub async fn delete_page(
     )
     .await?;
     Ok(response.delete_page)
+}
+
+pub async fn fetch_template_keys(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<String>, ApiError> {
+    let response: PageTemplateKeysResponse = request(
+        PAGE_TEMPLATE_KEYS_QUERY,
+        LocaleVariables { locale },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.page_template_keys)
+}
+
+pub async fn fetch_page_templates(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<crate::model::PageTemplateSummary>, ApiError> {
+    let response: PageTemplatesResponse = request(
+        PAGE_TEMPLATES_QUERY,
+        LocaleVariables { locale },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.page_templates)
+}
+
+pub async fn preview_page_template_document(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    key: String,
+    locale: String,
+    document: String,
+) -> Result<String, ApiError> {
+    let response: PreviewPageTemplateDocumentResponse = request(
+        PREVIEW_PAGE_TEMPLATE_DOCUMENT_QUERY,
+        PreviewPageTemplateVariables { key, locale, document },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.preview_page_template_document)
+}
+
+pub async fn fetch_site_symbols(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<crate::model::SiteSymbolSummary>, ApiError> {
+    let response: SiteSymbolsResponse = request(
+        SITE_SYMBOLS_QUERY,
+        LocaleVariables { locale },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.site_symbols)
+}
+
+pub async fn save_page_template(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    key: String,
+    locale: String,
+    header_symbol_ids: Vec<String>,
+    footer_symbol_ids: Vec<String>,
+    expected_revision: Option<i64>,
+) -> Result<crate::model::PageTemplateSummary, ApiError> {
+    let response: SavePageTemplateResponse = request(
+        SAVE_PAGE_TEMPLATE_MUTATION,
+        SavePageTemplateVariables {
+            key,
+            locale,
+            header_symbol_ids,
+            footer_symbol_ids,
+            expected_revision,
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.save_page_template)
+}
+
+pub async fn delete_page_template(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    key: String,
+    locale: String,
+    expected_revision: i64,
+) -> Result<bool, ApiError> {
+    let response: DeletePageTemplateResponse = request(
+        DELETE_PAGE_TEMPLATE_MUTATION,
+        DeletePageTemplateVariables {
+            key,
+            locale,
+            expected_revision,
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.delete_page_template)
+}
+
+pub async fn save_site_symbol(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    symbol_id: String,
+    locale: String,
+    name: Option<String>,
+    content_json: String,
+) -> Result<crate::model::SiteSymbolSummary, ApiError> {
+    let response: SaveSiteSymbolResponse = request(
+        SAVE_SITE_SYMBOL_MUTATION,
+        SaveSiteSymbolVariables {
+            input: SaveSiteSymbolInputPayload {
+                symbol_id,
+                locale,
+                name,
+                content_json,
+            },
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.save_site_symbol)
+}
+
+pub async fn delete_site_symbol(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    symbol_id: String,
+    locale: String,
+) -> Result<bool, ApiError> {
+    let response: DeleteSiteSymbolResponse = request(
+        DELETE_SITE_SYMBOL_MUTATION,
+        DeleteSiteSymbolVariables {
+            symbol_id,
+            locale,
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.delete_site_symbol)
 }

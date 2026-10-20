@@ -1,6 +1,6 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use chrono::{DateTime, FixedOffset, SecondsFormat};
+use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -125,8 +125,32 @@ impl From<UpdateTopicInput> for UpdateTopicCommandInput {
     }
 }
 
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    async_graphql::Enum,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ForumTopicListOrder {
+    #[default]
+    Latest,
+    Top,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, IntoParams)]
 pub struct ListTopicsFilter {
+    pub search: Option<String>,
+    #[serde(default)]
+    pub order: ForumTopicListOrder,
+    #[serde(default)]
+    pub solved_only: bool,
     pub category_id: Option<Uuid>,
     pub status: Option<TopicStatus>,
     pub locale: Option<String>,
@@ -142,6 +166,9 @@ pub struct ListTopicsFilter {
 impl Default for ListTopicsFilter {
     fn default() -> Self {
         Self {
+            search: None,
+            order: ForumTopicListOrder::Latest,
+            solved_only: false,
             category_id: None,
             status: None,
             locale: None,
@@ -151,63 +178,90 @@ impl Default for ListTopicsFilter {
     }
 }
 
-/// Keyset position of a topic list. The order is
-/// `is_pinned DESC, last_reply_at DESC NULLS LAST, updated_at DESC, id DESC`. The cursor
-/// carries the sort key of the last topic on the previous page plus its id as the final
-/// tie-breaker, so pages neither repeat nor skip topics when sort keys tie.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+impl ListTopicsFilter {
+    pub(crate) fn normalize_selection(&mut self) -> ForumResult<()> {
+        let raw = self.search.as_deref().unwrap_or("").trim();
+        let invalid = || ForumError::Validation("Forum topic search exceeds 200 characters".into());
+        if raw.chars().take(201).count() > 200 {
+            return Err(invalid());
+        }
+        let search = raw.to_lowercase();
+        if search.chars().take(201).count() > 200 {
+            return Err(invalid());
+        }
+        self.search = (!search.is_empty()).then_some(search);
+        Ok(())
+    }
+
+    pub(crate) fn matches_selection(&self, topic: &TopicListItem) -> bool {
+        (!self.solved_only || topic.solution_reply_id.is_some())
+            && self.search.as_deref().is_none_or(|search| {
+                topic.title.to_lowercase().contains(search)
+                    || topic.slug.to_lowercase().contains(search)
+            })
+    }
+
+    /// Locale/channel arguments are already normalized by their canonical owner helpers.
+    pub(crate) fn cursor_scope(
+        &self,
+        tenant_id: Uuid,
+        viewer_id: Option<Uuid>,
+        locale: &str,
+        fallback: Option<&str>,
+        channel: Option<&str>,
+        storefront: bool,
+    ) -> ForumResult<[u8; 32]> {
+        use sha2::{Digest, Sha256};
+        let context = serde_json::to_vec(&(
+            tenant_id,
+            viewer_id,
+            self.category_id,
+            self.status,
+            locale,
+            fallback,
+            channel,
+            storefront,
+            &self.search,
+            self.order,
+            self.solved_only,
+        ))
+        .map_err(|error| ForumError::Validation(error.to_string()))?;
+        Ok(Sha256::digest(context).into())
+    }
+}
+
+/// Opaque ranking position. Bound list cursors cannot cross a selection/context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TopicListCursor {
     pub is_pinned: bool,
     pub last_reply_at: Option<DateTime<FixedOffset>>,
     pub updated_at: DateTime<FixedOffset>,
     pub id: Uuid,
+    pub reply_count: i32,
+    pub order: ForumTopicListOrder,
+    pub selection_scope: Option<[u8; 32]>,
 }
 
 impl TopicListCursor {
-    /// Opaque, URL-safe token. Clients must not parse it.
     pub fn encode(&self) -> String {
-        let last_reply_at = self
-            .last_reply_at
-            .map(|value| value.to_rfc3339_opts(SecondsFormat::Nanos, false))
-            .unwrap_or_else(|| "-".to_string());
-        let raw = format!(
-            "v1|{}|{}|{}|{}",
-            u8::from(self.is_pinned),
-            last_reply_at,
-            self.updated_at.to_rfc3339_opts(SecondsFormat::Nanos, false),
-            self.id
-        );
-        URL_SAFE_NO_PAD.encode(raw)
+        // These concrete scalar fields are infallible JSON values.
+        URL_SAFE_NO_PAD.encode(serde_json::json!(self).to_string())
     }
 
     pub fn decode(value: &str) -> ForumResult<Self> {
         let invalid = || ForumError::Validation("Forum topic list cursor is invalid".to_string());
+        if value.len() > 4096 {
+            return Err(invalid());
+        }
         let bytes = URL_SAFE_NO_PAD
             .decode(value.trim())
             .map_err(|_| invalid())?;
-        let raw = String::from_utf8(bytes).map_err(|_| invalid())?;
-        let parts: Vec<&str> = raw.split('|').collect();
-        let [version, is_pinned, last_reply_at, updated_at, id] = parts.as_slice() else {
-            return Err(invalid());
-        };
-        if *version != "v1" {
+        let cursor: Self = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
+        if cursor.reply_count < 0 {
             return Err(invalid());
         }
-        let is_pinned = match *is_pinned {
-            "0" => false,
-            "1" => true,
-            _ => return Err(invalid()),
-        };
-        let last_reply_at = match *last_reply_at {
-            "-" => None,
-            raw_value => Some(DateTime::parse_from_rfc3339(raw_value).map_err(|_| invalid())?),
-        };
-        Ok(Self {
-            is_pinned,
-            last_reply_at,
-            updated_at: DateTime::parse_from_rfc3339(updated_at).map_err(|_| invalid())?,
-            id: Uuid::parse_str(id).map_err(|_| invalid())?,
-        })
+        Ok(cursor)
     }
 }
 
@@ -294,6 +348,108 @@ mod tests {
     use rustok_api::{RichTextDocument, RichTextView};
     use serde_json::json;
     use uuid::Uuid;
+
+    #[test]
+    fn list_selection_wire_contract_has_one_default_and_typed_order() {
+        use super::ForumTopicListOrder;
+        let default: ListTopicsFilter = serde_json::from_value(json!({})).unwrap();
+        assert_eq!(default.order, ForumTopicListOrder::Latest);
+        assert!(!default.solved_only);
+        let selected: ListTopicsFilter = serde_json::from_value(json!({
+            "search": "topic", "order": "top", "solved_only": true,
+        }))
+        .unwrap();
+        assert_eq!(selected.order, ForumTopicListOrder::Top);
+        assert!(selected.solved_only);
+        assert!(serde_json::from_value::<ListTopicsFilter>(json!({"order": "popular"})).is_err());
+    }
+
+    #[test]
+    fn topic_selection_normalizes_unicode_and_validates_before_scanning() {
+        let mut filter = ListTopicsFilter {
+            search: Some("  ЁЖ  ".into()),
+            ..Default::default()
+        };
+        filter.normalize_selection().expect("normalize");
+        assert_eq!(filter.search.as_deref(), Some("ёж"));
+        filter.normalize_selection().expect("idempotent");
+        filter.search = Some(" \n ".into());
+        filter.normalize_selection().expect("empty search");
+        assert!(filter.search.is_none());
+        for value in ["x".repeat(201), "İ".repeat(200)] {
+            filter.search = Some(value);
+            assert!(filter.normalize_selection().is_err());
+        }
+    }
+
+    #[test]
+    fn topic_cursor_roundtrips_rank_and_context_and_rejects_stale_or_malformed_tokens() {
+        use super::{ForumTopicListOrder, TopicListCursor};
+        let cursor = TopicListCursor {
+            is_pinned: true,
+            last_reply_at: Some(
+                chrono::DateTime::parse_from_rfc3339("2026-10-17T12:30:00.123456789+02:00")
+                    .unwrap(),
+            ),
+            updated_at: chrono::DateTime::parse_from_rfc3339("2026-10-17T11:30:00Z").unwrap(),
+            id: Uuid::new_v4(),
+            reply_count: 42,
+            order: ForumTopicListOrder::Top,
+            selection_scope: Some([23; 32]),
+        };
+        assert_eq!(TopicListCursor::decode(&cursor.encode()).unwrap(), cursor);
+        let unbound = TopicListCursor {
+            selection_scope: None,
+            order: ForumTopicListOrder::Latest,
+            ..cursor
+        };
+        assert_eq!(TopicListCursor::decode(&unbound.encode()).unwrap(), unbound);
+        for token in [
+            "not a cursor".into(),
+            "x".repeat(4097),
+            "djF8MHwtfDIwMjYtMTAtMTdUMDA6MDA6MDBafGlk".into(),
+        ] {
+            assert!(TopicListCursor::decode(&token).is_err());
+        }
+        assert!(
+            TopicListCursor::decode(
+                &TopicListCursor {
+                    reply_count: -1,
+                    ..cursor
+                }
+                .encode()
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn selection_scope_binds_context_but_not_page_size_or_after() {
+        let tenant = Uuid::new_v4();
+        let viewer = Some(Uuid::new_v4());
+        let mut filter = ListTopicsFilter::default();
+        let scope = filter
+            .cursor_scope(tenant, viewer, "en", Some("ru"), Some("web"), true)
+            .unwrap();
+        filter.per_page = 1;
+        filter.after = Some("position".into());
+        assert_eq!(
+            scope,
+            filter
+                .cursor_scope(tenant, viewer, "en", Some("ru"), Some("web"), true)
+                .unwrap()
+        );
+        for changed in [
+            filter.cursor_scope(Uuid::new_v4(), viewer, "en", Some("ru"), Some("web"), true),
+            filter.cursor_scope(tenant, None, "en", Some("ru"), Some("web"), true),
+            filter.cursor_scope(tenant, viewer, "fr", Some("ru"), Some("web"), true),
+            filter.cursor_scope(tenant, viewer, "en", Some("fr"), Some("web"), true),
+            filter.cursor_scope(tenant, viewer, "en", Some("ru"), Some("mobile"), true),
+            filter.cursor_scope(tenant, viewer, "en", Some("ru"), Some("web"), false),
+        ] {
+            assert_ne!(scope, changed.unwrap());
+        }
+    }
 
     fn sample(body: &str) -> TopicResponse {
         let document = RichTextDocument::single_paragraph(body);

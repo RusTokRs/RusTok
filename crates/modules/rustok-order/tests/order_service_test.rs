@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 use rustok_order::dto::{
     ApplyOrderChangeInput, CancelOrderChangeInput, CreateOrderAdjustmentInput,
     CreateOrderChangeInput, CreateOrderInput, CreateOrderLineItemInput, CreateOrderReturnInput,
-    CreateOrderReturnItemInput, ListOrderChangesInput, ListOrderReturnsInput,
+    CreateOrderReturnItemInput, ListOrderChangesInput, ListOrderReturnsInput, ListOrdersInput,
     OrderLineFulfillmentRequirement,
 };
 use rustok_order::entities::{order, order_tax_line};
@@ -1543,4 +1543,242 @@ async fn order_return_lifecycle_cancels_and_show_is_tenant_scoped() {
         OrderError::OrderReturnNotFound(id) => assert_eq!(id, created_return.id),
         other => panic!("expected scoped return not found, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn cancel_order_trims_reason_and_normalizes_empty() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+
+    let cancelled = service
+        .cancel_order(
+            tenant_id,
+            actor_id,
+            order.id,
+            Some("   Customer changed their mind   ".to_string()),
+        )
+        .await
+        .expect("order should cancel");
+    assert_eq!(cancelled.status, "cancelled");
+    assert_eq!(
+        cancelled.cancellation_reason.as_deref(),
+        Some("Customer changed their mind")
+    );
+    assert!(cancelled.cancelled_at.is_some());
+
+    // Test cancelling with whitespace-only turns into None
+    let order2 = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order2 should be created");
+    let cancelled2 = service
+        .cancel_order(tenant_id, actor_id, order2.id, Some("   \t\n  ".to_string()))
+        .await
+        .expect("order2 should cancel");
+    assert_eq!(cancelled2.status, "cancelled");
+    assert_eq!(cancelled2.cancellation_reason, None);
+
+    // Test cancelling with too long reason (> 500 chars) fails validation
+    let order3 = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order3 should be created");
+    let err = service
+        .cancel_order(tenant_id, actor_id, order3.id, Some("x".repeat(501)))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, OrderError::Validation(msg) if msg.contains("cancellation reason must not exceed 500 characters"))
+    );
+}
+
+#[tokio::test]
+async fn deliver_order_trims_signature_and_validates_bounds() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+    service
+        .confirm_order(tenant_id, actor_id, order.id)
+        .await
+        .expect("confirm");
+    service
+        .mark_paid(tenant_id, actor_id, order.id, "pay_1".to_string(), "card".to_string())
+        .await
+        .expect("mark_paid");
+    service
+        .ship_order(tenant_id, actor_id, order.id, "trk_1".to_string(), "carrier".to_string())
+        .await
+        .expect("ship");
+
+    let delivered = service
+        .deliver_order(
+            tenant_id,
+            actor_id,
+            order.id,
+            Some("  Jane Doe (Front Desk)  ".to_string()),
+        )
+        .await
+        .expect("deliver");
+    assert_eq!(delivered.status, "delivered");
+    assert_eq!(
+        delivered.delivered_signature.as_deref(),
+        Some("Jane Doe (Front Desk)")
+    );
+
+    // Test > 255 chars validation
+    let order2 = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order2");
+    service.confirm_order(tenant_id, actor_id, order2.id).await.unwrap();
+    service.mark_paid(tenant_id, actor_id, order2.id, "p".to_string(), "c".to_string()).await.unwrap();
+    service.ship_order(tenant_id, actor_id, order2.id, "t".to_string(), "c".to_string()).await.unwrap();
+    let err = service
+        .deliver_order(tenant_id, actor_id, order2.id, Some("s".repeat(256)))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, OrderError::Validation(msg) if msg.contains("delivered_signature must not exceed 255 characters"))
+    );
+}
+
+#[tokio::test]
+async fn mark_paid_and_ship_order_validate_bounds_and_trim() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+    service
+        .confirm_order(tenant_id, actor_id, order.id)
+        .await
+        .expect("confirm");
+
+    // Rejects empty / whitespace payment_id
+    let empty_err = service
+        .mark_paid(tenant_id, actor_id, order.id, "   ".to_string(), "card".to_string())
+        .await
+        .unwrap_err();
+    assert!(matches!(empty_err, OrderError::Validation(_)));
+
+    // Rejects > 100 char payment_id
+    let long_err = service
+        .mark_paid(tenant_id, actor_id, order.id, "p".repeat(101), "card".to_string())
+        .await
+        .unwrap_err();
+    assert!(matches!(long_err, OrderError::Validation(msg) if msg.contains("payment_id must not exceed 100 characters")));
+
+    // Rejects > 100 char payment_method
+    let long_method_err = service
+        .mark_paid(tenant_id, actor_id, order.id, "p1".to_string(), "m".repeat(101))
+        .await
+        .unwrap_err();
+    assert!(matches!(long_method_err, OrderError::Validation(msg) if msg.contains("payment_method must not exceed 100 characters")));
+
+    // Trims whitespace on payment_id & payment_method
+    let paid = service
+        .mark_paid(
+            tenant_id,
+            actor_id,
+            order.id,
+            "  pay_999  ".to_string(),
+            "  stripe  ".to_string(),
+        )
+        .await
+        .expect("mark paid");
+    assert_eq!(paid.payment_id.as_deref(), Some("pay_999"));
+    assert_eq!(paid.payment_method.as_deref(), Some("stripe"));
+
+    // Ship: rejects empty tracking_number
+    let empty_track = service
+        .ship_order(tenant_id, actor_id, order.id, "  ".to_string(), "dhl".to_string())
+        .await
+        .unwrap_err();
+    assert!(matches!(empty_track, OrderError::Validation(_)));
+
+    // Ship: rejects > 100 chars
+    let long_track = service
+        .ship_order(tenant_id, actor_id, order.id, "t".repeat(101), "dhl".to_string())
+        .await
+        .unwrap_err();
+    assert!(matches!(long_track, OrderError::Validation(msg) if msg.contains("tracking_number must not exceed 100 characters")));
+
+    // Ship: trims tracking_number and carrier
+    let shipped = service
+        .ship_order(
+            tenant_id,
+            actor_id,
+            order.id,
+            "  TRACK-42  ".to_string(),
+            "  fedex  ".to_string(),
+        )
+        .await
+        .expect("ship");
+    assert_eq!(shipped.tracking_number.as_deref(), Some("TRACK-42"));
+    assert_eq!(shipped.carrier.as_deref(), Some("fedex"));
+}
+
+#[tokio::test]
+async fn list_orders_matches_status_case_insensitively() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let order1 = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order1");
+    let order2 = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order2");
+    service.confirm_order(tenant_id, actor_id, order2.id).await.expect("confirm order2");
+
+    // Filter with uppercase "PENDING"
+    let (pending_orders, total_pending) = service
+        .list_orders(
+            tenant_id,
+            ListOrdersInput {
+                page: 1,
+                per_page: 10,
+                status: Some("  PENDING  ".to_string()),
+                customer_id: None,
+            },
+        )
+        .await
+        .expect("list pending");
+    assert_eq!(total_pending, 1);
+    assert_eq!(pending_orders.len(), 1);
+    assert_eq!(pending_orders[0].id, order1.id);
+
+    // Filter with mixed case "Confirmed"
+    let (confirmed_orders, total_confirmed) = service
+        .list_orders(
+            tenant_id,
+            ListOrdersInput {
+                page: 1,
+                per_page: 10,
+                status: Some("Confirmed".to_string()),
+                customer_id: None,
+            },
+        )
+        .await
+        .expect("list confirmed");
+    assert_eq!(total_confirmed, 1);
+    assert_eq!(confirmed_orders.len(), 1);
+    assert_eq!(confirmed_orders[0].id, order2.id);
 }

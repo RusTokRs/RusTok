@@ -1090,12 +1090,38 @@ fn landing_templates() -> Vec<BlockDefinition> {
                     "components": [
                         { "type": "heading", "flyLandingProperty": "headline", "content": "Talk to us", "style": { "font-size": "40px", "margin": "0 0 12px" } },
                         { "type": "text", "flyLandingProperty": "body", "content": "Tell us what you are building and we will get back to you.", "style": { "color": "#475569", "margin": "0 0 28px" } },
-                        { "type": "form", "flyLandingProperty": "form", "tagName": "form", "style": { "display": "grid", "gap": "16px" }, "components": [
-                            { "type": "input", "flyLandingProperty": "name_field", "tagName": "input", "attributes": { "type": "text", "placeholder": "Your name" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
-                            { "type": "input", "flyLandingProperty": "email_field", "tagName": "input", "attributes": { "type": "email", "placeholder": "Email address" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
-                            { "type": "textarea", "flyLandingProperty": "message_field", "tagName": "textarea", "attributes": { "placeholder": "Your message", "rows": 5 }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
-                            landing_component("submit", builtin_component_template("submit"))
-                        ] }
+                        {
+                            "type": "form",
+                            "flyLandingProperty": "form",
+                            "tagName": "form",
+                            "flyForm": {
+                                "id": "contact-form",
+                                "method": "post",
+                                "encoding": "url_encoded",
+                                "provider": "forms",
+                                "action": "submit"
+                            },
+                            "attributes": { "method": "post" },
+                            "style": { "display": "grid", "gap": "16px" },
+                            "components": [
+                                {
+                                    "type": "input",
+                                    "tagName": "input",
+                                    "attributes": {
+                                        "type": "text",
+                                        "name": "website",
+                                        "tabindex": "-1",
+                                        "autocomplete": "off",
+                                        "aria-hidden": "true"
+                                    },
+                                    "style": { "display": "none", "position": "absolute", "left": "-9999px" }
+                                },
+                                { "type": "input", "flyLandingProperty": "name_field", "tagName": "input", "attributes": { "name": "name", "type": "text", "placeholder": "Your name", "required": "" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
+                                { "type": "input", "flyLandingProperty": "email_field", "tagName": "input", "attributes": { "name": "email", "type": "email", "placeholder": "Email address", "required": "" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
+                                { "type": "textarea", "flyLandingProperty": "message_field", "tagName": "textarea", "attributes": { "name": "message", "placeholder": "Your message", "rows": 5, "required": "" }, "style": { "padding": "12px", "border": "1px solid #cbd5e1", "border-radius": "8px" } },
+                                landing_component("submit", builtin_component_template("submit"))
+                            ]
+                        }
                     ]
                 }]
             }),
@@ -1134,6 +1160,140 @@ fn landing_templates() -> Vec<BlockDefinition> {
                         { "type": "heading", "flyLandingProperty": "headline", "content": "Plans & Pricing", "style": { "font-size": "36px", "text-align": "center", "margin": "0 0 12px", "color": "#0f172a" } },
                         { "type": "text", "flyLandingProperty": "body", "content": "Choose the best plan for your business needs.", "style": { "text-align": "center", "color": "#64748b", "font-size": "16px", "margin": "0 0 40px" } },
                         builtin_component_template("pricing_table")
+                    ]
+                }]
+            }),
+        ),
+        (
+            "fly.newsletter_form",
+            "Newsletter subscription",
+            "landing",
+            json!({
+                "type": "section",
+                "flyLandingSection": "newsletter",
+                "style": { "padding": "64px 24px", "background": "#f8fafc" },
+                "components": [{
+                    "type": "container",
+                    "style": { "max-width": "640px", "margin": "0 auto", "text-align": "center" },
+                    "components": [
+                        { "type": "heading", "flyLandingProperty": "headline", "content": "Subscribe to our newsletter", "style": { "font-size": "32px", "margin": "0 0 12px", "color": "#0f172a" } },
+                        { "type": "text", "flyLandingProperty": "body", "content": "Get the latest product updates, architectural guides, and engineering news.", "style": { "color": "#64748b", "font-size": "16px", "margin": "0 0 28px" } },
+                        {
+                            "type": "form",
+                            "flyLandingProperty": "form",
+                            "tagName": "form",
+                            "flyForm": {
+                                "id": "newsletter",
+                                "method": "post",
+                                "encoding": "url_encoded",
+                                "provider": "forms",
+                                "action": "submit"
+                            },
+                            "attributes": { "method": "post" },
+                            "style": { "display": "flex", "gap": "12px", "max-width": "480px", "margin": "0 auto", "flex-wrap": "wrap", "justify-content": "center" },
+                            "components": [
+                                {
+                                    "type": "input",
+                                    "tagName": "input",
+                                    "attributes": {
+                                        "type": "text",
+                                        "name": "website",
+                                        "tabindex": "-1",
+                                        "autocomplete": "off",
+                                        "aria-hidden": "true"
+                                    },
+                                    "style": { "display": "none", "position": "absolute", "left": "-9999px" }
+                                },
+                                {
+                                    "type": "input",
+                                    "flyLandingProperty": "email_field",
+                                    "tagName": "input",
+                                    "attributes": {
+                                        "name": "email",
+                                        "type": "email",
+                                        "placeholder": "Enter your work email",
+                                        "required": ""
+                                    },
+                                    "style": { "flex": "1 1 240px", "padding": "12px 16px", "border": "1px solid #cbd5e1", "border-radius": "8px", "font-size": "15px" }
+                                },
+                                {
+                                    "type": "submit",
+                                    "flyLandingProperty": "submit",
+                                    "tagName": "button",
+                                    "attributes": { "type": "submit" },
+                                    "content": "Subscribe",
+                                    "style": { "padding": "12px 24px", "background": "#2563eb", "color": "#ffffff", "border": "0", "border-radius": "8px", "font-weight": "600", "cursor": "pointer" }
+                                }
+                            ]
+                        }
+                    ]
+                }]
+            }),
+        ),
+        (
+            "fly.lead_capture_form",
+            "Lead capture form",
+            "landing",
+            json!({
+                "type": "section",
+                "flyLandingSection": "lead_capture",
+                "style": { "padding": "72px 24px" },
+                "components": [{
+                    "type": "container",
+                    "style": { "max-width": "840px", "margin": "0 auto" },
+                    "components": [
+                        { "type": "heading", "flyLandingProperty": "headline", "content": "Request an Enterprise Demo", "style": { "font-size": "36px", "text-align": "center", "margin": "0 0 12px", "color": "#0f172a" } },
+                        { "type": "text", "flyLandingProperty": "body", "content": "See how RusToK scales high-throughput commerce with complete isolation.", "style": { "text-align": "center", "color": "#64748b", "font-size": "16px", "margin": "0 0 36px" } },
+                        {
+                            "type": "form",
+                            "flyLandingProperty": "form",
+                            "tagName": "form",
+                            "flyForm": {
+                                "id": "lead-capture",
+                                "method": "post",
+                                "encoding": "url_encoded",
+                                "provider": "forms",
+                                "action": "submit"
+                            },
+                            "attributes": { "method": "post" },
+                            "style": { "display": "grid", "grid-template-columns": "repeat(auto-fit, minmax(280px, 1fr))", "gap": "16px" },
+                            "components": [
+                                {
+                                    "type": "input",
+                                    "tagName": "input",
+                                    "attributes": {
+                                        "type": "text",
+                                        "name": "website",
+                                        "tabindex": "-1",
+                                        "autocomplete": "off",
+                                        "aria-hidden": "true"
+                                    },
+                                    "style": { "display": "none", "position": "absolute", "left": "-9999px" }
+                                },
+                                {
+                                    "type": "input",
+                                    "flyLandingProperty": "name_field",
+                                    "tagName": "input",
+                                    "attributes": { "name": "name", "type": "text", "placeholder": "Full name", "required": "" },
+                                    "style": { "padding": "12px 16px", "border": "1px solid #cbd5e1", "border-radius": "8px", "font-size": "15px" }
+                                },
+                                {
+                                    "type": "input",
+                                    "flyLandingProperty": "email_field",
+                                    "tagName": "input",
+                                    "attributes": { "name": "email", "type": "email", "placeholder": "Work email", "required": "" },
+                                    "style": { "padding": "12px 16px", "border": "1px solid #cbd5e1", "border-radius": "8px", "font-size": "15px" }
+                                },
+                                {
+                                    "type": "submit",
+                                    "flyLandingProperty": "submit",
+                                    "tagName": "button",
+                                    "attributes": { "type": "submit" },
+                                    "content": "Request Demo",
+                                    "style": { "grid-column": "1 / -1", "padding": "14px 28px", "background": "#2563eb", "color": "#ffffff", "border": "0", "border-radius": "8px", "font-size": "16px", "font-weight": "600", "cursor": "pointer" }
+                                }
+                            ]
+                        }
                     ]
                 }]
             }),

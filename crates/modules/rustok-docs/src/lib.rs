@@ -12,6 +12,7 @@ pub mod entities;
 pub mod error;
 pub mod migrations;
 pub mod module;
+pub mod search_projection;
 pub mod services;
 
 pub use controllers::{
@@ -27,6 +28,10 @@ pub use dto::{
 pub use error::{DocsError, DocsResult};
 pub use loro::{Frontiers, LoroDoc, TreeID, VersionVector};
 pub use module::DocsModule;
+pub use search_projection::{
+    DOCS_SOURCE_MODULE, DOC_PAGE_ENTITY_TYPE, DocsSearchProjectionSource,
+    DocsSearchProjectionSourceFactory,
+};
 pub use services::{COMPACTION_THRESHOLD, DocumentService};
 
 #[cfg(test)]

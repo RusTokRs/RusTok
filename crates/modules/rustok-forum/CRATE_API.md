@@ -3,6 +3,28 @@
 ## Public Modules
 `category_presentation`, `constants`, `controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `mentions`, `services`.
 
+## Topic feed selection
+
+`ListTopicsFilter` adds optional `search`, typed `ForumTopicListOrder` (`latest` default,
+`top`) and `solved_only` (default false). REST uses those snake_case names; GraphQL
+`forumTopics`, `forumStorefrontAudienceTopics` and `forumStorefrontUnreadTopics` expose
+`search`, `order: ForumTopicListOrder` (`LATEST`/`TOP`) and `solvedOnly`. Existing auth,
+tenant, audience, locale/fallback, channel and page-size contracts still apply. Unread
+composition remains `unreadOnly`, not a browser filter.
+
+Search is a trimmed Unicode-lowercase literal substring of the owner's displayed title/slug,
+with a 200-character normalized budget. Solved means `solution_reply_id` is present. Top
+uses stored canonical `reply_count DESC` before the complete Latest tie-break key. Localized
+selection refills from bounded candidate pages; a sparse match can require many server batches.
+No total count or multi-request snapshot is added. Database/policy failures propagate.
+
+Topic cursors include rank and a context/selection fingerprint. Changing selection/context
+requires a fresh first page; changing page size does not. Old opaque encodings are rejected
+without a legacy reader. The independent `ForumReadModelService` uses unbound Latest cursors
+and rejects scoped/ranked feed cursors. Migration 39 adds global/category Top indexes; PostgreSQL
+runtime/EXPLAIN and Rust/native feature verification remain pending in this environment.
+See [the decision](../../../DECISIONS/2026-10-17-forum-topic-feed-selection.md).
+
 ## Primary Public Types and Signatures
 - `pub struct ForumModule`
 - `pub struct CategoryService`, `TopicService`, `ReplyService`, `ModerationService`, `SubscriptionService`, `UserStatsService`, `VoteService`
@@ -13,6 +35,8 @@
 - `pub struct ForumRelationReadService`
 - `ForumRelationReadService::get(tenant_id, security, ForumRelationSnapshotQuery) -> ForumRelationSnapshotResponse`
 - `pub struct ForumQuoteCommandService`
+- `ForumQuoteCommandService::with_settings_providers(ForumSettingsProviders) -> Self` — host-injected
+  tenant policy; standalone quote writes enforce the same author edit window as inline updates.
 - `ForumQuoteCommandService::set_topic_quotes(tenant_id, topic_id, security, SetForumQuotesInput) -> ForumRelationSnapshotResponse`
 - `ForumQuoteCommandService::set_reply_quotes(tenant_id, reply_id, security, SetForumQuotesInput) -> ForumRelationSnapshotResponse`
 - `TopicService::create_command(tenant_id, security, CreateTopicCommandInput) -> TopicResponse`

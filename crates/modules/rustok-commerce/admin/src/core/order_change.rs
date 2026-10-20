@@ -17,10 +17,17 @@ pub fn prepare_order_change_action_command(
         return None;
     }
 
+    let metadata_trimmed = metadata_json.trim();
+    if !metadata_trimmed.is_empty()
+        && serde_json::from_str::<serde_json::Value>(metadata_trimmed).is_err()
+    {
+        return None;
+    }
+
     Some(OrderChangeActionCommand {
         change_id,
         draft: crate::model::CommerceOrderChangeActionDraft {
-            metadata_json: metadata_json.trim().to_string(),
+            metadata_json: metadata_trimmed.to_string(),
             reason: reason.trim().to_string(),
             idempotency_key: Uuid::new_v4().to_string(),
         },
@@ -77,7 +84,8 @@ pub fn order_change_resolution_summary(
             }),
         return_decision_source: json_string(&metadata, "return_decision_source")
             .or_else(|| json_string(&preview, "return_decision_source")),
-        cancellation_reason: json_string(&metadata, "cancellation_reason"),
+        cancellation_reason: json_string(&metadata, "cancellation_reason")
+            .or_else(|| json_string(&preview, "cancellation_reason")),
     }
 }
 
@@ -139,6 +147,8 @@ mod tests {
         assert_eq!(command.draft.reason, "cancelled");
         assert!(!command.draft.idempotency_key.trim().is_empty());
         assert!(Uuid::parse_str(command.draft.idempotency_key.as_str()).is_ok());
+
+        assert!(prepare_order_change_action_command("change-1", "{not-json", "reason").is_none());
     }
 
     #[test]
@@ -169,13 +179,20 @@ mod tests {
 
     #[test]
     fn order_change_resolution_summary_falls_back_to_preview_and_change_type() {
-        let change = order_change_with_payload(r#"{"order_return_id":"preview-return"}"#, "{}");
+        let change = order_change_with_payload(
+            r#"{"order_return_id":"preview-return","cancellation_reason":"preview cancelled"}"#,
+            "{}",
+        );
 
         let summary = order_change_resolution_summary(&change);
 
         assert_eq!(summary.order_return_id.as_deref(), Some("preview-return"));
         assert_eq!(summary.return_decision_action.as_deref(), Some("exchange"));
         assert!(summary.return_decision_source.is_none());
-        assert!(summary.cancellation_reason.is_none());
+        assert_eq!(
+            summary.cancellation_reason.as_deref(),
+            Some("preview cancelled")
+        );
+        assert_eq!(summary.cancellation_reason_value(), "preview cancelled");
     }
 }

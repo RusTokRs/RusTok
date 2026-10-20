@@ -158,7 +158,11 @@ hasAll(
 
 const operationLockIndex = trigger.indexOf('let _operation = self.0.operation.lock()');
 const clockIndex = trigger.indexOf('let occurred_at_unix_ms = current_unix_ms()?;');
-const authorizerIndex = trigger.indexOf('self.0.authorizer.authorize(');
+// The authorizer call is a chained call: rustfmt splits the chain, so the
+// marker covers the call itself instead of the line break.
+const authorizerIndex = trigger.indexOf(
+  '.authorize(&CommentsTcpDelegationScheduleTriggerAuthorizationRequest {',
+);
 const auditLockIndex = trigger.indexOf('let mut audit = self.0.audit.lock()');
 const sequenceIndex = trigger.indexOf('let sequence = audit.allocate_sequence()?;');
 const mutationIndex = trigger.indexOf('let result = mutation(&self.0.schedule_handle);');

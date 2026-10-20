@@ -58,6 +58,9 @@ pub(super) async fn fetch_topic_merge_candidates_native(
                     &auth.permissions,
                 ),
                 rustok_forum::ListTopicsFilter {
+                    search: None,
+                    order: Default::default(),
+                    solved_only: false,
                     category_id: None,
                     status: None,
                     locale: Some(locale),

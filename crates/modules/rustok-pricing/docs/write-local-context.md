@@ -28,7 +28,7 @@ canonical read factory remain unchanged.
 ## Bounded delegated context
 
 Covered local outcomes retain correlation ID, exact owner and local operation names, and
-the stable `pricing_write_port` boundary. Delegated context is represented only by:
+the stable `pricing_write_port` boundary. The bounded delegated context is represented only by:
 
 - tenant and actor-ID character lengths;
 - a closed actor-kind label;

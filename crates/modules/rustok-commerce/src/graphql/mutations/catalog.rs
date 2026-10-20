@@ -1885,78 +1885,6 @@ fn bundle_product_id_update(value: MaybeUndefined<Uuid>) -> Option<Option<Uuid>>
     }
 }
 
-#[cfg(test)]
-mod bundle_update_tests {
-    use super::{bundle_metadata_update, bundle_product_id_update, bundle_translation_updates};
-    use async_graphql::MaybeUndefined;
-    use uuid::Uuid;
-
-    #[test]
-    fn bundle_metadata_and_translation_updates_preserve_patch_states() {
-        assert_eq!(
-            bundle_metadata_update(
-                MaybeUndefined::<async_graphql::Json<serde_json::Value>>::Undefined
-            ),
-            None
-        );
-        assert_eq!(
-            bundle_metadata_update(MaybeUndefined::<async_graphql::Json<serde_json::Value>>::Null),
-            Some(None)
-        );
-
-        assert!(
-            bundle_translation_updates(
-                MaybeUndefined::<String>::Undefined,
-                MaybeUndefined::<String>::Undefined,
-                "en".to_owned(),
-            )
-            .expect("omitted translation patch")
-            .is_none()
-        );
-        let description_only = bundle_translation_updates(
-            MaybeUndefined::<String>::Undefined,
-            MaybeUndefined::Value("Updated description".to_owned()),
-            "en".to_owned(),
-        )
-        .expect("description-only patch")
-        .expect("patch must be present");
-        assert_eq!(description_only[0].name, None);
-        assert_eq!(
-            description_only[0].description,
-            Some(Some("Updated description".to_owned()))
-        );
-        assert!(
-            bundle_translation_updates(
-                MaybeUndefined::<String>::Null,
-                MaybeUndefined::<String>::Undefined,
-                "en".to_owned(),
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn bundle_owner_update_preserves_omitted_null_and_value() {
-        let owner_product_id = Uuid::from_u128(42);
-
-        assert_eq!(
-            bundle_product_id_update(MaybeUndefined::<Uuid>::Undefined),
-            None,
-            "omitting the field must keep the existing owner"
-        );
-        assert_eq!(
-            bundle_product_id_update(MaybeUndefined::<Uuid>::Null),
-            Some(None),
-            "an explicit GraphQL null must clear the existing owner"
-        );
-        assert_eq!(
-            bundle_product_id_update(MaybeUndefined::Value(owner_product_id)),
-            Some(Some(owner_product_id)),
-            "a concrete product ID must replace the existing owner"
-        );
-    }
-}
-
 pub(super) fn parse_product_attribute_value_patch(
     input: ProductAttributeValuePatchInput,
 ) -> Result<rustok_product::services::ProductAttributeValuePatch> {
@@ -2048,6 +1976,78 @@ fn parse_category_attribute_binding_kind(
 ) -> Result<rustok_product::services::CategoryAttributeBindingKind> {
     rustok_product::services::CategoryAttributeBindingKind::from_storage(value.trim())
         .map_err(invalid_catalog_input)
+}
+
+#[cfg(test)]
+mod bundle_update_tests {
+    use super::{bundle_metadata_update, bundle_product_id_update, bundle_translation_updates};
+    use async_graphql::MaybeUndefined;
+    use uuid::Uuid;
+
+    #[test]
+    fn bundle_metadata_and_translation_updates_preserve_patch_states() {
+        assert_eq!(
+            bundle_metadata_update(
+                MaybeUndefined::<async_graphql::Json<serde_json::Value>>::Undefined
+            ),
+            None
+        );
+        assert_eq!(
+            bundle_metadata_update(MaybeUndefined::<async_graphql::Json<serde_json::Value>>::Null),
+            Some(None)
+        );
+
+        assert!(
+            bundle_translation_updates(
+                MaybeUndefined::<String>::Undefined,
+                MaybeUndefined::<String>::Undefined,
+                "en".to_owned(),
+            )
+            .expect("omitted translation patch")
+            .is_none()
+        );
+        let description_only = bundle_translation_updates(
+            MaybeUndefined::<String>::Undefined,
+            MaybeUndefined::Value("Updated description".to_owned()),
+            "en".to_owned(),
+        )
+        .expect("description-only patch")
+        .expect("patch must be present");
+        assert_eq!(description_only[0].name, None);
+        assert_eq!(
+            description_only[0].description,
+            Some(Some("Updated description".to_owned()))
+        );
+        assert!(
+            bundle_translation_updates(
+                MaybeUndefined::<String>::Null,
+                MaybeUndefined::<String>::Undefined,
+                "en".to_owned(),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn bundle_owner_update_preserves_omitted_null_and_value() {
+        let owner_product_id = Uuid::from_u128(42);
+
+        assert_eq!(
+            bundle_product_id_update(MaybeUndefined::<Uuid>::Undefined),
+            None,
+            "omitting the field must keep the existing owner"
+        );
+        assert_eq!(
+            bundle_product_id_update(MaybeUndefined::<Uuid>::Null),
+            Some(None),
+            "an explicit GraphQL null must clear the existing owner"
+        );
+        assert_eq!(
+            bundle_product_id_update(MaybeUndefined::Value(owner_product_id)),
+            Some(Some(owner_product_id)),
+            "a concrete product ID must replace the existing owner"
+        );
+    }
 }
 
 #[cfg(test)]
