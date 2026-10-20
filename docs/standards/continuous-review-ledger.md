@@ -551,12 +551,12 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 |:---:|---|---|---:|---:|---|---|
 | [ ] | [admin](../../apps/admin) | `apps` | 116 | 26,837 | None |  |
 | [ ] | [dioxus-admin](../../apps/dioxus-admin) | `apps` | 1 | 13 | None |  |
-| [ ] | [next-admin](../../apps/next-admin) | `apps` | 540 | 84,173 | None |  |
+| [ ] | [next-admin](../../apps/next-admin) | `apps` | 545 | 83,893 | None |  |
 | [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 15 | 2,113 | None | Audited 2026-10-17: the category and tag surfaces were non-functional (GraphQL documents requested fields the Blog schema never exposed); remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs. All findings of the 2026-10-17 Blog audit are remediated. |
 | [ ] | [cache](../../apps/next-admin/packages/cache) | `apps` | 6 | 478 | None |  |
 | [ ] | [commerce](../../apps/next-admin/packages/commerce) | `apps` | 11 | 2,737 | None |  |
 | [ ] | [email](../../apps/next-admin/packages/email) | `apps` | 5 | 291 | None |  |
-| [x] | [events](../../apps/next-admin/packages/events) | `apps` | 8 | 450 | 2026-10-18 03:00 | Audited in FS-03; FFA model extracted, Fluent { $mode } fixed, 7 tests passed, gate passed. |
+| [x] | [events](../../apps/next-admin/packages/events) | `apps` | 7 | 423 | 2026-10-18 03:00 | Audited in FS-03; FFA model extracted, Fluent {  } fixed, 7 tests passed, gate passed. |
 | [ ] | [forms](../../apps/next-admin/packages/forms) | `apps` | 5 | 215 | None |  |
 | [ ] | [forum](../../apps/next-admin/packages/forum) | `apps` | 19 | 4,900 | None |  |
 | [ ] | [iggy-connector](../../apps/next-admin/packages/iggy-connector) | `apps` | 5 | 367 | None |  |
@@ -565,11 +565,11 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rbac](../../apps/next-admin/packages/rbac) | `apps` | 13 | 2,155 | None |  |
 | [ ] | [rustok-ai](../../apps/next-admin/packages/rustok-ai) | `apps` | 1 | 4,055 | None |  |
 | [ ] | [rustok-mcp](../../apps/next-admin/packages/rustok-mcp) | `apps` | 1 | 1,050 | None |  |
-| [ ] | [rustok-product](../../apps/next-admin/packages/rustok-product) | `apps` | 37 | 11,120 | None |  |
+| [ ] | [rustok-product](../../apps/next-admin/packages/rustok-product) | `apps` | 41 | 12,284 | None |  |
 | [ ] | [search](../../apps/next-admin/packages/search) | `apps` | 1 | 2,926 | None |  |
 | [ ] | [translation](../../apps/next-admin/packages/translation) | `apps` | 4 | 5,449 | None |  |
 | [ ] | [workflow](../../apps/next-admin/packages/workflow) | `apps` | 13 | 1,529 | None |  |
-| [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 154 | 25,261 | None |  |
+| [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 155 | 25,298 | None |  |
 | [ ] | [rustok-blog](../../apps/next-frontend/packages/rustok-blog) | `apps` | 16 | 1,676 | None | Audited 2026-10-17: invalid category query with a swallowed error remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs. All findings of the 2026-10-17 Blog audit are remediated. |
 | [ ] | [rustok-cart](../../apps/next-frontend/packages/rustok-cart) | `apps` | 7 | 2,142 | None |  |
 | [ ] | [rustok-comments](../../apps/next-frontend/packages/rustok-comments) | `apps` | 2 | 123 | None |  |
@@ -578,11 +578,11 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-order](../../apps/next-frontend/packages/rustok-order) | `apps` | 5 | 1,361 | None |  |
 | [ ] | [rustok-pages](../../apps/next-frontend/packages/rustok-pages) | `apps` | 8 | 801 | None |  |
 | [ ] | [rustok-pricing](../../apps/next-frontend/packages/rustok-pricing) | `apps` | 7 | 904 | None |  |
-| [ ] | [rustok-product](../../apps/next-frontend/packages/rustok-product) | `apps` | 10 | 2,252 | None |  |
+| [ ] | [rustok-product](../../apps/next-frontend/packages/rustok-product) | `apps` | 11 | 2,282 | None |  |
 | [ ] | [rustok-profiles](../../apps/next-frontend/packages/rustok-profiles) | `apps` | 7 | 780 | None |  |
 | [ ] | [rustok-seo](../../apps/next-frontend/packages/rustok-seo) | `apps` | 5 | 1,459 | None |  |
 | [ ] | [search](../../apps/next-frontend/packages/search) | `apps` | 1 | 681 | None |  |
-| [ ] | [server](../../apps/server) | `apps` | 485 | 190,468 | None |  |
+| [ ] | [server](../../apps/server) | `apps` | 487 | 191,307 | None |  |
 | [ ] | [storefront](../../apps/storefront) | `apps` | 34 | 5,987 | None |  |
 | [ ] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 6 | 903 | None |  |
 | [x] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,311 | 2026-10-17 00:43 | Audited and cleaned. |
@@ -597,8 +597,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-web](../../crates/libs/rustok-web) | `libs` | 2 | 742 | 2026-10-17 01:44 | Audited and cleaned. |
 | [ ] | [alloy](../../crates/modules/alloy) | `modules` | 77 | 25,206 | None |  |
 | [ ] | [flex](../../crates/modules/flex) | `modules` | 51 | 17,159 | None |  |
-| [x] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 13 | 417 | 2026-10-18 20:00 | Audited and cleaned. Standard chart of accounts, bounds and character validation, 1000 lines limit, storno generation, multi-currency trial balance, outbox events, 27/27 tests passed. |
-| [ ] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 74 | 42,418 | None |  |
+| [x] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 14 | 1,726 | 2026-10-18 20:00 | Audited and cleaned. Standard chart of accounts, bounds and character validation, 1000 lines limit, storno generation, multi-currency trial balance, outbox events, 27/27 tests passed. |
+| [ ] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 74 | 42,419 | None |  |
 | [ ] | [rustok-ai-alloy](../../crates/modules/rustok-ai-alloy) | `modules` | 1 | 384 | None |  |
 | [ ] | [rustok-ai-athanor](../../crates/modules/rustok-ai-athanor) | `modules` | 2 | 548 | None |  |
 | [ ] | [rustok-ai-content](../../crates/modules/rustok-ai-content) | `modules` | 1 | 326 | None |  |
@@ -610,43 +610,43 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 12,952 | 2026-10-17 02:47 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 18 | 6,501 | 2026-10-17 03:04 | Audited and cleaned. |
 | [x] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 1 | 333 | 2026-10-17 03:19 | Audited and cleaned. |
-| [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 162 | 41,141 | None | Audited 2026-10-17 (docs/audits/rustok-blog-engineering-audit-2026-10-17.md): 4 High, 8 Medium, 10 Low and 1 governance finding; all remediated (phase 1: 4 High + transport<->schema parity gate; phase 2: 8 Medium, 8 Low, verifier-suite repair). Blog verifier suite 66 passed / 0 failed, 23 verifier self-test suites pass, and the canonical module layout/reference-contract verifiers pass again. Not marked completed: scoped cargo check/test/clippy verification is still outstanding. |
-| [ ] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 18 | 6,400 | None | Audited 2026-10-17: empty-slug save failure remediated; the category/featured-image/SEO/channel/schedule capability gap is now documented in the module README Known Limitations (L-7). FFA boundary check passed. |
+| [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 162 | 41,147 | None | Audited 2026-10-17 (docs/audits/rustok-blog-engineering-audit-2026-10-17.md): 4 High, 8 Medium, 10 Low and 1 governance finding; all remediated (phase 1: 4 High + transport<->schema parity gate; phase 2: 8 Medium, 8 Low, verifier-suite repair). Blog verifier suite 66 passed / 0 failed, 23 verifier self-test suites pass, and the canonical module layout/reference-contract verifiers pass again. Not marked completed: scoped cargo check/test/clippy verification is still outstanding. |
+| [ ] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 18 | 6,406 | None | Audited 2026-10-17: empty-slug save failure remediated; the category/featured-image/SEO/channel/schedule capability gap is now documented in the module README Known Limitations (L-7). FFA boundary check passed. |
 | [ ] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 14 | 3,289 | None | Audited 2026-10-17: no defect found; FFA boundary check passed; known retired-slug redirect gap (M-12) remains documented in the module README. |
 | [ ] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 22 | 3,399 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 9 | 2,081 | None |  |
 | [x] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 46 | 15,982 | 2026-10-17 04:30 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-cache/admin) | `modules` | 7 | 977 | 2026-10-17 04:47 | Audited and cleaned. |
-| [ ] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 73 | 19,638 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 18 | 4,545 | None |  |
+| [x] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 73 | 19,962 | 2026-10-19 15:05 | Audited and cleaned. Updated normalize_locale_code and validate_locale_code to use canonical normalize_locale_tag with length constraint [2..=10] matching the database schema; enforced validate_non_empty_title on AddCartLineItemInput and trimmed title/blank sku on line item addition; normalized email across create_cart and update_context to trim whitespace and collapse empty strings to None; allowed checkout snapshot preparation to adopt request email when cart email is None. 75/75 tests passed, 0 clippy warnings, gate passed. |
+| [x] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 18 | 4,697 | 2026-10-19 15:55 | Audited and cleaned. Enforced FFA boundaries: feature-gated transport profile tests between GraphQL and NativeServer SSR; extracted CheckoutHandoffFormInput validation and unicode-safe order reference generation from Leptos view into framework-agnostic core policy; moved badge counting and item quantity aggregation into core view_model; verified dual-path transport (ServerFn / GraphQL), all 4 error safety and boundary scripts passed, 21/21 tests passed (default + SSR), 0 clippy warnings, gate passed. |
 | [x] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 47 | 11,482 | 2026-10-17 05:23 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 14 | 5,212 | 2026-10-17 06:59 | Audited and cleaned. |
 | [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 39 | 9,823 | None |  |
 | [ ] | [rustok-comments-api](../../crates/modules/rustok-comments-api) | `modules` | 3 | 154 | None |  |
 | [ ] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 8 | 1,382 | None |  |
-| [x] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 297 | 132,898 | 2026-10-19 10:25 | Audited and cleaned. Fixed pagination parameter normalization and string/numeric deserialization for flattened queries in common controller. Corrected overzealous nil-UUID guards on actor_id in rustok-order services and checkout ports to support guest checkout while preserving strict tenant and order invariants. Fixed items_after_test_module clippy lint in catalog GraphQL mutations. 205/205 tests passed. |
-| [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 19 | 1,106 | 2026-10-18 20:30 | Audited and cleaned. Added invariant validations for CreateVariantInput, UpdateVariantInput, PriceInput, AdjustInventoryInput, sale calculations on PriceResponse, stock helpers on VariantResponse, domain logic helpers on inventory_level, product, product_variant, region, reservation_item, shipping_profile, stock_location models, bounded search query with localized search condition, 20/20 tests passed. |
-| [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 21 | 5,889 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 16 | 2,022 | None |  |
+| [x] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 299 | 136,208 | 2026-10-19 10:25 | Audited and cleaned. Fixed pagination parameter normalization and string/numeric deserialization for flattened queries in common controller. Corrected overzealous nil-UUID guards on actor_id in rustok-order services and checkout ports to support guest checkout while preserving strict tenant and order invariants. Fixed items_after_test_module clippy lint in catalog GraphQL mutations. All 205 tests pass, 0 clippy warnings, gate passed. |
+| [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 19 | 1,810 | 2026-10-18 20:30 | Audited and cleaned. Added invariant validations for CreateVariantInput, UpdateVariantInput, PriceInput, AdjustInventoryInput, sale calculations on PriceResponse, stock helpers on VariantResponse, domain logic helpers on inventory_level, product, product_variant, region, reservation_item, shipping_profile, stock_location models, bounded search query with localized search condition, 20/20 tests passed. |
+| [x] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 21 | 6,212 | 2026-10-19 11:45 | Audited and cleaned. Enforced FFA separation with framework-agnostic models, normalized promotion form command creation to clear mutually exclusive fields (omits amount on percentage discount, omits discount_percent on fixed discount, omits line_item_id on non-item scopes) and enforce required inputs in core, extended order change resolution summary with preview fallback for cancellation_reason, verified dual-path transport (GraphQL / ServerFn) and SSR adapter error safety. 28/28 unit tests passed (client + SSR), 0 clippy warnings, gate passed. |
+| [x] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 16 | 2,703 | 2026-10-19 13:48 | Audited and cleaned. Enforced FFA separation with framework-agnostic models, aligned PaymentCollection, CheckoutCompletion, and StorefrontCartDeliveryGroup test fixtures, added surface field to UiTransportError initializers across all 4 transport error contexts, ensured completion state resets on retry in Leptos view, verified dual-path transport (GraphQL / ServerFn) and SSR adapter error safety. 32/32 tests passed (client + SSR), 0 clippy warnings, gate passed. |
 | [ ] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 45 | 6,014 | None |  |
 | [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 18 | 3,245 | None |  |
 | [ ] | [rustok-customer](../../crates/modules/rustok-customer) | `modules` | 26 | 5,273 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-customer/admin) | `modules` | 9 | 2,779 | None |  |
 | [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 34 | 15,716 | None |  |
-| [ ] | [rustok-docs](../../crates/modules/rustok-docs) | `modules` | 21 | 2,957 | None |  |
-| [x] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 6 | 784 | 2026-10-18 06:00 | Audited and cleaned. |
+| [ ] | [rustok-docs](../../crates/modules/rustok-docs) | `modules` | 22 | 3,264 | None |  |
+| [x] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 6 | 888 | 2026-10-18T06:00:00Z | Added recipient mailbox syntax and CRLF injection validation to delivery request port, handled null Tera vars gracefully as empty context, normalized password_reset_url query separator with trailing delimiter support, implemented standard derives on EmailModule, EmailConfig, SmtpConfig, PasswordResetEmail, and RenderedEmail, added 5 new unit tests (16 total), 0 clippy warnings, gate passed. |
 | [x] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 9 | 838 | 2026-10-18 00:34 | Audited; cycle-free runtime adapter, standard traits added, 3/3 tests passed, gate passed. |
 | [x] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 8 | 754 | 2026-10-18 02:01 | Audited; FFA boundary verified, view-models and full Fluent localization, 6/6 tests passed, gate passed. |
-| [x] | [next-admin](../../apps/next-admin/packages/events) | `modules` | 8 | 450 | 2026-10-18 03:00 | Audited; relocated to apps/next-admin/packages/events, FFA model extracted, Fluent { $mode } fixed, 7 tests passed. |
+| [x] | [next-admin](../../crates/modules/rustok-events-module/next-admin) | `modules` | 6 | 278 | 2026-10-18 03:00 | Audited; relocated to apps/next-admin/packages/events, FFA model extracted, Fluent {  } fixed, 7 tests passed. |
 | [ ] | [rustok-forms](../../crates/modules/rustok-forms) | `modules` | 17 | 1,877 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forms/admin) | `modules` | 4 | 274 | None |  |
 | [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 629 | 176,318 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 35 | 13,460 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 26 | 7,795 | None |  |
-| [x] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 76 | 26,555 | 2026-10-20 04:35 | Audited; nil-UUID guards, status normalization, carrier/tracking whitespace trimming, 167/167 tests passed. |
-| [x] | [admin](../../crates/modules/rustok-fulfillment/admin) | `modules` | 8 | 1,916 | 2026-10-20 06:10 | Audited; FFA view-model helpers in core, draft validation, filter normalization, 16/16 tests passed. |
-| [ ] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 12 | 1,252 | None |  |
+| [x] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 76 | 27,050 | 2026-10-20 04:35 | Audited; enforced nil-UUID guards on fulfillment_id, order_id, shipping_option_id across service methods, transaction commits, and create/update/list operations; added customer_id nil validation to admin create fulfillment command; trimmed carrier and tracking numbers and delivered notes/cancellation reasons; enabled case-insensitive and whitespace-trimmed status matching in FulfillmentStatusKind::from_raw and list_fulfillments. 167/167 tests passed. |
+| [x] | [admin](../../crates/modules/rustok-fulfillment/admin) | `modules` | 8 | 2,057 | 2026-10-20 06:10 | Audited; extracted FFA view-model and slug helpers to core, added draft validation, normalized filter whitespace and pagination reset on filter change; 16/16 tests passed across default & SSR features, 0 clippy warnings, gate passed. |
+| [ ] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 12 | 1,410 | None |  |
 | [ ] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 112 | 31,917 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-groups/admin) | `modules` | 34 | 8,525 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-groups/storefront) | `modules` | 17 | 3,119 | None |  |
@@ -656,8 +656,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [next-admin](../../crates/modules/rustok-iggy-connector/next-admin) | `modules` | 5 | 367 | None |  |
 | [ ] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 137 | 58,160 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 9 | 2,912 | None |  |
-| [x] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 13,033 | 2026-10-19 23:35 | Audited; non-negative bounds, nil-UUID slice guards, saturating arithmetic. 42/42 tests passed. |
-| [x] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 10 | 4,750 | 2026-10-20 02:00 | Audited; non-nil UUIDs, non-negative quantity guards, saturating summary. 68/68 tests passed. |
+| [x] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 13,269 | 2026-10-19 23:35 | Audited; enforced non-negative available_quantity bounds, SKU normalization, nil-UUID slice guards in bootstrap and translation services, and saturating arithmetic across inventory services. 42/42 tests passed. |
+| [x] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 10 | 4,841 | 2026-10-20 02:00 | Audited; enforced non-nil UUID validation across native server adapter, non-negative quantity guards on reserve, availability check, and release endpoints, saturating sum on inventory summary, whitespace normalization for status and date range filters, and dedicated parse_release_quantity. 68/68 tests passed (59 unit + 9 boundary across default & SSR features). |
 | [ ] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 10 | 1,485 | None |  |
 | [ ] | [rustok-marketplace-allocation](../../crates/modules/rustok-marketplace-allocation) | `modules` | 12 | 1,486 | None |  |
 | [ ] | [rustok-marketplace-balance](../../crates/modules/rustok-marketplace-balance) | `modules` | 29 | 6,779 | None |  |
@@ -670,7 +670,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [admin](../../crates/modules/rustok-marketplace-seller/admin) | `modules` | 13 | 2,387 | None |  |
 | [ ] | [rustok-mcp](../../crates/modules/rustok-mcp) | `modules` | 26 | 6,939 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-mcp/admin) | `modules` | 7 | 1,873 | None |  |
-| [ ] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 44 | 13,332 | None |  |
+| [ ] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 44 | 13,356 | None |  |
 | [ ] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 6 | 1,889 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-media/admin) | `modules` | 10 | 2,125 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-media/cli) | `modules` | 1 | 175 | None |  |
@@ -689,33 +689,33 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-notifications-api](../../crates/modules/rustok-notifications-api) | `modules` | 5 | 1,196 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 6 | 127 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 16 | 3,152 | None |  |
-| [x] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 85 | 22,532 | 2026-10-19 12:45 | Audited; aligned DB bounds and input normalization across order services and transitions. 56/56 tests passed, 0 clippy warnings. |
-| [x] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 14 | 2,813 | 2026-10-19 14:15 | Audited; enforced FFA boundaries: extracted OrderActionEligibility into core policy, bounds checks on commands, normalized list requests. 27/27 tests passed. |
-| [x] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 12 | 2,171 | 2026-10-19 15:35 | Audited; enforced FFA boundaries: extracted status badge styles and localization into core, bounded pagination parameters. 15/15 tests passed. |
+| [x] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 85 | 23,343 | 2026-10-19 17:05 | Audited and cleaned. Aligned DB bounds: normalized and trimmed cancellation reason (<=500), delivery signature (<=255), payment ID (<=100), payment method (<=100), tracking number (<=100), carrier (<=100) across services, DTOs, and checkout settlement; enforced case-insensitive status filtering in order listing; added unit & integration tests; 56/56 tests passed, 0 clippy warnings, gate passed. |
+| [x] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 14 | 3,164 | 2026-10-19 17:55 | Audited and cleaned. Enforced FFA boundaries: extracted OrderActionEligibility and order_action_eligibility from UI view into framework-agnostic core policy; enforced schema bounds checks on payment_id (<=100), payment_method (<=100), tracking_number (<=100), carrier (<=100), delivered_signature (<=255), and reason (<=500) with typed FieldTooLong error; normalized status filter lowercasing and bounded pagination on OrderListRequest; fixed whitespace comparisons in DateRange and status filter; reset pagination on grid filter change; 27/27 tests passed, 0 clippy warnings (default + ssr), gate passed. |
+| [ ] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 12 | 2,321 | None |  |
 | [x] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 26 | 5,092 | 2026-10-17 08:43 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-outbox/admin) | `modules` | 8 | 548 | 2026-10-17 09:49 | Audited and cleaned. |
-| [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 116 | 36,246 | None |  |
+| [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 119 | 36,379 | None |  |
 | [ ] | [rustok-page-builder-storefront](../../crates/modules/rustok-page-builder-storefront) | `modules` | 3 | 1,200 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 66 | 19,201 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-page-builder/storefront) | `modules` | 3 | 1,633 | None |  |
-| [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 197 | 56,545 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 26 | 7,438 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-page-builder/storefront) | `modules` | 6 | 1,766 | None |  |
+| [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 201 | 58,660 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 27 | 8,723 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 17 | 4,935 | None |  |
-| [x] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 88 | 24,276 | 2026-10-19 16:30 | Audited; normalized reason bounds (<=500), clamped recovery query limit, normalized status filters, fixed KWD minor units test. 84/84 tests passed. |
-| [x] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 11 | 1,315 | 2026-10-19 17:05 | Audited; enforced FFA view-model summary helper, non-nil UUID guards, feature-gated transport tests. 13/13 tests passed. |
-| [x] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 48 | 19,495 | 2026-10-19 21:30 | Audited; normalized ISO-4217 currency, 10k char bounds on descriptions, 25/25 tests passed. |
-| [x] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 328 | 2026-10-19 23:05 | Audited; enforced compare_at bounds, 3-letter currency validation, currency/slug normalization. 9/9 tests passed. |
-| [x] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 14 | 7,971 | 2026-10-19 22:15 | Audited; non-nil UUID validation, alphabetic currency normalization, SSR channel fixtures. 49/49 tests passed. |
-| [x] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 10 | 2,487 | 2026-10-19 22:43 | Audited; enforced non-nil UUID validation, filtered nil UUIDs in native transport, feature-gated transport profile tests. 12/12 tests passed. |
-| [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 191 | 81,881 | None |  |
+| [ ] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 88 | 24,381 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 11 | 1,357 | None |  |
+| [x] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 49 | 20,211 | 2026-10-19 21:30 | Audited; normalized ISO-4217 currency, 10k char bounds on descriptions, 25/25 tests passed. |
+| [x] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 623 | 2026-10-19 23:05 | Audited; enforced non-negative compare_at_amount, 3-letter ASCII alphabetic currency code validation, and currency/slug normalization in BootstrapService. 9/9 tests passed. |
+| [x] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 14 | 8,045 | 2026-10-19 22:15 | Audited; non-nil UUID validation, alphabetic currency normalization, SSR channel fixtures. 49/49 tests passed. |
+| [x] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 10 | 2,554 | 2026-10-19 22:43 | Audited; enforced non-nil UUID validation in core resolution context, filtered nil UUIDs in native transport, feature-gated transport profile tests. 12/12 tests passed (default + SSR). |
+| [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 197 | 85,389 | None |  |
 | [ ] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 25 | 6,983 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product-bundles/admin) | `modules` | 9 | 2,922 | None |  |
 | [ ] | [rustok-product-catalog-service](../../crates/modules/rustok-product-catalog-service) | `modules` | 1 | 508 | None |  |
-| [ ] | [rustok-product-relations](../../crates/modules/rustok-product-relations) | `modules` | 24 | 3,995 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-product-relations/admin) | `modules` | 9 | 1,682 | None |  |
+| [ ] | [rustok-product-relations](../../crates/modules/rustok-product-relations) | `modules` | 25 | 4,177 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-product-relations/admin) | `modules` | 9 | 1,678 | None |  |
 | [ ] | [rustok-product-transport](../../crates/modules/rustok-product-transport) | `modules` | 8 | 1,704 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 29 | 21,028 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 13 | 4,612 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 29 | 21,048 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 13 | 4,547 | None |  |
 | [ ] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 52 | 9,224 | None |  |
 | [ ] | [rustok-profiles-api](../../crates/modules/rustok-profiles-api) | `modules` | 3 | 132 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | None |  |
@@ -729,27 +729,27 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-region](../../crates/modules/rustok-region) | `modules` | 39 | 8,566 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-region/admin) | `modules` | 8 | 2,944 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-region/storefront) | `modules` | 9 | 1,738 | None |  |
-| [ ] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 99 | 34,711 | None |  |
+| [ ] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 101 | 35,305 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-search/admin) | `modules` | 20 | 8,298 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-search/storefront) | `modules` | 11 | 3,970 | None |  |
-| [ ] | [rustok-seo](../../crates/modules/rustok-seo) | `modules` | 82 | 35,554 | None |  |
+| [ ] | [rustok-seo](../../crates/modules/rustok-seo) | `modules` | 83 | 36,550 | None |  |
 | [ ] | [rustok-seo-admin-support](../../crates/modules/rustok-seo-admin-support) | `modules` | 6 | 2,627 | None |  |
-| [ ] | [rustok-seo-targets](../../crates/modules/rustok-seo-targets) | `modules` | 1 | 1,444 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-seo/admin) | `modules` | 15 | 4,557 | None |  |
+| [ ] | [rustok-seo-targets](../../crates/modules/rustok-seo-targets) | `modules` | 1 | 1,487 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-seo/admin) | `modules` | 15 | 4,563 | None |  |
 | [ ] | [panel](../../crates/modules/rustok-seo/panel) | `modules` | 6 | 2,754 | None |  |
 | [ ] | [render](../../crates/modules/rustok-seo/render) | `modules` | 1 | 17 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-seo/storefront) | `modules` | 6 | 919 | None |  |
 | [ ] | [rustok-social-graph](../../crates/modules/rustok-social-graph) | `modules` | 36 | 8,796 | None |  |
 | [ ] | [rustok-social-graph-cli](../../crates/modules/rustok-social-graph-cli) | `modules` | 1 | 324 | None |  |
 | [ ] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 5 | 1,574 | None |  |
-| [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 53 | 14,828 | None |  |
+| [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 53 | 14,871 | None |  |
 | [x] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 28 | 4,305 | 2026-10-17 02:12 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 8 | 835 | 2026-10-17 02:35 | Audited and cleaned. |
 | [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 81 | 45,996 | None |  |
 | [ ] | [rustok-translation-targets](../../crates/modules/rustok-translation-targets) | `modules` | 3 | 1,729 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 9 | 14,236 | None |  |
-| [x] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 52 | 7,328 | 2026-10-18 05:00 | Audited and cleaned. |
-| [x] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 14 | 1,434 | 2026-10-18 05:35 | Audited and cleaned. |
+| [x] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 52 | 7,715 | 2026-10-18T05:00:00Z | Remediated backoff integer overflow with saturating math and capped retries, fixed UTF-8 slicing boundary panic, fixed StepContext set() dropped mutations on empty contexts, added operator aliases (equals/==, not_equals/!=) and on_false support in ConditionStep, aligned delay step with duration_seconds, replaced dummy nil UUID masks with typed VersionNotFound and TemplateNotFound errors, unified permission denial status to 403 Forbidden across all workflow controllers, added 15 new unit tests (23 total), 0 clippy warnings, gate passed. |
+| [x] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 14 | 1,501 | 2026-10-18T05:35:00Z | Audited Leptos admin UI package; added user action error feedback banner in TemplateGallery, added missing bilingual Fluent keys (table-clear, table-selected, search-placeholder, total, error-createTemplate) in en.ftl and ru.ftl, made status filter equality exact to prevent accidental substring collisions, normalized route_segment to prevent double /modules prefix, mapped typed VersionNotFound and TemplateNotFound errors in native server adapter, added tests in core/presentation, core/command, and core/navigation, 13/13 tests passed, 0 clippy warnings, gate passed. |
 | [ ] | [fly](../../crates/ui/fly) | `ui` | 111 | 43,169 | None |  |
 | [ ] | [fly-browser](../../crates/ui/fly-browser) | `ui` | 9 | 816 | None |  |
 | [ ] | [fly-leptos](../../crates/ui/fly-leptos) | `ui` | 5 | 1,691 | None |  |
@@ -787,7 +787,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-installer](../../crates/utils/rustok-installer) | `utils` | 11 | 4,403 | None |  |
 | [ ] | [rustok-installer-cli](../../crates/utils/rustok-installer-cli) | `utils` | 1 | 823 | None |  |
 | [ ] | [rustok-installer-persistence](../../crates/utils/rustok-installer-persistence) | `utils` | 9 | 1,867 | None |  |
-| [ ] | [rustok-migrations](../../crates/utils/rustok-migrations) | `utils` | 70 | 16,084 | None |  |
+| [ ] | [rustok-migrations](../../crates/utils/rustok-migrations) | `utils` | 70 | 16,085 | None |  |
 | [ ] | [rustok-module-sdk](../../crates/utils/rustok-module-sdk) | `utils` | 2 | 60 | None |  |
 | [ ] | [rustok-module-template](../../crates/utils/rustok-module-template) | `utils` | 2 | 329 | None |  |
 | [ ] | [rustok-secrets](../../crates/utils/rustok-secrets) | `utils` | 3 | 1,346 | None |  |

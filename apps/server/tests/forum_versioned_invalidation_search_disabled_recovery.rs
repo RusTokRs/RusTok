@@ -26,7 +26,6 @@ use rustok_search::{
     ForumProjectionOwnerRevisionRecord, ForumProjectionOwnerRevisionRequest,
     ForumProjectionOwnerRevisionSourcePort, ForumProjectionOwnerTenantHead,
     ForumProjectionOwnerTenantPageRequest, ForumProjectionReconciler, SearchModule,
-    SearchProjectionSourceFactory,
 };
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{

@@ -98,7 +98,7 @@
       "path": "crates/modules/rustok-ai",
       "category": "modules",
       "files": 74,
-      "loc": 42418,
+      "loc": 42419,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -218,7 +218,7 @@
       "path": "crates/modules/rustok-blog",
       "category": "modules",
       "files": 162,
-      "loc": 41141,
+      "loc": 41147,
       "completed": false,
       "completed_at": null,
       "notes": "Audited 2026-10-17 (docs/audits/rustok-blog-engineering-audit-2026-10-17.md): 4 High, 8 Medium, 10 Low and 1 governance finding; all remediated (phase 1: 4 High + transport<->schema parity gate; phase 2: 8 Medium, 8 Low, verifier-suite repair). Blog verifier suite 66 passed / 0 failed, 23 verifier self-test suites pass, and the canonical module layout/reference-contract verifiers pass again. Not marked completed: scoped cargo check/test/clippy verification is still outstanding.",
@@ -229,7 +229,7 @@
       "path": "crates/modules/rustok-blog/admin",
       "category": "modules",
       "files": 18,
-      "loc": 6400,
+      "loc": 6406,
       "completed": false,
       "completed_at": null,
       "notes": "Audited 2026-10-17: empty-slug save failure remediated; the category/featured-image/SEO/channel/schedule capability gap is now documented in the module README Known Limitations (L-7). FFA boundary check passed.",
@@ -281,7 +281,7 @@
       "path": "crates/modules/rustok-cart",
       "category": "modules",
       "files": 73,
-      "loc": 19638,
+      "loc": 19962,
       "completed": true,
       "completed_at": "2026-10-19 15:05",
       "notes": "Audited and cleaned. Updated normalize_locale_code and validate_locale_code to use canonical normalize_locale_tag with length constraint [2..=10] matching the database schema; enforced validate_non_empty_title on AddCartLineItemInput and trimmed title/blank sku on line item addition; normalized email across create_cart and update_context to trim whitespace and collapse empty strings to None; allowed checkout snapshot preparation to adopt request email when cart email is None. 75/75 tests passed, 0 clippy warnings, gate passed."
@@ -291,7 +291,7 @@
       "path": "crates/modules/rustok-cart/storefront",
       "category": "modules",
       "files": 18,
-      "loc": 4545,
+      "loc": 4697,
       "completed": true,
       "completed_at": "2026-10-19 15:55",
       "notes": "Audited and cleaned. Enforced FFA boundaries: feature-gated transport profile tests between GraphQL and NativeServer SSR; extracted CheckoutHandoffFormInput validation and unicode-safe order reference generation from Leptos view into framework-agnostic core policy; moved badge counting and item quantity aggregation into core view_model; verified dual-path transport (ServerFn / GraphQL), all 4 error safety and boundary scripts passed, 21/21 tests passed (default + SSR), 0 clippy warnings, gate passed."
@@ -350,8 +350,8 @@
       "name": "rustok-commerce",
       "path": "crates/modules/rustok-commerce",
       "category": "modules",
-      "files": 297,
-      "loc": 132898,
+      "files": 299,
+      "loc": 136208,
       "completed": true,
       "completed_at": "2026-10-19 10:25",
       "notes": "Audited and cleaned. Fixed pagination parameter normalization and string/numeric deserialization for flattened queries in common controller. Corrected overzealous nil-UUID guards on actor_id in rustok-order services and checkout ports to support guest checkout while preserving strict tenant and order invariants. Fixed items_after_test_module clippy lint in catalog GraphQL mutations. All 205 tests pass, 0 clippy warnings, gate passed."
@@ -361,7 +361,7 @@
       "path": "crates/modules/rustok-commerce/admin",
       "category": "modules",
       "files": 21,
-      "loc": 5889,
+      "loc": 6212,
       "completed": true,
       "completed_at": "2026-10-19 11:45",
       "notes": "Audited and cleaned. Enforced FFA separation with framework-agnostic models, normalized promotion form command creation to clear mutually exclusive fields (omits amount on percentage discount, omits discount_percent on fixed discount, omits line_item_id on non-item scopes) and enforce required inputs in core, extended order change resolution summary with preview fallback for cancellation_reason, verified dual-path transport (GraphQL / ServerFn) and SSR adapter error safety. 28/28 unit tests passed (client + SSR), 0 clippy warnings, gate passed."
@@ -371,7 +371,7 @@
       "path": "crates/modules/rustok-commerce/storefront",
       "category": "modules",
       "files": 16,
-      "loc": 2022,
+      "loc": 2703,
       "completed": true,
       "completed_at": "2026-10-19 13:48",
       "notes": "Audited and cleaned. Enforced FFA separation with framework-agnostic models, aligned PaymentCollection, CheckoutCompletion, and StorefrontCartDeliveryGroup test fixtures, added surface field to UiTransportError initializers across all 4 transport error contexts, ensured completion state resets on retry in Leptos view, verified dual-path transport (GraphQL / ServerFn) and SSR adapter error safety. 32/32 tests passed (client + SSR), 0 clippy warnings, gate passed."
@@ -381,7 +381,7 @@
       "path": "crates/modules/rustok-commerce-foundation",
       "category": "modules",
       "files": 19,
-      "loc": 1106,
+      "loc": 1810,
       "completed": true,
       "completed_at": "2026-10-18 20:30",
       "notes": "Audited and cleaned. Added invariant validations for CreateVariantInput, UpdateVariantInput, PriceInput, AdjustInventoryInput, sale calculations on PriceResponse, stock helpers on VariantResponse, domain logic helpers on inventory_level, product, product_variant, region, reservation_item, shipping_profile, stock_location models, bounded search query with localized search condition, 20/20 tests passed."
@@ -441,7 +441,7 @@
       "path": "crates/modules/rustok-email",
       "category": "modules",
       "files": 6,
-      "loc": 784,
+      "loc": 888,
       "completed": true,
       "completed_at": "2026-10-18T06:00:00Z",
       "notes": "Added recipient mailbox syntax and CRLF injection validation to delivery request port, handled null Tera vars gracefully as empty context, normalized password_reset_url query separator with trailing delimiter support, implemented standard derives on EmailModule, EmailConfig, SmtpConfig, PasswordResetEmail, and RenderedEmail, added 5 new unit tests (16 total), 0 clippy warnings, gate passed."
@@ -511,7 +511,7 @@
       "path": "crates/modules/rustok-fulfillment",
       "category": "modules",
       "files": 76,
-      "loc": 26555,
+      "loc": 27050,
       "completed": true,
       "completed_at": "2026-10-20 04:35",
       "notes": "Audited; enforced nil-UUID guards on fulfillment_id, order_id, shipping_option_id across service methods, transaction commits, and create/update/list operations; added customer_id nil validation to admin create fulfillment command; trimmed carrier and tracking numbers and delivered notes/cancellation reasons; enabled case-insensitive and whitespace-trimmed status matching in FulfillmentStatusKind::from_raw and list_fulfillments. 167/167 tests passed."
@@ -521,7 +521,7 @@
       "path": "crates/modules/rustok-fulfillment/admin",
       "category": "modules",
       "files": 8,
-      "loc": 1916,
+      "loc": 2057,
       "completed": true,
       "completed_at": "2026-10-20 06:10",
       "notes": "Audited; extracted FFA view-model and slug helpers to core, added draft validation, normalized filter whitespace and pagination reset on filter change; 16/16 tests passed across default & SSR features, 0 clippy warnings, gate passed."
@@ -531,7 +531,7 @@
       "path": "crates/modules/rustok-fulfillment/storefront",
       "category": "modules",
       "files": 12,
-      "loc": 1252,
+      "loc": 1410,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -631,7 +631,7 @@
       "path": "crates/modules/rustok-inventory",
       "category": "modules",
       "files": 35,
-      "loc": 13033,
+      "loc": 13269,
       "completed": true,
       "completed_at": "2026-10-19 23:35",
       "notes": "Audited; enforced non-negative available_quantity bounds, SKU normalization, nil-UUID slice guards in bootstrap and translation services, and saturating arithmetic across inventory services. 42/42 tests passed."
@@ -641,7 +641,7 @@
       "path": "crates/modules/rustok-inventory/admin",
       "category": "modules",
       "files": 10,
-      "loc": 4750,
+      "loc": 4841,
       "completed": true,
       "completed_at": "2026-10-20 02:00",
       "notes": "Audited; enforced non-nil UUID validation across native server adapter, non-negative quantity guards on reserve, availability check, and release endpoints, saturating sum on inventory summary, whitespace normalization for status and date range filters, and dedicated parse_release_quantity. 68/68 tests passed (59 unit + 9 boundary across default & SSR features)."
@@ -761,7 +761,7 @@
       "path": "crates/modules/rustok-media",
       "category": "modules",
       "files": 44,
-      "loc": 13332,
+      "loc": 13356,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -911,7 +911,7 @@
       "path": "crates/modules/rustok-order",
       "category": "modules",
       "files": 85,
-      "loc": 22532,
+      "loc": 23343,
       "completed": true,
       "completed_at": "2026-10-19 17:05",
       "notes": "Audited and cleaned. Aligned DB bounds: normalized and trimmed cancellation reason (<=500), delivery signature (<=255), payment ID (<=100), payment method (<=100), tracking number (<=100), carrier (<=100) across services, DTOs, and checkout settlement; enforced case-insensitive status filtering in order listing; added unit & integration tests; 56/56 tests passed, 0 clippy warnings, gate passed."
@@ -921,7 +921,7 @@
       "path": "crates/modules/rustok-order/admin",
       "category": "modules",
       "files": 14,
-      "loc": 2813,
+      "loc": 3164,
       "completed": true,
       "completed_at": "2026-10-19 17:55",
       "notes": "Audited and cleaned. Enforced FFA boundaries: extracted OrderActionEligibility and order_action_eligibility from UI view into framework-agnostic core policy; enforced schema bounds checks on payment_id (<=100), payment_method (<=100), tracking_number (<=100), carrier (<=100), delivered_signature (<=255), and reason (<=500) with typed FieldTooLong error; normalized status filter lowercasing and bounded pagination on OrderListRequest; fixed whitespace comparisons in DateRange and status filter; reset pagination on grid filter change; 27/27 tests passed, 0 clippy warnings (default + ssr), gate passed."
@@ -931,7 +931,7 @@
       "path": "crates/modules/rustok-order/storefront",
       "category": "modules",
       "files": 12,
-      "loc": 2171,
+      "loc": 2321,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -960,8 +960,8 @@
       "name": "rustok-page-builder",
       "path": "crates/modules/rustok-page-builder",
       "category": "modules",
-      "files": 116,
-      "loc": 36246,
+      "files": 119,
+      "loc": 36379,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -990,8 +990,8 @@
       "name": "rustok-pages",
       "path": "crates/modules/rustok-pages",
       "category": "modules",
-      "files": 197,
-      "loc": 56545,
+      "files": 201,
+      "loc": 58660,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1000,8 +1000,8 @@
       "name": "admin",
       "path": "crates/modules/rustok-pages/admin",
       "category": "modules",
-      "files": 26,
-      "loc": 7438,
+      "files": 27,
+      "loc": 8723,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1021,7 +1021,7 @@
       "path": "crates/modules/rustok-payment",
       "category": "modules",
       "files": 88,
-      "loc": 24276,
+      "loc": 24381,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1031,7 +1031,7 @@
       "path": "crates/modules/rustok-payment/storefront",
       "category": "modules",
       "files": 11,
-      "loc": 1315,
+      "loc": 1357,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1040,8 +1040,8 @@
       "name": "rustok-pricing",
       "path": "crates/modules/rustok-pricing",
       "category": "modules",
-      "files": 48,
-      "loc": 19495,
+      "files": 49,
+      "loc": 20211,
       "completed": true,
       "completed_at": "2026-10-19 21:30",
       "notes": "Audited; normalized ISO-4217 currency, 10k char bounds on descriptions, 25/25 tests passed."
@@ -1051,7 +1051,7 @@
       "path": "crates/modules/rustok-pricing/admin",
       "category": "modules",
       "files": 14,
-      "loc": 7971,
+      "loc": 8045,
       "completed": true,
       "completed_at": "2026-10-19 22:15",
       "notes": "Audited; non-nil UUID validation, alphabetic currency normalization, SSR channel fixtures. 49/49 tests passed."
@@ -1061,7 +1061,7 @@
       "path": "crates/modules/rustok-pricing/storefront",
       "category": "modules",
       "files": 10,
-      "loc": 2487,
+      "loc": 2554,
       "completed": true,
       "completed_at": "2026-10-19 22:43",
       "notes": "Audited; enforced non-nil UUID validation in core resolution context, filtered nil UUIDs in native transport, feature-gated transport profile tests. 12/12 tests passed (default + SSR)."
@@ -1071,7 +1071,7 @@
       "path": "crates/modules/rustok-pricing-persistence",
       "category": "modules",
       "files": 5,
-      "loc": 328,
+      "loc": 623,
       "completed": true,
       "completed_at": "2026-10-19 23:05",
       "notes": "Audited; enforced non-negative compare_at_amount, 3-letter ASCII alphabetic currency code validation, and currency/slug normalization in BootstrapService. 9/9 tests passed."
@@ -1080,8 +1080,8 @@
       "name": "rustok-product",
       "path": "crates/modules/rustok-product",
       "category": "modules",
-      "files": 191,
-      "loc": 81881,
+      "files": 197,
+      "loc": 85389,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1091,7 +1091,7 @@
       "path": "crates/modules/rustok-product/admin",
       "category": "modules",
       "files": 29,
-      "loc": 21028,
+      "loc": 21048,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1101,7 +1101,7 @@
       "path": "crates/modules/rustok-product/storefront",
       "category": "modules",
       "files": 13,
-      "loc": 4612,
+      "loc": 4547,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1140,8 +1140,8 @@
       "name": "rustok-product-relations",
       "path": "crates/modules/rustok-product-relations",
       "category": "modules",
-      "files": 24,
-      "loc": 3995,
+      "files": 25,
+      "loc": 4177,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1151,7 +1151,7 @@
       "path": "crates/modules/rustok-product-relations/admin",
       "category": "modules",
       "files": 9,
-      "loc": 1682,
+      "loc": 1678,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1290,8 +1290,8 @@
       "name": "rustok-search",
       "path": "crates/modules/rustok-search",
       "category": "modules",
-      "files": 99,
-      "loc": 34711,
+      "files": 101,
+      "loc": 35305,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1320,8 +1320,8 @@
       "name": "rustok-seo",
       "path": "crates/modules/rustok-seo",
       "category": "modules",
-      "files": 82,
-      "loc": 35554,
+      "files": 83,
+      "loc": 36550,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1331,7 +1331,7 @@
       "path": "crates/modules/rustok-seo/admin",
       "category": "modules",
       "files": 15,
-      "loc": 4557,
+      "loc": 4563,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1361,7 +1361,7 @@
       "path": "crates/modules/rustok-seo-targets",
       "category": "modules",
       "files": 1,
-      "loc": 1444,
+      "loc": 1487,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1401,7 +1401,7 @@
       "path": "crates/modules/rustok-taxonomy",
       "category": "modules",
       "files": 53,
-      "loc": 14828,
+      "loc": 14871,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1461,7 +1461,7 @@
       "path": "crates/modules/rustok-workflow",
       "category": "modules",
       "files": 52,
-      "loc": 7328,
+      "loc": 7715,
       "completed": true,
       "completed_at": "2026-10-18T05:00:00Z",
       "notes": "Remediated backoff integer overflow with saturating math and capped retries, fixed UTF-8 slicing boundary panic, fixed StepContext set() dropped mutations on empty contexts, added operator aliases (equals/==, not_equals/!=) and on_false support in ConditionStep, aligned delay step with duration_seconds, replaced dummy nil UUID masks with typed VersionNotFound and TemplateNotFound errors, unified permission denial status to 403 Forbidden across all workflow controllers, added 15 new unit tests (23 total), 0 clippy warnings, gate passed."
@@ -1471,7 +1471,7 @@
       "path": "crates/modules/rustok-workflow/admin",
       "category": "modules",
       "files": 14,
-      "loc": 1434,
+      "loc": 1501,
       "completed": true,
       "completed_at": "2026-10-18T05:35:00Z",
       "notes": "Audited Leptos admin UI package; added user action error feedback banner in TemplateGallery, added missing bilingual Fluent keys (table-clear, table-selected, search-placeholder, total, error-createTemplate) in en.ftl and ru.ftl, made status filter equality exact to prevent accidental substring collisions, normalized route_segment to prevent double /modules prefix, mapped typed VersionNotFound and TemplateNotFound errors in native server adapter, added tests in core/presentation, core/command, and core/navigation, 13/13 tests passed, 0 clippy warnings, gate passed."
@@ -1711,7 +1711,7 @@
       "path": "crates/utils/rustok-migrations",
       "category": "utils",
       "files": 70,
-      "loc": 16084,
+      "loc": 16085,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1940,8 +1940,8 @@
       "name": "next-admin",
       "path": "apps/next-admin",
       "category": "apps",
-      "files": 540,
-      "loc": 84173,
+      "files": 545,
+      "loc": 83893,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2021,8 +2021,8 @@
       "name": "rustok-product",
       "path": "apps/next-admin/packages/rustok-product",
       "category": "apps",
-      "files": 37,
-      "loc": 11120,
+      "files": 41,
+      "loc": 12284,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2061,8 +2061,8 @@
       "name": "next-frontend",
       "path": "apps/next-frontend",
       "category": "apps",
-      "files": 154,
-      "loc": 25261,
+      "files": 155,
+      "loc": 25298,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2092,8 +2092,8 @@
       "name": "rustok-product",
       "path": "apps/next-frontend/packages/rustok-product",
       "category": "apps",
-      "files": 10,
-      "loc": 2252,
+      "files": 11,
+      "loc": 2282,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2112,8 +2112,8 @@
       "name": "server",
       "path": "apps/server",
       "category": "apps",
-      "files": 485,
-      "loc": 190468,
+      "files": 487,
+      "loc": 191307,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2162,8 +2162,8 @@
       "name": "rustok-accounting",
       "path": "crates/modules/rustok-accounting",
       "category": "modules",
-      "files": 13,
-      "loc": 417,
+      "files": 14,
+      "loc": 1726,
       "completed": true,
       "completed_at": "2026-10-18 20:00",
       "notes": "Audited and cleaned. Standard chart of accounts, bounds and character validation, 1000 lines limit, storno generation, multi-currency trial balance, outbox events, 27/27 tests passed."
@@ -2192,8 +2192,8 @@
       "name": "rustok-docs",
       "path": "crates/modules/rustok-docs",
       "category": "modules",
-      "files": 21,
-      "loc": 2957,
+      "files": 22,
+      "loc": 3264,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2452,8 +2452,8 @@
       "name": "events",
       "path": "apps/next-admin/packages/events",
       "category": "apps",
-      "files": 6,
-      "loc": 350,
+      "files": 7,
+      "loc": 423,
       "completed": true,
       "completed_at": "2026-10-18 03:00",
       "notes": "Audited in FS-03; FFA model extracted, Fluent {  } fixed, 7 tests passed, gate passed."
@@ -2582,8 +2582,8 @@
       "name": "storefront",
       "path": "crates/modules/rustok-page-builder/storefront",
       "category": "modules",
-      "files": 3,
-      "loc": 1633,
+      "files": 6,
+      "loc": 1766,
       "completed": false,
       "completed_at": null,
       "notes": ""
