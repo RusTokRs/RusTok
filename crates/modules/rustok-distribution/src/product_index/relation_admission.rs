@@ -3,8 +3,6 @@
 //! The Product owner persists resolved UUID membership under a dedicated monotonic relation epoch.
 //! This contract validates locale fan-out identity and rejects epoch reuse for different membership.
 
-#![allow(dead_code)]
-
 use rustok_index::{IndexSourceEventIdError, LocaleKey, derive_index_source_event_id};
 use thiserror::Error;
 use uuid::Uuid;
@@ -208,6 +206,10 @@ mod tests {
         let retry = snapshot(7, "en-US", [Uuid::from_u128(3), Uuid::from_u128(4)]);
 
         assert_eq!(first, retry);
+        assert_eq!(first.tenant_id(), Uuid::from_u128(1));
+        assert_eq!(first.product_id(), Uuid::from_u128(2));
+        assert_eq!(first.locale().as_str(), "en-US");
+        assert_eq!(first.epoch().get(), 7);
         assert_eq!(
             first.channel_ids(),
             &[Uuid::from_u128(3), Uuid::from_u128(4)]
