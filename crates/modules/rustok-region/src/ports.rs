@@ -74,15 +74,16 @@ impl RegionReadPort for crate::RegionService {
         validate_region_read_request(&context, owner_operation, &request)?;
 
         let result = match request.selector {
-            RegionReadSelector::Id(region_id) => self
-                .get_region(
+            RegionReadSelector::Id(region_id) => {
+                self.get_region(
                     tenant_id,
                     region_id,
                     request.requested_locale.as_deref(),
                     request.tenant_default_locale.as_deref(),
                 )
                 .await
-                .map(Some),
+                .map(Some)
+            }
             RegionReadSelector::CountryCode(country_code) => {
                 self.resolve_region_for_country(
                     tenant_id,
@@ -241,9 +242,11 @@ fn require_region_read_policy(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<(), PortError> {
-    context
-        .require_policy(PortCallPolicy::read())
-        .inspect_err(|error| log_region_read_admission_rejection(context, owner_operation, error))
+    if let Err(error) = context.require_policy(PortCallPolicy::read()) {
+        log_region_read_admission_rejection(context, owner_operation, &error);
+        return Err(error);
+    }
+    Ok(())
 }
 
 fn log_region_read_admission_rejection(
@@ -285,13 +288,21 @@ fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    context.tenant_id.parse::<Uuid>().map_err(|_| {
+    let tenant_id = context.tenant_id.parse::<Uuid>().map_err(|_| {
         log_region_tenant_parse_rejection(context, owner_operation);
         PortError::validation(
             "region.tenant_id_invalid",
             "region request context is invalid",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        log_region_tenant_parse_rejection(context, owner_operation);
+        return Err(PortError::validation(
+            "region.tenant_id_invalid",
+            "region request context is invalid",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn log_region_tenant_parse_rejection(context: &PortContext, owner_operation: &'static str) {
