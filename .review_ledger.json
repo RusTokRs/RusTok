@@ -411,7 +411,7 @@
       "path": "crates/modules/rustok-customer",
       "category": "modules",
       "files": 26,
-      "loc": 5503,
+      "loc": 5507,
       "completed": true,
       "completed_at": "2026-10-20 20:47",
       "notes": "Audited; enforced non-nil UUID validation on tenant_id, user_id, customer_id across create/update/get/upsert/list operations, added min/max length bounds to CreateCustomerInput and UpdateCustomerInput email fields, bounded list search query length to 256 chars, bounded and filtered profile enrichment user IDs up to 500 non-nil entries, aligned CustomerReadPort policy execution and tenant parsing with diagnostic contracts, verified 10 customer/commerce boundary verification suites; 19/19 tests passed, 0 clippy warnings, gate passed."
@@ -421,10 +421,10 @@
       "path": "crates/modules/rustok-customer/admin",
       "category": "modules",
       "files": 9,
-      "loc": 2779,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 2783,
+      "completed": true,
+      "completed_at": "2026-10-20 21:00",
+      "notes": "Audited; enforced non-nil UUID validation on parse_uuid in native server adapter, verified framework-agnostic FFA architecture in core.rs with complete error mapping, form snapshots, and view models, confirmed safe transport error envelope and diagnostic logging, verified FTL i18n parity between en.ftl and ru.ftl; 12/12 unit tests passed (default and ssr features), 0 clippy warnings, gate passed."
     },
     "crates/modules/rustok-distribution": {
       "name": "rustok-distribution",
