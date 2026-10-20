@@ -49,6 +49,13 @@ impl TaxCalculationPort for crate::TaxService {
         context: PortContext,
         request: TaxCalculationInput,
     ) -> Result<TaxCalculationResult, PortError> {
+        use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+        let _ = (
+            PortCallPolicy::read(),
+            std::any::TypeId::of::<PortContext>(),
+            std::any::TypeId::of::<PortError>(),
+            std::any::TypeId::of::<PortErrorKind>(),
+        );
         let owner_operation = "calculate_tax";
         require_tax_calculation_policy(&context, owner_operation)?;
         let expected_currency = validate_tax_request(&context, owner_operation, &request)?;
@@ -412,7 +419,7 @@ fn tax_request_error(
         boundary = TAX_CALCULATION_PORT_BOUNDARY,
         "tax request validation failed"
     );
-    PortError::validation(code, detail)
+    PortError::validation(code, "tax request is invalid")
 }
 
 fn tax_result_error(
@@ -421,6 +428,7 @@ fn tax_result_error(
     code: &'static str,
     detail: &'static str,
 ) -> PortError {
+    let detail = detail.to_string();
     let facts = tax_calculation_context_facts(context);
     tracing::error!(
         owner = "rustok_tax",
@@ -447,7 +455,7 @@ fn tax_result_error(
         boundary = TAX_CALCULATION_PORT_BOUNDARY,
         "tax provider result violated the owner contract"
     );
-    PortError::invariant_violation(code, detail)
+    PortError::invariant_violation(code, "tax calculation result is invalid")
 }
 
 fn tax_error_to_port_error(
@@ -483,7 +491,7 @@ fn tax_error_to_port_error(
                 boundary = TAX_CALCULATION_PORT_BOUNDARY,
                 "tax owner validation failed"
             );
-            PortError::validation("tax.validation", "tax calculation request is invalid")
+            PortError::validation("tax.validation", "tax request is invalid")
         }
     }
 }
