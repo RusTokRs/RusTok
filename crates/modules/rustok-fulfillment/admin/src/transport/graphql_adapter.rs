@@ -225,6 +225,8 @@ pub async fn fetch_shipping_option(
     tenant_id: String,
     id: String,
 ) -> Result<Option<ShippingOption>, ApiError> {
+    let tenant_id = tenant_id.trim().to_string();
+    let id = id.trim().to_string();
     let response: ShippingOptionResponse = request(
         SHIPPING_OPTION_QUERY,
         Some(TenantScopedVariables {
@@ -245,6 +247,7 @@ pub async fn fetch_shipping_profiles(
     page: u64,
     per_page: u64,
 ) -> Result<Vec<ShippingProfile>, ApiError> {
+    let tenant_id = tenant_id.trim().to_string();
     let response: ShippingProfilesResponse = request(
         SHIPPING_PROFILES_QUERY,
         Some(TenantScopedVariables {
@@ -271,6 +274,7 @@ pub async fn create_shipping_option(
     tenant_id: String,
     draft: ShippingOptionDraft,
 ) -> Result<ShippingOption, ApiError> {
+    let tenant_id = tenant_id.trim().to_string();
     let response: CreateShippingOptionResponse = request(
         CREATE_SHIPPING_OPTION_MUTATION,
         Some(TenantScopedVariables {
@@ -293,6 +297,8 @@ pub async fn update_shipping_option(
     id: String,
     draft: ShippingOptionDraft,
 ) -> Result<ShippingOption, ApiError> {
+    let tenant_id = tenant_id.trim().to_string();
+    let id = id.trim().to_string();
     let response: UpdateShippingOptionResponse = request(
         UPDATE_SHIPPING_OPTION_MUTATION,
         Some(TenantScopedVariables {
@@ -315,6 +321,8 @@ pub async fn deactivate_shipping_option(
     tenant_id: String,
     id: String,
 ) -> Result<ShippingOption, ApiError> {
+    let tenant_id = tenant_id.trim().to_string();
+    let id = id.trim().to_string();
     let response: DeactivateShippingOptionResponse = request(
         DEACTIVATE_SHIPPING_OPTION_MUTATION,
         Some(TenantScopedVariables {
@@ -334,6 +342,8 @@ pub async fn reactivate_shipping_option(
     tenant_id: String,
     id: String,
 ) -> Result<ShippingOption, ApiError> {
+    let tenant_id = tenant_id.trim().to_string();
+    let id = id.trim().to_string();
     let response: ReactivateShippingOptionResponse = request(
         REACTIVATE_SHIPPING_OPTION_MUTATION,
         Some(TenantScopedVariables {
@@ -433,7 +443,7 @@ fn normalize_currency_code(value: &str) -> String {
     if trimmed.is_empty() {
         "USD".to_string()
     } else {
-        trimmed.to_uppercase()
+        trimmed.to_ascii_uppercase()
     }
 }
 
@@ -451,7 +461,10 @@ fn optional_json_text(value: &str) -> Option<String> {
 }
 #[cfg(test)]
 mod tests {
-    use super::{build_update_shipping_option_input, merge_existing_translation};
+    use super::{
+        build_update_shipping_option_input, merge_existing_translation, normalize_amount,
+        normalize_currency_code,
+    };
     use crate::model::{ShippingOptionDraft, ShippingOptionTranslation};
 
     fn draft(existing_translations: Vec<ShippingOptionTranslation>) -> ShippingOptionDraft {
@@ -549,5 +562,18 @@ mod tests {
                 .iter()
                 .any(|value| value.locale == "de" && value.name == "Express DE")
         );
+    }
+
+    #[test]
+    fn normalize_currency_code_defaults_and_uppercases() {
+        assert_eq!(normalize_currency_code("   "), "USD");
+        assert_eq!(normalize_currency_code("eur"), "EUR");
+        assert_eq!(normalize_currency_code("  rub  "), "RUB");
+    }
+
+    #[test]
+    fn normalize_amount_defaults_and_trims() {
+        assert_eq!(normalize_amount("   "), "0.00");
+        assert_eq!(normalize_amount("  15.50  "), "15.50");
     }
 }
