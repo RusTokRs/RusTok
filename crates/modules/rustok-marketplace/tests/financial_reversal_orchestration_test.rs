@@ -143,6 +143,96 @@ async fn mismatched_reversal_result_is_rejected_as_invariant_failure() {
     ));
 }
 
+#[tokio::test]
+async fn reversal_orchestration_rejects_nil_tenant_or_identifiers() {
+    let actor_id = Uuid::new_v4();
+    let order_id = Uuid::new_v4();
+    let source_id = Uuid::new_v4();
+    let now = Utc::now().fixed_offset();
+    let commission = Arc::new(RejectingCommissionPort::default());
+    let service = MarketplaceFinancialOrchestrationService::new(
+        commission,
+        Arc::new(CapturingReversalLedgerPort::new(reversal_response(
+            Uuid::new_v4(),
+            order_id,
+            source_id,
+            MarketplaceLedgerReversalKind::Refund,
+            now,
+            1_000,
+        ))),
+    );
+
+    // Nil tenant_id rejected
+    let nil_tenant_ctx = PortContext::new(
+        Uuid::nil().to_string(),
+        PortActor::user(actor_id.to_string()),
+        "en",
+        "nil-tenant-rev",
+    )
+    .with_deadline(std::time::Duration::from_secs(5))
+    .with_idempotency_key("nil-tenant-rev-key");
+
+    let err = service
+        .process_reversal(
+            nil_tenant_ctx,
+            ProcessMarketplaceFinancialReversalInput {
+                reversal: PostMarketplaceLedgerReversalInput {
+                    kind: MarketplaceLedgerReversalKind::Refund,
+                    source_id,
+                    order_id,
+                    currency_code: "USD".to_string(),
+                    reversed_at: now,
+                    lines: vec![MarketplaceLedgerReversalLineInput {
+                        assessment_id: Uuid::new_v4(),
+                        allocation_id: Uuid::new_v4(),
+                        order_line_item_id: Uuid::new_v4(),
+                        seller_id: Uuid::new_v4(),
+                        commission_amount: 100,
+                        seller_amount: 900,
+                        seller_balance_bucket: MarketplaceSellerBalanceBucket::Pending,
+                    }],
+                    metadata: serde_json::json!({}),
+                },
+            },
+        )
+        .await;
+    assert!(matches!(
+        err,
+        Err(MarketplaceFinancialOrchestrationError::Validation(msg)) if msg.contains("tenant_id")
+    ));
+
+    // Nil line id rejected
+    let valid_ctx = write_context(Uuid::new_v4(), actor_id, "nil-line", "nil-line-key");
+    let err = service
+        .process_reversal(
+            valid_ctx,
+            ProcessMarketplaceFinancialReversalInput {
+                reversal: PostMarketplaceLedgerReversalInput {
+                    kind: MarketplaceLedgerReversalKind::Refund,
+                    source_id,
+                    order_id,
+                    currency_code: "USD".to_string(),
+                    reversed_at: now,
+                    lines: vec![MarketplaceLedgerReversalLineInput {
+                        assessment_id: Uuid::nil(),
+                        allocation_id: Uuid::new_v4(),
+                        order_line_item_id: Uuid::new_v4(),
+                        seller_id: Uuid::new_v4(),
+                        commission_amount: 100,
+                        seller_amount: 900,
+                        seller_balance_bucket: MarketplaceSellerBalanceBucket::Pending,
+                    }],
+                    metadata: serde_json::json!({}),
+                },
+            },
+        )
+        .await;
+    assert!(matches!(
+        err,
+        Err(MarketplaceFinancialOrchestrationError::Validation(msg)) if msg.contains("reversal line ids")
+    ));
+}
+
 fn reversal_response(
     tenant_id: Uuid,
     order_id: Uuid,

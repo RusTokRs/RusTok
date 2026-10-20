@@ -24,6 +24,12 @@ impl MarketplacePayoutDirectoryService {
         context: PortContext,
         payout_id: Uuid,
     ) -> Result<MarketplacePayoutResponse, PortError> {
+        if payout_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace.payout.payout_id",
+                "payout_id must not be nil",
+            ));
+        }
         self.payout_reader
             .read_payout(context, ReadMarketplacePayoutRequest { payout_id })
             .await
@@ -34,6 +40,12 @@ impl MarketplacePayoutDirectoryService {
         context: PortContext,
         request: ListMarketplaceSellerPayoutsRequest,
     ) -> Result<MarketplacePayoutListResponse, PortError> {
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace.payout.seller_id",
+                "seller_id must not be nil",
+            ));
+        }
         self.payout_reader
             .list_seller_payouts(context, request)
             .await

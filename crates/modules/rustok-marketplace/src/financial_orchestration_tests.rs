@@ -178,6 +178,363 @@ async fn mismatched_ledger_total_is_rejected_as_invariant_failure() {
     ));
 }
 
+#[tokio::test]
+async fn financial_orchestration_rejects_nil_tenant_or_order_id() {
+    let actor_id = Uuid::new_v4();
+    let order_id = Uuid::new_v4();
+    let now = Utc::now().fixed_offset();
+    let commission = Arc::new(FakeCommissionPort::new(commission_response(
+        Uuid::new_v4(),
+        order_id,
+        now,
+    )));
+    let ledger = Arc::new(FakeLedgerPort::success(ledger_response(
+        Uuid::new_v4(),
+        order_id,
+        now,
+        1_000,
+    )));
+    let service = MarketplaceFinancialOrchestrationService::new(commission, ledger);
+
+    // Nil tenant_id rejected
+    let nil_tenant_ctx = PortContext::new(
+        Uuid::nil().to_string(),
+        PortActor::user(actor_id.to_string()),
+        "en",
+        "nil-tenant",
+    )
+    .with_deadline(std::time::Duration::from_secs(5))
+    .with_idempotency_key("nil-tenant-key");
+
+    let err = service
+        .process_order(
+            nil_tenant_ctx,
+            ProcessMarketplaceOrderFinancialsInput {
+                order_id,
+                assessed_at: now,
+                posted_at: now,
+            },
+        )
+        .await;
+    assert!(matches!(
+        err,
+        Err(MarketplaceFinancialOrchestrationError::Validation(msg)) if msg.contains("tenant_id")
+    ));
+
+    // Nil order_id rejected
+    let valid_ctx = write_context(Uuid::new_v4(), actor_id, "nil-order", "nil-order-key");
+    let err = service
+        .process_order(
+            valid_ctx,
+            ProcessMarketplaceOrderFinancialsInput {
+                order_id: Uuid::nil(),
+                assessed_at: now,
+                posted_at: now,
+            },
+        )
+        .await;
+    assert!(matches!(
+        err,
+        Err(MarketplaceFinancialOrchestrationError::Validation(msg)) if msg.contains("order_id")
+    ));
+}
+
+#[tokio::test]
+async fn directory_services_reject_nil_identifiers_and_invalid_currency() {
+    let ctx = write_context(
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        "directory-test",
+        "directory-key",
+    );
+
+    // Allocation directory
+    let allocation_dir =
+        crate::MarketplaceAllocationDirectoryService::new(Arc::new(DummyAllocationReader));
+    assert!(allocation_dir
+        .read_by_order_line(ctx.clone(), Uuid::nil())
+        .await
+        .is_err());
+    assert!(allocation_dir
+        .list_by_order(ctx.clone(), Uuid::nil())
+        .await
+        .is_err());
+    assert!(allocation_dir
+        .list_by_seller(
+            ctx.clone(),
+            rustok_marketplace_allocation::ListMarketplaceAllocationsBySellerRequest {
+                seller_id: Uuid::nil(),
+                page: 1,
+                per_page: 10,
+                status: None,
+            }
+        )
+        .await
+        .is_err());
+
+    // Commission directory
+    let commission_dir =
+        crate::MarketplaceCommissionDirectoryService::new(Arc::new(DummyCommissionReader));
+    assert!(commission_dir
+        .read_by_allocation(ctx.clone(), Uuid::nil())
+        .await
+        .is_err());
+    assert!(commission_dir
+        .list_by_order(ctx.clone(), Uuid::nil())
+        .await
+        .is_err());
+    assert!(commission_dir
+        .list_by_seller(
+            ctx.clone(),
+            rustok_marketplace_commission::ListMarketplaceCommissionAssessmentsBySellerRequest {
+                seller_id: Uuid::nil(),
+                page: 1,
+                per_page: 10,
+                status: None,
+            }
+        )
+        .await
+        .is_err());
+
+    // Ledger directory
+    let ledger_dir = crate::MarketplaceLedgerDirectoryService::new(Arc::new(DummyLedgerReader));
+    assert!(ledger_dir
+        .read_by_order(ctx.clone(), Uuid::nil())
+        .await
+        .is_err());
+    assert!(ledger_dir
+        .list_seller_entries(
+            ctx.clone(),
+            rustok_marketplace_balance::ListMarketplaceSellerLedgerEntriesRequest {
+                seller_id: Uuid::nil(),
+                currency_code: None,
+                page: 1,
+                per_page: 10,
+            }
+        )
+        .await
+        .is_err());
+    assert!(ledger_dir
+        .read_seller_balance(ctx.clone(), Uuid::nil(), "USD")
+        .await
+        .is_err());
+    assert!(ledger_dir
+        .read_seller_balance(ctx.clone(), Uuid::new_v4(), "INVALID")
+        .await
+        .is_err());
+
+    // Listing directory
+    let listing_dir = crate::MarketplaceListingDirectoryService::new(Arc::new(DummyListingReader));
+    assert!(listing_dir
+        .read_listing(ctx.clone(), Uuid::nil())
+        .await
+        .is_err());
+
+    // Payout directory
+    let payout_dir = crate::MarketplacePayoutDirectoryService::new(Arc::new(DummyPayoutReader));
+    assert!(payout_dir
+        .read_payout(ctx.clone(), Uuid::nil())
+        .await
+        .is_err());
+    assert!(payout_dir
+        .list_seller_payouts(
+            ctx.clone(),
+            rustok_marketplace_payout::ListMarketplaceSellerPayoutsRequest {
+                seller_id: Uuid::nil(),
+                currency_code: None,
+                status: None,
+                page: 1,
+                per_page: 10,
+            }
+        )
+        .await
+        .is_err());
+
+    // Seller directory
+    let seller_dir = crate::MarketplaceSellerDirectoryService::new(Arc::new(DummySellerReader));
+    assert!(seller_dir
+        .read_seller(ctx.clone(), Uuid::nil())
+        .await
+        .is_err());
+}
+
+struct DummyAllocationReader;
+#[async_trait]
+impl rustok_marketplace_allocation::MarketplaceAllocationReadPort for DummyAllocationReader {
+    async fn read_allocation_by_line(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_allocation::ReadMarketplaceAllocationByLineRequest,
+    ) -> Result<rustok_marketplace_allocation::MarketplaceOrderAllocationResponse, PortError> {
+        unreachable!()
+    }
+    async fn list_allocations_by_order(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_allocation::ListMarketplaceAllocationsByOrderRequest,
+    ) -> Result<Vec<rustok_marketplace_allocation::MarketplaceOrderAllocationResponse>, PortError> {
+        unreachable!()
+    }
+    async fn list_allocations_by_seller(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_allocation::ListMarketplaceAllocationsBySellerRequest,
+    ) -> Result<rustok_marketplace_allocation::MarketplaceAllocationListResponse, PortError> {
+        unreachable!()
+    }
+}
+
+struct DummyCommissionReader;
+#[async_trait]
+impl rustok_marketplace_commission::MarketplaceCommissionReadPort for DummyCommissionReader {
+    async fn read_assessment(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_commission::ReadMarketplaceCommissionAssessmentRequest,
+    ) -> Result<rustok_marketplace_commission::MarketplaceCommissionAssessmentResponse, PortError> {
+        unreachable!()
+    }
+    async fn list_assessments_by_order(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_commission::ListMarketplaceCommissionAssessmentsByOrderRequest,
+    ) -> Result<Vec<rustok_marketplace_commission::MarketplaceCommissionAssessmentResponse>, PortError> {
+        unreachable!()
+    }
+    async fn list_assessments_by_seller(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_commission::ListMarketplaceCommissionAssessmentsBySellerRequest,
+    ) -> Result<rustok_marketplace_commission::MarketplaceCommissionAssessmentListResponse, PortError> {
+        unreachable!()
+    }
+    async fn list_rules(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_commission::ListMarketplaceCommissionRulesRequest,
+    ) -> Result<rustok_marketplace_commission::MarketplaceCommissionRuleListResponse, PortError> {
+        unreachable!()
+    }
+}
+
+struct DummyLedgerReader;
+#[async_trait]
+impl rustok_marketplace_balance::MarketplaceLedgerReadPort for DummyLedgerReader {
+    async fn read_order_ledger(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_balance::ReadMarketplaceOrderLedgerRequest,
+    ) -> Result<rustok_marketplace_balance::MarketplaceLedgerTransactionResponse, PortError> {
+        unreachable!()
+    }
+    async fn list_seller_entries(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_balance::ListMarketplaceSellerLedgerEntriesRequest,
+    ) -> Result<rustok_marketplace_balance::MarketplaceLedgerEntryListResponse, PortError> {
+        unreachable!()
+    }
+    async fn read_seller_balance(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_balance::ReadMarketplaceSellerBalanceRequest,
+    ) -> Result<rustok_marketplace_balance::MarketplaceSellerBalanceResponse, PortError> {
+        unreachable!()
+    }
+}
+
+struct DummyListingReader;
+#[async_trait]
+impl rustok_marketplace_listing::MarketplaceListingReadPort for DummyListingReader {
+    async fn read_listing(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_listing::ReadMarketplaceListingRequest,
+    ) -> Result<rustok_marketplace_listing::MarketplaceListingResponse, PortError> {
+        unreachable!()
+    }
+    async fn list_listings(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_listing::ListMarketplaceListingsInput,
+    ) -> Result<rustok_marketplace_listing::MarketplaceListingListResponse, PortError> {
+        unreachable!()
+    }
+    async fn list_eligibility(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_listing::MarketplaceListingEligibilityRequest,
+    ) -> Result<Vec<rustok_marketplace_listing::MarketplaceListingEligibilityProjection>, PortError> {
+        unreachable!()
+    }
+    async fn list_listing_events(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_listing::ListMarketplaceListingEventsRequest,
+    ) -> Result<Vec<rustok_marketplace_listing::MarketplaceListingEventResponse>, PortError> {
+        unreachable!()
+    }
+}
+
+struct DummyPayoutReader;
+#[async_trait]
+impl rustok_marketplace_payout::MarketplacePayoutReadPort for DummyPayoutReader {
+    async fn read_payout(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_payout::ReadMarketplacePayoutRequest,
+    ) -> Result<rustok_marketplace_payout::MarketplacePayoutResponse, PortError> {
+        unreachable!()
+    }
+    async fn list_seller_payouts(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_payout::ListMarketplaceSellerPayoutsRequest,
+    ) -> Result<rustok_marketplace_payout::MarketplacePayoutListResponse, PortError> {
+        unreachable!()
+    }
+}
+
+struct DummySellerReader;
+#[async_trait]
+impl rustok_marketplace_seller::MarketplaceSellerReadPort for DummySellerReader {
+    async fn read_seller(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_seller::ReadMarketplaceSellerRequest,
+    ) -> Result<rustok_marketplace_seller::MarketplaceSellerResponse, PortError> {
+        unreachable!()
+    }
+    async fn list_sellers(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_seller::ListMarketplaceSellersInput,
+    ) -> Result<rustok_marketplace_seller::MarketplaceSellerListResponse, PortError> {
+        unreachable!()
+    }
+    async fn read_membership(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_seller::ReadMarketplaceSellerMembershipRequest,
+    ) -> Result<rustok_marketplace_seller::MarketplaceSellerMemberResponse, PortError> {
+        unreachable!()
+    }
+    async fn list_members(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_seller::ListMarketplaceSellerMembersRequest,
+    ) -> Result<Vec<rustok_marketplace_seller::MarketplaceSellerMemberResponse>, PortError> {
+        unreachable!()
+    }
+    async fn list_seller_events(
+        &self,
+        _: PortContext,
+        _: rustok_marketplace_seller::ListMarketplaceSellerEventsRequest,
+    ) -> Result<Vec<rustok_marketplace_seller::MarketplaceSellerEventResponse>, PortError> {
+        unreachable!()
+    }
+}
+
 fn write_context(
     tenant_id: Uuid,
     actor_id: Uuid,
