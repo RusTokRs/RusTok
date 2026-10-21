@@ -123,6 +123,30 @@ pub struct NotificationRecipientPolicyRequest {
     pub target: NotificationTargetRef,
 }
 
+impl NotificationRecipientPolicyRequest {
+    pub fn validate(&self) -> NotificationResult<()> {
+        if self.tenant_id.is_nil() || self.recipient_id.is_nil() || self.source_event_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "recipient policy request identities must not be nil".to_string(),
+            ));
+        }
+        if self.actor_id.is_some_and(|actor_id| actor_id.is_nil()) {
+            return Err(NotificationError::Validation(
+                "recipient policy actor id must not be nil if specified".to_string(),
+            ));
+        }
+        if self.source_slug.trim().is_empty() || self.notification_type.trim().is_empty() {
+            return Err(NotificationError::Validation(
+                "recipient policy source slug and notification type must not be empty".to_string(),
+            ));
+        }
+        if self.target.id.is_nil() {
+            return Err(NotificationError::InvalidDescriptor);
+        }
+        Ok(())
+    }
+}
+
 #[async_trait]
 pub trait NotificationRecipientPolicy: Send + Sync {
     async fn evaluate(
@@ -137,6 +161,24 @@ pub struct NotificationTenantCapabilityCommitRequest {
     pub module_slug: String,
     pub observed_policy_revision: String,
     pub observed_default_enabled_modules: Vec<String>,
+}
+
+impl NotificationTenantCapabilityCommitRequest {
+    pub fn validate(&self) -> NotificationResult<()> {
+        if self.tenant_id.is_nil() {
+            return Err(NotificationError::Validation(
+                "tenant capability commit tenant id must not be nil".to_string(),
+            ));
+        }
+        validate_policy_revision(&self.observed_policy_revision)?;
+        validate_default_enabled_modules(&self.observed_default_enabled_modules)?;
+        if self.module_slug.trim().is_empty() {
+            return Err(NotificationError::Validation(
+                "tenant capability commit module slug must not be empty".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -304,6 +346,7 @@ impl NotificationCandidateService {
             notification_type: job.notification_type.clone(),
             target: descriptor.target.clone(),
         };
+        policy_request.validate()?;
         match self.policy.evaluate(policy_request).await {
             Ok(NotificationRecipientPolicyDecision::Allow) => {}
             Ok(NotificationRecipientPolicyDecision::Suppress { reason }) => {
@@ -606,6 +649,7 @@ impl NotificationCandidateService {
                 observed_policy_revision: observed_policy_revision.to_string(),
                 observed_default_enabled_modules: observed_default_enabled_modules.to_vec(),
             };
+            request.validate()?;
             match commit_guard.evaluate(&txn, request).await {
                 Ok(NotificationTenantCapabilityCommitDecision::Allow) => {}
                 Ok(NotificationTenantCapabilityCommitDecision::Disabled) => {
@@ -894,4 +938,76 @@ fn truncate(value: &str, max_bytes: usize) -> String {
         end -= 1;
     }
     value[..end].to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_notifications_api::{NotificationSourceSlug, NotificationTargetKind};
+
+    #[test]
+    fn recipient_policy_request_validation_enforces_bounds() {
+        let valid = NotificationRecipientPolicyRequest {
+            tenant_id: Uuid::new_v4(),
+            recipient_id: Uuid::new_v4(),
+            actor_id: Some(Uuid::new_v4()),
+            source_slug: "blog".to_string(),
+            source_event_id: Uuid::new_v4(),
+            source_revision: 1,
+            notification_type: "post.published".to_string(),
+            target: NotificationTargetRef {
+                owner: NotificationSourceSlug::new("blog").unwrap(),
+                kind: NotificationTargetKind::new("post").unwrap(),
+                id: Uuid::new_v4(),
+            },
+        };
+        assert!(valid.validate().is_ok());
+
+        let mut nil_tenant = valid.clone();
+        nil_tenant.tenant_id = Uuid::nil();
+        assert!(nil_tenant.validate().is_err());
+
+        let mut nil_actor = valid.clone();
+        nil_actor.actor_id = Some(Uuid::nil());
+        assert!(nil_actor.validate().is_err());
+
+        let mut nil_target = valid.clone();
+        nil_target.target.id = Uuid::nil();
+        assert!(nil_target.validate().is_err());
+    }
+
+    #[test]
+    fn commit_request_validation_enforces_bounds() {
+        let valid = NotificationTenantCapabilityCommitRequest {
+            tenant_id: Uuid::new_v4(),
+            module_slug: "notifications".to_string(),
+            observed_policy_revision: "rev-1".to_string(),
+            observed_default_enabled_modules: vec!["notifications".to_string()],
+        };
+        assert!(valid.validate().is_ok());
+
+        let mut nil_tenant = valid.clone();
+        nil_tenant.tenant_id = Uuid::nil();
+        assert!(nil_tenant.validate().is_err());
+
+        let mut empty_slug = valid.clone();
+        empty_slug.module_slug = "  ".to_string();
+        assert!(empty_slug.validate().is_err());
+    }
+
+    #[test]
+    fn preference_specificity_scores_correctly() {
+        assert_eq!(preference_specificity("blog", "post", "blog", "post"), 3);
+        assert_eq!(preference_specificity("blog", "*", "blog", "post"), 2);
+        assert_eq!(preference_specificity("*", "post", "blog", "post"), 1);
+        assert_eq!(preference_specificity("*", "*", "blog", "post"), 0);
+    }
+
+    #[test]
+    fn truncate_handles_utf8_char_boundaries() {
+        let text = "Привет, мир!";
+        let truncated = truncate(text, 7);
+        assert!(truncated.len() <= 7);
+        assert!(text.starts_with(&truncated));
+    }
 }
