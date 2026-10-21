@@ -64,14 +64,135 @@ mod tests {
         assert_eq!(event.event_id(), event_id);
         assert_eq!(event.source_revision(), 1);
 
-        let value = serde_json::json!({
-            "tenant_id": tenant_id,
-            "event_id": event_id,
-            "source": "forum",
-            "event_type": "forum.reply.approved",
-            "source_revision": 0
-        });
-        assert!(serde_json::from_value::<NotificationSourceEventRef>(value).is_err());
+        for invalid in [
+            serde_json::json!({
+                "tenant_id": tenant_id,
+                "event_id": event_id,
+                "source": "forum",
+                "event_type": "forum.reply.approved",
+                "source_revision": 0
+            }),
+            serde_json::json!({
+                "tenant_id": Uuid::nil(),
+                "event_id": event_id,
+                "source": "forum",
+                "event_type": "forum.reply.approved",
+                "source_revision": 1
+            }),
+            serde_json::json!({
+                "tenant_id": tenant_id,
+                "event_id": Uuid::nil(),
+                "source": "forum",
+                "event_type": "forum.reply.approved",
+                "source_revision": 1
+            }),
+            serde_json::json!({
+                "tenant_id": tenant_id,
+                "event_id": event_id,
+                "source": "forum",
+                "event_type": "forum.reply.approved",
+                "source_revision": (i64::MAX as u64) + 1
+            }),
+        ] {
+            assert!(serde_json::from_value::<NotificationSourceEventRef>(invalid).is_err());
+        }
+
+        assert_eq!(
+            NotificationSourceEventRef::new(
+                Uuid::nil(),
+                event_id,
+                NotificationSourceSlug::new("forum").unwrap(),
+                NotificationTypeKey::new("forum.reply.approved").unwrap(),
+                1,
+            ),
+            Err(NotificationContractError::NilTenantId)
+        );
+        assert_eq!(
+            NotificationSourceEventRef::new(
+                tenant_id,
+                Uuid::nil(),
+                NotificationSourceSlug::new("forum").unwrap(),
+                NotificationTypeKey::new("forum.reply.approved").unwrap(),
+                1,
+            ),
+            Err(NotificationContractError::NilEventId)
+        );
+        assert_eq!(
+            NotificationSourceEventRef::new(
+                tenant_id,
+                event_id,
+                NotificationSourceSlug::new("forum").unwrap(),
+                NotificationTypeKey::new("forum.reply.approved").unwrap(),
+                (i64::MAX as u64) + 1,
+            ),
+            Err(NotificationContractError::InvalidSourceRevision)
+        );
+    }
+
+    #[test]
+    fn nil_uuids_are_rejected_in_contracts() {
+        let slug = NotificationSourceSlug::new("forum").unwrap();
+        let kind = NotificationTargetKind::new("forum.topic").unwrap();
+
+        assert_eq!(
+            NotificationTargetRef::new(slug.clone(), kind.clone(), Uuid::nil()),
+            Err(NotificationContractError::NilTargetId)
+        );
+
+        let valid_target = NotificationTargetRef::new(slug, kind, Uuid::new_v4()).unwrap();
+        assert!(valid_target.validate().is_ok());
+
+        let invalid_target = NotificationTargetRef {
+            owner: NotificationSourceSlug::new("forum").unwrap(),
+            kind: NotificationTargetKind::new("forum.topic").unwrap(),
+            id: Uuid::nil(),
+        };
+        assert_eq!(
+            invalid_target.validate(),
+            Err(NotificationContractError::NilTargetId)
+        );
+
+        let type_key = NotificationTypeKey::new("forum.reply.approved").unwrap();
+        let tmpl_key = NotificationTemplateKey::new("forum.reply.approved").unwrap();
+
+        let desc = NotificationSemanticDescriptor {
+            notification_type: type_key.clone(),
+            template_key: tmpl_key.clone(),
+            target: invalid_target,
+            actor_id: None,
+            priority: NotificationPriority::Normal,
+            template_data: NotificationTemplateData::default(),
+        };
+        assert_eq!(desc.validate(), Err(NotificationContractError::NilTargetId));
+
+        let desc_nil_actor = NotificationSemanticDescriptor {
+            notification_type: type_key,
+            template_key: tmpl_key,
+            target: valid_target,
+            actor_id: Some(Uuid::nil()),
+            priority: NotificationPriority::Normal,
+            template_data: NotificationTemplateData::default(),
+        };
+        assert_eq!(
+            desc_nil_actor.validate(),
+            Err(NotificationContractError::NilActorId)
+        );
+
+        assert_eq!(
+            NotificationAudienceCandidate::new(Uuid::nil()),
+            Err(NotificationContractError::NilRecipientId)
+        );
+        let nil_candidate = NotificationAudienceCandidate {
+            recipient_id: Uuid::nil(),
+        };
+        assert_eq!(
+            nil_candidate.validate(),
+            Err(NotificationContractError::NilRecipientId)
+        );
+        assert_eq!(
+            NotificationAudiencePage::try_new(vec![nil_candidate], None),
+            Err(NotificationContractError::NilRecipientId)
+        );
     }
 
     #[test]
@@ -245,6 +366,80 @@ mod tests {
             let unavail = NotificationProviderError::CapabilityUnavailable { retryable: true };
             let core_err: rustok_core::Error = unavail.into();
             assert!(matches!(core_err, rustok_core::Error::Internal(_)));
+
+            let contract_err = NotificationContractError::NilTenantId;
+            let provider_err: NotificationProviderError = contract_err.clone().into();
+            assert_eq!(provider_err, NotificationProviderError::InvalidEvent);
+            let core_err: rustok_core::Error = contract_err.into();
+            assert!(matches!(core_err, rustok_core::Error::Validation(_)));
+        }
+
+        #[test]
+        fn server_requests_validate_against_nil_ids() {
+            let target = NotificationTargetRef::new(
+                NotificationSourceSlug::new("forum").unwrap(),
+                NotificationTargetKind::new("forum.topic").unwrap(),
+                Uuid::new_v4(),
+            )
+            .unwrap();
+
+            let auth_req_nil_tenant = AuthorizeNotificationTargetRequest {
+                tenant_id: Uuid::nil(),
+                recipient_id: Uuid::new_v4(),
+                target: target.clone(),
+            };
+            assert_eq!(
+                auth_req_nil_tenant.validate(),
+                Err(NotificationContractError::NilTenantId)
+            );
+
+            let auth_req_nil_recipient = AuthorizeNotificationTargetRequest {
+                tenant_id: Uuid::new_v4(),
+                recipient_id: Uuid::nil(),
+                target: target.clone(),
+            };
+            assert_eq!(
+                auth_req_nil_recipient.validate(),
+                Err(NotificationContractError::NilRecipientId)
+            );
+
+            let auth_req_nil_target = AuthorizeNotificationTargetRequest {
+                tenant_id: Uuid::new_v4(),
+                recipient_id: Uuid::new_v4(),
+                target: NotificationTargetRef {
+                    owner: NotificationSourceSlug::new("forum").unwrap(),
+                    kind: NotificationTargetKind::new("forum.topic").unwrap(),
+                    id: Uuid::nil(),
+                },
+            };
+            assert_eq!(
+                auth_req_nil_target.validate(),
+                Err(NotificationContractError::NilTargetId)
+            );
+
+            let valid_auth_req = AuthorizeNotificationTargetRequest {
+                tenant_id: Uuid::new_v4(),
+                recipient_id: Uuid::new_v4(),
+                target,
+            };
+            assert!(valid_auth_req.validate().is_ok());
+
+            let reconcile_req_nil = NotificationInboxReconciliationInspectRequest {
+                recipient_id: Uuid::nil(),
+                cursor: None,
+                limit: 10,
+            };
+            assert_eq!(
+                reconcile_req_nil.validate(),
+                Err(NotificationContractError::NilRecipientId)
+            );
+
+            let valid_reconcile = NotificationInboxReconciliationInspectRequest {
+                recipient_id: Uuid::new_v4(),
+                cursor: None,
+                limit: 10,
+            };
+            assert!(valid_reconcile.validate().is_ok());
         }
     }
 }

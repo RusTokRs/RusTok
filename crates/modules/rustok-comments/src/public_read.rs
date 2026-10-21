@@ -29,6 +29,9 @@ pub(crate) async fn list_public_comments_for_target(
     if tenant_id.is_nil() {
         return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
     }
+    if target_type.trim().is_empty() {
+        return Err(CommentsError::Validation("target_type cannot be empty".to_string()));
+    }
     if target_id.is_nil() {
         return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
     }

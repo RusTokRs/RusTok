@@ -44,6 +44,11 @@ pub(crate) fn command_request_hash<T: Serialize>(
     actor_id: Uuid,
     request: &T,
 ) -> MarketplaceCommissionResult<String> {
+    if actor_id.is_nil() {
+        return Err(MarketplaceCommissionError::Validation(
+            "actor_id must not be nil".to_string(),
+        ));
+    }
     let request = serde_json::to_value(request).map_err(|_| {
         MarketplaceCommissionError::Validation(
             "commission command could not be normalized".to_string(),
@@ -69,6 +74,11 @@ pub(crate) async fn replay_existing<R: DeserializeOwned>(
     request_hash: &str,
     response_kind: &str,
 ) -> MarketplaceCommissionResult<Option<R>> {
+    if tenant_id.is_nil() {
+        return Err(MarketplaceCommissionError::Validation(
+            "tenant_id must not be nil".to_string(),
+        ));
+    }
     match find_receipt(db, tenant_id, idempotency_key).await? {
         Some(receipt) => {
             replay_receipt(receipt, command_kind, request_hash, response_kind).map(Some)
@@ -85,6 +95,11 @@ pub(crate) async fn admit_receipt(
     command_kind: &str,
     request_hash: &str,
 ) -> MarketplaceCommissionResult<CommissionReceiptAdmission> {
+    if tenant_id.is_nil() || actor_id.is_nil() {
+        return Err(MarketplaceCommissionError::Validation(
+            "tenant_id and actor_id must not be nil".to_string(),
+        ));
+    }
     if let Some(existing) = find_receipt(db, tenant_id, idempotency_key.as_str()).await? {
         return Ok(CommissionReceiptAdmission::Replay(existing));
     }

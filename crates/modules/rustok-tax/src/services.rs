@@ -193,7 +193,7 @@ impl TaxService {
 }
 
 fn resolve_provider_id(channel_id: Option<Uuid>, policy: &TaxPolicySnapshot) -> TaxResult<String> {
-    if channel_id.is_some()
+    if channel_id.is_some_and(|id| !id.is_nil())
         && let Some(channel_provider_id) =
             normalize_provider_id(policy.channel_provider_id.as_deref())?
     {
@@ -327,7 +327,7 @@ mod tests {
 
     use super::{
         REGION_DEFAULT_TAX_PROVIDER_ID, RegionTaxProvider, TaxCalculationInput,
-        TaxPolicyCountryRule, TaxPolicySnapshot, TaxProvider, TaxableAmount,
+        TaxPolicyCountryRule, TaxPolicySnapshot, TaxProvider, TaxService, TaxableAmount,
     };
 
     #[tokio::test]
@@ -701,5 +701,36 @@ mod tests {
             calculate_single_line("USD", Decimal::new(125, 2)).await,
             Decimal::new(13, 2)
         );
+    }
+
+    #[tokio::test]
+    async fn tax_service_ignores_nil_channel_id_when_selecting_provider() {
+        let service = TaxService::new();
+        let result = service
+            .calculate(TaxCalculationInput {
+                currency_code: "usd".to_string(),
+                channel_id: Some(Uuid::nil()),
+                policy: TaxPolicySnapshot {
+                    provider_id: None,
+                    channel_provider_id: Some("custom_channel_provider".to_string()),
+                    country_code: None,
+                    tax_rate: Decimal::from(10),
+                    tax_included: false,
+                    country_rules: Vec::new(),
+                },
+                taxable_amounts: vec![TaxableAmount {
+                    line_item_id: Some(Uuid::new_v4()),
+                    shipping_option_id: None,
+                    item_tax_class: None,
+                    shipping_tax_class: None,
+                    description: None,
+                    amount: Decimal::from(100),
+                }],
+                customer_tax_exempt: false,
+            })
+            .await
+            .expect("should fall back to region_default instead of unknown channel provider");
+
+        assert_eq!(result.lines[0].provider_id, REGION_DEFAULT_TAX_PROVIDER_ID);
     }
 }

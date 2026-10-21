@@ -585,19 +585,10 @@ pub fn blog_post_admin_sort_order_default_label(order: BlogPostSortOrder) -> &'s
 ///
 /// Serializable because the native server-function transport carries it as an argument,
 /// exactly like the GraphQL adapter carries it as a variable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, serde::Serialize)]
 pub struct BlogPostAdminSort {
     pub field: BlogPostSortField,
     pub order: BlogPostSortOrder,
-}
-
-impl Default for BlogPostAdminSort {
-    fn default() -> Self {
-        Self {
-            field: BlogPostSortField::default(),
-            order: BlogPostSortOrder::default(),
-        }
-    }
 }
 
 impl BlogPostAdminSort {

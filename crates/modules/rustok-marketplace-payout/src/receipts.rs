@@ -44,6 +44,11 @@ pub(crate) fn schedule_request_hash<T: Serialize>(
     actor_id: Uuid,
     request: &T,
 ) -> MarketplacePayoutResult<String> {
+    if actor_id.is_nil() {
+        return Err(MarketplacePayoutError::Validation(
+            "actor_id must not be nil UUID".to_string(),
+        ));
+    }
     let request = serde_json::to_value(request).map_err(|_| {
         MarketplacePayoutError::Validation(
             "payout schedule request could not be normalized".to_string(),
@@ -69,6 +74,11 @@ pub(crate) async fn replay_existing<R: DeserializeOwned>(
     idempotency_key: &str,
     request_hash: &str,
 ) -> MarketplacePayoutResult<Option<R>> {
+    if tenant_id.is_nil() {
+        return Err(MarketplacePayoutError::Validation(
+            "tenant_id must not be nil UUID".to_string(),
+        ));
+    }
     match find_receipt(db, tenant_id, idempotency_key).await? {
         Some(receipt) => replay_receipt(receipt, request_hash).map(Some),
         None => Ok(None),
@@ -82,6 +92,11 @@ pub(crate) async fn admit_receipt(
     idempotency_key: String,
     request_hash: &str,
 ) -> MarketplacePayoutResult<PayoutReceiptAdmission> {
+    if tenant_id.is_nil() || actor_id.is_nil() {
+        return Err(MarketplacePayoutError::Validation(
+            "tenant_id and actor_id must not be nil UUID".to_string(),
+        ));
+    }
     if let Some(existing) = find_receipt(db, tenant_id, idempotency_key.as_str()).await? {
         return Ok(PayoutReceiptAdmission::Replay(existing));
     }
@@ -185,6 +200,11 @@ async fn find_receipt(
     tenant_id: Uuid,
     idempotency_key: &str,
 ) -> MarketplacePayoutResult<Option<schedule_receipt::Model>> {
+    if tenant_id.is_nil() {
+        return Err(MarketplacePayoutError::Validation(
+            "tenant_id must not be nil UUID".to_string(),
+        ));
+    }
     schedule_receipt::Entity::find()
         .filter(schedule_receipt::Column::TenantId.eq(tenant_id))
         .filter(schedule_receipt::Column::IdempotencyKey.eq(idempotency_key))

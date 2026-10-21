@@ -19,3 +19,6 @@ rustok-ui-core.workspace = true
 rustok-ui-i18n.workspace = true
 serde = { workspace = true, features = ["derive"] }
 
+[dev-dependencies]
+serde_json.workspace = true
+

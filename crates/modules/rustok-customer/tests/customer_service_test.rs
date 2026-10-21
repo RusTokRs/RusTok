@@ -589,3 +589,173 @@ async fn customer_read_port_lists_tenant_scoped_projections_for_checkout_fallbac
             .any(|customer| customer.email == "fallback-other@example.com")
     );
 }
+
+#[tokio::test]
+async fn nil_tenant_and_ids_are_rejected() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    // Nil tenant_id in create_customer
+    let err = service
+        .create_customer(Uuid::nil(), create_input())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CustomerError::Validation(_)));
+
+    // Nil user_id in create_customer
+    let err = service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(Uuid::nil()),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CustomerError::Validation(_)));
+
+    // Nil tenant_id in get_customer
+    let err = service
+        .get_customer(Uuid::nil(), Uuid::new_v4())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CustomerError::Validation(_)));
+
+    // Nil customer_id in get_customer
+    let err = service
+        .get_customer(tenant_id, Uuid::nil())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CustomerError::CustomerNotFound(id) if id.is_nil()));
+
+    // Nil tenant_id in get_customer_by_user
+    let err = service
+        .get_customer_by_user(Uuid::nil(), Uuid::new_v4())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CustomerError::Validation(_)));
+
+    // Nil user_id in get_customer_by_user
+    let err = service
+        .get_customer_by_user(tenant_id, Uuid::nil())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CustomerError::CustomerByUserNotFound(id) if id.is_nil()));
+
+    // Nil tenant_id in update_customer
+    let err = service
+        .update_customer(
+            Uuid::nil(),
+            Uuid::new_v4(),
+            UpdateCustomerInput {
+                email: None,
+                first_name: None,
+                last_name: None,
+                phone: None,
+                locale: None,
+                metadata: None,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CustomerError::Validation(_)));
+
+    // Nil customer_id in update_customer
+    let err = service
+        .update_customer(
+            tenant_id,
+            Uuid::nil(),
+            UpdateCustomerInput {
+                email: None,
+                first_name: None,
+                last_name: None,
+                phone: None,
+                locale: None,
+                metadata: None,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CustomerError::CustomerNotFound(id) if id.is_nil()));
+
+    // Nil tenant_id in list_customers
+    let err = service
+        .list_customers(
+            Uuid::nil(),
+            ListCustomersInput {
+                search: None,
+                page: 1,
+                per_page: 10,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CustomerError::Validation(_)));
+
+    // Nil tenant_id in upsert_customer_for_user
+    let err = service
+        .upsert_customer_for_user(Uuid::nil(), Uuid::new_v4(), create_input())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CustomerError::Validation(_)));
+
+    // Nil user_id in upsert_customer_for_user
+    let err = service
+        .upsert_customer_for_user(tenant_id, Uuid::nil(), create_input())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CustomerError::Validation(_)));
+}
+
+#[tokio::test]
+async fn customer_read_port_maps_nil_tenant_to_validation_error() {
+    let service = setup().await;
+
+    let error = service
+        .read_customer_projection(
+            PortContext::new(
+                Uuid::nil().to_string(),
+                PortActor::service("commerce-checkout"),
+                "en",
+                "customer-read-port-nil-tenant",
+            )
+            .with_deadline(Duration::from_secs(3)),
+            CustomerProjectionRequest {
+                customer_id: Uuid::new_v4(),
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.kind, PortErrorKind::Validation);
+    assert_eq!(error.code, "customer.tenant_id_invalid");
+    assert!(!error.retryable);
+}
+
+#[tokio::test]
+async fn profile_enrichment_bounds_and_guards() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    // Nil tenant returns empty list without error
+    let res = service
+        .list_profile_enrichment(Uuid::nil(), &[Uuid::new_v4()])
+        .await
+        .unwrap();
+    assert!(res.is_empty());
+
+    // Empty user_ids returns empty list
+    let res = service
+        .list_profile_enrichment(tenant_id, &[])
+        .await
+        .unwrap();
+    assert!(res.is_empty());
+
+    // Nil user_id is filtered out safely
+    let res = service
+        .list_profile_enrichment(tenant_id, &[Uuid::nil()])
+        .await
+        .unwrap();
+    assert!(res.is_empty());
+}

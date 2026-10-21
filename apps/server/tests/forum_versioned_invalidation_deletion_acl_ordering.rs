@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 #[path = "support/forum_public_settings.rs"]
 mod forum_public_settings;
 
@@ -18,21 +20,19 @@ use rustok_events::{
 };
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
-    ForumAudienceConstraints, ForumModule, ForumSearchProjectionSourceFactory,
-    ForumSearchResultCandidate, ForumSearchResultCandidateKind,
-    ForumSearchResultEligibilityService, ForumTopicAudiencePolicyService, ModerationService,
+    ForumAudienceConstraints, ForumModule, ForumSearchResultCandidate,
+    ForumSearchResultCandidateKind, ForumTopicAudiencePolicyService, ModerationService,
     ReplyService, SetForumTopicAudiencePolicyInput, TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_search::{
     ForumProjectionReconciler, ForumSearchContractIngress, ForumSearchContractIngressOutcome,
     ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchRequest, SearchModule,
-    SearchProjectionSourceFactory, SharedStorefrontSearchCategoryScopePort,
-    SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopePort,
-    StorefrontSearchCategoryScopeRequest, StorefrontSearchResultCandidate,
-    StorefrontSearchResultCandidateKind, StorefrontSearchResultEligibilityPort,
-    StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport,
-    execute_forum_storefront_search,
+    SharedStorefrontSearchCategoryScopePort, SharedStorefrontSearchResultEligibilityPort,
+    StorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopeRequest,
+    StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
+    StorefrontSearchResultEligibilityPort, StorefrontSearchResultEligibilityRequest,
+    StorefrontSearchTransport, execute_forum_storefront_search,
 };
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{

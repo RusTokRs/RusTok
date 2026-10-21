@@ -26,6 +26,12 @@ impl MarketplaceListingDirectoryService {
         context: PortContext,
         listing_id: Uuid,
     ) -> Result<MarketplaceListingResponse, PortError> {
+        if listing_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace.listing.listing_id",
+                "listing_id must not be nil",
+            ));
+        }
         self.listing_reader
             .read_listing(context, ReadMarketplaceListingRequest { listing_id })
             .await

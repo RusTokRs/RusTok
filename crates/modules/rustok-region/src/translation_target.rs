@@ -421,12 +421,19 @@ impl TranslationTargetProvider for RegionTranslationTargetProvider {
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         PortError::validation(
             "region.invalid_tenant_id",
             "Region translation target context must carry a UUID tenant_id",
         )
-    })
+    })?;
+    if tenant_id.is_nil() {
+        return Err(PortError::validation(
+            "region.invalid_tenant_id",
+            "Region translation target context tenant_id must not be nil",
+        ));
+    }
+    Ok(tenant_id)
 }
 
 fn authorize(context: &PortContext, action: Action) -> Result<SecurityContext, PortError> {
@@ -450,12 +457,19 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
             "Region translation identity must address region/region_copy without a subresource",
         ));
     }
-    Uuid::parse_str(identity.resource_id.as_str()).map_err(|_| {
+    let region_id = Uuid::parse_str(identity.resource_id.as_str()).map_err(|_| {
         PortError::validation(
             "region.translation_resource_id_invalid",
             "Region translation resource id must be a UUID",
         )
-    })
+    })?;
+    if region_id.is_nil() {
+        return Err(PortError::validation(
+            "region.translation_resource_id_invalid",
+            "Region translation resource id must not be nil",
+        ));
+    }
+    Ok(region_id)
 }
 
 fn region_identity(region_id: Uuid) -> TranslationResourceIdentity {

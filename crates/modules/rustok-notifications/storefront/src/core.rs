@@ -33,6 +33,17 @@ pub enum NotificationStorefrontItemState {
     Archived,
 }
 
+impl NotificationStorefrontItemState {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Unread => "Unread",
+            Self::Seen => "Seen",
+            Self::Read => "Read",
+            Self::Archived => "Archived",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationStorefrontPriority {
@@ -40,6 +51,17 @@ pub enum NotificationStorefrontPriority {
     Normal,
     High,
     Urgent,
+}
+
+impl NotificationStorefrontPriority {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Low => "Low priority",
+            Self::Normal => "Normal priority",
+            Self::High => "High priority",
+            Self::Urgent => "Urgent",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -56,6 +78,14 @@ impl NotificationStorefrontGroupStateAction {
             Self::MarkRead => "mark_read",
             Self::MarkUnread => "mark_unread",
             Self::Archive => "archive",
+        }
+    }
+
+    pub const fn action_label(self) -> &'static str {
+        match self {
+            Self::MarkRead => "Mark read",
+            Self::MarkUnread => "Mark unread",
+            Self::Archive => "Archive",
         }
     }
 }
@@ -244,5 +274,64 @@ impl NotificationStorefrontGroupItemsSnapshot {
         self.next_cursor = page.next_cursor;
         self.has_more = page.has_more;
         appended
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn item_state_labels_match_canonical_names() {
+        assert_eq!(NotificationStorefrontItemState::Unread.label(), "Unread");
+        assert_eq!(NotificationStorefrontItemState::Seen.label(), "Seen");
+        assert_eq!(NotificationStorefrontItemState::Read.label(), "Read");
+        assert_eq!(
+            NotificationStorefrontItemState::Archived.label(),
+            "Archived"
+        );
+    }
+
+    #[test]
+    fn priority_labels_match_canonical_names() {
+        assert_eq!(
+            NotificationStorefrontPriority::Low.label(),
+            "Low priority"
+        );
+        assert_eq!(
+            NotificationStorefrontPriority::Normal.label(),
+            "Normal priority"
+        );
+        assert_eq!(
+            NotificationStorefrontPriority::High.label(),
+            "High priority"
+        );
+        assert_eq!(NotificationStorefrontPriority::Urgent.label(), "Urgent");
+    }
+
+    #[test]
+    fn group_action_labels_match_canonical_names() {
+        assert_eq!(
+            NotificationStorefrontGroupStateAction::MarkRead.action_label(),
+            "Mark read"
+        );
+        assert_eq!(
+            NotificationStorefrontGroupStateAction::MarkUnread.action_label(),
+            "Mark unread"
+        );
+        assert_eq!(
+            NotificationStorefrontGroupStateAction::Archive.action_label(),
+            "Archive"
+        );
+    }
+
+    #[test]
+    fn foundation_state_defaults() {
+        let state = NotificationStorefrontState::foundation();
+        assert_eq!(
+            state.availability,
+            NotificationInboxAvailability::Unavailable
+        );
+        assert_eq!(state.unread_count, None);
     }
 }

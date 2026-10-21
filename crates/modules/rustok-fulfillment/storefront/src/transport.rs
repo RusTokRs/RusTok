@@ -138,32 +138,42 @@ pub fn build_shipping_selection_plan(
     let mut selections = Vec::with_capacity(request.delivery_groups.len());
 
     for group in &request.delivery_groups {
+        let normalized_request_seller = request
+            .seller_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let normalized_group_seller = group
+            .seller_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
         let group_matches = group.shipping_profile_slug.trim() == request.shipping_profile_slug.trim()
-            && if let Some(seller_id) = request.seller_id.as_deref() {
-                group.seller_id.as_deref().map(str::trim) == Some(seller_id.trim())
-            } else {
-                group
-                    .seller_id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .is_none()
-            };
+            && normalized_group_seller == normalized_request_seller;
+
+        let normalized_shipping_option_id = request
+            .shipping_option_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+
         let selected_shipping_option_id = if group_matches {
             matched_target = true;
-            if let Some(shipping_option_id) = request.shipping_option_id.as_deref() {
+            if let Some(shipping_option_id) = normalized_shipping_option_id {
                 let is_available = group
                     .available_shipping_option_ids
                     .iter()
-                    .any(|option_id| option_id.trim() == shipping_option_id.trim());
+                    .any(|option_id| option_id.trim() == shipping_option_id);
                 if !is_available {
                     return Err(ShippingSelectionError::UnavailableShippingOption {
                         shipping_profile_slug: group.shipping_profile_slug.clone(),
                         shipping_option_id: shipping_option_id.to_string(),
                     });
                 }
+                Some(shipping_option_id.to_string())
+            } else {
+                None
             }
-            request.shipping_option_id.clone()
         } else {
             group.selected_shipping_option_id.clone()
         };
@@ -296,5 +306,43 @@ mod tests {
             build_shipping_selection_plan(&request),
             Err(ShippingSelectionError::MissingDeliveryGroup { .. })
         ));
+    }
+
+    #[test]
+    fn selection_plan_matches_whitespace_seller_with_none_seller() {
+        let request = SelectShippingOptionRequest {
+            cart_id: "cart-1".into(),
+            delivery_groups: vec![ShippingSelectionDeliveryGroup {
+                shipping_profile_slug: "default".into(),
+                seller_id: None,
+                selected_shipping_option_id: None,
+                available_shipping_option_ids: vec!["ship-1".into()],
+            }],
+            shipping_profile_slug: "default".into(),
+            seller_id: Some("   ".into()),
+            shipping_option_id: Some("ship-1".into()),
+        };
+
+        let plan = build_shipping_selection_plan(&request).expect("whitespace seller should match none");
+        assert_eq!(plan[0].selected_shipping_option_id.as_deref(), Some("ship-1"));
+    }
+
+    #[test]
+    fn selection_plan_clears_shipping_option_when_whitespace_provided() {
+        let request = SelectShippingOptionRequest {
+            cart_id: "cart-1".into(),
+            delivery_groups: vec![ShippingSelectionDeliveryGroup {
+                shipping_profile_slug: "default".into(),
+                seller_id: None,
+                selected_shipping_option_id: Some("ship-1".into()),
+                available_shipping_option_ids: vec!["ship-1".into()],
+            }],
+            shipping_profile_slug: "default".into(),
+            seller_id: None,
+            shipping_option_id: Some("   ".into()),
+        };
+
+        let plan = build_shipping_selection_plan(&request).expect("whitespace option should clear");
+        assert_eq!(plan[0].selected_shipping_option_id, None);
     }
 }

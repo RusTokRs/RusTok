@@ -39,7 +39,7 @@ pub struct UpdateRegionInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct RegionTranslationInput {
-    #[validate(length(min = 2, max = 5))]
+    #[validate(length(min = 2, max = 32))]
     pub locale: String,
     #[validate(length(min = 1, max = 100))]
     pub name: String,

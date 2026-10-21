@@ -103,6 +103,12 @@ impl MarketplaceLedgerReadPort for crate::MarketplaceLedgerService {
         request: ReadMarketplaceOrderLedgerRequest,
     ) -> Result<MarketplaceLedgerTransactionResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.order_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_ledger.order_id_invalid",
+                "order_id must not be nil UUID",
+            ));
+        }
         self.read_order_ledger(parse_tenant_id(&context)?, request.order_id)
             .await
             .map_err(map_owner_error)
@@ -114,6 +120,12 @@ impl MarketplaceLedgerReadPort for crate::MarketplaceLedgerService {
         request: ListMarketplaceSellerLedgerEntriesRequest,
     ) -> Result<MarketplaceLedgerEntryListResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_ledger.seller_id_invalid",
+                "seller_id must not be nil UUID",
+            ));
+        }
         self.list_seller_entries(parse_tenant_id(&context)?, request)
             .await
             .map_err(map_owner_error)
@@ -125,6 +137,19 @@ impl MarketplaceLedgerReadPort for crate::MarketplaceLedgerService {
         request: ReadMarketplaceSellerBalanceRequest,
     ) -> Result<MarketplaceSellerBalanceResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_ledger.seller_id_invalid",
+                "seller_id must not be nil UUID",
+            ));
+        }
+        let currency = request.currency_code.trim();
+        if currency.len() != 3 || !currency.chars().all(|c| c.is_ascii_alphabetic()) {
+            return Err(PortError::validation(
+                "marketplace_ledger.currency_code_invalid",
+                "currency_code must be an ASCII 3-letter currency code",
+            ));
+        }
         self.read_seller_balance_projection(parse_tenant_id(&context)?, request)
             .await
             .map_err(map_owner_error)
@@ -139,6 +164,12 @@ impl MarketplaceLedgerCommandPort for crate::MarketplaceLedgerService {
         request: PostMarketplaceOrderLedgerInput,
     ) -> Result<MarketplaceLedgerTransactionResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.order_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_ledger.order_id_invalid",
+                "order_id must not be nil UUID",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let actor_id = parse_actor_id(&context)?;
         let idempotency_key = parse_idempotency_key(&context)?;
@@ -158,6 +189,18 @@ impl MarketplaceLedgerCommandPort for crate::MarketplaceLedgerService {
         request: PostMarketplaceLedgerReversalInput,
     ) -> Result<MarketplaceLedgerReversalResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.source_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_ledger.source_id_invalid",
+                "source_id must not be nil UUID",
+            ));
+        }
+        if request.order_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_ledger.order_id_invalid",
+                "order_id must not be nil UUID",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let actor_id = parse_actor_id(&context)?;
         let idempotency_key = parse_idempotency_key(&context)?;
@@ -172,6 +215,18 @@ impl MarketplaceLedgerCommandPort for crate::MarketplaceLedgerService {
         request: PostMarketplaceSellerBalanceTransferInput,
     ) -> Result<MarketplaceSellerBalanceTransferResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.source_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_ledger.source_id_invalid",
+                "source_id must not be nil UUID",
+            ));
+        }
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_ledger.seller_id_invalid",
+                "seller_id must not be nil UUID",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         let actor_id = parse_actor_id(&context)?;
         let idempotency_key = parse_idempotency_key(&context)?;
@@ -192,6 +247,19 @@ impl MarketplaceLedgerCommandPort for crate::MarketplaceLedgerService {
         request: RebuildMarketplaceSellerBalanceInput,
     ) -> Result<MarketplaceSellerBalanceResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_ledger.seller_id_invalid",
+                "seller_id must not be nil UUID",
+            ));
+        }
+        let currency = request.currency_code.trim();
+        if currency.len() != 3 || !currency.chars().all(|c| c.is_ascii_alphabetic()) {
+            return Err(PortError::validation(
+                "marketplace_ledger.currency_code_invalid",
+                "currency_code must be an ASCII 3-letter currency code",
+            ));
+        }
         let tenant_id = parse_tenant_id(&context)?;
         parse_actor_id(&context)?;
         parse_idempotency_key(&context)?;
@@ -202,21 +270,35 @@ impl MarketplaceLedgerCommandPort for crate::MarketplaceLedgerService {
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
+    let id = Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
         PortError::validation(
             "marketplace_ledger.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for marketplace ledger ports",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "marketplace_ledger.tenant_id_invalid",
+            "PortContext.tenant_id must not be nil UUID for marketplace ledger ports",
+        ));
+    }
+    Ok(id)
 }
 
 fn parse_actor_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
+    let id = Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
         PortError::validation(
             "marketplace_ledger.actor_id_invalid",
             "write PortContext.actor.id must be a UUID for marketplace ledger audit",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "marketplace_ledger.actor_id_invalid",
+            "write PortContext.actor.id must not be nil UUID for marketplace ledger audit",
+        ));
+    }
+    Ok(id)
 }
 
 fn parse_idempotency_key(context: &PortContext) -> Result<String, PortError> {
@@ -313,5 +395,156 @@ fn map_owner_error(error: MarketplaceLedgerError) -> PortError {
             "marketplace ledger storage is temporarily unavailable",
             true,
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::MarketplaceCommissionBoundaryKind;
+    use rustok_api::{PortActor, PortErrorKind};
+
+    #[test]
+    fn parse_tenant_id_invariants() {
+        let valid_uuid = Uuid::new_v4();
+        let ctx = PortContext::new(
+            valid_uuid.to_string(),
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(parse_tenant_id(&ctx).unwrap(), valid_uuid);
+
+        let invalid_ctx = PortContext::new(
+            "not-a-uuid",
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(
+            parse_tenant_id(&invalid_ctx).unwrap_err().code,
+            "marketplace_ledger.tenant_id_invalid"
+        );
+
+        let nil_ctx = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(
+            parse_tenant_id(&nil_ctx).unwrap_err().code,
+            "marketplace_ledger.tenant_id_invalid"
+        );
+    }
+
+    #[test]
+    fn parse_actor_id_invariants() {
+        let valid_uuid = Uuid::new_v4();
+        let ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(valid_uuid.to_string()),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(parse_actor_id(&ctx).unwrap(), valid_uuid);
+
+        let invalid_ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user("not-a-uuid"),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(
+            parse_actor_id(&invalid_ctx).unwrap_err().code,
+            "marketplace_ledger.actor_id_invalid"
+        );
+
+        let nil_ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(Uuid::nil().to_string()),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(
+            parse_actor_id(&nil_ctx).unwrap_err().code,
+            "marketplace_ledger.actor_id_invalid"
+        );
+    }
+
+    #[test]
+    fn parse_idempotency_key_invariants() {
+        let mut ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::system(),
+            "en",
+            "corr-1",
+        );
+        assert_eq!(
+            parse_idempotency_key(&ctx).unwrap_err().code,
+            "marketplace_ledger.idempotency_key_required"
+        );
+
+        ctx.idempotency_key = Some("   ".to_string());
+        assert_eq!(
+            parse_idempotency_key(&ctx).unwrap_err().code,
+            "marketplace_ledger.idempotency_key_required"
+        );
+
+        ctx.idempotency_key = Some("  idem-123  ".to_string());
+        assert_eq!(parse_idempotency_key(&ctx).unwrap(), "idem-123");
+    }
+
+    #[test]
+    fn map_owner_error_branches() {
+        let order_id = Uuid::new_v4();
+        let err = map_owner_error(MarketplaceLedgerError::TransactionNotFound(order_id));
+        assert_eq!(err.code, "marketplace_ledger.transaction_not_found");
+        assert_eq!(err.kind, PortErrorKind::NotFound);
+
+        let err = map_owner_error(MarketplaceLedgerError::OrderAlreadyPosted(order_id));
+        assert_eq!(err.code, "marketplace_ledger.order_already_posted");
+        assert_eq!(err.kind, PortErrorKind::Conflict);
+
+        let err = map_owner_error(MarketplaceLedgerError::AssessmentAlreadyPosted(order_id));
+        assert_eq!(err.code, "marketplace_ledger.assessment_already_posted");
+        assert_eq!(err.kind, PortErrorKind::Conflict);
+
+        let err = map_owner_error(MarketplaceLedgerError::ReversalAlreadyPosted(order_id));
+        assert_eq!(err.code, "marketplace_ledger.reversal_already_posted");
+        assert_eq!(err.kind, PortErrorKind::Conflict);
+
+        let err = map_owner_error(MarketplaceLedgerError::BalanceTransferAlreadyPosted(order_id));
+        assert_eq!(err.code, "marketplace_ledger.balance_transfer_already_posted");
+        assert_eq!(err.kind, PortErrorKind::Conflict);
+
+        let err = map_owner_error(MarketplaceLedgerError::SellerBalanceNotFound {
+            seller_id: order_id,
+            currency_code: "USD".to_string(),
+        });
+        assert_eq!(err.code, "marketplace_ledger.seller_balance_not_found");
+        assert_eq!(err.kind, PortErrorKind::NotFound);
+
+        let err = map_owner_error(MarketplaceLedgerError::IdempotencyConflict);
+        assert_eq!(err.code, "marketplace_ledger.idempotency_conflict");
+        assert_eq!(err.kind, PortErrorKind::Conflict);
+
+        let err = map_owner_error(MarketplaceLedgerError::ReceiptCorrupt);
+        assert_eq!(err.code, "marketplace_ledger.receipt_corrupt");
+        assert_eq!(err.kind, PortErrorKind::InvariantViolation);
+
+        let err = map_owner_error(MarketplaceLedgerError::Validation("bad input".to_string()));
+        assert_eq!(err.code, "marketplace_ledger.validation");
+        assert_eq!(err.kind, PortErrorKind::Validation);
+
+        let err = map_owner_error(MarketplaceLedgerError::CommissionBoundary {
+            code: "comm.failed".to_string(),
+            message: "commission unavailable".to_string(),
+            retryable: true,
+            kind: MarketplaceCommissionBoundaryKind::Unavailable,
+        });
+        assert_eq!(err.code, "comm.failed");
+        assert_eq!(err.kind, PortErrorKind::Unavailable);
+        assert!(err.retryable);
     }
 }

@@ -25,6 +25,12 @@ impl MarketplaceAllocationDirectoryService {
         context: PortContext,
         order_line_item_id: Uuid,
     ) -> Result<MarketplaceOrderAllocationResponse, PortError> {
+        if order_line_item_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace.allocation.order_line_item_id",
+                "order_line_item_id must not be nil",
+            ));
+        }
         self.allocation_reader
             .read_allocation_by_line(
                 context,
@@ -38,6 +44,12 @@ impl MarketplaceAllocationDirectoryService {
         context: PortContext,
         order_id: Uuid,
     ) -> Result<Vec<MarketplaceOrderAllocationResponse>, PortError> {
+        if order_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace.allocation.order_id",
+                "order_id must not be nil",
+            ));
+        }
         self.allocation_reader
             .list_allocations_by_order(
                 context,
@@ -51,6 +63,12 @@ impl MarketplaceAllocationDirectoryService {
         context: PortContext,
         request: ListMarketplaceAllocationsBySellerRequest,
     ) -> Result<MarketplaceAllocationListResponse, PortError> {
+        if request.seller_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace.allocation.seller_id",
+                "seller_id must not be nil",
+            ));
+        }
         self.allocation_reader
             .list_allocations_by_seller(context, request)
             .await

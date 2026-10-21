@@ -1,6 +1,7 @@
 use crate::error::ContentRevisionError;
 use async_trait::async_trait;
 use rustok_revisions::{Revision, RevisionDiff, Revisionable};
+use serde::de::DeserializeOwned;
 use uuid::Uuid;
 
 /// Public API for content revision tracking.
@@ -40,22 +41,22 @@ pub trait ContentRevisionApi: Send + Sync {
     ) -> Result<Vec<Revision>, ContentRevisionError>;
 
     /// Get content at a specific revision.
-    async fn get_content_at_revision<T: Revisionable + Send + Sync>(
+    async fn get_content_at_revision<T: Revisionable + DeserializeOwned + Send + Sync>(
         &self,
         tenant_id: Uuid,
         content_id: Uuid,
         locale: &str,
-        target_revision: i32,
+        target_revision: i64,
         current_content: &T,
     ) -> Result<T, ContentRevisionError>;
 
     /// Restore content to a previous revision.
-    async fn restore_revision<T: Revisionable + Send + Sync>(
+    async fn restore_revision<T: Revisionable + DeserializeOwned + Send + Sync>(
         &self,
         tenant_id: Uuid,
         content_id: Uuid,
         locale: &str,
-        target_revision: i32,
+        target_revision: i64,
         current_content: &T,
         restored_by: Uuid,
     ) -> Result<T, ContentRevisionError>;
@@ -87,9 +88,18 @@ pub trait ContentRevisionApi: Send + Sync {
         content_type: &str,
         content_id: Uuid,
         locale: &str,
-        from_revision: i32,
-        to_revision: i32,
+        from_revision: i64,
+        to_revision: i64,
     ) -> Result<RevisionDiff, ContentRevisionError>;
+
+    /// Get all diffs between consecutive revisions.
+    async fn all_diffs(
+        &self,
+        tenant_id: Uuid,
+        content_type: &str,
+        content_id: Uuid,
+        locale: &str,
+    ) -> Result<Vec<RevisionDiff>, ContentRevisionError>;
 
     /// Check if tracking is enabled for a content type.
     fn is_enabled(&self, content_type: &str) -> bool;

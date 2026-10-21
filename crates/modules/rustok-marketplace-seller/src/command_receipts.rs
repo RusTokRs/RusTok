@@ -81,6 +81,11 @@ pub(crate) async fn admit_command(
     command_kind: &str,
     request_hash: &str,
 ) -> MarketplaceSellerResult<CommandReceiptAdmission> {
+    if tenant_id.is_nil() || actor_id.is_nil() {
+        return Err(MarketplaceSellerError::Validation(
+            "tenant_id and actor_id must not be nil".to_string(),
+        ));
+    }
     if let Some(existing) = find_receipt(db, tenant_id, idempotency_key.as_str()).await? {
         return Ok(CommandReceiptAdmission::Replay(existing));
     }

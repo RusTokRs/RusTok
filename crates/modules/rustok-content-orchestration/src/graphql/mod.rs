@@ -180,9 +180,13 @@ fn request_context<'a>(
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    let tenant = ctx.data::<TenantContext>()?;
+    if tenant.id.is_nil() {
+        return Err(FieldError::new("Tenant ID must not be nil"));
+    }
     Ok((
         auth,
-        ctx.data::<TenantContext>()?,
+        tenant,
         ctx.data::<SharedContentOrchestrationService>()?,
     ))
 }

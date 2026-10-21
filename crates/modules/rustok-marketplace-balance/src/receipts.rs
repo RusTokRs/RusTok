@@ -52,6 +52,11 @@ pub(crate) fn command_request_hash<T: Serialize>(
     actor_id: Uuid,
     request: &T,
 ) -> MarketplaceLedgerResult<String> {
+    if actor_id.is_nil() {
+        return Err(MarketplaceLedgerError::Validation(
+            "actor_id must not be nil".to_string(),
+        ));
+    }
     let command_kind = normalize_command_kind(command_kind)?;
     let request = serde_json::to_value(request).map_err(|_| {
         MarketplaceLedgerError::Validation(
@@ -93,6 +98,11 @@ pub(crate) async fn replay_existing_command<R: DeserializeOwned>(
     command_kind: &str,
     request_hash: &str,
 ) -> MarketplaceLedgerResult<Option<R>> {
+    if tenant_id.is_nil() {
+        return Err(MarketplaceLedgerError::Validation(
+            "tenant_id must not be nil".to_string(),
+        ));
+    }
     match find_receipt(db, tenant_id, idempotency_key).await? {
         Some(receipt) => replay_command_receipt(receipt, command_kind, request_hash).map(Some),
         None => Ok(None),
@@ -125,6 +135,11 @@ pub(crate) async fn admit_command_receipt(
     command_kind: &str,
     request_hash: &str,
 ) -> MarketplaceLedgerResult<LedgerReceiptAdmission> {
+    if tenant_id.is_nil() || actor_id.is_nil() {
+        return Err(MarketplaceLedgerError::Validation(
+            "tenant_id and actor_id must not be nil".to_string(),
+        ));
+    }
     let command_kind = normalize_command_kind(command_kind)?;
     if let Some(existing) = find_receipt(db, tenant_id, idempotency_key.as_str()).await? {
         return Ok(LedgerReceiptAdmission::Replay(existing));

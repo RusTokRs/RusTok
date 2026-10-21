@@ -43,6 +43,11 @@ pub(crate) fn allocation_request_hash<T: Serialize>(
     actor_id: Uuid,
     request: &T,
 ) -> MarketplaceAllocationResult<String> {
+    if actor_id.is_nil() {
+        return Err(MarketplaceAllocationError::Validation(
+            "actor_id must not be nil".to_string(),
+        ));
+    }
     let request = serde_json::to_value(request).map_err(|_| {
         MarketplaceAllocationError::Validation(
             "allocation request could not be normalized".to_string(),
@@ -67,6 +72,11 @@ pub(crate) async fn admit_receipt(
     idempotency_key: String,
     request_hash: &str,
 ) -> MarketplaceAllocationResult<AllocationReceiptAdmission> {
+    if tenant_id.is_nil() || actor_id.is_nil() {
+        return Err(MarketplaceAllocationError::Validation(
+            "tenant_id and actor_id must not be nil".to_string(),
+        ));
+    }
     if let Some(existing) = find_receipt(db, tenant_id, idempotency_key.as_str()).await? {
         return Ok(AllocationReceiptAdmission::Replay(existing));
     }

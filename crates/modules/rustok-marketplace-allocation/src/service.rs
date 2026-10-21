@@ -41,6 +41,8 @@ impl MarketplaceAllocationService {
         idempotency_key: impl Into<String>,
         input: AllocateMarketplaceOrderLinesInput,
     ) -> MarketplaceAllocationResult<AllocateMarketplaceOrderLinesResponse> {
+        require_uuid(tenant_id, "tenant_id")?;
+        require_uuid(actor_id, "actor_id")?;
         let input = normalize_allocation_input(input)?;
         let key = normalize_idempotency_key(idempotency_key)?;
         let request_hash = allocation_request_hash(actor_id, &input)?;
@@ -64,6 +66,8 @@ impl MarketplaceAllocationService {
         tenant_id: Uuid,
         order_line_item_id: Uuid,
     ) -> MarketplaceAllocationResult<MarketplaceOrderAllocationResponse> {
+        require_uuid(tenant_id, "tenant_id")?;
+        require_uuid(order_line_item_id, "order_line_item_id")?;
         allocation::Entity::find()
             .filter(allocation::Column::TenantId.eq(tenant_id))
             .filter(allocation::Column::OrderLineItemId.eq(order_line_item_id))
@@ -80,6 +84,8 @@ impl MarketplaceAllocationService {
         tenant_id: Uuid,
         order_id: Uuid,
     ) -> MarketplaceAllocationResult<Vec<MarketplaceOrderAllocationResponse>> {
+        require_uuid(tenant_id, "tenant_id")?;
+        require_uuid(order_id, "order_id")?;
         allocation::Entity::find()
             .filter(allocation::Column::TenantId.eq(tenant_id))
             .filter(allocation::Column::OrderId.eq(order_id))
@@ -97,6 +103,8 @@ impl MarketplaceAllocationService {
         tenant_id: Uuid,
         request: ListMarketplaceAllocationsBySellerRequest,
     ) -> MarketplaceAllocationResult<MarketplaceAllocationListResponse> {
+        require_uuid(tenant_id, "tenant_id")?;
+        require_uuid(request.seller_id, "seller_id")?;
         let page = request.page.max(1);
         let per_page = request.per_page.clamp(1, MAX_ALLOCATIONS_PER_PAGE);
         let mut query = allocation::Entity::find()

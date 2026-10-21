@@ -30,7 +30,6 @@ default = [
     "mod-fulfillment",
     "mod-commerce",
     "mod-accounting",
-    "mod-marketplace",
     "mod-moderation",
     "mod-content",
     "mod-blog",

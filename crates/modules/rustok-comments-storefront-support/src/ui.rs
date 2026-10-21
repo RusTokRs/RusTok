@@ -3,7 +3,7 @@ use leptos_auth::hooks::use_is_authenticated;
 use leptos_ui::{RichTextEditorFrame, RichTextFrameCopy};
 use rustok_api::RichTextDocument;
 
-use crate::core::is_richtext_blank;
+use crate::core::{CommentComposerValidationError, validate_comment_submission};
 
 #[derive(Clone, Debug)]
 pub struct CommentComposerCopy {
@@ -80,8 +80,11 @@ fn AuthenticatedCommentComposer(
     let on_submit = move |event: leptos::ev::SubmitEvent| {
         event.prevent_default();
         let value = document.get_untracked();
-        if is_richtext_blank(&value) {
-            validation_error.set(Some(empty_error_value.clone()));
+        if let Err(err) = validate_comment_submission(&value) {
+            let message = match err {
+                CommentComposerValidationError::Empty => empty_error_value.clone(),
+            };
+            validation_error.set(Some(message));
             return;
         }
         validation_error.set(None);

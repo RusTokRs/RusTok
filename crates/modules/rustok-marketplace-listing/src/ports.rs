@@ -133,6 +133,12 @@ impl MarketplaceListingReadPort for crate::MarketplaceListingService {
         request: ReadMarketplaceListingRequest,
     ) -> Result<MarketplaceListingResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.listing_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_listing.listing_id_invalid",
+                "listing_id must not be nil",
+            ));
+        }
         self.get_listing(parse_tenant_id(&context)?, request.listing_id)
             .await
             .map_err(map_owner_error)
@@ -166,6 +172,12 @@ impl MarketplaceListingReadPort for crate::MarketplaceListingService {
         request: ListMarketplaceListingEventsRequest,
     ) -> Result<Vec<MarketplaceListingEventResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if request.listing_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_listing.listing_id_invalid",
+                "listing_id must not be nil",
+            ));
+        }
         self.list_events(parse_tenant_id(&context)?, request)
             .await
             .map_err(map_owner_error)
@@ -179,6 +191,12 @@ impl MarketplaceListingCommandPort for crate::MarketplaceListingService {
         context: PortContext,
         request: CreateMarketplaceListingInput,
     ) -> Result<MarketplaceListingResponse, PortError> {
+        if request.seller_id.is_nil() || request.master_variant_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_listing.identity_invalid",
+                "seller_id and master_variant_id must not be nil",
+            ));
+        }
         self.create_listing_replay_safe(context, request)
             .await
             .map_err(map_owner_error)
@@ -189,6 +207,12 @@ impl MarketplaceListingCommandPort for crate::MarketplaceListingService {
         context: PortContext,
         request: UpdateMarketplaceListingTermsInput,
     ) -> Result<MarketplaceListingResponse, PortError> {
+        if request.listing_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_listing.listing_id_invalid",
+                "listing_id must not be nil",
+            ));
+        }
         self.update_terms_evented(context, request)
             .await
             .map_err(map_owner_error)
@@ -199,6 +223,12 @@ impl MarketplaceListingCommandPort for crate::MarketplaceListingService {
         context: PortContext,
         request: MarketplaceListingIdRequest,
     ) -> Result<MarketplaceListingResponse, PortError> {
+        if request.listing_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_listing.listing_id_invalid",
+                "listing_id must not be nil",
+            ));
+        }
         self.submit_for_review_evented(context, request.listing_id)
             .await
             .map_err(map_owner_error)
@@ -209,6 +239,12 @@ impl MarketplaceListingCommandPort for crate::MarketplaceListingService {
         context: PortContext,
         request: ReviewMarketplaceListingInput,
     ) -> Result<MarketplaceListingResponse, PortError> {
+        if request.listing_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_listing.listing_id_invalid",
+                "listing_id must not be nil",
+            ));
+        }
         self.review_listing_evented(context, request)
             .await
             .map_err(map_owner_error)
@@ -219,6 +255,12 @@ impl MarketplaceListingCommandPort for crate::MarketplaceListingService {
         context: PortContext,
         request: MarketplaceListingIdRequest,
     ) -> Result<MarketplaceListingResponse, PortError> {
+        if request.listing_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_listing.listing_id_invalid",
+                "listing_id must not be nil",
+            ));
+        }
         self.publish_listing_replay_safe(context, request.listing_id)
             .await
             .map_err(map_owner_error)
@@ -229,6 +271,12 @@ impl MarketplaceListingCommandPort for crate::MarketplaceListingService {
         context: PortContext,
         request: SuspendMarketplaceListingInput,
     ) -> Result<MarketplaceListingResponse, PortError> {
+        if request.listing_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_listing.listing_id_invalid",
+                "listing_id must not be nil",
+            ));
+        }
         self.suspend_listing_evented(context, request)
             .await
             .map_err(map_owner_error)
@@ -239,6 +287,12 @@ impl MarketplaceListingCommandPort for crate::MarketplaceListingService {
         context: PortContext,
         request: MarketplaceListingIdRequest,
     ) -> Result<MarketplaceListingResponse, PortError> {
+        if request.listing_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_listing.listing_id_invalid",
+                "listing_id must not be nil",
+            ));
+        }
         self.reactivate_listing_replay_safe(context, request.listing_id)
             .await
             .map_err(map_owner_error)
@@ -249,6 +303,12 @@ impl MarketplaceListingCommandPort for crate::MarketplaceListingService {
         context: PortContext,
         request: MarketplaceListingIdRequest,
     ) -> Result<MarketplaceListingResponse, PortError> {
+        if request.listing_id.is_nil() {
+            return Err(PortError::validation(
+                "marketplace_listing.listing_id_invalid",
+                "listing_id must not be nil",
+            ));
+        }
         self.archive_listing_evented(context, request.listing_id)
             .await
             .map_err(map_owner_error)
@@ -256,12 +316,19 @@ impl MarketplaceListingCommandPort for crate::MarketplaceListingService {
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
+    let id = Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
         PortError::validation(
             "marketplace_listing.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for marketplace listing ports",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "marketplace_listing.tenant_id_invalid",
+            "PortContext.tenant_id must not be nil for marketplace listing ports",
+        ));
+    }
+    Ok(id)
 }
 
 fn map_owner_error(error: MarketplaceListingError) -> PortError {
@@ -322,5 +389,59 @@ fn map_owner_error(error: MarketplaceListingError) -> PortError {
             "marketplace listing storage is temporarily unavailable",
             true,
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::PortActor;
+
+    #[test]
+    fn parse_tenant_id_requires_valid_non_nil_uuid() {
+        let nil_context = PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::system(),
+            "en",
+            "contract",
+        );
+        let err = parse_tenant_id(&nil_context).unwrap_err();
+        assert_eq!(err.code, "marketplace_listing.tenant_id_invalid");
+
+        let invalid_context = PortContext::new(
+            "not-a-uuid",
+            PortActor::system(),
+            "en",
+            "contract",
+        );
+        let err2 = parse_tenant_id(&invalid_context).unwrap_err();
+        assert_eq!(err2.code, "marketplace_listing.tenant_id_invalid");
+
+        let valid_id = Uuid::new_v4();
+        let valid_context = PortContext::new(
+            valid_id.to_string(),
+            PortActor::system(),
+            "en",
+            "contract",
+        );
+        assert_eq!(parse_tenant_id(&valid_context).unwrap(), valid_id);
+    }
+
+    #[test]
+    fn map_owner_error_maps_typed_errors_correctly() {
+        let err = map_owner_error(MarketplaceListingError::ListingNotFound(Uuid::nil()));
+        assert_eq!(err.code, "marketplace_listing.not_found");
+
+        let err2 = map_owner_error(MarketplaceListingError::TermsNotFound {
+            listing_id: Uuid::nil(),
+            version: 1,
+        });
+        assert_eq!(err2.code, "marketplace_listing.terms_missing");
+
+        let err3 = map_owner_error(MarketplaceListingError::Validation("invalid input".into()));
+        assert_eq!(err3.code, "marketplace_listing.validation");
+
+        let err4 = map_owner_error(MarketplaceListingError::DuplicateScope);
+        assert_eq!(err4.code, "marketplace_listing.scope_conflict");
     }
 }
