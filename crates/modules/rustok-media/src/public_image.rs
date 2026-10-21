@@ -61,6 +61,9 @@ impl MediaPublicImageService {
         media_id: Uuid,
         checksum_sha256: &str,
     ) -> Result<MediaPublicImageBody, PortError> {
+        if tenant_id.is_nil() || media_id.is_nil() {
+            return Err(public_image_not_found());
+        }
         let checksum_sha256 =
             normalize_checksum(checksum_sha256).ok_or_else(public_image_not_found)?;
         let (_, blob) = self.active_asset_blob(tenant_id, media_id).await?;
@@ -116,6 +119,9 @@ impl MediaPublicImageService {
         tenant_id: Uuid,
         media_id: Uuid,
     ) -> Result<(asset::Model, blob::Model), PortError> {
+        if tenant_id.is_nil() || media_id.is_nil() {
+            return Err(public_image_not_found());
+        }
         let (asset, active_blob) = asset::Entity::find_by_id(media_id)
             .filter(asset::Column::TenantId.eq(tenant_id))
             .filter(asset::Column::LifecycleState.eq(AssetState::Active.as_str()))
@@ -132,7 +138,51 @@ impl MediaPublicImageService {
     }
 
     fn media_item(&self, asset: asset::Model, blob: blob::Model) -> MediaItem {
-        crate::service::media_item_from_storage(&self.storage, asset, blob)
+        media_item_from_storage(&self.storage, asset, blob)
+    }
+}
+
+pub(crate) fn media_item_from_storage(
+    storage: &StorageRuntime,
+    asset: asset::Model,
+    blob: blob::Model,
+) -> MediaItem {
+    let path = Path::from(blob.object_key.as_str());
+    let public_url = if asset.lifecycle_state == AssetState::Active.as_str()
+        && blob.state == BlobState::Ready.as_str()
+    {
+        storage.public_url(&path).or_else(|| {
+            blob.mime_type
+                .starts_with("image/")
+                .then(|| crate::public_image::public_image_path(asset.id, &blob.checksum_sha256))
+        })
+    } else {
+        None
+    }
+    .unwrap_or_default();
+
+    let filename = std::path::Path::new(&blob.object_key)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(&blob.object_key)
+        .to_string();
+
+    MediaItem {
+        id: asset.id,
+        tenant_id: asset.tenant_id,
+        owner_module: asset.owner_module,
+        uploaded_by: asset.uploaded_by,
+        filename,
+        original_name: asset.original_name,
+        mime_type: blob.mime_type,
+        size: blob.size,
+        storage_path: blob.object_key,
+        storage_driver: storage.kind.as_str().to_string(),
+        public_url,
+        width: blob.width,
+        height: blob.height,
+        metadata: asset.metadata,
+        created_at: asset.created_at.with_timezone(&chrono::Utc),
     }
 }
 
@@ -144,6 +194,12 @@ impl MediaPublicImageReadPort for MediaPublicImageService {
         media_id: Uuid,
         alt: Option<String>,
     ) -> Result<MediaPublicImageAsset, PortError> {
+        if media_id.is_nil() {
+            return Err(PortError::validation(
+                "media.nil_media_id",
+                "media_id cannot be nil",
+            ));
+        }
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
             PortError::validation(
@@ -151,6 +207,12 @@ impl MediaPublicImageReadPort for MediaPublicImageService {
                 "media ports require a valid tenant identifier",
             )
         })?;
+        if tenant_id.is_nil() {
+            return Err(PortError::validation(
+                "media.nil_tenant_id",
+                "media port context tenant_id cannot be nil",
+            ));
+        }
         let (asset, blob) = self.active_asset_blob(tenant_id, media_id).await?;
         let checksum_sha256 = blob.checksum_sha256.clone();
         let asset = self.media_item(asset, blob);

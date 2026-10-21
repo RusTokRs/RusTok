@@ -445,43 +445,8 @@ pub(crate) fn media_item_from_storage(
     asset: crate::entities::asset::Model,
     blob: blob::Model,
 ) -> MediaItem {
-    let path = Path::from(blob.object_key.as_str());
-    let public_url = if asset.lifecycle_state == AssetState::Active.as_str()
-        && blob.state == BlobState::Ready.as_str()
-    {
-        storage.public_url(&path).or_else(|| {
-            blob.mime_type
-                .starts_with("image/")
-                .then(|| crate::public_image::public_image_path(asset.id, &blob.checksum_sha256))
-        })
-    } else {
-        None
-    }
-    .unwrap_or_default();
-
-    let filename = std::path::Path::new(&blob.object_key)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or(&blob.object_key)
-        .to_string();
-
-    MediaItem {
-        id: asset.id,
-        tenant_id: asset.tenant_id,
-        owner_module: asset.owner_module,
-        uploaded_by: asset.uploaded_by,
-        filename,
-        original_name: asset.original_name,
-        mime_type: blob.mime_type,
-        size: blob.size,
-        storage_path: blob.object_key,
-        storage_driver: storage.kind.as_str().to_string(),
-        public_url,
-        width: blob.width,
-        height: blob.height,
-        metadata: asset.metadata,
-        created_at: asset.created_at.with_timezone(&Utc),
-    }
+    // Resolves canonical public image URL via crate::public_image::public_image_path(asset.id, &blob.checksum_sha256)
+    crate::public_image::media_item_from_storage(storage, asset, blob)
 }
 
 impl MediaService {

@@ -5,8 +5,9 @@ use uuid::Uuid;
 
 use super::runtime_data::MessengerGraphqlRuntimeData;
 use super::types::{
-    CreateMessengerChannelGqlInput, DeviceKeyGql, MessengerChannelListItemGql,
-    OneTimePrekeyGql, PrekeyBundleGql, UploadDeviceKeysGqlInput,
+    CreateMessengerChannelGqlInput, DeviceKeyGql, MessageItemGql, MessengerChannelListItemGql,
+    OneTimePrekeyGql, PrekeyBundleGql, SendMessageInputGql, UpdateCursorInputGql,
+    UpdateCursorOutputGql, UploadDeviceKeysGqlInput,
 };
 use crate::controllers::ensure_messenger_module_enabled;
 use crate::domain::ConversationType;
@@ -167,6 +168,89 @@ impl MessengerMutation {
                 signature: otk.signature,
                 consumed: otk.consumed,
             }),
+        })
+    }
+
+    /// Send a message into an active conversation.
+    async fn send_chat_message(
+        &self,
+        ctx: &Context<'_>,
+        input: SendMessageInputGql,
+    ) -> Result<MessageItemGql> {
+        let tenant = ctx.data::<TenantContext>()?;
+        let auth = ctx.data::<AuthContext>()?;
+        if auth.tenant_id != tenant.id {
+            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        }
+        let db = ctx.data::<DatabaseConnection>()?;
+        ensure_messenger_module_enabled(db, tenant.id)
+            .await
+            .map_err(|e| FieldError::new(e.message))?;
+
+        let service = MessengerService::new(db.clone(), 1);
+        let out = service
+            .send_message(
+                tenant.id,
+                auth.user_id,
+                crate::dto::SendMessageInput {
+                    conversation_id: input.conversation_id,
+                    message_type: None,
+                    content: input.content,
+                    blocks_json: None,
+                    reply_to_id: input.reply_to_id,
+                    is_encrypted: None,
+                    encryption_algo: None,
+                },
+            )
+            .await
+            .map_err(|e| FieldError::new(e.to_string()))?;
+
+        Ok(MessageItemGql {
+            id: out.id,
+            conversation_id: out.conversation_id,
+            sender_id: out.sender_id,
+            sender_name: None,
+            message_type: out.message_type as i16,
+            content: out.content,
+            blocks_json: out.blocks_json.map(async_graphql::Json),
+            reply_to_id: out.reply_to_id,
+            is_encrypted: out.is_encrypted,
+            created_at: out.created_at,
+        })
+    }
+
+    /// Monotonically advance user read cursor.
+    async fn update_read_cursor(
+        &self,
+        ctx: &Context<'_>,
+        input: UpdateCursorInputGql,
+    ) -> Result<UpdateCursorOutputGql> {
+        let tenant = ctx.data::<TenantContext>()?;
+        let auth = ctx.data::<AuthContext>()?;
+        if auth.tenant_id != tenant.id {
+            return Err(FieldError::new("Permission denied: tenant mismatch"));
+        }
+        let db = ctx.data::<DatabaseConnection>()?;
+        ensure_messenger_module_enabled(db, tenant.id)
+            .await
+            .map_err(|e| FieldError::new(e.message))?;
+
+        let service = MessengerService::new(db.clone(), 1);
+        let out = service
+            .update_cursor(
+                tenant.id,
+                auth.user_id,
+                crate::dto::UpdateCursorInput {
+                    conversation_id: input.conversation_id,
+                    last_read_message_id: input.last_read_message_id,
+                },
+            )
+            .await
+            .map_err(|e| FieldError::new(e.to_string()))?;
+
+        Ok(UpdateCursorOutputGql {
+            conversation_id: out.conversation_id,
+            last_read_message_id: out.last_read_message_id,
         })
     }
 }

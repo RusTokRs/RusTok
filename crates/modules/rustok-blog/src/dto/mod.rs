@@ -14,8 +14,9 @@ pub use category_command::{
 };
 pub use comment::{
     CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, ModerateCommentInput,
-    ModerateCommentStatus, UpdateCommentInput, bounded_comment_page,
+    ModerateCommentStatus, UpdateCommentInput,
 };
+pub(crate) use comment::bounded_comment_page;
 pub use post::{
     AdminPostCursor, ArchivePostInput, BulkOperationFailure, BulkOperationResult, CreatePostInput,
     PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder, PostSummary,

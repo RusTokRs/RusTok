@@ -953,12 +953,10 @@ impl MessengerService {
             .await?
             .ok_or(MessengerError::ConversationAccessDenied(conversation_id))?;
 
-        if let Some(muted_until) = m.muted_until {
-            if muted_until > Utc::now() {
-                return Err(MessengerError::Validation(
-                    "User is currently muted in this conversation".to_string(),
-                ));
-            }
+        if m.muted_until.is_some_and(|until| until > Utc::now()) {
+            return Err(MessengerError::Validation(
+                "User is currently muted in this conversation".to_string(),
+            ));
         }
         Ok(m)
     }

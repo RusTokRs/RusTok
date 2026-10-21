@@ -1091,3 +1091,34 @@ fn test_scaffold_dry_run() {
     assert!(scaffold(&opts).is_ok());
 }
 
+#[test]
+fn test_scaffold_no_ui_dry_run() {
+    let opts = ScaffoldOptions {
+        slug: "test-headless".to_string(),
+        title: "Test Headless".to_string(),
+        description: "Headless backend service module".to_string(),
+        category: "erp".to_string(),
+        with_db: false,
+        ui: ScaffoldUi::None,
+        dry_run: true,
+        skip_server_wire: true,
+        skip_validate: true,
+    };
+
+    assert!(scaffold(&opts).is_ok());
+}
+
+#[test]
+fn test_scaffold_slug_validation() {
+    assert!(is_valid_slug("valid-slug"));
+    assert!(is_valid_slug("calls"));
+    assert!(is_valid_slug("digital-wallet-v2"));
+
+    assert!(!is_valid_slug(""));
+    assert!(!is_valid_slug("-leading"));
+    assert!(!is_valid_slug("trailing-"));
+    assert!(!is_valid_slug("Upper_Case"));
+    assert!(!is_valid_slug("has_underscore"));
+}
+
+

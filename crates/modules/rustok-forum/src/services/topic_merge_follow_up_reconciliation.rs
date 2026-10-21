@@ -8,6 +8,7 @@
 //! transaction — guarantees those relations follow the replies atomically
 //! instead of depending on a later manual recovery write.
 
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
@@ -68,6 +69,7 @@ fn derive_follow_up_operation_id(merge_operation_id: Uuid, domain_tag: &str) -> 
 /// recovery hook for that repair).
 pub(crate) async fn reconcile_topic_merge_follow_up_relations_in_tx(
     db: &DatabaseConnection,
+    event_bus: &TransactionalEventBus,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     merge_operation_id: Uuid,
@@ -108,7 +110,7 @@ pub(crate) async fn reconcile_topic_merge_follow_up_relations_in_tx(
             FOLLOW_UP_REASON_VOTES,
         )
         .await?;
-    ForumTopicMergeTagReconciliationService::new(db.clone())
+    ForumTopicMergeTagReconciliationService::new(db.clone(), event_bus.clone())
         .reconcile_in_tx(
             txn,
             tenant_id,
@@ -118,7 +120,7 @@ pub(crate) async fn reconcile_topic_merge_follow_up_relations_in_tx(
             FOLLOW_UP_REASON_TAGS,
         )
         .await?;
-    ForumTopicMergeAudienceReconciliationService::new(db.clone())
+    ForumTopicMergeAudienceReconciliationService::new(db.clone(), event_bus.clone())
         .reconcile_in_tx(
             txn,
             tenant_id,

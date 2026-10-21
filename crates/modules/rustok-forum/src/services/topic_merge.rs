@@ -226,6 +226,7 @@ impl ForumTopicMergeService {
         source.status.validate_transition(&TopicStatus::Archived)?;
         let source_category_id = source.category_id;
         let target_category_id = target.category_id;
+        let source_author_id = source.author_id;
         ensure_categories_active_in_tx(&txn, tenant_id, &[source_category_id, target_category_id])
             .await?;
 
@@ -366,7 +367,7 @@ impl ForumTopicMergeService {
         // release that contribution.
         CategoryService::adjust_counters_in_tx(&txn, tenant_id, source_category_id, -1, 0)
             .await?;
-        UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, source.author_id, -1)
+        UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, source_author_id, -1)
             .await?;
 
         transfer_cross_category_reply_counters_in_tx(
@@ -490,6 +491,7 @@ impl ForumTopicMergeService {
         // exact retry of the operator request replays them harmlessly.
         reconcile_topic_merge_follow_up_relations_in_tx(
             &self.db,
+            &self.event_bus,
             &txn,
             tenant_id,
             input.operation_id,

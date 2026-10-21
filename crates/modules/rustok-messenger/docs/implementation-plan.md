@@ -54,7 +54,7 @@ Consolidated from platform concepts (`docs/architecture/workplace-collaboration-
 | **MSG-08** | **Decoupled Search Integration** | Multi-backend search seam via `rustok-search` (Meilisearch / PG FTS / Tantivy), membership scoping, and E2EE zero-knowledge exclusion | **Completed** |
 | **MSG-09** | **Matrix Gateway Adapter** | Matrix room bridge, event bridge (`m.room.message` / `m.room.encrypted`), `MatrixGatewayAdapter` | **Completed** |
 | **MSG-10** | **Admin Control Plane (FFA)** | Leptos admin UI package (`rustok-messenger-admin`), 4-tab dashboard, Fluent i18n, framework-agnostic `core/` view-models | **Completed** |
-| **MSG-11** | **Storefront Workplace & Widget UI (FFA)** | Leptos storefront UI package (`rustok-messenger-storefront`), 3-column workstation page, contextual floating chat widget, optimistic state machine, Fluent i18n | **In Progress** |
+| **MSG-11** | **Storefront Workplace & Widget UI (FFA)** | Leptos storefront UI package (`rustok-messenger-storefront`), 3-column workstation page, contextual floating chat widget, optimistic state machine, Fluent i18n, Dual-path GraphQL bridge | **Completed** |
 
 ---
 

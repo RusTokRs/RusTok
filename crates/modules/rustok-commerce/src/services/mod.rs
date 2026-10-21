@@ -256,8 +256,9 @@ pub use shipment_stock::{
     inventory_shipment_stock_port,
 };
 pub use order_shipment_projection::{
-    OrderShipmentProjector, ProjectingFulfillmentAdminCommandPort,
-    projecting_fulfillment_admin_command_runtime,
+    ManualShipmentCommand, OrderShipmentProjector, ProjectingFulfillmentAdminCommandPort,
+    ShipmentTruth, manual_command_verdict, projecting_fulfillment_admin_command_runtime,
+    shipment_truth,
 };
 pub use payment_orchestration::{
     PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,

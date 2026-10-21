@@ -399,5 +399,62 @@ fn device_key_registry_input_validation_and_deduplication() {
     assert_eq!(audits_after[0].1, 3); // 2 existing + 1 new (key_C), key_A was not duplicated
 }
 
+#[test]
+fn member_mute_and_permission_invariants() {
+    let conv_id = Uuid::now_v7();
+    let user_id = Uuid::now_v7();
+
+    let mut member = Member::new(conv_id, user_id, MemberRole::Member);
+    assert!(!member.is_muted());
+    assert!(!member.can_manage());
+
+    // Muted in the past -> not muted now
+    member.muted_until = Some(chrono::Utc::now() - chrono::Duration::minutes(5));
+    assert!(!member.is_muted());
+
+    // Muted in the future -> is muted
+    member.muted_until = Some(chrono::Utc::now() + chrono::Duration::minutes(30));
+    assert!(member.is_muted());
+
+    // Admin and Owner roles can manage
+    let admin = Member::new(conv_id, Uuid::now_v7(), MemberRole::Admin);
+    assert!(admin.can_manage());
+
+    let owner = Member::new(conv_id, Uuid::now_v7(), MemberRole::Owner);
+    assert!(owner.can_manage());
+
+    let guest = Member::new(conv_id, Uuid::now_v7(), MemberRole::Guest);
+    assert!(!guest.can_manage());
+}
+
+#[test]
+fn streaming_events_edited_and_deleted_partitioning() {
+    use rustok_messenger::streaming::MessengerStreamEvent;
+
+    let tenant_id = Uuid::now_v7();
+    let conv_id = Uuid::now_v7();
+
+    let event_dispatched = MessengerStreamEvent::MessageDispatched {
+        tenant_id,
+        conversation_id: conv_id,
+        message_id: 101,
+        sender_id: Uuid::now_v7(),
+        content: "Hello".into(),
+        blocks_json: None,
+        reply_to_id: None,
+        created_at: chrono::Utc::now(),
+    };
+
+    let event_cursor = MessengerStreamEvent::CursorUpdated {
+        tenant_id,
+        conversation_id: conv_id,
+        user_id: Uuid::now_v7(),
+        last_read_message_id: 101,
+        updated_at: chrono::Utc::now(),
+    };
+
+    assert_eq!(event_dispatched.partition_key(), event_cursor.partition_key());
+}
+
 
 

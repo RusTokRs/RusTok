@@ -10,7 +10,10 @@ mod registration;
 mod ui;
 
 #[allow(unused_imports)]
-pub use options::{print_scaffold_usage, ScaffoldOptions, ScaffoldUi};
+pub use options::{
+    default_title_from_slug, is_valid_slug, parse_options, print_scaffold_usage, ScaffoldOptions,
+    ScaffoldUi,
+};
 
 pub(crate) fn write_file_content(path: &Path, content: &str, dry_run: bool) -> Result<()> {
     if dry_run {

@@ -485,7 +485,7 @@ mod tests {
         assert!(
             require_media_permission(
                 &tenant(Uuid::nil()),
-                &auth(Uuid::nil(), vec![manage.clone()]),
+                &auth(Uuid::nil(), vec![manage]),
                 Action::Read,
             )
             .is_err()

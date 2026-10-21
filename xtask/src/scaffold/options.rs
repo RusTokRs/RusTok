@@ -40,7 +40,7 @@ pub struct ScaffoldOptions {
     pub skip_validate: bool,
 }
 
-pub(crate) fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
+pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
     if args.is_empty() || args[0] == "--help" || args[0] == "-h" {
         print_scaffold_usage();
         if args.is_empty() {
@@ -134,14 +134,14 @@ pub fn print_scaffold_usage() {
     println!("  cargo xtask scaffold billing --title \"B2B Invoices & Settlements\" --category erp");
 }
 
-pub(crate) fn is_valid_slug(slug: &str) -> bool {
+pub fn is_valid_slug(slug: &str) -> bool {
     !slug.is_empty()
         && slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         && !slug.starts_with('-')
         && !slug.ends_with('-')
 }
 
-pub(crate) fn default_title_from_slug(slug: &str) -> String {
+pub fn default_title_from_slug(slug: &str) -> String {
     slug.split('-')
         .map(|part| {
             let mut chars = part.chars();
