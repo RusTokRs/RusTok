@@ -37,8 +37,18 @@ pub enum NotificationContractError {
     AudiencePageTooLarge,
     #[error("notification audience page contains a duplicate recipient")]
     DuplicateAudienceRecipient,
-    #[error("notification source event revision must be greater than zero")]
+    #[error("notification source event revision must be greater than zero and fit within signed 64-bit integer")]
     InvalidSourceRevision,
+    #[error("notification tenant id must not be nil")]
+    NilTenantId,
+    #[error("notification event id must not be nil")]
+    NilEventId,
+    #[error("notification recipient id must not be nil")]
+    NilRecipientId,
+    #[error("notification target id must not be nil")]
+    NilTargetId,
+    #[error("notification actor id must not be nil")]
+    NilActorId,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -130,7 +140,13 @@ impl NotificationSourceEventRef {
         event_type: NotificationTypeKey,
         source_revision: u64,
     ) -> Result<Self, NotificationContractError> {
-        if source_revision == 0 {
+        if tenant_id.is_nil() {
+            return Err(NotificationContractError::NilTenantId);
+        }
+        if event_id.is_nil() {
+            return Err(NotificationContractError::NilEventId);
+        }
+        if source_revision == 0 || source_revision > i64::MAX as u64 {
             return Err(NotificationContractError::InvalidSourceRevision);
         }
         Ok(Self {
@@ -196,6 +212,25 @@ pub struct NotificationTargetRef {
     pub id: Uuid,
 }
 
+impl NotificationTargetRef {
+    pub fn new(
+        owner: NotificationSourceSlug,
+        kind: NotificationTargetKind,
+        id: Uuid,
+    ) -> Result<Self, NotificationContractError> {
+        let target = Self { owner, kind, id };
+        target.validate()?;
+        Ok(target)
+    }
+
+    pub fn validate(&self) -> Result<(), NotificationContractError> {
+        if self.id.is_nil() {
+            return Err(NotificationContractError::NilTargetId);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationPriority {
@@ -217,9 +252,34 @@ pub struct NotificationSemanticDescriptor {
     pub template_data: NotificationTemplateData,
 }
 
+impl NotificationSemanticDescriptor {
+    pub fn validate(&self) -> Result<(), NotificationContractError> {
+        self.target.validate()?;
+        if self.actor_id.is_some_and(|id| id.is_nil()) {
+            return Err(NotificationContractError::NilActorId);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NotificationAudienceCandidate {
     pub recipient_id: Uuid,
+}
+
+impl NotificationAudienceCandidate {
+    pub fn new(recipient_id: Uuid) -> Result<Self, NotificationContractError> {
+        let candidate = Self { recipient_id };
+        candidate.validate()?;
+        Ok(candidate)
+    }
+
+    pub fn validate(&self) -> Result<(), NotificationContractError> {
+        if self.recipient_id.is_nil() {
+            return Err(NotificationContractError::NilRecipientId);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -237,11 +297,11 @@ impl NotificationAudiencePage {
             return Err(NotificationContractError::AudiencePageTooLarge);
         }
         let mut unique = BTreeSet::new();
-        if recipients
-            .iter()
-            .any(|candidate| !unique.insert(candidate.recipient_id))
-        {
-            return Err(NotificationContractError::DuplicateAudienceRecipient);
+        for candidate in &recipients {
+            candidate.validate()?;
+            if !unique.insert(candidate.recipient_id) {
+                return Err(NotificationContractError::DuplicateAudienceRecipient);
+            }
         }
         Ok(Self {
             recipients,
@@ -299,4 +359,11 @@ impl<'de> Deserialize<'de> for NotificationAudiencePage {
 pub enum NotificationOpenAuthorization {
     Allowed { route: NotificationTargetRoute },
     Unavailable,
+}
+
+#[cfg(feature = "server")]
+impl From<NotificationContractError> for rustok_core::Error {
+    fn from(err: NotificationContractError) -> Self {
+        rustok_core::Error::Validation(err.to_string())
+    }
 }

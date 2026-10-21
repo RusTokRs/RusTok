@@ -14,6 +14,15 @@ pub struct NotificationInboxReconciliationInspectRequest {
     pub limit: u16,
 }
 
+impl NotificationInboxReconciliationInspectRequest {
+    pub fn validate(&self) -> Result<(), crate::model::NotificationContractError> {
+        if self.recipient_id.is_nil() {
+            return Err(crate::model::NotificationContractError::NilRecipientId);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NotificationInboxReconciliationInspectPage {
     pub scanned: u16,
