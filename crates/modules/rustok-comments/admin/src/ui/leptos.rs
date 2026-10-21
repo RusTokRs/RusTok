@@ -102,7 +102,7 @@ pub fn CommentsAdmin() -> impl IntoView {
             .unwrap_or_default(),
     );
     let (mutation_error, set_mutation_error) = signal(Option::<String>::None);
-    let (_busy_key, set_busy_key) = signal(Option::<String>::None);
+    let (busy_key, set_busy_key) = signal(Option::<String>::None);
     let locale_query_writer = query_writer.clone();
     let thread_query_writer = query_writer.clone();
     let select_thread_query_writer = thread_query_writer.clone();
@@ -124,7 +124,7 @@ pub fn CommentsAdmin() -> impl IntoView {
         move |(_, _, page_value, _, target_type, thread_status, comment_status)| async move {
             let request = CommentThreadsRequest::from_filters(
                 page_value,
-                20,
+                crate::core::DEFAULT_PAGE_SIZE,
                 target_type,
                 &thread_status,
                 &comment_status,
@@ -149,7 +149,10 @@ pub fn CommentsAdmin() -> impl IntoView {
                 match thread_id {
                     Some(thread_id) => {
                         let request =
-                            CommentThreadDetailRequest::new(thread_id, locale_value, 1, 100);
+                            CommentThreadDetailRequest::new(thread_id, locale_value, 1, crate::core::DEFAULT_DETAIL_PER_PAGE);
+                        if let Err(err) = request.validate() {
+                            return Err(transport::CommentsAdminTransportError::ServerFn(err.to_string()));
+                        }
                         transport::fetch_thread_detail(request).await
                     }
                     None => Err(transport::CommentsAdminTransportError::ServerFn(t(
@@ -175,17 +178,29 @@ pub fn CommentsAdmin() -> impl IntoView {
     let update_thread_status = move |status: CommentThreadStatus| {
         set_mutation_error.set(None);
         let Some(thread_id) = selected_thread_id.get_untracked() else {
+            set_mutation_error.set(Some(
+                t(
+                    Some(locale.get_untracked().as_str()),
+                    "comments.error.selectThread",
+                    "Select a thread first",
+                )
+                .into_owned(),
+            ));
             return;
         };
-        set_busy_key.set(Some(format!("thread:{thread_id}")));
+        let command = SetThreadStatusCommand::new(thread_id.clone(), status);
+        if let Err(err) = command.validate() {
+            set_mutation_error.set(Some(err.to_string()));
+            return;
+        }
+        set_busy_key.set(Some(crate::core::format_busy_key("thread", &thread_id)));
         spawn_local(async move {
-            let command = SetThreadStatusCommand::new(thread_id, status);
             match transport::set_thread_status(command).await {
                 Ok(_) => set_refresh_nonce.update(|value| *value += 1),
                 Err(err) => set_mutation_error.set(Some(format!(
                     "{}: {err}",
                     t(
-                        locale.get_untracked().as_str().into(),
+                        Some(locale.get_untracked().as_str()),
                         "comments.error.updateThread",
                         "Failed to update thread",
                     )
@@ -197,9 +212,13 @@ pub fn CommentsAdmin() -> impl IntoView {
 
     let update_comment_status = move |comment_id: String, status: CommentStatus| {
         let locale_value = locale.get_untracked();
-        set_busy_key.set(Some(format!("comment:{comment_id}")));
+        let command = SetCommentStatusCommand::new(comment_id.clone(), status, locale_value.clone());
+        if let Err(err) = command.validate() {
+            set_mutation_error.set(Some(err.to_string()));
+            return;
+        }
+        set_busy_key.set(Some(crate::core::format_busy_key("comment", &comment_id)));
         spawn_local(async move {
-            let command = SetCommentStatusCommand::new(comment_id, status, locale_value.clone());
             match transport::set_comment_status(command).await {
                 Ok(_) => set_refresh_nonce.update(|value| *value += 1),
                 Err(err) => set_mutation_error.set(Some(format!(
@@ -289,7 +308,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                             </button>
                             <span class="text-sm text-muted-foreground">{move || {
                                 crate::i18n::format(
-                                    locale.get().as_str().into(),
+                                    Some(locale.get().as_str()),
                                     "comments.pagination.page",
                                     Some(&rustok_ui_i18n::fluent_args!("page" => page.get())),
                                     "Page {count}",
@@ -311,7 +330,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                     <div class="space-y-3">
                                         <div class="text-sm text-muted-foreground">
                                             {crate::i18n::format(
-                                                locale.get().as_str().into(),
+                                                Some(locale.get().as_str()),
                                                 "comments.threads.total",
                                                 Some(&rustok_ui_i18n::fluent_args!("count" => payload.total)),
                                                 "{count} matching threads",
@@ -327,7 +346,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                         type="button"
                                                         class="w-full rounded-xl border border-border px-4 py-3 text-left transition hover:border-primary/50 hover:bg-accent/40"
                                                         on:click=move |_| {
-                                                            if let Some(intent) = comments_admin_select_thread_query_intent(&thread_id) {
+                                                             if let Some(intent) = comments_admin_select_thread_query_intent(&thread_id) {
                                                                 thread_query_writer.apply_query_intent(intent);
                                                             }
                                                         }
@@ -343,7 +362,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                             </div>
                                                             <div class="text-xs text-muted-foreground">
                                                                 {crate::i18n::format(
-                                                                    locale.get().as_str().into(),
+                                                                    Some(locale.get().as_str()),
                                                                     "comments.threads.count",
                                                                     Some(&rustok_ui_i18n::fluent_args!("count" => view_model.comment_count)),
                                                                     "{count} comments",
@@ -372,14 +391,16 @@ pub fn CommentsAdmin() -> impl IntoView {
                         <div class="flex items-center gap-2">
                             <button
                                 type="button"
-                                class="rounded-lg border border-border px-3 py-2 text-sm"
+                                class="rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-50"
+                                disabled=move || selected_thread_id.get().is_none() || busy_key.get().is_some()
                                 on:click=move |_| update_thread_status(CommentThreadStatus::Open)
                             >
                                 {open_label}
                             </button>
                             <button
                                 type="button"
-                                class="rounded-lg border border-border px-3 py-2 text-sm"
+                                class="rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-50"
+                                disabled=move || selected_thread_id.get().is_none() || busy_key.get().is_some()
                                 on:click=move |_| update_thread_status(CommentThreadStatus::Closed)
                             >
                                 {closed_label}
@@ -400,7 +421,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                             </div>
                                             <div class="mt-2 text-xs text-muted-foreground">
                                                 {crate::i18n::format(
-                                                    locale.get().as_str().into(),
+                                                    Some(locale.get().as_str()),
                                                     "comments.detail.statusLine",
                                                     Some(&rustok_ui_i18n::fluent_args!("count" => detail_view_model.comment_count, "status" => detail_view_model.status_label.to_string())),
                                                     "{count} comments, status {status}",
@@ -411,20 +432,32 @@ pub fn CommentsAdmin() -> impl IntoView {
                                             {detail.comments.into_iter().map(|comment| {
                                                 let comment_view_model = CommentRowViewModel::from_record(&comment);
                                                 let comment_id = comment_view_model.id.clone();
+                                                let comment_status = comment_view_model.status;
+                                                let is_comment_busy = {
+                                                    let cid = comment_id.clone();
+                                                    Signal::derive(move || crate::core::is_busy(busy_key.get().as_deref(), "comment", &cid) || busy_key.get().is_some())
+                                                };
                                                 view! {
                                                     <div class="rounded-xl border border-border p-4">
                                                         <div class="flex flex-wrap items-center justify-between gap-3">
-                                                            <div class="text-xs text-muted-foreground">
-                                                                {crate::i18n::format(
-                                                                    locale.get().as_str().into(),
-                                                                    "comments.detail.authorLine",
-                                                                    Some(&rustok_ui_i18n::fluent_args!("author" => comment_view_model.author_id.to_string(), "created_at" => comment_view_model.created_at.to_string())),
-                                                                    "author {author} · {created_at}",
-                                                                )}
+                                                            <div class="flex items-center gap-2">
+                                                                <span class="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                                                    {comment_view_model.status_label}
+                                                                </span>
+                                                                <span class="text-xs text-muted-foreground">
+                                                                    {crate::i18n::format(
+                                                                        Some(locale.get().as_str()),
+                                                                        "comments.detail.authorLine",
+                                                                        Some(&rustok_ui_i18n::fluent_args!("author" => comment_view_model.author_id.to_string(), "created_at" => comment_view_model.created_at.to_string())),
+                                                                        "author {author} · {created_at}",
+                                                                    )}
+                                                                </span>
                                                             </div>
                                                             <div class="flex flex-wrap gap-2">
                                                                 <StatusButton
                                                                     label=pending_label.clone()
+                                                                    active=comment_status == CommentStatus::Pending
+                                                                    disabled=is_comment_busy
                                                                     on_click=Callback::new({
                                                                         let comment_id = comment_id.clone();
                                                                         move |_| update_comment_status(comment_id.clone(), CommentStatus::Pending)
@@ -432,6 +465,8 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                                 />
                                                                 <StatusButton
                                                                     label=approved_label.clone()
+                                                                    active=comment_status == CommentStatus::Approved
+                                                                    disabled=is_comment_busy
                                                                     on_click=Callback::new({
                                                                         let comment_id = comment_id.clone();
                                                                         move |_| update_comment_status(comment_id.clone(), CommentStatus::Approved)
@@ -439,6 +474,8 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                                 />
                                                                 <StatusButton
                                                                     label=spam_label.clone()
+                                                                    active=comment_status == CommentStatus::Spam
+                                                                    disabled=is_comment_busy
                                                                     on_click=Callback::new({
                                                                         let comment_id = comment_id.clone();
                                                                         move |_| update_comment_status(comment_id.clone(), CommentStatus::Spam)
@@ -446,6 +483,8 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                                 />
                                                                 <StatusButton
                                                                     label=trash_label.clone()
+                                                                    active=comment_status == CommentStatus::Trash
+                                                                    disabled=is_comment_busy
                                                                     on_click=Callback::new(move |_| update_comment_status(comment_id.clone(), CommentStatus::Trash))
                                                                 />
                                                             </div>
@@ -457,7 +496,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                         />
                                                         <div class="mt-2 text-xs text-muted-foreground">
                                                             {crate::i18n::format(
-                                                                locale.get().as_str().into(),
+                                                                Some(locale.get().as_str()),
                                                                 "comments.detail.localeLine",
                                                                 Some(&rustok_ui_i18n::fluent_args!("requested" => comment_view_model.requested_locale.to_string(), "effective" => comment_view_model.effective_locale.to_string())),
                                                                 "locale {requested} -> {effective}",
@@ -485,11 +524,22 @@ pub fn CommentsAdmin() -> impl IntoView {
 }
 
 #[component]
-fn StatusButton(label: String, on_click: Callback<()>) -> impl IntoView {
+fn StatusButton(
+    label: String,
+    #[prop(default = false)] active: bool,
+    #[prop(into, default = false.into())] disabled: Signal<bool>,
+    on_click: Callback<()>,
+) -> impl IntoView {
+    let class = if active {
+        "rounded-full border border-primary bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary"
+    } else {
+        "rounded-full border border-border px-3 py-1 text-[11px] text-muted-foreground transition hover:border-foreground/30 disabled:opacity-50"
+    };
     view! {
         <button
             type="button"
-            class="rounded-full border border-border px-3 py-1 text-[11px] text-muted-foreground"
+            class=class
+            disabled=disabled
             on:click=move |_| on_click.run(())
         >
             {label}

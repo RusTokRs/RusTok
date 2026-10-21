@@ -83,7 +83,7 @@ async fn comments_threads_native(
                 security_context(&auth),
                 rustok_comments::ListThreadsFilter {
                     page: page.max(1),
-                    per_page: per_page.max(1),
+                    per_page: per_page.clamp(1, crate::core::MAX_PAGE_SIZE),
                     target_type: Some(target_type).filter(|value| !value.trim().is_empty()),
                     thread_status,
                     comment_status,
@@ -121,18 +121,24 @@ async fn comments_thread_detail_native(
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        let request = crate::core::CommentThreadDetailRequest::new(thread_id, locale, page, per_page);
+        let parsed_thread_id = request.validate().map_err(ServerFnError::new)?;
+        let effective_locale = if request.locale.is_empty() {
+            tenant.default_locale.clone()
+        } else {
+            request.locale
+        };
         let service = rustok_comments::CommentsService::new(runtime_ctx.db_clone());
-        let thread_id = uuid::Uuid::parse_str(&thread_id).map_err(ServerFnError::new)?;
         service
             .get_thread_detail(
                 tenant.id,
                 security_context(&auth),
                 rustok_comments::GetThreadDetailFilter {
-                    thread_id,
-                    locale,
+                    thread_id: parsed_thread_id,
+                    locale: effective_locale,
                     fallback_locale: Some(tenant.default_locale),
-                    page: page.max(1),
-                    per_page: per_page.max(1),
+                    page: request.page,
+                    per_page: request.per_page.clamp(1, crate::core::MAX_PAGE_SIZE),
                 },
             )
             .await
@@ -164,10 +170,11 @@ async fn comments_set_thread_status_native(
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        let command = crate::core::SetThreadStatusCommand::new(thread_id, status);
+        let parsed_thread_id = command.validate().map_err(ServerFnError::new)?;
         let service = rustok_comments::CommentsService::new(runtime_ctx.db_clone());
-        let thread_id = uuid::Uuid::parse_str(&thread_id).map_err(ServerFnError::new)?;
         service
-            .set_thread_status(tenant.id, security_context(&auth), thread_id, status)
+            .set_thread_status(tenant.id, security_context(&auth), parsed_thread_id, command.status)
             .await
             .map_err(ServerFnError::new)
     }
@@ -198,15 +205,21 @@ async fn comments_set_comment_status_native(
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        let command = crate::core::SetCommentStatusCommand::new(comment_id, status, locale);
+        let parsed_comment_id = command.validate().map_err(ServerFnError::new)?;
+        let effective_locale = if command.locale.is_empty() {
+            tenant.default_locale.clone()
+        } else {
+            command.locale
+        };
         let service = rustok_comments::CommentsService::new(runtime_ctx.db_clone());
-        let comment_id = uuid::Uuid::parse_str(&comment_id).map_err(ServerFnError::new)?;
         service
             .set_comment_status(
                 tenant.id,
                 security_context(&auth),
-                comment_id,
-                status,
-                &locale,
+                parsed_comment_id,
+                command.status,
+                &effective_locale,
                 Some(tenant.default_locale.as_str()),
             )
             .await

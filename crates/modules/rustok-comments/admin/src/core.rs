@@ -3,14 +3,46 @@
 //! This layer owns request/view policy that can be reused by future host adapters
 //! without depending on framework runtime types.
 
+use std::fmt::{Display, Formatter};
+
 use rustok_api::RichTextView;
 use rustok_comments::{
     CommentRecord, CommentStatus, CommentThreadDetail, CommentThreadStatus, CommentThreadSummary,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteQueryIntent, normalize_ui_text};
+use uuid::Uuid;
+
+pub(crate) const DEFAULT_PAGE_SIZE: u64 = 20;
+pub(crate) const DEFAULT_DETAIL_PER_PAGE: u64 = 100;
+pub(crate) const MAX_PAGE_SIZE: u64 = 100;
 
 pub(crate) const COMMENTS_ADMIN_THREAD_QUERY_KEY: &str = AdminQueryKey::ThreadId.as_str();
 pub(crate) const COMMENTS_ADMIN_LOCALE_QUERY_KEY: &str = AdminQueryKey::Locale.as_str();
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CommentsAdminValidationError {
+    EmptyThreadId,
+    InvalidThreadId(String),
+    NilThreadId,
+    EmptyCommentId,
+    InvalidCommentId(String),
+    NilCommentId,
+}
+
+impl Display for CommentsAdminValidationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyThreadId => write!(f, "thread_id must not be empty"),
+            Self::InvalidThreadId(err) => write!(f, "invalid thread_id UUID: {err}"),
+            Self::NilThreadId => write!(f, "thread_id must not be nil UUID"),
+            Self::EmptyCommentId => write!(f, "comment_id must not be empty"),
+            Self::InvalidCommentId(err) => write!(f, "invalid comment_id UUID: {err}"),
+            Self::NilCommentId => write!(f, "comment_id must not be nil UUID"),
+        }
+    }
+}
+
+impl std::error::Error for CommentsAdminValidationError {}
 
 pub(crate) fn comments_admin_select_thread_query_intent(
     thread_id: &str,
@@ -48,7 +80,7 @@ impl CommentThreadsRequest {
     ) -> Self {
         Self {
             page: page.max(1),
-            per_page: per_page.max(1),
+            per_page: per_page.clamp(1, MAX_PAGE_SIZE),
             target_type: target_type.trim().to_string(),
             thread_status: parse_thread_status(thread_status_filter),
             comment_status: parse_comment_status(comment_status_filter),
@@ -70,8 +102,21 @@ impl CommentThreadDetailRequest {
             thread_id,
             locale: locale.trim().to_string(),
             page: page.max(1),
-            per_page: per_page.max(1),
+            per_page: per_page.clamp(1, MAX_PAGE_SIZE),
         }
+    }
+
+    pub(crate) fn validate(&self) -> Result<Uuid, CommentsAdminValidationError> {
+        let trimmed = self.thread_id.trim();
+        if trimmed.is_empty() {
+            return Err(CommentsAdminValidationError::EmptyThreadId);
+        }
+        let parsed = Uuid::parse_str(trimmed)
+            .map_err(|e| CommentsAdminValidationError::InvalidThreadId(e.to_string()))?;
+        if parsed.is_nil() {
+            return Err(CommentsAdminValidationError::NilThreadId);
+        }
+        Ok(parsed)
     }
 }
 
@@ -84,6 +129,19 @@ pub(crate) struct SetThreadStatusCommand {
 impl SetThreadStatusCommand {
     pub(crate) fn new(thread_id: String, status: CommentThreadStatus) -> Self {
         Self { thread_id, status }
+    }
+
+    pub(crate) fn validate(&self) -> Result<Uuid, CommentsAdminValidationError> {
+        let trimmed = self.thread_id.trim();
+        if trimmed.is_empty() {
+            return Err(CommentsAdminValidationError::EmptyThreadId);
+        }
+        let parsed = Uuid::parse_str(trimmed)
+            .map_err(|e| CommentsAdminValidationError::InvalidThreadId(e.to_string()))?;
+        if parsed.is_nil() {
+            return Err(CommentsAdminValidationError::NilThreadId);
+        }
+        Ok(parsed)
     }
 }
 
@@ -101,6 +159,19 @@ impl SetCommentStatusCommand {
             status,
             locale: locale.trim().to_string(),
         }
+    }
+
+    pub(crate) fn validate(&self) -> Result<Uuid, CommentsAdminValidationError> {
+        let trimmed = self.comment_id.trim();
+        if trimmed.is_empty() {
+            return Err(CommentsAdminValidationError::EmptyCommentId);
+        }
+        let parsed = Uuid::parse_str(trimmed)
+            .map_err(|e| CommentsAdminValidationError::InvalidCommentId(e.to_string()))?;
+        if parsed.is_nil() {
+            return Err(CommentsAdminValidationError::NilCommentId);
+        }
+        Ok(parsed)
     }
 }
 
@@ -126,6 +197,7 @@ impl CommentThreadListItemViewModel {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CommentThreadDetailViewModel {
     pub target_label: String,
+    pub status: CommentThreadStatus,
     pub status_label: &'static str,
     pub comment_count: i32,
 }
@@ -137,6 +209,7 @@ impl CommentThreadDetailViewModel {
                 &detail.thread.target_type,
                 &detail.thread.target_id.to_string(),
             ),
+            status: detail.thread.status,
             status_label: thread_status_label(detail.thread.status),
             comment_count: detail.thread.comment_count,
         }
@@ -149,6 +222,8 @@ pub(crate) struct CommentRowViewModel {
     pub author_id: String,
     pub created_at: String,
     pub body: RichTextView,
+    pub status: CommentStatus,
+    pub status_label: &'static str,
     pub requested_locale: String,
     pub effective_locale: String,
 }
@@ -160,6 +235,8 @@ impl CommentRowViewModel {
             author_id: comment.author_id.to_string(),
             created_at: comment.created_at.clone(),
             body: comment.body.clone(),
+            status: comment.status,
+            status_label: comment_status_label(comment.status),
             requested_locale: comment.requested_locale.clone(),
             effective_locale: comment.effective_locale.clone(),
         }
@@ -184,11 +261,29 @@ pub(crate) fn parse_comment_status(value: &str) -> Option<CommentStatus> {
     }
 }
 
-fn thread_status_label(status: CommentThreadStatus) -> &'static str {
+pub(crate) fn thread_status_label(status: CommentThreadStatus) -> &'static str {
     match status {
         CommentThreadStatus::Open => "open",
         CommentThreadStatus::Closed => "closed",
     }
+}
+
+pub(crate) fn comment_status_label(status: CommentStatus) -> &'static str {
+    match status {
+        CommentStatus::Pending => "pending",
+        CommentStatus::Approved => "approved",
+        CommentStatus::Spam => "spam",
+        CommentStatus::Trash => "trash",
+    }
+}
+
+pub(crate) fn format_busy_key(entity: &str, id: &str) -> String {
+    format!("{entity}:{id}")
+}
+
+pub(crate) fn is_busy(busy_key: Option<&str>, entity: &str, id: &str) -> bool {
+    let expected = format_busy_key(entity, id);
+    busy_key == Some(&expected)
 }
 
 fn format_target_label(target_type: &str, target_id: &str) -> String {
@@ -356,6 +451,7 @@ mod tests {
             view_model.target_label,
             "blog_post:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
         );
+        assert_eq!(view_model.status, CommentThreadStatus::Open);
         assert_eq!(view_model.status_label, "open");
         assert_eq!(view_model.comment_count, 2);
     }
@@ -370,8 +466,111 @@ mod tests {
         assert_eq!(view_model.author_id, comment.author_id.to_string());
         assert_eq!(view_model.created_at, "2026-06-07T00:00:00Z");
         assert_eq!(view_model.body, comment.body);
+        assert_eq!(view_model.status, CommentStatus::Pending);
+        assert_eq!(view_model.status_label, "pending");
         assert_eq!(view_model.requested_locale, "ru");
         assert_eq!(view_model.effective_locale, "ru");
+    }
+
+    #[test]
+    fn validates_thread_detail_request_and_rejects_nil_or_invalid_uuid() {
+        let valid_id = Uuid::new_v4();
+        let req = CommentThreadDetailRequest::new(valid_id.to_string(), "en".to_string(), 1, 20);
+        assert_eq!(req.validate().unwrap(), valid_id);
+
+        let empty = CommentThreadDetailRequest::new("   ".to_string(), "en".to_string(), 1, 20);
+        assert_eq!(
+            empty.validate().unwrap_err(),
+            CommentsAdminValidationError::EmptyThreadId
+        );
+
+        let invalid = CommentThreadDetailRequest::new("not-a-uuid".to_string(), "en".to_string(), 1, 20);
+        assert!(matches!(
+            invalid.validate().unwrap_err(),
+            CommentsAdminValidationError::InvalidThreadId(_)
+        ));
+
+        let nil = CommentThreadDetailRequest::new(Uuid::nil().to_string(), "en".to_string(), 1, 20);
+        assert_eq!(
+            nil.validate().unwrap_err(),
+            CommentsAdminValidationError::NilThreadId
+        );
+    }
+
+    #[test]
+    fn validates_set_thread_status_command() {
+        let valid_id = Uuid::new_v4();
+        let cmd = SetThreadStatusCommand::new(valid_id.to_string(), CommentThreadStatus::Closed);
+        assert_eq!(cmd.validate().unwrap(), valid_id);
+
+        let empty = SetThreadStatusCommand::new("".to_string(), CommentThreadStatus::Open);
+        assert_eq!(
+            empty.validate().unwrap_err(),
+            CommentsAdminValidationError::EmptyThreadId
+        );
+
+        let nil = SetThreadStatusCommand::new(Uuid::nil().to_string(), CommentThreadStatus::Open);
+        assert_eq!(
+            nil.validate().unwrap_err(),
+            CommentsAdminValidationError::NilThreadId
+        );
+    }
+
+    #[test]
+    fn validates_set_comment_status_command() {
+        let valid_id = Uuid::new_v4();
+        let cmd = SetCommentStatusCommand::new(valid_id.to_string(), CommentStatus::Approved, "en".to_string());
+        assert_eq!(cmd.validate().unwrap(), valid_id);
+
+        let empty = SetCommentStatusCommand::new("  ".to_string(), CommentStatus::Approved, "en".to_string());
+        assert_eq!(
+            empty.validate().unwrap_err(),
+            CommentsAdminValidationError::EmptyCommentId
+        );
+
+        let nil = SetCommentStatusCommand::new(Uuid::nil().to_string(), CommentStatus::Trash, "en".to_string());
+        assert_eq!(
+            nil.validate().unwrap_err(),
+            CommentsAdminValidationError::NilCommentId
+        );
+    }
+
+    #[test]
+    fn verifies_busy_key_formatting_and_predicate() {
+        let key = format_busy_key("thread", "123");
+        assert_eq!(key, "thread:123");
+        assert!(is_busy(Some("thread:123"), "thread", "123"));
+        assert!(!is_busy(Some("thread:456"), "thread", "123"));
+        assert!(!is_busy(Some("comment:123"), "thread", "123"));
+        assert!(!is_busy(None, "thread", "123"));
+    }
+
+    #[test]
+    fn resolves_comment_status_labels() {
+        assert_eq!(comment_status_label(CommentStatus::Pending), "pending");
+        assert_eq!(comment_status_label(CommentStatus::Approved), "approved");
+        assert_eq!(comment_status_label(CommentStatus::Spam), "spam");
+        assert_eq!(comment_status_label(CommentStatus::Trash), "trash");
+    }
+
+    #[test]
+    fn formats_validation_errors() {
+        assert_eq!(
+            CommentsAdminValidationError::EmptyThreadId.to_string(),
+            "thread_id must not be empty"
+        );
+        assert_eq!(
+            CommentsAdminValidationError::NilThreadId.to_string(),
+            "thread_id must not be nil UUID"
+        );
+        assert_eq!(
+            CommentsAdminValidationError::EmptyCommentId.to_string(),
+            "comment_id must not be empty"
+        );
+        assert_eq!(
+            CommentsAdminValidationError::NilCommentId.to_string(),
+            "comment_id must not be nil UUID"
+        );
     }
 
     fn thread_summary(
