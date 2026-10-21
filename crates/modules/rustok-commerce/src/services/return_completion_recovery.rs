@@ -686,6 +686,8 @@ fn normalize_status_filter(value: &str) -> PostOrderOrchestrationResult<String> 
 fn validate_completion_shape(
     input: &core::CompleteReturnResolutionInput,
 ) -> PostOrderOrchestrationResult<()> {
+    // Reject a malformed restock decision before the command snapshot is durably admitted.
+    super::return_restock::parse_restock_decision(&input.metadata)?;
     let helpers = usize::from(input.refund.is_some())
         + usize::from(input.exchange.is_some())
         + usize::from(input.claim.is_some());
