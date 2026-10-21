@@ -310,7 +310,10 @@ fn uuid_column(
     }
 }
 
-fn parse_descriptor(raw: &str, context: &str) -> Result<ModuleArtifactDescriptor, ModuleOperatorError> {
+fn parse_descriptor(
+    raw: &str,
+    context: &str,
+) -> Result<ModuleArtifactDescriptor, ModuleOperatorError> {
     serde_json::from_str(raw).map_err(|e| {
         ModuleOperatorError::Database(format!("stored descriptor for {context} is invalid: {e}"))
     })
@@ -366,7 +369,9 @@ impl InstallationRow {
             payload_digest: row.try_get("", "payload_digest").map_err(database_error)?,
             data_owner_id: uuid_column(row, backend, "data_owner_id")?,
             settings_instance_id: uuid_column(row, backend, "settings_instance_id")?,
-            admission_status: row.try_get("", "admission_status").map_err(database_error)?,
+            admission_status: row
+                .try_get("", "admission_status")
+                .map_err(database_error)?,
         })
     }
 }
@@ -447,7 +452,9 @@ impl ModuleOperatorService {
         reason: &str,
     ) -> Result<TransitionPreviewProjection, ModuleOperatorError> {
         let chain = self.load_installation_chain(slug, scope).await?;
-        let current_index = chain.iter().position(|row| row.admission_status == "active");
+        let current_index = chain
+            .iter()
+            .position(|row| row.admission_status == "active");
         let current_row = current_index.map(|index| &chain[index]);
         let predecessor_row = current_index.and_then(|index| chain.get(index + 1));
 
@@ -583,7 +590,9 @@ impl ModuleOperatorService {
                 scope: scope.clone(),
                 installation_id: None,
                 presentation_state: CanonicalPresentationState::Ready,
-                display_label: CanonicalPresentationState::Ready.display_label().to_string(),
+                display_label: CanonicalPresentationState::Ready
+                    .display_label()
+                    .to_string(),
                 containment_outcome: None,
                 current_identity: None,
                 candidate_identity: None,
@@ -620,7 +629,12 @@ impl ModuleOperatorService {
                     vec!["Installation failed preflight or activation".to_string()],
                     Some("Investigate diagnostics and trigger recovery".to_string()),
                 ),
-                _ => (CanonicalPresentationState::Observing, None, Vec::new(), None),
+                _ => (
+                    CanonicalPresentationState::Observing,
+                    None,
+                    Vec::new(),
+                    None,
+                ),
             }
         };
 
@@ -749,7 +763,9 @@ impl ModuleOperatorService {
             .map_err(database_error)?;
 
         match row {
-            Some(row) => row.try_get("", "publisher_identity").map_err(database_error),
+            Some(row) => row
+                .try_get("", "publisher_identity")
+                .map_err(database_error),
             None => Ok(None),
         }
     }
