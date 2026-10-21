@@ -663,6 +663,12 @@ impl CommentService {
         };
 
         let status = storage_to_status(&post.status)?;
+        // "Public" means published *with* its publication timestamp, as in
+        // the public list and the search projection; without it the row is
+        // damaged state, not a public comment target.
+        if status == BlogPostStatus::Published && post.published_at.is_none() {
+            return Err(BlogError::post_not_found(post_id));
+        }
         let channel_slugs = blog_post_channel_visibility::Entity::find()
             .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
             .filter(blog_post_channel_visibility::Column::PostId.eq(post_id))

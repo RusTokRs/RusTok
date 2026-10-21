@@ -39,6 +39,8 @@ impl BlogMutation {
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PostService::new(db.clone(), event_bus.clone());
+        let input: crate::CreatePostInput =
+            input.try_into().map_err(crate::error::public::to_graphql_error)?;
         let post_id = service
             .create_post(
                 tenant_id,
@@ -47,7 +49,7 @@ impl BlogMutation {
                     &auth.grant_type,
                     &auth.permissions,
                 ),
-                input.into(),
+                input,
             )
             .await
             .map_err(crate::error::public::to_graphql_error)?;
@@ -74,6 +76,8 @@ impl BlogMutation {
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PostService::new(db.clone(), event_bus.clone());
+        let input: crate::UpdatePostInput =
+            input.try_into().map_err(crate::error::public::to_graphql_error)?;
         service
             .update_post(
                 tenant_id,
@@ -83,7 +87,7 @@ impl BlogMutation {
                     &auth.grant_type,
                     &auth.permissions,
                 ),
-                input.into(),
+                input,
             )
             .await
             .map_err(crate::error::public::to_graphql_error)?;
@@ -384,7 +388,7 @@ impl BlogMutation {
                     &auth.grant_type,
                     &auth.permissions,
                 ),
-                input.into(),
+                input.try_into().map_err(crate::error::public::to_graphql_error)?,
             )
             .await
             .map_err(crate::error::public::to_graphql_error)?;
@@ -421,7 +425,7 @@ impl BlogMutation {
                     &auth.grant_type,
                     &auth.permissions,
                 ),
-                input.into(),
+                input.try_into().map_err(crate::error::public::to_graphql_error)?,
             )
             .await
             .map_err(crate::error::public::to_graphql_error)?;

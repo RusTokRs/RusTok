@@ -14,18 +14,18 @@ const GUARDRAIL_TEST = 'scripts/verify/verify-blog-graphql-richtext-boundary.tes
 const CREATE_MARKERS = [
   'create_post_input_conversion_preserves_canonical_content',
   'RichTextDocument::single_paragraph',
-  'let domain: DomainCreatePostInput = input.into();',
+  'input.try_into().expect("valid input converts");',
   'assert_eq!(domain.content, canonical)',
 ];
 const UPDATE_MARKERS = [
   'update_post_input_conversion_preserves_canonical_content',
   'RichTextDocument::single_paragraph',
-  'let domain: DomainUpdatePostInput = input.into();',
+  'input.try_into().expect("valid update input converts");',
   'assert_eq!(domain.content, Some(canonical))',
 ];
 const CONVERSION_SCOPES = [
-  'impl From<CreatePostInput> for DomainCreatePostInput',
-  'impl From<UpdatePostInput> for DomainUpdatePostInput',
+  'impl TryFrom<CreatePostInput> for DomainCreatePostInput',
+  'impl TryFrom<UpdatePostInput> for DomainUpdatePostInput',
 ];
 const EXPECTED_CONVERSION_TESTS = {
   create: { file: CREATE_TEST, markers: CREATE_MARKERS },
@@ -72,7 +72,7 @@ assert.deepEqual(evidence.canonical_contract, {
   write: 'rustok_api::RichTextDocument',
   read: 'rustok_api::RichTextView',
   plain_text: 'server-derived',
-  resolver_conversion: 'typed input.into() delegation with direct content mapping',
+  resolver_conversion: 'typed fallible input.try_into() delegation with direct content mapping',
 }, 'GraphQL richtext canonical contract drift');
 assert.equal(evidence.scan_scope, 'crates/modules/rustok-blog/src/graphql/**/*.rs', 'GraphQL scan scope drift');
 assert.deepEqual(evidence.legacy_adapter_fields, [], 'legacy GraphQL adapter fields returned');
@@ -128,7 +128,7 @@ for (const source of [
   between(mutation, 'async fn create_post(', 'async fn update_post('),
   between(mutation, 'async fn update_post(', 'async fn delete_post('),
 ]) {
-  assert.ok(source.includes('input.into()'), 'resolver must delegate through input.into()');
+  assert.ok(source.includes('input.try_into()'), 'resolver must delegate through input.try_into()');
   assert.ok(!source.includes('input.content'), 'resolver must not map content manually');
 }
 requireMarkers(createTest, CREATE_MARKERS, 'create conversion coverage');
