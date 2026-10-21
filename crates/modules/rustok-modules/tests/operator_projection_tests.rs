@@ -14,8 +14,8 @@ use rustok_core::MigrationSource;
 use rustok_modules::{
     ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor, ArtifactSchemaDocument,
     CanonicalPresentationState, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
-    ModuleArtifactDescriptor, ModuleInstallationScope, ModuleOperatorError,
-    ModuleOperatorService, ModuleReleaseCoordinate, ModulesModule, UpdateMode,
+    ModuleArtifactDescriptor, ModuleInstallationScope, ModuleOperatorError, ModuleOperatorService,
+    ModuleReleaseCoordinate, ModulesModule, UpdateMode,
 };
 use rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI;
 

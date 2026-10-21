@@ -2892,8 +2892,29 @@ impl SeaOrmArtifactInstallationStore {
         // installation again. The upsert also retires installations that
         // were admitted before generation rows were written at admission
         // time (they retire from implicit generation 1 to 2).
-        transaction.execute_raw(Statement::from_sql_and_values(backend, work_generation_retire_sql(backend), vec![uuid_value(request.installation_id, backend)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
-        transaction.execute_raw(Statement::from_sql_and_values(backend, format!("DELETE FROM module_artifact_tenant_lifecycle WHERE installation_id = {}", if backend == DbBackend::Postgres { "$1" } else { "?1" }), vec![uuid_value(request.installation_id, backend)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend,
+                work_generation_retire_sql(backend),
+                vec![uuid_value(request.installation_id, backend)],
+            ))
+            .await
+            .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "DELETE FROM module_artifact_tenant_lifecycle WHERE installation_id = {}",
+                    if backend == DbBackend::Postgres {
+                        "$1"
+                    } else {
+                        "?1"
+                    }
+                ),
+                vec![uuid_value(request.installation_id, backend)],
+            ))
+            .await
+            .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
         self.infrastructure
             .write_event(
                 &transaction,
